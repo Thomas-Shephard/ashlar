@@ -1,0 +1,25 @@
+<Project>
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+
+    <!-- Unified Artifacts Output -->
+    <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+
+    <!-- Analysis & Code Style -->
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- NuGet Metadata -->
+    <Authors>Ashlar Contributors</Authors>
+    <Company>Ashlar</Company>
+    <Copyright>Copyright (c) $([System.DateTime]::Now.ToString("yyyy")) Ashlar</Copyright>
+    <RepositoryType>git</RepositoryType>
+    <!-- <PackageLicenseExpression>MIT</PackageLicenseExpression> -->
+    <!-- <RepositoryUrl>https://github.com/your/repo</RepositoryUrl> -->
+  </PropertyGroup>
+</Project>
