@@ -15,11 +15,11 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 
     <!-- NuGet Metadata -->
-    <Authors>Ashlar Contributors</Authors>
-    <Company>Ashlar</Company>
-    <Copyright>Copyright (c) $([System.DateTime]::Now.ToString("yyyy")) Ashlar</Copyright>
+    <Authors>Thomas Shephard</Authors>
+    <Copyright>Copyright (c) $([System.DateTime]::Now.ToString("yyyy")) $(Authors)</Copyright>
+    <PackageProjectUrl>https://github.com/Thomas-Shephard/ashlar</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Thomas-Shephard/ashlar.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <!-- <PackageLicenseExpression>MIT</PackageLicenseExpression> -->
-    <!-- <RepositoryUrl>https://github.com/your/repo</RepositoryUrl> -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 </Project>
