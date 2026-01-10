@@ -37,4 +37,18 @@ public sealed class PasswordHasherSelector
 
         return DefaultHasher;
     }
+
+    public PasswordVerificationResult VerifyPassword(ReadOnlySpan<char> password, ReadOnlySpan<byte> encodedHash)
+    {
+        var hasher = GetHasher(encodedHash);
+
+        if (!hasher.VerifyPassword(password, encodedHash))
+        {
+            return PasswordVerificationResult.Failed;
+        }
+
+        return hasher.Version == DefaultHasher.Version
+            ? PasswordVerificationResult.Success
+            : PasswordVerificationResult.SuccessRehashNeeded;
+    }
 }
