@@ -83,6 +83,43 @@ public class PasswordHasherSelectorTests
         Assert.That(hasher.Version, Is.EqualTo(0x01));
     }
 
+    [Test]
+    public void VerifyPasswordShouldReturnSuccessForCurrentVersion()
+    {
+        var password = "password123".AsSpan();
+        var hash = _v1Hasher.HashPassword(password);
+
+        var result = _selector.VerifyPassword(password, hash);
+
+        Assert.That(result, Is.EqualTo(PasswordVerificationResult.Success));
+    }
+
+    [Test]
+    public void VerifyPasswordShouldReturnFailedForWrongPassword()
+    {
+        var password = "password123".AsSpan();
+        var hash = _v1Hasher.HashPassword(password);
+
+        var result = _selector.VerifyPassword("wrong".AsSpan(), hash);
+
+        Assert.That(result, Is.EqualTo(PasswordVerificationResult.Failed));
+    }
+
+    [Test]
+    public void VerifyPasswordShouldReturnSuccessRehashNeededForOldVersion()
+    {
+        var v1 = new PasswordHasherV1();
+        var v2 = new MockHasher(0x02);
+        var selector = new PasswordHasherSelector([v1, v2]);
+
+        var password = "password123".AsSpan();
+        var hash = v1.HashPassword(password);
+
+        var result = selector.VerifyPassword(password, hash);
+
+        Assert.That(result, Is.EqualTo(PasswordVerificationResult.SuccessRehashNeeded));
+    }
+
     private sealed class MockHasher(byte version) : IPasswordHasher
     {
         public byte Version => version;
