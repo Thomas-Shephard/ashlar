@@ -67,4 +67,53 @@ public class SecretProtectorTests
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.Throws<ArgumentNullException>(() => _ = new DataProtectionSecretProtector(null!));
     }
+
+    [Test]
+    public void ProtectShouldThrowOnNullPlainText()
+    {
+        var providerMock = new Mock<IDataProtectionProvider>();
+        providerMock.Setup(p => p.CreateProtector(It.IsAny<string>())).Returns(new Mock<IDataProtector>().Object);
+        var secretProtector = new DataProtectionSecretProtector(providerMock.Object);
+
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => secretProtector.Protect(null!));
+    }
+
+    [Test]
+    public void UnprotectShouldThrowOnNullCipherText()
+    {
+        var providerMock = new Mock<IDataProtectionProvider>();
+        providerMock.Setup(p => p.CreateProtector(It.IsAny<string>())).Returns(new Mock<IDataProtector>().Object);
+        var secretProtector = new DataProtectionSecretProtector(providerMock.Object);
+
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => secretProtector.Unprotect(null!));
+    }
+
+    [Test]
+    public void UnprotectShouldPropagateCryptographicException()
+    {
+        var providerMock = new Mock<IDataProtectionProvider>();
+        var protectorMock = new Mock<IDataProtector>();
+        providerMock.Setup(p => p.CreateProtector(It.IsAny<string>())).Returns(protectorMock.Object);
+
+        protectorMock.Setup(p => p.Unprotect(It.IsAny<byte[]>()))
+            .Throws(new System.Security.Cryptography.CryptographicException());
+
+        var secretProtector = new DataProtectionSecretProtector(providerMock.Object);
+        var input = Convert.ToBase64String("valid-base64"u8.ToArray());
+
+        Assert.Throws<System.Security.Cryptography.CryptographicException>(() => secretProtector.Unprotect(input));
+    }
+
+    [Test]
+    public void UnprotectShouldWrapFormatExceptionInCryptographicException()
+    {
+        var providerMock = new Mock<IDataProtectionProvider>();
+        providerMock.Setup(p => p.CreateProtector(It.IsAny<string>())).Returns(new Mock<IDataProtector>().Object);
+        var secretProtector = new DataProtectionSecretProtector(providerMock.Object);
+
+        var ex = Assert.Throws<System.Security.Cryptography.CryptographicException>(() => secretProtector.Unprotect("!@#$%^&*()"));
+        Assert.That(ex.InnerException, Is.InstanceOf<FormatException>());
+    }
 }

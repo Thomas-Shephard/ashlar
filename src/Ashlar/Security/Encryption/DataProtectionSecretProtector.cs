@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 
 namespace Ashlar.Security.Encryption;
@@ -23,19 +24,25 @@ public sealed class DataProtectionSecretProtector : ISecretProtector
     public string Protect(string plainText)
     {
         ArgumentNullException.ThrowIfNull(plainText);
-        return _protector.Protect(plainText);
+        var plaintextBytes = Encoding.UTF8.GetBytes(plainText);
+        var protectedBytes = _protector.Protect(plaintextBytes);
+        return Convert.ToBase64String(protectedBytes);
     }
 
     public string Unprotect(string cipherText)
     {
         ArgumentNullException.ThrowIfNull(cipherText);
+        byte[] protectedBytes;
         try
         {
-            return _protector.Unprotect(cipherText);
+            protectedBytes = Convert.FromBase64String(cipherText);
         }
         catch (FormatException ex)
         {
             throw new System.Security.Cryptography.CryptographicException("The cipher text is not a valid Base64 string.", ex);
         }
+
+        var unprotectedBytes = _protector.Unprotect(protectedBytes);
+        return Encoding.UTF8.GetString(unprotectedBytes);
     }
 }
