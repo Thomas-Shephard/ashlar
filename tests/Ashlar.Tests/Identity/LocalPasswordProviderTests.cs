@@ -1,6 +1,8 @@
+using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Providers;
 using Ashlar.Security.Hashing;
+using Moq;
 
 namespace Ashlar.Tests.Identity;
 
@@ -87,5 +89,63 @@ public class LocalPasswordProviderTests
         var result = await _provider.AuthenticateAsync(assertion, credential);
 
         Assert.That(result.Result, Is.EqualTo(PasswordVerificationResult.Failed));
+    }
+
+    [Test]
+    public async Task AuthenticateAsyncWithNullCredentialValueShouldReturnFailed()
+    {
+        var assertion = new LocalPasswordAssertion("password");
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = ProviderType.Local,
+            ProviderName = "Local",
+            ProviderKey = "user@example.com",
+            CredentialValue = null
+        };
+        _fakeHasher.ShouldVerify = false;
+
+        var result = await _provider.AuthenticateAsync(assertion, credential);
+
+        Assert.That(result.Result, Is.EqualTo(PasswordVerificationResult.Failed));
+    }
+
+    [Test]
+    public void GetProviderKeyShouldReturnUserId()
+    {
+        var userId = Guid.NewGuid();
+        var user = new User { Id = userId, Email = "test@example.com" };
+        var assertion = new LocalPasswordAssertion("pass");
+
+        var key = _provider.GetProviderKey(assertion, user);
+
+        Assert.That(key, Is.EqualTo(userId.ToString("D")));
+    }
+
+    [Test]
+    public void PrepareCredentialValueShouldHashPassword()
+    {
+        var password = "password123";
+        var assertion = new LocalPasswordAssertion(password);
+        var expectedHash = Convert.ToBase64String(new byte[] { 0x01, 0, 0, 0 }); // Version 0x01 from FakePasswordHasher
+
+        var result = _provider.PrepareCredentialValue(assertion, password);
+
+        Assert.That(result, Is.EqualTo(expectedHash));
+    }
+
+    [Test]
+    public void PrepareCredentialValueWithNullShouldThrow()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _provider.PrepareCredentialValue(new LocalPasswordAssertion("p"), null!));
+    }
+
+    [Test]
+    public void AuthenticateAsyncWithWrongAssertionTypeShouldThrow()
+    {
+        var assertion = new Mock<IAuthenticationAssertion>().Object;
+        Assert.ThrowsAsync<ArgumentException>(() => _provider.AuthenticateAsync(assertion, null));
     }
 }

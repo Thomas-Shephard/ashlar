@@ -104,13 +104,24 @@ public class PasswordHasherV1Tests
     }
 
     [Test]
-    public void VerifyPasswordWithEmptyPasswordShouldReturnTrueIfCorrect()
+    public void VerifyPasswordWithWrongPasswordButValidFormatShouldReturnFalse()
     {
-        var password = "".AsSpan();
+        var password = "correct".AsSpan();
+        var wrongPassword = "wrong".AsSpan();
         var hash = _hasher.HashPassword(password);
 
-        var result = _hasher.VerifyPassword(password, hash);
+        var result = _hasher.VerifyPassword(wrongPassword, hash);
+        Assert.That(result, Is.False);
+    }
 
-        Assert.That(result, Is.True);
+    [Test]
+    public void VerifyPasswordWithWrongVersionShouldReturnFalse()
+    {
+        var password = "password".AsSpan();
+        var hash = _hasher.HashPassword(password);
+        hash[0] = 0xFF; // Wrong version
+
+        var result = _hasher.VerifyPassword(password, hash);
+        Assert.That(result, Is.False);
     }
 }
