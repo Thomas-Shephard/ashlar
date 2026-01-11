@@ -2,6 +2,7 @@ using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Providers;
+using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 using Moq;
 
@@ -10,6 +11,7 @@ namespace Ashlar.Tests.Identity;
 public class IdentityServiceTests
 {
     private Mock<IIdentityRepository> _repositoryMock;
+    private Mock<ISecretProtector> _secretProtectorMock;
     private FakePasswordHasher _fakeHasher;
     private FakePasswordHasher _oldHasher;
     private PasswordHasherSelector _hasherSelector;
@@ -19,6 +21,13 @@ public class IdentityServiceTests
     public void SetUp()
     {
         _repositoryMock = new Mock<IIdentityRepository>();
+        _secretProtectorMock = new Mock<ISecretProtector>();
+
+        // Default behavior: return as-is for simplicity in existing tests,
+        // unless we specifically want to test protection.
+        _secretProtectorMock.Setup(s => s.Protect(It.IsAny<string>())).Returns<string>(s => $"protected({s})");
+        _secretProtectorMock.Setup(s => s.Unprotect(It.IsAny<string>())).Returns<string>(s => s.StartsWith("protected(", StringComparison.Ordinal) ? s[10..^1] : s);
+
         _fakeHasher = new FakePasswordHasher { Version = 0x02 };
         _oldHasher = new FakePasswordHasher { Version = 0x01 };
 
@@ -32,21 +41,21 @@ public class IdentityServiceTests
             new Saml2AuthenticationProvider()
         };
 
-        _identityService = new IdentityService(_repositoryMock.Object, providers);
+        _identityService = new IdentityService(_repositoryMock.Object, providers, _secretProtectorMock.Object);
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullRepository()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(null!, []));
+        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(null!, [], _secretProtectorMock.Object));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullProviders()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(_repositoryMock.Object, null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(_repositoryMock.Object, null!, _secretProtectorMock.Object));
     }
 
     [Test]
@@ -58,7 +67,14 @@ public class IdentityServiceTests
             new OidcAuthenticationProvider()
         };
 
-        Assert.Throws<ArgumentException>(() => _ = new IdentityService(_repositoryMock.Object, providers));
+        Assert.Throws<ArgumentException>(() => _ = new IdentityService(_repositoryMock.Object, providers, _secretProtectorMock.Object));
+    }
+
+    [Test]
+    public void ConstructorShouldThrowOnNullSecretProtector()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(_repositoryMock.Object, [], null!));
     }
 
     [Test]
@@ -626,7 +642,7 @@ public class IdentityServiceTests
         assertionMock.Setup(a => a.ProviderType).Returns((ProviderType)"MOCK");
 
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object]);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], _secretProtectorMock.Object);
 
         _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -667,7 +683,7 @@ public class IdentityServiceTests
             .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.SuccessRehashNeeded, ShouldUpdateCredential: true, NewCredentialValue: null));
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), It.IsAny<IUser>())).Returns(user.Id.ToString());
 
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object]);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], _secretProtectorMock.Object);
 
         var response = await service.LoginAsync(email, new LocalPasswordAssertion("pass"));
 
@@ -719,7 +735,7 @@ public class IdentityServiceTests
         var assertionMock = new Mock<IAuthenticationAssertion>();
         assertionMock.Setup(a => a.ProviderType).Returns((ProviderType)"MOCK");
 
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object]);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], _secretProtectorMock.Object);
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -751,7 +767,7 @@ public class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
 
-        var service = new IdentityService(_repositoryMock.Object, new[] { providerMock.Object });
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], _secretProtectorMock.Object);
 
         var response = await service.LoginAsync("test@example.com", assertionMock.Object);
 
@@ -792,7 +808,7 @@ public class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
 
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object]);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], _secretProtectorMock.Object);
 
         var response = await service.LoginAsync("test@example.com", assertionMock.Object);
 
@@ -823,6 +839,225 @@ public class IdentityServiceTests
         var response = await _identityService.LoginAsync("saml@example.com", assertion);
 
         Assert.That(response.Succeeded, Is.True);
+    }
+
+    [Test]
+    public async Task LinkCredentialAsyncWithExternalProviderShouldProtectCredentialValue()
+    {
+        var userId = Guid.NewGuid();
+        var type = ProviderType.Oidc;
+        var providerName = "Google";
+        var plainToken = "raw-token";
+        var protectedToken = "protected(raw-token)";
+        var assertion = new ExternalIdentityAssertion(type, providerName, "sub", new Dictionary<string, string>());
+
+        _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
+
+        await _identityService.LinkCredentialAsync(userId, assertion, plainToken);
+
+        _repositoryMock.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c =>
+            c.CredentialValue == protectedToken), It.IsAny<CancellationToken>()), Times.Once);
+        _secretProtectorMock.Verify(s => s.Protect(plainToken), Times.Once);
+    }
+
+    [Test]
+    public async Task LoginAsyncWithExternalProviderShouldUnprotectCredentialValue()
+    {
+        var email = "test@example.com";
+        var providerKey = "sub-123";
+        var userId = Guid.NewGuid();
+        var user = new User { Id = userId, Email = email };
+        var protectedToken = "protected(raw-token)";
+        var plainToken = "raw-token";
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            ProviderType = ProviderType.Oidc,
+            ProviderName = "Google",
+            ProviderKey = providerKey,
+            CredentialValue = protectedToken
+        };
+        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
+
+        _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", providerKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", providerKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(credential);
+
+        // Mock a provider to capture the credential passed to it
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Oidc);
+        providerMock.Setup(p => p.AuthenticateAsync(assertion, It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success));
+        providerMock.Setup(p => p.GetProviderKey(assertion, user)).Returns(providerKey);
+
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], _secretProtectorMock.Object);
+
+        await service.LoginAsync(email, assertion);
+
+        providerMock.Verify(p => p.AuthenticateAsync(assertion, It.Is<UserCredential>(c => c.CredentialValue == plainToken), It.IsAny<CancellationToken>()), Times.Once);
+        _secretProtectorMock.Verify(s => s.Unprotect(protectedToken), Times.Once);
+    }
+
+    [Test]
+    public async Task LoginAsyncWithLocalProviderShouldNotUnprotectCredentialValue()
+    {
+        var email = "test@example.com";
+        var password = "pass";
+        var userId = Guid.NewGuid();
+        var user = new User { Id = userId, Email = email };
+        var hash = Convert.ToBase64String([0x02, 1, 2, 3]);
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            ProviderType = ProviderType.Local,
+            ProviderName = ProviderType.Local.Value,
+            ProviderKey = userId.ToString(),
+            CredentialValue = hash
+        };
+
+        _repositoryMock.Setup(r => r.GetUserByEmailAsync(email, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Local, ProviderType.Local.Value, userId.ToString(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(credential);
+
+        await _identityService.LoginAsync(email, new LocalPasswordAssertion(password));
+
+        _secretProtectorMock.Verify(s => s.Unprotect(It.IsAny<string>()), Times.Never);
+    }
+
+    [Test]
+    public async Task LoginAsyncWithExternalProviderUpdatingTokenShouldProtectNewToken()
+    {
+        var email = "test@example.com";
+        var providerKey = "sub-123";
+        var userId = Guid.NewGuid();
+        var user = new User { Id = userId, Email = email };
+        var oldTokenProtected = "protected(old-token)";
+        var newTokenPlain = "new-token";
+        var newTokenProtected = "protected(new-token)";
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            ProviderType = ProviderType.OAuth,
+            ProviderName = "GitHub",
+            ProviderKey = providerKey,
+            CredentialValue = oldTokenProtected
+        };
+        var assertion = new ExternalIdentityAssertion(ProviderType.OAuth, "GitHub", providerKey, new Dictionary<string, string>());
+
+        _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.OAuth, "GitHub", providerKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.OAuth, "GitHub", providerKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(credential);
+
+        // Mock a provider that wants to update the token
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.SupportedType).Returns(ProviderType.OAuth);
+        providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success, ShouldUpdateCredential: true, NewCredentialValue: newTokenPlain));
+        providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), It.IsAny<IUser>())).Returns(providerKey);
+
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], _secretProtectorMock.Object);
+
+        await service.LoginAsync(email, assertion);
+
+        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
+            c.CredentialValue == newTokenProtected), It.IsAny<CancellationToken>()), Times.Once);
+        _secretProtectorMock.Verify(s => s.Protect(newTokenPlain), Times.Once);
+    }
+
+    [Test]
+    public async Task LoginAsyncWithExternalProviderAndMissingUserShouldStillCallUnprotect()
+    {
+        var email = "ghost@example.com";
+        var providerKey = "sub-123";
+        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
+
+        _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", providerKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IUser?)null);
+        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), ProviderType.Oidc, "Google", providerKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserCredential?)null);
+
+        await _identityService.LoginAsync(email, assertion);
+
+        _secretProtectorMock.Verify(s => s.Unprotect("protected(DUMMY_PAYLOAD_TO_MAINTAIN_TIMING)"), Times.Once);
+    }
+
+    [Test]
+    public async Task LoginAsyncWithExternalProviderAndMalformedCredentialShouldHandleException()
+    {
+        var email = "test@example.com";
+        var providerKey = "sub-123";
+        var userId = Guid.NewGuid();
+        var user = new User { Id = userId, Email = email };
+        var malformedToken = "not-protected";
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            ProviderType = ProviderType.Oidc,
+            ProviderName = "Google",
+            ProviderKey = providerKey,
+            CredentialValue = malformedToken
+        };
+        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
+
+        _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", providerKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", providerKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(credential);
+
+        _secretProtectorMock.Setup(s => s.Unprotect(malformedToken))
+            .Throws(new System.Security.Cryptography.CryptographicException());
+
+        // Mock a provider to capture the credential passed to it
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Oidc);
+        providerMock.Setup(p => p.AuthenticateAsync(assertion, It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success));
+        providerMock.Setup(p => p.GetProviderKey(assertion, user)).Returns(providerKey);
+
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], _secretProtectorMock.Object);
+
+        var response = await service.LoginAsync(email, assertion);
+
+        Assert.That(response.Succeeded, Is.False);
+        providerMock.Verify(p => p.AuthenticateAsync(assertion, It.Is<UserCredential>(c => c.CredentialValue == null), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.That(credential.CredentialValue, Is.EqualTo(malformedToken));
+    }
+
+    [Test]
+    public async Task LoginAsyncWithExternalProviderAndNullCredentialValueShouldReturnSuccess()
+    {
+        var email = "test@example.com";
+        var providerKey = "sub-123";
+        var userId = Guid.NewGuid();
+        var user = new User { Id = userId, Email = email };
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            ProviderType = ProviderType.Oidc,
+            ProviderName = "Google",
+            ProviderKey = providerKey,
+            CredentialValue = null
+        };
+        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
+
+        _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", providerKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", providerKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(credential);
+
+        var response = await _identityService.LoginAsync(email, assertion);
+
+        Assert.That(response.Succeeded, Is.True);
+        Assert.That(credential.CredentialValue, Is.Null);
     }
 
     [Test]

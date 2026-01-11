@@ -1,6 +1,7 @@
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Providers;
+using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 
 namespace Ashlar.Identity;
@@ -8,11 +9,15 @@ namespace Ashlar.Identity;
 public sealed class IdentityService : IIdentityService
 {
     private readonly IIdentityRepository _repository;
+    private readonly ISecretProtector _secretProtector;
+    private readonly string _dummyProtectedValue;
     private readonly IReadOnlyDictionary<ProviderType, IAuthenticationProvider> _providers;
 
-    public IdentityService(IIdentityRepository repository, IEnumerable<IAuthenticationProvider> providers)
+    public IdentityService(IIdentityRepository repository, IEnumerable<IAuthenticationProvider> providers, ISecretProtector secretProtector)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _secretProtector = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
+        _dummyProtectedValue = _secretProtector.Protect("DUMMY_PAYLOAD_TO_MAINTAIN_TIMING");
 
         var dict = new Dictionary<ProviderType, IAuthenticationProvider>();
 
@@ -68,29 +73,63 @@ public sealed class IdentityService : IIdentityService
             credential = await _repository.GetCredentialForUserAsync(userId, assertion.ProviderType, assertion.ProviderType.Value, providerKey, cancellationToken);
         }
 
+        bool unprotectFailed = false;
+        if (assertion.ProviderType != ProviderType.Local)
+        {
+            // Always perform an unprotect operation (or a dummy one) to mitigate timing-based user enumeration.
+            var valueToUnprotect = credential?.CredentialValue ?? _dummyProtectedValue;
+            string? unprotected = null;
+            try
+            {
+                unprotected = _secretProtector.Unprotect(valueToUnprotect);
+            }
+            catch (System.Security.Cryptography.CryptographicException)
+            {
+                unprotectFailed = credential?.CredentialValue != null;
+            }
+
+            if (credential != null && credential.CredentialValue != null)
+            {
+                // Create a new instance to avoid mutating a potentially tracked entity with plain-text data.
+                credential = new UserCredential
+                {
+                    Id = credential.Id,
+                    UserId = credential.UserId,
+                    ProviderType = credential.ProviderType,
+                    ProviderName = credential.ProviderName,
+                    ProviderKey = credential.ProviderKey,
+                    CredentialValue = unprotectFailed ? null : unprotected
+                };
+            }
+        }
+
         var result = await provider.AuthenticateAsync(assertion, credential, cancellationToken);
-        if (result.Result is not (PasswordVerificationResult.Success or PasswordVerificationResult.SuccessRehashNeeded) || user == null)
+        if (unprotectFailed || result.Result is not (PasswordVerificationResult.Success or PasswordVerificationResult.SuccessRehashNeeded) || user == null)
         {
             return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
         }
 
         if (!user.IsActive)
         {
-            return new AuthenticationResponse(false, user, AuthenticationStatus.Disabled);
+            return new AuthenticationResponse(false, Status: AuthenticationStatus.Disabled);
         }
 
-        var status = result.Result == PasswordVerificationResult.SuccessRehashNeeded
-            ? AuthenticationStatus.SuccessRehashNeeded
-            : AuthenticationStatus.Success;
+        var status = result.Result == PasswordVerificationResult.SuccessRehashNeeded ? AuthenticationStatus.SuccessRehashNeeded : AuthenticationStatus.Success;
 
-        if (!result.ShouldUpdateCredential || credential == null || result.NewCredentialValue == null)
+        if (!result.ShouldUpdateCredential || result.NewCredentialValue == null || credential == null)
         {
             return new AuthenticationResponse(true, user, status, result.Claims);
         }
 
         try
         {
-            credential.CredentialValue = result.NewCredentialValue;
+            var valueToStore = result.NewCredentialValue;
+            if (assertion.ProviderType != ProviderType.Local)
+            {
+                valueToStore = _secretProtector.Protect(valueToStore);
+            }
+
+            credential.CredentialValue = valueToStore;
             await _repository.UpdateCredentialAsync(credential, cancellationToken);
         }
         catch (Exception)
@@ -155,6 +194,11 @@ public sealed class IdentityService : IIdentityService
         }
 
         credentialValue = provider.PrepareCredentialValue(assertion, credentialValue);
+
+        if (type != ProviderType.Local && credentialValue != null)
+        {
+            credentialValue = _secretProtector.Protect(credentialValue);
+        }
 
         var credential = new UserCredential
         {
