@@ -17,7 +17,7 @@ public sealed class IdentityService : IIdentityService
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _secretProtector = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
-        _dummyProtectedValue = _secretProtector.Protect("DUMMY_PAYLOAD_TO_MAINTAIN_TIMING");
+        _dummyProtectedValue = _secretProtector.Protect(new string('D', 2048));
 
         var dict = new Dictionary<ProviderType, IAuthenticationProvider>();
 
@@ -61,7 +61,7 @@ public sealed class IdentityService : IIdentityService
 
         if (!user.IsActive)
         {
-            return new AuthenticationResponse(false, Status: AuthenticationStatus.Disabled);
+            return new AuthenticationResponse(false, user, AuthenticationStatus.Disabled);
         }
 
         var status = result.Result == PasswordVerificationResult.SuccessRehashNeeded ? AuthenticationStatus.SuccessRehashNeeded : AuthenticationStatus.Success;
@@ -97,7 +97,20 @@ public sealed class IdentityService : IIdentityService
     {
         if (providerType == ProviderType.Local)
         {
-            return (credential, false);
+            if (credential == null)
+            {
+                return (null, false);
+            }
+
+            return (new UserCredential
+            {
+                Id = credential.Id,
+                UserId = credential.UserId,
+                ProviderType = credential.ProviderType,
+                ProviderName = credential.ProviderName,
+                ProviderKey = credential.ProviderKey,
+                CredentialValue = credential.CredentialValue
+            }, false);
         }
 
         var valueToUnprotect = credential?.CredentialValue ?? _dummyProtectedValue;
@@ -110,15 +123,15 @@ public sealed class IdentityService : IIdentityService
         }
         catch (System.Security.Cryptography.CryptographicException)
         {
-            if (credential is { CredentialValue: not null })
+            if (credential?.CredentialValue != null)
             {
                 unprotectFailed = true;
             }
         }
 
-        if (credential?.CredentialValue == null)
+        if (credential == null)
         {
-            return (credential, unprotectFailed);
+            return (null, unprotectFailed);
         }
 
         var unprotectedCredential = new UserCredential
@@ -128,7 +141,7 @@ public sealed class IdentityService : IIdentityService
             ProviderType = credential.ProviderType,
             ProviderName = credential.ProviderName,
             ProviderKey = credential.ProviderKey,
-            CredentialValue = unprotectFailed ? null : unprotectedValue
+            CredentialValue = credential.CredentialValue == null || unprotectFailed ? null : unprotectedValue
         };
 
         return (unprotectedCredential, unprotectFailed);

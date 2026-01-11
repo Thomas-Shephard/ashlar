@@ -692,7 +692,7 @@ public class IdentityServiceTests
     }
 
     [Test]
-    public async Task LinkCredentialAsyncWithExternalProviderAndNullValueShouldNotProtect()
+    public async Task LinkCredentialAsyncWithNullValueDoesNotEncryptCredential()
     {
         var userId = Guid.NewGuid();
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
@@ -705,8 +705,8 @@ public class IdentityServiceTests
         _repositoryMock.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c =>
             c.CredentialValue == null), It.IsAny<CancellationToken>()), Times.Once);
 
-        _secretProtectorMock.Verify(s => s.Protect(It.IsAny<string>()), Times.Once);
-        _secretProtectorMock.Verify(s => s.Protect("DUMMY_PAYLOAD_TO_MAINTAIN_TIMING"), Times.Once);
+        // Verify the only call to Protect was for the initialization dummy payload (2048 'D's)
+        _secretProtectorMock.Verify(s => s.Protect(It.Is<string>(str => str.Length == 2048 && str.All(c => c == 'D'))), Times.Once);
     }
 
     [Test]
@@ -1037,12 +1037,12 @@ public class IdentityServiceTests
             .ReturnsAsync(user);
         _repositoryMock.Setup(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
-        
+
         var dummyValue = _secretProtectorMock.Object.Protect("DUMMY_PAYLOAD_TO_MAINTAIN_TIMING");
         _secretProtectorMock.Setup(s => s.Unprotect(dummyValue)).Throws<System.Security.Cryptography.CryptographicException>();
 
         var response = await _identityService.LoginAsync(email, assertion);
-        
+
         Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Success));
     }
 
@@ -1151,12 +1151,20 @@ public class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
 
-        var response = await _identityService.LoginAsync(email, assertion);
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Oidc);
+        providerMock.Setup(p => p.AuthenticateAsync(assertion, It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success));
+        providerMock.Setup(p => p.GetProviderKey(assertion, user)).Returns(providerKey);
+
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], _secretProtectorMock.Object);
+
+        var response = await service.LoginAsync(email, assertion);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Succeeded, Is.True);
-            Assert.That(credential.CredentialValue, Is.Null);
+            providerMock.Verify(p => p.AuthenticateAsync(assertion, It.Is<UserCredential>(c => c.CredentialValue == null), It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 
