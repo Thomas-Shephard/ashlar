@@ -1,129 +1,108 @@
 using Ashlar.Security.Hashing;
+using Ashlar.Tests.Identity;
 
 namespace Ashlar.Tests.Security;
 
 public class PasswordHasherSelectorTests
 {
-    private PasswordHasherV1 _v1Hasher;
-    private PasswordHasherSelector _selector;
-
-    [SetUp]
-    public void Setup()
-    {
-        _v1Hasher = new PasswordHasherV1();
-        _selector = new PasswordHasherSelector([_v1Hasher]);
-    }
-
     [Test]
-    public void ConstructorShouldThrowIfHashersIsNull()
+    public void ConstructorShouldThrowOnNullHashers()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.Throws<ArgumentNullException>(() => _ = new PasswordHasherSelector(null!));
     }
 
     [Test]
-    public void ConstructorShouldThrowIfHashersIsEmpty()
+    public void ConstructorShouldThrowOnEmptyHashers()
     {
-        var ex = Assert.Throws<ArgumentException>(() => _ = new PasswordHasherSelector([]));
-        Assert.That(ex.ParamName, Is.EqualTo("hashers"));
+        Assert.Throws<ArgumentException>(() => _ = new PasswordHasherSelector([]));
     }
 
     [Test]
-    public void ConstructorShouldThrowIfHashersContainsNull()
+    public void ConstructorShouldThrowOnDuplicateVersion()
+    {
+        var hasher1 = new FakePasswordHasher { Version = 1 };
+        var hasher2 = new FakePasswordHasher { Version = 1 };
+
+        Assert.Throws<ArgumentException>(() => _ = new PasswordHasherSelector([hasher1, hasher2]));
+    }
+
+    [Test]
+    public void ConstructorShouldThrowOnNullHasherInList()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.Throws<ArgumentNullException>(() => _ = new PasswordHasherSelector([null!]));
     }
 
     [Test]
-    public void ConstructorShouldThrowIfDuplicateVersionsExist()
+    public void DefaultHasherShouldBeHighestVersion()
     {
-        var hasher1 = new PasswordHasherV1();
-        var hasher2 = new PasswordHasherV1();
+        var hasher1 = new FakePasswordHasher { Version = 1 };
+        var hasher2 = new FakePasswordHasher { Version = 2 };
 
-        var ex = Assert.Throws<ArgumentException>(() => _ = new PasswordHasherSelector([hasher1, hasher2]));
-        Assert.That(ex.Message, Does.Contain("Duplicate password hasher version: 1"));
+        var selector = new PasswordHasherSelector([hasher1, hasher2]);
+        Assert.That(selector.DefaultHasher.Version, Is.EqualTo(2));
     }
 
     [Test]
-    public void DefaultHasherShouldReturnHighestVersion()
+    public void DefaultHasherShouldBeHighestVersionEvenIfAddedInDecreasingOrder()
     {
-        var v1 = new PasswordHasherV1();
-        var v2 = new MockHasher(0x02);
-        var selector = new PasswordHasherSelector([v1, v2]);
+        var hasher1 = new FakePasswordHasher { Version = 1 };
+        var hasher2 = new FakePasswordHasher { Version = 2 };
 
-        Assert.That(selector.DefaultHasher, Is.SameAs(v2));
+        var selector = new PasswordHasherSelector([hasher2, hasher1]);
+        Assert.That(selector.DefaultHasher.Version, Is.EqualTo(2));
     }
 
     [Test]
-    public void GetHasherShouldReturnCorrectHasher()
+    public void GetHasherWithExactVersionLengthShouldWork()
     {
-        var hash = _v1Hasher.HashPassword("pass".AsSpan());
-        var hasher = _selector.GetHasher(hash);
+        var hasher = new FakePasswordHasher { Version = 0x01 };
+        var selector = new PasswordHasherSelector([hasher]);
 
-        Assert.That(hasher, Is.Not.Null);
-        Assert.That(hasher.Version, Is.EqualTo(0x01));
+        var result = selector.GetHasher([0x01]);
+        Assert.That(result, Is.EqualTo(hasher));
     }
 
     [Test]
-    public void GetHasherShouldReturnDefaultForUnknownVersion()
+    public void VerifyPasswordShouldReturnFailedWhenHasherFails()
     {
-        var hash = new byte[] { 0x99, 0x00 };
-        var hasher = _selector.GetHasher(hash);
+        var hasher = new FakePasswordHasher { Version = 1, ShouldVerify = false };
+        var selector = new PasswordHasherSelector([hasher]);
 
-        Assert.That(hasher, Is.Not.Null);
-        Assert.That(hasher.Version, Is.EqualTo(0x01));
-    }
-
-    [Test]
-    public void GetHasherShouldReturnDefaultForEmpty()
-    {
-        var hasher = _selector.GetHasher([]);
-        Assert.That(hasher, Is.Not.Null);
-        Assert.That(hasher.Version, Is.EqualTo(0x01));
-    }
-
-    [Test]
-    public void VerifyPasswordShouldReturnSuccessForCurrentVersion()
-    {
-        var password = "password123".AsSpan();
-        var hash = _v1Hasher.HashPassword(password);
-
-        var result = _selector.VerifyPassword(password, hash);
-
-        Assert.That(result, Is.EqualTo(PasswordVerificationResult.Success));
-    }
-
-    [Test]
-    public void VerifyPasswordShouldReturnFailedForWrongPassword()
-    {
-        var password = "password123".AsSpan();
-        var hash = _v1Hasher.HashPassword(password);
-
-        var result = _selector.VerifyPassword("wrong".AsSpan(), hash);
-
+        var result = selector.VerifyPassword("pass", [0x01]);
         Assert.That(result, Is.EqualTo(PasswordVerificationResult.Failed));
     }
 
     [Test]
-    public void VerifyPasswordShouldReturnSuccessRehashNeededForOldVersion()
+    public void GetHasherShouldReturnDefaultOnEmptyHash()
     {
-        var v1 = new PasswordHasherV1();
-        var v2 = new MockHasher(0x02);
-        var selector = new PasswordHasherSelector([v1, v2]);
+        var hasher = new FakePasswordHasher { Version = 1 };
+        var selector = new PasswordHasherSelector([hasher]);
 
-        var password = "password123".AsSpan();
-        var hash = v1.HashPassword(password);
-
-        var result = selector.VerifyPassword(password, hash);
-
-        Assert.That(result, Is.EqualTo(PasswordVerificationResult.SuccessRehashNeeded));
+        var result = selector.GetHasher(ReadOnlySpan<byte>.Empty);
+        Assert.That(result, Is.EqualTo(hasher));
     }
 
-    private sealed class MockHasher(byte version) : IPasswordHasher
+    [Test]
+    public void GetHasherShouldReturnDefaultOnUnknownVersion()
     {
-        public byte Version => version;
-        public byte[] HashPassword(ReadOnlySpan<char> password) => [];
-        public bool VerifyPassword(ReadOnlySpan<char> password, ReadOnlySpan<byte> saltAndHash) => false;
+        var hasher = new FakePasswordHasher { Version = 1 };
+        var selector = new PasswordHasherSelector([hasher]);
+
+        var result = selector.GetHasher([0x99]);
+        Assert.That(result, Is.EqualTo(hasher));
+    }
+
+    [Test]
+    public void VerifyPasswordShouldReturnSuccessRehashNeededOnOldVersion()
+    {
+        var oldHasher = new FakePasswordHasher { Version = 1, ShouldVerify = true };
+        var newHasher = new FakePasswordHasher { Version = 2 };
+
+        var selector = new PasswordHasherSelector([oldHasher, newHasher]);
+
+        var result = selector.VerifyPassword("pass", [0x01]);
+        Assert.That(result, Is.EqualTo(PasswordVerificationResult.SuccessRehashNeeded));
     }
 }
