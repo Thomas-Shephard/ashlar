@@ -21,6 +21,13 @@ public class LocalPasswordProviderTests
     }
 
     [Test]
+    public void ConstructorWithNullHasherSelectorShouldThrow()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _ = new LocalPasswordProvider(null!));
+    }
+
+    [Test]
     public async Task AuthenticateAsyncWithValidPasswordShouldReturnSuccess()
     {
         var assertion = new LocalPasswordAssertion("password");
@@ -112,6 +119,35 @@ public class LocalPasswordProviderTests
     }
 
     [Test]
+    public async Task AuthenticateAsyncWithRehashNeededShouldReturnSuccessRehashNeeded()
+    {
+        var assertion = new LocalPasswordAssertion("password");
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = ProviderType.Local,
+            ProviderName = "Local",
+            ProviderKey = "user@example.com",
+            CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
+        };
+
+        var oldHasher = new FakePasswordHasher { Version = 0x01, ShouldVerify = true };
+        var newHasher = new FakePasswordHasher { Version = 0x02 };
+        var selector = new PasswordHasherSelector([oldHasher, newHasher]);
+        var provider = new LocalPasswordProvider(selector);
+
+        var result = await provider.AuthenticateAsync(assertion, credential);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(PasswordVerificationResult.SuccessRehashNeeded));
+            Assert.That(result.ShouldUpdateCredential, Is.True);
+            Assert.That(result.NewCredentialValue, Is.Not.Null);
+        }
+    }
+
+    [Test]
     public void GetProviderKeyShouldReturnUserId()
     {
         var userId = Guid.NewGuid();
@@ -140,6 +176,16 @@ public class LocalPasswordProviderTests
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.Throws<ArgumentNullException>(() => _provider.PrepareCredentialValue(new LocalPasswordAssertion("p"), null!));
+    }
+
+    [Test]
+    public void PrepareCredentialValueWithEmptyShouldThrow()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentException>(() => _provider.PrepareCredentialValue(new LocalPasswordAssertion("p"), ""));
+            Assert.Throws<ArgumentException>(() => _provider.PrepareCredentialValue(new LocalPasswordAssertion("p"), " "));
+        }
     }
 
     [Test]
