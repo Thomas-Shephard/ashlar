@@ -110,7 +110,10 @@ public sealed class IdentityService : IIdentityService
         }
         catch (System.Security.Cryptography.CryptographicException)
         {
-            unprotectFailed = credential?.CredentialValue != null;
+            if (credential is { CredentialValue: not null })
+            {
+                unprotectFailed = true;
+            }
         }
 
         if (credential?.CredentialValue == null)
