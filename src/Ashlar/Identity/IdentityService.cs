@@ -1,6 +1,7 @@
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Providers;
+using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 
 namespace Ashlar.Identity;
@@ -8,11 +9,15 @@ namespace Ashlar.Identity;
 public sealed class IdentityService : IIdentityService
 {
     private readonly IIdentityRepository _repository;
+    private readonly ISecretProtector _secretProtector;
+    private readonly string _dummyProtectedValue;
     private readonly IReadOnlyDictionary<ProviderType, IAuthenticationProvider> _providers;
 
-    public IdentityService(IIdentityRepository repository, IEnumerable<IAuthenticationProvider> providers)
+    public IdentityService(IIdentityRepository repository, IEnumerable<IAuthenticationProvider> providers, ISecretProtector secretProtector)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _secretProtector = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
+        _dummyProtectedValue = _secretProtector.Protect(new string('D', 2048));
 
         var dict = new Dictionary<ProviderType, IAuthenticationProvider>();
 
@@ -45,31 +50,11 @@ public sealed class IdentityService : IIdentityService
             return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
         }
 
-        IUser? user;
-        UserCredential? credential;
+        var (user, credential) = await ResolveUserAndCredentialAsync(email, assertion, provider, tenantId, cancellationToken);
+        var (unprotectedCredential, unprotectFailed) = UnprotectCredential(credential, assertion.ProviderType);
 
-        if (assertion is ExternalIdentityAssertion external)
-        {
-            user = await _repository.GetUserByProviderKeyAsync(external.Type, external.ProviderName, external.ProviderKey, cancellationToken);
-
-            // Prevent user enumeration by ensuring a DB call happens regardless of user existence.
-            var userId = user?.Id ?? Guid.NewGuid();
-            credential = await _repository.GetCredentialForUserAsync(userId, assertion.ProviderType, external.ProviderName, external.ProviderKey, cancellationToken);
-        }
-        else
-        {
-            user = string.IsNullOrWhiteSpace(email) ? null : await _repository.GetUserByEmailAsync(email, tenantId, cancellationToken);
-
-            // Prevent user enumeration by ensuring a DB call happens regardless of user existence.
-            var userId = user?.Id ?? Guid.NewGuid();
-
-            // For local, we need a key. If user is null, we generate a dummy key to sustain timing.
-            var providerKey = user != null ? provider.GetProviderKey(assertion, user) : Guid.NewGuid().ToString();
-            credential = await _repository.GetCredentialForUserAsync(userId, assertion.ProviderType, assertion.ProviderType.Value, providerKey, cancellationToken);
-        }
-
-        var result = await provider.AuthenticateAsync(assertion, credential, cancellationToken);
-        if (result.Result is not (PasswordVerificationResult.Success or PasswordVerificationResult.SuccessRehashNeeded) || user == null)
+        var result = await provider.AuthenticateAsync(assertion, unprotectedCredential, cancellationToken);
+        if (unprotectFailed || result.Result is not (PasswordVerificationResult.Success or PasswordVerificationResult.SuccessRehashNeeded) || user == null)
         {
             return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
         }
@@ -79,26 +64,104 @@ public sealed class IdentityService : IIdentityService
             return new AuthenticationResponse(false, user, AuthenticationStatus.Disabled);
         }
 
-        var status = result.Result == PasswordVerificationResult.SuccessRehashNeeded
-            ? AuthenticationStatus.SuccessRehashNeeded
-            : AuthenticationStatus.Success;
+        var status = result.Result == PasswordVerificationResult.SuccessRehashNeeded ? AuthenticationStatus.SuccessRehashNeeded : AuthenticationStatus.Success;
 
-        if (!result.ShouldUpdateCredential || credential == null || result.NewCredentialValue == null)
+        if (result is { ShouldUpdateCredential: true, NewCredentialValue: not null } && unprotectedCredential != null)
         {
-            return new AuthenticationResponse(true, user, status, result.Claims);
+            await TryUpdateCredentialAsync(unprotectedCredential, assertion.ProviderType, result.NewCredentialValue, cancellationToken);
         }
+
+        return new AuthenticationResponse(true, user, status, result.Claims);
+    }
+
+    private async Task<(IUser? User, UserCredential? Credential)> ResolveUserAndCredentialAsync(string email, IAuthenticationAssertion assertion, IAuthenticationProvider provider, Guid? tenantId, CancellationToken cancellationToken)
+    {
+        if (assertion is ExternalIdentityAssertion external)
+        {
+            var user = await _repository.GetUserByProviderKeyAsync(external.Type, external.ProviderName, external.ProviderKey, cancellationToken);
+            var userId = user?.Id ?? Guid.NewGuid();
+            var credential = await _repository.GetCredentialForUserAsync(userId, assertion.ProviderType, external.ProviderName, external.ProviderKey, cancellationToken);
+            return (user, credential);
+        }
+        else
+        {
+            var user = string.IsNullOrWhiteSpace(email) ? null : await _repository.GetUserByEmailAsync(email, tenantId, cancellationToken);
+            var userId = user?.Id ?? Guid.NewGuid();
+            var providerKey = user != null ? provider.GetProviderKey(assertion, user) : Guid.NewGuid().ToString();
+            var credential = await _repository.GetCredentialForUserAsync(userId, assertion.ProviderType, assertion.ProviderType.Value, providerKey, cancellationToken);
+            return (user, credential);
+        }
+    }
+
+    private (UserCredential? Credential, bool UnprotectFailed) UnprotectCredential(UserCredential? credential, ProviderType providerType)
+    {
+        if (providerType == ProviderType.Local)
+        {
+            if (credential == null)
+            {
+                return (null, false);
+            }
+
+            return (new UserCredential
+            {
+                Id = credential.Id,
+                UserId = credential.UserId,
+                ProviderType = credential.ProviderType,
+                ProviderName = credential.ProviderName,
+                ProviderKey = credential.ProviderKey,
+                CredentialValue = credential.CredentialValue
+            }, false);
+        }
+
+        var valueToUnprotect = credential?.CredentialValue ?? _dummyProtectedValue;
+        string? unprotectedValue = null;
+        bool unprotectFailed = false;
 
         try
         {
-            credential.CredentialValue = result.NewCredentialValue;
+            unprotectedValue = _secretProtector.Unprotect(valueToUnprotect);
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            if (credential?.CredentialValue != null)
+            {
+                unprotectFailed = true;
+            }
+        }
+
+        if (credential == null)
+        {
+            return (null, unprotectFailed);
+        }
+
+        var unprotectedCredential = new UserCredential
+        {
+            Id = credential.Id,
+            UserId = credential.UserId,
+            ProviderType = credential.ProviderType,
+            ProviderName = credential.ProviderName,
+            ProviderKey = credential.ProviderKey,
+            CredentialValue = credential.CredentialValue == null || unprotectFailed ? null : unprotectedValue
+        };
+
+        return (unprotectedCredential, unprotectFailed);
+    }
+
+    private async Task TryUpdateCredentialAsync(UserCredential credential, ProviderType providerType, string newValue, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var valueToStore = providerType != ProviderType.Local
+                ? _secretProtector.Protect(newValue)
+                : newValue;
+
+            credential.CredentialValue = valueToStore;
             await _repository.UpdateCredentialAsync(credential, cancellationToken);
         }
         catch (Exception)
         {
             // TODO: Log exception. Best effort update for rehashing. If it fails, the user is still authenticated.
         }
-
-        return new AuthenticationResponse(true, user, status, result.Claims);
     }
 
     public async Task<IUser> CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
@@ -155,6 +218,11 @@ public sealed class IdentityService : IIdentityService
         }
 
         credentialValue = provider.PrepareCredentialValue(assertion, credentialValue);
+
+        if (type != ProviderType.Local && credentialValue != null)
+        {
+            credentialValue = _secretProtector.Protect(credentialValue);
+        }
 
         var credential = new UserCredential
         {
