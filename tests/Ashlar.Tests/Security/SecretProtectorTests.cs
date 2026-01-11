@@ -87,7 +87,18 @@ public class SecretProtectorTests
         var secretProtector = new DataProtectionSecretProtector(providerMock.Object);
 
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => secretProtector.Unprotect(null!));
+        Assert.Throws<System.Security.Cryptography.CryptographicException>(() => secretProtector.Unprotect(null!));
+    }
+
+    [Test]
+    public void UnprotectShouldThrowOnEmptyCipherText()
+    {
+        var providerMock = new Mock<IDataProtectionProvider>();
+        providerMock.Setup(p => p.CreateProtector(It.IsAny<string>())).Returns(new Mock<IDataProtector>().Object);
+        var secretProtector = new DataProtectionSecretProtector(providerMock.Object);
+
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<System.Security.Cryptography.CryptographicException>(() => secretProtector.Unprotect(string.Empty));
     }
 
     [Test]

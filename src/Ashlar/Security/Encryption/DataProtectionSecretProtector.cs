@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 
@@ -31,7 +32,11 @@ public sealed class DataProtectionSecretProtector : ISecretProtector
 
     public string Unprotect(string cipherText)
     {
-        ArgumentNullException.ThrowIfNull(cipherText);
+        if (string.IsNullOrWhiteSpace(cipherText))
+        {
+            throw new CryptographicException("The cipher text cannot be empty.");
+        }
+
         byte[] protectedBytes;
         try
         {
@@ -39,7 +44,7 @@ public sealed class DataProtectionSecretProtector : ISecretProtector
         }
         catch (FormatException ex)
         {
-            throw new System.Security.Cryptography.CryptographicException("The cipher text is not a valid Base64 string.", ex);
+            throw new CryptographicException("The cipher text is not a valid Base64 string.", ex);
         }
 
         var unprotectedBytes = _protector.Unprotect(protectedBytes);
