@@ -19,7 +19,7 @@ public class SecretProtectorTests
             .Returns<byte[]>(data => data); // Return as-is for mock
 
         var secretProtector = new DataProtectionSecretProtector(providerMock.Object);
-        var result = secretProtector.Protect("plain");
+        var result = ((ISecretProtector)secretProtector).Protect("plain");
 
         Assert.That(result, Is.Not.Null);
         protectorMock.Verify(p => p.Protect(It.IsAny<byte[]>()), Times.Once);
@@ -41,7 +41,7 @@ public class SecretProtectorTests
 
         // We need a valid base64 string for the extension method to work before calling Unprotect(byte[])
         var input = Convert.ToBase64String("protected"u8.ToArray());
-        var result = secretProtector.Unprotect(input);
+        var result = ((ISecretProtector)secretProtector).Unprotect(input);
 
         Assert.That(result, Is.Not.Null);
         protectorMock.Verify(p => p.Unprotect(It.IsAny<byte[]>()), Times.Once);
@@ -58,7 +58,7 @@ public class SecretProtectorTests
 
         var secretProtector = new DataProtectionSecretProtector(providerMock.Object);
 
-        Assert.Throws<System.Security.Cryptography.CryptographicException>(() => secretProtector.Unprotect("not-base64!"));
+        Assert.Throws<System.Security.Cryptography.CryptographicException>(() => ((ISecretProtector)secretProtector).Unprotect("not-base64!"));
     }
 
     [Test]
@@ -76,7 +76,7 @@ public class SecretProtectorTests
         var secretProtector = new DataProtectionSecretProtector(providerMock.Object);
 
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => secretProtector.Protect(null!));
+        Assert.Throws<ArgumentNullException>(() => ((ISecretProtector)secretProtector).Protect((string)null!));
     }
 
     [Test]
@@ -87,7 +87,7 @@ public class SecretProtectorTests
         var secretProtector = new DataProtectionSecretProtector(providerMock.Object);
 
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<System.Security.Cryptography.CryptographicException>(() => secretProtector.Unprotect(null!));
+        Assert.Throws<System.Security.Cryptography.CryptographicException>(() => ((ISecretProtector)secretProtector).Unprotect((string)null!));
     }
 
     [Test]
@@ -98,7 +98,7 @@ public class SecretProtectorTests
         var secretProtector = new DataProtectionSecretProtector(providerMock.Object);
 
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<System.Security.Cryptography.CryptographicException>(() => secretProtector.Unprotect(string.Empty));
+        Assert.Throws<System.Security.Cryptography.CryptographicException>(() => ((ISecretProtector)secretProtector).Unprotect(string.Empty));
     }
 
     [Test]
@@ -114,7 +114,7 @@ public class SecretProtectorTests
         var secretProtector = new DataProtectionSecretProtector(providerMock.Object);
         var input = Convert.ToBase64String("valid-base64"u8.ToArray());
 
-        Assert.Throws<System.Security.Cryptography.CryptographicException>(() => secretProtector.Unprotect(input));
+        Assert.Throws<System.Security.Cryptography.CryptographicException>(() => ((ISecretProtector)secretProtector).Unprotect(input));
     }
 
     [Test]
@@ -124,7 +124,7 @@ public class SecretProtectorTests
         providerMock.Setup(p => p.CreateProtector(It.IsAny<string>())).Returns(new Mock<IDataProtector>().Object);
         var secretProtector = new DataProtectionSecretProtector(providerMock.Object);
 
-        var ex = Assert.Throws<System.Security.Cryptography.CryptographicException>(() => secretProtector.Unprotect("!@#$%^&*()"));
+        var ex = Assert.Throws<System.Security.Cryptography.CryptographicException>(() => ((ISecretProtector)secretProtector).Unprotect("!@#$%^&*()"));
         Assert.That(ex.InnerException, Is.InstanceOf<FormatException>());
     }
 }

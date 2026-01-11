@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 
 namespace Ashlar.Security.Encryption;
@@ -22,32 +20,15 @@ public sealed class DataProtectionSecretProtector : ISecretProtector
         _protector = provider.CreateProtector("Ashlar.Identity.Credentials");
     }
 
-    public string Protect(string plainText)
+    public byte[] Protect(byte[] data)
     {
-        ArgumentNullException.ThrowIfNull(plainText);
-        var plaintextBytes = Encoding.UTF8.GetBytes(plainText);
-        var protectedBytes = _protector.Protect(plaintextBytes);
-        return Convert.ToBase64String(protectedBytes);
+        ArgumentNullException.ThrowIfNull(data);
+        return _protector.Protect(data);
     }
 
-    public string Unprotect(string cipherText)
+    public byte[] Unprotect(byte[] data)
     {
-        if (string.IsNullOrWhiteSpace(cipherText))
-        {
-            throw new CryptographicException("The cipher text cannot be empty.");
-        }
-
-        byte[] protectedBytes;
-        try
-        {
-            protectedBytes = Convert.FromBase64String(cipherText);
-        }
-        catch (FormatException ex)
-        {
-            throw new CryptographicException("The cipher text is not a valid Base64 string.", ex);
-        }
-
-        var unprotectedBytes = _protector.Unprotect(protectedBytes);
-        return Encoding.UTF8.GetString(unprotectedBytes);
+        ArgumentNullException.ThrowIfNull(data);
+        return _protector.Unprotect(data);
     }
 }
