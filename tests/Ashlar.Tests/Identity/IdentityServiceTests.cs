@@ -1056,8 +1056,11 @@ public class IdentityServiceTests
 
         var response = await _identityService.LoginAsync(email, assertion);
 
-        Assert.That(response.Succeeded, Is.True);
-        Assert.That(credential.CredentialValue, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.True);
+            Assert.That(credential.CredentialValue, Is.Null);
+        }
     }
 
     [Test]
