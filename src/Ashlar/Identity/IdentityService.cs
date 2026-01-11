@@ -40,35 +40,35 @@ public sealed class IdentityService : IIdentityService
     {
         ArgumentNullException.ThrowIfNull(assertion);
 
-                if (!_providers.TryGetValue(assertion.ProviderType, out var provider))
-                {
-                    return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
-                }
+        if (!_providers.TryGetValue(assertion.ProviderType, out var provider))
+        {
+            return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
+        }
 
-                IUser? user;
-                UserCredential? credential;
+        IUser? user;
+        UserCredential? credential;
 
-                if (assertion is ExternalIdentityAssertion external)
-                {
-                    user = await _repository.GetUserByProviderKeyAsync(external.Type, external.ProviderName, external.ProviderKey, cancellationToken);
+        if (assertion is ExternalIdentityAssertion external)
+        {
+            user = await _repository.GetUserByProviderKeyAsync(external.Type, external.ProviderName, external.ProviderKey, cancellationToken);
 
-                    // Prevent user enumeration by ensuring a DB call happens regardless of user existence.
-                    var userId = user?.Id ?? Guid.NewGuid();
-                    credential = await _repository.GetCredentialForUserAsync(userId, assertion.ProviderType, external.ProviderName, external.ProviderKey, cancellationToken);
-                }
-                else
-                {
-                    user = string.IsNullOrWhiteSpace(email) ? null : await _repository.GetUserByEmailAsync(email, tenantId, cancellationToken);
+            // Prevent user enumeration by ensuring a DB call happens regardless of user existence.
+            var userId = user?.Id ?? Guid.NewGuid();
+            credential = await _repository.GetCredentialForUserAsync(userId, assertion.ProviderType, external.ProviderName, external.ProviderKey, cancellationToken);
+        }
+        else
+        {
+            user = string.IsNullOrWhiteSpace(email) ? null : await _repository.GetUserByEmailAsync(email, tenantId, cancellationToken);
 
-                    // Prevent user enumeration by ensuring a DB call happens regardless of user existence.
-                    var userId = user?.Id ?? Guid.NewGuid();
+            // Prevent user enumeration by ensuring a DB call happens regardless of user existence.
+            var userId = user?.Id ?? Guid.NewGuid();
 
-                    // For local, we need a key. If user is null, we generate a dummy key to sustain timing.
-                    var providerKey = user != null ? provider.GetProviderKey(assertion, user) : Guid.NewGuid().ToString();
-                    credential = await _repository.GetCredentialForUserAsync(userId, assertion.ProviderType, assertion.ProviderType.Value, providerKey, cancellationToken);
-                }
+            // For local, we need a key. If user is null, we generate a dummy key to sustain timing.
+            var providerKey = user != null ? provider.GetProviderKey(assertion, user) : Guid.NewGuid().ToString();
+            credential = await _repository.GetCredentialForUserAsync(userId, assertion.ProviderType, assertion.ProviderType.Value, providerKey, cancellationToken);
+        }
 
-                var result = await provider.AuthenticateAsync(assertion, credential, cancellationToken);
+        var result = await provider.AuthenticateAsync(assertion, credential, cancellationToken);
         if (result.Result is not (PasswordVerificationResult.Success or PasswordVerificationResult.SuccessRehashNeeded) || user == null)
         {
             return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);

@@ -198,7 +198,6 @@ public class IdentityServiceTests
     [Test]
     public async Task LinkCredentialAsyncWithNewCredentialShouldCallRepositoryCreate()
     {
-
         var userId = Guid.NewGuid();
         var type = ProviderType.Oidc;
         var providerName = "Google";
@@ -248,7 +247,6 @@ public class IdentityServiceTests
             Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Disabled));
         }
     }
-
 
     [Test]
     public async Task LoginAsyncWithExternalAssertionShouldFindUserByProviderKey()
