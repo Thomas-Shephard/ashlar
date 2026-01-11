@@ -59,9 +59,12 @@ public class IdentityServiceTests
 
         var response = await _identityService.LoginAsync(email, new LocalPasswordAssertion(password));
 
-        Assert.That(response.Succeeded, Is.True);
-        Assert.That(response.User, Is.EqualTo(user));
-        Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.True);
+            Assert.That(response.User, Is.EqualTo(user));
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Success));
+        }
     }
 
     [Test]
@@ -90,8 +93,11 @@ public class IdentityServiceTests
 
         var response = await _identityService.LoginAsync(email, new LocalPasswordAssertion(password));
 
-        Assert.That(response.Succeeded, Is.False);
-        Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+        }
     }
 
     [Test]
@@ -120,8 +126,11 @@ public class IdentityServiceTests
 
         var response = await _identityService.LoginAsync(email, assertion);
 
-        Assert.That(response.Succeeded, Is.True);
-        Assert.That(response.Claims, Is.EqualTo(claims));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.True);
+            Assert.That(response.Claims, Is.EqualTo(claims));
+        }
     }
 
     [Test]
@@ -233,8 +242,11 @@ public class IdentityServiceTests
 
         var response = await _identityService.LoginAsync(email, new LocalPasswordAssertion("pass"));
 
-        Assert.That(response.Succeeded, Is.False);
-        Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Disabled));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Disabled));
+        }
     }
 
 
@@ -262,8 +274,12 @@ public class IdentityServiceTests
 
         var response = await _identityService.LoginAsync(email, assertion);
 
-        Assert.That(response.Succeeded, Is.True);
-        Assert.That(response.User, Is.EqualTo(user));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.True);
+            Assert.That(response.User, Is.EqualTo(user));
+        }
+
         _repositoryMock.Verify(r => r.GetUserByEmailAsync(It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -292,8 +308,12 @@ public class IdentityServiceTests
 
         var response = await _identityService.LoginAsync(email, new LocalPasswordAssertion("pass"));
 
-        Assert.That(response.Succeeded, Is.True);
-        Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessRehashNeeded));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.True);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessRehashNeeded));
+        }
+
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
             c.Id == credential.Id &&
             c.CredentialValue == expectedHash), It.IsAny<CancellationToken>()), Times.Once);
@@ -403,8 +423,11 @@ public class IdentityServiceTests
 
         var response = await _identityService.LoginAsync(email, assertion);
 
-        Assert.That(response.Succeeded, Is.True);
-        Assert.That(response.Claims, Is.EqualTo(claims));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.True);
+            Assert.That(response.Claims, Is.EqualTo(claims));
+        }
     }
 
     [Test]
@@ -433,8 +456,11 @@ public class IdentityServiceTests
 
         var response = await _identityService.LoginAsync(email, new LocalPasswordAssertion("pass"));
 
-        Assert.That(response.Succeeded, Is.True);
-        Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessRehashNeeded));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.True);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessRehashNeeded));
+        }
     }
 
     [Test]

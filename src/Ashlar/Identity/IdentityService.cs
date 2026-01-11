@@ -15,12 +15,10 @@ public sealed class IdentityService : IIdentityService
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
 
         var dict = new Dictionary<ProviderType, IAuthenticationProvider>();
-        foreach (var provider in providers ?? throw new ArgumentNullException(nameof(providers)))
+
+        if ((providers ?? throw new ArgumentNullException(nameof(providers))).Any(provider => !dict.TryAdd(provider.SupportedType, provider)))
         {
-            if (!dict.TryAdd(provider.SupportedType, provider))
-            {
-                throw new ArgumentException($"Duplicate provider registered for type: {provider.SupportedType}", nameof(providers));
-            }
+            throw new ArgumentException("Duplicate provider registered for type", nameof(providers));
         }
 
         _providers = dict;
