@@ -2,11 +2,22 @@ using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Security.Hashing;
 
-namespace Ashlar.Identity.Providers;
+namespace Ashlar.Identity.Providers.External;
 
 public abstract class ExternalAuthenticationProvider(ProviderType supportedType) : IAuthenticationProvider
 {
     public ProviderType SupportedType => supportedType;
+    public bool IsPrimary => true;
+
+    public virtual string GetProviderName(IAuthenticationAssertion assertion)
+    {
+        if (assertion is ExternalIdentityAssertion externalAssertion)
+        {
+            return externalAssertion.ProviderName;
+        }
+
+        return SupportedType.Value;
+    }
 
     public virtual string? GetProviderKey(IAuthenticationAssertion assertion, IUser user)
     {

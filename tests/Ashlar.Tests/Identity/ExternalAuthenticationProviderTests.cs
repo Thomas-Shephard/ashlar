@@ -1,5 +1,7 @@
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Providers;
+using Ashlar.Identity.Providers.External;
+using Ashlar.Identity.Providers.Local;
 using Ashlar.Security.Hashing;
 
 namespace Ashlar.Tests.Identity;

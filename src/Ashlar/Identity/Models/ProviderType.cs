@@ -15,6 +15,9 @@ public readonly record struct ProviderType
     public static readonly ProviderType OAuth = new(nameof(OAuth));
     public static readonly ProviderType Oidc = new(nameof(Oidc));
     public static readonly ProviderType Saml2 = new(nameof(Saml2));
+    public static readonly ProviderType Totp = new(nameof(Totp));
+    public static readonly ProviderType Fido2 = new(nameof(Fido2));
+    public static readonly ProviderType RecoveryCode = new(nameof(RecoveryCode));
 
     public override string ToString() => _value ?? string.Empty;
 

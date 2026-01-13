@@ -1,6 +1,7 @@
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Providers;
+using Ashlar.Identity.Providers.Local;
 using Ashlar.Security.Hashing;
 using Moq;
 

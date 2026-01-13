@@ -2,13 +2,15 @@ using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Security.Hashing;
 
-namespace Ashlar.Identity.Providers;
+namespace Ashlar.Identity.Providers.Local;
 
 public sealed class LocalPasswordProvider(PasswordHasherSelector hasherSelector) : IAuthenticationProvider
 {
     private readonly PasswordHasherSelector _hasherSelector = hasherSelector ?? throw new ArgumentNullException(nameof(hasherSelector));
 
     public ProviderType SupportedType => ProviderType.Local;
+    public bool IsPrimary => true;
+    public bool ProtectsCredentials => false;
 
     public string GetProviderKey(IAuthenticationAssertion assertion, IUser user)
     {

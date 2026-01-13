@@ -1,6 +1,5 @@
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
-using Ashlar.Identity.Providers;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 
@@ -9,23 +8,29 @@ namespace Ashlar.Identity;
 public sealed class IdentityService : IIdentityService
 {
     private readonly IIdentityRepository _repository;
-    private readonly ISecretProtector _secretProtector;
-    private readonly string _dummyProtectedValue;
+    private readonly ICredentialService _credentialService;
+    private readonly SessionTicketSerializer _ticketSerializer;
     private readonly IReadOnlyDictionary<ProviderType, IAuthenticationProvider> _providers;
 
-    public IdentityService(IIdentityRepository repository, IEnumerable<IAuthenticationProvider> providers, ISecretProtector secretProtector)
+    public IdentityService(
+        IIdentityRepository repository,
+        IEnumerable<IAuthenticationProvider> providers,
+        ICredentialService credentialService,
+        SessionTicketSerializer ticketSerializer)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
-        _secretProtector = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
-        _dummyProtectedValue = _secretProtector.Protect(new string('D', 2048));
+        _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
+        _ticketSerializer = ticketSerializer ?? throw new ArgumentNullException(nameof(ticketSerializer));
 
+        ArgumentNullException.ThrowIfNull(providers);
         var dict = new Dictionary<ProviderType, IAuthenticationProvider>();
-
-        if ((providers ?? throw new ArgumentNullException(nameof(providers))).Any(provider => !dict.TryAdd(provider.SupportedType, provider)))
+        foreach (var provider in providers)
         {
-            throw new ArgumentException("Duplicate provider registered for type", nameof(providers));
+            if (!dict.TryAdd(provider.SupportedType, provider))
+            {
+                throw new ArgumentException($"Duplicate provider registered for type {provider.SupportedType}", nameof(providers));
+            }
         }
-
         _providers = dict;
     }
 
@@ -50,11 +55,45 @@ public sealed class IdentityService : IIdentityService
             return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
         }
 
-        var (user, credential) = await ResolveUserAndCredentialAsync(email, assertion, provider, tenantId, cancellationToken);
-        var (unprotectedCredential, unprotectFailed) = UnprotectCredential(credential, assertion.ProviderType);
+        var (user, credential, unprotectFailed) = await _credentialService.ResolveAsync(email, assertion, tenantId, cancellationToken);
 
-        var result = await provider.AuthenticateAsync(assertion, unprotectedCredential, cancellationToken);
-        if (unprotectFailed || result.Result is not (PasswordVerificationResult.Success or PasswordVerificationResult.SuccessRehashNeeded) || user == null)
+        return await ProcessAuthenticationAsync(user, credential, unprotectFailed, assertion, provider, null, cancellationToken);
+    }
+
+    public async Task<AuthenticationResponse> LoginAsync(SessionTicket ticket, IAuthenticationAssertion assertion, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ticket);
+        ArgumentNullException.ThrowIfNull(assertion);
+
+        var handshake = _ticketSerializer.Deserialize(ticket.Value);
+        if (handshake == null)
+        {
+            return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
+        }
+
+        if (!_providers.TryGetValue(assertion.ProviderType, out var provider))
+        {
+            return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
+        }
+
+        var (user, credential, unprotectFailed) = await _credentialService.ResolveAsync(handshake.UserId, assertion, cancellationToken);
+
+        return await ProcessAuthenticationAsync(user, credential, unprotectFailed, assertion, provider, handshake, cancellationToken);
+    }
+
+    private async Task<AuthenticationResponse> ProcessAuthenticationAsync(
+        IUser? user,
+        UserCredential? credential,
+        bool unprotectFailed,
+        IAuthenticationAssertion assertion,
+        IAuthenticationProvider provider,
+        IAuthenticationHandshake? handshake,
+        CancellationToken cancellationToken)
+    {
+        var result = await provider.AuthenticateAsync(assertion, credential, cancellationToken);
+
+        // Check for failure. We treat user == null or unprotectFailed as failure.
+        if (unprotectFailed || result.Result is PasswordVerificationResult.Failed || user == null)
         {
             return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
         }
@@ -64,104 +103,86 @@ public sealed class IdentityService : IIdentityService
             return new AuthenticationResponse(false, user, AuthenticationStatus.Disabled);
         }
 
+        // Delegate credential usage updates (LastUsedAt, rehashing, metadata) to CredentialService
+        await _credentialService.UpdateCredentialUsageAsync(credential, result, provider, cancellationToken);
+
+        var verifiedFactors = handshake?.VerifiedFactors?.ToList() ?? new List<string>();
+        if (!verifiedFactors.Contains(assertion.ProviderType.Value))
+        {
+            verifiedFactors.Add(assertion.ProviderType.Value);
+        }
+
+        // Determine if more factors are required
+        if (await IsMfaRequiredAsync(user, verifiedFactors, assertion, cancellationToken))
+        {
+            var newTicket = _ticketSerializer.Serialize(user.Id, verifiedFactors, user is ITenantUser tu ? tu.TenantId : null);
+            return new AuthenticationResponse(true, user, AuthenticationStatus.MfaRequired, result.Claims, newTicket, verifiedFactors);
+        }
+
         var status = result.Result == PasswordVerificationResult.SuccessRehashNeeded ? AuthenticationStatus.SuccessRehashNeeded : AuthenticationStatus.Success;
-
-        if (result is { ShouldUpdateCredential: true, NewCredentialValue: not null } && unprotectedCredential != null)
-        {
-            await TryUpdateCredentialAsync(unprotectedCredential, assertion.ProviderType, result.NewCredentialValue, cancellationToken);
-        }
-
-        return new AuthenticationResponse(true, user, status, result.Claims);
+        return new AuthenticationResponse(true, user, status, result.Claims, VerifiedFactors: verifiedFactors);
     }
 
-    private async Task<(IUser? User, UserCredential? Credential)> ResolveUserAndCredentialAsync(string email, IAuthenticationAssertion assertion, IAuthenticationProvider provider, Guid? tenantId, CancellationToken cancellationToken)
+    public async Task<AuthenticationResponse> CreateVerificationHandshakeAsync(Guid userId, IEnumerable<string>? alreadyVerifiedFactors = null, CancellationToken cancellationToken = default)
     {
-        if (assertion is ExternalIdentityAssertion external)
+        var user = await _repository.GetUserByIdAsync(userId, cancellationToken);
+        if (user == null || !user.IsActive)
         {
-            var user = await _repository.GetUserByProviderKeyAsync(external.Type, external.ProviderName, external.ProviderKey, cancellationToken);
-            var userId = user?.Id ?? Guid.NewGuid();
-            var credential = await _repository.GetCredentialForUserAsync(userId, assertion.ProviderType, external.ProviderName, external.ProviderKey, cancellationToken);
-            return (user, credential);
+            return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
         }
-        else
+
+        var verifiedFactors = alreadyVerifiedFactors?.ToList() ?? new List<string>();
+
+        if (await IsMfaRequiredAsync(user, verifiedFactors, null, cancellationToken))
         {
-            var user = string.IsNullOrWhiteSpace(email) ? null : await _repository.GetUserByEmailAsync(email, tenantId, cancellationToken);
-            var userId = user?.Id ?? Guid.NewGuid();
-            var providerKey = user != null ? provider.GetProviderKey(assertion, user) : Guid.NewGuid().ToString();
-            var credential = await _repository.GetCredentialForUserAsync(userId, assertion.ProviderType, assertion.ProviderType.Value, providerKey, cancellationToken);
-            return (user, credential);
+            var ticket = _ticketSerializer.Serialize(user.Id, verifiedFactors, user is ITenantUser tu ? tu.TenantId : null);
+            return new AuthenticationResponse(true, user, AuthenticationStatus.MfaRequired, SessionTicket: ticket, VerifiedFactors: verifiedFactors);
         }
+
+        return new AuthenticationResponse(true, user, AuthenticationStatus.Success, VerifiedFactors: verifiedFactors);
     }
 
-    private (UserCredential? Credential, bool UnprotectFailed) UnprotectCredential(UserCredential? credential, ProviderType providerType)
+    private async Task<bool> IsMfaRequiredAsync(IUser user, List<string>? verifiedFactors, IAuthenticationAssertion? assertion, CancellationToken cancellationToken)
     {
-        if (providerType == ProviderType.Local)
+        if (assertion != null && _providers.TryGetValue(assertion.ProviderType, out var currentProvider))
         {
-            if (credential == null)
-            {
-                return (null, false);
-            }
-
-            return (new UserCredential
-            {
-                Id = credential.Id,
-                UserId = credential.UserId,
-                ProviderType = credential.ProviderType,
-                ProviderName = credential.ProviderName,
-                ProviderKey = credential.ProviderKey,
-                CredentialValue = credential.CredentialValue
-            }, false);
+             if (currentProvider.BypassesMfa(assertion))
+             {
+                 return false;
+             }
         }
 
-        var valueToUnprotect = credential?.CredentialValue ?? _dummyProtectedValue;
-        string? unprotectedValue = null;
-        bool unprotectFailed = false;
+        var factors = verifiedFactors ?? new List<string>();
+        bool hasPrimary = false;
+        bool hasSecondary = false;
 
-        try
+        foreach (var factor in factors)
         {
-            unprotectedValue = _secretProtector.Unprotect(valueToUnprotect);
-        }
-        catch (System.Security.Cryptography.CryptographicException)
-        {
-            if (credential?.CredentialValue != null)
+            if (string.IsNullOrWhiteSpace(factor)) continue;
+
+            ProviderType pt = factor;
+
+            if (_providers.TryGetValue(pt, out var p))
             {
-                unprotectFailed = true;
+                if (p.IsPrimary) hasPrimary = true;
+                if (p.IsSecondary) hasSecondary = true;
             }
         }
 
-        if (credential == null)
+        if (!hasPrimary)
         {
-            return (null, unprotectFailed);
+            return true;
         }
 
-        var unprotectedCredential = new UserCredential
+        var userCredentials = await _repository.GetCredentialsForUserAsync(user.Id, cancellationToken);
+        bool hasSecondaryConfigured = userCredentials != null && userCredentials.Any(c => _providers.TryGetValue(c.ProviderType, out var p) && p.IsSecondary);
+
+        if (hasSecondaryConfigured && !hasSecondary)
         {
-            Id = credential.Id,
-            UserId = credential.UserId,
-            ProviderType = credential.ProviderType,
-            ProviderName = credential.ProviderName,
-            ProviderKey = credential.ProviderKey,
-            CredentialValue = credential.CredentialValue == null || unprotectFailed ? null : unprotectedValue
-        };
-
-        return (unprotectedCredential, unprotectFailed);
-    }
-
-    private async Task TryUpdateCredentialAsync(UserCredential credential, ProviderType providerType, string newValue, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var valueToStore = providerType != ProviderType.Local
-                ? _secretProtector.Protect(newValue)
-                : newValue;
-
-            credential.CredentialValue = valueToStore;
-            await _repository.UpdateCredentialAsync(credential, cancellationToken);
+            return true;
         }
-        catch (Exception)
-        {
-            // TODO: Log exception. Best effort update for rehashing. If it fails, the user is still authenticated.
-        }
+
+        return false;
     }
 
     public async Task<IUser> CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
@@ -172,68 +193,6 @@ public sealed class IdentityService : IIdentityService
 
     public async Task LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(assertion);
-
-        if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
-
-        var user = await _repository.GetUserByIdAsync(userId, cancellationToken);
-
-        if (user == null)
-        {
-            throw new InvalidOperationException($"User with ID '{userId}' not found.");
-        }
-
-        var type = assertion.ProviderType;
-        if (!_providers.TryGetValue(type, out var provider))
-        {
-            throw new ArgumentException($"Provider type '{type}' is not supported.", nameof(assertion));
-        }
-
-        var providerKey = provider.GetProviderKey(assertion, user);
-        if (string.IsNullOrWhiteSpace(providerKey))
-        {
-            throw new InvalidOperationException($"Could not derive a valid provider key for provider '{type}'.");
-        }
-
-        var providerName = assertion is ExternalIdentityAssertion external
-            ? external.ProviderName
-            : type.Value;
-
-        ArgumentException.ThrowIfNullOrWhiteSpace(providerName);
-
-        var linkedUser = await _repository.GetUserByProviderKeyAsync(type, providerName, providerKey, cancellationToken);
-
-        if (linkedUser != null)
-        {
-            if (linkedUser.Id != userId)
-            {
-                throw new InvalidOperationException($"The credential from '{providerName}' is already linked to another user.");
-            }
-
-            var message = type == ProviderType.Local
-                ? "A local password is already linked to this user."
-                : $"Credential for provider '{providerName}' is already linked to this user.";
-
-            throw new InvalidOperationException(message);
-        }
-
-        credentialValue = provider.PrepareCredentialValue(assertion, credentialValue);
-
-        if (type != ProviderType.Local && credentialValue != null)
-        {
-            credentialValue = _secretProtector.Protect(credentialValue);
-        }
-
-        var credential = new UserCredential
-        {
-            Id = Guid.NewGuid(),
-            UserId = userId,
-            ProviderType = type,
-            ProviderName = providerName,
-            ProviderKey = providerKey,
-            CredentialValue = credentialValue
-        };
-
-        await _repository.CreateCredentialAsync(credential, cancellationToken);
+        await _credentialService.LinkCredentialAsync(userId, assertion, credentialValue, cancellationToken);
     }
 }
