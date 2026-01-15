@@ -35,9 +35,10 @@ Common types include:
 
 ## Testing Guidelines
 To ensure that changes work as expected, follow these steps:
-- Use the provided NUnit test framework to write tests
-- Write tests for all new features or bug fixes
-- Ensure all tests pass before submitting a pull request
+- Use the provided NUnit test framework to write tests.
+- Write tests for all new features or bug fixes.
+- **Strict Coverage:** 100% line and branch coverage is enforced for all application code. Pull requests that lower coverage will be rejected.
+- Ensure all tests pass and coverage requirements are met before submitting a pull request.
 
 ## License
 By contributing to Ashlar, you agree that your contributions will be licensed under the MIT License.
