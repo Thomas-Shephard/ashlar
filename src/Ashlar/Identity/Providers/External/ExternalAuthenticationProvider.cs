@@ -8,6 +8,10 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType)
 {
     public ProviderType SupportedType => supportedType;
 
+    public virtual bool ProtectsCredentials => true;
+
+    public virtual int TypicalCredentialLength => 256;
+
     public virtual string GetProviderName(IAuthenticationAssertion assertion)
     {
         ArgumentNullException.ThrowIfNull(assertion);
@@ -99,6 +103,14 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType)
     }
 }
 
-public sealed class OidcAuthenticationProvider() : ExternalAuthenticationProvider(ProviderType.Oidc);
+public sealed class OidcAuthenticationProvider() : ExternalAuthenticationProvider(ProviderType.Oidc)
+{
+    public override int TypicalCredentialLength => 512;
+}
+
 public sealed class OAuthAuthenticationProvider() : ExternalAuthenticationProvider(ProviderType.OAuth);
-public sealed class Saml2AuthenticationProvider() : ExternalAuthenticationProvider(ProviderType.Saml2);
+
+public sealed class Saml2AuthenticationProvider() : ExternalAuthenticationProvider(ProviderType.Saml2)
+{
+    public override int TypicalCredentialLength => 3072;
+}
