@@ -17,4 +17,16 @@ public sealed class UserCredential
     /// Ensure any sensitive metadata stored here is appropriately protected by the repository layer.
     /// </summary>
     public string? CredentialValue { get; set; }
+
+    /// <summary>
+    /// The last time this credential was successfully used for authentication.
+    /// </summary>
+    public DateTimeOffset? LastUsedAt { get; set; }
+
+    /// <summary>
+    /// Provider-specific metadata stored as a JSON blob.
+    /// e.g., device AAGUID, backup state, or FIDO2 signature counters.
+    /// Providers should use <c>System.Text.Json</c> for consistent serialization and deserialization of this field.
+    /// </summary>
+    public string? Metadata { get; set; }
 }

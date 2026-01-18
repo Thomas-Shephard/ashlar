@@ -22,4 +22,11 @@ public interface IIdentityRepository
     Task UpdateUserAsync(IUser user, CancellationToken cancellationToken = default);
     Task CreateCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default);
     Task UpdateCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Permanently deletes a credential identified by its unique identifier.
+    /// </summary>
+    /// <param name="credentialId">The unique identifier of the credential to delete.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the delete operation.</param>
+    Task DeleteCredentialAsync(Guid credentialId, CancellationToken cancellationToken = default);
 }

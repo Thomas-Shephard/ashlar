@@ -47,7 +47,9 @@ Use the following **exact** CLI commands to build, test, and validate the projec
     *   `Identity/` - Main identity services (`IdentityService`).
     *   `Identity/Abstractions/` - Core interfaces (`IIdentityService`, `IUser`, `ITenantUser`, `IIdentityRepository`, `IAuthenticationProvider`).
     *   `Identity/Models/` - Data models (`Tenant`, `UserCredential`).
-    *   `Identity/Providers/` - Authentication strategies (`LocalPasswordProvider`, `ExternalAuthenticationProvider`).
+    *   `Identity/Providers/` - Authentication strategies organized by type.
+        *   `Local/` - Local authentication strategies (`LocalPasswordProvider`, `LocalPasswordAssertion`).
+        *   `External/` - External identity providers (`ExternalAuthenticationProvider`, `ExternalIdentityAssertion`, `OidcAuthenticationProvider`).
     *   `Security/` - Encryption (`ISecretProtector`) and Hashing (`IPasswordHasher`) utilities.
 *   `tests/Ashlar.Tests/` - Unit tests mirroring the source structure.
 *   `artifacts/` - Build outputs.
