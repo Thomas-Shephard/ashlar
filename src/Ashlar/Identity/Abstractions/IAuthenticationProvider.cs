@@ -17,6 +17,12 @@ public interface IAuthenticationProvider
     bool ProtectsCredentials => true;
 
     /// <summary>
+    /// Gets the typical length of a credential value for this provider. 
+    /// Used to generate timing-safe dummy values for protection.
+    /// </summary>
+    int TypicalCredentialLength => 256;
+
+    /// <summary>
     /// Gets the provider name from the assertion.
     /// </summary>
     /// <param name="assertion">The authentication assertion.</param>
