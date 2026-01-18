@@ -59,4 +59,15 @@ public class ModelTests
             Assert.That(credential.CredentialValue, Is.EqualTo("val"));
         }
     }
+
+    [Test]
+    public void SessionTicketPropertiesShouldWork()
+    {
+        var ticket = new SessionTicket("secret-value");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ticket.Value, Is.EqualTo("secret-value"));
+            Assert.That(ticket.ToString(), Is.EqualTo("[Redacted]"));
+        }
+    }
 }

@@ -17,6 +17,23 @@ public interface IAuthenticationProvider
     bool ProtectsCredentials => true;
 
     /// <summary>
+    /// Gets a value indicating whether this provider is considered a primary authentication factor.
+    /// </summary>
+    bool IsPrimary => true;
+
+    /// <summary>
+    /// Gets a value indicating whether this provider is considered a secondary (MFA) authentication factor.
+    /// </summary>
+    bool IsSecondary => false;
+
+    /// <summary>
+    /// Gets a value indicating whether this assertion bypasses MFA requirements.
+    /// </summary>
+    /// <param name="assertion">The authentication assertion.</param>
+    /// <returns><c>true</c> if MFA is bypassed; otherwise, <c>false</c>.</returns>
+    bool BypassesMfa(IAuthenticationAssertion assertion) => false;
+
+    /// <summary>
     /// Gets the typical length of a credential value for this provider. 
     /// Used to generate timing-safe dummy values for protection.
     /// </summary>

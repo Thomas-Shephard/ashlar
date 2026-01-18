@@ -13,6 +13,7 @@ public class IdentityServiceTests
 {
     private Mock<IIdentityRepository> _repositoryMock;
     private Mock<ISecretProtector> _secretProtectorMock;
+    private Mock<ISessionTicketSerializer> _sessionTicketSerializerMock;
     private FakePasswordHasher _fakeHasher;
     private FakePasswordHasher _oldHasher;
     private PasswordHasherSelector _hasherSelector;
@@ -23,6 +24,11 @@ public class IdentityServiceTests
     {
         _repositoryMock = new Mock<IIdentityRepository>();
         _secretProtectorMock = new Mock<ISecretProtector>();
+        _sessionTicketSerializerMock = new Mock<ISessionTicketSerializer>();
+
+        // Default behavior: return empty list of credentials unless specified otherwise.
+        _repositoryMock.Setup(r => r.GetCredentialsForUserAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Enumerable.Empty<UserCredential>());
 
         // Default behavior: return as-is for simplicity in existing tests,
         // unless we specifically want to test protection.
@@ -43,7 +49,7 @@ public class IdentityServiceTests
         };
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        _identityService = new IdentityService(_repositoryMock.Object, providers, credentialService);
+        _identityService = new IdentityService(_repositoryMock.Object, providers, credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in tests only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
     }
@@ -53,7 +59,7 @@ public class IdentityServiceTests
     {
         var credService = new Mock<ICredentialService>();
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(null!, [], credService.Object));
+        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(null!, [], credService.Object, _sessionTicketSerializerMock.Object));
     }
 
     [Test]
@@ -61,7 +67,7 @@ public class IdentityServiceTests
     {
         var credService = new Mock<ICredentialService>();
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(_repositoryMock.Object, null!, credService.Object));
+        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(_repositoryMock.Object, null!, credService.Object, _sessionTicketSerializerMock.Object));
     }
 
     [Test]
@@ -74,14 +80,22 @@ public class IdentityServiceTests
             new OidcAuthenticationProvider()
         };
 
-        Assert.Throws<ArgumentException>(() => _ = new IdentityService(_repositoryMock.Object, providers, credService.Object));
+        Assert.Throws<ArgumentException>(() => _ = new IdentityService(_repositoryMock.Object, providers, credService.Object, _sessionTicketSerializerMock.Object));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullCredentialService()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(_repositoryMock.Object, [], null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(_repositoryMock.Object, [], null!, _sessionTicketSerializerMock.Object));
+    }
+
+    [Test]
+    public void ConstructorShouldThrowOnNullSessionTicketSerializer()
+    {
+        var credService = new Mock<ICredentialService>();
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(_repositoryMock.Object, [], credService.Object, null!));
     }
 
     [Test]
@@ -640,7 +654,9 @@ public class IdentityServiceTests
     {
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns((ProviderType)"MOCK");
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.SuccessRehashNeeded, ShouldUpdateCredential: true, NewCredentialValue: "new-hash"));
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), It.IsAny<Guid>()))
@@ -652,7 +668,7 @@ public class IdentityServiceTests
         assertionMock.Setup(a => a.ProviderType).Returns((ProviderType)"MOCK");
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
 
@@ -691,6 +707,7 @@ public class IdentityServiceTests
         _oldHasher.ShouldVerify = true;
         // Mocking rehash needed but returning null for new value
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Local);
         providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.SuccessRehashNeeded, ShouldUpdateCredential: true, NewCredentialValue: null));
@@ -699,7 +716,7 @@ public class IdentityServiceTests
             .ReturnsAsync(user);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
 
@@ -776,7 +793,299 @@ public class IdentityServiceTests
     public void LoginAsyncWithNullEmailShouldThrow()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _identityService.LoginAsync(null!, new LocalPasswordAssertion("pass")));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _identityService.LoginAsync((string)null!, new LocalPasswordAssertion("pass")));
+    }
+
+    [Test]
+    public async Task LoginAsyncWithSessionTicketShouldReturnFailedWhenHandshakeIsNull()
+    {
+        var assertion = new LocalPasswordAssertion("password");
+        var sessionTicket = new SessionTicket("invalid");
+
+        _sessionTicketSerializerMock.Setup(s => s.Deserialize(It.IsAny<string>())).Returns((IAuthenticationHandshake?)null);
+
+        var result = await _identityService.LoginAsync(sessionTicket, assertion);
+        Assert.That(result.Status, Is.EqualTo(AuthenticationStatus.Failed));
+    }
+
+    [Test]
+    public async Task LoginAsyncWithSessionTicketShouldReturnFailedWhenProviderNotFound()
+    {
+        var handshake = new Mock<IAuthenticationHandshake>();
+        var assertion = new LocalPasswordAssertion("password");
+        var sessionTicket = new SessionTicket("valid");
+
+        _sessionTicketSerializerMock.Setup(s => s.Deserialize(It.IsAny<string>())).Returns(handshake.Object);
+
+        // Create a service with no providers
+        var service = new IdentityService(_repositoryMock.Object, [], new Mock<ICredentialService>().Object, _sessionTicketSerializerMock.Object);
+
+        var result = await service.LoginAsync(sessionTicket, assertion);
+        Assert.That(result.Status, Is.EqualTo(AuthenticationStatus.Failed));
+    }
+
+    [Test]
+    public async Task AuthenticateInternalAsyncShouldReturnFailedWhenPasswordVerificationResultIsFailed()
+    {
+        var user = new User { Id = Guid.NewGuid(), Email = "fail@example.com" };
+        var assertion = new LocalPasswordAssertion("password");
+        var credential = new UserCredential { Id = Guid.NewGuid(), UserId = user.Id, ProviderType = ProviderType.Local, ProviderName = "L", ProviderKey = "k" };
+
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Local);
+        providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Failed));
+
+        var mockCredService = new Mock<ICredentialService>();
+        mockCredService.Setup(c => c.ResolveAsync(It.IsAny<string>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+
+        var identityService = new IdentityService(_repositoryMock.Object, [providerMock.Object], mockCredService.Object, _sessionTicketSerializerMock.Object);
+
+        var result = await identityService.LoginAsync("fail@example.com", assertion);
+        Assert.That(result.Status, Is.EqualTo(AuthenticationStatus.Failed));
+    }
+
+    [Test]
+    public async Task AuthenticateInternalAsyncShouldSwallowExceptionWhenUpdateCredentialUsageFailsAndNotConsumed()
+    {
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var assertion = new LocalPasswordAssertion("password");
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            ProviderType = ProviderType.Local,
+            ProviderName = "Local",
+            ProviderKey = "key"
+        };
+
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Local);
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
+        providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success, IsCredentialConsumed: false));
+        providerMock.Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), user.Id)).Returns("key");
+
+        var mockCredService = new Mock<ICredentialService>();
+        mockCredService.Setup(c => c.UpdateCredentialUsageAsync(It.IsAny<UserCredential>(), It.IsAny<UserCredential>(), It.IsAny<AuthenticationResult>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Update failed"));
+        mockCredService.Setup(c => c.ResolveAsync(It.IsAny<string>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+
+        var identityService = new IdentityService(_repositoryMock.Object, [providerMock.Object], mockCredService.Object, _sessionTicketSerializerMock.Object);
+
+        var result = await identityService.LoginAsync("test@example.com", assertion);
+        Assert.That(result.Succeeded, Is.True);
+    }
+
+    [Test]
+    public async Task AuthenticateInternalAsyncShouldFailWhenUnprotectFailedIsTrue()
+    {
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var assertion = new LocalPasswordAssertion("password");
+        var credential = new UserCredential { Id = Guid.NewGuid(), UserId = user.Id, ProviderType = ProviderType.Local, ProviderName = "L", ProviderKey = "k" };
+
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Local);
+        providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success));
+
+        var mockCredService = new Mock<ICredentialService>();
+        mockCredService.Setup(c => c.ResolveAsync(It.IsAny<string>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, true)); // unprotectFailed = true
+
+        var identityService = new IdentityService(_repositoryMock.Object, [providerMock.Object], mockCredService.Object, _sessionTicketSerializerMock.Object);
+
+        var result = await identityService.LoginAsync("test@example.com", assertion);
+        Assert.That(result.Succeeded, Is.False);
+    }
+
+    private sealed class NonTenantUser : IUser
+    {
+        public required Guid Id { get; init; }
+        public required string Email { get; init; }
+        public string Name => "Name";
+        public bool IsActive => true;
+    }
+
+    [Test]
+    public async Task AuthenticateInternalAsyncShouldHandleNonTenantUserInHandshake()
+    {
+        var user = new NonTenantUser { Id = Guid.NewGuid(), Email = "nontenant@example.com" };
+        var assertion = new LocalPasswordAssertion("password");
+
+        var secondaryCredential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            ProviderType = (ProviderType)"TOTP",
+            ProviderName = "TOTP",
+            ProviderKey = "totp-key"
+        };
+
+        _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _repositoryMock.Setup(r => r.GetCredentialsForUserAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([secondaryCredential]);
+
+        var primaryProviderMock = new Mock<IAuthenticationProvider>();
+        primaryProviderMock.Setup(p => p.SupportedType).Returns(ProviderType.Local);
+        primaryProviderMock.Setup(p => p.IsPrimary).Returns(true);
+        primaryProviderMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success));
+        primaryProviderMock.Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        primaryProviderMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), user.Id)).Returns("key");
+
+        var secondaryProviderMock = new Mock<IAuthenticationProvider>();
+        secondaryProviderMock.Setup(p => p.SupportedType).Returns((ProviderType)"TOTP");
+        secondaryProviderMock.Setup(p => p.IsSecondary).Returns(true);
+
+        var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
+        var identityService = new IdentityService(_repositoryMock.Object, [primaryProviderMock.Object, secondaryProviderMock.Object], credentialService, _sessionTicketSerializerMock.Object);
+
+        var result = await identityService.LoginAsync("nontenant@example.com", assertion);
+
+        Assert.That(result.Status, Is.EqualTo(AuthenticationStatus.MfaRequired));
+        _sessionTicketSerializerMock.Verify(s => s.Serialize(It.Is<IAuthenticationHandshake>(h => h.TenantId == null)), Times.Once);
+    }
+
+    [Test]
+    public async Task AuthenticateInternalAsyncShouldHandleTenantUserWithNullIdInHandshake()
+    {
+        var user = new User { Id = Guid.NewGuid(), Email = "tenant-null@example.com", TenantId = null };
+        var assertion = new LocalPasswordAssertion("password");
+
+        var secondaryCredential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            ProviderType = (ProviderType)"TOTP",
+            ProviderName = "TOTP",
+            ProviderKey = "totp-key"
+        };
+
+        _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _repositoryMock.Setup(r => r.GetCredentialsForUserAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([secondaryCredential]);
+
+        var primaryProviderMock = new Mock<IAuthenticationProvider>();
+        primaryProviderMock.Setup(p => p.SupportedType).Returns(ProviderType.Local);
+        primaryProviderMock.Setup(p => p.IsPrimary).Returns(true);
+        primaryProviderMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success));
+        primaryProviderMock.Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        primaryProviderMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), user.Id)).Returns("key");
+
+        var secondaryProviderMock = new Mock<IAuthenticationProvider>();
+        secondaryProviderMock.Setup(p => p.SupportedType).Returns((ProviderType)"TOTP");
+        secondaryProviderMock.Setup(p => p.IsSecondary).Returns(true);
+
+        var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
+        var identityService = new IdentityService(_repositoryMock.Object, [primaryProviderMock.Object, secondaryProviderMock.Object], credentialService, _sessionTicketSerializerMock.Object);
+
+        var result = await identityService.LoginAsync("tenant-null@example.com", assertion);
+
+        Assert.That(result.Status, Is.EqualTo(AuthenticationStatus.MfaRequired));
+        _sessionTicketSerializerMock.Verify(s => s.Serialize(It.Is<IAuthenticationHandshake>(h => h.TenantId == null)), Times.Once);
+    }
+
+    [Test]
+    public async Task AuthenticateInternalAsyncShouldSetTenantIdInHandshake()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = new User { Id = Guid.NewGuid(), Email = "tenant@example.com", TenantId = tenantId };
+        var assertion = new LocalPasswordAssertion("password");
+
+        var secondaryCredential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            ProviderType = (ProviderType)"TOTP",
+            ProviderName = "TOTP",
+            ProviderKey = "totp-key"
+        };
+
+        _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _repositoryMock.Setup(r => r.GetCredentialsForUserAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([secondaryCredential]);
+
+        var primaryProviderMock = new Mock<IAuthenticationProvider>();
+        primaryProviderMock.Setup(p => p.SupportedType).Returns(ProviderType.Local);
+        primaryProviderMock.Setup(p => p.IsPrimary).Returns(true);
+        primaryProviderMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success));
+        primaryProviderMock.Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        primaryProviderMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), user.Id)).Returns("key");
+
+        var secondaryProviderMock = new Mock<IAuthenticationProvider>();
+        secondaryProviderMock.Setup(p => p.SupportedType).Returns((ProviderType)"TOTP");
+        secondaryProviderMock.Setup(p => p.IsSecondary).Returns(true);
+
+        var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
+        var identityService = new IdentityService(_repositoryMock.Object, [primaryProviderMock.Object, secondaryProviderMock.Object], credentialService, _sessionTicketSerializerMock.Object);
+
+        var result = await identityService.LoginAsync("tenant@example.com", assertion);
+
+        Assert.That(result.Status, Is.EqualTo(AuthenticationStatus.MfaRequired));
+        _sessionTicketSerializerMock.Verify(s => s.Serialize(It.Is<IAuthenticationHandshake>(h => h.TenantId == tenantId)), Times.Once);
+    }
+
+    [Test]
+    public async Task IsMfaRequiredAsyncShouldHitBranchWhenSecondaryFactorIsConfiguredButNotVerified()
+    {
+        var user = new User { Id = Guid.NewGuid(), Email = "mfa@example.com" };
+        var assertion = new LocalPasswordAssertion("password");
+
+        var primaryCredential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            ProviderType = ProviderType.Local,
+            ProviderName = "Local",
+            ProviderKey = user.Id.ToString()
+        };
+
+        var secondaryCredential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            ProviderType = (ProviderType)"TOTP",
+            ProviderName = "TOTP",
+            ProviderKey = "totp-key"
+        };
+
+        _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _repositoryMock.Setup(r => r.GetCredentialsForUserAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([primaryCredential, secondaryCredential]);
+
+        var primaryProviderMock = new Mock<IAuthenticationProvider>();
+        primaryProviderMock.Setup(p => p.SupportedType).Returns(ProviderType.Local);
+        primaryProviderMock.Setup(p => p.IsPrimary).Returns(true);
+        primaryProviderMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success));
+        primaryProviderMock.Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        primaryProviderMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), user.Id)).Returns(user.Id.ToString());
+
+        var secondaryProviderMock = new Mock<IAuthenticationProvider>();
+        secondaryProviderMock.Setup(p => p.SupportedType).Returns((ProviderType)"TOTP");
+        secondaryProviderMock.Setup(p => p.IsSecondary).Returns(true);
+
+        var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
+        var identityService = new IdentityService(_repositoryMock.Object, [primaryProviderMock.Object, secondaryProviderMock.Object], credentialService, _sessionTicketSerializerMock.Object);
+
+        var result = await identityService.LoginAsync("mfa@example.com", assertion);
+
+        Assert.That(result.Status, Is.EqualTo(AuthenticationStatus.MfaRequired));
     }
 
     [Test]
@@ -786,6 +1095,7 @@ public class IdentityServiceTests
         var user = new User { Id = userId, Email = "test@example.com" };
 
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns((ProviderType)"MOCK");
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), It.IsAny<Guid>()))
             .Returns(string.Empty);
@@ -794,7 +1104,7 @@ public class IdentityServiceTests
         assertionMock.Setup(a => a.ProviderType).Returns((ProviderType)"MOCK");
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
 
@@ -816,6 +1126,7 @@ public class IdentityServiceTests
     public async Task LoginAsyncWithSuccessRehashNeededButNullUserShouldReturnFailed()
     {
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns((ProviderType)"MOCK");
         providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.SuccessRehashNeeded));
@@ -829,7 +1140,7 @@ public class IdentityServiceTests
             .ReturnsAsync((IUser?)null);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
 
@@ -860,6 +1171,7 @@ public class IdentityServiceTests
     public async Task LoginAsyncWithFoundCredentialButNullUserShouldReturnFailed()
     {
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns((ProviderType)"MOCK");
         providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success));
@@ -873,7 +1185,7 @@ public class IdentityServiceTests
             .ReturnsAsync((IUser?)null);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
 
@@ -955,6 +1267,7 @@ public class IdentityServiceTests
 
         // Mock a provider to capture the credential passed to it
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Oidc);
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
@@ -969,7 +1282,7 @@ public class IdentityServiceTests
             .ReturnsAsync(user);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
         await service.LoginAsync(email, assertion);
@@ -1034,6 +1347,7 @@ public class IdentityServiceTests
 
         // Mock a provider that wants to update the token
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns(ProviderType.OAuth);
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("GitHub");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
@@ -1044,7 +1358,7 @@ public class IdentityServiceTests
             .ReturnsAsync(user);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
         await service.LoginAsync(email, assertion);
@@ -1151,6 +1465,7 @@ public class IdentityServiceTests
 
         // Mock a provider to capture the credential passed to it
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Oidc);
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
@@ -1161,7 +1476,7 @@ public class IdentityServiceTests
             .ReturnsAsync(user);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
 
@@ -1196,6 +1511,7 @@ public class IdentityServiceTests
             .ReturnsAsync(credential);
 
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Oidc);
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
@@ -1206,7 +1522,7 @@ public class IdentityServiceTests
             .ReturnsAsync(user);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
 
@@ -1316,6 +1632,7 @@ public class IdentityServiceTests
             .ReturnsAsync(credential);
 
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Oidc);
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
@@ -1326,7 +1643,7 @@ public class IdentityServiceTests
             .ReturnsAsync(user);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
         await service.LoginAsync(email, assertion);
@@ -1357,6 +1674,7 @@ public class IdentityServiceTests
             .ReturnsAsync(credential);
 
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Oidc);
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
@@ -1367,7 +1685,7 @@ public class IdentityServiceTests
             .ReturnsAsync(user);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
         await service.LoginAsync(email, assertion);
@@ -1426,6 +1744,7 @@ public class IdentityServiceTests
             .ReturnsAsync(credential);
 
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Oidc);
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
@@ -1436,7 +1755,7 @@ public class IdentityServiceTests
             .ReturnsAsync(user);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
         await service.LoginAsync(email, assertion);
@@ -1467,6 +1786,7 @@ public class IdentityServiceTests
             .ReturnsAsync(credential);
 
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Oidc);
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
@@ -1481,7 +1801,7 @@ public class IdentityServiceTests
             .ThrowsAsync(new InvalidOperationException("Concurrent delete"));
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
 
@@ -1517,6 +1837,7 @@ public class IdentityServiceTests
             .ReturnsAsync(credential);
 
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Oidc);
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
@@ -1530,7 +1851,7 @@ public class IdentityServiceTests
             .ThrowsAsync(new OperationCanceledException());
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
 
@@ -1560,6 +1881,7 @@ public class IdentityServiceTests
             .ReturnsAsync(credential);
 
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Oidc);
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
@@ -1572,7 +1894,7 @@ public class IdentityServiceTests
             .ReturnsAsync(user);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
         await service.LoginAsync(email, assertion);
@@ -1605,6 +1927,7 @@ public class IdentityServiceTests
             .ReturnsAsync(credential);
 
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Oidc);
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
@@ -1617,7 +1940,7 @@ public class IdentityServiceTests
             .ReturnsAsync(user);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
         await service.LoginAsync(email, assertion);
@@ -1653,6 +1976,7 @@ public class IdentityServiceTests
             .ReturnsAsync(credential);
 
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Oidc);
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
@@ -1663,7 +1987,7 @@ public class IdentityServiceTests
             .ReturnsAsync(user);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         _secretProtectorMock.Invocations.Clear();
         await service.LoginAsync(email, assertion);
 
@@ -1696,6 +2020,7 @@ public class IdentityServiceTests
             .ReturnsAsync(credential);
 
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Oidc);
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
@@ -1706,7 +2031,7 @@ public class IdentityServiceTests
             .ReturnsAsync(user);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         _secretProtectorMock.Invocations.Clear();
         await service.LoginAsync(email, assertion);
 
@@ -1749,6 +2074,7 @@ public class IdentityServiceTests
         var user = new User { Id = Guid.NewGuid(), Email = email };
 
         var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.IsPrimary).Returns(true);
         providerMock.Setup(p => p.SupportedType).Returns((ProviderType)"MOCK");
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("MOCK");
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), It.IsAny<Guid>())).Returns(string.Empty); // Return empty
@@ -1761,7 +2087,7 @@ public class IdentityServiceTests
         assertionMock.Setup(a => a.ProviderType).Returns((ProviderType)"MOCK");
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
-        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
+        var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService, _sessionTicketSerializerMock.Object);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
 
