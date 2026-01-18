@@ -1,7 +1,7 @@
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 
-namespace Ashlar.Identity.Providers;
+namespace Ashlar.Identity.Providers.External;
 
 /// <summary>
 /// Represents an identity assertion from an external provider (OIDC, SAML, etc.)

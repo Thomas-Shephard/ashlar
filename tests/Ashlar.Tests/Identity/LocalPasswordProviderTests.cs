@@ -1,6 +1,6 @@
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
-using Ashlar.Identity.Providers;
+using Ashlar.Identity.Providers.Local;
 using Ashlar.Security.Hashing;
 using Moq;
 
@@ -150,13 +150,27 @@ public class LocalPasswordProviderTests
     [Test]
     public void GetProviderKeyShouldReturnUserId()
     {
-        var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "test@example.com" };
         var assertion = new LocalPasswordAssertion("pass");
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
 
-        var key = _provider.GetProviderKey(assertion, user);
+        var key = _provider.GetProviderKey(assertion, user.Id);
 
-        Assert.That(key, Is.EqualTo(userId.ToString("D")));
+        Assert.That(key, Is.EqualTo(user.Id.ToString("D")));
+    }
+
+    [Test]
+    public void GetProviderKeyWithNullAssertionShouldThrow()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _provider.GetProviderKey(null!, Guid.NewGuid()));
+    }
+
+    [Test]
+    public void GetProviderNameShouldReturnLocal()
+    {
+        var assertion = new LocalPasswordAssertion("pass");
+        var name = ((IAuthenticationProvider)_provider).GetProviderName(assertion);
+        Assert.That(name, Is.EqualTo(ProviderType.Local.Value));
     }
 
     [Test]
@@ -193,5 +207,46 @@ public class LocalPasswordProviderTests
     {
         var assertion = new Mock<IAuthenticationAssertion>().Object;
         Assert.ThrowsAsync<ArgumentException>(() => _provider.AuthenticateAsync(assertion, null));
+    }
+
+    [Test]
+    public Task FindUserAsyncWithNullRepositoryShouldThrow()
+    {
+        var assertion = new LocalPasswordAssertion("pass");
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.ThrowsAsync<ArgumentNullException>(() => _provider.FindUserAsync(assertion, "test@example.com", null, null!));
+        return Task.CompletedTask;
+    }
+
+    [Test]
+    public async Task FindUserAsyncWithWrongAssertionTypeShouldReturnNull()
+    {
+        var assertion = new Mock<IAuthenticationAssertion>().Object;
+        var result = await _provider.FindUserAsync(assertion, "test@example.com", null, new Mock<IIdentityRepository>().Object);
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public async Task FindUserAsyncWithEmptyEmailShouldReturnNull()
+    {
+        var assertion = new LocalPasswordAssertion("pass");
+        var result = await _provider.FindUserAsync(assertion, "", null, new Mock<IIdentityRepository>().Object);
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public async Task FindUserAsyncShouldCallRepository()
+    {
+        var assertion = new LocalPasswordAssertion("pass");
+        var email = "test@example.com";
+        var tenantId = Guid.NewGuid();
+        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var repoMock = new Mock<IIdentityRepository>();
+        repoMock.Setup(r => r.GetUserByEmailAsync(email, tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        var result = await _provider.FindUserAsync(assertion, email, tenantId, repoMock.Object);
+
+        Assert.That(result, Is.EqualTo(user));
     }
 }
