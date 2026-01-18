@@ -36,4 +36,18 @@ public class AuthenticationProviderTests
         var assertionMock = new Mock<IAuthenticationAssertion>();
         Assert.That(provider.GetProviderName(assertionMock.Object), Is.EqualTo(ProviderType.Oidc.Value));
     }
+
+    [Test]
+    public void GetProviderNameShouldHandleVariousSupportedTypes()
+    {
+        var mockProvider = new Mock<IAuthenticationProvider>();
+        mockProvider.Setup(p => p.SupportedType).Returns(ProviderType.Saml2);
+        mockProvider.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).CallBase();
+        
+        var assertion = new Mock<IAuthenticationAssertion>();
+        Assert.That(mockProvider.Object.GetProviderName(assertion.Object), Is.EqualTo(ProviderType.Saml2.Value));
+
+        mockProvider.Setup(p => p.SupportedType).Returns(ProviderType.OAuth);
+        Assert.That(mockProvider.Object.GetProviderName(assertion.Object), Is.EqualTo(ProviderType.OAuth.Value));
+    }
 }

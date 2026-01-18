@@ -1,5 +1,9 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace Ashlar.Identity.Models;
 
+[JsonConverter(typeof(ProviderTypeJsonConverter))]
 public readonly record struct ProviderType
 {
     private readonly string _value;
@@ -20,4 +24,18 @@ public readonly record struct ProviderType
 
     public static implicit operator string(ProviderType type) => type.Value;
     public static implicit operator ProviderType(string value) => new(value);
+
+    private sealed class ProviderTypeJsonConverter : JsonConverter<ProviderType>
+    {
+        public override ProviderType Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            var value = reader.GetString();
+            return !string.IsNullOrWhiteSpace(value) ? new ProviderType(value) : default;
+        }
+
+        public override void Write(Utf8JsonWriter writer, ProviderType value, JsonSerializerOptions options)
+        {
+            writer.WriteStringValue(value.Value);
+        }
+    }
 }

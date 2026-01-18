@@ -16,6 +16,11 @@ public interface IIdentityRepository
     /// </remarks>
     Task<UserCredential?> GetCredentialForUserAsync(Guid userId, ProviderType type, string providerName, string? providerKey = null, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Retrieves all credentials for a specific user.
+    /// </summary>
+    Task<IEnumerable<UserCredential>> GetCredentialsForUserAsync(Guid userId, CancellationToken cancellationToken = default);
+
     Task<IUser?> GetUserByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default);
 
     Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default);
