@@ -3,14 +3,14 @@
   "isRoot": true,
   "tools": {
     "coveragechecker.commandline": {
-      "version": "0.8.0",
+      "version": "0.9.0",
       "commands": [
         "coveragechecker"
       ],
       "rollForward": false
     },
     "dotnet-sonarscanner": {
-      "version": "11.0.0",
+      "version": "11.1.0",
       "commands": [
         "dotnet-sonarscanner"
       ],
