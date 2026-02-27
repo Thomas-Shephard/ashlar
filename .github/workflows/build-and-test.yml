@@ -55,7 +55,7 @@ jobs:
       - name: Pack
         run: dotnet pack Ashlar.slnx --configuration Release --no-build --output ./nupkg
       - name: Upload NuGet Packages
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: nuget-packages
           path: ./nupkg/*.nupkg
