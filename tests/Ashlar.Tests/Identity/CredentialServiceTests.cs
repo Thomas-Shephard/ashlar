@@ -38,6 +38,7 @@ public class CredentialServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             CredentialValue = "protected(token)"
         };
 
@@ -90,6 +91,7 @@ public class CredentialServiceTests
             ProviderType = ProviderType.Local,
             ProviderName = "Local",
             ProviderKey = "key",
+            Version = "v1",
             CredentialValue = "value"
         };
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -115,6 +117,7 @@ public class CredentialServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             Metadata = "old",
             LastUsedAt = DateTimeOffset.UtcNow
         };
@@ -123,7 +126,54 @@ public class CredentialServiceTests
 
         await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
-        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.Metadata == "new"), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.Metadata == "new"), "v1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task UpdateCredentialUsageAsyncWithConsumedCredentialShouldConsumeAtomically()
+    {
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = ProviderType.Oidc,
+            ProviderName = "Google",
+            ProviderKey = "sub",
+            Version = "v1"
+        };
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
+        var providerMock = new Mock<IAuthenticationProvider>();
+
+        _repositoryMock.Setup(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var consumed = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+
+        Assert.That(consumed, Is.True);
+        _repositoryMock.Verify(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task UpdateCredentialUsageAsyncWithConsumedCredentialShouldReturnFalseWhenAtomicConsumeFails()
+    {
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = ProviderType.Oidc,
+            ProviderName = "Google",
+            ProviderKey = "sub",
+            Version = "v1"
+        };
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
+        var providerMock = new Mock<IAuthenticationProvider>();
+
+        _repositoryMock.Setup(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var consumed = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+
+        Assert.That(consumed, Is.False);
     }
 
     [Test]
@@ -136,12 +186,13 @@ public class CredentialServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             LastUsedAt = DateTimeOffset.UtcNow.AddDays(-1)
         };
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
         var providerMock = new Mock<IAuthenticationProvider>();
 
-        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("DB Error"));
 
         Assert.DoesNotThrowAsync(async () => await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object));
@@ -171,6 +222,7 @@ public class CredentialServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             CredentialValue = "bad-value"
         };
 
@@ -244,6 +296,7 @@ public class CredentialServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             CredentialValue = null
         };
 
@@ -392,14 +445,14 @@ public class CredentialServiceTests
     public void UpdateCredentialUsageAsyncWithNullResultShouldThrow()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _service.UpdateCredentialUsageAsync(new UserCredential { Id = Guid.NewGuid(), UserId = Guid.NewGuid(), ProviderType = ProviderType.Local, ProviderName = "L", ProviderKey = "K" }, null, null!, new Mock<IAuthenticationProvider>().Object));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.UpdateCredentialUsageAsync(new UserCredential { Id = Guid.NewGuid(), UserId = Guid.NewGuid(), ProviderType = ProviderType.Local, ProviderName = "L", ProviderKey = "K", Version = "v1" }, null, null!, new Mock<IAuthenticationProvider>().Object));
     }
 
     [Test]
     public void UpdateCredentialUsageAsyncWithNullProviderShouldThrow()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _service.UpdateCredentialUsageAsync(new UserCredential { Id = Guid.NewGuid(), UserId = Guid.NewGuid(), ProviderType = ProviderType.Local, ProviderName = "L", ProviderKey = "K" }, null, new AuthenticationResult(AuthenticationResultStatus.Succeeded), null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.UpdateCredentialUsageAsync(new UserCredential { Id = Guid.NewGuid(), UserId = Guid.NewGuid(), ProviderType = ProviderType.Local, ProviderName = "L", ProviderKey = "K", Version = "v1" }, null, new AuthenticationResult(AuthenticationResultStatus.Succeeded), null!));
     }
 
     [Test]

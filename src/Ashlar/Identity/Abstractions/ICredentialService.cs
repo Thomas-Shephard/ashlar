@@ -49,12 +49,13 @@ public interface ICredentialService
     Task LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Updates the usage information and potentially the secret value of a credential after a successful authentication attempt.
+    /// Updates the usage information, consumes, or potentially changes the secret value of a credential after a successful authentication attempt.
     /// </summary>
     /// <param name="unprotectedCredential">The unprotected credential to update.</param>
     /// <param name="originalCredential">The original protected credential for preservation if no update is requested.</param>
     /// <param name="result">The authentication result containing update instructions.</param>
     /// <param name="provider">The authentication provider.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    Task UpdateCredentialUsageAsync(UserCredential unprotectedCredential, UserCredential? originalCredential, AuthenticationResult result, IAuthenticationProvider provider, CancellationToken cancellationToken = default);
+    /// <returns><c>false</c> when a security-critical atomic operation, such as credential consumption, fails.</returns>
+    Task<bool> UpdateCredentialUsageAsync(UserCredential unprotectedCredential, UserCredential? originalCredential, AuthenticationResult result, IAuthenticationProvider provider, CancellationToken cancellationToken = default);
 }

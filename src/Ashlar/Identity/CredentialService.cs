@@ -101,6 +101,7 @@ public sealed class CredentialService(
                 ProviderType = credential.ProviderType,
                 ProviderName = credential.ProviderName,
                 ProviderKey = credential.ProviderKey,
+                Version = credential.Version,
                 CredentialValue = credential.CredentialValue,
                 Metadata = credential.Metadata,
                 LastUsedAt = credential.LastUsedAt
@@ -136,6 +137,7 @@ public sealed class CredentialService(
             ProviderType = credential.ProviderType,
             ProviderName = credential.ProviderName,
             ProviderKey = credential.ProviderKey,
+            Version = credential.Version,
             CredentialValue = credential.CredentialValue == null || unprotectFailed ? null : unprotectedValue,
             Metadata = credential.Metadata,
             LastUsedAt = credential.LastUsedAt
@@ -145,7 +147,7 @@ public sealed class CredentialService(
     }
 
     /// <inheritdoc />
-    public async Task UpdateCredentialUsageAsync(
+    public async Task<bool> UpdateCredentialUsageAsync(
         UserCredential unprotectedCredential,
         UserCredential? originalCredential,
         AuthenticationResult result,
@@ -158,8 +160,7 @@ public sealed class CredentialService(
 
         if (result.IsCredentialConsumed)
         {
-            await _repository.DeleteCredentialAsync(unprotectedCredential.Id, cancellationToken);
-            return;
+            return await _repository.ConsumeCredentialAsync(unprotectedCredential.Id, GetExpectedVersion(unprotectedCredential, originalCredential), cancellationToken);
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -196,13 +197,24 @@ public sealed class CredentialService(
         {
             try
             {
-                await _repository.UpdateCredentialAsync(unprotectedCredential, cancellationToken);
+                var updateSucceeded = await _repository.UpdateCredentialAsync(unprotectedCredential, GetExpectedVersion(unprotectedCredential, originalCredential), cancellationToken);
+                if (!updateSucceeded)
+                {
+                    // TODO: Log concurrency conflict. Best effort update for rehashing, metadata, and LastUsedAt.
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // TODO: Log exception. Best effort update for rehashing. If it fails, the user is still authenticated.
             }
         }
+
+        return true;
+    }
+
+    private static string GetExpectedVersion(UserCredential unprotectedCredential, UserCredential? originalCredential)
+    {
+        return originalCredential?.Version ?? unprotectedCredential.Version;
     }
 
     /// <inheritdoc />
@@ -258,6 +270,7 @@ public sealed class CredentialService(
             ProviderType = assertion.ProviderType,
             ProviderName = providerName,
             ProviderKey = providerKey,
+            Version = Guid.NewGuid().ToString("N"),
             CredentialValue = credentialValue
         };
 

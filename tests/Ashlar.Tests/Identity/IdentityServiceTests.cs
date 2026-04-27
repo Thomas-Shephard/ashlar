@@ -98,6 +98,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Local,
             ProviderName = ProviderType.Local.Value,
             ProviderKey = userId.ToString(),
+            Version = "v1",
             CredentialValue = Convert.ToBase64String(new byte[] { 0x02, 1, 2, 3 })
         };
 
@@ -130,6 +131,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Local,
             ProviderName = ProviderType.Local.Value,
             ProviderKey = userId.ToString(),
+            Version = "v1",
             CredentialValue = Convert.ToBase64String(new byte[] { 0x02, 1, 2, 3 })
         };
 
@@ -162,7 +164,8 @@ public class IdentityServiceTests
             UserId = userId,
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
-            ProviderKey = providerKey
+            ProviderKey = providerKey,
+            Version = "v1",
         };
 
         var claims = new Dictionary<string, string> { { "name", "Google User" } };
@@ -211,7 +214,8 @@ public class IdentityServiceTests
             UserId = user.Id,
             ProviderType = ProviderType.Oidc,
             ProviderName = providerName,
-            ProviderKey = providerKey
+            ProviderKey = providerKey,
+            Version = "v1",
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
@@ -279,6 +283,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Local,
             ProviderName = ProviderType.Local.Value,
             ProviderKey = user.Id.ToString(),
+            Version = "v1",
             CredentialValue = Convert.ToBase64String(new byte[] { 0x02, 1, 2, 3 })
         };
 
@@ -310,7 +315,8 @@ public class IdentityServiceTests
             UserId = user.Id,
             ProviderType = ProviderType.Oidc,
             ProviderName = providerName,
-            ProviderKey = providerKey
+            ProviderKey = providerKey,
+            Version = "v1",
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
@@ -342,6 +348,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Local,
             ProviderName = ProviderType.Local.Value,
             ProviderKey = user.Id.ToString(),
+            Version = "v1",
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
         };
 
@@ -363,7 +370,7 @@ public class IdentityServiceTests
 
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
             c.Id == credential.Id &&
-            c.CredentialValue == expectedHash), It.IsAny<CancellationToken>()), Times.Once);
+            c.CredentialValue == expectedHash), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -457,7 +464,8 @@ public class IdentityServiceTests
             UserId = userId,
             ProviderType = ProviderType.OAuth,
             ProviderName = "GitHub",
-            ProviderKey = providerKey
+            ProviderKey = providerKey,
+            Version = "v1",
         };
 
         var claims = new Dictionary<string, string> { { "login", "octocat" } };
@@ -489,6 +497,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Local,
             ProviderName = ProviderType.Local.Value,
             ProviderKey = user.Id.ToString(),
+            Version = "v1",
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
         };
 
@@ -496,7 +505,7 @@ public class IdentityServiceTests
             .ReturnsAsync(user);
         _repositoryMock.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Local, ProviderType.Local.Value, user.Id.ToString(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
-        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("DB error"));
 
         _oldHasher.ShouldVerify = true;
@@ -664,7 +673,7 @@ public class IdentityServiceTests
         var response = await service.LoginAsync("test@example.com", assertionMock.Object);
 
         Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessRehashNeeded));
-        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -679,6 +688,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Local,
             ProviderName = ProviderType.Local.Value,
             ProviderKey = user.Id.ToString(),
+            Version = "v1",
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3]),
             LastUsedAt = DateTimeOffset.UtcNow
         };
@@ -706,7 +716,7 @@ public class IdentityServiceTests
         var response = await service.LoginAsync(email, new LocalPasswordAssertion("pass"));
 
         Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessRehashNeeded));
-        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -738,6 +748,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             CredentialValue = "malformed"
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
@@ -894,7 +905,8 @@ public class IdentityServiceTests
             UserId = userId,
             ProviderType = ProviderType.Saml2,
             ProviderName = "Okta",
-            ProviderKey = providerKey
+            ProviderKey = providerKey,
+            Version = "v1",
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Saml2, "Okta", providerKey, new Dictionary<string, string>());
 
@@ -944,6 +956,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = providerKey,
+            Version = "v1",
             CredentialValue = protectedToken
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
@@ -993,6 +1006,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Local,
             ProviderName = ProviderType.Local.Value,
             ProviderKey = userId.ToString(),
+            Version = "v1",
             CredentialValue = hash
         };
 
@@ -1023,6 +1037,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.OAuth,
             ProviderName = "GitHub",
             ProviderKey = providerKey,
+            Version = "v1",
             CredentialValue = oldTokenProtected
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.OAuth, "GitHub", providerKey, new Dictionary<string, string>());
@@ -1050,7 +1065,7 @@ public class IdentityServiceTests
         await service.LoginAsync(email, assertion);
 
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
-            c.CredentialValue == newTokenProtected), It.IsAny<CancellationToken>()), Times.Once);
+            c.CredentialValue == newTokenProtected), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
         _secretProtectorMock.Verify(s => s.Protect(newTokenPlain), Times.Once);
     }
 
@@ -1066,6 +1081,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             CredentialValue = null
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
@@ -1137,6 +1153,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = providerKey,
+            Version = "v1",
             CredentialValue = malformedToken
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
@@ -1186,6 +1203,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = providerKey,
+            Version = "v1",
             CredentialValue = null
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
@@ -1248,6 +1266,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Local,
             ProviderName = ProviderType.Local.Value,
             ProviderKey = user.Id.ToString(),
+            Version = "v1",
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
         };
 
@@ -1255,7 +1274,7 @@ public class IdentityServiceTests
             .ReturnsAsync(user);
         _repositoryMock.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Local, ProviderType.Local.Value, user.Id.ToString(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
-        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Database failure"));
 
         _oldHasher.ShouldVerify = true;
@@ -1263,7 +1282,69 @@ public class IdentityServiceTests
         var response = await _identityService.LoginAsync(email, new LocalPasswordAssertion("pass"));
 
         Assert.That(response.Succeeded, Is.True);
-        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task LoginAsyncWithRehashUpdateConflictShouldStillReturnSuccessRehashNeeded()
+    {
+        var email = "test@example.com";
+        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            ProviderType = ProviderType.Local,
+            ProviderName = ProviderType.Local.Value,
+            ProviderKey = user.Id.ToString(),
+            Version = "v1",
+            CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
+        };
+
+        _repositoryMock.Setup(r => r.GetUserByEmailAsync(email, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Local, ProviderType.Local.Value, user.Id.ToString(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(credential);
+        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), "v1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        _oldHasher.ShouldVerify = true;
+
+        var response = await _identityService.LoginAsync(email, new LocalPasswordAssertion("pass"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.True);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessRehashNeeded));
+        }
+    }
+
+    [Test]
+    public async Task LoginAsyncWithLastUsedAtUpdateConflictShouldStillReturnSuccess()
+    {
+        var email = "test@example.com";
+        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            ProviderType = ProviderType.Local,
+            ProviderName = ProviderType.Local.Value,
+            ProviderKey = user.Id.ToString(),
+            Version = "v1",
+            CredentialValue = Convert.ToBase64String([0x02, 1, 2, 3])
+        };
+
+        _repositoryMock.Setup(r => r.GetUserByEmailAsync(email, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Local, ProviderType.Local.Value, user.Id.ToString(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(credential);
+        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), "v1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var response = await _identityService.LoginAsync(email, new LocalPasswordAssertion("pass"));
+
+        Assert.That(response.Succeeded, Is.True);
     }
 
     [Test]
@@ -1278,6 +1359,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Local,
             ProviderName = ProviderType.Local.Value,
             ProviderKey = user.Id.ToString(),
+            Version = "v1",
             CredentialValue = Convert.ToBase64String([0x02, 1, 2, 3])
         };
 
@@ -1290,7 +1372,7 @@ public class IdentityServiceTests
         await _identityService.LoginAsync(email, new LocalPasswordAssertion("pass"));
 
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
-            c.LastUsedAt >= startTime && c.LastUsedAt <= DateTimeOffset.UtcNow), It.IsAny<CancellationToken>()), Times.Once);
+            c.LastUsedAt >= startTime && c.LastUsedAt <= DateTimeOffset.UtcNow), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -1305,6 +1387,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             CredentialValue = "protected(token)",
             Metadata = "original-metadata"
         };
@@ -1332,11 +1415,11 @@ public class IdentityServiceTests
         await service.LoginAsync(email, assertion);
 
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
-            c.Metadata == "new-metadata" && c.CredentialValue == "protected(token)"), It.IsAny<CancellationToken>()), Times.Once);
+            c.Metadata == "new-metadata" && c.CredentialValue == "protected(token)"), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task LoginAsyncShouldConsumeCredentialIfRequested()
+    public async Task LoginAsyncShouldConsumeCredentialAtomicallyIfRequested()
     {
         var email = "test@example.com";
         var user = new User { Id = Guid.NewGuid(), Email = email };
@@ -1347,6 +1430,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             CredentialValue = "protected(token)"
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
@@ -1365,15 +1449,18 @@ public class IdentityServiceTests
         providerMock.Setup(p => p.GetProviderKey(assertion, user.Id)).Returns("sub");
         providerMock.Setup(p => p.FindUserAsync(assertion, It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
+        _repositoryMock.Setup(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
         var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
-        await service.LoginAsync(email, assertion);
+        var response = await service.LoginAsync(email, assertion);
 
-        _repositoryMock.Verify(r => r.DeleteCredentialAsync(credential.Id, It.IsAny<CancellationToken>()), Times.Once);
-        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.That(response.Succeeded, Is.True);
+        _repositoryMock.Verify(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -1388,6 +1475,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Local,
             ProviderName = ProviderType.Local.Value,
             ProviderKey = user.Id.ToString(),
+            Version = "v1",
             CredentialValue = Convert.ToBase64String([0x02, 1, 2, 3]),
             Metadata = "important-data"
         };
@@ -1400,7 +1488,7 @@ public class IdentityServiceTests
         await _identityService.LoginAsync(email, new LocalPasswordAssertion("pass"));
 
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
-            c.Metadata == "important-data" && c.LastUsedAt != null), It.IsAny<CancellationToken>()), Times.Once);
+            c.Metadata == "important-data" && c.LastUsedAt != null), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -1415,6 +1503,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             CredentialValue = null, // Credential value is null
             Metadata = "old-metadata"
         };
@@ -1442,11 +1531,11 @@ public class IdentityServiceTests
         await service.LoginAsync(email, assertion);
 
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
-            c.Metadata == "new-metadata" && c.CredentialValue == null), It.IsAny<CancellationToken>()), Times.Once);
+            c.Metadata == "new-metadata" && c.CredentialValue == null), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task LoginAsyncShouldReturnFailedWhenDeleteCredentialFails()
+    public async Task LoginAsyncShouldReturnFailedWhenAtomicConsumeReturnsFalse()
     {
         var email = "test@example.com";
         var user = new User { Id = Guid.NewGuid(), Email = email };
@@ -1457,6 +1546,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             CredentialValue = "token"
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
@@ -1476,27 +1566,26 @@ public class IdentityServiceTests
         providerMock.Setup(p => p.FindUserAsync(assertion, It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        // Simulate failure on delete
-        _repositoryMock.Setup(r => r.DeleteCredentialAsync(credential.Id, It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("Concurrent delete"));
+        _repositoryMock.Setup(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
         var service = new IdentityService(_repositoryMock.Object, [providerMock.Object], credentialService);
         // Clear constructor-time Protect() calls so Verify() in this test only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
 
-        var result = await service.LoginAsync(email, assertion);
+        var response = await service.LoginAsync(email, assertion);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.Status, Is.EqualTo(AuthenticationStatus.Failed));
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
         }
-        _repositoryMock.Verify(r => r.DeleteCredentialAsync(credential.Id, It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public Task LoginAsyncShouldThrowIfCredentialDeletionIsCancelled()
+    public Task LoginAsyncShouldThrowIfCredentialConsumptionIsCancelled()
     {
         var email = "test@example.com";
         var user = new User { Id = Guid.NewGuid(), Email = email };
@@ -1507,6 +1596,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             CredentialValue = "token"
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
@@ -1526,7 +1616,7 @@ public class IdentityServiceTests
         providerMock.Setup(p => p.FindUserAsync(assertion, It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        _repositoryMock.Setup(r => r.DeleteCredentialAsync(credential.Id, It.IsAny<CancellationToken>()))
+        _repositoryMock.Setup(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OperationCanceledException());
 
         var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
@@ -1550,6 +1640,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             CredentialValue = "protected(existing)"
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
@@ -1578,7 +1669,7 @@ public class IdentityServiceTests
         await service.LoginAsync(email, assertion);
 
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
-            c.CredentialValue == "protected(existing)" && c.Metadata == "new-meta"), It.IsAny<CancellationToken>()), Times.Once);
+            c.CredentialValue == "protected(existing)" && c.Metadata == "new-meta"), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
 
         _secretProtectorMock.Verify(s => s.Protect(It.IsAny<string>()), Times.Never);
     }
@@ -1595,6 +1686,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             CredentialValue = "protected(old-value)"
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
@@ -1624,7 +1716,7 @@ public class IdentityServiceTests
 
         // Verify that we updated the credential, but with the OLD value (preserved)
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
-            c.CredentialValue == "protected(old-value)"), It.IsAny<CancellationToken>()), Times.Once);
+            c.CredentialValue == "protected(old-value)"), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
 
         // Ensure Protect was not called for this update (excluding dummy init)
         _secretProtectorMock.Verify(s => s.Protect(It.IsAny<string>()), Times.Never);
@@ -1642,6 +1734,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             CredentialValue = "protected(token)",
             Metadata = null // Currently null
         };
@@ -1669,7 +1762,7 @@ public class IdentityServiceTests
 
         // Verify update occurred because "" != null
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
-            c.Metadata == string.Empty), It.IsAny<CancellationToken>()), Times.Once);
+            c.Metadata == string.Empty), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -1684,6 +1777,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
             ProviderKey = "sub",
+            Version = "v1",
             CredentialValue = "protected(token)",
             Metadata = "some-metadata",
             LastUsedAt = DateTimeOffset.UtcNow // Set to now to avoid LastUsedAt update triggering the write
@@ -1711,7 +1805,7 @@ public class IdentityServiceTests
         await service.LoginAsync(email, assertion);
 
         // Verify NO update occurred because NewMetadata is null
-        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -1727,6 +1821,7 @@ public class IdentityServiceTests
             ProviderType = ProviderType.Local,
             ProviderName = ProviderType.Local.Value,
             ProviderKey = user.Id.ToString(),
+            Version = "v1",
             CredentialValue = Convert.ToBase64String([0x02, 1, 2, 3]),
             LastUsedAt = lastUsedAt
         };
@@ -1739,7 +1834,7 @@ public class IdentityServiceTests
         await _identityService.LoginAsync(email, new LocalPasswordAssertion("pass"));
 
         // Verify UpdateCredentialAsync was NEVER called because 30 seconds < 1 minute threshold
-        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.Id == credential.Id), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.Id == credential.Id), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]

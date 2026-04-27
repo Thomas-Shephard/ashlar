@@ -13,6 +13,12 @@ public sealed class UserCredential
     public required string ProviderKey { get; init; }
 
     /// <summary>
+    /// Storage-neutral optimistic concurrency token for conditional credential updates and consumption.
+    /// Repository implementations should change this value whenever the credential row changes.
+    /// </summary>
+    public required string Version { get; init; }
+
+    /// <summary>
     /// For local passwords, this stores the hashed password. For other providers, it might store refresh tokens or other metadata.
     /// Ensure any sensitive metadata stored here is appropriately protected by the repository layer.
     /// </summary>

@@ -71,7 +71,11 @@ public sealed class IdentityService : IIdentityService
 
         try
         {
-            await _credentialService.UpdateCredentialUsageAsync(credential, originalCredential, result, provider, cancellationToken);
+            var credentialUsageUpdated = await _credentialService.UpdateCredentialUsageAsync(credential, originalCredential, result, provider, cancellationToken);
+            if (!credentialUsageUpdated)
+            {
+                return new AuthenticationResponse(false, user);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

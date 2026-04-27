@@ -46,6 +46,7 @@ public class ModelTests
             ProviderType = ProviderType.Local,
             ProviderName = "Local",
             ProviderKey = "key",
+            Version = "v1",
             CredentialValue = "val"
         };
 
@@ -56,6 +57,7 @@ public class ModelTests
             Assert.That(credential.ProviderType, Is.EqualTo(ProviderType.Local));
             Assert.That(credential.ProviderName, Is.EqualTo("Local"));
             Assert.That(credential.ProviderKey, Is.EqualTo("key"));
+            Assert.That(credential.Version, Is.EqualTo("v1"));
             Assert.That(credential.CredentialValue, Is.EqualTo("val"));
         }
     }

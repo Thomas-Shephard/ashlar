@@ -38,6 +38,7 @@ public class LocalPasswordProviderTests
             ProviderType = ProviderType.Local,
             ProviderName = "Local",
             ProviderKey = "user@example.com",
+            Version = "v1",
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
         };
         _fakeHasher.ShouldVerify = true;
@@ -58,6 +59,7 @@ public class LocalPasswordProviderTests
             ProviderType = ProviderType.Local,
             ProviderName = "Local",
             ProviderKey = "user@example.com",
+            Version = "v1",
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
         };
         _fakeHasher.ShouldVerify = false;
@@ -89,6 +91,7 @@ public class LocalPasswordProviderTests
             ProviderType = ProviderType.Local,
             ProviderName = "Local",
             ProviderKey = "user@example.com",
+            Version = "v1",
             CredentialValue = "not-base64-!"
         };
         _fakeHasher.ShouldVerify = false;
@@ -109,6 +112,7 @@ public class LocalPasswordProviderTests
             ProviderType = ProviderType.Local,
             ProviderName = "Local",
             ProviderKey = "user@example.com",
+            Version = "v1",
             CredentialValue = null
         };
         _fakeHasher.ShouldVerify = false;
@@ -129,6 +133,7 @@ public class LocalPasswordProviderTests
             ProviderType = ProviderType.Local,
             ProviderName = "Local",
             ProviderKey = "user@example.com",
+            Version = "v1",
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
         };
 

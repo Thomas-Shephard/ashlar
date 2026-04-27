@@ -27,7 +27,8 @@ public class ExternalAuthenticationProviderTests
             UserId = Guid.NewGuid(),
             ProviderType = ProviderType.Oidc,
             ProviderName = "Google",
-            ProviderKey = providerKey
+            ProviderKey = providerKey,
+            Version = "v1",
         };
 
         var result = await _provider.AuthenticateAsync(assertion, credential);
@@ -77,7 +78,8 @@ public class ExternalAuthenticationProviderTests
             UserId = Guid.NewGuid(),
             ProviderType = ProviderType.Oidc,
             ProviderName = "NotGoogle",
-            ProviderKey = providerKey
+            ProviderKey = providerKey,
+            Version = "v1",
         };
 
         var result = await _provider.AuthenticateAsync(assertion, credential);
