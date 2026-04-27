@@ -44,7 +44,7 @@ public class LocalPasswordProviderTests
 
         var result = await _provider.AuthenticateAsync(assertion, credential);
 
-        Assert.That(result.Result, Is.EqualTo(PasswordVerificationResult.Success));
+        Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.Succeeded));
     }
 
     [Test]
@@ -64,7 +64,7 @@ public class LocalPasswordProviderTests
 
         var result = await _provider.AuthenticateAsync(assertion, credential);
 
-        Assert.That(result.Result, Is.EqualTo(PasswordVerificationResult.Failed));
+        Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
     }
 
     [Test]
@@ -75,7 +75,7 @@ public class LocalPasswordProviderTests
 
         var result = await _provider.AuthenticateAsync(assertion, null);
 
-        Assert.That(result.Result, Is.EqualTo(PasswordVerificationResult.Failed));
+        Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
     }
 
     [Test]
@@ -95,7 +95,7 @@ public class LocalPasswordProviderTests
 
         var result = await _provider.AuthenticateAsync(assertion, credential);
 
-        Assert.That(result.Result, Is.EqualTo(PasswordVerificationResult.Failed));
+        Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
     }
 
     [Test]
@@ -115,7 +115,7 @@ public class LocalPasswordProviderTests
 
         var result = await _provider.AuthenticateAsync(assertion, credential);
 
-        Assert.That(result.Result, Is.EqualTo(PasswordVerificationResult.Failed));
+        Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
     }
 
     [Test]
@@ -141,8 +141,7 @@ public class LocalPasswordProviderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Result, Is.EqualTo(PasswordVerificationResult.SuccessRehashNeeded));
-            Assert.That(result.ShouldUpdateCredential, Is.True);
+            Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.SucceededWithCredentialUpdate));
             Assert.That(result.NewCredentialValue, Is.Not.Null);
         }
     }

@@ -178,7 +178,7 @@ public sealed class CredentialService(
             needsUpdate = true;
         }
 
-        if (result is { ShouldUpdateCredential: true, NewCredentialValue: not null })
+        if (result is { Status: AuthenticationResultStatus.SucceededWithCredentialUpdate, NewCredentialValue: not null })
         {
             unprotectedCredential.CredentialValue = provider.ProtectsCredentials
                 ? _secretProtector.Protect(result.NewCredentialValue)

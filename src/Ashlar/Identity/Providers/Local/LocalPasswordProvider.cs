@@ -71,6 +71,13 @@ public sealed class LocalPasswordProvider(PasswordHasherSelector hasherSelector)
             newCredentialValue = Convert.ToBase64String(_hasherSelector.DefaultHasher.HashPassword(passwordAssertion.Password));
         }
 
-        return Task.FromResult(new AuthenticationResult(result, ShouldUpdateCredential: result == PasswordVerificationResult.SuccessRehashNeeded, NewCredentialValue: newCredentialValue));
+        var status = result switch
+        {
+            PasswordVerificationResult.Success => AuthenticationResultStatus.Succeeded,
+            PasswordVerificationResult.SuccessRehashNeeded => AuthenticationResultStatus.SucceededWithCredentialUpdate,
+            _ => AuthenticationResultStatus.Failed
+        };
+
+        return Task.FromResult(new AuthenticationResult(status, NewCredentialValue: newCredentialValue));
     }
 }

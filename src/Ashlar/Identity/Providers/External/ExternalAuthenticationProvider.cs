@@ -1,6 +1,5 @@
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
-using Ashlar.Security.Hashing;
 
 namespace Ashlar.Identity.Providers.External;
 
@@ -96,10 +95,10 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType)
         // Here we just confirm that the credential matches.
         if (credential == null || credential.ProviderName != externalAssertion.ProviderName)
         {
-            return Task.FromResult(new AuthenticationResult(PasswordVerificationResult.Failed));
+            return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
         }
 
-        return Task.FromResult(new AuthenticationResult(PasswordVerificationResult.Success, Claims: externalAssertion.Claims));
+        return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Succeeded, Claims: externalAssertion.Claims));
     }
 }
 

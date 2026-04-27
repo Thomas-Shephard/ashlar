@@ -642,7 +642,7 @@ public class IdentityServiceTests
         var providerMock = new Mock<IAuthenticationProvider>();
         providerMock.Setup(p => p.SupportedType).Returns((ProviderType)"MOCK");
         providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.SuccessRehashNeeded, ShouldUpdateCredential: true, NewCredentialValue: "new-hash"));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.SucceededWithCredentialUpdate, NewCredentialValue: "new-hash"));
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), It.IsAny<Guid>()))
             .Returns("key");
         providerMock.Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
@@ -693,7 +693,7 @@ public class IdentityServiceTests
         var providerMock = new Mock<IAuthenticationProvider>();
         providerMock.Setup(p => p.SupportedType).Returns(ProviderType.Local);
         providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.SuccessRehashNeeded, ShouldUpdateCredential: true, NewCredentialValue: null));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.SucceededWithCredentialUpdate, NewCredentialValue: null));
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), It.IsAny<Guid>())).Returns(user.Id.ToString());
         providerMock.Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -818,7 +818,7 @@ public class IdentityServiceTests
         var providerMock = new Mock<IAuthenticationProvider>();
         providerMock.Setup(p => p.SupportedType).Returns((ProviderType)"MOCK");
         providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.SuccessRehashNeeded));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.SucceededWithCredentialUpdate));
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), It.IsAny<Guid>()))
             .Returns("key");
 
@@ -862,7 +862,7 @@ public class IdentityServiceTests
         var providerMock = new Mock<IAuthenticationProvider>();
         providerMock.Setup(p => p.SupportedType).Returns((ProviderType)"MOCK");
         providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded));
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), It.IsAny<Guid>()))
             .Returns("key");
 
@@ -962,7 +962,7 @@ public class IdentityServiceTests
         string? capturedCredentialValue = null;
         providerMock.Setup(p => p.AuthenticateAsync(assertion, It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
             .Callback<IAuthenticationAssertion, UserCredential, CancellationToken>((_, c, _) => capturedCredentialValue = c.CredentialValue)
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded));
 
         providerMock.Setup(p => p.GetProviderKey(assertion, user.Id)).Returns(providerKey);
         providerMock.Setup(p => p.FindUserAsync(assertion, It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
@@ -1038,7 +1038,7 @@ public class IdentityServiceTests
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("GitHub");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
         providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success, ShouldUpdateCredential: true, NewCredentialValue: newTokenPlain));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.SucceededWithCredentialUpdate, NewCredentialValue: newTokenPlain));
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), It.IsAny<Guid>())).Returns(providerKey);
         providerMock.Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1155,7 +1155,7 @@ public class IdentityServiceTests
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded));
         providerMock.Setup(p => p.GetProviderKey(assertion, user.Id)).Returns(providerKey);
         providerMock.Setup(p => p.FindUserAsync(assertion, It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1200,7 +1200,7 @@ public class IdentityServiceTests
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded));
         providerMock.Setup(p => p.GetProviderKey(assertion, user.Id)).Returns(providerKey);
         providerMock.Setup(p => p.FindUserAsync(assertion, It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1320,7 +1320,7 @@ public class IdentityServiceTests
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success, NewMetadata: "new-metadata"));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded, NewMetadata: "new-metadata"));
         providerMock.Setup(p => p.GetProviderKey(assertion, user.Id)).Returns("sub");
         providerMock.Setup(p => p.FindUserAsync(assertion, It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1361,7 +1361,7 @@ public class IdentityServiceTests
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success, IsCredentialConsumed: true));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true));
         providerMock.Setup(p => p.GetProviderKey(assertion, user.Id)).Returns("sub");
         providerMock.Setup(p => p.FindUserAsync(assertion, It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1430,7 +1430,7 @@ public class IdentityServiceTests
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success, NewMetadata: "new-metadata"));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded, NewMetadata: "new-metadata"));
         providerMock.Setup(p => p.GetProviderKey(assertion, user.Id)).Returns("sub");
         providerMock.Setup(p => p.FindUserAsync(assertion, It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1471,7 +1471,7 @@ public class IdentityServiceTests
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success, IsCredentialConsumed: true));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true));
         providerMock.Setup(p => p.GetProviderKey(assertion, user.Id)).Returns("sub");
         providerMock.Setup(p => p.FindUserAsync(assertion, It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1521,7 +1521,7 @@ public class IdentityServiceTests
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success, IsCredentialConsumed: true));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true));
         providerMock.Setup(p => p.GetProviderKey(assertion, user.Id)).Returns("sub");
         providerMock.Setup(p => p.FindUserAsync(assertion, It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1566,7 +1566,7 @@ public class IdentityServiceTests
 
         // Metadata updated, but no new credential value
         providerMock.Setup(p => p.AuthenticateAsync(assertion, It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success, NewMetadata: "new-meta"));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded, NewMetadata: "new-meta"));
         providerMock.Setup(p => p.GetProviderKey(assertion, user.Id)).Returns("sub");
         providerMock.Setup(p => p.FindUserAsync(assertion, It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1609,9 +1609,9 @@ public class IdentityServiceTests
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
 
-        // Return ShouldUpdateCredential = true, but NewCredentialValue = null
+        // Return a credential update status, but NewCredentialValue = null
         providerMock.Setup(p => p.AuthenticateAsync(assertion, It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success, ShouldUpdateCredential: true, NewCredentialValue: null));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.SucceededWithCredentialUpdate, NewCredentialValue: null));
         providerMock.Setup(p => p.GetProviderKey(assertion, user.Id)).Returns("sub");
         providerMock.Setup(p => p.FindUserAsync(assertion, It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1657,7 +1657,7 @@ public class IdentityServiceTests
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success, NewMetadata: string.Empty)); // Explicitly empty
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded, NewMetadata: string.Empty)); // Explicitly empty
         providerMock.Setup(p => p.GetProviderKey(assertion, user.Id)).Returns("sub");
         providerMock.Setup(p => p.FindUserAsync(assertion, It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1700,7 +1700,7 @@ public class IdentityServiceTests
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success, NewMetadata: null)); // No change
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded, NewMetadata: null)); // No change
         providerMock.Setup(p => p.GetProviderKey(assertion, user.Id)).Returns("sub");
         providerMock.Setup(p => p.FindUserAsync(assertion, It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<IIdentityRepository>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -1755,7 +1755,7 @@ public class IdentityServiceTests
         providerMock.Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), email, It.IsAny<Guid?>(), _repositoryMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
         providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResult(PasswordVerificationResult.Success));
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded));
 
         var assertionMock = new Mock<IAuthenticationAssertion>();
         assertionMock.Setup(a => a.ProviderType).Returns((ProviderType)"MOCK");
