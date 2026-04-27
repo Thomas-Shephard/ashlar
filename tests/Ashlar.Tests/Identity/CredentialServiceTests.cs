@@ -3,7 +3,6 @@ using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Security.Encryption;
-using Ashlar.Security.Hashing;
 using Moq;
 
 namespace Ashlar.Tests.Identity;
@@ -119,7 +118,7 @@ public class CredentialServiceTests
             Metadata = "old",
             LastUsedAt = DateTimeOffset.UtcNow
         };
-        var result = new AuthenticationResult(PasswordVerificationResult.Success, NewMetadata: "new");
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, NewMetadata: "new");
         var providerMock = new Mock<IAuthenticationProvider>();
 
         await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
@@ -139,7 +138,7 @@ public class CredentialServiceTests
             ProviderKey = "sub",
             LastUsedAt = DateTimeOffset.UtcNow.AddDays(-1)
         };
-        var result = new AuthenticationResult(PasswordVerificationResult.Success);
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
         var providerMock = new Mock<IAuthenticationProvider>();
 
         _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
@@ -386,7 +385,7 @@ public class CredentialServiceTests
     public void UpdateCredentialUsageAsyncWithNullUnprotectedCredentialShouldThrow()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _service.UpdateCredentialUsageAsync(null!, null, new AuthenticationResult(PasswordVerificationResult.Success), new Mock<IAuthenticationProvider>().Object));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.UpdateCredentialUsageAsync(null!, null, new AuthenticationResult(AuthenticationResultStatus.Succeeded), new Mock<IAuthenticationProvider>().Object));
     }
 
     [Test]
@@ -400,7 +399,7 @@ public class CredentialServiceTests
     public void UpdateCredentialUsageAsyncWithNullProviderShouldThrow()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _service.UpdateCredentialUsageAsync(new UserCredential { Id = Guid.NewGuid(), UserId = Guid.NewGuid(), ProviderType = ProviderType.Local, ProviderName = "L", ProviderKey = "K" }, null, new AuthenticationResult(PasswordVerificationResult.Success), null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.UpdateCredentialUsageAsync(new UserCredential { Id = Guid.NewGuid(), UserId = Guid.NewGuid(), ProviderType = ProviderType.Local, ProviderName = "L", ProviderKey = "K" }, null, new AuthenticationResult(AuthenticationResultStatus.Succeeded), null!));
     }
 
     [Test]

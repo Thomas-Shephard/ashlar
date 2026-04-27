@@ -1,5 +1,4 @@
 using Ashlar.Identity.Models;
-using Ashlar.Security.Hashing;
 
 namespace Ashlar.Identity.Abstractions;
 
@@ -17,7 +16,7 @@ public interface IAuthenticationProvider
     bool ProtectsCredentials => true;
 
     /// <summary>
-    /// Gets the typical length of a credential value for this provider. 
+    /// Gets the typical length of a credential value for this provider.
     /// Used to generate timing-safe dummy values for protection.
     /// </summary>
     int TypicalCredentialLength => 256;
@@ -73,16 +72,24 @@ public interface IAuthenticationProvider
 /// <summary>
 /// Represents the result of an authentication attempt.
 /// </summary>
-/// <param name="Result">The result of the password verification.</param>
+/// <param name="Status">The authentication status.</param>
 /// <param name="Claims">Optional claims returned by the provider.</param>
-/// <param name="ShouldUpdateCredential">Indicates whether the credential should be updated (e.g. password rehash).</param>
 /// <param name="NewCredentialValue">The new credential value if an update is required.</param>
 /// <param name="NewMetadata">The new metadata to store with the credential.</param>
 /// <param name="IsCredentialConsumed">Indicates whether the credential was consumed (e.g. one-time token) and should be deleted.</param>
 public sealed record AuthenticationResult(
-    PasswordVerificationResult Result,
+    AuthenticationResultStatus Status,
     IDictionary<string, string>? Claims = null,
-    bool ShouldUpdateCredential = false,
     string? NewCredentialValue = null,
     string? NewMetadata = null,
     bool IsCredentialConsumed = false);
+
+/// <summary>
+/// Represents the outcome of an authentication attempt.
+/// </summary>
+public enum AuthenticationResultStatus
+{
+    Failed,
+    Succeeded,
+    SucceededWithCredentialUpdate
+}

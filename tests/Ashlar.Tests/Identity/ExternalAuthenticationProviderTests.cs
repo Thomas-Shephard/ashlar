@@ -2,7 +2,6 @@ using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.Providers.Local;
-using Ashlar.Security.Hashing;
 using Moq;
 
 namespace Ashlar.Tests.Identity;
@@ -33,7 +32,7 @@ public class ExternalAuthenticationProviderTests
 
         var result = await _provider.AuthenticateAsync(assertion, credential);
 
-        Assert.That(result.Result, Is.EqualTo(PasswordVerificationResult.Success));
+        Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.Succeeded));
     }
 
     [Test]
@@ -43,7 +42,7 @@ public class ExternalAuthenticationProviderTests
 
         var result = await _provider.AuthenticateAsync(assertion, null);
 
-        Assert.That(result.Result, Is.EqualTo(PasswordVerificationResult.Failed));
+        Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
     }
 
     [Test]
@@ -83,7 +82,7 @@ public class ExternalAuthenticationProviderTests
 
         var result = await _provider.AuthenticateAsync(assertion, credential);
 
-        Assert.That(result.Result, Is.EqualTo(PasswordVerificationResult.Failed));
+        Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
     }
 
     [Test]

@@ -1,6 +1,5 @@
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
-using Ashlar.Security.Hashing;
 
 namespace Ashlar.Identity;
 
@@ -53,7 +52,7 @@ public sealed class IdentityService : IIdentityService
         var (user, credential, originalCredential, unprotectFailed) = await _credentialService.ResolveAsync(email, assertion, provider, tenantId, cancellationToken);
 
         var result = await provider.AuthenticateAsync(assertion, credential, cancellationToken);
-        if (unprotectFailed || result.Result is not (PasswordVerificationResult.Success or PasswordVerificationResult.SuccessRehashNeeded) || user == null)
+        if (unprotectFailed || result.Status is not (AuthenticationResultStatus.Succeeded or AuthenticationResultStatus.SucceededWithCredentialUpdate) || user == null)
         {
             return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
         }
@@ -63,7 +62,7 @@ public sealed class IdentityService : IIdentityService
             return new AuthenticationResponse(false, user, AuthenticationStatus.Disabled);
         }
 
-        var status = result.Result == PasswordVerificationResult.SuccessRehashNeeded ? AuthenticationStatus.SuccessRehashNeeded : AuthenticationStatus.Success;
+        var status = result.Status == AuthenticationResultStatus.SucceededWithCredentialUpdate ? AuthenticationStatus.SuccessRehashNeeded : AuthenticationStatus.Success;
 
         if (credential == null)
         {
