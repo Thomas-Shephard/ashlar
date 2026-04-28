@@ -21,12 +21,30 @@ public interface IIdentityRepository
     Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default);
     Task UpdateUserAsync(IUser user, CancellationToken cancellationToken = default);
     Task CreateCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default);
-    Task UpdateCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Permanently deletes a credential identified by its unique identifier.
+    /// Updates a credential only if it still matches the version read by the caller.
     /// </summary>
-    /// <param name="credentialId">The unique identifier of the credential to delete.</param>
-    /// <param name="cancellationToken">A token that can be used to cancel the delete operation.</param>
-    Task DeleteCredentialAsync(Guid credentialId, CancellationToken cancellationToken = default);
+    /// <param name="expectedVersion">
+    /// The version value read with the credential. Implementations MUST compare this value atomically with
+    /// the stored credential version and MUST NOT bypass the version check.
+    /// </param>
+    /// <returns>
+    /// <c>true</c> when the credential was updated by this call; <c>false</c> when it was missing,
+    /// already changed, consumed, or otherwise did not match <paramref name="expectedVersion"/>.
+    /// </returns>
+    Task<bool> UpdateCredentialAsync(UserCredential credential, string expectedVersion, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Atomically consumes a credential only if it still matches the version read by the caller.
+    /// </summary>
+    /// <param name="expectedVersion">
+    /// The version value read with the credential. Implementations MUST compare this value atomically with
+    /// the stored credential version and MUST NOT treat it as optional.
+    /// </param>
+    /// <returns>
+    /// <c>true</c> when the credential was consumed by this call; <c>false</c> when it was missing,
+    /// already consumed, changed, or otherwise did not match <paramref name="expectedVersion"/>.
+    /// </returns>
+    Task<bool> ConsumeCredentialAsync(Guid credentialId, string expectedVersion, CancellationToken cancellationToken = default);
 }
