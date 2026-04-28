@@ -23,16 +23,17 @@ public sealed class LocalPasswordProvider(PasswordHasherSelector hasherSelector)
         return Convert.ToBase64String(_hasherSelector.DefaultHasher.HashPassword(rawValue));
     }
 
-    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, string? email, Guid? tenantId, IIdentityRepository repository, CancellationToken cancellationToken = default)
+    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(repository);
 
-        if (assertion is not LocalPasswordAssertion || string.IsNullOrWhiteSpace(email))
+        if (assertion is not LocalPasswordAssertion || string.IsNullOrWhiteSpace(context.Email))
         {
             return null;
         }
 
-        return await repository.GetUserByEmailAsync(email, tenantId, cancellationToken);
+        return await repository.GetUserByEmailAsync(context.Email, context.TenantId, cancellationToken);
     }
 
     public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default)

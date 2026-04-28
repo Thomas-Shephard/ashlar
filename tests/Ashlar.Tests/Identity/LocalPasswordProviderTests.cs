@@ -218,7 +218,7 @@ public class LocalPasswordProviderTests
     {
         var assertion = new LocalPasswordAssertion("pass");
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _provider.FindUserAsync(assertion, "test@example.com", null, null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _provider.FindUserAsync(assertion, new AuthenticationContext("test@example.com"), null!));
         return Task.CompletedTask;
     }
 
@@ -226,7 +226,7 @@ public class LocalPasswordProviderTests
     public async Task FindUserAsyncWithWrongAssertionTypeShouldReturnNull()
     {
         var assertion = new Mock<IAuthenticationAssertion>().Object;
-        var result = await _provider.FindUserAsync(assertion, "test@example.com", null, new Mock<IIdentityRepository>().Object);
+        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext("test@example.com"), new Mock<IIdentityRepository>().Object);
         Assert.That(result, Is.Null);
     }
 
@@ -234,7 +234,7 @@ public class LocalPasswordProviderTests
     public async Task FindUserAsyncWithEmptyEmailShouldReturnNull()
     {
         var assertion = new LocalPasswordAssertion("pass");
-        var result = await _provider.FindUserAsync(assertion, "", null, new Mock<IIdentityRepository>().Object);
+        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(""), new Mock<IIdentityRepository>().Object);
         Assert.That(result, Is.Null);
     }
 
@@ -249,7 +249,7 @@ public class LocalPasswordProviderTests
         repoMock.Setup(r => r.GetUserByEmailAsync(email, tenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _provider.FindUserAsync(assertion, email, tenantId, repoMock.Object);
+        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(email, tenantId), repoMock.Object);
 
         Assert.That(result, Is.EqualTo(user));
     }

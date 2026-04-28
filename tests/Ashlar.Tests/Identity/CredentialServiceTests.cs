@@ -50,10 +50,10 @@ public class CredentialServiceTests
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), It.IsAny<Guid>())).Returns("sub");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
-        providerMock.Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), email, It.IsAny<Guid?>(), _repositoryMock.Object, It.IsAny<CancellationToken>()))
+        providerMock.Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.Is<AuthenticationContext>(c => c.Email == email), _repositoryMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var (resolvedUser, resolvedCredential, originalCredential, unprotectFailed) = await _service.ResolveAsync(email, new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>()), providerMock.Object);
+        var (resolvedUser, resolvedCredential, originalCredential, unprotectFailed) = await _service.ResolveAsync(new AuthenticationContext(email), new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>()), providerMock.Object);
 
         using (Assert.EnterMultipleScope())
         {
@@ -73,10 +73,10 @@ public class CredentialServiceTests
         providerMock.Setup(p => p.GetProviderName(It.IsAny<IAuthenticationAssertion>())).Returns("Google");
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), It.IsAny<Guid>())).Returns("sub");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
-        providerMock.Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), email, It.IsAny<Guid?>(), _repositoryMock.Object, It.IsAny<CancellationToken>()))
+        providerMock.Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.Is<AuthenticationContext>(c => c.Email == email), _repositoryMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
 
-        await _service.ResolveAsync(email, new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>()), providerMock.Object);
+        await _service.ResolveAsync(new AuthenticationContext(email), new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>()), providerMock.Object);
 
         _secretProtectorMock.Verify(s => s.Unprotect(It.IsAny<string>()), Times.Once);
     }
@@ -459,14 +459,14 @@ public class CredentialServiceTests
     public void ResolveAsyncWithEmailAndNullAssertionShouldThrow()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _service.ResolveAsync("e", null!, new Mock<IAuthenticationProvider>().Object));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.ResolveAsync(new AuthenticationContext("e"), null!, new Mock<IAuthenticationProvider>().Object));
     }
 
     [Test]
     public void ResolveAsyncWithEmailAndNullProviderShouldThrow()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _service.ResolveAsync("e", new Mock<IAuthenticationAssertion>().Object, null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.ResolveAsync(new AuthenticationContext("e"), new Mock<IAuthenticationAssertion>().Object, null!));
     }
 
     [Test]

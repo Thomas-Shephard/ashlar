@@ -130,7 +130,7 @@ public class ExternalAuthenticationProviderTests
     {
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "key", new Dictionary<string, string>());
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _provider.FindUserAsync(assertion, null, null, null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _provider.FindUserAsync(assertion, new AuthenticationContext(), null!));
         return Task.CompletedTask;
     }
 
@@ -138,7 +138,7 @@ public class ExternalAuthenticationProviderTests
     public async Task FindUserAsyncWithNonExternalAssertionShouldReturnNull()
     {
         var assertion = new Mock<IAuthenticationAssertion>().Object;
-        var result = await _provider.FindUserAsync(assertion, null, null, new Mock<IIdentityRepository>().Object);
+        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(), new Mock<IIdentityRepository>().Object);
         Assert.That(result, Is.Null);
     }
 
@@ -165,7 +165,7 @@ public class ExternalAuthenticationProviderTests
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _provider.FindUserAsync(assertion, null, tenantId, repoMock.Object);
+        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(TenantId: tenantId), repoMock.Object);
 
         Assert.That(result, Is.Null);
     }
@@ -184,7 +184,7 @@ public class ExternalAuthenticationProviderTests
             .ReturnsAsync(user);
 
         // Requested tenantId is null, but user has a TenantId
-        var result = await _provider.FindUserAsync(assertion, null, null, repoMock.Object);
+        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(), repoMock.Object);
 
         Assert.That(result, Is.Null);
     }
@@ -205,7 +205,7 @@ public class ExternalAuthenticationProviderTests
             .ReturnsAsync(user);
 
         // Requested tenantId is provided, but user is global
-        var result = await _provider.FindUserAsync(assertion, null, tenantId, repoMock.Object);
+        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(TenantId: tenantId), repoMock.Object);
 
         Assert.That(result, Is.Null);
     }
@@ -223,7 +223,7 @@ public class ExternalAuthenticationProviderTests
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _provider.FindUserAsync(assertion, null, null, repoMock.Object);
+        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(), repoMock.Object);
 
         Assert.That(result, Is.EqualTo(user));
     }
