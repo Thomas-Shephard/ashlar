@@ -2,13 +2,12 @@ namespace Ashlar.Identity.Models;
 
 public readonly record struct ProviderType
 {
-    private readonly string _value;
-    public string Value => _value ?? string.Empty;
+    public string Value => field ?? throw new InvalidOperationException("ProviderType must be initialized with a non-empty value.");
 
     private ProviderType(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
-        _value = value.ToUpperInvariant();
+        Value = value.ToUpperInvariant();
     }
 
     public static readonly ProviderType Local = new(nameof(Local));
@@ -16,7 +15,7 @@ public readonly record struct ProviderType
     public static readonly ProviderType Oidc = new(nameof(Oidc));
     public static readonly ProviderType Saml2 = new(nameof(Saml2));
 
-    public override string ToString() => _value ?? string.Empty;
+    public override string ToString() => Value;
 
     public static implicit operator string(ProviderType type) => type.Value;
     public static implicit operator ProviderType(string value) => new(value);
