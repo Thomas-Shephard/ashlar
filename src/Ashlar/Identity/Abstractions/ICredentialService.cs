@@ -8,12 +8,11 @@ namespace Ashlar.Identity.Abstractions;
 public interface ICredentialService
 {
     /// <summary>
-    /// Resolves the user and their associated credential based on the provided email and assertion.
+    /// Resolves the user and their associated credential based on the provided authentication context and assertion.
     /// </summary>
-    /// <param name="email">The user's email address.</param>
+    /// <param name="context">The authentication context.</param>
     /// <param name="assertion">The authentication assertion.</param>
     /// <param name="provider">The authentication provider.</param>
-    /// <param name="tenantId">The optional tenant ID.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>
     /// A tuple containing:
@@ -24,7 +23,7 @@ public interface ICredentialService
     /// <item><description><c>UnprotectFailed</c>: A value indicating whether the credential failed to unprotect.</description></item>
     /// </list>
     /// </returns>
-    Task<(IUser? User, UserCredential? Credential, UserCredential? OriginalCredential, bool UnprotectFailed)> ResolveAsync(string email, IAuthenticationAssertion assertion, IAuthenticationProvider provider, Guid? tenantId = null, CancellationToken cancellationToken = default);
+    Task<(IUser? User, UserCredential? Credential, UserCredential? OriginalCredential, bool UnprotectFailed)> ResolveAsync(AuthenticationContext context, IAuthenticationAssertion assertion, IAuthenticationProvider provider, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Resolves the user and their associated credential based on the provided user ID and assertion.

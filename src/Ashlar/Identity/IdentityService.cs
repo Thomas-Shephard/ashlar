@@ -39,17 +39,17 @@ public sealed class IdentityService : IIdentityService
         return await _repository.GetUserByProviderKeyAsync(type, providerName, providerKey, cancellationToken);
     }
 
-    public async Task<AuthenticationResponse> LoginAsync(string email, IAuthenticationAssertion assertion, Guid? tenantId = null, CancellationToken cancellationToken = default)
+    public async Task<AuthenticationResponse> LoginAsync(AuthenticationContext context, IAuthenticationAssertion assertion, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(assertion);
-        ArgumentException.ThrowIfNullOrWhiteSpace(email);
 
         if (!_providers.TryGetValue(assertion.ProviderType, out var provider))
         {
             return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
         }
 
-        var (user, credential, originalCredential, unprotectFailed) = await _credentialService.ResolveAsync(email, assertion, provider, tenantId, cancellationToken);
+        var (user, credential, originalCredential, unprotectFailed) = await _credentialService.ResolveAsync(context, assertion, provider, cancellationToken);
 
         var result = await provider.AuthenticateAsync(assertion, credential, cancellationToken);
         if (unprotectFailed || result.Status is not (AuthenticationResultStatus.Succeeded or AuthenticationResultStatus.SucceededWithCredentialUpdate) || user == null)

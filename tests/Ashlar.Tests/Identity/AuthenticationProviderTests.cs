@@ -11,7 +11,7 @@ public class AuthenticationProviderTests
         public ProviderType SupportedType => ProviderType.Oidc;
         public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId) => userId.ToString();
         public string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue) => rawValue;
-        public Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, string? email, Guid? tenantId, IIdentityRepository repository, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(null);
+        public Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(null);
         public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default) => Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Succeeded));
     }
 

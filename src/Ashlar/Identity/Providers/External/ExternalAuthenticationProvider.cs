@@ -40,8 +40,9 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType)
         return rawValue;
     }
 
-    public virtual async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, string? email, Guid? tenantId, IIdentityRepository repository, CancellationToken cancellationToken = default)
+    public virtual async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(repository);
 
         if (assertion is not ExternalIdentityAssertion externalAssertion)
@@ -57,7 +58,7 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType)
                 return null;
             case ITenantUser tenantUser:
             {
-                if (tenantUser.TenantId != tenantId)
+                if (tenantUser.TenantId != context.TenantId)
                 {
                     return null;
                 }
@@ -66,7 +67,7 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType)
             }
             default:
             {
-                if (tenantId.HasValue)
+                if (context.TenantId.HasValue)
                 {
                     // User is a global user (not ITenantUser), but a specific tenant was requested.
                     return null;

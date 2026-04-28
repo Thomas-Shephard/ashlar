@@ -25,17 +25,17 @@ public sealed class CredentialService(
 
     /// <inheritdoc />
     public async Task<(IUser? User, UserCredential? Credential, UserCredential? OriginalCredential, bool UnprotectFailed)> ResolveAsync(
-        string email,
+        AuthenticationContext context,
         IAuthenticationAssertion assertion,
         IAuthenticationProvider provider,
-        Guid? tenantId = null,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(assertion);
         ArgumentNullException.ThrowIfNull(provider);
 
         var providerName = provider.GetProviderName(assertion);
-        var user = await provider.FindUserAsync(assertion, email, tenantId, _repository, cancellationToken);
+        var user = await provider.FindUserAsync(assertion, context, _repository, cancellationToken);
 
         var userId = user?.Id ?? Guid.NewGuid();
         var providerKey = provider.GetProviderKey(assertion, userId);

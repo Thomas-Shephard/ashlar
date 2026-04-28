@@ -52,12 +52,11 @@ public interface IAuthenticationProvider
     /// Attempts to resolve the user associated with the given assertion.
     /// </summary>
     /// <param name="assertion">The authentication assertion.</param>
-    /// <param name="email">The email provided during login. This may be <c>null</c> or ignored if the provider resolves the user solely from the assertion (e.g., external identity providers).</param>
-    /// <param name="tenantId">The optional tenant ID.</param>
+    /// <param name="context">The authentication context. Providers may use only the fields they need.</param>
     /// <param name="repository">The identity repository.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The user if found, otherwise <c>null</c>.</returns>
-    Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, string? email, Guid? tenantId, IIdentityRepository repository, CancellationToken cancellationToken = default);
+    Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Performs the authentication against the provided credential.
