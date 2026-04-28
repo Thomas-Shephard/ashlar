@@ -5,13 +5,13 @@ namespace Ashlar.Tests.Identity;
 public class ProviderTypeTests
 {
     [Test]
-    public void DefaultProviderTypeShouldReturnEmptyString()
+    public void DefaultProviderTypeShouldThrowWhenRead()
     {
         var type = default(ProviderType);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(type.Value, Is.EqualTo(string.Empty));
-            Assert.That(type.ToString(), Is.EqualTo(string.Empty));
+            Assert.Throws<InvalidOperationException>(() => _ = type.Value);
+            Assert.Throws<InvalidOperationException>(() => _ = type.ToString());
         }
     }
 
