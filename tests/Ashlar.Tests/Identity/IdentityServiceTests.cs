@@ -61,7 +61,7 @@ public class IdentityServiceTests
     {
         var credService = new Mock<ICredentialService>();
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(_repositoryMock.Object, null!, credService.Object));
+        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(_repositoryMock.Object, (IEnumerable<IAuthenticationProvider>)null!, credService.Object));
     }
 
     [Test]
@@ -82,6 +82,101 @@ public class IdentityServiceTests
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(_repositoryMock.Object, [], null!));
+    }
+
+    [Test]
+    public void ConstructorWithCollaboratorsShouldThrowOnNullCredentialService()
+    {
+        var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
+        var authenticationPipeline = new Mock<IAuthenticationPipeline>();
+
+        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(
+            _repositoryMock.Object,
+            providerRegistry.Object,
+            // ReSharper disable once NullableWarningSuppressionIsUsed
+            null!,
+            authenticationPipeline.Object));
+    }
+
+    [Test]
+    public void ConstructorWithCollaboratorsShouldThrowOnNullProviderRegistry()
+    {
+        var credentialService = new Mock<ICredentialService>();
+        var authenticationPipeline = new Mock<IAuthenticationPipeline>();
+
+        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(
+            _repositoryMock.Object,
+            // ReSharper disable once NullableWarningSuppressionIsUsed
+            null!,
+            credentialService.Object,
+            authenticationPipeline.Object));
+    }
+
+    [Test]
+    public void ConstructorWithCollaboratorsShouldThrowOnNullAuthenticationPipeline()
+    {
+        var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
+        var credentialService = new Mock<ICredentialService>();
+
+        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(
+            _repositoryMock.Object,
+            providerRegistry.Object,
+            credentialService.Object,
+            // ReSharper disable once NullableWarningSuppressionIsUsed
+            null!));
+    }
+
+    [Test]
+    public async Task LoginAsyncShouldDelegateToAuthenticationPipeline()
+    {
+        var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
+        var credentialService = new Mock<ICredentialService>();
+        var authenticationPipeline = new Mock<IAuthenticationPipeline>();
+        var context = new AuthenticationContext("test@example.com");
+        var assertion = new LocalPasswordAssertion("pass");
+        using var cancellationTokenSource = new CancellationTokenSource();
+        var expected = new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
+
+        authenticationPipeline.Setup(p => p.LoginAsync(context, assertion, cancellationTokenSource.Token))
+            .ReturnsAsync(expected);
+
+        var service = new IdentityService(
+            _repositoryMock.Object,
+            providerRegistry.Object,
+            credentialService.Object,
+            authenticationPipeline.Object);
+
+        var response = await service.LoginAsync(context, assertion, cancellationTokenSource.Token);
+
+        Assert.That(response, Is.SameAs(expected));
+        authenticationPipeline.Verify(p => p.LoginAsync(context, assertion, cancellationTokenSource.Token), Times.Once);
+    }
+
+    [Test]
+    public async Task LinkCredentialAsyncWithContextShouldResolveProviderWithSameContext()
+    {
+        var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
+        var credentialService = new Mock<ICredentialService>();
+        var authenticationPipeline = new Mock<IAuthenticationPipeline>();
+        var provider = new Mock<IAuthenticationProvider>();
+        var providerObject = provider.Object;
+        var context = new AuthenticationContext("test@example.com", Guid.NewGuid());
+        var assertion = new LocalPasswordAssertion("pass");
+        var userId = Guid.NewGuid();
+
+        providerRegistry.Setup(r => r.TryGetProvider(assertion, context, out providerObject))
+            .Returns(true);
+
+        var service = new IdentityService(
+            _repositoryMock.Object,
+            providerRegistry.Object,
+            credentialService.Object,
+            authenticationPipeline.Object);
+
+        await service.LinkCredentialAsync(context, userId, assertion, "pass");
+
+        providerRegistry.Verify(r => r.TryGetProvider(assertion, context, out providerObject), Times.Once);
+        credentialService.Verify(s => s.LinkCredentialAsync(userId, assertion, providerObject, "pass", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
