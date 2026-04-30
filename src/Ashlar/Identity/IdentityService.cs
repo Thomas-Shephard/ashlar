@@ -7,27 +7,38 @@ public sealed class IdentityService : IIdentityService
 {
     private readonly IIdentityRepository _repository;
     private readonly ICredentialService _credentialService;
-    private readonly IReadOnlyDictionary<ProviderType, IAuthenticationProvider> _providers;
+    private readonly IAuthenticationProviderRegistry _providerRegistry;
+    private readonly IAuthenticationPipeline _authenticationPipeline;
 
     public IdentityService(
         IIdentityRepository repository,
         IEnumerable<IAuthenticationProvider> providers,
         ICredentialService credentialService)
+        : this(repository, new AuthenticationProviderRegistry(providers), credentialService)
+    {
+    }
+
+    public IdentityService(
+        IIdentityRepository repository,
+        IAuthenticationProviderRegistry providerRegistry,
+        ICredentialService credentialService)
+        : this(repository, providerRegistry, credentialService, new AuthenticationPipeline(providerRegistry, credentialService))
+    {
+    }
+
+    public IdentityService(
+        IIdentityRepository repository,
+        IAuthenticationProviderRegistry providerRegistry,
+        ICredentialService credentialService,
+        IAuthenticationPipeline authenticationPipeline)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
-
-        var dict = new Dictionary<ProviderType, IAuthenticationProvider>();
-
-        if ((providers ?? throw new ArgumentNullException(nameof(providers))).Any(provider => !dict.TryAdd(provider.SupportedType, provider)))
-        {
-            throw new ArgumentException("Duplicate provider registered for type", nameof(providers));
-        }
-
-        _providers = dict;
+        _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
+        _authenticationPipeline = authenticationPipeline ?? throw new ArgumentNullException(nameof(authenticationPipeline));
     }
 
-    public IEnumerable<ProviderType> SupportedProviderTypes => _providers.Keys;
+    public IEnumerable<ProviderType> SupportedProviderTypes => _providerRegistry.SupportedProviderTypes;
 
     public async Task<IUser?> FindByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
     {
@@ -41,52 +52,7 @@ public sealed class IdentityService : IIdentityService
 
     public async Task<AuthenticationResponse> LoginAsync(AuthenticationContext context, IAuthenticationAssertion assertion, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(assertion);
-
-        if (!_providers.TryGetValue(assertion.ProviderType, out var provider))
-        {
-            return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
-        }
-
-        var (user, credential, originalCredential, unprotectFailed) = await _credentialService.ResolveAsync(context, assertion, provider, cancellationToken);
-
-        var result = await provider.AuthenticateAsync(assertion, credential, cancellationToken);
-        if (unprotectFailed || result.Status is not (AuthenticationResultStatus.Succeeded or AuthenticationResultStatus.SucceededWithCredentialUpdate) || user == null)
-        {
-            return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
-        }
-
-        if (!user.IsActive)
-        {
-            return new AuthenticationResponse(false, user, AuthenticationStatus.Disabled);
-        }
-
-        var status = result.Status == AuthenticationResultStatus.SucceededWithCredentialUpdate ? AuthenticationStatus.SuccessRehashNeeded : AuthenticationStatus.Success;
-
-        if (credential == null)
-        {
-            return new AuthenticationResponse(true, user, status, result.Claims);
-        }
-
-        try
-        {
-            var credentialUsageUpdated = await _credentialService.UpdateCredentialUsageAsync(credential, originalCredential, result, provider, cancellationToken);
-            if (!credentialUsageUpdated)
-            {
-                return new AuthenticationResponse(false, user);
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            if (result.IsCredentialConsumed)
-            {
-                // Fail authentication if we cannot guarantee the credential was consumed (prevent replay/race conditions).
-                return new AuthenticationResponse(false, user);
-            }
-        }
-
-        return new AuthenticationResponse(true, user, status, result.Claims);
+        return await _authenticationPipeline.LoginAsync(context, assertion, cancellationToken);
     }
 
     public async Task<IUser> CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
@@ -97,9 +63,15 @@ public sealed class IdentityService : IIdentityService
 
     public async Task LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(assertion);
+        await LinkCredentialAsync(new AuthenticationContext(), userId, assertion, credentialValue, cancellationToken);
+    }
 
-        if (!_providers.TryGetValue(assertion.ProviderType, out var provider))
+    public async Task LinkCredentialAsync(AuthenticationContext context, Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(assertion);
+        ArgumentNullException.ThrowIfNull(context);
+
+        if (!_providerRegistry.TryGetProvider(assertion, context, out var provider))
         {
             throw new ArgumentException($"Provider type '{assertion.ProviderType}' is not supported.", nameof(assertion));
         }
