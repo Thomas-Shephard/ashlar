@@ -1,6 +1,7 @@
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Identity.Providers.External;
 using Moq;
 
 namespace Ashlar.Tests.Identity;
@@ -10,11 +11,11 @@ public class AuthenticationProviderRegistryTests
     [Test]
     public void TryGetProviderWithSupportedAssertionShouldReturnRegisteredProvider()
     {
-        var assertion = new TestAssertion(ProviderType.Local);
-        var provider = CreateProvider(ProviderType.Local);
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = CreateProvider(AuthenticationProviderKey.Local);
         var registry = new AuthenticationProviderRegistry([provider.Object]);
 
-        var found = registry.TryGetProvider(assertion, new AuthenticationContext("test@example.com"), out var resolvedProvider);
+        var found = registry.TryGetProvider(assertion, out var resolvedProvider);
 
         using (Assert.EnterMultipleScope())
         {
@@ -26,21 +27,77 @@ public class AuthenticationProviderRegistryTests
     [Test]
     public void TryGetProviderWithUnsupportedAssertionShouldReturnFalse()
     {
-        var registry = new AuthenticationProviderRegistry([CreateProvider(ProviderType.Local).Object]);
+        var registry = new AuthenticationProviderRegistry([CreateProvider(AuthenticationProviderKey.Local).Object]);
 
-        var found = registry.TryGetProvider(new TestAssertion(ProviderType.Oidc), new AuthenticationContext(), out _);
+        var found = registry.TryGetProvider(new TestAssertion(new AuthenticationProviderKey(ProviderType.Oidc, ProviderType.Oidc.Value)), out _);
 
         Assert.That(found, Is.False);
     }
 
     [Test]
-    public void ConstructorWithDuplicateProviderTypeShouldThrow()
+    public void ConstructorWithDuplicateProviderKeyShouldThrow()
     {
         Assert.Throws<ArgumentException>(() => _ = new AuthenticationProviderRegistry(
         [
-            CreateProvider(ProviderType.Local).Object,
-            CreateProvider(ProviderType.Local).Object
+            CreateProvider(new AuthenticationProviderKey(ProviderType.Oidc, "Google")).Object,
+            CreateProvider(new AuthenticationProviderKey(ProviderType.Oidc, "Google")).Object
         ]));
+    }
+
+    [Test]
+    public void ConstructorWithSameTypeAndDifferentNamesShouldRegisterBothProviders()
+    {
+        var google = CreateProvider(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
+        var microsoft = CreateProvider(new AuthenticationProviderKey(ProviderType.Oidc, "Microsoft"));
+        var registry = new AuthenticationProviderRegistry([google.Object, microsoft.Object]);
+
+        var keys = registry.SupportedProviderKeys.ToList();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(keys, Has.Count.EqualTo(2));
+            Assert.That(keys, Does.Contain(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
+            Assert.That(keys, Does.Contain(new AuthenticationProviderKey(ProviderType.Oidc, "Microsoft")));
+        }
+    }
+
+    [Test]
+    public void ConstructorWithDuplicateProviderNamesDifferingByCaseAndWhitespaceShouldThrow()
+    {
+        Assert.Throws<ArgumentException>(() => _ = new AuthenticationProviderRegistry(
+        [
+            CreateProvider(new AuthenticationProviderKey(ProviderType.Oidc, "Google")).Object,
+            CreateProvider(new AuthenticationProviderKey(ProviderType.Oidc, " google ")).Object
+        ]));
+    }
+
+    [Test]
+    public void TryGetProviderWithExternalProviderNameShouldResolveMatchingProvider()
+    {
+        var google = CreateProvider(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
+        var microsoft = CreateProvider(new AuthenticationProviderKey(ProviderType.Oidc, "Microsoft"));
+        var registry = new AuthenticationProviderRegistry([google.Object, microsoft.Object]);
+
+        var googleFound = registry.TryGetProvider(new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>()), out var googleProvider);
+        var microsoftFound = registry.TryGetProvider(new ExternalIdentityAssertion(ProviderType.Oidc, "Microsoft", "sub", new Dictionary<string, string>()), out var microsoftProvider);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(googleFound, Is.True);
+            Assert.That(googleProvider, Is.SameAs(google.Object));
+            Assert.That(microsoftFound, Is.True);
+            Assert.That(microsoftProvider, Is.SameAs(microsoft.Object));
+        }
+    }
+
+    [Test]
+    public void TryGetProviderWithUnsupportedExternalProviderNameShouldReturnFalse()
+    {
+        var registry = new AuthenticationProviderRegistry([CreateProvider(new AuthenticationProviderKey(ProviderType.Oidc, "Google")).Object]);
+
+        var found = registry.TryGetProvider(new ExternalIdentityAssertion(ProviderType.Oidc, "Okta", "sub", new Dictionary<string, string>()), out _);
+
+        Assert.That(found, Is.False);
     }
 
     [Test]
@@ -50,12 +107,22 @@ public class AuthenticationProviderRegistryTests
         Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationProviderRegistry([null!]));
     }
 
-    private static Mock<IAuthenticationProvider> CreateProvider(ProviderType providerType)
+    [Test]
+    public void ConstructorWithProviderHavingDefaultKeyShouldThrow()
     {
         var provider = new Mock<IAuthenticationProvider>();
-        provider.SetupGet(p => p.SupportedType).Returns(providerType);
+        provider.SetupGet(p => p.Key).Returns(default(AuthenticationProviderKey));
+
+        var ex = Assert.Throws<ArgumentException>(() => _ = new AuthenticationProviderRegistry([provider.Object]));
+        Assert.That(ex.Message, Does.Contain("fully initialized"));
+    }
+
+    private static Mock<IAuthenticationProvider> CreateProvider(AuthenticationProviderKey key)
+    {
+        var provider = new Mock<IAuthenticationProvider>();
+        provider.SetupGet(p => p.Key).Returns(key);
         return provider;
     }
 
-    private sealed record TestAssertion(ProviderType ProviderType) : IAuthenticationAssertion;
+    private sealed record TestAssertion(AuthenticationProviderKey ProviderIdentity) : IAuthenticationAssertion;
 }

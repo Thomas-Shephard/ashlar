@@ -39,7 +39,7 @@ public class AuthenticationPipelineTests
     public async Task LoginAsyncWithUnsupportedProviderShouldReturnFailed()
     {
         var context = new AuthenticationContext("test@example.com");
-        var assertion = new TestAssertion(ProviderType.Oidc);
+        var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Oidc, ProviderType.Oidc.Value));
 
         var response = await _pipeline.LoginAsync(context, assertion);
 
@@ -58,8 +58,8 @@ public class AuthenticationPipelineTests
     public async Task LoginAsyncWithInvalidCredentialsShouldReturnFailed()
     {
         var context = new AuthenticationContext("test@example.com");
-        var assertion = new TestAssertion(ProviderType.Local);
-        var provider = ConfigureProviderResolution(assertion, context);
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
         var credential = CreateCredential(user.Id);
 
@@ -80,8 +80,8 @@ public class AuthenticationPipelineTests
     public async Task LoginAsyncWithInactiveUserShouldReturnDisabled()
     {
         var context = new AuthenticationContext("test@example.com");
-        var assertion = new TestAssertion(ProviderType.Local);
-        var provider = ConfigureProviderResolution(assertion, context);
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", IsActive = false };
         var credential = CreateCredential(user.Id);
 
@@ -104,8 +104,8 @@ public class AuthenticationPipelineTests
     public async Task LoginAsyncWithSuccessfulAuthenticationShouldUpdateCredentialAndReturnClaims()
     {
         var context = new AuthenticationContext("test@example.com");
-        var assertion = new TestAssertion(ProviderType.Local);
-        var provider = ConfigureProviderResolution(assertion, context);
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var claims = new Dictionary<string, string> { ["sub"] = user.Id.ToString() };
@@ -133,8 +133,8 @@ public class AuthenticationPipelineTests
     public async Task LoginAsyncWithFailedAtomicCredentialConsumptionShouldReturnFailed()
     {
         var context = new AuthenticationContext("test@example.com");
-        var assertion = new TestAssertion(ProviderType.Local);
-        var provider = ConfigureProviderResolution(assertion, context);
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
@@ -155,8 +155,8 @@ public class AuthenticationPipelineTests
     public void LoginAsyncShouldPropagateCancellationFromCredentialLifecycle()
     {
         var context = new AuthenticationContext("test@example.com");
-        var assertion = new TestAssertion(ProviderType.Local);
-        var provider = ConfigureProviderResolution(assertion, context);
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
@@ -171,10 +171,10 @@ public class AuthenticationPipelineTests
         Assert.ThrowsAsync<OperationCanceledException>(() => _pipeline.LoginAsync(context, assertion));
     }
 
-    private IAuthenticationProvider ConfigureProviderResolution(IAuthenticationAssertion assertion, AuthenticationContext context)
+    private IAuthenticationProvider ConfigureProviderResolution(IAuthenticationAssertion assertion)
     {
         var provider = _providerMock.Object;
-        _providerRegistryMock.Setup(r => r.TryGetProvider(assertion, context, out provider))
+        _providerRegistryMock.Setup(r => r.TryGetProvider(assertion, out provider))
             .Returns(true);
         return provider;
     }
@@ -186,11 +186,11 @@ public class AuthenticationPipelineTests
             Id = Guid.NewGuid(),
             UserId = userId,
             ProviderType = ProviderType.Local,
-            ProviderName = ProviderType.Local.Value,
+            ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = userId.ToString(),
             Version = "v1"
         };
     }
 
-    private sealed record TestAssertion(ProviderType ProviderType) : IAuthenticationAssertion;
+    private sealed record TestAssertion(AuthenticationProviderKey ProviderIdentity) : IAuthenticationAssertion;
 }

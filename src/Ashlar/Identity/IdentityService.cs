@@ -38,16 +38,23 @@ public sealed class IdentityService : IIdentityService
         _authenticationPipeline = authenticationPipeline ?? throw new ArgumentNullException(nameof(authenticationPipeline));
     }
 
-    public IEnumerable<ProviderType> SupportedProviderTypes => _providerRegistry.SupportedProviderTypes;
+    public IEnumerable<AuthenticationProviderKey> SupportedProviderKeys => _providerRegistry.SupportedProviderKeys;
 
     public async Task<IUser?> FindByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
     {
         return await _repository.GetUserByEmailAsync(email, tenantId, cancellationToken);
     }
 
-    public async Task<IUser?> FindByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default)
+    public async Task<IUser?> FindByProviderKeyAsync(AuthenticationProviderKey provider, string providerKey, CancellationToken cancellationToken = default)
     {
-        return await _repository.GetUserByProviderKeyAsync(type, providerName, providerKey, cancellationToken);
+        if (provider.Type == default || string.IsNullOrWhiteSpace(provider.Name))
+        {
+            throw new ArgumentException("Provider key must be fully initialized with a type and name.", nameof(provider));
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(providerKey);
+
+        return await _repository.GetUserByProviderKeyAsync(provider.Type, provider.Name, providerKey, cancellationToken);
     }
 
     public async Task<AuthenticationResponse> LoginAsync(AuthenticationContext context, IAuthenticationAssertion assertion, CancellationToken cancellationToken = default)
@@ -63,17 +70,11 @@ public sealed class IdentityService : IIdentityService
 
     public async Task LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default)
     {
-        await LinkCredentialAsync(new AuthenticationContext(), userId, assertion, credentialValue, cancellationToken);
-    }
-
-    public async Task LinkCredentialAsync(AuthenticationContext context, Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default)
-    {
         ArgumentNullException.ThrowIfNull(assertion);
-        ArgumentNullException.ThrowIfNull(context);
 
-        if (!_providerRegistry.TryGetProvider(assertion, context, out var provider))
+        if (!_providerRegistry.TryGetProvider(assertion, out var provider))
         {
-            throw new ArgumentException($"Provider type '{assertion.ProviderType}' is not supported.", nameof(assertion));
+            throw new ArgumentException($"Provider '{assertion.ProviderIdentity}' is not supported.", nameof(assertion));
         }
 
         await _credentialService.LinkCredentialAsync(userId, assertion, provider, credentialValue, cancellationToken);

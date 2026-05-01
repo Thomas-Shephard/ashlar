@@ -8,7 +8,7 @@ public sealed class LocalPasswordProvider(PasswordHasherSelector hasherSelector)
 {
     private readonly PasswordHasherSelector _hasherSelector = hasherSelector ?? throw new ArgumentNullException(nameof(hasherSelector));
 
-    public ProviderType SupportedType => ProviderType.Local;
+    public AuthenticationProviderKey Key => AuthenticationProviderKey.Local;
     public bool ProtectsCredentials => false;
 
     public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId)

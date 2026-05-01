@@ -4,15 +4,15 @@ namespace Ashlar.Identity.Abstractions;
 
 public interface IIdentityService
 {
-    IEnumerable<ProviderType> SupportedProviderTypes { get; }
+    IEnumerable<AuthenticationProviderKey> SupportedProviderKeys { get; }
+
     Task<IUser?> FindByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default);
-    Task<IUser?> FindByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default);
+    Task<IUser?> FindByProviderKeyAsync(AuthenticationProviderKey provider, string providerKey, CancellationToken cancellationToken = default);
 
     Task<AuthenticationResponse> LoginAsync(AuthenticationContext context, IAuthenticationAssertion assertion, CancellationToken cancellationToken = default);
 
     Task<IUser> CreateUserAsync(IUser user, CancellationToken cancellationToken = default);
     Task LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default);
-    Task LinkCredentialAsync(AuthenticationContext context, Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default);
 }
 
 public enum AuthenticationStatus
