@@ -49,6 +49,6 @@ public sealed class PasswordHasherSelector
 
         return hasher.Version == DefaultHasher.Version
             ? PasswordVerificationResult.Success
-            : PasswordVerificationResult.SuccessRehashNeeded;
+            : PasswordVerificationResult.SuccessWithCredentialUpdate;
     }
 }

@@ -67,7 +67,7 @@ public sealed class LocalPasswordProvider(PasswordHasherSelector hasherSelector)
         }
 
         string? newCredentialValue = null;
-        if (result == PasswordVerificationResult.SuccessRehashNeeded)
+        if (result == PasswordVerificationResult.SuccessWithCredentialUpdate)
         {
             newCredentialValue = Convert.ToBase64String(_hasherSelector.DefaultHasher.HashPassword(passwordAssertion.Password));
         }
@@ -75,7 +75,7 @@ public sealed class LocalPasswordProvider(PasswordHasherSelector hasherSelector)
         var status = result switch
         {
             PasswordVerificationResult.Success => AuthenticationResultStatus.Succeeded,
-            PasswordVerificationResult.SuccessRehashNeeded => AuthenticationResultStatus.SucceededWithCredentialUpdate,
+            PasswordVerificationResult.SuccessWithCredentialUpdate => AuthenticationResultStatus.SucceededWithCredentialUpdate,
             _ => AuthenticationResultStatus.Failed
         };
 

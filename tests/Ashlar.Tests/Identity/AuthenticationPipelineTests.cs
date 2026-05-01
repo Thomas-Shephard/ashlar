@@ -124,7 +124,7 @@ public class AuthenticationPipelineTests
         {
             Assert.That(response.Succeeded, Is.True);
             Assert.That(response.User, Is.SameAs(user));
-            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessRehashNeeded));
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessWithCredentialUpdate));
             Assert.That(response.Claims, Is.SameAs(claims));
         }
     }
