@@ -495,7 +495,7 @@ public class IdentityServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Succeeded, Is.True);
-            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessRehashNeeded));
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessWithCredentialUpdate));
         }
 
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
@@ -645,7 +645,7 @@ public class IdentityServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Succeeded, Is.True);
-            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessRehashNeeded));
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessWithCredentialUpdate));
         }
     }
 
@@ -802,7 +802,7 @@ public class IdentityServiceTests
 
         var response = await service.LoginAsync(new AuthenticationContext("test@example.com"), assertionMock.Object);
 
-        Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessRehashNeeded));
+        Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessWithCredentialUpdate));
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -845,7 +845,7 @@ public class IdentityServiceTests
 
         var response = await service.LoginAsync(new AuthenticationContext(email), new LocalPasswordAssertion("pass"));
 
-        Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessRehashNeeded));
+        Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessWithCredentialUpdate));
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -976,7 +976,7 @@ public class IdentityServiceTests
     }
 
     [Test]
-    public async Task LoginAsyncWithSuccessRehashNeededButNullUserShouldReturnFailed()
+    public async Task LoginAsyncWithCredentialUpdateStatusButNullUserShouldReturnFailed()
     {
         var providerMock = new Mock<IAuthenticationProvider>();
         providerMock.Setup(p => p.SupportedType).Returns((ProviderType)"MOCK");
@@ -1438,7 +1438,7 @@ public class IdentityServiceTests
     }
 
     [Test]
-    public async Task LoginAsyncWithRehashUpdateConflictShouldStillReturnSuccessRehashNeeded()
+    public async Task LoginAsyncWithRehashUpdateConflictShouldStillReturnSuccessWithCredentialUpdate()
     {
         var email = "test@example.com";
         var user = new User { Id = Guid.NewGuid(), Email = email };
@@ -1467,7 +1467,7 @@ public class IdentityServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Succeeded, Is.True);
-            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessRehashNeeded));
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessWithCredentialUpdate));
         }
     }
 

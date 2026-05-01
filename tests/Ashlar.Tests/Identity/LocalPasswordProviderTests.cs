@@ -123,7 +123,7 @@ public class LocalPasswordProviderTests
     }
 
     [Test]
-    public async Task AuthenticateAsyncWithRehashNeededShouldReturnSuccessRehashNeeded()
+    public async Task AuthenticateAsyncWithCredentialUpdateShouldReturnSuccessWithCredentialUpdate()
     {
         var assertion = new LocalPasswordAssertion("password");
         var credential = new UserCredential

@@ -34,7 +34,7 @@ public sealed class AuthenticationPipeline(
             return new AuthenticationResponse(false, user, AuthenticationStatus.Disabled);
         }
 
-        var status = result.Status == AuthenticationResultStatus.SucceededWithCredentialUpdate ? AuthenticationStatus.SuccessRehashNeeded : AuthenticationStatus.Success;
+        var status = result.Status == AuthenticationResultStatus.SucceededWithCredentialUpdate ? AuthenticationStatus.SuccessWithCredentialUpdate : AuthenticationStatus.Success;
 
         if (credential == null)
         {

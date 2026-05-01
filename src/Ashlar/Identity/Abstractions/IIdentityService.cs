@@ -19,7 +19,7 @@ public enum AuthenticationStatus
 {
     Failed = 0,
     Success = 1,
-    SuccessRehashNeeded = 2,
+    SuccessWithCredentialUpdate = 2,
     Disabled = 3
 }
 
