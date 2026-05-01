@@ -34,7 +34,7 @@ public sealed class CredentialService(
         ArgumentNullException.ThrowIfNull(assertion);
         ArgumentNullException.ThrowIfNull(provider);
 
-        var providerName = provider.GetProviderName(assertion);
+        var providerName = provider.Key.Name;
         var user = await provider.FindUserAsync(assertion, context, _repository, cancellationToken);
 
         var userId = user?.Id ?? Guid.NewGuid();
@@ -44,7 +44,7 @@ public sealed class CredentialService(
             providerKey = Guid.NewGuid().ToString();
         }
 
-        var credential = await _repository.GetCredentialForUserAsync(userId, assertion.ProviderType, providerName, providerKey, cancellationToken);
+        var credential = await _repository.GetCredentialForUserAsync(userId, provider.Key.Type, providerName, providerKey, cancellationToken);
         var (unprotectedCredential, unprotectFailed) = UnprotectCredential(credential, provider);
         return (user, unprotectedCredential, credential, unprotectFailed);
     }
@@ -59,7 +59,7 @@ public sealed class CredentialService(
         ArgumentNullException.ThrowIfNull(assertion);
         ArgumentNullException.ThrowIfNull(provider);
 
-        var providerName = provider.GetProviderName(assertion);
+        var providerName = provider.Key.Name;
         var user = await _repository.GetUserByIdAsync(userId, cancellationToken);
 
         var providerKey = provider.GetProviderKey(assertion, userId);
@@ -68,7 +68,7 @@ public sealed class CredentialService(
             providerKey = Guid.NewGuid().ToString();
         }
 
-        var credential = await _repository.GetCredentialForUserAsync(userId, assertion.ProviderType, providerName, providerKey, cancellationToken);
+        var credential = await _repository.GetCredentialForUserAsync(userId, provider.Key.Type, providerName, providerKey, cancellationToken);
         var (unprotectedCredential, unprotectFailed) = UnprotectCredential(credential, provider);
         return (user, unprotectedCredential, credential, unprotectFailed);
     }
@@ -234,13 +234,13 @@ public sealed class CredentialService(
         var providerKey = provider.GetProviderKey(assertion, userId);
         if (string.IsNullOrWhiteSpace(providerKey))
         {
-            throw new InvalidOperationException($"Could not derive a valid provider key for provider '{assertion.ProviderType}'.");
+            throw new InvalidOperationException($"Could not derive a valid provider key for provider '{assertion.ProviderIdentity}'.");
         }
 
-        var providerName = provider.GetProviderName(assertion);
-        ArgumentException.ThrowIfNullOrWhiteSpace(providerName);
+        var providerKeyIdentity = provider.Key;
+        var providerName = providerKeyIdentity.Name;
 
-        var linkedUser = await _repository.GetUserByProviderKeyAsync(assertion.ProviderType, providerName, providerKey, cancellationToken);
+        var linkedUser = await _repository.GetUserByProviderKeyAsync(providerKeyIdentity.Type, providerName, providerKey, cancellationToken);
 
         if (linkedUser != null)
         {
@@ -249,7 +249,7 @@ public sealed class CredentialService(
                 throw new InvalidOperationException($"The credential from '{providerName}' is already linked to another user.");
             }
 
-            var message = assertion.ProviderType == ProviderType.Local
+            var message = providerKeyIdentity.Type == ProviderType.Local
                 ? "A local password is already linked to this user."
                 : $"Credential for provider '{providerName}' is already linked to this user.";
 
@@ -267,7 +267,7 @@ public sealed class CredentialService(
         {
             Id = Guid.NewGuid(),
             UserId = userId,
-            ProviderType = assertion.ProviderType,
+            ProviderType = providerKeyIdentity.Type,
             ProviderName = providerName,
             ProviderKey = providerKey,
             Version = Guid.NewGuid().ToString("N"),

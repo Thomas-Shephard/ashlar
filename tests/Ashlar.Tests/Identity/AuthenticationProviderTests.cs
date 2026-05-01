@@ -8,7 +8,7 @@ public class AuthenticationProviderTests
 {
     private sealed class TestProvider : IAuthenticationProvider
     {
-        public ProviderType SupportedType => ProviderType.Oidc;
+        public AuthenticationProviderKey Key => new(ProviderType.Oidc, "Google");
         public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId) => userId.ToString();
         public string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue) => rawValue;
         public Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(null);
@@ -29,11 +29,4 @@ public class AuthenticationProviderTests
         Assert.That(provider.TypicalCredentialLength, Is.EqualTo(256));
     }
 
-    [Test]
-    public void DefaultGetProviderNameShouldReturnSupportedTypeValue()
-    {
-        IAuthenticationProvider provider = new TestProvider();
-        var assertionMock = new Mock<IAuthenticationAssertion>();
-        Assert.That(provider.GetProviderName(assertionMock.Object), Is.EqualTo(ProviderType.Oidc.Value));
-    }
 }

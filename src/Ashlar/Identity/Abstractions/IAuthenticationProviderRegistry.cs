@@ -5,7 +5,7 @@ namespace Ashlar.Identity.Abstractions;
 
 public interface IAuthenticationProviderRegistry
 {
-    IEnumerable<ProviderType> SupportedProviderTypes { get; }
+    IEnumerable<AuthenticationProviderKey> SupportedProviderKeys { get; }
 
-    bool TryGetProvider(IAuthenticationAssertion assertion, AuthenticationContext context, [NotNullWhen(true)] out IAuthenticationProvider? provider);
+    bool TryGetProvider(IAuthenticationAssertion assertion, [NotNullWhen(true)] out IAuthenticationProvider? provider);
 }

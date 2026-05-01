@@ -13,7 +13,7 @@ public class ExternalAuthenticationProviderTests
     [SetUp]
     public void SetUp()
     {
-        _provider = new OidcAuthenticationProvider();
+        _provider = new OidcAuthenticationProvider("Google");
     }
 
     [Test]
@@ -47,6 +47,25 @@ public class ExternalAuthenticationProviderTests
     }
 
     [Test]
+    public async Task AuthenticateAsyncWithDefaultCredentialProviderTypeShouldReturnFailed()
+    {
+        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub-123", new Dictionary<string, string>());
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = default,
+            ProviderName = "Google",
+            ProviderKey = "sub-123",
+            Version = "v1"
+        };
+
+        var result = await _provider.AuthenticateAsync(assertion, credential);
+
+        Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
+    }
+
+    [Test]
     public void AuthenticateAsyncWithMismatchedProviderTypeShouldThrowArgumentException()
     {
         var assertion = new ExternalIdentityAssertion(ProviderType.Saml2, "Okta", "sub", new Dictionary<string, string>());
@@ -64,7 +83,7 @@ public class ExternalAuthenticationProviderTests
     [Test]
     public void AuthenticateAsyncWithNullAssertionShouldThrow()
     {
-        Assert.ThrowsAsync<ArgumentException>(() => _provider.AuthenticateAsync(null, null));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _provider.AuthenticateAsync(null!, null));
     }
 
     [Test]
@@ -93,29 +112,6 @@ public class ExternalAuthenticationProviderTests
         var assertion = new Mock<IAuthenticationAssertion>().Object;
         var result = _provider.GetProviderKey(assertion, Guid.NewGuid());
         Assert.That(result, Is.Empty);
-    }
-
-    [Test]
-    public void GetProviderNameShouldReturnAssertionProviderName()
-    {
-        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "CustomProvider", "key", new Dictionary<string, string>());
-        var result = _provider.GetProviderName(assertion);
-        Assert.That(result, Is.EqualTo("CustomProvider"));
-    }
-
-    [Test]
-    public void GetProviderNameWithNonExternalAssertionShouldReturnDefault()
-    {
-        var assertion = new Mock<IAuthenticationAssertion>().Object;
-        var result = _provider.GetProviderName(assertion);
-        Assert.That(result, Is.EqualTo(ProviderType.Oidc.Value));
-    }
-
-    [Test]
-    public void GetProviderNameWithNullAssertionShouldThrow()
-    {
-        // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _provider.GetProviderName(null!));
     }
 
     [Test]

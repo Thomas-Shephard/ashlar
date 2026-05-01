@@ -5,5 +5,5 @@ namespace Ashlar.Identity.Providers.Local;
 
 public sealed record LocalPasswordAssertion(string Password) : IAuthenticationAssertion
 {
-    public ProviderType ProviderType => ProviderType.Local;
+    public AuthenticationProviderKey ProviderIdentity => AuthenticationProviderKey.Local;
 }

@@ -5,9 +5,9 @@ namespace Ashlar.Identity.Abstractions;
 public interface IAuthenticationProvider
 {
     /// <summary>
-    /// Gets the type of provider supported by this implementation.
+    /// Gets the canonical identity for this provider implementation.
     /// </summary>
-    ProviderType SupportedType { get; }
+    AuthenticationProviderKey Key { get; }
 
     /// <summary>
     /// Gets a value indicating whether the credentials managed by this provider should be protected (encrypted) by the identity service.
@@ -20,17 +20,6 @@ public interface IAuthenticationProvider
     /// Used to generate timing-safe dummy values for protection.
     /// </summary>
     int TypicalCredentialLength => 256;
-
-    /// <summary>
-    /// Gets the provider name from the assertion.
-    /// </summary>
-    /// <param name="assertion">The authentication assertion.</param>
-    /// <returns>The provider name.</returns>
-    string GetProviderName(IAuthenticationAssertion assertion)
-    {
-        ArgumentNullException.ThrowIfNull(assertion);
-        return SupportedType.Value;
-    }
 
     /// <summary>
     /// Gets the unique key for the user within this provider.

@@ -16,7 +16,7 @@ public sealed class AuthenticationPipeline(
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(assertion);
 
-        if (!_providerRegistry.TryGetProvider(assertion, context, out var provider))
+        if (!_providerRegistry.TryGetProvider(assertion, out var provider))
         {
             return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
         }
