@@ -163,53 +163,133 @@ public sealed class CredentialService(
             return await _repository.ConsumeCredentialAsync(unprotectedCredential.Id, GetExpectedVersion(unprotectedCredential, originalCredential), cancellationToken);
         }
 
+        bool needsUpdate = PrepareMetadataAndUsage(unprotectedCredential, result);
+
+        var (protectionSucceeded, valueRequestedUpdate) = PrepareCredentialValue(unprotectedCredential, originalCredential, result, provider);
+        needsUpdate |= valueRequestedUpdate;
+
+        if (!protectionSucceeded && !HandleProtectionFailure(unprotectedCredential, originalCredential, result, ref needsUpdate))
+        {
+            return false;
+        }
+
+        if (needsUpdate && IsWipeRisk(unprotectedCredential, originalCredential, provider))
+        {
+            return false;
+        }
+
+        return !needsUpdate || await PersistUpdateAsync(unprotectedCredential, originalCredential, result, cancellationToken);
+    }
+
+    private bool PrepareMetadataAndUsage(UserCredential credential, AuthenticationResult result)
+    {
+        var needsUpdate = false;
         var now = DateTimeOffset.UtcNow;
-        bool needsUpdate = false;
 
-        // Avoid constant DB writes for LastUsedAt if the last update was very recent.
-        if (!unprotectedCredential.LastUsedAt.HasValue || (now - unprotectedCredential.LastUsedAt.Value) >= _options.LastUsedAtUpdateThreshold)
+        if (!credential.LastUsedAt.HasValue || (now - credential.LastUsedAt.Value) >= _options.LastUsedAtUpdateThreshold)
         {
-            unprotectedCredential.LastUsedAt = now;
+            credential.LastUsedAt = now;
             needsUpdate = true;
         }
 
-        if (result.NewMetadata != null && result.NewMetadata != unprotectedCredential.Metadata)
+        if (result.NewMetadata != null && result.NewMetadata != credential.Metadata)
         {
-            unprotectedCredential.Metadata = result.NewMetadata;
+            credential.Metadata = result.NewMetadata;
             needsUpdate = true;
         }
 
+        return needsUpdate;
+    }
+
+    private (bool Succeeded, bool NeedsUpdate) PrepareCredentialValue(
+        UserCredential credential,
+        UserCredential? original,
+        AuthenticationResult result,
+        IAuthenticationProvider provider)
+    {
         if (result is { Status: AuthenticationResultStatus.SucceededWithCredentialUpdate, NewCredentialValue: not null })
         {
-            unprotectedCredential.CredentialValue = provider.ProtectsCredentials
-                ? _secretProtector.Protect(result.NewCredentialValue)
-                : result.NewCredentialValue;
-            needsUpdate = true;
-        }
-        else if (originalCredential != null)
-        {
-            // Preserve the original value if no update was requested or if the new credential value is null.
-            // This also avoids expensive re-encryption of the existing protected value.
-            unprotectedCredential.CredentialValue = originalCredential.CredentialValue;
+            var succeeded = TryProtectValue(credential, result.NewCredentialValue, provider);
+            return (succeeded, succeeded);
         }
 
-        if (needsUpdate)
+        if (original != null)
         {
-            try
-            {
-                var updateSucceeded = await _repository.UpdateCredentialAsync(unprotectedCredential, GetExpectedVersion(unprotectedCredential, originalCredential), cancellationToken);
-                if (!updateSucceeded)
-                {
-                    // TODO: Log concurrency conflict. Best effort update for rehashing, metadata, and LastUsedAt.
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                // TODO: Log exception. Best effort update for rehashing. If it fails, the user is still authenticated.
-            }
+            credential.CredentialValue = original.CredentialValue;
+            return (true, false);
         }
 
-        return true;
+        if (provider.ProtectsCredentials && credential.CredentialValue != null)
+        {
+            var succeeded = TryProtectValue(credential, credential.CredentialValue, provider);
+            return (succeeded, false);
+        }
+
+        return (true, false);
+    }
+
+    private bool TryProtectValue(UserCredential credential, string value, IAuthenticationProvider provider)
+    {
+        try
+        {
+            credential.CredentialValue = provider.ProtectsCredentials
+                ? _secretProtector.Protect(value)
+                : value;
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
+    private static bool HandleProtectionFailure(
+        UserCredential credential,
+        UserCredential? original,
+        AuthenticationResult result,
+        ref bool needsUpdate)
+    {
+        if (original != null)
+        {
+            credential.CredentialValue = original.CredentialValue;
+        }
+        else
+        {
+            credential.CredentialValue = null;
+            needsUpdate = false;
+        }
+
+        // TODO: Log exception.
+        return result.CredentialUpdateRequirement != CredentialUpdateRequirement.Required;
+    }
+
+    private static bool IsWipeRisk(UserCredential credential, UserCredential? original, IAuthenticationProvider provider)
+    {
+        return provider.ProtectsCredentials && credential.CredentialValue == null && original == null;
+    }
+
+    private async Task<bool> PersistUpdateAsync(
+        UserCredential credential,
+        UserCredential? original,
+        AuthenticationResult result,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var updateSucceeded = await _repository.UpdateCredentialAsync(credential, GetExpectedVersion(credential, original), cancellationToken);
+            if (!updateSucceeded)
+            {
+                // TODO: Log concurrency conflict.
+                return result.CredentialUpdateRequirement != CredentialUpdateRequirement.Required;
+            }
+
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // TODO: Log exception.
+            return result.CredentialUpdateRequirement != CredentialUpdateRequirement.Required;
+        }
     }
 
     private static string GetExpectedVersion(UserCredential unprotectedCredential, UserCredential? originalCredential)
@@ -277,3 +357,4 @@ public sealed class CredentialService(
         await _repository.CreateCredentialAsync(credential, cancellationToken);
     }
 }
+

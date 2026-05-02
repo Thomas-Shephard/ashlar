@@ -65,19 +65,37 @@ public interface IAuthenticationProvider
 /// <param name="NewCredentialValue">The new credential value if an update is required.</param>
 /// <param name="NewMetadata">The new metadata to store with the credential.</param>
 /// <param name="IsCredentialConsumed">Indicates whether the credential was consumed (e.g. one-time token) and should be deleted.</param>
+/// <param name="CredentialUpdateRequirement">The requirement for persisting credential updates. Defaults to <see cref="CredentialUpdateRequirement.BestEffort"/>.</param>
 public sealed record AuthenticationResult(
     AuthenticationResultStatus Status,
     IDictionary<string, string>? Claims = null,
     string? NewCredentialValue = null,
     string? NewMetadata = null,
-    bool IsCredentialConsumed = false);
+    bool IsCredentialConsumed = false,
+    CredentialUpdateRequirement CredentialUpdateRequirement = CredentialUpdateRequirement.BestEffort);
 
 /// <summary>
 /// Represents the outcome of an authentication attempt.
 /// </summary>
 public enum AuthenticationResultStatus
 {
-    Failed,
-    Succeeded,
-    SucceededWithCredentialUpdate
+    Failed = 0,
+    Succeeded = 1,
+    SucceededWithCredentialUpdate = 2
+}
+
+/// <summary>
+/// Defines the requirement level for persisting credential updates.
+/// </summary>
+public enum CredentialUpdateRequirement
+{
+    /// <summary>
+    /// The update is best-effort. Failure to persist the update will not fail the authentication.
+    /// </summary>
+    BestEffort = 0,
+
+    /// <summary>
+    /// The update is security-critical. Failure to persist the update will fail the authentication.
+    /// </summary>
+    Required = 1
 }

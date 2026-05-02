@@ -171,6 +171,58 @@ public class AuthenticationPipelineTests
         Assert.ThrowsAsync<OperationCanceledException>(() => _pipeline.LoginAsync(context, assertion));
     }
 
+    [Test]
+    public async Task LoginAsyncWithFailedRequiredCredentialUpdateShouldReturnFailedWithoutUserToAvoidOracle()
+    {
+        var context = new AuthenticationContext("test@example.com");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var credential = CreateCredential(user.Id);
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.Required);
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+        _credentialServiceMock.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.User, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task LoginAsyncWithExceptionOnRequiredCredentialUpdateShouldReturnFailedWithoutUserToAvoidOracle()
+    {
+        var context = new AuthenticationContext("test@example.com");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var credential = CreateCredential(user.Id);
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.Required);
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+        _credentialServiceMock.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("DB error"));
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.User, Is.Null);
+        }
+    }
+
     private IAuthenticationProvider ConfigureProviderResolution(IAuthenticationAssertion assertion)
     {
         var provider = _providerMock.Object;
