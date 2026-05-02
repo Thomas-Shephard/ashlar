@@ -7,11 +7,13 @@ namespace Ashlar.Postgres.Schema;
 
 internal class SchemaManager(NpgsqlDataSource dataSource)
 {
+    private readonly NpgsqlDataSource _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
+
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await EnsureMinimumVersionAsync(cancellationToken);
 
-        var connectionManager = new DbUp.Postgresql.PostgresqlConnectionManager(dataSource);
+        var connectionManager = new DbUp.Postgresql.PostgresqlConnectionManager(_dataSource);
 
         var upgradeEngine = DeployChanges.To
             .PostgresqlDatabase(connectionManager)
@@ -34,7 +36,7 @@ internal class SchemaManager(NpgsqlDataSource dataSource)
     {
         const int minVersion = 150000; // PostgreSQL 15.0
 
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         var versionNum = await GetServerVersionAsync(connection, cancellationToken);
 
         if (versionNum == null || !int.TryParse(versionNum, out var version))

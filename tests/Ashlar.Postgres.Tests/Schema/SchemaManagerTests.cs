@@ -7,6 +7,13 @@ namespace Ashlar.Postgres.Tests.Schema;
 public sealed class SchemaManagerTests : PostgresTestBase
 {
     [Test]
+    public void ConstructorNullDataSourceShouldThrow()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _ = new SchemaManager(null!));
+    }
+
+    [Test]
     public async Task SchemaManagerWithPostgres14ShouldThrowNotSupported()
     {
         var postgres14 = new PostgreSqlBuilder()
@@ -52,17 +59,18 @@ public sealed class SchemaManagerTests : PostgresTestBase
     public async Task SchemaManagerFailsUpgradeShouldThrow()
     {
         var dataSource = GetDataSource();
+        var username = $"ashlar_restricted_{Guid.NewGuid():N}";
 
         // Create a restricted user that cannot create tables
         await using (var connection = await dataSource.OpenConnectionAsync())
         {
-            await using var cmd = new NpgsqlCommand("CREATE USER ashlar_restricted_schema_test WITH PASSWORD 'pass'; GRANT CONNECT ON DATABASE postgres TO ashlar_restricted_schema_test;", connection);
+            await using var cmd = new NpgsqlCommand($"CREATE USER {username} WITH PASSWORD 'pass'; GRANT CONNECT ON DATABASE postgres TO {username};", connection);
             await cmd.ExecuteNonQueryAsync();
         }
 
         var builder = new NpgsqlConnectionStringBuilder(GetConnectionString())
         {
-            Username = "ashlar_restricted_schema_test",
+            Username = username,
             Password = "pass"
         };
 

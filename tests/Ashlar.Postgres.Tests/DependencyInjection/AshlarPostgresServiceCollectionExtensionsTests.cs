@@ -40,4 +40,11 @@ public sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresTes
             Assert.Throws<ArgumentNullException>(() => services.AddAshlarPostgres((NpgsqlDataSource)null!));
         }
     }
+
+    [Test]
+    public void InitializeAshlarPostgresSchemaAsyncNullProviderShouldThrow()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.ThrowsAsync<ArgumentNullException>(async () => await AshlarPostgresServiceCollectionExtensions.InitializeAshlarPostgresSchemaAsync(null!));
+    }
 }

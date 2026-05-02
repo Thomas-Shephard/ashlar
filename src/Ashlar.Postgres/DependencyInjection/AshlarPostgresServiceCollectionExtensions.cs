@@ -50,6 +50,8 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// </summary>
     public static async Task InitializeAshlarPostgresSchemaAsync(this IServiceProvider serviceProvider, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(serviceProvider);
+
         using var scope = serviceProvider.CreateScope();
         var schemaManager = scope.ServiceProvider.GetRequiredService<SchemaManager>();
         await schemaManager.InitializeAsync(cancellationToken);

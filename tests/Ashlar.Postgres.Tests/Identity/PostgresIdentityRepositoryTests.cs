@@ -189,6 +189,7 @@ public sealed class PostgresIdentityRepositoryTests : PostgresTestBase
         {
             Assert.That(fetched.Id, Is.EqualTo(credential.Id));
             Assert.That(fetchedWithNullKey.Id, Is.EqualTo(credential.Id));
+            Assert.That(fetched.ProviderType, Is.EqualTo(credential.ProviderType));
         }
     }
 
