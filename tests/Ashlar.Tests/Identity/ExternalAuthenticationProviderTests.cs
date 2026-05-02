@@ -29,6 +29,8 @@ public class ExternalAuthenticationProviderTests
             ProviderName = "Google",
             ProviderKey = providerKey,
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
         };
 
         var result = await _provider.AuthenticateAsync(assertion, credential);
@@ -57,7 +59,9 @@ public class ExternalAuthenticationProviderTests
             ProviderType = default,
             ProviderName = "Google",
             ProviderKey = "sub-123",
-            Version = "v1"
+            Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active
         };
 
         var result = await _provider.AuthenticateAsync(assertion, credential);
@@ -99,6 +103,8 @@ public class ExternalAuthenticationProviderTests
             ProviderName = "NotGoogle",
             ProviderKey = providerKey,
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
         };
 
         var result = await _provider.AuthenticateAsync(assertion, credential);

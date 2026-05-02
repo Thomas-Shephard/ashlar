@@ -86,6 +86,7 @@ public sealed class CredentialService(
     private (UserCredential? Credential, bool UnprotectFailed) UnprotectCredential(UserCredential? credential, IAuthenticationProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
+        var now = DateTimeOffset.UtcNow;
 
         if (!provider.ProtectsCredentials)
         {
@@ -94,18 +95,12 @@ public sealed class CredentialService(
                 return (null, false);
             }
 
-            return (new UserCredential
+            if (!credential.IsAvailable(now))
             {
-                Id = credential.Id,
-                UserId = credential.UserId,
-                ProviderType = credential.ProviderType,
-                ProviderName = credential.ProviderName,
-                ProviderKey = credential.ProviderKey,
-                Version = credential.Version,
-                CredentialValue = credential.CredentialValue,
-                Metadata = credential.Metadata,
-                LastUsedAt = credential.LastUsedAt
-            }, false);
+                return (null, false);
+            }
+
+            return (credential.Clone(), false);
         }
 
         var valueToUnprotect = credential?.CredentialValue ?? _dummyValues.GetOrAdd(provider.TypicalCredentialLength, len => _secretProtector.Protect(new string('D', len)));
@@ -130,18 +125,13 @@ public sealed class CredentialService(
             return (null, unprotectFailed);
         }
 
-        var unprotectedCredential = new UserCredential
+        if (!credential.IsAvailable(now))
         {
-            Id = credential.Id,
-            UserId = credential.UserId,
-            ProviderType = credential.ProviderType,
-            ProviderName = credential.ProviderName,
-            ProviderKey = credential.ProviderKey,
-            Version = credential.Version,
-            CredentialValue = credential.CredentialValue == null || unprotectFailed ? null : unprotectedValue,
-            Metadata = credential.Metadata,
-            LastUsedAt = credential.LastUsedAt
-        };
+            return (null, unprotectFailed);
+        }
+
+        var unprotectedCredential = credential.Clone();
+        unprotectedCredential.CredentialValue = credential.CredentialValue == null || unprotectFailed ? null : unprotectedValue;
 
         return (unprotectedCredential, unprotectFailed);
     }
@@ -176,6 +166,11 @@ public sealed class CredentialService(
         if (needsUpdate && IsWipeRisk(unprotectedCredential, originalCredential, provider))
         {
             return false;
+        }
+
+        if (needsUpdate)
+        {
+            unprotectedCredential.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
         return !needsUpdate || await PersistUpdateAsync(unprotectedCredential, originalCredential, result, cancellationToken);
@@ -351,10 +346,14 @@ public sealed class CredentialService(
             ProviderName = providerName,
             ProviderKey = providerKey,
             Version = Guid.NewGuid().ToString("N"),
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = null,
+            ExpiresAt = null,
+            RevokedAt = null,
+            Status = CredentialStatus.Active,
             CredentialValue = credentialValue
         };
 
         await _repository.CreateCredentialAsync(credential, cancellationToken);
     }
 }
-

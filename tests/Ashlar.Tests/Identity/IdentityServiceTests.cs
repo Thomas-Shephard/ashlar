@@ -194,6 +194,8 @@ public class IdentityServiceTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = userId.ToString(),
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String(new byte[] { 0x02, 1, 2, 3 })
         };
 
@@ -227,6 +229,8 @@ public class IdentityServiceTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = userId.ToString(),
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String(new byte[] { 0x02, 1, 2, 3 })
         };
 
@@ -261,6 +265,8 @@ public class IdentityServiceTests
             ProviderName = "Google",
             ProviderKey = providerKey,
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
         };
 
         var claims = new Dictionary<string, string> { { "name", "Google User" } };
@@ -295,6 +301,8 @@ public class IdentityServiceTests
             ProviderName = providerName,
             ProviderKey = providerKey,
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
         };
 
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
@@ -346,6 +354,8 @@ public class IdentityServiceTests
             ProviderName = providerName,
             ProviderKey = providerKey,
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
@@ -414,6 +424,8 @@ public class IdentityServiceTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = user.Id.ToString(),
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String(new byte[] { 0x02, 1, 2, 3 })
         };
 
@@ -447,6 +459,8 @@ public class IdentityServiceTests
             ProviderName = providerName,
             ProviderKey = providerKey,
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
@@ -479,6 +493,8 @@ public class IdentityServiceTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = user.Id.ToString(),
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
         };
 
@@ -596,6 +612,8 @@ public class IdentityServiceTests
             ProviderName = "GitHub",
             ProviderKey = providerKey,
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
         };
 
         var claims = new Dictionary<string, string> { { "login", "octocat" } };
@@ -628,6 +646,8 @@ public class IdentityServiceTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = user.Id.ToString(),
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
         };
 
@@ -836,6 +856,8 @@ public class IdentityServiceTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = user.Id.ToString(),
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3]),
             LastUsedAt = DateTimeOffset.UtcNow
         };
@@ -896,6 +918,8 @@ public class IdentityServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = "malformed"
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
@@ -1069,6 +1093,8 @@ public class IdentityServiceTests
             ProviderName = "Okta",
             ProviderKey = providerKey,
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Saml2, "Okta", providerKey, new Dictionary<string, string>());
 
@@ -1119,6 +1145,8 @@ public class IdentityServiceTests
             ProviderName = "Google",
             ProviderKey = providerKey,
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = protectedToken
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
@@ -1168,6 +1196,8 @@ public class IdentityServiceTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = userId.ToString(),
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = hash
         };
 
@@ -1199,6 +1229,8 @@ public class IdentityServiceTests
             ProviderName = "GitHub",
             ProviderKey = providerKey,
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = oldTokenProtected
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.OAuth, "GitHub", providerKey, new Dictionary<string, string>());
@@ -1242,6 +1274,8 @@ public class IdentityServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = null
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
@@ -1314,6 +1348,8 @@ public class IdentityServiceTests
             ProviderName = "Google",
             ProviderKey = providerKey,
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = malformedToken
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
@@ -1363,6 +1399,8 @@ public class IdentityServiceTests
             ProviderName = "Google",
             ProviderKey = providerKey,
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = null
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", providerKey, new Dictionary<string, string>());
@@ -1425,6 +1463,8 @@ public class IdentityServiceTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = user.Id.ToString(),
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
         };
 
@@ -1456,6 +1496,8 @@ public class IdentityServiceTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = user.Id.ToString(),
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
         };
 
@@ -1490,6 +1532,8 @@ public class IdentityServiceTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = user.Id.ToString(),
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String([0x02, 1, 2, 3])
         };
 
@@ -1518,6 +1562,8 @@ public class IdentityServiceTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = user.Id.ToString(),
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String([0x02, 1, 2, 3])
         };
 
@@ -1546,6 +1592,8 @@ public class IdentityServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = "protected(token)",
             Metadata = "original-metadata"
         };
@@ -1588,6 +1636,8 @@ public class IdentityServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = "protected(token)"
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
@@ -1632,6 +1682,8 @@ public class IdentityServiceTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = user.Id.ToString(),
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String([0x02, 1, 2, 3]),
             Metadata = "important-data"
         };
@@ -1660,6 +1712,8 @@ public class IdentityServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = null, // Credential value is null
             Metadata = "old-metadata"
         };
@@ -1702,6 +1756,8 @@ public class IdentityServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = "token"
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
@@ -1751,6 +1807,8 @@ public class IdentityServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = "token"
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
@@ -1794,6 +1852,8 @@ public class IdentityServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = "protected(existing)"
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
@@ -1839,6 +1899,8 @@ public class IdentityServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = "protected(old-value)"
         };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
@@ -1886,6 +1948,8 @@ public class IdentityServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = "protected(token)",
             Metadata = null // Currently null
         };
@@ -1928,6 +1992,8 @@ public class IdentityServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = "protected(token)",
             Metadata = "some-metadata",
             LastUsedAt = DateTimeOffset.UtcNow // Set to now to avoid LastUsedAt update triggering the write
@@ -1971,6 +2037,8 @@ public class IdentityServiceTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = user.Id.ToString(),
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String([0x02, 1, 2, 3]),
             LastUsedAt = lastUsedAt
         };

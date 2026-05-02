@@ -267,7 +267,9 @@ public class AuthenticationPipelineTests
             ProviderType = ProviderType.Local,
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = userId.ToString(),
-            Version = "v1"
+            Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active
         };
     }
 

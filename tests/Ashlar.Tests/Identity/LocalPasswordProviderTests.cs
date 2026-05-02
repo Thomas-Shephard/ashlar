@@ -39,6 +39,8 @@ public class LocalPasswordProviderTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = "user@example.com",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
         };
         _fakeHasher.ShouldVerify = true;
@@ -60,6 +62,8 @@ public class LocalPasswordProviderTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = "user@example.com",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
         };
         _fakeHasher.ShouldVerify = false;
@@ -92,6 +96,8 @@ public class LocalPasswordProviderTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = "user@example.com",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = "not-base64-!"
         };
         _fakeHasher.ShouldVerify = false;
@@ -113,6 +119,8 @@ public class LocalPasswordProviderTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = "user@example.com",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = null
         };
         _fakeHasher.ShouldVerify = false;
@@ -134,6 +142,8 @@ public class LocalPasswordProviderTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = "user@example.com",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
         };
 
@@ -163,6 +173,8 @@ public class LocalPasswordProviderTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = "user@example.com",
             Version = "v1",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
             CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
         };
 
