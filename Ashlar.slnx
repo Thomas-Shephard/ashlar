@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Ashlar/Ashlar.csproj" />
+    <Project Path="src/Ashlar.Postgres/Ashlar.Postgres.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Ashlar.Tests/Ashlar.Tests.csproj" />
+    <Project Path="tests/Ashlar.Postgres.Tests/Ashlar.Postgres.Tests.csproj" />
   </Folder>
 </Solution>

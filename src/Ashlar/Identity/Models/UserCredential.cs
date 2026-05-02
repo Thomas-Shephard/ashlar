@@ -16,7 +16,7 @@ public sealed class UserCredential
     /// Storage-neutral optimistic concurrency token for conditional credential updates and consumption.
     /// Repository implementations should change this value whenever the credential row changes.
     /// </summary>
-    public required string Version { get; init; }
+    public required string Version { get; set; }
 
     /// <summary>
     /// Indicates whether the credential is active, not revoked, and has not yet expired.
