@@ -1,38 +1,29 @@
+using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Postgres.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
-using Testcontainers.PostgreSql;
 
-namespace Ashlar.Postgres.Tests;
+namespace Ashlar.Postgres.Tests.Identity;
 
-public sealed class PostgresIdentityRepositoryTests
+public sealed class PostgresIdentityRepositoryTests : PostgresTestBase
 {
-    private readonly PostgreSqlContainer _postgresContainer = new PostgreSqlBuilder()
-        .WithImage("postgres:15-alpine")
-        .Build();
-
     private IServiceProvider _serviceProvider;
-    private NpgsqlDataSource _dataSource;
 
-    [OneTimeSetUp]
-    public async Task OneTimeSetUp()
+    public override async Task OneTimeSetUp()
     {
-        await _postgresContainer.StartAsync();
+        await base.OneTimeSetUp();
 
         var services = new ServiceCollection();
-        services.AddAshlarPostgres(_postgresContainer.GetConnectionString());
+        services.AddAshlarPostgres(GetConnectionString());
         _serviceProvider = services.BuildServiceProvider();
-        _dataSource = _serviceProvider.GetRequiredService<NpgsqlDataSource>();
 
         await _serviceProvider.InitializeAshlarPostgresSchemaAsync();
     }
 
     [OneTimeTearDown]
-    public async Task OneTimeTearDown()
+    public async Task OneTimeTearDownAsync()
     {
-        await _dataSource.DisposeAsync();
-
         if (_serviceProvider is IAsyncDisposable asyncDisposable)
         {
             await asyncDisposable.DisposeAsync();
@@ -41,11 +32,16 @@ public sealed class PostgresIdentityRepositoryTests
         {
             disposable.Dispose();
         }
-
-        await _postgresContainer.DisposeAsync();
     }
 
-    private PostgresIdentityRepository GetRepository() => (PostgresIdentityRepository)_serviceProvider.GetRequiredService<Identity.Abstractions.IIdentityRepository>();
+    private PostgresIdentityRepository GetRepository() => (PostgresIdentityRepository)_serviceProvider.GetRequiredService<IIdentityRepository>();
+
+    [Test]
+    public void ConstructorNullDataSourceShouldThrow()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _ = new PostgresIdentityRepository(null!));
+    }
 
     [Test]
     public async Task CreateAndFetchUserShouldSucceed()
@@ -76,6 +72,25 @@ public sealed class PostgresIdentityRepositoryTests
             Assert.That(fetchedById.Email, Is.EqualTo(user.Email));
             Assert.That(fetchedByEmail.Id, Is.EqualTo(user.Id));
         }
+    }
+
+    [Test]
+    public async Task CreateUserWithExistingCreatedAtShouldPreserveValue()
+    {
+        var repo = GetRepository();
+        var specificTime = new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var user = new AshlarPostgresUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "preserved@example.com",
+            CreatedAt = specificTime
+        };
+
+        await repo.CreateUserAsync(user);
+        var fetched = (AshlarPostgresUser?)await repo.GetUserByIdAsync(user.Id);
+
+        Assert.That(fetched, Is.Not.Null);
+        Assert.That(fetched.CreatedAt, Is.EqualTo(specificTime));
     }
 
     [Test]
@@ -355,6 +370,94 @@ public sealed class PostgresIdentityRepositoryTests
         Assert.ThrowsAsync<PostgresException>(async () => await repo.CreateCredentialAsync(credential2));
     }
 
+    [Test]
+    public async Task UpdateUserShouldSucceed()
+    {
+        var repo = GetRepository();
+        var user = await CreateTestUser(repo);
+
+        var updatedUser = new AshlarPostgresUser
+        {
+            Id = user.Id,
+            Email = user.Email,
+            Name = "Updated Name",
+            IsActive = user.IsActive,
+            TenantId = user.TenantId,
+            CreatedAt = user.CreatedAt
+        };
+
+        await repo.UpdateUserAsync(updatedUser);
+
+        var fetched = await repo.GetUserByIdAsync(user.Id);
+        Assert.That(fetched, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fetched.Name, Is.EqualTo("Updated Name"));
+            Assert.That(updatedUser.UpdatedAt, Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void UpdateUserNullOrInvalidShouldThrow()
+    {
+        var repo = GetRepository();
+
+        using (Assert.EnterMultipleScope())
+        {
+            // ReSharper disable once NullableWarningSuppressionIsUsed
+            Assert.ThrowsAsync<ArgumentNullException>(async () => await repo.UpdateUserAsync(null!));
+            Assert.ThrowsAsync<ArgumentException>(async () => await repo.UpdateUserAsync(new AshlarPostgresUser { Id = Guid.NewGuid(), Email = "", CreatedAt = default }));
+        }
+    }
+
+    [Test]
+    public async Task UpdateUserNonExistentShouldReturnGracefully()
+    {
+        var repo = GetRepository();
+
+        var user = new AshlarPostgresUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "nonexistent@example.com",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        // Should not throw, and should not update UpdatedAt since rowsAffected == 0
+        await repo.UpdateUserAsync(user);
+        Assert.That(user.UpdatedAt, Is.Null);
+    }
+
+    [Test]
+    public async Task UpdateUserNonAuditUserShouldStillSucceed()
+    {
+        var repo = GetRepository();
+
+        var user = new MinimalUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "minimal@example.com",
+            IsActive = true,
+            Name = "Original"
+        };
+
+        await repo.CreateUserAsync(user);
+
+        var updatedUser = new MinimalUser
+        {
+            Id = user.Id,
+            Email = user.Email,
+            IsActive = user.IsActive,
+            Name = "Updated"
+        };
+
+        await repo.UpdateUserAsync(updatedUser);
+
+        var fetched = await repo.GetUserByIdAsync(user.Id);
+
+        Assert.That(fetched, Is.Not.Null);
+        Assert.That(fetched.Name, Is.EqualTo("Updated"));
+    }
+
     private static async Task<AshlarPostgresUser> CreateTestUser(PostgresIdentityRepository repo)
     {
         var user = new AshlarPostgresUser
@@ -366,5 +469,13 @@ public sealed class PostgresIdentityRepositoryTests
         };
         await repo.CreateUserAsync(user);
         return user;
+    }
+
+    private sealed class MinimalUser : IUser
+    {
+        public Guid Id { get; init; }
+        public required string Email { get; init; }
+        public string? Name { get; init; }
+        public bool IsActive { get; init; }
     }
 }

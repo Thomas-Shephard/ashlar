@@ -1,10 +1,11 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using DbUp;
 using Npgsql;
 
 namespace Ashlar.Postgres.Schema;
 
-internal sealed class SchemaManager(NpgsqlDataSource dataSource)
+internal class SchemaManager(NpgsqlDataSource dataSource)
 {
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -34,9 +35,7 @@ internal sealed class SchemaManager(NpgsqlDataSource dataSource)
         const int minVersion = 150000; // PostgreSQL 15.0
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("SHOW server_version_num;", connection);
-        var result = await command.ExecuteScalarAsync(cancellationToken);
-        var versionNum = result?.ToString();
+        var versionNum = await GetServerVersionAsync(connection, cancellationToken);
 
         if (versionNum == null || !int.TryParse(versionNum, out var version))
         {
@@ -47,5 +46,13 @@ internal sealed class SchemaManager(NpgsqlDataSource dataSource)
         {
             throw new NotSupportedException($"Ashlar PostgreSQL persistence requires PostgreSQL 15 or higher. Current server version number: {version}");
         }
+    }
+
+    [ExcludeFromCodeCoverage]
+    protected virtual async Task<string?> GetServerVersionAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("SHOW server_version_num;", connection);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result?.ToString();
     }
 }

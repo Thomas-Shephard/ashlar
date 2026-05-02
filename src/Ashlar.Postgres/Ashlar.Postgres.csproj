@@ -12,4 +12,9 @@
   <ItemGroup>
     <EmbeddedResource Include="Schema\Scripts\*.sql" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ashlar.Postgres.Tests" />
+  </ItemGroup>
+
 </Project>
