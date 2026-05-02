@@ -1,0 +1,92 @@
+// ReSharper disable CheckNamespace
+
+using Ashlar.AspNetCore.Authentication;
+using Ashlar.AspNetCore.Sessions;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
+#pragma warning disable IDE0130
+namespace Microsoft.Extensions.DependencyInjection;
+#pragma warning restore IDE0130
+
+/// <summary>
+/// Provides dependency injection registration helpers for Ashlar ASP.NET Core session authentication.
+/// </summary>
+public static class AshlarAspNetCoreServiceCollectionExtensions
+{
+    public static IServiceCollection AddAshlarAspNetCoreSessions(
+        this IServiceCollection services,
+        Action<AshlarSessionAuthenticationOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        var configuredOptions = new AshlarSessionAuthenticationOptions();
+        configure?.Invoke(configuredOptions);
+        ValidateOptions(configuredOptions);
+
+        services.AddHttpContextAccessor();
+        services.TryAddSingleton(new AshlarSessionRegistration { SchemeName = configuredOptions.SchemeName });
+        services.TryAddScoped<IAshlarSignInManager, AshlarSignInManager>();
+
+        var authenticationBuilder = services.AddAuthentication(options =>
+        {
+            options.DefaultAuthenticateScheme ??= configuredOptions.SchemeName;
+            options.DefaultChallengeScheme ??= configuredOptions.SchemeName;
+            options.DefaultForbidScheme ??= configuredOptions.SchemeName;
+        });
+
+        authenticationBuilder.AddScheme<AshlarSessionAuthenticationOptions, AshlarSessionAuthenticationHandler>(
+            configuredOptions.SchemeName,
+            options =>
+            {
+                CopyOptions(configuredOptions, options);
+                ValidateOptions(options);
+            });
+
+        return services;
+    }
+
+    private static void CopyOptions(AshlarSessionAuthenticationOptions source, AshlarSessionAuthenticationOptions destination)
+    {
+        destination.SchemeName = source.SchemeName;
+        destination.CookieName = source.CookieName;
+        destination.ClaimsIssuer = source.ClaimsIssuer;
+        destination.SlidingCookieExpiration = source.SlidingCookieExpiration;
+        destination.LoginPath = source.LoginPath;
+        destination.AccessDeniedPath = source.AccessDeniedPath;
+        destination.Cookie.HttpOnly = source.Cookie.HttpOnly;
+        destination.Cookie.SecurePolicy = source.Cookie.SecurePolicy;
+        destination.Cookie.SameSite = source.Cookie.SameSite;
+        destination.Cookie.Path = source.Cookie.Path;
+        destination.Cookie.Domain = source.Cookie.Domain;
+        destination.Cookie.IsEssential = source.Cookie.IsEssential;
+        destination.Cookie.MaxAge = source.Cookie.MaxAge;
+    }
+
+    private static void ValidateOptions(AshlarSessionAuthenticationOptions options)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.SchemeName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.CookieName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.ClaimsIssuer);
+
+        if (!options.CookieName.StartsWith("__Host-", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(options.Cookie.Domain))
+        {
+            throw new ArgumentException("__Host- cookies must not set Cookie.Domain.", nameof(options));
+        }
+
+        if (!string.Equals(options.Cookie.Path, "/", StringComparison.Ordinal))
+        {
+            throw new ArgumentException("__Host- cookies must set Cookie.Path to '/'.", nameof(options));
+        }
+
+        if (options.Cookie.SecurePolicy != CookieSecurePolicy.Always)
+        {
+            throw new ArgumentException("__Host- cookies must set Cookie.SecurePolicy to Always.", nameof(options));
+        }
+    }
+}

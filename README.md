@@ -69,6 +69,41 @@ if (validation.Succeeded)
 await sessionService.RevokeSessionAsync(createResult.Session.Id, "signed-out");
 ```
 
+## ASP.NET Core Session Cookies
+Use **Ashlar.AspNetCore** to authenticate Ashlar sessions through the normal ASP.NET Core authentication middleware:
+
+```csharp
+services.AddAshlarPostgres(connectionString);
+services.AddDataProtection();
+services.AddAshlarDataProtectionSecretProtector();
+services.AddAshlarIdentity();
+
+services.AddAshlarAspNetCoreSessions(options =>
+{
+    options.SchemeName = "Ashlar";
+    options.CookieName = "__Host-Ashlar.Session";
+    options.LoginPath = "/login";
+    options.AccessDeniedPath = "/forbidden";
+});
+
+app.UseAuthentication();
+app.UseAuthorization();
+```
+
+After a successful application login, create the backing Ashlar session and append the cookie:
+
+```csharp
+var signInManager = httpContext.RequestServices.GetRequiredService<IAshlarSignInManager>();
+
+await signInManager.SignInAsync(
+    httpContext,
+    authenticationResult.User!.Id);
+```
+
+`AddAshlarAspNetCoreSessions` registers the `"Ashlar"` authentication scheme by default. The handler reads the configured cookie, validates it with `IAuthenticationSessionService`, and creates an authenticated `ClaimsPrincipal` containing `ClaimTypes.NameIdentifier`, the Ashlar session id claim, and the authentication method claim.
+
+Cookie defaults are intentionally secure: `HttpOnly = true`, `SecurePolicy = Always`, `SameSite = Lax`, and `Path = "/"`. `SameSite=Lax` is chosen so normal top-level navigation back to an application login flow keeps working while cross-site subresource and background requests do not carry the session cookie. Applications that need stricter same-site behavior can configure the cookie builder.
+
 ## Contributions
 Contributions are welcome! Read the [contributing guide](CONTRIBUTING.md) to get started.
 
