@@ -26,7 +26,8 @@ public static class AshlarServiceCollectionExtensions
     /// </remarks>
     public static IServiceCollection AddAshlarIdentity(
         this IServiceCollection services,
-        Action<IdentityServiceOptions>? configure = null)
+        Action<IdentityServiceOptions>? configure = null,
+        Action<AuthenticationSessionOptions>? configureSessions = null)
     {
         ArgumentNullException.ThrowIfNull(services);
 
@@ -34,6 +35,11 @@ public static class AshlarServiceCollectionExtensions
         if (configure != null)
         {
             services.Configure(configure);
+        }
+
+        if (configureSessions != null)
+        {
+            services.Configure(configureSessions);
         }
 
         // IdentityService has multiple public constructors; use the full dependency graph explicitly.
@@ -48,9 +54,12 @@ public static class AshlarServiceCollectionExtensions
         services.TryAddScoped<IAuthenticationPipeline, AuthenticationPipeline>();
         services.TryAddScoped<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>();
         services.TryAddScoped<ICredentialService, CredentialService>();
+        services.TryAddScoped<IAuthenticationSessionService, AuthenticationSessionService>();
         services.TryAddScoped<PasswordHasherSelector>();
+        services.TryAddSingleton<ISessionTokenGenerator, RandomSessionTokenGenerator>();
         services.TryAddSingleton<ISessionTokenHasher, Sha256SessionTokenHasher>();
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<IdentityServiceOptions>>().Value);
+        services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<AuthenticationSessionOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
 
         return services;

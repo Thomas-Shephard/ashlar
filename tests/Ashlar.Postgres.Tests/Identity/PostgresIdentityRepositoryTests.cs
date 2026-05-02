@@ -44,6 +44,32 @@ public sealed class PostgresIdentityRepositoryTests : PostgresTestBase
     }
 
     [Test]
+    public void AuthenticationContextPropertiesShouldWork()
+    {
+        var tenantId = Guid.NewGuid();
+        var items = new Dictionary<string, string> { ["provider"] = "local" };
+        var context = new AuthenticationContext(
+            "test@example.com",
+            tenantId,
+            "127.0.0.1",
+            "test-agent",
+            "correlation-id",
+            "/return",
+            items);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Email, Is.EqualTo("test@example.com"));
+            Assert.That(context.TenantId, Is.EqualTo(tenantId));
+            Assert.That(context.IpAddress, Is.EqualTo("127.0.0.1"));
+            Assert.That(context.UserAgent, Is.EqualTo("test-agent"));
+            Assert.That(context.CorrelationId, Is.EqualTo("correlation-id"));
+            Assert.That(context.ReturnUrl, Is.EqualTo("/return"));
+            Assert.That(context.Items, Is.EqualTo(items));
+        }
+    }
+
+    [Test]
     public async Task CreateAndFetchUserShouldSucceed()
     {
         var repo = GetRepository();

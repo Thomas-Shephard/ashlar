@@ -27,9 +27,12 @@ public class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<IAuthenticationPipeline, AuthenticationPipeline>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialService, CredentialService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IAuthenticationSessionService, AuthenticationSessionService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<PasswordHasherSelector>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<ISessionTokenGenerator, RandomSessionTokenGenerator>(services, ServiceLifetime.Singleton);
             AssertDescriptor<ISessionTokenHasher, Sha256SessionTokenHasher>(services, ServiceLifetime.Singleton);
             AssertDescriptor<IdentityServiceOptions>(services, ServiceLifetime.Singleton);
+            AssertDescriptor<AuthenticationSessionOptions>(services, ServiceLifetime.Singleton);
             AssertDescriptor<TimeProvider>(services, ServiceLifetime.Singleton);
             Assert.That(services.Any(d => d.ServiceType == typeof(IIdentityRepository)), Is.False);
         }
@@ -46,6 +49,19 @@ public class AshlarServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<IdentityServiceOptions>().LastUsedAtUpdateThreshold, Is.EqualTo(threshold));
+    }
+
+    [Test]
+    public void AddAshlarIdentityConfiguresAuthenticationSessionOptions()
+    {
+        var services = new ServiceCollection();
+        var lifetime = TimeSpan.FromDays(30);
+
+        services.AddAshlarIdentity(configureSessions: options => options.DefaultLifetime = lifetime);
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetRequiredService<AuthenticationSessionOptions>().DefaultLifetime, Is.EqualTo(lifetime));
     }
 
     [Test]
@@ -90,6 +106,21 @@ public class AshlarServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<TimeProvider>(), Is.SameAs(TimeProvider.System));
+    }
+
+    [Test]
+    public void AddAshlarIdentityResolvesAuthenticationSessionServiceWhenRequiredDependenciesArePresent()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarIdentity();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var service = scope.ServiceProvider.GetRequiredService<IAuthenticationSessionService>();
+
+        Assert.That(service, Is.TypeOf<AuthenticationSessionService>());
     }
 
     [Test]
