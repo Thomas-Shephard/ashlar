@@ -1,7 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ashlar.Tests" />
+  </ItemGroup>
+
 </Project>

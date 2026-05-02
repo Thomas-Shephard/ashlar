@@ -4,6 +4,8 @@ using Ashlar.Auditing;
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Identity.RateLimiting;
+using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -62,6 +64,7 @@ public static class AshlarServiceCollectionExtensions
         services.TryAddSingleton<ISessionTokenGenerator, RandomSessionTokenGenerator>();
         services.TryAddSingleton<ISessionTokenHasher, Sha256SessionTokenHasher>();
         services.TryAddSingleton<ISecurityEventSink, NullSecurityEventSink>();
+        services.TryAddSingleton<IAuthenticationRateLimiter, InMemoryAuthenticationRateLimiter>();
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<IdentityServiceOptions>>().Value);
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<AuthenticationSessionOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
