@@ -5,6 +5,7 @@ using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.Providers.Local;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 
 namespace Ashlar.Tests.Identity;
@@ -13,6 +14,7 @@ public class IdentityServiceTests
 {
     private Mock<IIdentityRepository> _repositoryMock;
     private Mock<ISecretProtector> _secretProtectorMock;
+    private FakeTimeProvider _timeProvider;
     private FakePasswordHasher _fakeHasher;
     private FakePasswordHasher _oldHasher;
     private PasswordHasherSelector _hasherSelector;
@@ -23,6 +25,7 @@ public class IdentityServiceTests
     {
         _repositoryMock = new Mock<IIdentityRepository>();
         _secretProtectorMock = new Mock<ISecretProtector>();
+        _timeProvider = new FakeTimeProvider();
 
         // Default behavior: return as-is for simplicity in existing tests,
         // unless we specifically want to test protection.
@@ -43,7 +46,7 @@ public class IdentityServiceTests
             new Saml2AuthenticationProvider("Okta")
         };
 
-        var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
+        var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object, timeProvider: _timeProvider);
         _identityService = new IdentityService(_repositoryMock.Object, providers, credentialService);
         // Clear constructor-time Protect() calls so Verify() in tests only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();
@@ -1572,11 +1575,12 @@ public class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Local, AuthenticationProviderKey.Local.Name, user.Id.ToString(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
 
-        var startTime = DateTimeOffset.UtcNow;
+        var startTime = _timeProvider.GetUtcNow();
         await _identityService.LoginAsync(new AuthenticationContext(email), new LocalPasswordAssertion("pass"));
+        var endTime = _timeProvider.GetUtcNow();
 
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
-            c.LastUsedAt >= startTime && c.LastUsedAt <= DateTimeOffset.UtcNow), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+            c.LastUsedAt >= startTime && c.LastUsedAt <= endTime), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]

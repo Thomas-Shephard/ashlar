@@ -15,12 +15,14 @@ namespace Ashlar.Identity;
 public sealed class CredentialService(
     IIdentityRepository repository,
     ISecretProtector secretProtector,
-    IdentityServiceOptions? options = null)
+    IdentityServiceOptions? options = null,
+    TimeProvider? timeProvider = null)
     : ICredentialService
 {
     private readonly IIdentityRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly ISecretProtector _secretProtector = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
     private readonly IdentityServiceOptions _options = options ?? new IdentityServiceOptions();
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly ConcurrentDictionary<int, string> _dummyValues = new();
 
     /// <inheritdoc />
@@ -86,7 +88,7 @@ public sealed class CredentialService(
     private (UserCredential? Credential, bool UnprotectFailed) UnprotectCredential(UserCredential? credential, IAuthenticationProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
-        var now = DateTimeOffset.UtcNow;
+        var now = _timeProvider.GetUtcNow();
 
         if (!provider.ProtectsCredentials)
         {
@@ -170,7 +172,7 @@ public sealed class CredentialService(
 
         if (needsUpdate)
         {
-            unprotectedCredential.UpdatedAt = DateTimeOffset.UtcNow;
+            unprotectedCredential.UpdatedAt = _timeProvider.GetUtcNow();
         }
 
         return !needsUpdate || await PersistUpdateAsync(unprotectedCredential, originalCredential, result, cancellationToken);
@@ -179,7 +181,7 @@ public sealed class CredentialService(
     private bool PrepareMetadataAndUsage(UserCredential credential, AuthenticationResult result)
     {
         var needsUpdate = false;
-        var now = DateTimeOffset.UtcNow;
+        var now = _timeProvider.GetUtcNow();
 
         if (!credential.LastUsedAt.HasValue || (now - credential.LastUsedAt.Value) >= _options.LastUsedAtUpdateThreshold)
         {
@@ -346,7 +348,7 @@ public sealed class CredentialService(
             ProviderName = providerName,
             ProviderKey = providerKey,
             Version = Guid.NewGuid().ToString("N"),
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             UpdatedAt = null,
             ExpiresAt = null,
             RevokedAt = null,

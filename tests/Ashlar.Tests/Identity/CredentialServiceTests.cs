@@ -3,6 +3,7 @@ using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Security.Encryption;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 
 namespace Ashlar.Tests.Identity;
@@ -11,6 +12,7 @@ public class CredentialServiceTests
 {
     private Mock<IIdentityRepository> _repositoryMock;
     private Mock<ISecretProtector> _secretProtectorMock;
+    private FakeTimeProvider _timeProvider;
     private CredentialService _service;
 
     [SetUp]
@@ -18,11 +20,98 @@ public class CredentialServiceTests
     {
         _repositoryMock = new Mock<IIdentityRepository>();
         _secretProtectorMock = new Mock<ISecretProtector>();
+        _timeProvider = new FakeTimeProvider();
 
         _secretProtectorMock.Setup(s => s.Protect(It.IsAny<string>())).Returns<string>(s => $"protected({s})");
         _secretProtectorMock.Setup(s => s.Unprotect(It.IsAny<string>())).Returns<string>(s => s.StartsWith("protected(", StringComparison.Ordinal) ? s[10..^1] : s);
 
-        _service = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object);
+        _service = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object, timeProvider: _timeProvider);
+    }
+
+    [Test]
+    public async Task UpdateCredentialUsageAsyncShouldUseClockForLastUsedAt()
+    {
+        var testTime = new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.Zero);
+        _timeProvider.SetUtcNow(testTime);
+
+        var credential = CreateCredential(Guid.NewGuid());
+        credential.LastUsedAt = testTime.AddMinutes(-2);
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
+        var providerMock = new Mock<IAuthenticationProvider>();
+
+        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+
+        Assert.That(credential.LastUsedAt, Is.EqualTo(testTime));
+    }
+
+    [Test]
+    public async Task UpdateCredentialUsageAsyncShouldUseClockForUpdatedAt()
+    {
+        var testTime = new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.Zero);
+        _timeProvider.SetUtcNow(testTime);
+
+        var credential = CreateCredential(Guid.NewGuid());
+        credential.Metadata = "old";
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, NewMetadata: "new");
+        var providerMock = new Mock<IAuthenticationProvider>();
+
+        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+
+        Assert.That(credential.UpdatedAt, Is.EqualTo(testTime));
+    }
+
+    [Test]
+    public async Task LinkCredentialAsyncShouldUseClockForCreatedAt()
+    {
+        var userId = Guid.NewGuid();
+        var user = new User { Id = userId, Email = "test@example.com" };
+        var assertionMock = new Mock<IAuthenticationAssertion>();
+        assertionMock.Setup(a => a.ProviderIdentity).Returns(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
+
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
+        providerMock.Setup(p => p.GetProviderKey(assertionMock.Object, userId)).Returns("new-key");
+
+        var testTime = new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.Zero);
+        _timeProvider.SetUtcNow(testTime);
+
+        _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "new-key", It.IsAny<CancellationToken>())).ReturnsAsync((IUser?)null);
+
+        await _service.LinkCredentialAsync(userId, assertionMock.Object, providerMock.Object);
+
+        _repositoryMock.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c =>
+            c.CreatedAt == testTime), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ResolveAsyncShouldUseClockForExpiryCheck()
+    {
+        var testTime = new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.Zero);
+        _timeProvider.SetUtcNow(testTime);
+
+        var credential = CreateCredential(
+            Guid.NewGuid(),
+            expiresAt: testTime.AddSeconds(1)); // Not yet expired
+
+        _repositoryMock.Setup(r => r.GetUserByIdAsync(credential.UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = credential.UserId, Email = "test@example.com" });
+        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(credential.UserId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(credential);
+
+        var resolvedCredential = await ResolveCredentialAsync(credential);
+        Assert.That(resolvedCredential, Is.Not.Null, "Should be available at testTime");
+
+        _timeProvider.Advance(TimeSpan.FromSeconds(2)); // Now it is expired
+
+        var resolvedCredentialExpired = await ResolveCredentialAsync(credential);
+        Assert.That(resolvedCredentialExpired, Is.Null, "Should be expired after advancing clock");
     }
 
     [Test]
@@ -39,7 +128,7 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
             CredentialValue = "protected(token)"
         };
@@ -92,7 +181,7 @@ public class CredentialServiceTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = "key",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
             CredentialValue = "value"
         };
@@ -121,7 +210,7 @@ public class CredentialServiceTests
             ProviderName = AuthenticationProviderKey.Local.Name,
             ProviderKey = "key",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Revoked,
             CredentialValue = "value"
         };
@@ -156,10 +245,10 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
             Metadata = "old",
-            LastUsedAt = DateTimeOffset.UtcNow
+            LastUsedAt = _timeProvider.GetUtcNow()
         };
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, NewMetadata: "new");
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -183,7 +272,7 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active
         };
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
@@ -209,7 +298,7 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active
         };
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
@@ -234,9 +323,9 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
-            LastUsedAt = DateTimeOffset.UtcNow.AddDays(-1)
+            LastUsedAt = _timeProvider.GetUtcNow().AddDays(-1)
         };
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.BestEffort);
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -260,9 +349,9 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
-            LastUsedAt = DateTimeOffset.UtcNow.AddDays(-1)
+            LastUsedAt = _timeProvider.GetUtcNow().AddDays(-1)
         };
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.Required);
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -286,9 +375,9 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
-            LastUsedAt = DateTimeOffset.UtcNow.AddDays(-1)
+            LastUsedAt = _timeProvider.GetUtcNow().AddDays(-1)
         };
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.BestEffort);
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -312,9 +401,9 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
-            LastUsedAt = DateTimeOffset.UtcNow.AddDays(-1)
+            LastUsedAt = _timeProvider.GetUtcNow().AddDays(-1)
         };
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.Required);
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -338,9 +427,9 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
-            LastUsedAt = DateTimeOffset.UtcNow.AddDays(-1)
+            LastUsedAt = _timeProvider.GetUtcNow().AddDays(-1)
         };
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.Required);
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -362,7 +451,7 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active
         };
         // Consume failure should always be critical, even if requirement is BestEffort.
@@ -388,7 +477,7 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
             CredentialValue = "protected-original"
         };
@@ -400,10 +489,10 @@ public class CredentialServiceTests
             ProviderName = originalCredential.ProviderName,
             ProviderKey = originalCredential.ProviderKey,
             Version = originalCredential.Version,
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
             CredentialValue = "unprotected-original",
-            LastUsedAt = DateTimeOffset.UtcNow.AddDays(-1)
+            LastUsedAt = _timeProvider.GetUtcNow().AddDays(-1)
         };
         var result = new AuthenticationResult(AuthenticationResultStatus.SucceededWithCredentialUpdate, NewCredentialValue: "new-raw", CredentialUpdateRequirement: CredentialUpdateRequirement.BestEffort);
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -428,10 +517,10 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
             CredentialValue = "unprotected-secret",
-            LastUsedAt = DateTimeOffset.UtcNow.AddDays(-1)
+            LastUsedAt = _timeProvider.GetUtcNow().AddDays(-1)
         };
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -456,10 +545,10 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
             CredentialValue = "unprotected-secret",
-            LastUsedAt = DateTimeOffset.UtcNow.AddDays(-1)
+            LastUsedAt = _timeProvider.GetUtcNow().AddDays(-1)
         };
         // Status SucceededWithCredentialUpdate triggers the try-catch for protection.
         var result = new AuthenticationResult(AuthenticationResultStatus.SucceededWithCredentialUpdate, NewCredentialValue: "new-raw", CredentialUpdateRequirement: CredentialUpdateRequirement.BestEffort);
@@ -486,7 +575,7 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
             CredentialValue = "protected-original"
         };
@@ -498,10 +587,10 @@ public class CredentialServiceTests
             ProviderName = originalCredential.ProviderName,
             ProviderKey = originalCredential.ProviderKey,
             Version = originalCredential.Version,
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
             CredentialValue = "unprotected-original",
-            LastUsedAt = DateTimeOffset.UtcNow.AddDays(-1)
+            LastUsedAt = _timeProvider.GetUtcNow().AddDays(-1)
         };
         var result = new AuthenticationResult(AuthenticationResultStatus.SucceededWithCredentialUpdate, NewCredentialValue: "new-raw", CredentialUpdateRequirement: CredentialUpdateRequirement.Required);
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -529,10 +618,10 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
             CredentialValue = null, // No value provided
-            LastUsedAt = DateTimeOffset.UtcNow.AddDays(-1)
+            LastUsedAt = _timeProvider.GetUtcNow().AddDays(-1)
         };
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -572,7 +661,7 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
             CredentialValue = "bad-value"
         };
@@ -647,7 +736,7 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _timeProvider.GetUtcNow(),
             Status = CredentialStatus.Active,
             CredentialValue = null
         };
@@ -690,9 +779,9 @@ public class CredentialServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "new-key", It.IsAny<CancellationToken>())).ReturnsAsync((IUser?)null);
         _secretProtectorMock.Setup(s => s.Protect("prepared")).Returns("protected-prepared");
 
-        var beforeLink = DateTimeOffset.UtcNow;
+        var beforeLink = _timeProvider.GetUtcNow();
         await _service.LinkCredentialAsync(userId, assertionMock.Object, providerMock.Object, "raw");
-        var afterLink = DateTimeOffset.UtcNow;
+        var afterLink = _timeProvider.GetUtcNow();
 
         _repositoryMock.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c =>
             c.UserId == userId &&
@@ -710,9 +799,9 @@ public class CredentialServiceTests
     public async Task ResolveAsyncShouldPreserveLifecycleFieldsOnUnprotectedCredential()
     {
         var userId = Guid.NewGuid();
-        var createdAt = DateTimeOffset.UtcNow.AddDays(-7);
-        var updatedAt = DateTimeOffset.UtcNow.AddDays(-2);
-        var expiresAt = DateTimeOffset.UtcNow.AddDays(1);
+        var createdAt = _timeProvider.GetUtcNow().AddDays(-7);
+        var updatedAt = _timeProvider.GetUtcNow().AddDays(-2);
+        var expiresAt = _timeProvider.GetUtcNow().AddDays(1);
         var credential = CreateCredential(
             userId,
             createdAt: createdAt,
@@ -748,7 +837,7 @@ public class CredentialServiceTests
     {
         var credential = CreateCredential(
             Guid.NewGuid(),
-            expiresAt: DateTimeOffset.UtcNow.AddSeconds(-1),
+            expiresAt: _timeProvider.GetUtcNow().AddSeconds(-1),
             credentialValue: "protected(token)");
 
         var resolvedCredential = await ResolveCredentialAsync(credential);
@@ -761,7 +850,7 @@ public class CredentialServiceTests
     {
         var credential = CreateCredential(
             Guid.NewGuid(),
-            revokedAt: DateTimeOffset.UtcNow,
+            revokedAt: _timeProvider.GetUtcNow(),
             credentialValue: "protected(token)");
 
         var resolvedCredential = await ResolveCredentialAsync(credential);
@@ -787,7 +876,7 @@ public class CredentialServiceTests
     {
         var credential = CreateCredential(Guid.NewGuid());
         credential.Metadata = "old";
-        credential.LastUsedAt = DateTimeOffset.UtcNow;
+        credential.LastUsedAt = _timeProvider.GetUtcNow();
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, NewMetadata: "new");
         var providerMock = new Mock<IAuthenticationProvider>();
 
@@ -805,7 +894,7 @@ public class CredentialServiceTests
     public async Task UpdateCredentialUsageAsyncWithNoChangesShouldNotSetUpdatedAtOrCallRepository()
     {
         var credential = CreateCredential(Guid.NewGuid());
-        credential.LastUsedAt = DateTimeOffset.UtcNow;
+        credential.LastUsedAt = _timeProvider.GetUtcNow();
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
         var providerMock = new Mock<IAuthenticationProvider>();
 
@@ -916,14 +1005,14 @@ public class CredentialServiceTests
     public void UpdateCredentialUsageAsyncWithNullResultShouldThrow()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _service.UpdateCredentialUsageAsync(new UserCredential { Id = Guid.NewGuid(), UserId = Guid.NewGuid(), ProviderType = ProviderType.Local, ProviderName = "L", ProviderKey = "K", Version = "v1", CreatedAt = DateTimeOffset.UtcNow, Status = CredentialStatus.Active }, null, null!, new Mock<IAuthenticationProvider>().Object));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.UpdateCredentialUsageAsync(new UserCredential { Id = Guid.NewGuid(), UserId = Guid.NewGuid(), ProviderType = ProviderType.Local, ProviderName = "L", ProviderKey = "K", Version = "v1", CreatedAt = _timeProvider.GetUtcNow(), Status = CredentialStatus.Active }, null, null!, new Mock<IAuthenticationProvider>().Object));
     }
 
     [Test]
     public void UpdateCredentialUsageAsyncWithNullProviderShouldThrow()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _service.UpdateCredentialUsageAsync(new UserCredential { Id = Guid.NewGuid(), UserId = Guid.NewGuid(), ProviderType = ProviderType.Local, ProviderName = "L", ProviderKey = "K", Version = "v1", CreatedAt = DateTimeOffset.UtcNow, Status = CredentialStatus.Active }, null, new AuthenticationResult(AuthenticationResultStatus.Succeeded), null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.UpdateCredentialUsageAsync(new UserCredential { Id = Guid.NewGuid(), UserId = Guid.NewGuid(), ProviderType = ProviderType.Local, ProviderName = "L", ProviderKey = "K", Version = "v1", CreatedAt = _timeProvider.GetUtcNow(), Status = CredentialStatus.Active }, null, new AuthenticationResult(AuthenticationResultStatus.Succeeded), null!));
     }
 
     [Test]
@@ -1004,7 +1093,7 @@ public class CredentialServiceTests
         return providerMock;
     }
 
-    private static UserCredential CreateCredential(
+    private UserCredential CreateCredential(
         Guid userId,
         DateTimeOffset? createdAt = null,
         DateTimeOffset? updatedAt = null,
@@ -1022,7 +1111,7 @@ public class CredentialServiceTests
             ProviderName = "Google",
             ProviderKey = "sub",
             Version = "v1",
-            CreatedAt = createdAt ?? DateTimeOffset.UtcNow,
+            CreatedAt = createdAt ?? _timeProvider.GetUtcNow(),
             UpdatedAt = updatedAt,
             ExpiresAt = expiresAt,
             RevokedAt = revokedAt,
