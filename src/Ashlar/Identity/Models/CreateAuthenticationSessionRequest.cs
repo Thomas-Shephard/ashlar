@@ -7,4 +7,5 @@ public sealed record CreateAuthenticationSessionRequest(
     TimeSpan? Lifetime = null,
     string? IpAddress = null,
     string? UserAgent = null,
-    string? Metadata = null);
+    string? Metadata = null,
+    string? CorrelationId = null);

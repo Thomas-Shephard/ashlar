@@ -192,7 +192,7 @@ public sealed class CredentialService(
         var consumed = await _repository.ConsumeCredentialAsync(unprotectedCredential.Id, GetExpectedVersion(unprotectedCredential, originalCredential), cancellationToken);
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
-            EventType = consumed ? AshlarSecurityEventTypes.CredentialConsumed : AshlarSecurityEventTypes.CredentialUpdateFailed,
+            EventType = AshlarSecurityEventTypes.CredentialConsumed,
             Outcome = consumed ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
             UserId = unprotectedCredential.UserId,
             Provider = new AuthenticationProviderKey(unprotectedCredential.ProviderType, unprotectedCredential.ProviderName),

@@ -7,9 +7,10 @@ public static class AshlarSecurityEventTypes
 {
     public const string AuthenticationSucceeded = "ashlar.authentication.succeeded";
     public const string AuthenticationFailed = "ashlar.authentication.failed";
+    public const string UserCreated = "ashlar.user.created";
     public const string CredentialLinked = "ashlar.credential.linked";
     public const string CredentialConsumed = "ashlar.credential.consumed";
-    public const string CredentialUpdatePersisted = "ashlar.credential.update_persisted";
+    public const string CredentialUpdatePersisted = "ashlar.credential.updated";
     public const string CredentialUpdateFailed = "ashlar.credential.update_failed";
     public const string SessionCreated = "ashlar.session.created";
     public const string SessionValidated = "ashlar.session.validated";

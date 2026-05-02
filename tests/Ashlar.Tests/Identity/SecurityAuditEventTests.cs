@@ -351,6 +351,28 @@ public sealed class SecurityAuditEventTests
     }
 
     [Test]
+    public async Task AuditSinkOperationCanceledExceptionIsSwallowedWhenCancellationNotRequested()
+    {
+        var sinkMock = new Mock<ISecurityEventSink>();
+        sinkMock.Setup(s => s.RecordAsync(It.IsAny<AshlarSecurityEvent>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException());
+
+        var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sinkMock.Object);
+        var context = CreateContext();
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
+        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+        credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var login = await pipeline.LoginAsync(context, assertion);
+
+        Assert.That(login.Succeeded, Is.True);
+    }
+
+    [Test]
     public void AddAshlarIdentityRegistersNullAuditSinkByDefault()
     {
         var services = new ServiceCollection();

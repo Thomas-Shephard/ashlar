@@ -78,7 +78,8 @@ public sealed class AuthenticationSessionService(
             UserId = userId,
             SessionId = session.Id,
             IpAddress = ipAddress,
-            UserAgent = userAgent
+            UserAgent = userAgent,
+            CorrelationId = request.CorrelationId
         }, cancellationToken);
         return new CreateAuthenticationSessionResult(token, session);
     }

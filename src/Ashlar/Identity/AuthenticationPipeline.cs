@@ -45,7 +45,7 @@ public sealed class AuthenticationPipeline(
                 UserId = user?.Id,
                 Provider = provider.Key,
                 Context = context,
-                FailureReason = SecurityEventFailureReasons.InvalidCredentials
+                FailureReason = unprotectFailed ? SecurityEventFailureReasons.UnprotectFailed : SecurityEventFailureReasons.InvalidCredentials
             }, cancellationToken);
             return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
         }

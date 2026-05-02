@@ -8,13 +8,16 @@ public sealed class IdentityService(
     IIdentityRepository repository,
     IAuthenticationProviderRegistry providerRegistry,
     ICredentialService credentialService,
-    IAuthenticationPipeline authenticationPipeline)
+    IAuthenticationPipeline authenticationPipeline,
+    ISecurityEventSink? securityEventSink = null,
+    TimeProvider? timeProvider = null)
     : IIdentityService
 {
     private readonly IIdentityRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly ICredentialService _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
     private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
     private readonly IAuthenticationPipeline _authenticationPipeline = authenticationPipeline ?? throw new ArgumentNullException(nameof(authenticationPipeline));
+    private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider);
 
     public IdentityService(
         IIdentityRepository repository,
@@ -32,7 +35,7 @@ public sealed class IdentityService(
         ICredentialService credentialService,
         ISecurityEventSink? securityEventSink = null,
         TimeProvider? timeProvider = null)
-        : this(repository, providerRegistry, credentialService, new AuthenticationPipeline(providerRegistry, credentialService, securityEventSink, timeProvider))
+        : this(repository, providerRegistry, credentialService, new AuthenticationPipeline(providerRegistry, credentialService, securityEventSink, timeProvider), securityEventSink, timeProvider)
     {
     }
 
@@ -63,6 +66,12 @@ public sealed class IdentityService(
     public async Task<IUser> CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
     {
         await _repository.CreateUserAsync(user, cancellationToken);
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.UserCreated,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = user.Id
+        }, cancellationToken);
         return user;
     }
 

@@ -31,13 +31,14 @@ internal sealed class SecurityEventEmitter(ISecurityEventSink? sink, TimeProvide
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            // Ashlar currently fails open for audit emission; add strict audit options before changing this behavior.
-            // TODO: Log audit sink cancellation when Ashlar has a core logging convention.
+            // Ashlar currently fails open for audit emission to ensure service availability.
+            // TODO: Log audit sink cancellation once Ashlar has a core logging convention.
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Ashlar currently fails open for audit emission; add strict audit options before changing this behavior.
-            // TODO: Log audit sink failures when Ashlar has a core logging convention.
+            // Ashlar currently fails open for audit emission to ensure service availability.
+            // In highly regulated environments, this may need to be configurable to fail-closed.
+            // TODO: Log audit sink failures once Ashlar has a core logging convention.
         }
     }
 

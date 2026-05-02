@@ -7,6 +7,9 @@ namespace Ashlar.Auditing;
 /// </summary>
 public sealed record AshlarSecurityEvent
 {
+    /// <summary>
+    /// Unique identifier for this specific audit event instance.
+    /// </summary>
     public required Guid Id { get; init; }
 
     public required string EventType { get; init; }
