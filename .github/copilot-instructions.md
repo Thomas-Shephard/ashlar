@@ -44,6 +44,7 @@ Use the following **exact** CLI commands to build, test, and validate the projec
 ## 3. Project Layout
 
 *   `src/Ashlar/` - Core library source code.
+    *   `Auditing/` - Security event auditing infrastructure (`ISecurityEventSink`, `AshlarSecurityEvent`).
     *   `Identity/` - Main identity services (`IdentityService`).
     *   `Identity/Abstractions/` - Core interfaces (`IIdentityService`, `IUser`, `ITenantUser`, `IIdentityRepository`, `IAuthenticationProvider`).
     *   `Identity/Models/` - Data models (`Tenant`, `UserCredential`).
@@ -72,6 +73,7 @@ This project deals with sensitive identity data. Security is paramount.
 *   **Response Discrepancy Oracles:** Ensure that authentication failures (e.g., "User not found" vs "Wrong password") return generic error responses to prevent user enumeration, while still allowing internal diagnostics where safe.
 *   **Secrets Management:** Never hardcode secrets. Ensure `ISecretProtector` is used for sensitive data at rest.
 *   **Hashing:** Ensure password hashing uses strong algorithms (e.g., PBKDF2/Argon2) via the `IPasswordHasher` abstraction.
+*   **Auditing Privacy:** Audit events emitted via `ISecurityEventSink` **must never** contain sensitive data such as raw session tokens, passwords, one-time codes, or credential values. Only stable identifiers, metadata, and non-sensitive outcome details are permitted.
 
 ## 6. Review Checklist
 When reviewing code or suggesting changes, you **MUST** check for the following:

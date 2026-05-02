@@ -67,7 +67,8 @@ public sealed class AshlarSignInManager(
     {
         return new CreateAuthenticationSessionRequest(
             IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
-            UserAgent: httpContext.Request.Headers.UserAgent.ToString());
+            UserAgent: httpContext.Request.Headers.UserAgent.ToString(),
+            CorrelationId: httpContext.TraceIdentifier);
     }
 
     private static Guid? TryGetSessionId(System.Security.Claims.ClaimsPrincipal principal)

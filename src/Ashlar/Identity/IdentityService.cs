@@ -1,28 +1,31 @@
+using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity;
 
-public sealed class IdentityService : IIdentityService
+public sealed class IdentityService(
+    IIdentityRepository repository,
+    IAuthenticationProviderRegistry providerRegistry,
+    ICredentialService credentialService,
+    IAuthenticationPipeline authenticationPipeline,
+    ISecurityEventSink? securityEventSink = null,
+    TimeProvider? timeProvider = null)
+    : IIdentityService
 {
-    private readonly IIdentityRepository _repository;
-    private readonly ICredentialService _credentialService;
-    private readonly IAuthenticationProviderRegistry _providerRegistry;
-    private readonly IAuthenticationPipeline _authenticationPipeline;
+    private readonly IIdentityRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+    private readonly ICredentialService _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
+    private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
+    private readonly IAuthenticationPipeline _authenticationPipeline = authenticationPipeline ?? throw new ArgumentNullException(nameof(authenticationPipeline));
+    private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider);
 
     public IdentityService(
         IIdentityRepository repository,
         IEnumerable<IAuthenticationProvider> providers,
-        ICredentialService credentialService)
-        : this(repository, new AuthenticationProviderRegistry(providers), credentialService)
-    {
-    }
-
-    public IdentityService(
-        IIdentityRepository repository,
-        IAuthenticationProviderRegistry providerRegistry,
-        ICredentialService credentialService)
-        : this(repository, providerRegistry, credentialService, new AuthenticationPipeline(providerRegistry, credentialService))
+        ICredentialService credentialService,
+        ISecurityEventSink? securityEventSink = null,
+        TimeProvider? timeProvider = null)
+        : this(repository, new AuthenticationProviderRegistry(providers), credentialService, securityEventSink, timeProvider)
     {
     }
 
@@ -30,12 +33,10 @@ public sealed class IdentityService : IIdentityService
         IIdentityRepository repository,
         IAuthenticationProviderRegistry providerRegistry,
         ICredentialService credentialService,
-        IAuthenticationPipeline authenticationPipeline)
+        ISecurityEventSink? securityEventSink = null,
+        TimeProvider? timeProvider = null)
+        : this(repository, providerRegistry, credentialService, new AuthenticationPipeline(providerRegistry, credentialService, securityEventSink, timeProvider), securityEventSink, timeProvider)
     {
-        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
-        _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
-        _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
-        _authenticationPipeline = authenticationPipeline ?? throw new ArgumentNullException(nameof(authenticationPipeline));
     }
 
     public IEnumerable<AuthenticationProviderKey> SupportedProviderKeys => _providerRegistry.SupportedProviderKeys;
@@ -65,6 +66,12 @@ public sealed class IdentityService : IIdentityService
     public async Task<IUser> CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
     {
         await _repository.CreateUserAsync(user, cancellationToken);
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.UserCreated,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = user.Id
+        }, cancellationToken);
         return user;
     }
 

@@ -1,5 +1,6 @@
 // ReSharper disable CheckNamespace
 
+using Ashlar.Auditing;
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
@@ -49,7 +50,9 @@ public static class AshlarServiceCollectionExtensions
                 provider.GetRequiredService<IIdentityRepository>(),
                 provider.GetRequiredService<IAuthenticationProviderRegistry>(),
                 provider.GetRequiredService<ICredentialService>(),
-                provider.GetRequiredService<IAuthenticationPipeline>()),
+                provider.GetRequiredService<IAuthenticationPipeline>(),
+                provider.GetService<ISecurityEventSink>(),
+                provider.GetService<TimeProvider>()),
             ServiceLifetime.Scoped));
         services.TryAddScoped<IAuthenticationPipeline, AuthenticationPipeline>();
         services.TryAddScoped<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>();
@@ -58,6 +61,7 @@ public static class AshlarServiceCollectionExtensions
         services.TryAddScoped<PasswordHasherSelector>();
         services.TryAddSingleton<ISessionTokenGenerator, RandomSessionTokenGenerator>();
         services.TryAddSingleton<ISessionTokenHasher, Sha256SessionTokenHasher>();
+        services.TryAddSingleton<ISecurityEventSink, NullSecurityEventSink>();
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<IdentityServiceOptions>>().Value);
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<AuthenticationSessionOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);

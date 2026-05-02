@@ -1,3 +1,5 @@
+using System.Globalization;
+using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Security.Hashing;
@@ -12,7 +14,8 @@ public sealed class AuthenticationSessionService(
     ISessionTokenHasher tokenHasher,
     ISessionTokenGenerator tokenGenerator,
     AuthenticationSessionOptions? options = null,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    ISecurityEventSink? securityEventSink = null)
     : IAuthenticationSessionService
 {
     private const int MinimumTokenByteLength = 32;
@@ -22,6 +25,7 @@ public sealed class AuthenticationSessionService(
     private readonly ISessionTokenGenerator _tokenGenerator = tokenGenerator ?? throw new ArgumentNullException(nameof(tokenGenerator));
     private readonly AuthenticationSessionOptions _options = ValidateOptions(options ?? new AuthenticationSessionOptions());
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider ?? TimeProvider.System);
 
     public async Task<CreateAuthenticationSessionResult> CreateSessionAsync(
         Guid userId,
@@ -67,6 +71,16 @@ public sealed class AuthenticationSessionService(
         };
 
         await _repository.CreateSessionAsync(session, cancellationToken);
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.SessionCreated,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = userId,
+            SessionId = session.Id,
+            IpAddress = ipAddress,
+            UserAgent = userAgent,
+            CorrelationId = request.CorrelationId
+        }, cancellationToken);
         return new CreateAuthenticationSessionResult(token, session);
     }
 
@@ -76,6 +90,11 @@ public sealed class AuthenticationSessionService(
     {
         if (string.IsNullOrWhiteSpace(token))
         {
+            await RecordSessionValidationFailedAsync(
+                AuthenticationSessionValidationStatus.Failed,
+                null,
+                SecurityEventFailureReasons.SessionValidationFailed,
+                cancellationToken);
             return ValidateAuthenticationSessionResult.Failed;
         }
 
@@ -86,48 +105,127 @@ public sealed class AuthenticationSessionService(
         }
         catch (ArgumentException)
         {
+            await RecordSessionValidationFailedAsync(
+                AuthenticationSessionValidationStatus.Failed,
+                null,
+                SecurityEventFailureReasons.SessionValidationFailed,
+                cancellationToken);
             return ValidateAuthenticationSessionResult.Failed;
         }
 
         var session = await _repository.GetSessionByTokenHashAsync(tokenHash, cancellationToken);
         if (session == null)
         {
+            await RecordSessionValidationFailedAsync(
+                AuthenticationSessionValidationStatus.Failed,
+                null,
+                SecurityEventFailureReasons.SessionValidationFailed,
+                cancellationToken);
             return ValidateAuthenticationSessionResult.Failed;
         }
 
         var now = _timeProvider.GetUtcNow();
         if (session.ExpiresAt <= now)
         {
+            await RecordSessionValidationFailedAsync(
+                AuthenticationSessionValidationStatus.Expired,
+                session,
+                SecurityEventFailureReasons.SessionExpired,
+                cancellationToken);
             return new ValidateAuthenticationSessionResult(false, session, session.UserId, AuthenticationSessionValidationStatus.Expired);
         }
 
         if (session.RevokedAt != null)
         {
+            await RecordSessionValidationFailedAsync(
+                AuthenticationSessionValidationStatus.Revoked,
+                session,
+                SecurityEventFailureReasons.SessionRevoked,
+                cancellationToken);
             return new ValidateAuthenticationSessionResult(false, session, session.UserId, AuthenticationSessionValidationStatus.Revoked);
         }
 
         await TryUpdateLastSeenAsync(session, now, cancellationToken);
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.SessionValidated,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = session.UserId,
+            SessionId = session.Id,
+            IpAddress = session.IpAddress,
+            UserAgent = session.UserAgent
+        }, cancellationToken);
         return new ValidateAuthenticationSessionResult(true, session, session.UserId, AuthenticationSessionValidationStatus.Success);
     }
 
-    public Task<bool> RevokeSessionAsync(
+    public async Task<bool> RevokeSessionAsync(
         Guid sessionId,
         string? reason = null,
         CancellationToken cancellationToken = default)
     {
         if (sessionId == Guid.Empty) throw new ArgumentException("Session ID cannot be empty.", nameof(sessionId));
 
-        return _repository.RevokeSessionAsync(sessionId, _timeProvider.GetUtcNow(), reason, cancellationToken);
+        var revoked = await _repository.RevokeSessionAsync(sessionId, _timeProvider.GetUtcNow(), reason, cancellationToken);
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.SessionRevoked,
+            Outcome = revoked ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
+            SessionId = sessionId,
+            Properties = reason == null
+                ? null
+                : new Dictionary<string, string> { ["reason"] = reason }
+        }, cancellationToken);
+        return revoked;
     }
 
-    public Task<int> RevokeSessionsForUserAsync(
+    public async Task<int> RevokeSessionsForUserAsync(
         Guid userId,
         string? reason = null,
         CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
 
-        return _repository.RevokeSessionsForUserAsync(userId, _timeProvider.GetUtcNow(), reason, cancellationToken);
+        var revoked = await _repository.RevokeSessionsForUserAsync(userId, _timeProvider.GetUtcNow(), reason, cancellationToken);
+        var properties = new Dictionary<string, string> { ["count"] = revoked.ToString(CultureInfo.InvariantCulture) };
+        if (reason != null)
+        {
+            properties["reason"] = reason;
+        }
+
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.SessionsRevokedForUser,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = userId,
+            Properties = properties
+        }, cancellationToken);
+        return revoked;
+    }
+
+    private Task RecordSessionValidationFailedAsync(
+        AuthenticationSessionValidationStatus status,
+        AuthenticationSession? session,
+        string failureReason,
+        CancellationToken cancellationToken)
+    {
+        var eventType = status switch
+        {
+            AuthenticationSessionValidationStatus.Expired => AshlarSecurityEventTypes.SessionExpired,
+            AuthenticationSessionValidationStatus.Revoked => AshlarSecurityEventTypes.SessionRevoked,
+            _ => AshlarSecurityEventTypes.SessionValidationFailed
+        };
+
+        return _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = eventType,
+            Outcome = SecurityEventOutcomes.Failure,
+            UserId = session?.UserId,
+            SessionId = session?.Id,
+            IpAddress = session?.IpAddress,
+            UserAgent = session?.UserAgent,
+            FailureReason = failureReason,
+            Properties = new Dictionary<string, string> { ["status"] = status.ToString() }
+        }, cancellationToken);
     }
 
     private async Task TryUpdateLastSeenAsync(AuthenticationSession session, DateTimeOffset now, CancellationToken cancellationToken)

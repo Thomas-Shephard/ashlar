@@ -127,7 +127,7 @@ public class IdentityServiceTests
             providerRegistry.Object,
             credentialService.Object,
             // ReSharper disable once NullableWarningSuppressionIsUsed
-            null!));
+            (IAuthenticationPipeline)null!));
     }
 
     [Test]
