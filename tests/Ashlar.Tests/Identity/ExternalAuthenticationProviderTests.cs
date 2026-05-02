@@ -223,4 +223,45 @@ public class ExternalAuthenticationProviderTests
 
         Assert.That(result, Is.EqualTo(user));
     }
+
+    [Test]
+    public async Task FindUserAsyncWithNonTenantUserAndTenantRequestedShouldReturnNull()
+    {
+        var tenantId = Guid.NewGuid();
+        var providerKey = "ext-key";
+        var providerName = "Google";
+        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
+        var user = new GlobalUser(Guid.NewGuid(), "test@example.com");
+
+        var repoMock = new Mock<IIdentityRepository>();
+        repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(TenantId: tenantId), repoMock.Object);
+
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public async Task FindUserAsyncWithNonTenantUserAndNoTenantRequestedShouldReturnUser()
+    {
+        var providerKey = "ext-key";
+        var providerName = "Google";
+        var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
+        var user = new GlobalUser(Guid.NewGuid(), "test@example.com");
+
+        var repoMock = new Mock<IIdentityRepository>();
+        repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(), repoMock.Object);
+
+        Assert.That(result, Is.SameAs(user));
+    }
+
+    private sealed record GlobalUser(Guid Id, string Email) : IUser
+    {
+        public string? Name => null;
+        public bool IsActive => true;
+    }
 }

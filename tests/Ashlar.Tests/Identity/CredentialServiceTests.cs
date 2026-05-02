@@ -123,6 +123,9 @@ public class CredentialServiceTests
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, NewMetadata: "new");
         var providerMock = new Mock<IAuthenticationProvider>();
 
+        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
         await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.Metadata == "new"), "v1", It.IsAny<CancellationToken>()), Times.Once);
@@ -405,6 +408,45 @@ public class CredentialServiceTests
 
         // Verify that UpdateCredentialAsync was NEVER called because we couldn't guarantee protection.
         _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task UpdateCredentialUsageAsyncWithRequiredProtectionExceptionShouldReturnFalse()
+    {
+        var originalCredential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = ProviderType.Oidc,
+            ProviderName = "Google",
+            ProviderKey = "sub",
+            Version = "v1",
+            CredentialValue = "protected-original"
+        };
+        var unprotectedCredential = new UserCredential
+        {
+            Id = originalCredential.Id,
+            UserId = originalCredential.UserId,
+            ProviderType = originalCredential.ProviderType,
+            ProviderName = originalCredential.ProviderName,
+            ProviderKey = originalCredential.ProviderKey,
+            Version = originalCredential.Version,
+            CredentialValue = "unprotected-original",
+            LastUsedAt = DateTimeOffset.UtcNow.AddDays(-1)
+        };
+        var result = new AuthenticationResult(AuthenticationResultStatus.SucceededWithCredentialUpdate, NewCredentialValue: "new-raw", CredentialUpdateRequirement: CredentialUpdateRequirement.Required);
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
+
+        _secretProtectorMock.Setup(s => s.Protect("new-raw")).Throws(new InvalidOperationException("Encryption error"));
+
+        var success = await _service.UpdateCredentialUsageAsync(unprotectedCredential, originalCredential, result, providerMock.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.False);
+            _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
     }
 
     [Test]
