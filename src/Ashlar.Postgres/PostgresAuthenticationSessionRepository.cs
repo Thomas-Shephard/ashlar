@@ -1,0 +1,122 @@
+using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.Models;
+using Dapper;
+using Npgsql;
+using System.Text.Json;
+
+namespace Ashlar.Postgres;
+
+public sealed class PostgresAuthenticationSessionRepository(NpgsqlDataSource dataSource) : IAuthenticationSessionRepository
+{
+    private readonly NpgsqlDataSource _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
+
+    public async Task CreateSessionAsync(AuthenticationSession session, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        if (session.Id == Guid.Empty)
+        {
+            throw new ArgumentException("Session ID cannot be empty.", nameof(session));
+        }
+
+        if (session.UserId == Guid.Empty)
+        {
+            throw new ArgumentException("User ID cannot be empty.", nameof(session));
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(session.TokenHash);
+        ValidateMetadata(session.Metadata);
+
+        const string sql = """
+            INSERT INTO ashlar_sessions (id, user_id, token_hash, created_at, expires_at, last_seen_at, revoked_at, revocation_reason, ip_address, user_agent, metadata)
+            VALUES (@Id, @UserId, @TokenHash, @CreatedAt, @ExpiresAt, @LastSeenAt, @RevokedAt, @RevocationReason, @IpAddress, @UserAgent, @Metadata::jsonb)
+            """;
+
+        var command = new CommandDefinition(sql, session, cancellationToken: cancellationToken);
+
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await connection.ExecuteAsync(command);
+    }
+
+    public async Task<AuthenticationSession?> GetSessionByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tokenHash);
+
+        const string sql = """
+            SELECT id AS Id, user_id AS UserId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
+                   last_seen_at AS LastSeenAt, revoked_at AS RevokedAt, revocation_reason AS RevocationReason,
+                   ip_address AS IpAddress, user_agent AS UserAgent, metadata AS Metadata
+            FROM ashlar_sessions
+            WHERE token_hash = @TokenHash
+            """;
+
+        var command = new CommandDefinition(sql, new { TokenHash = tokenHash }, cancellationToken: cancellationToken);
+
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        var session = await connection.QueryFirstOrDefaultAsync<AuthenticationSession>(command);
+        return session;
+    }
+
+    public async Task<bool> UpdateSessionLastSeenAsync(Guid sessionId, DateTimeOffset lastSeenAt, CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            UPDATE ashlar_sessions
+            SET last_seen_at = @LastSeenAt
+            WHERE id = @Id AND (last_seen_at IS NULL OR last_seen_at < @LastSeenAt)
+            """;
+
+        var command = new CommandDefinition(sql, new { Id = sessionId, LastSeenAt = lastSeenAt }, cancellationToken: cancellationToken);
+
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        var rowsAffected = await connection.ExecuteAsync(command);
+
+        return rowsAffected > 0;
+    }
+
+    public async Task<bool> RevokeSessionAsync(Guid sessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            UPDATE ashlar_sessions
+            SET revoked_at = @RevokedAt, revocation_reason = @Reason
+            WHERE id = @Id AND revoked_at IS NULL
+            """;
+
+        var command = new CommandDefinition(sql, new { Id = sessionId, RevokedAt = revokedAt, Reason = reason }, cancellationToken: cancellationToken);
+
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        var rowsAffected = await connection.ExecuteAsync(command);
+
+        return rowsAffected > 0;
+    }
+
+    public async Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            UPDATE ashlar_sessions
+            SET revoked_at = @RevokedAt, revocation_reason = @Reason
+            WHERE user_id = @UserId AND revoked_at IS NULL
+            """;
+
+        var command = new CommandDefinition(sql, new { UserId = userId, RevokedAt = revokedAt, Reason = reason }, cancellationToken: cancellationToken);
+
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        var count = await connection.ExecuteAsync(command);
+        return count;
+    }
+
+    private static void ValidateMetadata(string? metadata)
+    {
+        if (metadata == null)
+        {
+            return;
+        }
+
+        try
+        {
+            using var _ = JsonDocument.Parse(metadata);
+        }
+        catch (JsonException exception)
+        {
+            throw new ArgumentException("Session metadata must be a valid JSON document.", nameof(metadata), exception);
+        }
+    }
+}

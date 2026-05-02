@@ -4,7 +4,7 @@ Building blocks for modern ASP.NET applications. Includes generic auth, security
 ## Persistence
 Ashlar does not register persistence by default. The following official packages are available:
 
-- **[Ashlar.Postgres](src/Ashlar.Postgres/README.md)**: PostgreSQL 15+ implementation using Dapper and DbUp.
+- **[Ashlar.Postgres](src/Ashlar.Postgres/README.md)**: PostgreSQL 15+ identity and session persistence using Dapper and DbUp.
 
 ## Identity DI Setup
 Ashlar provides `IServiceCollection` extensions for registering its core identity services:
@@ -32,6 +32,10 @@ services
 Applications must provide an `IIdentityRepository` implementation (either by using an official package above or a custom one).
 
 Applications must also provide secret protection. For ASP.NET Core Data Protection, register Data Protection and call `AddAshlarDataProtectionSecretProtector()`. Ashlar does not use an insecure fallback protector.
+
+Ashlar models durable authentication sessions through `AuthenticationSession` and `IAuthenticationSessionRepository`.
+Raw session tokens must not be stored; persistence stores only deterministic token hashes.
+The default session token hasher uses SHA-256 and assumes future issuing code generates high-entropy random session tokens, not user-chosen secrets.
 
 ## Contributions
 Contributions are welcome! Read the [contributing guide](CONTRIBUTING.md) to get started.

@@ -28,6 +28,7 @@ public class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialService, CredentialService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<PasswordHasherSelector>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<ISessionTokenHasher, Sha256SessionTokenHasher>(services, ServiceLifetime.Singleton);
             AssertDescriptor<IdentityServiceOptions>(services, ServiceLifetime.Singleton);
             AssertDescriptor<TimeProvider>(services, ServiceLifetime.Singleton);
             Assert.That(services.Any(d => d.ServiceType == typeof(IIdentityRepository)), Is.False);

@@ -23,6 +23,7 @@ public static class AshlarPostgresServiceCollectionExtensions
 
         services.TryAddSingleton(_ => new NpgsqlDataSourceBuilder(connectionString).Build());
         services.TryAddScoped<IIdentityRepository, PostgresIdentityRepository>();
+        services.TryAddScoped<IAuthenticationSessionRepository, PostgresAuthenticationSessionRepository>();
         services.TryAddTransient<SchemaManager>();
 
         return services;
@@ -40,6 +41,7 @@ public static class AshlarPostgresServiceCollectionExtensions
 
         services.TryAddSingleton(dataSource);
         services.TryAddScoped<IIdentityRepository, PostgresIdentityRepository>();
+        services.TryAddScoped<IAuthenticationSessionRepository, PostgresAuthenticationSessionRepository>();
         services.TryAddTransient<SchemaManager>();
 
         return services;

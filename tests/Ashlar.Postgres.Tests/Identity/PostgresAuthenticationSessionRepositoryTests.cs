@@ -1,0 +1,357 @@
+using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.Models;
+using Ashlar.Postgres.Models;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
+using System.Text.Json.Nodes;
+
+namespace Ashlar.Postgres.Tests.Identity;
+
+public sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTestBase
+{
+    private IServiceProvider _serviceProvider;
+
+    public override async Task OneTimeSetUp()
+    {
+        await base.OneTimeSetUp();
+
+        var services = new ServiceCollection();
+        services.AddAshlarPostgres(GetConnectionString());
+        _serviceProvider = services.BuildServiceProvider();
+
+        await _serviceProvider.InitializeAshlarPostgresSchemaAsync();
+    }
+
+    [OneTimeTearDown]
+    public async Task OneTimeTearDownAsync()
+    {
+        if (_serviceProvider is IAsyncDisposable asyncDisposable)
+        {
+            await asyncDisposable.DisposeAsync();
+        }
+        else if (_serviceProvider is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
+    }
+
+    [Test]
+    public void ConstructorNullDataSourceShouldThrow()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _ = new PostgresAuthenticationSessionRepository(null!));
+    }
+
+    [Test]
+    public async Task CreateAndFetchSessionByTokenHashShouldMapAllFields()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var session = CreateSession(user.Id);
+        session.LastSeenAt = new DateTimeOffset(2026, 1, 2, 12, 5, 0, TimeSpan.Zero);
+        session.RevokedAt = new DateTimeOffset(2026, 1, 2, 12, 10, 0, TimeSpan.Zero);
+        session.RevocationReason = "signed-out";
+        session.IpAddress = "203.0.113.10";
+        session.UserAgent = "NUnit";
+        session.Metadata = """{"device":"test"}""";
+
+        await sessionRepository.CreateSessionAsync(session);
+
+        var fetched = await sessionRepository.GetSessionByTokenHashAsync(session.TokenHash);
+
+        Assert.That(fetched, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fetched.Id, Is.EqualTo(session.Id));
+            Assert.That(fetched.UserId, Is.EqualTo(session.UserId));
+            Assert.That(fetched.TokenHash, Is.EqualTo(session.TokenHash));
+            Assert.That(fetched.CreatedAt, Is.EqualTo(session.CreatedAt));
+            Assert.That(fetched.ExpiresAt, Is.EqualTo(session.ExpiresAt));
+            Assert.That(fetched.LastSeenAt, Is.EqualTo(session.LastSeenAt));
+            Assert.That(fetched.RevokedAt, Is.EqualTo(session.RevokedAt));
+            Assert.That(fetched.RevocationReason, Is.EqualTo(session.RevocationReason));
+            Assert.That(fetched.IpAddress, Is.EqualTo(session.IpAddress));
+            Assert.That(fetched.UserAgent, Is.EqualTo(session.UserAgent));
+            Assert.That(JsonNode.DeepEquals(JsonNode.Parse(fetched.Metadata!), JsonNode.Parse(session.Metadata!)), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task CreateSessionShouldRejectEmptySessionId()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var session = new AuthenticationSession
+        {
+            Id = Guid.Empty,
+            UserId = user.Id,
+            TokenHash = $"sha256:{Guid.NewGuid():N}",
+            CreatedAt = new DateTimeOffset(2026, 1, 2, 12, 0, 0, TimeSpan.Zero),
+            ExpiresAt = new DateTimeOffset(2026, 1, 3, 12, 0, 0, TimeSpan.Zero)
+        };
+
+        var exception = Assert.ThrowsAsync<ArgumentException>(async () => await sessionRepository.CreateSessionAsync(session));
+
+        Assert.That(exception?.Message, Does.Contain("Session ID"));
+    }
+
+    [Test]
+    public void CreateSessionShouldRejectEmptyUserId()
+    {
+        var sessionRepository = GetSessionRepository();
+        var session = CreateSession(Guid.Empty);
+
+        var exception = Assert.ThrowsAsync<ArgumentException>(async () => await sessionRepository.CreateSessionAsync(session));
+
+        Assert.That(exception?.Message, Does.Contain("User ID"));
+    }
+
+    [Test]
+    public async Task TokenHashUniquenessShouldBeEnforced()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var first = CreateSession(user.Id);
+        var second = CreateSession(user.Id, first.TokenHash);
+
+        await sessionRepository.CreateSessionAsync(first);
+
+        Assert.ThrowsAsync<PostgresException>(async () => await sessionRepository.CreateSessionAsync(second));
+    }
+
+    [Test]
+    public async Task CreateSessionShouldRejectInvalidMetadataJson()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var session = CreateSession(user.Id);
+        session.Metadata = "not-json";
+
+        var exception = Assert.ThrowsAsync<ArgumentException>(async () => await sessionRepository.CreateSessionAsync(session));
+
+        Assert.That(exception?.Message, Does.Contain("metadata"));
+    }
+
+    [Test]
+    public async Task UpdateSessionLastSeenShouldUpdateOnlyTargetSession()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var target = CreateSession(user.Id);
+        var other = CreateSession(user.Id);
+        var lastSeenAt = new DateTimeOffset(2026, 1, 2, 13, 0, 0, TimeSpan.Zero);
+
+        await sessionRepository.CreateSessionAsync(target);
+        await sessionRepository.CreateSessionAsync(other);
+
+        var updated = await sessionRepository.UpdateSessionLastSeenAsync(target.Id, lastSeenAt);
+        var fetchedTarget = await sessionRepository.GetSessionByTokenHashAsync(target.TokenHash);
+        var fetchedOther = await sessionRepository.GetSessionByTokenHashAsync(other.TokenHash);
+
+        Assert.That(updated, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fetchedTarget?.LastSeenAt, Is.EqualTo(lastSeenAt));
+            Assert.That(fetchedOther?.LastSeenAt, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task UpdateSessionLastSeenShouldNotOverwriteNewerTimestamp()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var session = CreateSession(user.Id);
+        var newerLastSeenAt = new DateTimeOffset(2026, 1, 2, 13, 0, 0, TimeSpan.Zero);
+        var olderLastSeenAt = new DateTimeOffset(2026, 1, 2, 12, 30, 0, TimeSpan.Zero);
+
+        await sessionRepository.CreateSessionAsync(session);
+
+        var firstUpdated = await sessionRepository.UpdateSessionLastSeenAsync(session.Id, newerLastSeenAt);
+        var secondUpdated = await sessionRepository.UpdateSessionLastSeenAsync(session.Id, olderLastSeenAt);
+        var fetched = await sessionRepository.GetSessionByTokenHashAsync(session.TokenHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstUpdated, Is.True);
+            Assert.That(secondUpdated, Is.False);
+            Assert.That(fetched?.LastSeenAt, Is.EqualTo(newerLastSeenAt));
+        }
+    }
+
+    [Test]
+    public async Task RevokeSessionShouldRevokeOnlyTargetSession()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var target = CreateSession(user.Id);
+        var other = CreateSession(user.Id);
+        var revokedAt = new DateTimeOffset(2026, 1, 2, 14, 0, 0, TimeSpan.Zero);
+
+        await sessionRepository.CreateSessionAsync(target);
+        await sessionRepository.CreateSessionAsync(other);
+
+        var revoked = await sessionRepository.RevokeSessionAsync(target.Id, revokedAt, "single");
+        var fetchedTarget = await sessionRepository.GetSessionByTokenHashAsync(target.TokenHash);
+        var fetchedOther = await sessionRepository.GetSessionByTokenHashAsync(other.TokenHash);
+
+        Assert.That(revoked, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fetchedTarget?.RevokedAt, Is.EqualTo(revokedAt));
+            Assert.That(fetchedTarget?.RevocationReason, Is.EqualTo("single"));
+            Assert.That(fetchedOther?.RevokedAt, Is.Null);
+            Assert.That(fetchedOther?.RevocationReason, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task RevokeSessionShouldNotOverwriteExistingRevocation()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var session = CreateSession(user.Id);
+        var firstRevokedAt = new DateTimeOffset(2026, 1, 2, 14, 0, 0, TimeSpan.Zero);
+        var secondRevokedAt = new DateTimeOffset(2026, 1, 2, 15, 0, 0, TimeSpan.Zero);
+
+        await sessionRepository.CreateSessionAsync(session);
+        var firstRevoked = await sessionRepository.RevokeSessionAsync(session.Id, firstRevokedAt, "manual");
+        var secondRevoked = await sessionRepository.RevokeSessionAsync(session.Id, secondRevokedAt, "automated");
+        var fetched = await sessionRepository.GetSessionByTokenHashAsync(session.TokenHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstRevoked, Is.True);
+            Assert.That(secondRevoked, Is.False);
+            Assert.That(fetched?.RevokedAt, Is.EqualTo(firstRevokedAt));
+            Assert.That(fetched?.RevocationReason, Is.EqualTo("manual"));
+        }
+    }
+
+    [Test]
+    public async Task RevokeSessionsForUserShouldRevokeAllSessionsForTargetUser()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var targetUser = await CreateTestUser(identityRepository);
+        var otherUser = await CreateTestUser(identityRepository);
+        var first = CreateSession(targetUser.Id);
+        var second = CreateSession(targetUser.Id);
+        var other = CreateSession(otherUser.Id);
+        var revokedAt = new DateTimeOffset(2026, 1, 2, 15, 0, 0, TimeSpan.Zero);
+
+        await sessionRepository.CreateSessionAsync(first);
+        await sessionRepository.CreateSessionAsync(second);
+        await sessionRepository.CreateSessionAsync(other);
+
+        var count = await sessionRepository.RevokeSessionsForUserAsync(targetUser.Id, revokedAt, "all");
+
+        var fetchedFirst = await sessionRepository.GetSessionByTokenHashAsync(first.TokenHash);
+        var fetchedSecond = await sessionRepository.GetSessionByTokenHashAsync(second.TokenHash);
+        var fetchedOther = await sessionRepository.GetSessionByTokenHashAsync(other.TokenHash);
+
+        Assert.That(count, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fetchedFirst?.RevokedAt, Is.EqualTo(revokedAt));
+            Assert.That(fetchedFirst?.RevocationReason, Is.EqualTo("all"));
+            Assert.That(fetchedSecond?.RevokedAt, Is.EqualTo(revokedAt));
+            Assert.That(fetchedSecond?.RevocationReason, Is.EqualTo("all"));
+            Assert.That(fetchedOther?.RevokedAt, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task RevokeSessionsForUserShouldNotOverwriteExistingRevocations()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var alreadyRevoked = CreateSession(user.Id);
+        var active = CreateSession(user.Id);
+        var firstRevokedAt = new DateTimeOffset(2026, 1, 2, 14, 0, 0, TimeSpan.Zero);
+        var secondRevokedAt = new DateTimeOffset(2026, 1, 2, 15, 0, 0, TimeSpan.Zero);
+
+        await sessionRepository.CreateSessionAsync(alreadyRevoked);
+        await sessionRepository.CreateSessionAsync(active);
+        await sessionRepository.RevokeSessionAsync(alreadyRevoked.Id, firstRevokedAt, "manual");
+
+        var count = await sessionRepository.RevokeSessionsForUserAsync(user.Id, secondRevokedAt, "bulk");
+
+        var fetchedAlreadyRevoked = await sessionRepository.GetSessionByTokenHashAsync(alreadyRevoked.TokenHash);
+        var fetchedActive = await sessionRepository.GetSessionByTokenHashAsync(active.TokenHash);
+
+        Assert.That(count, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fetchedAlreadyRevoked?.RevokedAt, Is.EqualTo(firstRevokedAt));
+            Assert.That(fetchedAlreadyRevoked?.RevocationReason, Is.EqualTo("manual"));
+            Assert.That(fetchedActive?.RevokedAt, Is.EqualTo(secondRevokedAt));
+            Assert.That(fetchedActive?.RevocationReason, Is.EqualTo("bulk"));
+        }
+    }
+
+    [Test]
+    public async Task DeletingUserShouldCascadeDeleteSessions()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var session = CreateSession(user.Id);
+
+        await sessionRepository.CreateSessionAsync(session);
+        await DeleteUserAsync(user.Id);
+
+        var fetched = await sessionRepository.GetSessionByTokenHashAsync(session.TokenHash);
+
+        Assert.That(fetched, Is.Null);
+    }
+
+    private PostgresIdentityRepository GetIdentityRepository() => (PostgresIdentityRepository)_serviceProvider.GetRequiredService<IIdentityRepository>();
+
+    private PostgresAuthenticationSessionRepository GetSessionRepository()
+    {
+        return (PostgresAuthenticationSessionRepository)_serviceProvider.GetRequiredService<IAuthenticationSessionRepository>();
+    }
+
+    private async Task DeleteUserAsync(Guid userId)
+    {
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        await using var command = new NpgsqlCommand("DELETE FROM ashlar_users WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", userId);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<AshlarPostgresUser> CreateTestUser(PostgresIdentityRepository repo)
+    {
+        var user = new AshlarPostgresUser
+        {
+            Id = Guid.NewGuid(),
+            Email = $"{Guid.NewGuid()}@example.com",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        await repo.CreateUserAsync(user);
+        return user;
+    }
+
+    private static AuthenticationSession CreateSession(Guid userId, string? tokenHash = null)
+    {
+        return new AuthenticationSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            TokenHash = tokenHash ?? $"sha256:{Guid.NewGuid():N}",
+            CreatedAt = new DateTimeOffset(2026, 1, 2, 12, 0, 0, TimeSpan.Zero),
+            ExpiresAt = new DateTimeOffset(2026, 1, 3, 12, 0, 0, TimeSpan.Zero)
+        };
+    }
+}
