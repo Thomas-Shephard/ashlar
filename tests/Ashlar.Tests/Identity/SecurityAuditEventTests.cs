@@ -1,0 +1,471 @@
+using Ashlar.Auditing;
+using Ashlar.Identity;
+using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.Models;
+using Ashlar.Security.Encryption;
+using Ashlar.Security.Hashing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
+using Moq;
+
+namespace Ashlar.Tests.Identity;
+
+public sealed class SecurityAuditEventTests
+{
+    private static readonly DateTimeOffset TestTime = new(2025, 1, 1, 12, 0, 0, TimeSpan.Zero);
+    private static readonly string[] ExpiredAndRevokedEventTypes =
+    [
+        AshlarSecurityEventTypes.SessionExpired,
+        AshlarSecurityEventTypes.SessionRevoked
+    ];
+    private static readonly string[] ExpiredAndRevokedFailureReasons =
+    [
+        "session_expired",
+        "session_revoked"
+    ];
+
+    [Test]
+    public async Task SuccessfulLoginEmitsSuccessEvent()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sink);
+        var context = CreateContext();
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
+
+        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+        credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var response = await pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.True);
+            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationSucceeded));
+            Assert.That(sink.Events.Single().UserId, Is.EqualTo(user.Id));
+            Assert.That(sink.Events.Single().Provider, Is.EqualTo(AuthenticationProviderKey.Local));
+            Assert.That(sink.Events.Single().IpAddress, Is.EqualTo("127.0.0.1"));
+            Assert.That(sink.Events.Single().UserAgent, Is.EqualTo("agent"));
+            Assert.That(sink.Events.Single().CorrelationId, Is.EqualTo("corr"));
+            Assert.That(sink.Events.Single().Outcome, Is.EqualTo("success"));
+        }
+    }
+
+    [Test]
+    public async Task InvalidLoginEmitsFailureEvent()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sink);
+        var context = CreateContext();
+
+        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Failed));
+
+        var response = await pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationFailed));
+            Assert.That(sink.Events.Single().FailureReason, Is.EqualTo("invalid_credentials"));
+        }
+    }
+
+    [Test]
+    public async Task DisabledUserLoginEmitsDisabledFailureEvent()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sink);
+        user = new User { Id = user.Id, Email = user.Email, IsActive = false };
+        var context = CreateContext();
+
+        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded));
+
+        var response = await pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Disabled));
+            Assert.That(sink.Events.Single().FailureReason, Is.EqualTo("user_disabled"));
+            Assert.That(sink.Events.Single().UserId, Is.EqualTo(user.Id));
+        }
+    }
+
+    [Test]
+    public async Task UnsupportedProviderLoginEmitsProviderUnsupportedEvent()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var registry = new Mock<IAuthenticationProviderRegistry>();
+        var pipeline = new AuthenticationPipeline(registry.Object, Mock.Of<ICredentialService>(), sink, new FakeTimeProvider(TestTime));
+        var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
+
+        var response = await pipeline.LoginAsync(CreateContext(), assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationFailed));
+            Assert.That(sink.Events.Single().FailureReason, Is.EqualTo("provider_unsupported"));
+            Assert.That(sink.Events.Single().Provider, Is.EqualTo(assertion.ProviderIdentity));
+        }
+    }
+
+    [Test]
+    public async Task CredentialLinkEmitsEventWithoutRawCredentialValue()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var repository = new Mock<IIdentityRepository>();
+        var protector = new Mock<ISecretProtector>();
+        var service = new CredentialService(repository.Object, protector.Object, timeProvider: new FakeTimeProvider(TestTime), securityEventSink: sink);
+        var userId = Guid.NewGuid();
+        var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
+        var provider = new Mock<IAuthenticationProvider>();
+        provider.SetupGet(p => p.Key).Returns(assertion.ProviderIdentity);
+        provider.Setup(p => p.GetProviderKey(assertion, userId)).Returns("provider-key");
+        provider.Setup(p => p.PrepareCredentialValue(assertion, "raw-secret")).Returns("prepared-secret");
+        provider.Setup(p => p.ProtectsCredentials).Returns(true);
+        protector.Setup(p => p.Protect("prepared-secret")).Returns("protected-secret");
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
+        repository.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "provider-key", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IUser?)null);
+
+        await service.LinkCredentialAsync(userId, assertion, provider.Object, "raw-secret");
+
+        var securityEvent = sink.Events.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(securityEvent.EventType, Is.EqualTo(AshlarSecurityEventTypes.CredentialLinked));
+            Assert.That(securityEvent.UserId, Is.EqualTo(userId));
+            Assert.That(securityEvent.Properties?.Values, Does.Not.Contain("raw-secret"));
+            Assert.That(securityEvent.Properties?.Values, Does.Not.Contain("prepared-secret"));
+            Assert.That(securityEvent.Properties?.Values, Does.Not.Contain("protected-secret"));
+        }
+    }
+
+    [Test]
+    public async Task CredentialConsumedEmitsEvent()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var repository = new Mock<IIdentityRepository>();
+        var service = new CredentialService(
+            repository.Object,
+            Mock.Of<ISecretProtector>(),
+            timeProvider: new FakeTimeProvider(TestTime),
+            securityEventSink: sink);
+        var credential = CreateCredential(Guid.NewGuid());
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
+        repository.Setup(r => r.ConsumeCredentialAsync(credential.Id, credential.Version, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var consumed = await service.UpdateCredentialUsageAsync(credential, credential, result, Mock.Of<IAuthenticationProvider>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(consumed, Is.True);
+            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.CredentialConsumed));
+            Assert.That(sink.Events.Single().Properties?.Values, Does.Not.Contain("raw-secret"));
+        }
+    }
+
+    [Test]
+    public async Task MissingCredentialResolutionDoesNotEmitAuditEvent()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var repository = new Mock<IIdentityRepository>();
+        var protector = new Mock<ISecretProtector>();
+        protector.Setup(p => p.Protect(It.IsAny<string>())).Returns<string>(value => $"protected:{value}");
+        protector.Setup(p => p.Unprotect(It.IsAny<string>())).Returns<string>(value => value);
+        var service = new CredentialService(
+            repository.Object,
+            protector.Object,
+            timeProvider: new FakeTimeProvider(TestTime),
+            securityEventSink: sink);
+        var userId = Guid.NewGuid();
+        var provider = new Mock<IAuthenticationProvider>();
+        provider.SetupGet(p => p.Key).Returns(AuthenticationProviderKey.Local);
+        provider.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), userId)).Returns("missing-key");
+        provider.Setup(p => p.ProtectsCredentials).Returns(true);
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
+        repository.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Local, AuthenticationProviderKey.Local.Name, "missing-key", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserCredential?)null);
+
+        var (_, resolvedCredential, originalCredential, _) = await service.ResolveAsync(userId, new TestAssertion(AuthenticationProviderKey.Local), provider.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolvedCredential, Is.Null);
+            Assert.That(originalCredential, Is.Null);
+            Assert.That(sink.Events, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task SessionCreateEmitsEventWithoutRawToken()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = CreateSessionService(sink, out var repository, out _);
+        repository.Setup(r => r.CreateSessionAsync(It.IsAny<AuthenticationSession>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var result = await service.CreateSessionAsync(
+            Guid.NewGuid(),
+            new CreateAuthenticationSessionRequest(IpAddress: "127.0.0.1", UserAgent: "agent"));
+
+        var securityEvent = sink.Events.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(securityEvent.EventType, Is.EqualTo(AshlarSecurityEventTypes.SessionCreated));
+            Assert.That(securityEvent.SessionId, Is.EqualTo(result.Session.Id));
+            Assert.That(securityEvent.IpAddress, Is.EqualTo("127.0.0.1"));
+            Assert.That(securityEvent.UserAgent, Is.EqualTo("agent"));
+            Assert.That(securityEvent.Properties?.Values ?? Array.Empty<string>(), Does.Not.Contain(result.Token));
+            Assert.That(result.Session.TokenHash, Is.Not.EqualTo(result.Token));
+        }
+    }
+
+    [Test]
+    public async Task SessionValidationSuccessEmitsEvent()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = CreateSessionService(sink, out var repository, out var timeProvider);
+        var session = CreateSession(timeProvider.GetUtcNow().AddHours(1));
+        repository.Setup(r => r.GetSessionByTokenHashAsync("hashed:raw-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        repository.Setup(r => r.UpdateSessionLastSeenAsync(session.Id, timeProvider.GetUtcNow(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await service.ValidateSessionAsync("raw-token");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.SessionValidated));
+            Assert.That(sink.Events.Single().SessionId, Is.EqualTo(session.Id));
+            Assert.That(sink.Events.Single().UserId, Is.EqualTo(session.UserId));
+        }
+    }
+
+    [Test]
+    public async Task SessionExpiredAndRevokedEmitAppropriateEvents()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = CreateSessionService(sink, out var repository, out var timeProvider);
+        var expired = CreateSession(timeProvider.GetUtcNow());
+        var revoked = CreateSession(timeProvider.GetUtcNow().AddHours(1));
+        revoked.RevokedAt = timeProvider.GetUtcNow().AddMinutes(-1);
+        repository.SetupSequence(r => r.GetSessionByTokenHashAsync("hashed:raw-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expired)
+            .ReturnsAsync(revoked);
+
+        await service.ValidateSessionAsync("raw-token");
+        await service.ValidateSessionAsync("raw-token");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sink.Events.Select(e => e.EventType), Is.EqualTo(ExpiredAndRevokedEventTypes));
+            Assert.That(sink.Events.Select(e => e.FailureReason), Is.EqualTo(ExpiredAndRevokedFailureReasons));
+        }
+    }
+
+    [Test]
+    public async Task RevokeSessionsForUserEmitsSuccessEventWhenNoSessionsAreRevoked()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = CreateSessionService(sink, out var repository, out var timeProvider);
+        var userId = Guid.NewGuid();
+        repository.Setup(r => r.RevokeSessionsForUserAsync(userId, timeProvider.GetUtcNow(), "password-reset", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        var revoked = await service.RevokeSessionsForUserAsync(userId, "password-reset");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revoked, Is.Zero);
+            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.SessionsRevokedForUser));
+            Assert.That(sink.Events.Single().UserId, Is.EqualTo(userId));
+            Assert.That(sink.Events.Single().Outcome, Is.EqualTo("success"));
+            Assert.That(sink.Events.Single().Properties?["count"], Is.EqualTo("0"));
+        }
+    }
+
+    [Test]
+    public async Task FailedSessionRevocationEmitsFailureEvent()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = CreateSessionService(sink, out var repository, out _);
+        var sessionId = Guid.NewGuid();
+        repository.Setup(r => r.RevokeSessionAsync(sessionId, It.IsAny<DateTimeOffset>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var revoked = await service.RevokeSessionAsync(sessionId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revoked, Is.False);
+            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.SessionRevoked));
+            Assert.That(sink.Events.Single().SessionId, Is.EqualTo(sessionId));
+            Assert.That(sink.Events.Single().Outcome, Is.EqualTo("failure"));
+        }
+    }
+
+    [Test]
+    public async Task AuditSinkExceptionDoesNotFailLoginOrSessionValidation()
+    {
+        var sink = new ThrowingSecurityEventSink();
+        var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sink);
+        var context = CreateContext();
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
+        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+        credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var login = await pipeline.LoginAsync(context, assertion);
+
+        var sessionService = CreateSessionService(sink, out var repository, out var timeProvider);
+        var session = CreateSession(timeProvider.GetUtcNow().AddHours(1));
+        repository.Setup(r => r.GetSessionByTokenHashAsync("hashed:raw-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        repository.Setup(r => r.UpdateSessionLastSeenAsync(session.Id, timeProvider.GetUtcNow(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var validation = await sessionService.ValidateSessionAsync("raw-token");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(login.Succeeded, Is.True);
+            Assert.That(validation.Succeeded, Is.True);
+        }
+    }
+
+    [Test]
+    public void AddAshlarIdentityRegistersNullAuditSinkByDefault()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarIdentity();
+
+        var descriptor = services.Single(d => d.ServiceType == typeof(ISecurityEventSink));
+        Assert.That(descriptor.ImplementationType, Is.EqualTo(typeof(NullSecurityEventSink)));
+    }
+
+    private static (AuthenticationPipeline Pipeline, Mock<IAuthenticationProviderRegistry> Registry, Mock<ICredentialService> CredentialService, Mock<IAuthenticationProvider> ProviderMock, IAuthenticationProvider Provider, TestAssertion Assertion, User User, UserCredential Credential) CreatePipeline(ISecurityEventSink sink)
+    {
+        var registry = new Mock<IAuthenticationProviderRegistry>();
+        var credentialService = new Mock<ICredentialService>();
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.SetupGet(p => p.Key).Returns(AuthenticationProviderKey.Local);
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = providerMock.Object;
+        registry.Setup(r => r.TryGetProvider(assertion, out provider))
+            .Returns(true);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            ProviderType = ProviderType.Local,
+            ProviderName = AuthenticationProviderKey.Local.Name,
+            ProviderKey = user.Id.ToString(),
+            Version = "v1",
+            CreatedAt = TestTime,
+            Status = CredentialStatus.Active
+        };
+
+        var pipeline = new AuthenticationPipeline(registry.Object, credentialService.Object, sink, new FakeTimeProvider(TestTime));
+        return (pipeline, registry, credentialService, providerMock, provider, assertion, user, credential);
+    }
+
+    private static AuthenticationSessionService CreateSessionService(
+        ISecurityEventSink sink,
+        out Mock<IAuthenticationSessionRepository> repository,
+        out FakeTimeProvider timeProvider)
+    {
+        repository = new Mock<IAuthenticationSessionRepository>();
+        var hasher = new Mock<ISessionTokenHasher>();
+        hasher.Setup(h => h.HashToken(It.IsAny<string>())).Returns<string>(token => $"hashed:{token}");
+        timeProvider = new FakeTimeProvider(TestTime);
+
+        return new AuthenticationSessionService(
+            repository.Object,
+            hasher.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            timeProvider: timeProvider,
+            securityEventSink: sink);
+    }
+
+    private static AuthenticationSession CreateSession(DateTimeOffset expiresAt)
+    {
+        return new AuthenticationSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            TokenHash = "hashed:raw-token",
+            CreatedAt = TestTime.AddDays(-1),
+            ExpiresAt = expiresAt,
+            IpAddress = "127.0.0.1",
+            UserAgent = "agent"
+        };
+    }
+
+    private static UserCredential CreateCredential(Guid userId)
+    {
+        return new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            ProviderType = ProviderType.Local,
+            ProviderName = AuthenticationProviderKey.Local.Name,
+            ProviderKey = userId.ToString(),
+            Version = "v1",
+            CreatedAt = TestTime,
+            Status = CredentialStatus.Active
+        };
+    }
+
+    private static AuthenticationContext CreateContext()
+    {
+        return new AuthenticationContext("test@example.com", IpAddress: "127.0.0.1", UserAgent: "agent", CorrelationId: "corr");
+    }
+
+    private sealed record TestAssertion(AuthenticationProviderKey ProviderIdentity) : IAuthenticationAssertion;
+
+    private sealed class FixedSessionTokenGenerator(string token) : ISessionTokenGenerator
+    {
+        public string GenerateToken(int byteLength)
+        {
+            return token;
+        }
+    }
+
+    private sealed class RecordingSecurityEventSink : ISecurityEventSink
+    {
+        public List<AshlarSecurityEvent> Events { get; } = [];
+
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            Events.Add(securityEvent);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingSecurityEventSink : ISecurityEventSink
+    {
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException("audit store unavailable");
+        }
+    }
+}
