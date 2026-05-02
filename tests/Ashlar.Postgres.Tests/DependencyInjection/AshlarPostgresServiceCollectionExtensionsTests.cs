@@ -19,6 +19,7 @@ public sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresTes
         {
             Assert.That(provider.GetService<NpgsqlDataSource>(), Is.Not.Null);
             Assert.That(provider.GetService<Ashlar.Identity.Abstractions.IIdentityRepository>(), Is.TypeOf<PostgresIdentityRepository>());
+            Assert.That(provider.GetService<Ashlar.Identity.Abstractions.IAuthenticationSessionRepository>(), Is.TypeOf<PostgresAuthenticationSessionRepository>());
             Assert.That(provider.GetService<SchemaManager>(), Is.Not.Null);
         }
     }

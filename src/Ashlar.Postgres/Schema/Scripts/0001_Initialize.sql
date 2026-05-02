@@ -35,3 +35,22 @@ CREATE TABLE IF NOT EXISTS ashlar_credentials (
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_user_id ON ashlar_credentials (user_id);
+
+CREATE TABLE IF NOT EXISTS ashlar_sessions (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    last_seen_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+    revocation_reason TEXT,
+    ip_address TEXT,
+    user_agent TEXT,
+    metadata JSONB
+);
+
+CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_user_id ON ashlar_sessions (user_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_expires_at ON ashlar_sessions (expires_at) INCLUDE (id, user_id) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_active_user ON ashlar_sessions (user_id, expires_at) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_cleanup ON ashlar_sessions (expires_at) WHERE revoked_at IS NOT NULL;

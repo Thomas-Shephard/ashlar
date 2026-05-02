@@ -49,6 +49,7 @@ public static class AshlarServiceCollectionExtensions
         services.TryAddScoped<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>();
         services.TryAddScoped<ICredentialService, CredentialService>();
         services.TryAddScoped<PasswordHasherSelector>();
+        services.TryAddSingleton<ISessionTokenHasher, Sha256SessionTokenHasher>();
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<IdentityServiceOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
 
