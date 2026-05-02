@@ -152,6 +152,35 @@ public class LocalPasswordProviderTests
     }
 
     [Test]
+    public async Task AuthenticateAsyncWithCredentialUpdateShouldReturnBestEffortRequirement()
+    {
+        var assertion = new LocalPasswordAssertion("password");
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = ProviderType.Local,
+            ProviderName = AuthenticationProviderKey.Local.Name,
+            ProviderKey = "user@example.com",
+            Version = "v1",
+            CredentialValue = Convert.ToBase64String([0x01, 1, 2, 3])
+        };
+
+        var oldHasher = new FakePasswordHasher { Version = 0x01, ShouldVerify = true };
+        var newHasher = new FakePasswordHasher { Version = 0x02 };
+        var selector = new PasswordHasherSelector([oldHasher, newHasher]);
+        var provider = new LocalPasswordProvider(selector);
+
+        var result = await provider.AuthenticateAsync(assertion, credential);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.SucceededWithCredentialUpdate));
+            Assert.That(result.CredentialUpdateRequirement, Is.EqualTo(CredentialUpdateRequirement.BestEffort));
+        }
+    }
+
+    [Test]
     public void GetProviderKeyShouldReturnUserId()
     {
         var assertion = new LocalPasswordAssertion("pass");

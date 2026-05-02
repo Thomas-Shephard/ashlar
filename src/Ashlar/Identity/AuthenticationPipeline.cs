@@ -46,16 +46,15 @@ public sealed class AuthenticationPipeline(
             var credentialUsageUpdated = await _credentialService.UpdateCredentialUsageAsync(credential, originalCredential, result, provider, cancellationToken);
             if (!credentialUsageUpdated)
             {
-                return new AuthenticationResponse(false, user);
+                return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // TODO: Emit telemetry for non-critical credential lifecycle failures once logging is introduced.
-            if (result.IsCredentialConsumed)
+            // Fail authentication if a critical lifecycle operation (Consume or Required Update) threw an uncaught exception.
+            if (result.IsCredentialConsumed || result.CredentialUpdateRequirement == CredentialUpdateRequirement.Required)
             {
-                // Fail authentication if we cannot guarantee the credential was consumed (prevent replay/race conditions).
-                return new AuthenticationResponse(false, user);
+                return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
             }
         }
 
