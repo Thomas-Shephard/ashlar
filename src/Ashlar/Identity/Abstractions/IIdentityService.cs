@@ -4,9 +4,10 @@ namespace Ashlar.Identity.Abstractions;
 
 public interface IIdentityService
 {
-    IEnumerable<ProviderType> SupportedProviderTypes { get; }
+    IEnumerable<AuthenticationProviderKey> SupportedProviderKeys { get; }
+
     Task<IUser?> FindByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default);
-    Task<IUser?> FindByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default);
+    Task<IUser?> FindByProviderKeyAsync(AuthenticationProviderKey provider, string providerKey, CancellationToken cancellationToken = default);
 
     Task<AuthenticationResponse> LoginAsync(AuthenticationContext context, IAuthenticationAssertion assertion, CancellationToken cancellationToken = default);
 
@@ -18,7 +19,7 @@ public enum AuthenticationStatus
 {
     Failed = 0,
     Success = 1,
-    SuccessRehashNeeded = 2,
+    SuccessWithCredentialUpdate = 2,
     Disabled = 3
 }
 

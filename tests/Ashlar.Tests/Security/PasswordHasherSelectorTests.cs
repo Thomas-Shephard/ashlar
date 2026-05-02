@@ -95,7 +95,7 @@ public class PasswordHasherSelectorTests
     }
 
     [Test]
-    public void VerifyPasswordShouldReturnSuccessRehashNeededOnOldVersion()
+    public void VerifyPasswordShouldReturnSuccessWithCredentialUpdateOnOldVersion()
     {
         var oldHasher = new FakePasswordHasher { Version = 1, ShouldVerify = true };
         var newHasher = new FakePasswordHasher { Version = 2 };
@@ -103,6 +103,6 @@ public class PasswordHasherSelectorTests
         var selector = new PasswordHasherSelector([oldHasher, newHasher]);
 
         var result = selector.VerifyPassword("pass", [0x01]);
-        Assert.That(result, Is.EqualTo(PasswordVerificationResult.SuccessRehashNeeded));
+        Assert.That(result, Is.EqualTo(PasswordVerificationResult.SuccessWithCredentialUpdate));
     }
 }

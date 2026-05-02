@@ -3,25 +3,13 @@ using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Providers.External;
 
-public abstract class ExternalAuthenticationProvider(ProviderType supportedType) : IAuthenticationProvider
+public abstract class ExternalAuthenticationProvider(ProviderType supportedType, string providerName) : IAuthenticationProvider
 {
-    public ProviderType SupportedType => supportedType;
+    public AuthenticationProviderKey Key { get; } = new(supportedType, providerName);
 
     public virtual bool ProtectsCredentials => true;
 
     public virtual int TypicalCredentialLength => 256;
-
-    public virtual string GetProviderName(IAuthenticationAssertion assertion)
-    {
-        ArgumentNullException.ThrowIfNull(assertion);
-
-        if (assertion is ExternalIdentityAssertion externalAssertion)
-        {
-            return externalAssertion.ProviderName;
-        }
-
-        return SupportedType.Value;
-    }
 
     public virtual string GetProviderKey(IAuthenticationAssertion assertion, Guid userId)
     {
@@ -50,7 +38,7 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType)
             return null;
         }
 
-        var user = await repository.GetUserByProviderKeyAsync(SupportedType, externalAssertion.ProviderName, externalAssertion.ProviderKey, cancellationToken);
+        var user = await repository.GetUserByProviderKeyAsync(Key.Type, Key.Name, externalAssertion.ProviderKey, cancellationToken);
 
         switch (user)
         {
@@ -80,21 +68,29 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType)
         return user;
     }
 
-    public virtual Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion? assertion, UserCredential? credential, CancellationToken cancellationToken = default)
+    public virtual Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(assertion);
+
         if (assertion is not ExternalIdentityAssertion externalAssertion)
         {
-            throw new ArgumentException($"Unsupported assertion type: {assertion?.GetType().Name ?? "null"}", nameof(assertion));
+            throw new ArgumentException($"Unsupported assertion type: {assertion.GetType().Name}", nameof(assertion));
         }
 
-        if (externalAssertion.ProviderType != SupportedType)
+        if (externalAssertion.ProviderIdentity != Key)
         {
-            throw new ArgumentException($"Mismatching provider type. Expected {SupportedType}, got {externalAssertion.ProviderType}");
+            throw new ArgumentException($"Mismatching provider identity. Expected {Key}, got {externalAssertion.ProviderIdentity}");
         }
 
         // For external providers, if we received the assertion, it's typically already validated by the infrastructure layer (e.g., JWT middleware or SAML handler).
         // Here we just confirm that the credential matches.
-        if (credential == null || credential.ProviderName != externalAssertion.ProviderName)
+        if (credential == null || credential.ProviderType == default || string.IsNullOrWhiteSpace(credential.ProviderName))
+        {
+            return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
+        }
+
+        var credentialIdentity = new AuthenticationProviderKey(credential.ProviderType, credential.ProviderName);
+        if (credentialIdentity != Key)
         {
             return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
         }
@@ -103,14 +99,14 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType)
     }
 }
 
-public sealed class OidcAuthenticationProvider() : ExternalAuthenticationProvider(ProviderType.Oidc)
+public sealed class OidcAuthenticationProvider(string providerName) : ExternalAuthenticationProvider(ProviderType.Oidc, providerName)
 {
     public override int TypicalCredentialLength => 512;
 }
 
-public sealed class OAuthAuthenticationProvider() : ExternalAuthenticationProvider(ProviderType.OAuth);
+public sealed class OAuthAuthenticationProvider(string providerName) : ExternalAuthenticationProvider(ProviderType.OAuth, providerName);
 
-public sealed class Saml2AuthenticationProvider() : ExternalAuthenticationProvider(ProviderType.Saml2)
+public sealed class Saml2AuthenticationProvider(string providerName) : ExternalAuthenticationProvider(ProviderType.Saml2, providerName)
 {
     public override int TypicalCredentialLength => 3072;
 }

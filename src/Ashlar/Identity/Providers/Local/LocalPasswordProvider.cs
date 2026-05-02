@@ -8,7 +8,7 @@ public sealed class LocalPasswordProvider(PasswordHasherSelector hasherSelector)
 {
     private readonly PasswordHasherSelector _hasherSelector = hasherSelector ?? throw new ArgumentNullException(nameof(hasherSelector));
 
-    public ProviderType SupportedType => ProviderType.Local;
+    public AuthenticationProviderKey Key => AuthenticationProviderKey.Local;
     public bool ProtectsCredentials => false;
 
     public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId)
@@ -67,7 +67,7 @@ public sealed class LocalPasswordProvider(PasswordHasherSelector hasherSelector)
         }
 
         string? newCredentialValue = null;
-        if (result == PasswordVerificationResult.SuccessRehashNeeded)
+        if (result == PasswordVerificationResult.SuccessWithCredentialUpdate)
         {
             newCredentialValue = Convert.ToBase64String(_hasherSelector.DefaultHasher.HashPassword(passwordAssertion.Password));
         }
@@ -75,7 +75,7 @@ public sealed class LocalPasswordProvider(PasswordHasherSelector hasherSelector)
         var status = result switch
         {
             PasswordVerificationResult.Success => AuthenticationResultStatus.Succeeded,
-            PasswordVerificationResult.SuccessRehashNeeded => AuthenticationResultStatus.SucceededWithCredentialUpdate,
+            PasswordVerificationResult.SuccessWithCredentialUpdate => AuthenticationResultStatus.SucceededWithCredentialUpdate,
             _ => AuthenticationResultStatus.Failed
         };
 
