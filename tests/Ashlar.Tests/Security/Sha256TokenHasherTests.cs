@@ -1,14 +1,14 @@
-using Ashlar.Security.Hashing;
+using Ashlar.Security.Tokens;
 
 namespace Ashlar.Tests.Security;
 
-public sealed class Sha256SessionTokenHasherTests
+public sealed class Sha256TokenHasherTests
 {
     [Test]
     public void HashTokenShouldReturnStableHash()
     {
-        var hasher = new Sha256SessionTokenHasher();
-        const string token = "session-token-value";
+        var hasher = new Sha256TokenHasher();
+        const string token = "security-token-value";
 
         var first = hasher.HashToken(token);
         var second = hasher.HashToken(token);
@@ -19,8 +19,8 @@ public sealed class Sha256SessionTokenHasherTests
     [Test]
     public void HashTokenShouldNotReturnRawToken()
     {
-        var hasher = new Sha256SessionTokenHasher();
-        const string token = "session-token-value";
+        var hasher = new Sha256TokenHasher();
+        const string token = "security-token-value";
 
         var hash = hasher.HashToken(token);
 
@@ -30,10 +30,10 @@ public sealed class Sha256SessionTokenHasherTests
     [Test]
     public void HashTokenShouldProduceDifferentHashesForDifferentTokens()
     {
-        var hasher = new Sha256SessionTokenHasher();
+        var hasher = new Sha256TokenHasher();
 
-        var first = hasher.HashToken("session-token-one");
-        var second = hasher.HashToken("session-token-two");
+        var first = hasher.HashToken("security-token-one");
+        var second = hasher.HashToken("security-token-two");
 
         Assert.That(second, Is.Not.EqualTo(first));
     }
@@ -41,8 +41,8 @@ public sealed class Sha256SessionTokenHasherTests
     [Test]
     public void HashTokenShouldSupportAstralUnicodeCharacters()
     {
-        var hasher = new Sha256SessionTokenHasher();
-        const string token = "session-token-\U0001F510";
+        var hasher = new Sha256TokenHasher();
+        const string token = "security-token-\U0001F510";
 
         var hash = hasher.HashToken(token);
 
@@ -52,7 +52,7 @@ public sealed class Sha256SessionTokenHasherTests
     [Test]
     public void HashTokenShouldRejectBlankToken()
     {
-        var hasher = new Sha256SessionTokenHasher();
+        var hasher = new Sha256TokenHasher();
 
         Assert.Throws<ArgumentException>(() => hasher.HashToken(" "));
     }
@@ -60,7 +60,7 @@ public sealed class Sha256SessionTokenHasherTests
     [Test]
     public void HashTokenShouldRejectTokensLongerThanMaximum()
     {
-        var hasher = new Sha256SessionTokenHasher();
+        var hasher = new Sha256TokenHasher();
         var token = new string('a', 257);
 
         Assert.Throws<ArgumentException>(() => hasher.HashToken(token));

@@ -5,6 +5,7 @@ using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.Providers.Local;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
+using Ashlar.Security.Tokens;
 using Ashlar.Tests.Identity;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,8 +30,8 @@ public class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<ICredentialService, CredentialService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAuthenticationSessionService, AuthenticationSessionService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<PasswordHasherSelector>(services, ServiceLifetime.Scoped);
-            AssertDescriptor<ISessionTokenGenerator, RandomSessionTokenGenerator>(services, ServiceLifetime.Singleton);
-            AssertDescriptor<ISessionTokenHasher, Sha256SessionTokenHasher>(services, ServiceLifetime.Singleton);
+            AssertDescriptor<ISecureTokenGenerator, SecureTokenGenerator>(services, ServiceLifetime.Singleton);
+            AssertDescriptor<ISecureTokenHasher, Sha256TokenHasher>(services, ServiceLifetime.Singleton);
             AssertDescriptor<IdentityServiceOptions>(services, ServiceLifetime.Singleton);
             AssertDescriptor<AuthenticationSessionOptions>(services, ServiceLifetime.Singleton);
             AssertDescriptor<TimeProvider>(services, ServiceLifetime.Singleton);
@@ -106,6 +107,21 @@ public class AshlarServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<TimeProvider>(), Is.SameAs(TimeProvider.System));
+    }
+
+    [Test]
+    public void AddAshlarIdentityResolvesDefaultTokenPrimitives()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarIdentity();
+
+        using var provider = services.BuildServiceProvider();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetRequiredService<ISecureTokenGenerator>(), Is.TypeOf<SecureTokenGenerator>());
+            Assert.That(provider.GetRequiredService<ISecureTokenHasher>(), Is.TypeOf<Sha256TokenHasher>());
+        }
     }
 
     [Test]

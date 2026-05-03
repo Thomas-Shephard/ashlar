@@ -3,7 +3,7 @@ using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Security.Encryption;
-using Ashlar.Security.Hashing;
+using Ashlar.Security.Tokens;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
@@ -416,7 +416,7 @@ public sealed class SecurityAuditEventTests
         out FakeTimeProvider timeProvider)
     {
         repository = new Mock<IAuthenticationSessionRepository>();
-        var hasher = new Mock<ISessionTokenHasher>();
+        var hasher = new Mock<ISecureTokenHasher>();
         hasher.Setup(h => h.HashToken(It.IsAny<string>())).Returns<string>(token => $"hashed:{token}");
         timeProvider = new FakeTimeProvider(TestTime);
 
@@ -464,9 +464,9 @@ public sealed class SecurityAuditEventTests
 
     private sealed record TestAssertion(AuthenticationProviderKey ProviderIdentity) : IAuthenticationAssertion;
 
-    private sealed class FixedSessionTokenGenerator(string token) : ISessionTokenGenerator
+    private sealed class FixedSessionTokenGenerator(string token) : ISecureTokenGenerator
     {
-        public string GenerateToken(int byteLength)
+        public string GenerateToken(int byteLength = ISecureTokenGenerator.DefaultByteLength)
         {
             return token;
         }
