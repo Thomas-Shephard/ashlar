@@ -183,6 +183,51 @@ public static class AshlarServiceCollectionExtensions
     }
 
     /// <summary>
+    /// Registers Ashlar's magic-link email sign-in provider and issuing service.
+    /// </summary>
+    public static IServiceCollection AddAshlarMagicLinkSignIn(
+        this IServiceCollection services,
+        Action<MagicLinkSignInOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.AddOptions();
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, MagicLinkAuthenticationProvider>());
+        services.TryAddScoped(provider =>
+        {
+            var identityService = provider.GetRequiredService<IIdentityService>();
+            var repository = provider.GetRequiredService<IIdentityRepository>();
+            var emailSender = provider.GetRequiredService<IEmailSender>();
+            var rateLimiter = provider.GetRequiredService<IAuthenticationRateLimiter>();
+            var tokenGenerator = provider.GetRequiredService<ISecureTokenGenerator>();
+            var authenticationProvider = provider.GetServices<IAuthenticationProvider>().OfType<MagicLinkAuthenticationProvider>().First();
+            var securityEventSink = provider.GetRequiredService<ISecurityEventSink>();
+            var secretProtector = provider.GetRequiredService<ISecretProtector>();
+            var timeProvider = provider.GetRequiredService<TimeProvider>();
+
+            return new MagicLinkSignInDependencies(
+                identityService,
+                repository,
+                emailSender,
+                rateLimiter,
+                tokenGenerator,
+                authenticationProvider,
+                securityEventSink,
+                secretProtector,
+                timeProvider);
+        });
+        services.TryAddScoped<IMagicLinkSignInService, MagicLinkSignInService>();
+
+        return services;
+    }
+
+    /// <summary>
     /// Registers <see cref="DataProtectionSecretProtector"/> as Ashlar's secret protector.
     /// </summary>
     /// <remarks>
