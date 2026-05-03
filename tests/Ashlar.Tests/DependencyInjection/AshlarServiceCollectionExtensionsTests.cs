@@ -3,6 +3,7 @@ using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.Providers.Local;
+using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 using Ashlar.Security.Tokens;
@@ -32,6 +33,7 @@ public class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<PasswordHasherSelector>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ISecureTokenGenerator, SecureTokenGenerator>(services, ServiceLifetime.Singleton);
             AssertDescriptor<ISecureTokenHasher, Sha256TokenHasher>(services, ServiceLifetime.Singleton);
+            AssertDescriptor<IEmailSender, NullEmailSender>(services, ServiceLifetime.Singleton);
             AssertDescriptor<IdentityServiceOptions>(services, ServiceLifetime.Singleton);
             AssertDescriptor<AuthenticationSessionOptions>(services, ServiceLifetime.Singleton);
             AssertDescriptor<TimeProvider>(services, ServiceLifetime.Singleton);
@@ -107,6 +109,39 @@ public class AshlarServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<TimeProvider>(), Is.SameAs(TimeProvider.System));
+    }
+
+    [Test]
+    public void AddAshlarMessagingResolvesNullEmailSenderByDefault()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarMessaging();
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetRequiredService<IEmailSender>(), Is.TypeOf<NullEmailSender>());
+    }
+
+    [Test]
+    public void AddAshlarMessagingDoesNotOverrideCustomEmailSender()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IEmailSender, CustomEmailSender>();
+
+        services.AddAshlarMessaging();
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetRequiredService<IEmailSender>(), Is.TypeOf<CustomEmailSender>());
+    }
+
+    [Test]
+    public void AddAshlarMessagingRejectsNullServices()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        var exception = Assert.Throws<ArgumentNullException>(() => AshlarServiceCollectionExtensions.AddAshlarMessaging(null!));
+
+        Assert.That(exception.ParamName, Is.EqualTo("services"));
     }
 
     [Test]
@@ -303,5 +338,10 @@ public class AshlarServiceCollectionExtensionsTests
         Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
             descriptor.ServiceType == typeof(TService)
             && descriptor.Lifetime == lifetime));
+    }
+
+    private sealed class CustomEmailSender : IEmailSender
+    {
+        public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }
