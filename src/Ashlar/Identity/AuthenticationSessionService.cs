@@ -2,7 +2,7 @@ using System.Globalization;
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
-using Ashlar.Security.Hashing;
+using Ashlar.Security.Tokens;
 
 namespace Ashlar.Identity;
 
@@ -11,8 +11,8 @@ namespace Ashlar.Identity;
 /// </summary>
 public sealed class AuthenticationSessionService(
     IAuthenticationSessionRepository repository,
-    ISessionTokenHasher tokenHasher,
-    ISessionTokenGenerator tokenGenerator,
+    ISecureTokenHasher tokenHasher,
+    ISecureTokenGenerator tokenGenerator,
     AuthenticationSessionOptions? options = null,
     TimeProvider? timeProvider = null,
     ISecurityEventSink? securityEventSink = null)
@@ -21,8 +21,8 @@ public sealed class AuthenticationSessionService(
     private const int MinimumTokenByteLength = 32;
     private const int MaximumTokenByteLength = 192;
     private readonly IAuthenticationSessionRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
-    private readonly ISessionTokenHasher _tokenHasher = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
-    private readonly ISessionTokenGenerator _tokenGenerator = tokenGenerator ?? throw new ArgumentNullException(nameof(tokenGenerator));
+    private readonly ISecureTokenHasher _tokenHasher = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
+    private readonly ISecureTokenGenerator _tokenGenerator = tokenGenerator ?? throw new ArgumentNullException(nameof(tokenGenerator));
     private readonly AuthenticationSessionOptions _options = ValidateOptions(options ?? new AuthenticationSessionOptions());
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider ?? TimeProvider.System);

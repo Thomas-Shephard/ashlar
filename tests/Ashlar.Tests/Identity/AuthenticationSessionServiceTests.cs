@@ -1,7 +1,7 @@
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
-using Ashlar.Security.Hashing;
+using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
 
@@ -10,7 +10,7 @@ namespace Ashlar.Tests.Identity;
 public sealed class AuthenticationSessionServiceTests
 {
     private Mock<IAuthenticationSessionRepository> _repositoryMock;
-    private Mock<ISessionTokenHasher> _tokenHasherMock;
+    private Mock<ISecureTokenHasher> _tokenHasherMock;
     private FakeTimeProvider _timeProvider;
     private AuthenticationSessionService _service;
 
@@ -18,7 +18,7 @@ public sealed class AuthenticationSessionServiceTests
     public void SetUp()
     {
         _repositoryMock = new Mock<IAuthenticationSessionRepository>();
-        _tokenHasherMock = new Mock<ISessionTokenHasher>();
+        _tokenHasherMock = new Mock<ISecureTokenHasher>();
         _timeProvider = new FakeTimeProvider(new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.Zero));
 
         _tokenHasherMock.Setup(h => h.HashToken(It.IsAny<string>())).Returns<string>(token => $"hashed:{token}");
@@ -548,9 +548,9 @@ public sealed class AuthenticationSessionServiceTests
         };
     }
 
-    private sealed class FixedSessionTokenGenerator(string token) : ISessionTokenGenerator
+    private sealed class FixedSessionTokenGenerator(string token) : ISecureTokenGenerator
     {
-        public string GenerateToken(int byteLength)
+        public string GenerateToken(int byteLength = ISecureTokenGenerator.DefaultByteLength)
         {
             return token;
         }

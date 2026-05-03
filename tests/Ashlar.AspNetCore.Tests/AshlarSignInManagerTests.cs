@@ -4,7 +4,7 @@ using Ashlar.AspNetCore.Authentication;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
-using Ashlar.Security.Hashing;
+using Ashlar.Security.Tokens;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -208,8 +208,8 @@ public sealed class AshlarSignInManagerTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IAuthenticationSessionRepository>(repository);
-        services.AddSingleton<ISessionTokenGenerator>(new FixedSessionTokenGenerator("raw-token"));
-        services.AddSingleton<ISessionTokenHasher, PrefixSessionTokenHasher>();
+        services.AddSingleton<ISecureTokenGenerator>(new FixedSessionTokenGenerator("raw-token"));
+        services.AddSingleton<ISecureTokenHasher, PrefixSessionTokenHasher>();
         services.AddAshlarIdentity(configureSessions: sessionOptions =>
         {
             sessionOptions.DefaultLifetime = TimeSpan.FromHours(1);
@@ -275,8 +275,8 @@ public sealed class AshlarSignInManagerTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IAuthenticationSessionRepository>(repository);
-        services.AddSingleton<ISessionTokenGenerator>(new FixedSessionTokenGenerator("raw-token"));
-        services.AddSingleton<ISessionTokenHasher, PrefixSessionTokenHasher>();
+        services.AddSingleton<ISecureTokenGenerator>(new FixedSessionTokenGenerator("raw-token"));
+        services.AddSingleton<ISecureTokenHasher, PrefixSessionTokenHasher>();
         services.AddAshlarIdentity(configureSessions: sessionOptions =>
         {
             sessionOptions.DefaultLifetime = TimeSpan.FromHours(1);
@@ -309,15 +309,15 @@ public sealed class AshlarSignInManagerTests
         return monitor.Object;
     }
 
-    private sealed class FixedSessionTokenGenerator(string token) : ISessionTokenGenerator
+    private sealed class FixedSessionTokenGenerator(string token) : ISecureTokenGenerator
     {
-        public string GenerateToken(int byteLength)
+        public string GenerateToken(int byteLength = ISecureTokenGenerator.DefaultByteLength)
         {
             return token;
         }
     }
 
-    private sealed class PrefixSessionTokenHasher : ISessionTokenHasher
+    private sealed class PrefixSessionTokenHasher : ISecureTokenHasher
     {
         public string HashToken(string token)
         {
