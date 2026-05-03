@@ -6,6 +6,7 @@ using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
+using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 using Ashlar.Security.Tokens;
@@ -35,6 +36,7 @@ public static class AshlarServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        services.AddAshlarMessaging();
         services.AddOptions();
         if (configure != null)
         {
@@ -69,6 +71,18 @@ public static class AshlarServiceCollectionExtensions
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<IdentityServiceOptions>>().Value);
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<AuthenticationSessionOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers Ashlar's framework-neutral messaging services.
+    /// </summary>
+    public static IServiceCollection AddAshlarMessaging(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.TryAddSingleton<IEmailSender, NullEmailSender>();
 
         return services;
     }

@@ -53,6 +53,22 @@ Session token generation and hashing use the reusable `Ashlar.Security.Tokens` p
 
 `SecureTokenGenerator` generates Base64Url tokens from 32 to 192 random bytes. The upper bound keeps generated tokens compatible with the default `Sha256TokenHasher` input limit. Existing code that customized the old session-specific token generator or hasher should register `ISecureTokenGenerator` or `ISecureTokenHasher` instead.
 
+## Messaging
+Ashlar includes a framework-neutral email abstraction for identity and security flows that need to send or queue email messages, such as future passwordless sign-in, password reset, MFA recovery, and security notifications.
+
+The abstraction lives in `Ashlar.Messaging`, not `Ashlar.Identity`, so authentication providers can depend on message creation without coupling to SMTP, a cloud email vendor, ASP.NET Core, or a persistence outbox.
+
+`AddAshlarIdentity()` calls `AddAshlarMessaging()` and registers `IEmailSender` with `NullEmailSender` by default. `NullEmailSender` accepts valid `EmailMessage` instances and sends nothing, which keeps the core library usable and test-friendly without choosing an email delivery provider.
+
+Applications should replace the default sender with their own implementation before calling `AddAshlarIdentity()` or `AddAshlarMessaging()`:
+
+```csharp
+services.AddSingleton<IEmailSender, MyEmailSender>();
+services.AddAshlarIdentity();
+```
+
+`EmailMessage` contains simple string address fields (`To`, `From`, and `ReplyTo`) plus subject, text and/or HTML body, headers, and metadata. Ashlar intentionally does not implement SMTP, vendor integrations, templates, MIME parsing, address-list handling, or outbox persistence in the core abstraction.
+
 When supplied to `CreateSessionAsync`, session IP address, user agent, and metadata are persisted by default. These values can contain personal data, so applications should only pass them when their privacy policy and security requirements allow it. Use `AuthenticationSessionOptions.StoreIpAddress`, `StoreUserAgent`, and `StoreMetadata` to opt out, and tune the max-length options if the defaults do not fit your storage policy.
 
 ```csharp
