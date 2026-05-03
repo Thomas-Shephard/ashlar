@@ -4,6 +4,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Identity.Providers.Email;
 using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
@@ -152,6 +153,31 @@ public static class AshlarServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.Add(new ServiceDescriptor(typeof(IPasswordHasher), implementationFactory, lifetime));
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers Ashlar's passwordless email code sign-in provider and issuing service.
+    /// </summary>
+    public static IServiceCollection AddAshlarEmailCodeSignIn(
+        this IServiceCollection services,
+        Action<EmailCodeSignInOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.AddOptions();
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, EmailCodeAuthenticationProvider>());
+        services.TryAddScoped(provider => (EmailCodeAuthenticationProvider)provider.GetServices<IAuthenticationProvider>().First(authenticationProvider => authenticationProvider is EmailCodeAuthenticationProvider));
+        services.TryAddScoped<EmailCodeSignInDependencies>();
+        services.TryAddScoped<IEmailCodeSignInService, EmailCodeSignInService>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IPasswordHasher, PasswordHasherV1>());
 
         return services;
     }

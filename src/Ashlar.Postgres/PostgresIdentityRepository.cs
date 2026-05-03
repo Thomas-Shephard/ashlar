@@ -8,6 +8,27 @@ namespace Ashlar.Postgres;
 
 public sealed class PostgresIdentityRepository(NpgsqlDataSource dataSource) : IIdentityRepository
 {
+    private const string InsertCredentialSql = """
+        INSERT INTO ashlar_credentials (id, user_id, provider_type, provider_name, provider_key, version, credential_value, metadata, last_used_at, created_at, updated_at, expires_at, revoked_at, status, purpose)
+        VALUES (@Id, @UserId, @ProviderType, @ProviderName, @ProviderKey, @Version, @CredentialValue, @Metadata, @LastUsedAt, @CreatedAt, @UpdatedAt, @ExpiresAt, @RevokedAt, @Status, @Purpose)
+        """;
+
+    private const string UpsertCredentialSql = $"""
+        {InsertCredentialSql}
+        ON CONFLICT (provider_type, provider_name, provider_key) DO UPDATE
+        SET version = EXCLUDED.version,
+            user_id = EXCLUDED.user_id,
+            credential_value = EXCLUDED.credential_value,
+            metadata = EXCLUDED.metadata,
+            last_used_at = COALESCE(EXCLUDED.last_used_at, ashlar_credentials.last_used_at),
+            created_at = ashlar_credentials.created_at,
+            updated_at = COALESCE(EXCLUDED.updated_at, NOW()),
+            expires_at = EXCLUDED.expires_at,
+            revoked_at = EXCLUDED.revoked_at,
+            status = EXCLUDED.status,
+            purpose = EXCLUDED.purpose
+        """;
+
     private readonly NpgsqlDataSource _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
 
     public async Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
@@ -150,31 +171,17 @@ public sealed class PostgresIdentityRepository(NpgsqlDataSource dataSource) : II
     {
         ArgumentNullException.ThrowIfNull(credential);
 
-        const string sql = """
-            INSERT INTO ashlar_credentials (id, user_id, provider_type, provider_name, provider_key, version, credential_value, metadata, last_used_at, created_at, updated_at, expires_at, revoked_at, status, purpose)
-            VALUES (@Id, @UserId, @ProviderType, @ProviderName, @ProviderKey, @Version, @CredentialValue, @Metadata, @LastUsedAt, @CreatedAt, @UpdatedAt, @ExpiresAt, @RevokedAt, @Status, @Purpose)
-            """;
+        var command = new CommandDefinition(InsertCredentialSql, ToCredentialParameters(credential), cancellationToken: cancellationToken);
 
-        var parameters = new
-        {
-            credential.Id,
-            credential.UserId,
-            ProviderType = credential.ProviderType.Value,
-            credential.ProviderName,
-            credential.ProviderKey,
-            credential.Version,
-            credential.CredentialValue,
-            credential.Metadata,
-            credential.LastUsedAt,
-            credential.CreatedAt,
-            credential.UpdatedAt,
-            credential.ExpiresAt,
-            credential.RevokedAt,
-            Status = (int)credential.Status,
-            credential.Purpose
-        };
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await connection.ExecuteAsync(command);
+    }
 
-        var command = new CommandDefinition(sql, parameters, cancellationToken: cancellationToken);
+    public async Task CreateOrReplaceCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(credential);
+
+        var command = new CommandDefinition(UpsertCredentialSql, ToCredentialParameters(credential), cancellationToken: cancellationToken);
 
         await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         await connection.ExecuteAsync(command);
@@ -240,4 +247,26 @@ public sealed class PostgresIdentityRepository(NpgsqlDataSource dataSource) : II
     }
 
     private static string NormalizeEmail(string email) => email.Trim().ToUpperInvariant();
+
+    private static object ToCredentialParameters(UserCredential credential)
+    {
+        return new
+        {
+            credential.Id,
+            credential.UserId,
+            ProviderType = credential.ProviderType.Value,
+            credential.ProviderName,
+            credential.ProviderKey,
+            credential.Version,
+            credential.CredentialValue,
+            credential.Metadata,
+            credential.LastUsedAt,
+            credential.CreatedAt,
+            credential.UpdatedAt,
+            credential.ExpiresAt,
+            credential.RevokedAt,
+            Status = (int)credential.Status,
+            credential.Purpose
+        };
+    }
 }
