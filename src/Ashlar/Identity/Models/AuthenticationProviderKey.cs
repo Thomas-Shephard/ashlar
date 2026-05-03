@@ -19,6 +19,7 @@ public readonly record struct AuthenticationProviderKey
     }
 
     public static AuthenticationProviderKey Local { get; } = new(ProviderType.Local, ProviderType.Local.Value);
+    public static AuthenticationProviderKey EmailCode { get; } = new(ProviderType.EmailCode, ProviderType.EmailCode.Value);
 
     public bool Equals(AuthenticationProviderKey other)
     {

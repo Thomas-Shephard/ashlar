@@ -398,6 +398,133 @@ public sealed class PostgresIdentityRepositoryTests : PostgresTestBase
     }
 
     [Test]
+    public async Task CreateOrReplaceCredentialShouldUpsertByProviderIdentity()
+    {
+        var repo = GetRepository();
+        var user = await CreateTestUser(repo);
+        var providerKey = user.Id.ToString("D");
+        var lastUsedAt = new DateTimeOffset(2026, 5, 3, 12, 0, 0, TimeSpan.Zero);
+        var originalCreatedAt = new DateTimeOffset(2026, 5, 3, 11, 0, 0, TimeSpan.Zero);
+        var replacementCreatedAt = new DateTimeOffset(2026, 5, 3, 12, 30, 0, TimeSpan.Zero);
+        var original = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            ProviderType = ProviderType.EmailCode,
+            ProviderName = ProviderType.EmailCode.Value,
+            ProviderKey = providerKey,
+            Version = "v1",
+            CredentialValue = "first",
+            LastUsedAt = lastUsedAt,
+            CreatedAt = originalCreatedAt,
+            Status = CredentialStatus.Active,
+            Purpose = "email-sign-in"
+        };
+        var originalLastUsedAt = original.LastUsedAt;
+
+        var replacement = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            ProviderType = ProviderType.EmailCode,
+            ProviderName = ProviderType.EmailCode.Value,
+            ProviderKey = providerKey,
+            Version = "v2",
+            CredentialValue = "second",
+            Metadata = "{}",
+            LastUsedAt = null,
+            CreatedAt = replacementCreatedAt,
+            UpdatedAt = null,
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(10),
+            RevokedAt = null,
+            Status = CredentialStatus.Active,
+            Purpose = "email-sign-in"
+        };
+
+        await repo.CreateOrReplaceCredentialAsync(original);
+        await repo.CreateOrReplaceCredentialAsync(replacement);
+
+        var fetched = await repo.GetCredentialForUserAsync(user.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value, providerKey);
+
+        Assert.That(fetched, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fetched.Id, Is.EqualTo(original.Id));
+            Assert.That(fetched.Version, Is.EqualTo("v2"));
+            Assert.That(fetched.CredentialValue, Is.EqualTo("second"));
+            Assert.That(fetched.Metadata, Is.EqualTo("{}"));
+            Assert.That(fetched.CreatedAt, Is.EqualTo(originalCreatedAt));
+            Assert.That(fetched.LastUsedAt, Is.EqualTo(originalLastUsedAt));
+            Assert.That(fetched.UpdatedAt, Is.Not.Null);
+            Assert.That(fetched.Purpose, Is.EqualTo("email-sign-in"));
+        }
+    }
+
+    [Test]
+    public async Task CreateOrReplaceCredentialShouldUpdateUserIdOnConflict()
+    {
+        var repo = GetRepository();
+        var user1 = await CreateTestUser(repo);
+        var user2 = await CreateTestUser(repo);
+        var providerKey = $"shared-{Guid.NewGuid():N}";
+        var original = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = user1.Id,
+            ProviderType = ProviderType.EmailCode,
+            ProviderName = ProviderType.EmailCode.Value,
+            ProviderKey = providerKey,
+            Version = "v1",
+            CredentialValue = "first",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
+            Purpose = "email-sign-in"
+        };
+
+        var replacement = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = user2.Id,
+            ProviderType = ProviderType.EmailCode,
+            ProviderName = ProviderType.EmailCode.Value,
+            ProviderKey = providerKey,
+            Version = "v2",
+            CredentialValue = "second",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active,
+            Purpose = "email-sign-in"
+        };
+
+        await repo.CreateOrReplaceCredentialAsync(original);
+        await repo.CreateOrReplaceCredentialAsync(replacement);
+
+        var oldUserCredential = await repo.GetCredentialForUserAsync(user1.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value, providerKey);
+        var newUserCredential = await repo.GetCredentialForUserAsync(user2.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value, providerKey);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(oldUserCredential, Is.Null);
+            Assert.That(newUserCredential, Is.Not.Null);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newUserCredential.Id, Is.EqualTo(original.Id));
+            Assert.That(newUserCredential.UserId, Is.EqualTo(user2.Id));
+            Assert.That(newUserCredential.CredentialValue, Is.EqualTo("second"));
+        }
+    }
+
+    [Test]
+    public void CreateOrReplaceCredentialNullShouldThrow()
+    {
+        var repo = GetRepository();
+
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.ThrowsAsync<ArgumentNullException>(async () => await repo.CreateOrReplaceCredentialAsync(null!));
+    }
+
+    [Test]
     public async Task UpdateUserShouldSucceed()
     {
         var repo = GetRepository();

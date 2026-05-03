@@ -4,62 +4,24 @@ using Ashlar.Security.Hashing;
 
 namespace Ashlar.Identity.Providers.Local;
 
-public sealed class LocalPasswordProvider(PasswordHasherSelector hasherSelector) : IAuthenticationProvider
+public sealed class LocalPasswordProvider(PasswordHasherSelector hasherSelector) : PasswordHashAuthenticationProvider(hasherSelector)
 {
-    private readonly PasswordHasherSelector _hasherSelector = hasherSelector ?? throw new ArgumentNullException(nameof(hasherSelector));
+    public override AuthenticationProviderKey Key => AuthenticationProviderKey.Local;
 
-    public AuthenticationProviderKey Key => AuthenticationProviderKey.Local;
-    public bool ProtectsCredentials => false;
+    protected override bool SupportsAssertion(IAuthenticationAssertion assertion) => assertion is LocalPasswordAssertion;
 
-    public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId)
-    {
-        ArgumentNullException.ThrowIfNull(assertion);
-        return userId.ToString("D");
-    }
-
-    public string PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(rawValue);
-        return Convert.ToBase64String(_hasherSelector.DefaultHasher.HashPassword(rawValue));
-    }
-
-    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(repository);
-
-        if (assertion is not LocalPasswordAssertion || string.IsNullOrWhiteSpace(context.Email))
-        {
-            return null;
-        }
-
-        return await repository.GetUserByEmailAsync(context.Email, context.TenantId, cancellationToken);
-    }
-
-    public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default)
+    public override Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default)
     {
         if (assertion is not LocalPasswordAssertion passwordAssertion)
         {
             throw new ArgumentException($"Unsupported assertion type: {assertion.GetType().Name}", nameof(assertion));
         }
 
-        byte[]? buffer = null;
-        if (credential?.CredentialValue != null)
-        {
-            try
-            {
-                buffer = Convert.FromBase64String(credential.CredentialValue);
-            }
-            catch (FormatException)
-            {
-                // Continue to ensure timing safety even if the DB contains malformed data.
-                buffer = null;
-            }
-        }
+        byte[]? buffer = PasswordCredentialHashing.DecodeBase64(credential?.CredentialValue);
 
         ReadOnlySpan<byte> encodedHash = buffer ?? [];
 
-        var result = _hasherSelector.VerifyPassword(passwordAssertion.Password, encodedHash);
+        var result = HasherSelector.VerifyPassword(passwordAssertion.Password, encodedHash);
 
         if (buffer == null)
         {
@@ -69,7 +31,7 @@ public sealed class LocalPasswordProvider(PasswordHasherSelector hasherSelector)
         string? newCredentialValue = null;
         if (result == PasswordVerificationResult.SuccessWithCredentialUpdate)
         {
-            newCredentialValue = Convert.ToBase64String(_hasherSelector.DefaultHasher.HashPassword(passwordAssertion.Password));
+            newCredentialValue = PasswordCredentialHashing.HashToBase64(HasherSelector, passwordAssertion.Password);
         }
 
         var status = result switch

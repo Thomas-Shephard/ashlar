@@ -23,6 +23,11 @@ public interface IIdentityRepository
     Task CreateCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Atomically creates a credential or replaces the existing credential with the same provider identity.
+    /// </summary>
+    Task CreateOrReplaceCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Updates a credential only if it still matches the version read by the caller.
     /// </summary>
     /// <param name="expectedVersion">

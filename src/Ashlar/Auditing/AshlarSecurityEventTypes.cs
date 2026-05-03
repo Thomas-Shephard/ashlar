@@ -12,6 +12,10 @@ public static class AshlarSecurityEventTypes
     public const string CredentialConsumed = "ashlar.credential.consumed";
     public const string CredentialUpdatePersisted = "ashlar.credential.updated";
     public const string CredentialUpdateFailed = "ashlar.credential.update_failed";
+    public const string EmailCodeRequested = "ashlar.email_code.requested";
+    public const string EmailCodeRequestSuppressed = "ashlar.email_code.request_suppressed";
+    public const string EmailCodeRequestRateLimited = "ashlar.email_code.request_rate_limited";
+    public const string EmailCodeVerificationRateLimited = "ashlar.email_code.verification_rate_limited";
     public const string SessionCreated = "ashlar.session.created";
     public const string SessionValidated = "ashlar.session.validated";
     public const string SessionValidationFailed = "ashlar.session.validation_failed";
