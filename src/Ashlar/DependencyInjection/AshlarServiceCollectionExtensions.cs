@@ -57,6 +57,7 @@ public static class AshlarServiceCollectionExtensions
                 provider.GetRequiredService<IAuthenticationProviderRegistry>(),
                 provider.GetRequiredService<ICredentialService>(),
                 provider.GetRequiredService<IAuthenticationPipeline>(),
+                provider.GetRequiredService<IAshlarTransactionProvider>(),
                 provider.GetService<ISecurityEventSink>(),
                 provider.GetService<TimeProvider>()),
             ServiceLifetime.Scoped));
@@ -64,6 +65,7 @@ public static class AshlarServiceCollectionExtensions
         services.TryAddScoped<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>();
         services.TryAddScoped<ICredentialService, CredentialService>();
         services.TryAddScoped<IAuthenticationSessionService, AuthenticationSessionService>();
+        services.TryAddScoped<IdentityContext>();
         services.TryAddScoped<PasswordHasherSelector>();
         services.TryAddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         services.TryAddSingleton<ISecureTokenHasher, Sha256TokenHasher>();

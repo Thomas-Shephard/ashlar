@@ -104,7 +104,7 @@ public sealed class SecurityAuditEventTests
     {
         var sink = new RecordingSecurityEventSink();
         var registry = new Mock<IAuthenticationProviderRegistry>();
-        var pipeline = new AuthenticationPipeline(registry.Object, Mock.Of<ICredentialService>(), sink, new FakeTimeProvider(TestTime));
+        var pipeline = new AuthenticationPipeline(registry.Object, Mock.Of<ICredentialService>(), new NullTransactionProvider(), sink, new FakeTimeProvider(TestTime));
         var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
 
         var response = await pipeline.LoginAsync(CreateContext(), assertion);
@@ -124,7 +124,7 @@ public sealed class SecurityAuditEventTests
         var sink = new RecordingSecurityEventSink();
         var repository = new Mock<IIdentityRepository>();
         var protector = new Mock<ISecretProtector>();
-        var service = new CredentialService(repository.Object, protector.Object, timeProvider: new FakeTimeProvider(TestTime), securityEventSink: sink);
+        var service = new CredentialService(repository.Object, protector.Object, new NullTransactionProvider(), timeProvider: new FakeTimeProvider(TestTime), securityEventSink: sink);
         var userId = Guid.NewGuid();
         var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
         var provider = new Mock<IAuthenticationProvider>();
@@ -159,6 +159,7 @@ public sealed class SecurityAuditEventTests
         var service = new CredentialService(
             repository.Object,
             Mock.Of<ISecretProtector>(),
+            new NullTransactionProvider(),
             timeProvider: new FakeTimeProvider(TestTime),
             securityEventSink: sink);
         var credential = CreateCredential(Guid.NewGuid());
@@ -187,6 +188,7 @@ public sealed class SecurityAuditEventTests
         var service = new CredentialService(
             repository.Object,
             protector.Object,
+            new NullTransactionProvider(),
             timeProvider: new FakeTimeProvider(TestTime),
             securityEventSink: sink);
         var userId = Guid.NewGuid();
@@ -406,7 +408,7 @@ public sealed class SecurityAuditEventTests
             Status = CredentialStatus.Active
         };
 
-        var pipeline = new AuthenticationPipeline(registry.Object, credentialService.Object, sink, new FakeTimeProvider(TestTime));
+        var pipeline = new AuthenticationPipeline(registry.Object, credentialService.Object, new NullTransactionProvider(), sink, new FakeTimeProvider(TestTime));
         return (pipeline, registry, credentialService, providerMock, provider, assertion, user, credential);
     }
 
@@ -424,6 +426,7 @@ public sealed class SecurityAuditEventTests
             repository.Object,
             hasher.Object,
             new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
             timeProvider: timeProvider,
             securityEventSink: sink);
     }

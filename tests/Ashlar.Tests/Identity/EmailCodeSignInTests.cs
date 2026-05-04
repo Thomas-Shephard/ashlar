@@ -277,7 +277,8 @@ public sealed class EmailCodeSignInTests
         var emailSender = new RecordingEmailSender();
         var rateLimiter = new StubRateLimiter(true, true, TimeProvider.System);
         var provider = CreateProvider();
-        var dependencies = new EmailCodeSignInDependencies(repository, identity, emailSender, rateLimiter, provider);
+        var core = new IdentityContext(repository, identity, new NullTransactionProvider());
+        var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider);
 
         using (Assert.EnterMultipleScope())
         {
@@ -285,15 +286,13 @@ public sealed class EmailCodeSignInTests
             // ReSharper disable once NullableWarningSuppressionIsUsed
             Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInService(null!));
             // ReSharper disable once NullableWarningSuppressionIsUsed
-            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(null!, identity, emailSender, rateLimiter, provider));
+            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(null!, emailSender, rateLimiter, provider));
             // ReSharper disable once NullableWarningSuppressionIsUsed
-            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(repository, null!, emailSender, rateLimiter, provider));
+            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, null!, rateLimiter, provider));
             // ReSharper disable once NullableWarningSuppressionIsUsed
-            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(repository, identity, null!, rateLimiter, provider));
+            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, emailSender, null!, provider));
             // ReSharper disable once NullableWarningSuppressionIsUsed
-            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(repository, identity, emailSender, null!, provider));
-            // ReSharper disable once NullableWarningSuppressionIsUsed
-            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(repository, identity, emailSender, rateLimiter, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, null!));
         }
     }
 
@@ -324,11 +323,12 @@ public sealed class EmailCodeSignInTests
         var emailSender = new RecordingEmailSender();
         var provider = CreateProvider();
         var registry = new AuthenticationProviderRegistry([provider]);
-        var credentialService = new CredentialService(repository, Mock.Of<ISecretProtector>(), timeProvider: time, securityEventSink: audit);
-        var pipeline = new AuthenticationPipeline(registry, credentialService, audit, time);
-        var identity = new IdentityService(repository, registry, credentialService, pipeline, audit, time);
+        var credentialService = new CredentialService(repository, Mock.Of<ISecretProtector>(), new NullTransactionProvider(), timeProvider: time, securityEventSink: audit);
+        var pipeline = new AuthenticationPipeline(registry, credentialService, new NullTransactionProvider(), audit, time);
+        var identity = new IdentityService(repository, registry, credentialService, pipeline, new NullTransactionProvider(), audit, time);
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed, time);
-        var dependencies = new EmailCodeSignInDependencies(repository, identity, emailSender, rateLimiter, provider, audit, time);
+        var core = new IdentityContext(repository, identity, new NullTransactionProvider());
+        var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, audit, time);
         var service = new EmailCodeSignInService(dependencies, Options.Create(options ?? new EmailCodeSignInOptions()));
         return new Fixture(service, repository, emailSender, audit, time);
     }

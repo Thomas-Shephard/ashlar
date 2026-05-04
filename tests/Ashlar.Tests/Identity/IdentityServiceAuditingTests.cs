@@ -24,6 +24,7 @@ public sealed class IdentityServiceAuditingTests
             repositoryMock.Object,
             providers,
             credentialServiceMock.Object,
+            new NullTransactionProvider(),
             sinkMock.Object);
 
         var context = new AuthenticationContext("test@example.com");
