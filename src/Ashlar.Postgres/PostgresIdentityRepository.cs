@@ -45,7 +45,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, parameters, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             return await connectionHandle.Connection.QueryFirstOrDefaultAsync<AshlarPostgresUser>(command);
         }
     }
@@ -61,7 +61,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, new { Id = userId }, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql, new { Id = userId }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             return await connectionHandle.Connection.QueryFirstOrDefaultAsync<AshlarPostgresUser>(command);
         }
     }
@@ -79,13 +79,14 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
               AND (@ProviderKey IS NULL OR provider_key = @ProviderKey)
               AND revoked_at IS NULL AND status = @ActiveStatus
             ORDER BY created_at DESC
+            LIMIT 1
             """;
 
         var parameters = new { UserId = userId, Type = type.Value, ProviderName = providerName, ProviderKey = providerKey, ActiveStatus = (int)CredentialStatus.Active };
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, parameters, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             return await connectionHandle.Connection.QueryFirstOrDefaultAsync<UserCredential>(command);
         }
     }
@@ -107,7 +108,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, parameters, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             return await connectionHandle.Connection.QueryFirstOrDefaultAsync<AshlarPostgresUser>(command);
         }
     }
@@ -139,7 +140,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, parameters, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             await connectionHandle.Connection.ExecuteAsync(command);
         }
     }
@@ -172,7 +173,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, parameters, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             var rowsAffected = await connectionHandle.Connection.ExecuteAsync(command);
 
             if (rowsAffected > 0 && user is IHasAuditMetadata auditMetadata)
@@ -189,7 +190,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(InsertCredentialSql, ToCredentialParameters(credential), transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(InsertCredentialSql, ToCredentialParameters(credential), transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             await connectionHandle.Connection.ExecuteAsync(command);
         }
     }
@@ -201,7 +202,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(UpsertCredentialSql, ToCredentialParameters(credential), transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(UpsertCredentialSql, ToCredentialParameters(credential), transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             await connectionHandle.Connection.ExecuteAsync(command);
         }
     }
@@ -239,7 +240,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, parameters, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             var rowsAffected = await connectionHandle.Connection.ExecuteAsync(command);
 
             if (rowsAffected > 0)
@@ -262,7 +263,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, new { Id = credentialId, ExpectedVersion = expectedVersion }, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql, new { Id = credentialId, ExpectedVersion = expectedVersion }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             var rowsAffected = await connectionHandle.Connection.ExecuteAsync(command);
 
             return rowsAffected > 0;

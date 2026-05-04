@@ -12,10 +12,12 @@ namespace Ashlar.Postgres;
 public sealed class PostgresConnectionHandle : IAsyncDisposable
 {
     private readonly bool _shouldDispose;
+    private bool _disposed;
 
-    internal PostgresConnectionHandle(NpgsqlConnection connection, bool shouldDispose)
+    internal PostgresConnectionHandle(NpgsqlConnection connection, NpgsqlTransaction? transaction, bool shouldDispose)
     {
         Connection = connection;
+        Transaction = transaction;
         _shouldDispose = shouldDispose;
     }
 
@@ -24,9 +26,21 @@ public sealed class PostgresConnectionHandle : IAsyncDisposable
     /// </summary>
     public NpgsqlConnection Connection { get; }
 
+    /// <summary>
+    /// Gets the active transaction, if any.
+    /// </summary>
+    public NpgsqlTransaction? Transaction { get; }
+
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
         if (_shouldDispose)
         {
             await Connection.DisposeAsync();

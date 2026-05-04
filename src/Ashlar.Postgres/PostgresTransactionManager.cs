@@ -15,18 +15,24 @@ internal sealed class PostgresTransactionManager(NpgsqlDataSource dataSource) : 
 
     public async ValueTask<PostgresConnectionHandle> GetConnectionAsync(CancellationToken cancellationToken)
     {
-        // If we have an active transaction, we must use its connection.
-        if (_connection != null)
+        await _connectionLock.WaitAsync(cancellationToken);
+        try
         {
-            return new PostgresConnectionHandle(_connection, shouldDispose: false);
+            // If there is an active transaction, use its connection.
+            if (_connection != null)
+            {
+                return new PostgresConnectionHandle(_connection, _transaction, shouldDispose: false);
+            }
+
+            // Otherwise, use a new connection.
+            var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+            return new PostgresConnectionHandle(connection, transaction: null, shouldDispose: true);
         }
-
-        // No active transaction? Return a fresh connection from the pool that the caller should dispose.
-        var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-        return new PostgresConnectionHandle(connection, shouldDispose: true);
+        finally
+        {
+            _connectionLock.Release();
+        }
     }
-
-    public NpgsqlTransaction? CurrentTransaction => _transaction;
 
     public async Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
     {

@@ -30,11 +30,10 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
             VALUES (@Id, @UserId, @TokenHash, @CreatedAt, @ExpiresAt, @LastSeenAt, @RevokedAt, @RevocationReason, @IpAddress, @UserAgent, @Metadata::jsonb)
             """;
 
-        var command = new CommandDefinition(sql, session, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
-
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
+            var command = new CommandDefinition(sql, session, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             await connectionHandle.Connection.ExecuteAsync(command);
         }
     }
@@ -51,11 +50,10 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
             WHERE token_hash = @TokenHash
             """;
 
-        var command = new CommandDefinition(sql, new { TokenHash = tokenHash }, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
-
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
+            var command = new CommandDefinition(sql, new { TokenHash = tokenHash }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             return await connectionHandle.Connection.QueryFirstOrDefaultAsync<AuthenticationSession>(command);
         }
     }
@@ -68,11 +66,10 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
             WHERE id = @Id AND (last_seen_at IS NULL OR last_seen_at < @LastSeenAt)
             """;
 
-        var command = new CommandDefinition(sql, new { Id = sessionId, LastSeenAt = lastSeenAt }, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
-
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
+            var command = new CommandDefinition(sql, new { Id = sessionId, LastSeenAt = lastSeenAt }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             var rowsAffected = await connectionHandle.Connection.ExecuteAsync(command);
             return rowsAffected > 0;
         }
@@ -86,11 +83,10 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
             WHERE id = @Id AND revoked_at IS NULL
             """;
 
-        var command = new CommandDefinition(sql, new { Id = sessionId, RevokedAt = revokedAt, Reason = reason }, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
-
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
+            var command = new CommandDefinition(sql, new { Id = sessionId, RevokedAt = revokedAt, Reason = reason }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             var rowsAffected = await connectionHandle.Connection.ExecuteAsync(command);
             return rowsAffected > 0;
         }
@@ -104,11 +100,10 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
             WHERE user_id = @UserId AND revoked_at IS NULL
             """;
 
-        var command = new CommandDefinition(sql, new { UserId = userId, RevokedAt = revokedAt, Reason = reason }, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
-
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
+            var command = new CommandDefinition(sql, new { UserId = userId, RevokedAt = revokedAt, Reason = reason }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             return await connectionHandle.Connection.ExecuteAsync(command);
         }
     }
