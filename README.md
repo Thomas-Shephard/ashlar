@@ -236,7 +236,15 @@ services.AddSingleton<ISecurityEventSink, MySecurityEventSink>();
 services.AddAshlarIdentity();
 ```
 
-Event payloads include stable event types, timestamps, user/session ids when known, provider identity, IP address, user agent, correlation id, outcome, failure reason, and string properties. Audit events must not contain raw session tokens, passwords, one-time codes, credential values, or other secrets.
+Audit event payloads include stable event types, timestamps, user/session ids when known, provider identity, IP address, user agent, correlation id, outcome, failure reason, and string properties. Audit events must not contain raw session tokens, passwords, one-time codes, credential values, or other secrets.
+
+The **Ashlar.Postgres** package includes a PostgreSQL-backed sink:
+
+```csharp
+services.AddAshlarPostgres(connectionString);
+services.AddAshlarPostgresAuditSink();
+```
+
 
 ## Contributions
 Contributions are welcome! Read the [contributing guide](CONTRIBUTING.md) to get started.

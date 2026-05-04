@@ -1,4 +1,6 @@
 using Ashlar.Postgres.Schema;
+using Dapper;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Testcontainers.PostgreSql;
 
@@ -79,5 +81,21 @@ public sealed class SchemaManagerTests : PostgresTestBase
 
         // This should fail during PerformUpgrade because it can't create the journal table
         Assert.ThrowsAsync<InvalidOperationException>(async () => await schemaManager.InitializeAsync());
+    }
+
+    [Test]
+    public async Task InitializeAsyncCreatesSecurityEventsTable()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarPostgres(GetConnectionString());
+        await using var provider = services.BuildServiceProvider();
+
+        await provider.InitializeAshlarPostgresSchemaAsync();
+
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        var exists = await connection.ExecuteScalarAsync<bool>(
+            "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'ashlar_security_events');"
+        );
+        Assert.That(exists, Is.True);
     }
 }

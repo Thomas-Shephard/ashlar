@@ -18,6 +18,9 @@ services.AddAshlarPostgres(connectionString);
 
 // OR using an existing NpgsqlDataSource
 services.AddAshlarPostgres(myDataSource);
+
+// Register PostgreSQL-backed security audit persistence (Optional)
+services.AddAshlarPostgresAuditSink();
 ```
 
 ## Schema Management
@@ -32,10 +35,13 @@ This will create the following tables:
 - `ashlar_users`: Stores user identity and audit metadata.
 - `ashlar_credentials`: Stores credentials with optimistic concurrency support.
 - `ashlar_sessions`: Stores durable authentication sessions using hashed session tokens only.
+- `ashlar_security_events`: Stores structured security audit events.
+- `ashlar_rate_limits`: Stores distributed rate limit state.
 - `ashlar_schema_versions`: Internal DbUp table to track applied migrations for this package.
 
 ## Features
 
+- **Audit Persistence**: Durable storage for security-sensitive events using `PostgresSecurityEventSink`.
 - **Multi-tenancy**: First-class support for `ITenantUser`.
 - **Atomic Operations**: Optimistic concurrency (version checking) for all credential updates and consumption.
 - **Session Persistence**: Stores session expiry, last-seen, revocation, request metadata, and deterministic token hashes. Raw session tokens are never stored.

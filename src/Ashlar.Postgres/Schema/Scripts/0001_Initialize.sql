@@ -66,3 +66,22 @@ CREATE TABLE IF NOT EXISTS ashlar_rate_limits (
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_rate_limits_expires_at ON ashlar_rate_limits (expires_at);
+
+CREATE TABLE IF NOT EXISTS ashlar_security_events (
+    id UUID PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    occurred_at TIMESTAMPTZ NOT NULL,
+    user_id UUID,
+    session_id UUID,
+    provider_type TEXT,
+    provider_name TEXT,
+    ip_address TEXT,
+    user_agent TEXT,
+    correlation_id TEXT,
+    outcome TEXT,
+    failure_reason TEXT,
+    properties JSONB
+);
+
+CREATE INDEX IF NOT EXISTS ix_ashlar_security_events_occurred_at ON ashlar_security_events (occurred_at);
+CREATE INDEX IF NOT EXISTS ix_ashlar_security_events_user_id ON ashlar_security_events (user_id);
