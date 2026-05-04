@@ -33,6 +33,7 @@ public class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<PasswordHasherSelector>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ISecureTokenGenerator, SecureTokenGenerator>(services, ServiceLifetime.Singleton);
             AssertDescriptor<ISecureTokenHasher, Sha256TokenHasher>(services, ServiceLifetime.Singleton);
+            AssertDescriptor<SecureTokenContext>(services, ServiceLifetime.Singleton);
             AssertDescriptor<IEmailSender, NullEmailSender>(services, ServiceLifetime.Singleton);
             AssertDescriptor<IdentityServiceOptions>(services, ServiceLifetime.Singleton);
             AssertDescriptor<AuthenticationSessionOptions>(services, ServiceLifetime.Singleton);
@@ -156,6 +157,8 @@ public class AshlarServiceCollectionExtensionsTests
         {
             Assert.That(provider.GetRequiredService<ISecureTokenGenerator>(), Is.TypeOf<SecureTokenGenerator>());
             Assert.That(provider.GetRequiredService<ISecureTokenHasher>(), Is.TypeOf<Sha256TokenHasher>());
+            Assert.That(provider.GetRequiredService<SecureTokenContext>().Generator, Is.SameAs(provider.GetRequiredService<ISecureTokenGenerator>()));
+            Assert.That(provider.GetRequiredService<SecureTokenContext>().Hasher, Is.SameAs(provider.GetRequiredService<ISecureTokenHasher>()));
         }
     }
 

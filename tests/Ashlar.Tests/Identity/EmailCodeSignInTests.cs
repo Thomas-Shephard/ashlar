@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Ashlar.Auditing;
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
@@ -270,6 +271,7 @@ public sealed class EmailCodeSignInTests
     }
 
     [Test]
+    [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void ServiceConstructorRequiresDependenciesAndDependencyBundleValidatesRequiredServices()
     {
         var repository = new InMemoryIdentityRepository(_user);
@@ -278,21 +280,17 @@ public sealed class EmailCodeSignInTests
         var rateLimiter = new StubRateLimiter(true, true, TimeProvider.System);
         var provider = CreateProvider();
         var core = new IdentityContext(repository, identity, new NullTransactionProvider());
-        var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider);
+        var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, TimeProvider.System);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.DoesNotThrow(() => _ = new EmailCodeSignInService(dependencies));
-            // ReSharper disable once NullableWarningSuppressionIsUsed
             Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInService(null!));
-            // ReSharper disable once NullableWarningSuppressionIsUsed
-            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(null!, emailSender, rateLimiter, provider));
-            // ReSharper disable once NullableWarningSuppressionIsUsed
-            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, null!, rateLimiter, provider));
-            // ReSharper disable once NullableWarningSuppressionIsUsed
-            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, emailSender, null!, provider));
-            // ReSharper disable once NullableWarningSuppressionIsUsed
-            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(null!, emailSender, rateLimiter, provider, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, null!, rateLimiter, provider, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, emailSender, null!, provider, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, null!, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, null!));
         }
     }
 
@@ -328,7 +326,7 @@ public sealed class EmailCodeSignInTests
         var identity = new IdentityService(repository, registry, credentialService, pipeline, new NullTransactionProvider(), audit, time);
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed, time);
         var core = new IdentityContext(repository, identity, new NullTransactionProvider());
-        var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, audit, time);
+        var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, time, audit);
         var service = new EmailCodeSignInService(dependencies, Options.Create(options ?? new EmailCodeSignInOptions()));
         return new Fixture(service, repository, emailSender, audit, time);
     }
@@ -445,6 +443,17 @@ public sealed class EmailCodeSignInTests
         {
             var removed = Credentials.RemoveAll(c => c.Id == credentialId && c.Version == expectedVersion) == 1;
             return Task.FromResult(removed);
+        }
+
+        public Task RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default)
+        {
+            foreach (var c in Credentials.Where(c => c.UserId == userId && c.ProviderType == type && string.Equals(c.ProviderName, providerName, StringComparison.OrdinalIgnoreCase)))
+            {
+                c.Status = CredentialStatus.Revoked;
+                c.RevokedAt = DateTimeOffset.UtcNow;
+            }
+
+            return Task.CompletedTask;
         }
     }
 }

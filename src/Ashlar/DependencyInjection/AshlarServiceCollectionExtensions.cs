@@ -69,6 +69,7 @@ public static class AshlarServiceCollectionExtensions
         services.TryAddScoped<PasswordHasherSelector>();
         services.TryAddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         services.TryAddSingleton<ISecureTokenHasher, Sha256TokenHasher>();
+        services.TryAddSingleton<SecureTokenContext>();
         services.TryAddSingleton<ISecurityEventSink, NullSecurityEventSink>();
         services.TryAddSingleton<IAuthenticationRateLimiter, InMemoryAuthenticationRateLimiter>();
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<IdentityServiceOptions>>().Value);
@@ -177,10 +178,34 @@ public static class AshlarServiceCollectionExtensions
         }
 
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, EmailCodeAuthenticationProvider>());
-        services.TryAddScoped(provider => (EmailCodeAuthenticationProvider)provider.GetServices<IAuthenticationProvider>().First(authenticationProvider => authenticationProvider is EmailCodeAuthenticationProvider));
+        services.TryAddScoped(provider => provider.GetServices<IAuthenticationProvider>().OfType<EmailCodeAuthenticationProvider>().First());
         services.TryAddScoped<EmailCodeSignInDependencies>();
         services.TryAddScoped<IEmailCodeSignInService, EmailCodeSignInService>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IPasswordHasher, PasswordHasherV1>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers Ashlar's magic-link email sign-in provider and issuing service.
+    /// </summary>
+    public static IServiceCollection AddAshlarMagicLinkSignIn(
+        this IServiceCollection services,
+        Action<MagicLinkSignInOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.AddOptions();
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, MagicLinkAuthenticationProvider>());
+        services.TryAddScoped(provider => provider.GetServices<IAuthenticationProvider>().OfType<MagicLinkAuthenticationProvider>().First());
+        services.TryAddScoped<MagicLinkSignInDependencies>();
+        services.TryAddScoped<IMagicLinkSignInService, MagicLinkSignInService>();
 
         return services;
     }

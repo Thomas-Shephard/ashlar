@@ -1,6 +1,7 @@
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Postgres.Models;
+using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
@@ -362,6 +363,68 @@ public sealed class PostgresIdentityRepositoryTests : PostgresTestBase
     }
 
     [Test]
+    public async Task RevokeCredentialsShouldUpdateMatchingActiveCredentialsOnly()
+    {
+        var repo = GetRepository();
+        var user = await CreateTestUser(repo);
+        var otherUser = await CreateTestUser(repo);
+        var matchingCredential1 = CreateCredential(user.Id, ProviderType.MagicLink, ProviderType.MagicLink.Value);
+        var matchingCredential2 = CreateCredential(user.Id, ProviderType.MagicLink, ProviderType.MagicLink.Value);
+        var otherProviderCredential = CreateCredential(user.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value);
+        var otherUserCredential = CreateCredential(otherUser.Id, ProviderType.MagicLink, ProviderType.MagicLink.Value);
+
+        await repo.CreateCredentialAsync(matchingCredential1);
+        await repo.CreateCredentialAsync(matchingCredential2);
+        await repo.CreateCredentialAsync(otherProviderCredential);
+        await repo.CreateCredentialAsync(otherUserCredential);
+
+        await repo.RevokeCredentialsAsync(user.Id, ProviderType.MagicLink, ProviderType.MagicLink.Value);
+
+        var fetchedMatching1 = await repo.GetCredentialForUserAsync(user.Id, ProviderType.MagicLink, ProviderType.MagicLink.Value, matchingCredential1.ProviderKey);
+        var fetchedMatching2 = await repo.GetCredentialForUserAsync(user.Id, ProviderType.MagicLink, ProviderType.MagicLink.Value, matchingCredential2.ProviderKey);
+        var fetchedOtherProvider = await repo.GetCredentialForUserAsync(user.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value, otherProviderCredential.ProviderKey);
+        var fetchedOtherUser = await repo.GetCredentialForUserAsync(otherUser.Id, ProviderType.MagicLink, ProviderType.MagicLink.Value, otherUserCredential.ProviderKey);
+        const string sql = """
+            SELECT id AS Id, version AS Version, revoked_at AS RevokedAt, status AS Status
+            FROM ashlar_credentials
+            WHERE id = ANY(@Ids)
+            """;
+        var ids = new[] { matchingCredential1.Id, matchingCredential2.Id, otherProviderCredential.Id, otherUserCredential.Id };
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        var rows = (await connection.QueryAsync<CredentialRevocationRow>(sql, new { Ids = ids })).ToDictionary(row => row.Id);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fetchedMatching1, Is.Null);
+            Assert.That(fetchedMatching2, Is.Null);
+            Assert.That(fetchedOtherProvider, Is.Not.Null);
+            Assert.That(fetchedOtherUser, Is.Not.Null);
+
+            Assert.That(rows[matchingCredential1.Id].Status, Is.EqualTo((int)CredentialStatus.Revoked));
+            Assert.That(rows[matchingCredential1.Id].RevokedAt, Is.Not.Null);
+            Assert.That(rows[matchingCredential1.Id].Version, Is.Not.EqualTo(matchingCredential1.Version));
+            Assert.That(rows[matchingCredential2.Id].Status, Is.EqualTo((int)CredentialStatus.Revoked));
+            Assert.That(rows[matchingCredential2.Id].RevokedAt, Is.Not.Null);
+            Assert.That(rows[matchingCredential2.Id].Version, Is.Not.EqualTo(matchingCredential2.Version));
+
+            Assert.That(rows[otherProviderCredential.Id].Status, Is.EqualTo((int)CredentialStatus.Active));
+            Assert.That(rows[otherProviderCredential.Id].RevokedAt, Is.Null);
+            Assert.That(rows[otherProviderCredential.Id].Version, Is.EqualTo(otherProviderCredential.Version));
+            Assert.That(rows[otherUserCredential.Id].Status, Is.EqualTo((int)CredentialStatus.Active));
+            Assert.That(rows[otherUserCredential.Id].RevokedAt, Is.Null);
+            Assert.That(rows[otherUserCredential.Id].Version, Is.EqualTo(otherUserCredential.Version));
+        }
+    }
+
+    [Test]
+    public void RevokeCredentialsInvalidProviderNameShouldThrow()
+    {
+        var repo = GetRepository();
+
+        Assert.ThrowsAsync<ArgumentException>(async () => await repo.RevokeCredentialsAsync(Guid.NewGuid(), ProviderType.MagicLink, " "));
+    }
+
+    [Test]
     public async Task DuplicateCredentialIdentityShouldFail()
     {
         var repo = GetRepository();
@@ -623,6 +686,29 @@ public sealed class PostgresIdentityRepositoryTests : PostgresTestBase
         };
         await repo.CreateUserAsync(user);
         return user;
+    }
+
+    private static UserCredential CreateCredential(Guid userId, ProviderType providerType, string providerName)
+    {
+        return new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            ProviderType = providerType,
+            ProviderName = providerName,
+            ProviderKey = $"{providerName}-{Guid.NewGuid():N}",
+            Version = Guid.NewGuid().ToString("N"),
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active
+        };
+    }
+
+    private sealed class CredentialRevocationRow
+    {
+        public Guid Id { get; init; }
+        public string Version { get; init; } = "";
+        public DateTime? RevokedAt { get; init; }
+        public int Status { get; init; }
     }
 
     private sealed class MinimalUser : IUser

@@ -16,6 +16,10 @@ public static class AshlarSecurityEventTypes
     public const string EmailCodeRequestSuppressed = "ashlar.email_code.request_suppressed";
     public const string EmailCodeRequestRateLimited = "ashlar.email_code.request_rate_limited";
     public const string EmailCodeVerificationRateLimited = "ashlar.email_code.verification_rate_limited";
+    public const string MagicLinkRequested = "ashlar.magic_link.requested";
+    public const string MagicLinkRequestSuppressed = "ashlar.magic_link.request_suppressed";
+    public const string MagicLinkRequestRateLimited = "ashlar.magic_link.request_rate_limited";
+    public const string MagicLinkVerificationRateLimited = "ashlar.magic_link.verification_rate_limited";
     public const string SessionCreated = "ashlar.session.created";
     public const string SessionValidated = "ashlar.session.validated";
     public const string SessionValidationFailed = "ashlar.session.validation_failed";

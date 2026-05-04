@@ -1,3 +1,4 @@
+using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Postgres.Models;
@@ -41,7 +42,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
             WHERE normalized_email = @NormalizedEmail AND ((@TenantId IS NULL AND tenant_id IS NULL) OR tenant_id = @TenantId)
             """;
 
-        var parameters = new { NormalizedEmail = NormalizeEmail(email), TenantId = tenantId };
+        var parameters = new { NormalizedEmail = IdentityNormalization.NormalizeEmail(email), TenantId = tenantId };
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
@@ -130,7 +131,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         {
             user.Id,
             user.Email,
-            NormalizedEmail = NormalizeEmail(user.Email),
+            NormalizedEmail = IdentityNormalization.NormalizeEmail(user.Email),
             user.Name,
             user.IsActive,
             TenantId = tenantId,
@@ -163,7 +164,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         {
             user.Id,
             user.Email,
-            NormalizedEmail = NormalizeEmail(user.Email),
+            NormalizedEmail = IdentityNormalization.NormalizeEmail(user.Email),
             user.Name,
             user.IsActive,
             TenantId = tenantId,
@@ -270,7 +271,26 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         }
     }
 
-    private static string NormalizeEmail(string email) => email.Trim().ToUpperInvariant();
+    public async Task RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(providerName);
+
+        const string sql = """
+            UPDATE ashlar_credentials 
+            SET status = @RevokedStatus, revoked_at = @RevokedAt, updated_at = @RevokedAt, version = @NewVersion
+            WHERE user_id = @UserId AND provider_type = @Type AND provider_name = @Name AND revoked_at IS NULL AND status = @ActiveStatus
+            """;
+
+        var revokedAt = _timeProvider.GetUtcNow();
+        var parameters = new { UserId = userId, Type = type.Value, Name = providerName, RevokedAt = revokedAt, NewVersion = Guid.NewGuid().ToString("N"), RevokedStatus = (int)CredentialStatus.Revoked, ActiveStatus = (int)CredentialStatus.Active };
+        
+        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using (connectionHandle)
+        {
+            var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            await connectionHandle.Connection.ExecuteAsync(command);
+        }
+    }
 
     private object ToCredentialParameters(UserCredential credential)
     {

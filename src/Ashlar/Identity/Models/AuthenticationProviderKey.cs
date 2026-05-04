@@ -20,6 +20,7 @@ public readonly record struct AuthenticationProviderKey
 
     public static AuthenticationProviderKey Local { get; } = new(ProviderType.Local, ProviderType.Local.Value);
     public static AuthenticationProviderKey EmailCode { get; } = new(ProviderType.EmailCode, ProviderType.EmailCode.Value);
+    public static AuthenticationProviderKey MagicLink { get; } = new(ProviderType.MagicLink, ProviderType.MagicLink.Value);
 
     public bool Equals(AuthenticationProviderKey other)
     {
