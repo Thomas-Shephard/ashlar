@@ -52,4 +52,9 @@ public interface IIdentityRepository
     /// already consumed, changed, or otherwise did not match <paramref name="expectedVersion"/>.
     /// </returns>
     Task<bool> ConsumeCredentialAsync(Guid credentialId, string expectedVersion, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Revokes all credentials for a specific user and provider.
+    /// </summary>
+    Task RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default);
 }

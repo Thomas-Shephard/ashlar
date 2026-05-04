@@ -28,7 +28,7 @@ public sealed class EmailCodeSignInService : IEmailCodeSignInService
 
     public async Task RequestCodeAsync(string email, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
-        var normalizedEmail = NormalizeEmail(email);
+        var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
         context = WithEmail(context, normalizedEmail);
 
         var signInOptions = _options.Value;
@@ -80,7 +80,7 @@ public sealed class EmailCodeSignInService : IEmailCodeSignInService
 
     public async Task<AuthenticationResponse> VerifyCodeAsync(string email, string code, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
-        var normalizedEmail = NormalizeEmail(email);
+        var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         context = WithEmail(context, normalizedEmail);
 
@@ -122,12 +122,6 @@ public sealed class EmailCodeSignInService : IEmailCodeSignInService
     private static AuthenticationContext WithEmail(AuthenticationContext? context, string email)
     {
         return (context ?? new AuthenticationContext()) with { Email = email };
-    }
-
-    private static string NormalizeEmail(string email)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(email);
-        return email.Trim().ToUpperInvariant();
     }
 
     private static string GenerateCode(int length)
