@@ -1,0 +1,134 @@
+using Ashlar.Identity.Abstractions;
+using Npgsql;
+
+namespace Ashlar.Postgres;
+
+/// <summary>
+/// Manages the connection and transaction lifecycle for a scoped database interaction.
+/// </summary>
+internal sealed class PostgresTransactionManager(NpgsqlDataSource dataSource) : IAshlarTransactionProvider, IPostgresConnectionProvider, IAsyncDisposable
+{
+    private readonly NpgsqlDataSource _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
+    private readonly SemaphoreSlim _connectionLock = new(1, 1);
+    private NpgsqlConnection? _connection;
+    private NpgsqlTransaction? _transaction;
+
+    public async ValueTask<PostgresConnectionHandle> GetConnectionAsync(CancellationToken cancellationToken)
+    {
+        await _connectionLock.WaitAsync(cancellationToken);
+        try
+        {
+            // If there is an active transaction, use its connection.
+            if (_connection != null)
+            {
+                return new PostgresConnectionHandle(_connection, _transaction, shouldDispose: false);
+            }
+
+            // Otherwise, use a new connection.
+            var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+            return new PostgresConnectionHandle(connection, transaction: null, shouldDispose: true);
+        }
+        finally
+        {
+            _connectionLock.Release();
+        }
+    }
+
+    public async Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+    {
+        await _connectionLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_transaction != null)
+            {
+                throw new InvalidOperationException("A transaction is already in progress.");
+            }
+
+            _connection ??= await _dataSource.OpenConnectionAsync(cancellationToken);
+            _transaction = await _connection.BeginTransactionAsync(cancellationToken);
+            return new PostgresTransaction(_transaction, this);
+        }
+        catch
+        {
+            if (_connection != null)
+            {
+                var conn = _connection;
+                _connection = null;
+                await conn.DisposeAsync();
+            }
+            throw;
+        }
+        finally
+        {
+            _connectionLock.Release();
+        }
+    }
+
+    private async ValueTask ClearTransactionAsync()
+    {
+        NpgsqlTransaction? transaction;
+        NpgsqlConnection? connection;
+
+        await _connectionLock.WaitAsync();
+        try
+        {
+            transaction = _transaction;
+            connection = _connection;
+
+            _transaction = null;
+            _connection = null;
+        }
+        finally
+        {
+            _connectionLock.Release();
+        }
+
+        if (transaction != null)
+        {
+            await transaction.DisposeAsync();
+        }
+
+        if (connection != null)
+        {
+            await connection.DisposeAsync();
+        }
+    }
+
+    private bool _disposed;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
+        try
+        {
+            await ClearTransactionAsync();
+        }
+        finally
+        {
+            _connectionLock.Dispose();
+        }
+    }
+
+    private sealed class PostgresTransaction(NpgsqlTransaction transaction, PostgresTransactionManager manager) : IAshlarTransaction
+    {
+        public async Task CommitAsync(CancellationToken cancellationToken = default)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            await manager.ClearTransactionAsync();
+        }
+
+        public async Task RollbackAsync(CancellationToken cancellationToken = default)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            await manager.ClearTransactionAsync();
+        }
+
+        public ValueTask DisposeAsync() => manager.ClearTransactionAsync();
+    }
+}

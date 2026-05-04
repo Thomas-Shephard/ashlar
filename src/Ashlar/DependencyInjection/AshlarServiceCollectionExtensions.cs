@@ -72,6 +72,7 @@ public static class AshlarServiceCollectionExtensions
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<IdentityServiceOptions>>().Value);
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<AuthenticationSessionOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
+        services.TryAddScoped<IAshlarTransactionProvider, NullTransactionProvider>();
 
         return services;
     }
