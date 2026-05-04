@@ -22,6 +22,9 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
 
         services.TryAddSingleton(_ => new NpgsqlDataSourceBuilder(connectionString).Build());
+        services.TryAddScoped<PostgresTransactionManager>();
+        services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
+        services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
         services.TryAddScoped<IIdentityRepository, PostgresIdentityRepository>();
         services.TryAddScoped<IAuthenticationSessionRepository, PostgresAuthenticationSessionRepository>();
         services.TryAddTransient<SchemaManager>();
@@ -40,6 +43,9 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(dataSource);
 
         services.TryAddSingleton(dataSource);
+        services.TryAddScoped<PostgresTransactionManager>();
+        services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
+        services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
         services.TryAddScoped<IIdentityRepository, PostgresIdentityRepository>();
         services.TryAddScoped<IAuthenticationSessionRepository, PostgresAuthenticationSessionRepository>();
         services.TryAddTransient<SchemaManager>();

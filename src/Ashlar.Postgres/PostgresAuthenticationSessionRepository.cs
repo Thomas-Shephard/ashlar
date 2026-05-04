@@ -1,14 +1,13 @@
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Dapper;
-using Npgsql;
 using System.Text.Json;
 
 namespace Ashlar.Postgres;
 
-public sealed class PostgresAuthenticationSessionRepository(NpgsqlDataSource dataSource) : IAuthenticationSessionRepository
+public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionProvider connectionProvider) : IAuthenticationSessionRepository
 {
-    private readonly NpgsqlDataSource _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
+    private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
     public async Task CreateSessionAsync(AuthenticationSession session, CancellationToken cancellationToken = default)
     {
@@ -31,10 +30,13 @@ public sealed class PostgresAuthenticationSessionRepository(NpgsqlDataSource dat
             VALUES (@Id, @UserId, @TokenHash, @CreatedAt, @ExpiresAt, @LastSeenAt, @RevokedAt, @RevocationReason, @IpAddress, @UserAgent, @Metadata::jsonb)
             """;
 
-        var command = new CommandDefinition(sql, session, cancellationToken: cancellationToken);
+        var command = new CommandDefinition(sql, session, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
 
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-        await connection.ExecuteAsync(command);
+        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using (connectionHandle)
+        {
+            await connectionHandle.Connection.ExecuteAsync(command);
+        }
     }
 
     public async Task<AuthenticationSession?> GetSessionByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default)
@@ -49,11 +51,13 @@ public sealed class PostgresAuthenticationSessionRepository(NpgsqlDataSource dat
             WHERE token_hash = @TokenHash
             """;
 
-        var command = new CommandDefinition(sql, new { TokenHash = tokenHash }, cancellationToken: cancellationToken);
+        var command = new CommandDefinition(sql, new { TokenHash = tokenHash }, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
 
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-        var session = await connection.QueryFirstOrDefaultAsync<AuthenticationSession>(command);
-        return session;
+        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using (connectionHandle)
+        {
+            return await connectionHandle.Connection.QueryFirstOrDefaultAsync<AuthenticationSession>(command);
+        }
     }
 
     public async Task<bool> UpdateSessionLastSeenAsync(Guid sessionId, DateTimeOffset lastSeenAt, CancellationToken cancellationToken = default)
@@ -64,12 +68,14 @@ public sealed class PostgresAuthenticationSessionRepository(NpgsqlDataSource dat
             WHERE id = @Id AND (last_seen_at IS NULL OR last_seen_at < @LastSeenAt)
             """;
 
-        var command = new CommandDefinition(sql, new { Id = sessionId, LastSeenAt = lastSeenAt }, cancellationToken: cancellationToken);
+        var command = new CommandDefinition(sql, new { Id = sessionId, LastSeenAt = lastSeenAt }, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
 
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-        var rowsAffected = await connection.ExecuteAsync(command);
-
-        return rowsAffected > 0;
+        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using (connectionHandle)
+        {
+            var rowsAffected = await connectionHandle.Connection.ExecuteAsync(command);
+            return rowsAffected > 0;
+        }
     }
 
     public async Task<bool> RevokeSessionAsync(Guid sessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
@@ -80,12 +86,14 @@ public sealed class PostgresAuthenticationSessionRepository(NpgsqlDataSource dat
             WHERE id = @Id AND revoked_at IS NULL
             """;
 
-        var command = new CommandDefinition(sql, new { Id = sessionId, RevokedAt = revokedAt, Reason = reason }, cancellationToken: cancellationToken);
+        var command = new CommandDefinition(sql, new { Id = sessionId, RevokedAt = revokedAt, Reason = reason }, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
 
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-        var rowsAffected = await connection.ExecuteAsync(command);
-
-        return rowsAffected > 0;
+        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using (connectionHandle)
+        {
+            var rowsAffected = await connectionHandle.Connection.ExecuteAsync(command);
+            return rowsAffected > 0;
+        }
     }
 
     public async Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
@@ -96,11 +104,13 @@ public sealed class PostgresAuthenticationSessionRepository(NpgsqlDataSource dat
             WHERE user_id = @UserId AND revoked_at IS NULL
             """;
 
-        var command = new CommandDefinition(sql, new { UserId = userId, RevokedAt = revokedAt, Reason = reason }, cancellationToken: cancellationToken);
+        var command = new CommandDefinition(sql, new { UserId = userId, RevokedAt = revokedAt, Reason = reason }, transaction: _connectionProvider.CurrentTransaction, cancellationToken: cancellationToken);
 
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-        var count = await connection.ExecuteAsync(command);
-        return count;
+        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using (connectionHandle)
+        {
+            return await connectionHandle.Connection.ExecuteAsync(command);
+        }
     }
 
     private static void ValidateMetadata(string? metadata)
