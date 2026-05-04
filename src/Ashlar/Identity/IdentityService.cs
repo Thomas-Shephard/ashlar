@@ -9,6 +9,7 @@ public sealed class IdentityService(
     IAuthenticationProviderRegistry providerRegistry,
     ICredentialService credentialService,
     IAuthenticationPipeline authenticationPipeline,
+    IAshlarTransactionProvider transactionProvider,
     ISecurityEventSink? securityEventSink = null,
     TimeProvider? timeProvider = null)
     : IIdentityService
@@ -17,15 +18,17 @@ public sealed class IdentityService(
     private readonly ICredentialService _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
     private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
     private readonly IAuthenticationPipeline _authenticationPipeline = authenticationPipeline ?? throw new ArgumentNullException(nameof(authenticationPipeline));
+    private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider);
 
     public IdentityService(
         IIdentityRepository repository,
         IEnumerable<IAuthenticationProvider> providers,
         ICredentialService credentialService,
+        IAshlarTransactionProvider transactionProvider,
         ISecurityEventSink? securityEventSink = null,
         TimeProvider? timeProvider = null)
-        : this(repository, new AuthenticationProviderRegistry(providers), credentialService, securityEventSink, timeProvider)
+        : this(repository, new AuthenticationProviderRegistry(providers), credentialService, transactionProvider, securityEventSink, timeProvider)
     {
     }
 
@@ -33,9 +36,10 @@ public sealed class IdentityService(
         IIdentityRepository repository,
         IAuthenticationProviderRegistry providerRegistry,
         ICredentialService credentialService,
+        IAshlarTransactionProvider transactionProvider,
         ISecurityEventSink? securityEventSink = null,
         TimeProvider? timeProvider = null)
-        : this(repository, providerRegistry, credentialService, new AuthenticationPipeline(providerRegistry, credentialService, securityEventSink, timeProvider), securityEventSink, timeProvider)
+        : this(repository, providerRegistry, credentialService, new AuthenticationPipeline(providerRegistry, credentialService, transactionProvider, securityEventSink, timeProvider), transactionProvider, securityEventSink, timeProvider)
     {
     }
 
@@ -65,6 +69,8 @@ public sealed class IdentityService(
 
     public async Task<IUser> CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
     {
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
+        
         await _repository.CreateUserAsync(user, cancellationToken);
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
@@ -72,6 +78,9 @@ public sealed class IdentityService(
             Outcome = SecurityEventOutcomes.Success,
             UserId = user.Id
         }, cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
+        
         return user;
     }
 

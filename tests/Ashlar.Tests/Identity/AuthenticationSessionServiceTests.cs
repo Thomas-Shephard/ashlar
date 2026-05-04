@@ -27,6 +27,7 @@ public sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
             timeProvider: _timeProvider);
     }
 
@@ -115,6 +116,7 @@ public sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
             new AuthenticationSessionOptions
             {
                 StoreIpAddress = false,
@@ -428,21 +430,28 @@ public sealed class AuthenticationSessionServiceTests
     public void ConstructorShouldThrowOnNullRepository()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(null!, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token")));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(null!, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), new NullTransactionProvider()));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullTokenHasher()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(_repositoryMock.Object, null!, new FixedSessionTokenGenerator("raw-token")));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(_repositoryMock.Object, null!, new FixedSessionTokenGenerator("raw-token"), new NullTransactionProvider()));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullTokenGenerator()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(_repositoryMock.Object, _tokenHasherMock.Object, null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(_repositoryMock.Object, _tokenHasherMock.Object, null!, new NullTransactionProvider()));
+    }
+
+    [Test]
+    public void ConstructorShouldThrowOnNullTransactionProvider()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(_repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), null!));
     }
 
     [Test]
@@ -452,6 +461,7 @@ public sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
             new AuthenticationSessionOptions
             {
                 DefaultLifetime = TimeSpan.FromDays(7),
@@ -472,6 +482,7 @@ public sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
             new AuthenticationSessionOptions { DefaultLifetime = TimeSpan.Zero }));
     }
 
@@ -482,6 +493,7 @@ public sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
             new AuthenticationSessionOptions { LastSeenUpdateThreshold = TimeSpan.FromTicks(-1) }));
     }
 
@@ -492,6 +504,7 @@ public sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
             new AuthenticationSessionOptions { TokenByteLength = 31 }));
     }
 
@@ -502,6 +515,7 @@ public sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
             new AuthenticationSessionOptions { TokenByteLength = 193 }));
     }
 
@@ -512,6 +526,7 @@ public sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
             new AuthenticationSessionOptions { MaxIpAddressLength = 0 }));
     }
 
@@ -522,6 +537,7 @@ public sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
             new AuthenticationSessionOptions { MaxUserAgentLength = 0 }));
     }
 
@@ -532,6 +548,7 @@ public sealed class AuthenticationSessionServiceTests
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
             new AuthenticationSessionOptions { MaxMetadataLength = 0 }));
     }
 

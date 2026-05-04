@@ -13,6 +13,7 @@ public sealed class AuthenticationSessionService(
     IAuthenticationSessionRepository repository,
     ISecureTokenHasher tokenHasher,
     ISecureTokenGenerator tokenGenerator,
+    IAshlarTransactionProvider transactionProvider,
     AuthenticationSessionOptions? options = null,
     TimeProvider? timeProvider = null,
     ISecurityEventSink? securityEventSink = null)
@@ -23,6 +24,7 @@ public sealed class AuthenticationSessionService(
     private readonly IAuthenticationSessionRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly ISecureTokenHasher _tokenHasher = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
     private readonly ISecureTokenGenerator _tokenGenerator = tokenGenerator ?? throw new ArgumentNullException(nameof(tokenGenerator));
+    private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly AuthenticationSessionOptions _options = ValidateOptions(options ?? new AuthenticationSessionOptions());
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider ?? TimeProvider.System);
@@ -70,6 +72,8 @@ public sealed class AuthenticationSessionService(
             Metadata = metadata
         };
 
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
+
         await _repository.CreateSessionAsync(session, cancellationToken);
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
@@ -81,6 +85,9 @@ public sealed class AuthenticationSessionService(
             UserAgent = userAgent,
             CorrelationId = request.CorrelationId
         }, cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
+
         return new CreateAuthenticationSessionResult(token, session);
     }
 
@@ -121,6 +128,7 @@ public sealed class AuthenticationSessionService(
                 null,
                 SecurityEventFailureReasons.SessionValidationFailed,
                 cancellationToken);
+            
             return ValidateAuthenticationSessionResult.Failed;
         }
 
@@ -132,6 +140,7 @@ public sealed class AuthenticationSessionService(
                 session,
                 SecurityEventFailureReasons.SessionExpired,
                 cancellationToken);
+
             return new ValidateAuthenticationSessionResult(false, session, session.UserId, AuthenticationSessionValidationStatus.Expired);
         }
 
@@ -142,8 +151,11 @@ public sealed class AuthenticationSessionService(
                 session,
                 SecurityEventFailureReasons.SessionRevoked,
                 cancellationToken);
+
             return new ValidateAuthenticationSessionResult(false, session, session.UserId, AuthenticationSessionValidationStatus.Revoked);
         }
+
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         await TryUpdateLastSeenAsync(session, now, cancellationToken);
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -155,6 +167,8 @@ public sealed class AuthenticationSessionService(
             IpAddress = session.IpAddress,
             UserAgent = session.UserAgent
         }, cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
         return new ValidateAuthenticationSessionResult(true, session, session.UserId, AuthenticationSessionValidationStatus.Success);
     }
 
@@ -164,6 +178,8 @@ public sealed class AuthenticationSessionService(
         CancellationToken cancellationToken = default)
     {
         if (sessionId == Guid.Empty) throw new ArgumentException("Session ID cannot be empty.", nameof(sessionId));
+
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         var revoked = await _repository.RevokeSessionAsync(sessionId, _timeProvider.GetUtcNow(), reason, cancellationToken);
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -175,6 +191,8 @@ public sealed class AuthenticationSessionService(
                 ? null
                 : new Dictionary<string, string> { ["reason"] = reason }
         }, cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
         return revoked;
     }
 
@@ -184,6 +202,8 @@ public sealed class AuthenticationSessionService(
         CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         var revoked = await _repository.RevokeSessionsForUserAsync(userId, _timeProvider.GetUtcNow(), reason, cancellationToken);
         var properties = new Dictionary<string, string> { ["count"] = revoked.ToString(CultureInfo.InvariantCulture) };
@@ -199,6 +219,8 @@ public sealed class AuthenticationSessionService(
             UserId = userId,
             Properties = properties
         }, cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
         return revoked;
     }
 

@@ -16,6 +16,7 @@ namespace Ashlar.Identity;
 public sealed class CredentialService(
     IIdentityRepository repository,
     ISecretProtector secretProtector,
+    IAshlarTransactionProvider transactionProvider,
     IdentityServiceOptions? options = null,
     TimeProvider? timeProvider = null,
     ISecurityEventSink? securityEventSink = null)
@@ -24,6 +25,7 @@ public sealed class CredentialService(
     private const string CredentialIdPropertyName = "credential_id";
     private readonly IIdentityRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly ISecretProtector _secretProtector = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
+    private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly IdentityServiceOptions _options = options ?? new IdentityServiceOptions();
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider ?? TimeProvider.System);
@@ -154,11 +156,30 @@ public sealed class CredentialService(
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(provider);
 
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
+
+        bool updated;
         if (result.IsCredentialConsumed)
         {
-            return await ConsumeAndRecordAsync(unprotectedCredential, originalCredential, cancellationToken);
+            updated = await ConsumeAndRecordAsync(unprotectedCredential, originalCredential, cancellationToken);
+        }
+        else
+        {
+            updated = await PerformUpdateAsync(unprotectedCredential, originalCredential, result, provider, cancellationToken);
         }
 
+        await transaction.CommitAsync(cancellationToken);
+
+        return updated;
+    }
+
+    private async Task<bool> PerformUpdateAsync(
+        UserCredential unprotectedCredential,
+        UserCredential? originalCredential,
+        AuthenticationResult result,
+        IAuthenticationProvider provider,
+        CancellationToken cancellationToken)
+    {
         bool needsUpdate = PrepareMetadataAndUsage(unprotectedCredential, result);
 
         var (protectionSucceeded, valueRequestedUpdate) = PrepareCredentialValue(unprotectedCredential, originalCredential, result, provider);
@@ -354,6 +375,8 @@ public sealed class CredentialService(
 
         if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
 
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
+
         var user = await _repository.GetUserByIdAsync(userId, cancellationToken);
         if (user == null)
         {
@@ -420,6 +443,8 @@ public sealed class CredentialService(
                 [CredentialIdPropertyName] = credential.Id.ToString()
             }
         }, cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
     }
 
     private Task RecordCredentialUpdateFailedAsync(UserCredential credential, string reason, CancellationToken cancellationToken)

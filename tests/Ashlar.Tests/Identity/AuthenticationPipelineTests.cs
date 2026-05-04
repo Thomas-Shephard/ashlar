@@ -18,21 +18,28 @@ public class AuthenticationPipelineTests
         _providerRegistryMock = new Mock<IAuthenticationProviderRegistry>();
         _credentialServiceMock = new Mock<ICredentialService>();
         _providerMock = new Mock<IAuthenticationProvider>();
-        _pipeline = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialServiceMock.Object);
+        _pipeline = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialServiceMock.Object, new NullTransactionProvider());
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullProviderRegistry()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(null!, _credentialServiceMock.Object));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(null!, _credentialServiceMock.Object, new NullTransactionProvider()));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullCredentialService()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(_providerRegistryMock.Object, null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(_providerRegistryMock.Object, null!, new NullTransactionProvider()));
+    }
+
+    [Test]
+    public void ConstructorShouldThrowOnNullTransactionProvider()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialServiceMock.Object, null!));
     }
 
     [Test]
@@ -127,6 +134,36 @@ public class AuthenticationPipelineTests
             Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessWithCredentialUpdate));
             Assert.That(response.Claims, Is.SameAs(claims));
         }
+    }
+
+    [Test]
+    public async Task LoginAsyncWithSuccessfulAuthenticationAndNoCredentialShouldReturnSuccessWithoutUsageUpdate()
+    {
+        var context = new AuthenticationContext("test@example.com");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var claims = new Dictionary<string, string> { ["sub"] = user.Id.ToString() };
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, claims);
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, null, null, false));
+        _providerMock.Setup(p => p.AuthenticateAsync(assertion, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.True);
+            Assert.That(response.User, Is.SameAs(user));
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Success));
+            Assert.That(response.Claims, Is.SameAs(claims));
+        }
+
+        _credentialServiceMock.Verify(
+            s => s.UpdateCredentialUsageAsync(It.IsAny<UserCredential>(), It.IsAny<UserCredential?>(), It.IsAny<AuthenticationResult>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Test]
@@ -250,6 +287,39 @@ public class AuthenticationPipelineTests
         }
     }
 
+    [Test]
+    public async Task LoginAsyncWithNestedTransactionRollbackFromBestEffortCredentialUpdateShouldStillReturnSuccess()
+    {
+        var transactionProvider = new RollbackOnlyTransactionProvider();
+        _pipeline = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialServiceMock.Object, transactionProvider);
+        var context = new AuthenticationContext("test@example.com");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var credential = CreateCredential(user.Id);
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.BestEffort);
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+        _credentialServiceMock.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                await using var transaction = await transactionProvider.BeginTransactionAsync();
+                throw new InvalidOperationException("DB error");
+            });
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.True);
+            Assert.That(response.User, Is.SameAs(user));
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Success));
+        }
+    }
+
     private IAuthenticationProvider ConfigureProviderResolution(IAuthenticationAssertion assertion)
     {
         var provider = _providerMock.Object;
@@ -274,4 +344,97 @@ public class AuthenticationPipelineTests
     }
 
     private sealed record TestAssertion(AuthenticationProviderKey ProviderIdentity) : IAuthenticationAssertion;
+
+    private sealed class RollbackOnlyTransactionProvider : IAshlarTransactionProvider
+    {
+        private bool _hasActiveTransaction;
+        private bool _mustRollback;
+
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_hasActiveTransaction)
+            {
+                return Task.FromResult<IAshlarTransaction>(new JointTransaction(this));
+            }
+
+            _hasActiveTransaction = true;
+            _mustRollback = false;
+            return Task.FromResult<IAshlarTransaction>(new RootTransaction(this));
+        }
+
+        private sealed class JointTransaction(RollbackOnlyTransactionProvider provider) : IAshlarTransaction
+        {
+            private bool _committed;
+            private bool _disposed;
+
+            public Task CommitAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _committed = true;
+                return Task.CompletedTask;
+            }
+
+            public Task RollbackAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                provider._mustRollback = true;
+                return Task.CompletedTask;
+            }
+
+            public ValueTask DisposeAsync()
+            {
+                if (_disposed) return ValueTask.CompletedTask;
+                _disposed = true;
+
+                if (!_committed)
+                {
+                    provider._mustRollback = true;
+                }
+
+                return ValueTask.CompletedTask;
+            }
+        }
+
+        private sealed class RootTransaction(RollbackOnlyTransactionProvider provider) : IAshlarTransaction
+        {
+            private bool _disposed;
+
+            public Task CommitAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                if (provider._mustRollback)
+                {
+                    throw new InvalidOperationException("The transaction cannot be committed because it has been marked for rollback by a nested participant.");
+                }
+
+                _disposed = true;
+                provider._hasActiveTransaction = false;
+                provider._mustRollback = false;
+                return Task.CompletedTask;
+            }
+
+            public Task RollbackAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _disposed = true;
+                provider._hasActiveTransaction = false;
+                provider._mustRollback = false;
+                return Task.CompletedTask;
+            }
+
+            public ValueTask DisposeAsync()
+            {
+                if (_disposed) return ValueTask.CompletedTask;
+                _disposed = true;
+                provider._hasActiveTransaction = false;
+                provider._mustRollback = false;
+                return ValueTask.CompletedTask;
+            }
+        }
+    }
 }

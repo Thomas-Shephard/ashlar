@@ -6,16 +6,17 @@ using Ashlar.Messaging;
 namespace Ashlar.Identity.Providers.Email;
 
 public sealed class EmailCodeSignInDependencies(
-    IIdentityRepository repository,
-    IIdentityService identityService,
+    IdentityContext identityContext,
     IEmailSender emailSender,
     IAuthenticationRateLimiter rateLimiter,
     EmailCodeAuthenticationProvider provider,
     ISecurityEventSink? securityEventSink = null,
     TimeProvider? timeProvider = null)
 {
-    public IIdentityRepository Repository { get; } = repository ?? throw new ArgumentNullException(nameof(repository));
-    public IIdentityService IdentityService { get; } = identityService ?? throw new ArgumentNullException(nameof(identityService));
+    private readonly IdentityContext _identityContext = identityContext ?? throw new ArgumentNullException(nameof(identityContext));
+    public IIdentityRepository Repository => _identityContext.Repository;
+    public IIdentityService IdentityService => _identityContext.IdentityService;
+    public IAshlarTransactionProvider TransactionProvider => _identityContext.TransactionProvider;
     public IEmailSender EmailSender { get; } = emailSender ?? throw new ArgumentNullException(nameof(emailSender));
     public IAuthenticationRateLimiter RateLimiter { get; } = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
     public EmailCodeAuthenticationProvider Provider { get; } = provider ?? throw new ArgumentNullException(nameof(provider));
