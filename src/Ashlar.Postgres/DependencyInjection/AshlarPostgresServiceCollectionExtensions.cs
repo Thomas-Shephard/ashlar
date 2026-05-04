@@ -1,3 +1,4 @@
+using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Postgres;
@@ -84,6 +85,19 @@ public static class AshlarPostgresServiceCollectionExtensions
         }
 
         services.Replace(ServiceDescriptor.Singleton<IAuthenticationRateLimiter, PostgresAuthenticationRateLimiter>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar PostgreSQL-backed security audit event sink.
+    /// </summary>
+    public static IServiceCollection AddAshlarPostgresAuditSink(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.Replace(ServiceDescriptor.Singleton<ISecurityEventSink, PostgresSecurityEventSink>());
 
         return services;
     }
