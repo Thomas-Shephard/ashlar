@@ -63,19 +63,19 @@ public sealed class InMemoryAuthenticationRateLimiter : IAuthenticationRateLimit
         RateLimitDecision decision;
         lock (lockObj)
         {
-            if (!_cache.TryGetValue(cacheKey, out RateLimitState? state) || state == null)
+            if (!_cache.TryGetValue(cacheKey, out CacheEntry? entry) || entry == null)
             {
-                state = new RateLimitState();
+                entry = new CacheEntry(new RateLimitState());
             }
 
-            ResetExpiredWindow(state, rule, now);
-            decision = EvaluateDecision(state, rule, now);
+            var state = entry.State;
+            decision = RateLimitEvaluator.Evaluate(state, rule, now);
 
             var expiresAt = state.BlockedUntil ?? state.WindowStart + rule.Window;
-            if (state.ExpiresAt != expiresAt)
+            if (entry.ExpiresAt != expiresAt)
             {
-                state.ExpiresAt = expiresAt;
-                _cache.Set(cacheKey, state, new MemoryCacheEntryOptions
+                entry.ExpiresAt = expiresAt;
+                _cache.Set(cacheKey, entry, new MemoryCacheEntryOptions
                 {
                     Size = 1,
                     AbsoluteExpiration = expiresAt,
@@ -87,80 +87,14 @@ public sealed class InMemoryAuthenticationRateLimiter : IAuthenticationRateLimit
         return Task.FromResult(decision);
     }
 
-    private static void ResetExpiredWindow(RateLimitState state, RateLimitRule rule, DateTimeOffset now)
-    {
-        bool isWindowExpired = now >= state.WindowStart + rule.Window && state.BlockedUntil == null;
-        bool isBlockExpired = state.BlockedUntil.HasValue && now >= state.BlockedUntil.Value;
-
-        if (isWindowExpired || isBlockExpired)
-        {
-            state.Count = 0;
-            state.WindowStart = now;
-            state.BlockedUntil = null;
-        }
-    }
-
-    private static RateLimitDecision EvaluateDecision(RateLimitState state, RateLimitRule rule, DateTimeOffset now)
-    {
-        if (state.BlockedUntil.HasValue && now < state.BlockedUntil.Value)
-        {
-            return CreateBlockedDecision(state.BlockedUntil.Value);
-        }
-
-        if (state.Count < rule.PermitLimit)
-        {
-            return ConsumePermit(state, rule, now);
-        }
-
-        var windowEnd = state.WindowStart + rule.Window;
-        var blockedUntil = windowEnd;
-
-        if (rule.BlockDuration.HasValue)
-        {
-            var blockEnd = now + rule.BlockDuration.Value;
-            blockedUntil = blockEnd > windowEnd ? blockEnd : windowEnd;
-        }
-
-        state.BlockedUntil = blockedUntil;
-        return CreateBlockedDecision(blockedUntil);
-    }
-
-    private static RateLimitDecision CreateBlockedDecision(DateTimeOffset blockedUntil) =>
-        new()
-        {
-            Status = RateLimitStatus.Blocked,
-            Remaining = 0,
-            RetryAfter = blockedUntil,
-            WindowResetAt = blockedUntil
-        };
-
-    private static RateLimitDecision ConsumePermit(RateLimitState state, RateLimitRule rule, DateTimeOffset now)
-    {
-        if (state.Count == 0)
-        {
-            state.WindowStart = now;
-        }
-
-        state.Count++;
-        return new RateLimitDecision
-        {
-            Status = RateLimitStatus.Allowed,
-            Remaining = rule.PermitLimit - state.Count,
-            RetryAfter = null,
-            WindowResetAt = state.WindowStart + rule.Window
-        };
-    }
-
     public void Dispose()
     {
         _cache.Dispose();
     }
 
-    private sealed class RateLimitState
+    private sealed class CacheEntry(RateLimitState state)
     {
-        public int Count { get; set; }
-        public DateTimeOffset WindowStart { get; set; }
-        public DateTimeOffset? BlockedUntil { get; set; }
+        public RateLimitState State { get; } = state;
         public DateTimeOffset? ExpiresAt { get; set; }
     }
 

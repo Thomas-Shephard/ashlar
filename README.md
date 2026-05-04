@@ -175,7 +175,22 @@ Cookie defaults are intentionally secure: `HttpOnly = true`, `SecurePolicy = Alw
 ## Rate Limiting
 Ashlar includes framework-neutral rate limiting primitives to protect sensitive authentication flows. `AddAshlarIdentity` registers a thread-safe `InMemoryAuthenticationRateLimiter` by default. 
 
-**Note**: The default in-memory rate limiter is suitable for development and single-instance deployments. Distributed production applications should implement and register a persistent/distributed `IAuthenticationRateLimiter` (e.g., using Redis or a database). Callers should choose rate limit keys carefully (e.g., per-email, per-IP, or composite keys) to isolate flows correctly.
+**Note**: The default in-memory rate limiter is suitable for development and single-instance deployments. Distributed production applications should implement and register a persistent/distributed `IAuthenticationRateLimiter`.
+
+The **Ashlar.Postgres** package includes a PostgreSQL-backed implementation that uses row-level locking for atomic distributed limiting. Register it using:
+
+```csharp
+services.AddAshlarPostgres(connectionString);
+services.AddAshlarPostgresRateLimiting(options =>
+{
+    options.CleanupInterval = TimeSpan.FromMinutes(5);
+    options.MaxCleanupRows = 1000;
+});
+```
+
+The PostgreSQL implementation uses the same schema initialized by `InitializeAshlarPostgresSchemaAsync()`. It supports opportunistic cleanup of expired entries during active rate limit checks.
+
+Callers should choose rate limit keys carefully (e.g., per-email, per-IP, or composite keys) to isolate flows correctly.
 
 ## Transactions
 Ashlar supports scoped database transactions through the `IAshlarTransactionProvider` abstraction. This allows multiple repository operations within a single service scope to participate in a shared unit of work.

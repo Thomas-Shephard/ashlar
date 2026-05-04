@@ -1,4 +1,5 @@
 using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Postgres;
 using Ashlar.Postgres.Schema;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -63,5 +64,27 @@ public static class AshlarPostgresServiceCollectionExtensions
         using var scope = serviceProvider.CreateScope();
         var schemaManager = scope.ServiceProvider.GetRequiredService<SchemaManager>();
         await schemaManager.InitializeAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Registers the Ashlar PostgreSQL-backed authentication rate limiter.
+    /// </summary>
+    public static IServiceCollection AddAshlarPostgresRateLimiting(
+        this IServiceCollection services,
+        Action<PostgresAuthenticationRateLimiterOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddOptions<PostgresAuthenticationRateLimiterOptions>()
+            .Validate(PostgresAuthenticationRateLimiter.ValidateOptions, "CleanupInterval must be greater than zero and MaxCleanupRows must be greater than zero.");
+
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.Replace(ServiceDescriptor.Singleton<IAuthenticationRateLimiter, PostgresAuthenticationRateLimiter>());
+
+        return services;
     }
 }
