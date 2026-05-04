@@ -12,25 +12,63 @@ internal sealed class NullTransactionProvider : IAshlarTransactionProvider
 
     private sealed class NullTransaction : IAshlarTransaction
     {
-        public Task CommitAsync(CancellationToken cancellationToken = default)
+        private readonly List<Func<CancellationToken, Task>> _hooks = [];
+        private bool _disposed;
+
+        public async Task CommitAsync(CancellationToken cancellationToken = default)
         {
-            return CompleteAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            var hooks = _hooks.ToArray();
+            _hooks.Clear();
+            _disposed = true;
+
+            List<Exception>? hookExceptions = null;
+            foreach (var hook in hooks)
+            {
+                try
+                {
+                    await hook(CancellationToken.None);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    (hookExceptions ??= []).Add(ex);
+                }
+            }
+
+            if (hookExceptions != null)
+            {
+                throw new AggregateException("One or more post-commit hooks failed.", hookExceptions);
+            }
         }
 
         public Task RollbackAsync(CancellationToken cancellationToken = default)
         {
-            return CompleteAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            _hooks.Clear();
+            _disposed = true;
+            return Task.CompletedTask;
+        }
+
+        public void OnCommitted(Func<CancellationToken, Task> action)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _hooks.Add(action ?? throw new ArgumentNullException(nameof(action)));
         }
 
         public ValueTask DisposeAsync()
         {
-            return ValueTask.CompletedTask;
-        }
+            if (_disposed)
+            {
+                return ValueTask.CompletedTask;
+            }
 
-        private static Task CompleteAsync(CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return Task.CompletedTask;
+            _hooks.Clear();
+            _disposed = true;
+            return ValueTask.CompletedTask;
         }
     }
 }

@@ -161,11 +161,11 @@ public sealed class CredentialService(
         bool updated;
         if (result.IsCredentialConsumed)
         {
-            updated = await ConsumeAndRecordAsync(unprotectedCredential, originalCredential, cancellationToken);
+            updated = await ConsumeAndRecordAsync(unprotectedCredential, originalCredential, transaction, cancellationToken);
         }
         else
         {
-            updated = await PerformUpdateAsync(unprotectedCredential, originalCredential, result, provider, cancellationToken);
+            updated = await PerformUpdateAsync(unprotectedCredential, originalCredential, result, provider, transaction, cancellationToken);
         }
 
         await transaction.CommitAsync(cancellationToken);
@@ -178,6 +178,7 @@ public sealed class CredentialService(
         UserCredential? originalCredential,
         AuthenticationResult result,
         IAuthenticationProvider provider,
+        IAshlarTransaction transaction,
         CancellationToken cancellationToken)
     {
         bool needsUpdate = PrepareMetadataAndUsage(unprotectedCredential, result);
@@ -187,13 +188,13 @@ public sealed class CredentialService(
 
         if (!protectionSucceeded && !HandleProtectionFailure(unprotectedCredential, originalCredential, result, ref needsUpdate))
         {
-            await RecordCredentialUpdateFailedAsync(unprotectedCredential, "protect_failed", cancellationToken);
+            transaction.OnCommitted(ct => RecordCredentialUpdateFailedAsync(unprotectedCredential, "protect_failed", ct));
             return false;
         }
 
         if (needsUpdate && IsWipeRisk(unprotectedCredential, originalCredential, provider))
         {
-            await RecordCredentialUpdateFailedAsync(unprotectedCredential, "wipe_risk", cancellationToken);
+            transaction.OnCommitted(ct => RecordCredentialUpdateFailedAsync(unprotectedCredential, "wipe_risk", ct));
             return false;
         }
 
@@ -202,16 +203,17 @@ public sealed class CredentialService(
             unprotectedCredential.UpdatedAt = _timeProvider.GetUtcNow();
         }
 
-        return !needsUpdate || await PersistAndRecordUpdateAsync(unprotectedCredential, originalCredential, result, cancellationToken);
+        return !needsUpdate || await PersistAndRecordUpdateAsync(unprotectedCredential, originalCredential, result, transaction, cancellationToken);
     }
 
     private async Task<bool> ConsumeAndRecordAsync(
         UserCredential unprotectedCredential,
         UserCredential? originalCredential,
+        IAshlarTransaction transaction,
         CancellationToken cancellationToken)
     {
         var consumed = await _repository.ConsumeCredentialAsync(unprotectedCredential.Id, GetExpectedVersion(unprotectedCredential, originalCredential), cancellationToken);
-        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.CredentialConsumed,
             Outcome = consumed ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
@@ -223,7 +225,7 @@ public sealed class CredentialService(
                 [CredentialIdPropertyName] = unprotectedCredential.Id.ToString(),
                 ["operation"] = "consume"
             }
-        }, cancellationToken);
+        }, ct));
         return consumed;
     }
 
@@ -231,10 +233,11 @@ public sealed class CredentialService(
         UserCredential unprotectedCredential,
         UserCredential? originalCredential,
         AuthenticationResult result,
+        IAshlarTransaction transaction,
         CancellationToken cancellationToken)
     {
         var (succeeded, persisted) = await PersistUpdateAsync(unprotectedCredential, originalCredential, result, cancellationToken);
-        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = persisted ? AshlarSecurityEventTypes.CredentialUpdatePersisted : AshlarSecurityEventTypes.CredentialUpdateFailed,
             Outcome = persisted ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
@@ -247,7 +250,7 @@ public sealed class CredentialService(
                 ["operation"] = "update",
                 ["required"] = (result.CredentialUpdateRequirement == CredentialUpdateRequirement.Required).ToString()
             }
-        }, cancellationToken);
+        }, ct));
         return succeeded;
     }
 
@@ -432,7 +435,7 @@ public sealed class CredentialService(
         };
 
         await _repository.CreateCredentialAsync(credential, cancellationToken);
-        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.CredentialLinked,
             Outcome = SecurityEventOutcomes.Success,
@@ -442,7 +445,7 @@ public sealed class CredentialService(
             {
                 [CredentialIdPropertyName] = credential.Id.ToString()
             }
-        }, cancellationToken);
+        }, ct));
 
         await transaction.CommitAsync(cancellationToken);
     }

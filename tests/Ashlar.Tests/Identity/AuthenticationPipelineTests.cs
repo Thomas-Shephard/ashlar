@@ -349,6 +349,7 @@ public class AuthenticationPipelineTests
     {
         private bool _hasActiveTransaction;
         private bool _mustRollback;
+        private readonly List<Func<CancellationToken, Task>> _hooks = [];
 
         public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
         {
@@ -384,6 +385,12 @@ public class AuthenticationPipelineTests
                 return Task.CompletedTask;
             }
 
+            public void OnCommitted(Func<CancellationToken, Task> action)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                provider._hooks.Add(action);
+            }
+
             public ValueTask DisposeAsync()
             {
                 if (_disposed) return ValueTask.CompletedTask;
@@ -402,7 +409,7 @@ public class AuthenticationPipelineTests
         {
             private bool _disposed;
 
-            public Task CommitAsync(CancellationToken cancellationToken = default)
+            public async Task CommitAsync(CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 ObjectDisposedException.ThrowIf(_disposed, this);
@@ -414,7 +421,13 @@ public class AuthenticationPipelineTests
                 _disposed = true;
                 provider._hasActiveTransaction = false;
                 provider._mustRollback = false;
-                return Task.CompletedTask;
+
+                foreach (var hook in provider._hooks)
+                {
+                    await hook(cancellationToken);
+                }
+
+                provider._hooks.Clear();
             }
 
             public Task RollbackAsync(CancellationToken cancellationToken = default)
@@ -424,7 +437,14 @@ public class AuthenticationPipelineTests
                 _disposed = true;
                 provider._hasActiveTransaction = false;
                 provider._mustRollback = false;
+                provider._hooks.Clear();
                 return Task.CompletedTask;
+            }
+
+            public void OnCommitted(Func<CancellationToken, Task> action)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                provider._hooks.Add(action);
             }
 
             public ValueTask DisposeAsync()

@@ -72,12 +72,12 @@ public sealed class IdentityService(
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         
         await _repository.CreateUserAsync(user, cancellationToken);
-        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.UserCreated,
             Outcome = SecurityEventOutcomes.Success,
             UserId = user.Id
-        }, cancellationToken);
+        }, ct));
 
         await transaction.CommitAsync(cancellationToken);
         

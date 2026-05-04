@@ -5,6 +5,8 @@ namespace Ashlar.Postgres.Tests;
 
 public sealed class PostgresTransactionManagerTests : PostgresTestBase
 {
+    private static readonly int[] ExpectedHookExecutionOrder = [1, 2, 3];
+
     [Test]
     public void ConstructorRejectsNullDataSource()
     {
@@ -171,6 +173,175 @@ public sealed class PostgresTransactionManagerTests : PostgresTestBase
         Assert.That(connection.FullState, Is.Not.EqualTo(ConnectionState.Open));
     }
 
+    [Test]
+    public async Task PostCommitHooksExecuteOnCommit()
+    {
+        await using var manager = new PostgresTransactionManager(GetDataSource());
+        await using var transaction = await manager.BeginTransactionAsync();
+        var hookExecuted = false;
+
+        transaction.OnCommitted(_ =>
+        {
+            hookExecuted = true;
+            return Task.CompletedTask;
+        });
+
+        await transaction.CommitAsync();
+
+        Assert.That(hookExecuted, Is.True);
+    }
+
+    [Test]
+    public async Task PostCommitHooksIgnoreCommitCancellationAfterCommitSucceeds()
+    {
+        await using var manager = new PostgresTransactionManager(GetDataSource());
+        await using var transaction = await manager.BeginTransactionAsync();
+        using var cancellationTokenSource = new CancellationTokenSource();
+        var hookTokenCanceled = true;
+
+        RegisterCancellationHook(transaction, cancellationTokenSource);
+
+        transaction.OnCommitted(token =>
+        {
+            hookTokenCanceled = token.IsCancellationRequested;
+            return Task.CompletedTask;
+        });
+
+        await transaction.CommitAsync(cancellationTokenSource.Token);
+
+        Assert.That(hookTokenCanceled, Is.False);
+    }
+
+    [Test]
+    public async Task PostCommitHooksExecuteInRegistrationOrder()
+    {
+        await using var manager = new PostgresTransactionManager(GetDataSource());
+        await using var transaction = await manager.BeginTransactionAsync();
+        var executions = new List<int>();
+
+        transaction.OnCommitted(_ =>
+        {
+            executions.Add(1);
+            return Task.CompletedTask;
+        });
+
+        transaction.OnCommitted(_ =>
+        {
+            executions.Add(2);
+            return Task.CompletedTask;
+        });
+
+        transaction.OnCommitted(_ =>
+        {
+            executions.Add(3);
+            return Task.CompletedTask;
+        });
+
+        await transaction.CommitAsync();
+
+        Assert.That(executions, Is.EqualTo(ExpectedHookExecutionOrder));
+    }
+
+    [Test]
+    public async Task OnCommittedThrowsWhenActionIsNull()
+    {
+        await using var manager = new PostgresTransactionManager(GetDataSource());
+        await using var transaction = await manager.BeginTransactionAsync();
+
+        AssertOnCommittedThrowsArgumentNull(transaction);
+    }
+
+    [Test]
+    public async Task PostCommitHooksDoNotExecuteOnRollback()
+    {
+        await using var manager = new PostgresTransactionManager(GetDataSource());
+        await using var transaction = await manager.BeginTransactionAsync();
+        var hookExecuted = false;
+
+        transaction.OnCommitted(_ =>
+        {
+            hookExecuted = true;
+            return Task.CompletedTask;
+        });
+
+        await transaction.RollbackAsync();
+
+        Assert.That(hookExecuted, Is.False);
+    }
+
+    [Test]
+    public async Task PostCommitHooksDoNotExecuteOnDisposalWithoutCommit()
+    {
+        await using var manager = new PostgresTransactionManager(GetDataSource());
+        var hookExecuted = false;
+
+        await using (var transaction = await manager.BeginTransactionAsync())
+        {
+            transaction.OnCommitted(_ =>
+            {
+                hookExecuted = true;
+                return Task.CompletedTask;
+            });
+        }
+
+        Assert.That(hookExecuted, Is.False);
+    }
+
+    [Test]
+    public async Task NestedPostCommitHooksDelegateToRootAndExecuteOnCommit()
+    {
+        await using var manager = new PostgresTransactionManager(GetDataSource());
+        await using var outer = await manager.BeginTransactionAsync();
+        var innerHookExecuted = false;
+
+        await using (var inner = await manager.BeginTransactionAsync())
+        {
+            inner.OnCommitted(_ =>
+            {
+                innerHookExecuted = true;
+                return Task.CompletedTask;
+            });
+            await inner.CommitAsync();
+        }
+
+        Assert.That(innerHookExecuted, Is.False, "Hook should not execute until the root transaction commits.");
+
+        await outer.CommitAsync();
+
+        Assert.That(innerHookExecuted, Is.True);
+    }
+
+    [Test]
+    public async Task PostCommitHooksAreIsolatedFromEachOtherButPropagateErrors()
+    {
+        await using var manager = new PostgresTransactionManager(GetDataSource());
+        await using var transaction = await manager.BeginTransactionAsync();
+        var firstHookExecuted = false;
+        var secondHookExecuted = false;
+
+        transaction.OnCommitted(_ =>
+        {
+            firstHookExecuted = true;
+            throw new InvalidOperationException("First hook failed");
+        });
+
+        transaction.OnCommitted(_ =>
+        {
+            secondHookExecuted = true;
+            return Task.CompletedTask;
+        });
+
+        var ex = await AssertCommitThrowsAggregateAsync(transaction);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstHookExecuted, Is.True);
+            Assert.That(secondHookExecuted, Is.True);
+            Assert.That(ex.InnerExceptions, Has.Count.EqualTo(1));
+            Assert.That(ex.InnerExceptions[0].Message, Is.EqualTo("First hook failed"));
+        }
+    }
+
     private static async Task AssertCommitThrowsObjectDisposedAsync(Ashlar.Identity.Abstractions.IAshlarTransaction transaction)
     {
         try
@@ -185,6 +356,32 @@ public sealed class PostgresTransactionManagerTests : PostgresTestBase
         Assert.Fail("Expected ObjectDisposedException.");
     }
 
+    private static void RegisterCancellationHook(
+        Ashlar.Identity.Abstractions.IAshlarTransaction transaction,
+        CancellationTokenSource cancellationTokenSource)
+    {
+        transaction.OnCommitted(_ =>
+        {
+            cancellationTokenSource.Cancel();
+            return Task.CompletedTask;
+        });
+    }
+
+    private static void AssertOnCommittedThrowsArgumentNull(Ashlar.Identity.Abstractions.IAshlarTransaction transaction)
+    {
+        try
+        {
+            // ReSharper disable once NullableWarningSuppressionIsUsed
+            transaction.OnCommitted(null!);
+        }
+        catch (ArgumentNullException)
+        {
+            return;
+        }
+
+        Assert.Fail("Expected ArgumentNullException.");
+    }
+
     private static async Task AssertCommitThrowsInvalidOperationAsync(Ashlar.Identity.Abstractions.IAshlarTransaction transaction)
     {
         try
@@ -197,6 +394,21 @@ public sealed class PostgresTransactionManagerTests : PostgresTestBase
         }
 
         Assert.Fail("Expected InvalidOperationException.");
+    }
+
+    private static async Task<AggregateException> AssertCommitThrowsAggregateAsync(Ashlar.Identity.Abstractions.IAshlarTransaction transaction)
+    {
+        try
+        {
+            await transaction.CommitAsync();
+        }
+        catch (AggregateException ex)
+        {
+            return ex;
+        }
+
+        Assert.Fail("Expected AggregateException.");
+        throw new InvalidOperationException("Unreachable.");
     }
 
     private static async Task AssertBeginTransactionThrowsInvalidOperationAsync(PostgresTransactionManager manager)
