@@ -54,3 +54,15 @@ CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_user_id ON ashlar_sessions (user_i
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_expires_at ON ashlar_sessions (expires_at) INCLUDE (id, user_id) WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_active_user ON ashlar_sessions (user_id, expires_at) WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_cleanup ON ashlar_sessions (expires_at) WHERE revoked_at IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS ashlar_rate_limits (
+    purpose TEXT NOT NULL,
+    rate_limit_key TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    window_start TIMESTAMPTZ NOT NULL,
+    blocked_until TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (purpose, rate_limit_key)
+);
+
+CREATE INDEX IF NOT EXISTS ix_ashlar_rate_limits_expires_at ON ashlar_rate_limits (expires_at);
