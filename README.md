@@ -129,6 +129,42 @@ Ashlar includes framework-neutral rate limiting primitives to protect sensitive 
 
 **Note**: The default in-memory rate limiter is suitable for development and single-instance deployments. Distributed production applications should implement and register a persistent/distributed `IAuthenticationRateLimiter` (e.g., using Redis or a database). Callers should choose rate limit keys carefully (e.g., per-email, per-IP, or composite keys) to isolate flows correctly.
 
+## Transactions
+Ashlar supports scoped database transactions through the `IAshlarTransactionProvider` abstraction. This allows multiple repository operations within a single service scope to participate in a shared unit of work.
+
+```csharp
+public class MyIdentityService(
+    IIdentityService identityService, 
+    IAshlarTransactionProvider transactionProvider)
+{
+    public async Task RegisterAndInviteAsync(User user)
+    {
+        // Start a transaction for the current scope
+        await using var transaction = await transactionProvider.BeginTransactionAsync();
+        
+        try
+        {
+            await identityService.CreateUserAsync(user);
+            await identityService.SetPasswordAsync(user.Id, "...");
+            
+            // All operations in this scope now share the same transaction
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
+}
+```
+
+`AddAshlarIdentity()` registers a `NullTransactionProvider` by default, which performs no-op transactions. Persistence packages like **Ashlar.Postgres** provide a functional implementation.
+
+- **Scope Bound**: Transactions are bound to the `IServiceProvider` scope (typically the HTTP request).
+- **Single Transaction**: Only one active transaction is supported per scope. Attempting to start a nested transaction will throw an `InvalidOperationException`.
+- **Resource Management**: Callers MUST call `DisposeAsync` (typically via `await using`) to release the underlying connection, even after a commit or rollback.
+
 ## Security Audit Events
 Ashlar emits structured security audit events for authentication, credential lifecycle, and session lifecycle operations. `AddAshlarIdentity()` registers `ISecurityEventSink` with `NullSecurityEventSink` by default, so events are no-op unless the application provides a sink:
 

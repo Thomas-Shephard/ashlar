@@ -64,22 +64,33 @@ internal sealed class PostgresTransactionManager(NpgsqlDataSource dataSource) : 
         }
     }
 
-    internal async ValueTask ClearTransactionAsync()
+    private async ValueTask ClearTransactionAsync()
     {
+        NpgsqlTransaction? transaction;
+        NpgsqlConnection? connection;
+
         await _connectionLock.WaitAsync();
         try
         {
+            transaction = _transaction;
+            connection = _connection;
+
             _transaction = null;
-            if (_connection != null)
-            {
-                var conn = _connection;
-                _connection = null;
-                await conn.DisposeAsync();
-            }
+            _connection = null;
         }
         finally
         {
             _connectionLock.Release();
+        }
+
+        if (transaction != null)
+        {
+            await transaction.DisposeAsync();
+        }
+
+        if (connection != null)
+        {
+            await connection.DisposeAsync();
         }
     }
 
@@ -96,40 +107,28 @@ internal sealed class PostgresTransactionManager(NpgsqlDataSource dataSource) : 
 
         try
         {
-            if (_transaction != null)
-            {
-                await _transaction.DisposeAsync();
-            }
+            await ClearTransactionAsync();
         }
         finally
         {
-            try
-            {
-                await ClearTransactionAsync();
-            }
-            finally
-            {
-                _connectionLock.Dispose();
-            }
+            _connectionLock.Dispose();
         }
     }
 
     private sealed class PostgresTransaction(NpgsqlTransaction transaction, PostgresTransactionManager manager) : IAshlarTransaction
     {
-        public Task CommitAsync(CancellationToken cancellationToken = default) => transaction.CommitAsync(cancellationToken);
-
-        public Task RollbackAsync(CancellationToken cancellationToken = default) => transaction.RollbackAsync(cancellationToken);
-
-        public async ValueTask DisposeAsync()
+        public async Task CommitAsync(CancellationToken cancellationToken = default)
         {
-            try
-            {
-                await transaction.DisposeAsync();
-            }
-            finally
-            {
-                await manager.ClearTransactionAsync();
-            }
+            await transaction.CommitAsync(cancellationToken);
+            await manager.ClearTransactionAsync();
         }
+
+        public async Task RollbackAsync(CancellationToken cancellationToken = default)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            await manager.ClearTransactionAsync();
+        }
+
+        public ValueTask DisposeAsync() => manager.ClearTransactionAsync();
     }
 }
