@@ -10,6 +10,7 @@ internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, I
 {
     private readonly Func<CancellationToken, ValueTask<NpgsqlConnection>> _openConnectionAsync;
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
+    private readonly List<Func<CancellationToken, Task>> _postCommitHooks = [];
     private NpgsqlConnection? _connection;
     private NpgsqlTransaction? _transaction;
     private volatile bool _mustRollback;
@@ -22,6 +23,11 @@ internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, I
     internal PostgresTransactionManager(Func<CancellationToken, ValueTask<NpgsqlConnection>> openConnectionAsync)
     {
         _openConnectionAsync = openConnectionAsync ?? throw new ArgumentNullException(nameof(openConnectionAsync));
+    }
+
+    private void RegisterPostCommitHook(Func<CancellationToken, Task> action)
+    {
+        _postCommitHooks.Add(action ?? throw new ArgumentNullException(nameof(action)));
     }
 
     public async ValueTask<PostgresConnectionHandle> GetConnectionAsync(CancellationToken cancellationToken)
@@ -98,6 +104,12 @@ internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, I
             return Task.CompletedTask;
         }
 
+        public void OnCommitted(Func<CancellationToken, Task> action)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            manager.RegisterPostCommitHook(action);
+        }
+
         public ValueTask DisposeAsync()
         {
             if (_disposed) return ValueTask.CompletedTask;
@@ -126,6 +138,7 @@ internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, I
             _transaction = null;
             _connection = null;
             _mustRollback = false;
+            _postCommitHooks.Clear();
         }
         finally
         {
@@ -178,8 +191,30 @@ internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, I
             }
 
             await transaction.CommitAsync(cancellationToken);
+
+            // Capture hooks before clearing the transaction state.
+            var hooks = manager._postCommitHooks.ToArray();
+
             await manager.ClearTransactionAsync();
             _disposed = true;
+
+            List<Exception>? hookExceptions = null;
+            foreach (var hook in hooks)
+            {
+                try
+                {
+                    await hook(CancellationToken.None);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    (hookExceptions ??= []).Add(ex);
+                }
+            }
+
+            if (hookExceptions != null)
+            {
+                throw new AggregateException("One or more post-commit hooks failed.", hookExceptions);
+            }
         }
 
         public async Task RollbackAsync(CancellationToken cancellationToken = default)
@@ -189,6 +224,12 @@ internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, I
             await transaction.RollbackAsync(cancellationToken);
             await manager.ClearTransactionAsync();
             _disposed = true;
+        }
+
+        public void OnCommitted(Func<CancellationToken, Task> action)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            manager.RegisterPostCommitHook(action);
         }
 
         public async ValueTask DisposeAsync()

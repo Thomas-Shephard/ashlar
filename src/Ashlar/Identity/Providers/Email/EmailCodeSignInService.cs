@@ -44,7 +44,7 @@ public sealed class EmailCodeSignInService : IEmailCodeSignInService
         var user = await _dependencies.Repository.GetUserByEmailAsync(normalizedEmail, context.TenantId, cancellationToken);
         if (user is not { IsActive: true })
         {
-            await RecordAsync(AshlarSecurityEventTypes.EmailCodeRequestSuppressed, SecurityEventOutcomes.Success, context, user?.Id, user == null ? "user_missing" : "user_disabled", cancellationToken);
+            transaction.OnCommitted(ct => RecordAsync(AshlarSecurityEventTypes.EmailCodeRequestSuppressed, SecurityEventOutcomes.Success, context, user?.Id, user == null ? "user_missing" : "user_disabled", ct));
             
             await transaction.CommitAsync(cancellationToken);
             return;
@@ -68,8 +68,12 @@ public sealed class EmailCodeSignInService : IEmailCodeSignInService
         };
 
         await _dependencies.Repository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
-        await _dependencies.EmailSender.SendAsync(new EmailMessage(normalizedEmail, signInOptions.EmailSubject, string.Format(CultureInfo.InvariantCulture, signInOptions.EmailTextTemplate, code, Math.Ceiling(signInOptions.CodeLifetime.TotalMinutes))), cancellationToken);
-        await RecordAsync(AshlarSecurityEventTypes.EmailCodeRequested, SecurityEventOutcomes.Success, context, user.Id, null, cancellationToken);
+
+        transaction.OnCommitted(async (ct) =>
+        {
+            await _dependencies.EmailSender.SendAsync(new EmailMessage(normalizedEmail, signInOptions.EmailSubject, string.Format(CultureInfo.InvariantCulture, signInOptions.EmailTextTemplate, code, Math.Ceiling(signInOptions.CodeLifetime.TotalMinutes))), ct);
+            await RecordAsync(AshlarSecurityEventTypes.EmailCodeRequested, SecurityEventOutcomes.Success, context, user.Id, null, ct);
+        });
 
         await transaction.CommitAsync(cancellationToken);
     }
