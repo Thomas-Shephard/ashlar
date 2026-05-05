@@ -20,6 +20,9 @@ public static class AshlarSecurityEventTypes
     public const string MagicLinkRequestSuppressed = "ashlar.magic_link.request_suppressed";
     public const string MagicLinkRequestRateLimited = "ashlar.magic_link.request_rate_limited";
     public const string MagicLinkVerificationRateLimited = "ashlar.magic_link.verification_rate_limited";
+    public const string RecoveryCodesGenerated = "ashlar.recovery_codes.generated";
+    public const string RecoveryCodesRevoked = "ashlar.recovery_codes.revoked";
+    public const string RecoveryCodeVerificationRateLimited = "ashlar.recovery_codes.verification_rate_limited";
     public const string SessionCreated = "ashlar.session.created";
     public const string SessionValidated = "ashlar.session.validated";
     public const string SessionValidationFailed = "ashlar.session.validation_failed";

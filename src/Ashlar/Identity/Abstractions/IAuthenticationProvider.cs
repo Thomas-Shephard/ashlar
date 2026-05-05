@@ -55,6 +55,23 @@ public interface IAuthenticationProvider
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The result of the authentication.</returns>
     Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves the credential associated with the given assertion and user.
+    /// </summary>
+    /// <param name="userId">The user's ID.</param>
+    /// <param name="assertion">The authentication assertion.</param>
+    /// <param name="repository">The identity repository.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The credential if found, otherwise <c>null</c>.</returns>
+    Task<UserCredential?> ResolveCredentialAsync(
+        Guid userId,
+        IAuthenticationAssertion assertion,
+        IIdentityRepository repository,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<UserCredential?>(null);
+    }
 }
 
 /// <summary>
