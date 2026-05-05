@@ -18,9 +18,7 @@ public sealed class SchemaManagerTests : PostgresTestBase
     [Test]
     public async Task SchemaManagerWithPostgres14ShouldThrowNotSupported()
     {
-        var postgres14 = new PostgreSqlBuilder()
-            .WithImage("postgres:14-alpine")
-            .Build();
+        var postgres14 = new PostgreSqlBuilder("postgres:14-alpine").Build();
 
         await postgres14.StartAsync();
         try
