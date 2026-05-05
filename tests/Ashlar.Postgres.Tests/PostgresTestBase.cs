@@ -5,7 +5,7 @@ namespace Ashlar.Postgres.Tests;
 
 public abstract class PostgresTestBase
 {
-    private PostgreSqlContainer PostgresContainer { get; } = new PostgreSqlBuilder().WithImage("postgres:15-alpine").Build();
+    private PostgreSqlContainer PostgresContainer { get; } = new PostgreSqlBuilder("postgres:15-alpine").Build();
 
     private NpgsqlDataSource? _dataSource;
 
