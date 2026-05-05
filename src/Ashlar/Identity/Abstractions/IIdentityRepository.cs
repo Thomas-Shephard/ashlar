@@ -56,5 +56,6 @@ public interface IIdentityRepository
     /// <summary>
     /// Revokes all credentials for a specific user and provider.
     /// </summary>
-    Task RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default);
+    /// <returns>The number of credentials revoked.</returns>
+    Task<int> RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default);
 }

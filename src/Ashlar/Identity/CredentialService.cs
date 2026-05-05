@@ -42,18 +42,11 @@ public sealed class CredentialService(
         ArgumentNullException.ThrowIfNull(assertion);
         ArgumentNullException.ThrowIfNull(provider);
 
-        var providerName = provider.Key.Name;
         var user = await provider.FindUserAsync(assertion, context, _repository, cancellationToken);
 
         var userId = user?.Id ?? Guid.NewGuid();
-        var providerKey = provider.GetProviderKey(assertion, userId);
-        if (string.IsNullOrEmpty(providerKey))
-        {
-            providerKey = Guid.NewGuid().ToString();
-        }
 
-        var credential = await _repository.GetCredentialForUserAsync(userId, provider.Key.Type, providerName, providerKey, cancellationToken);
-        var (unprotectedCredential, unprotectFailed) = UnprotectCredential(credential, provider);
+        var (unprotectedCredential, credential, unprotectFailed) = await ResolveCredentialCoreAsync(userId, assertion, provider, cancellationToken);
         return (user, unprotectedCredential, credential, unprotectFailed);
     }
 
@@ -67,18 +60,33 @@ public sealed class CredentialService(
         ArgumentNullException.ThrowIfNull(assertion);
         ArgumentNullException.ThrowIfNull(provider);
 
-        var providerName = provider.Key.Name;
         var user = await _repository.GetUserByIdAsync(userId, cancellationToken);
 
+        var (unprotectedCredential, credential, unprotectFailed) = await ResolveCredentialCoreAsync(userId, assertion, provider, cancellationToken);
+        return (user, unprotectedCredential, credential, unprotectFailed);
+    }
+
+    private async Task<(UserCredential? Credential, UserCredential? OriginalCredential, bool UnprotectFailed)> ResolveCredentialCoreAsync(
+        Guid userId,
+        IAuthenticationAssertion assertion,
+        IAuthenticationProvider provider,
+        CancellationToken cancellationToken)
+    {
         var providerKey = provider.GetProviderKey(assertion, userId);
-        if (string.IsNullOrEmpty(providerKey))
+
+        UserCredential? credential;
+        if (!string.IsNullOrEmpty(providerKey))
         {
-            providerKey = Guid.NewGuid().ToString();
+            credential = await _repository.GetCredentialForUserAsync(userId, provider.Key.Type, provider.Key.Name, providerKey, cancellationToken);
+        }
+        else
+        {
+            // Timing attack resistance: hit the repository even if no credential was resolved by the provider.
+            credential = await provider.ResolveCredentialAsync(userId, assertion, _repository, cancellationToken) ?? await _repository.GetCredentialForUserAsync(userId, provider.Key.Type, provider.Key.Name, Guid.NewGuid().ToString("N"), cancellationToken);
         }
 
-        var credential = await _repository.GetCredentialForUserAsync(userId, provider.Key.Type, providerName, providerKey, cancellationToken);
         var (unprotectedCredential, unprotectFailed) = UnprotectCredential(credential, provider);
-        return (user, unprotectedCredential, credential, unprotectFailed);
+        return (unprotectedCredential, credential, unprotectFailed);
     }
 
     /// <summary>
@@ -96,50 +104,55 @@ public sealed class CredentialService(
         ArgumentNullException.ThrowIfNull(provider);
         var now = _timeProvider.GetUtcNow();
 
-        if (!provider.ProtectsCredentials)
+        if (credential == null)
         {
-            if (credential == null)
+            if (provider.ProtectsCredentials)
             {
-                return (null, false);
+                var dummyProtectedValue = _dummyValues.GetOrAdd(provider.TypicalCredentialLength, len => _secretProtector.Protect(new string('D', len)));
+                try
+                {
+                    _secretProtector.Unprotect(dummyProtectedValue);
+                }
+                catch (System.Security.Cryptography.CryptographicException)
+                {
+                    // Swallowing exception for timing resistance.
+                }
             }
 
+            return (null, false);
+        }
+
+        if (!provider.ProtectsCredentials)
+        {
             if (!credential.IsAvailable(now))
             {
                 return (null, false);
             }
-
-            return (credential.Clone(), false);
+            return (credential, false);
         }
-
-        var valueToUnprotect = credential?.CredentialValue ?? _dummyValues.GetOrAdd(provider.TypicalCredentialLength, len => _secretProtector.Protect(new string('D', len)));
 
         string? unprotectedValue = null;
         bool unprotectFailed = false;
 
         try
         {
-            unprotectedValue = _secretProtector.Unprotect(valueToUnprotect);
+            if (credential.CredentialValue != null)
+            {
+                unprotectedValue = _secretProtector.Unprotect(credential.CredentialValue);
+            }
         }
         catch (System.Security.Cryptography.CryptographicException)
         {
-            if (credential?.CredentialValue != null)
-            {
-                unprotectFailed = true;
-            }
-        }
-
-        if (credential == null)
-        {
-            return (null, unprotectFailed);
+            unprotectFailed = true;
         }
 
         if (!credential.IsAvailable(now))
         {
-            return (null, unprotectFailed);
+            return (null, false);
         }
 
         var unprotectedCredential = credential.Clone();
-        unprotectedCredential.CredentialValue = credential.CredentialValue == null || unprotectFailed ? null : unprotectedValue;
+        unprotectedCredential.CredentialValue = unprotectFailed ? null : unprotectedValue;
 
         return (unprotectedCredential, unprotectFailed);
     }

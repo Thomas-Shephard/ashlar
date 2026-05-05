@@ -117,6 +117,48 @@ await emailCodes.RequestCodeAsync(email, context);
 var authenticationResult = await emailCodes.VerifyCodeAsync(email, code, context);
 ```
 
+## Recovery Codes
+Ashlar includes a framework-neutral service for generating and verifying backup recovery codes. These are typically used as a fallback authentication method when a user loses access to their primary multi-factor authentication device.
+
+Register recovery codes with core identity services:
+
+```csharp
+services.AddAshlarRecoveryCodes(options =>
+{
+    options.CodeCount = 10;
+    options.CodeLength = 12;
+    options.GroupSize = 4; // Generates codes like XXXX-XXXX-XXXX
+});
+```
+
+To generate and retrieve the raw recovery codes for a user:
+
+```csharp
+var recoveryCodes = httpContext.RequestServices.GetRequiredService<IRecoveryCodeService>();
+
+// Generates new codes. Any existing codes are revoked.
+var rawCodes = await recoveryCodes.GenerateRecoveryCodesAsync(userId);
+```
+
+To verify a recovery code during sign-in, use the standard `AuthenticationPipeline` with a `RecoveryCodeAssertion`:
+
+```csharp
+var pipeline = httpContext.RequestServices.GetRequiredService<IAuthenticationPipeline>();
+
+var assertion = new RecoveryCodeAssertion(
+    code: userInputCode,
+    ipAddress: httpContext.Connection.RemoteIpAddress?.ToString());
+
+var authenticationResponse = await pipeline.LoginAsync(
+    new AuthenticationContext(Email: userEmail), 
+    assertion);
+
+if (authenticationResponse.Succeeded)
+{
+    // The recovery code was valid and has been automatically consumed
+}
+```
+
 When supplied to `CreateSessionAsync`, session IP address, user agent, and metadata are persisted by default. These values can contain personal data, so applications should only pass them when their privacy policy and security requirements allow it. Use `AuthenticationSessionOptions.StoreIpAddress`, `StoreUserAgent`, and `StoreMetadata` to opt out, and tune the max-length options if the defaults do not fit your storage policy.
 
 ```csharp
