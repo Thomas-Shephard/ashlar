@@ -24,15 +24,7 @@ public sealed class AuthenticationPipeline(
 
         if (!_providerRegistry.TryGetProvider(assertion, out var provider))
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.AuthenticationFailed,
-                Outcome = SecurityEventOutcomes.Failure,
-                Provider = assertion.ProviderIdentity,
-                Context = context,
-                FailureReason = SecurityEventFailureReasons.ProviderUnsupported
-            }, cancellationToken);
-            return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
+            return await RecordFailureAsync(context, assertion.ProviderIdentity, null, SecurityEventFailureReasons.ProviderUnsupported, cancellationToken);
         }
 
         var (user, credential, originalCredential, unprotectFailed) = await _credentialService.ResolveAsync(context, assertion, provider, cancellationToken);
@@ -40,76 +32,56 @@ public sealed class AuthenticationPipeline(
         var result = await provider.AuthenticateAsync(assertion, credential, cancellationToken);
         if (unprotectFailed || result.Status is not (AuthenticationResultStatus.Succeeded or AuthenticationResultStatus.SucceededWithCredentialUpdate) || user == null)
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.AuthenticationFailed,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = user?.Id,
-                Provider = provider.Key,
-                Context = context,
-                FailureReason = unprotectFailed ? SecurityEventFailureReasons.UnprotectFailed : SecurityEventFailureReasons.InvalidCredentials
-            }, cancellationToken);
-
-            return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
+            var reason = unprotectFailed ? SecurityEventFailureReasons.UnprotectFailed : SecurityEventFailureReasons.InvalidCredentials;
+            return await RecordFailureAsync(context, provider.Key, user?.Id, reason, cancellationToken);
         }
 
         if (!user.IsActive)
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.AuthenticationFailed,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = user.Id,
-                Provider = provider.Key,
-                Context = context,
-                FailureReason = SecurityEventFailureReasons.UserDisabled
-            }, cancellationToken);
-
-            return new AuthenticationResponse(false, user, AuthenticationStatus.Disabled);
+            return await RecordFailureAsync(context, provider.Key, user.Id, SecurityEventFailureReasons.UserDisabled, cancellationToken, user, AuthenticationStatus.Disabled);
         }
 
         var status = result.Status == AuthenticationResultStatus.SucceededWithCredentialUpdate ? AuthenticationStatus.SuccessWithCredentialUpdate : AuthenticationStatus.Success;
 
-        if (credential == null)
+        return await ProcessCredentialLifecycleAsync(
+            new CredentialLifecycleContext(user, credential, originalCredential, result, provider, context, status),
+            cancellationToken);
+    }
+
+    private async Task<AuthenticationResponse> ProcessCredentialLifecycleAsync(
+        CredentialLifecycleContext lifecycle,
+        CancellationToken cancellationToken)
+    {
+        if (lifecycle.Credential == null)
         {
-            return await CompleteSuccessfulLoginAsync(user, provider, context, status, result.Claims, properties: null, cancellationToken);
+            if (lifecycle.Result.IsCredentialConsumed || lifecycle.Result.CredentialUpdateRequirement == CredentialUpdateRequirement.Required)
+            {
+                return await RecordFailureAsync(lifecycle.Context, lifecycle.Provider.Key, lifecycle.User.Id, SecurityEventFailureReasons.CredentialUpdateFailed, cancellationToken);
+            }
+
+            return await CompleteSuccessfulLoginAsync(lifecycle.User, lifecycle.Provider, lifecycle.Context, lifecycle.Status, lifecycle.Result.Claims, properties: null, cancellationToken);
         }
 
         var lifecycleUpdateFailed = false;
         try
         {
-            var credentialUsageUpdated = await _credentialService.UpdateCredentialUsageAsync(credential, originalCredential, result, provider, cancellationToken);
+            var credentialUsageUpdated = await _credentialService.UpdateCredentialUsageAsync(
+                lifecycle.Credential,
+                lifecycle.OriginalCredential,
+                lifecycle.Result,
+                lifecycle.Provider,
+                cancellationToken);
             if (!credentialUsageUpdated)
             {
-                await _securityEvents.RecordAsync(new SecurityEventDescriptor
-                {
-                    EventType = AshlarSecurityEventTypes.AuthenticationFailed,
-                    Outcome = SecurityEventOutcomes.Failure,
-                    UserId = user.Id,
-                    Provider = provider.Key,
-                    Context = context,
-                    FailureReason = SecurityEventFailureReasons.CredentialUpdateFailed
-                }, cancellationToken);
-
-                return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
+                return await RecordFailureAsync(lifecycle.Context, lifecycle.Provider.Key, lifecycle.User.Id, SecurityEventFailureReasons.CredentialUpdateFailed, cancellationToken);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Fail authentication if a critical lifecycle operation (Consume or Required Update) threw an uncaught exception.
-            if (result.IsCredentialConsumed || result.CredentialUpdateRequirement == CredentialUpdateRequirement.Required)
+            if (lifecycle.Result.IsCredentialConsumed || lifecycle.Result.CredentialUpdateRequirement == CredentialUpdateRequirement.Required)
             {
-                await _securityEvents.RecordAsync(new SecurityEventDescriptor
-                {
-                    EventType = AshlarSecurityEventTypes.AuthenticationFailed,
-                    Outcome = SecurityEventOutcomes.Failure,
-                    UserId = user.Id,
-                    Provider = provider.Key,
-                    Context = context,
-                    FailureReason = SecurityEventFailureReasons.CredentialUpdateFailed
-                }, cancellationToken);
-
-                return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
+                return await RecordFailureAsync(lifecycle.Context, lifecycle.Provider.Key, lifecycle.User.Id, SecurityEventFailureReasons.CredentialUpdateFailed, cancellationToken);
             }
 
             lifecycleUpdateFailed = true;
@@ -117,13 +89,35 @@ public sealed class AuthenticationPipeline(
         }
 
         return await CompleteSuccessfulLoginAsync(
-            user,
-            provider,
-            context,
-            status,
-            result.Claims,
+            lifecycle.User,
+            lifecycle.Provider,
+            lifecycle.Context,
+            lifecycle.Status,
+            lifecycle.Result.Claims,
             lifecycleUpdateFailed ? new Dictionary<string, string> { ["lifecycle_update_failed"] = "true" } : null,
             cancellationToken);
+    }
+
+    private async Task<AuthenticationResponse> RecordFailureAsync(
+        AuthenticationContext context,
+        AuthenticationProviderKey providerKey,
+        Guid? userId,
+        string reason,
+        CancellationToken cancellationToken,
+        IUser? returnedUser = null,
+        AuthenticationStatus returnedStatus = AuthenticationStatus.Failed)
+    {
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.AuthenticationFailed,
+            Outcome = SecurityEventOutcomes.Failure,
+            UserId = userId,
+            Provider = providerKey,
+            Context = context,
+            FailureReason = reason
+        }, cancellationToken);
+
+        return new AuthenticationResponse(false, returnedUser, returnedStatus);
     }
 
     private async Task<AuthenticationResponse> CompleteSuccessfulLoginAsync(
@@ -149,4 +143,13 @@ public sealed class AuthenticationPipeline(
         await transaction.CommitAsync(cancellationToken);
         return new AuthenticationResponse(true, user, status, claims);
     }
+
+    private sealed record CredentialLifecycleContext(
+        IUser User,
+        UserCredential? Credential,
+        UserCredential? OriginalCredential,
+        AuthenticationResult Result,
+        IAuthenticationProvider Provider,
+        AuthenticationContext Context,
+        AuthenticationStatus Status);
 }

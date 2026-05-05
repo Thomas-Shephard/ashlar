@@ -1,0 +1,155 @@
+using Ashlar.Auditing;
+using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.Models;
+using Microsoft.Extensions.Options;
+
+namespace Ashlar.Identity.Providers.RecoveryCode;
+
+/// <summary>
+/// Implements services for managing user recovery codes.
+/// </summary>
+public sealed class RecoveryCodeService : IRecoveryCodeService
+{
+    private readonly IIdentityRepository _repository;
+    private readonly IAshlarTransactionProvider _transactionProvider;
+    private readonly Security.Hashing.PasswordHasherSelector _hasherSelector;
+    private readonly RecoveryCodeOptions _options;
+    private readonly TimeProvider _timeProvider;
+    private readonly SecurityEventEmitter _securityEvents;
+
+    public RecoveryCodeService(
+        IIdentityRepository repository,
+        IAshlarTransactionProvider transactionProvider,
+        Security.Hashing.PasswordHasherSelector hasherSelector,
+        IOptions<RecoveryCodeOptions> options,
+        TimeProvider? timeProvider = null,
+        ISecurityEventSink? securityEventSink = null)
+    {
+        ArgumentNullException.ThrowIfNull(repository);
+        ArgumentNullException.ThrowIfNull(transactionProvider);
+        ArgumentNullException.ThrowIfNull(hasherSelector);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(options.Value);
+
+        _repository = repository;
+        _transactionProvider = transactionProvider;
+        _hasherSelector = hasherSelector;
+        _options = options.Value;
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> GenerateRecoveryCodesAsync(Guid userId, RecoveryCodeGenerationRequest? request = null, CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        }
+
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
+
+        // Verify user exists
+        var user = await _repository.GetUserByIdAsync(userId, cancellationToken);
+        if (user == null)
+        {
+            throw new InvalidOperationException($"User with ID '{userId}' not found.");
+        }
+
+        var codeCount = request?.CodeCount ?? _options.CodeCount;
+        if (codeCount <= 0 || codeCount > _options.CodeCount * 2)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), "Requested code count exceeds the maximum allowed limit.");
+        }
+
+        if (_options.CodeLength <= 0 || _options.GroupSize <= 0)
+        {
+            throw new InvalidOperationException("Recovery code length and group size must be greater than zero.");
+        }
+
+        var expiresAfter = request?.ExpiresAfter ?? _options.ExpiresAfter;
+        if (expiresAfter.HasValue && expiresAfter.Value <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), "Expiration duration must be a positive time span.");
+        }
+
+        // Revoke existing recovery codes if requested
+        if (request?.ReplaceExisting ?? true)
+        {
+            await _repository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
+        }
+
+        var rawCodes = new List<string>();
+        var now = _timeProvider.GetUtcNow();
+        var expiresAt = expiresAfter.HasValue ? now.Add(expiresAfter.Value) : (DateTimeOffset?)null;
+
+        for (int i = 0; i < codeCount; i++)
+        {
+            var idCode = RecoveryCodeGenerator.GenerateCode(5, 5);
+            var secretCode = RecoveryCodeGenerator.GenerateCode(_options.CodeLength, _options.GroupSize);
+            var rawCode = $"{idCode}-{secretCode}";
+            rawCodes.Add(rawCode);
+
+            var hashedCode = PasswordCredentialHashing.HashToBase64(_hasherSelector, secretCode);
+
+            var credential = new UserCredential
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                ProviderType = _options.ProviderKey.Type,
+                ProviderName = _options.ProviderKey.Name,
+                ProviderKey = $"{userId:N}-{idCode}",
+                CredentialValue = hashedCode,
+                Purpose = "recovery-code",
+                Status = CredentialStatus.Active,
+                CreatedAt = now,
+                Version = Guid.NewGuid().ToString("N"),
+                ExpiresAt = expiresAt
+            };
+
+            await _repository.CreateCredentialAsync(credential, cancellationToken);
+        }
+
+        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = userId,
+            Provider = _options.ProviderKey,
+            Properties = new Dictionary<string, string>
+            {
+                ["count"] = codeCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            }
+        }, ct));
+
+        await transaction.CommitAsync(cancellationToken);
+
+        return rawCodes;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> RevokeRecoveryCodesAsync(Guid userId, string? reason = null, CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        }
+
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
+
+        var count = await _repository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
+
+        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.RecoveryCodesRevoked,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = userId,
+            Provider = _options.ProviderKey,
+            Properties = reason != null ? new Dictionary<string, string> { ["reason"] = reason } : null
+        }, ct));
+
+        await transaction.CommitAsync(cancellationToken);
+
+        return count;
+    }
+}

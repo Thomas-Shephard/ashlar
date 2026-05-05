@@ -509,14 +509,16 @@ public sealed class MagicLinkSignInTests
             return Task.FromResult(removed);
         }
 
-        public Task RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default)
+        public Task<int> RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default)
         {
-            foreach (var c in Credentials.Where(c => c.UserId == userId && c.ProviderType == type && string.Equals(c.ProviderName, providerName, StringComparison.OrdinalIgnoreCase)))
+            var count = 0;
+            foreach (var c in Credentials.Where(c => c.UserId == userId && c.ProviderType == type && string.Equals(c.ProviderName, providerName, StringComparison.OrdinalIgnoreCase) && c.Status == CredentialStatus.Active))
             {
                 c.Status = CredentialStatus.Revoked;
                 c.RevokedAt = DateTimeOffset.UtcNow;
+                count++;
             }
-            return Task.CompletedTask;
+            return Task.FromResult(count);
         }
     }
 }

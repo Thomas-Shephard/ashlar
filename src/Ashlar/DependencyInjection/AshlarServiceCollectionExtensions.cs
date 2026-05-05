@@ -5,6 +5,7 @@ using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Providers.Email;
+using Ashlar.Identity.Providers.RecoveryCode;
 using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
@@ -206,6 +207,29 @@ public static class AshlarServiceCollectionExtensions
         services.TryAddScoped(provider => provider.GetServices<IAuthenticationProvider>().OfType<MagicLinkAuthenticationProvider>().First());
         services.TryAddScoped<MagicLinkSignInDependencies>();
         services.TryAddScoped<IMagicLinkSignInService, MagicLinkSignInService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers Ashlar's recovery code authentication provider and management service.
+    /// </summary>
+    public static IServiceCollection AddAshlarRecoveryCodes(
+        this IServiceCollection services,
+        Action<RecoveryCodeOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.AddOptions();
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, RecoveryCodeAuthenticationProvider>());
+        services.TryAddScoped<IRecoveryCodeService, RecoveryCodeService>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IPasswordHasher, PasswordHasherV1>());
 
         return services;
     }

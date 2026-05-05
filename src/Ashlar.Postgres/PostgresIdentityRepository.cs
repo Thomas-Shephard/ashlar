@@ -271,7 +271,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         }
     }
 
-    public async Task RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default)
+    public async Task<int> RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerName);
 
@@ -288,7 +288,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         await using (connectionHandle)
         {
             var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            await connectionHandle.Connection.ExecuteAsync(command);
+            return await connectionHandle.Connection.ExecuteAsync(command);
         }
     }
 
