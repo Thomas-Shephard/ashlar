@@ -67,6 +67,24 @@ CREATE TABLE IF NOT EXISTS ashlar_rate_limits (
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_rate_limits_expires_at ON ashlar_rate_limits (expires_at);
 
+CREATE TABLE IF NOT EXISTS ashlar_invitations (
+    id UUID PRIMARY KEY,
+    email TEXT NOT NULL,
+    normalized_email TEXT NOT NULL,
+    tenant_id UUID,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ NOT NULL,
+    accepted_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+    metadata JSONB,
+    version TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_email_tenant ON ashlar_invitations (normalized_email, tenant_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_expires_at ON ashlar_invitations (expires_at);
+
 CREATE TABLE IF NOT EXISTS ashlar_security_events (
     id UUID PRIMARY KEY,
     event_type TEXT NOT NULL,

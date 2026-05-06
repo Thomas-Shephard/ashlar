@@ -29,4 +29,8 @@ public static class AshlarSecurityEventTypes
     public const string SessionExpired = "ashlar.session.expired";
     public const string SessionRevoked = "ashlar.session.revoked";
     public const string SessionsRevokedForUser = "ashlar.session.revoked_for_user";
+    public const string InvitationCreated = "ashlar.invitation.created";
+    public const string InvitationAccepted = "ashlar.invitation.accepted";
+    public const string InvitationRevoked = "ashlar.invitation.revoked";
+    public const string InvitationRateLimited = "ashlar.invitation.rate_limited";
 }
