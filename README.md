@@ -117,6 +117,52 @@ await emailCodes.RequestCodeAsync(email, context);
 var authenticationResult = await emailCodes.VerifyCodeAsync(email, code, context);
 ```
 
+## Invitations
+Ashlar includes a generic invitation and onboarding flow that supports inviting users by email address, even when they do not yet exist in the system.
+
+Register invitation services:
+
+```csharp
+services.AddAshlarInvitations(options =>
+{
+    options.DefaultExpiry = TimeSpan.FromDays(7);
+    options.EmailSubject = "You're invited!";
+    options.EmailTextTemplate = "Join us here: {0}";
+});
+```
+
+Create an invitation:
+
+```csharp
+var invitations = httpContext.RequestServices.GetRequiredService<IInvitationService>();
+
+await invitations.CreateInvitationAsync(
+    new CreateInvitationRequest 
+    { 
+        Email = "invitee@example.com",
+        Metadata = "{\"role\": \"editor\"}"
+    },
+    new Uri("https://app.example.com/join"));
+```
+
+Accept an invitation:
+
+```csharp
+var result = await invitations.AcceptInvitationAsync(
+    new AcceptInvitationRequest 
+    { 
+        Token = tokenFromUrl,
+        UserName = "Jane Doe"
+    });
+
+if (result.Succeeded)
+{
+    var userId = result.UserId!.Value;
+}
+```
+
+`CreateInvitationAsync` generates a high-entropy token, stores its hash, and sends an invitation link via `IEmailSender`. When an invitation is accepted, Ashlar automatically creates a new active user if one does not exist, or activates/links an existing inactive user. Acceptance is atomic and single-use.
+
 ## Recovery Codes
 Ashlar includes a framework-neutral service for generating and verifying backup recovery codes. These are typically used as a fallback authentication method when a user loses access to their primary multi-factor authentication device.
 
@@ -218,6 +264,13 @@ Cookie defaults are intentionally secure: `HttpOnly = true`, `SecurePolicy = Alw
 Ashlar includes framework-neutral rate limiting primitives to protect sensitive authentication flows. `AddAshlarIdentity` registers a thread-safe `InMemoryAuthenticationRateLimiter` by default. 
 
 **Note**: The default in-memory rate limiter is suitable for development and single-instance deployments. Distributed production applications should implement and register a persistent/distributed `IAuthenticationRateLimiter`.
+
+If your rate limiting strategy depends on the client's IP address, you must protect your endpoints against requests where the IP address cannot be determined (which could bypass the rate limit). Ashlar provides the `UseAshlarRequireIpAddress` middleware for this purpose:
+
+```csharp
+// Returns a 400 Bad Request if the client IP is missing
+app.UseAshlarRequireIpAddress();
+```
 
 The **Ashlar.Postgres** package includes a PostgreSQL-backed implementation that uses row-level locking for atomic distributed limiting. Register it using:
 

@@ -28,6 +28,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
         services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
         services.TryAddScoped<IIdentityRepository, PostgresIdentityRepository>();
+        services.TryAddScoped<IInvitationRepository, PostgresInvitationRepository>();
         services.TryAddScoped<IAuthenticationSessionRepository, PostgresAuthenticationSessionRepository>();
         services.TryAddTransient<SchemaManager>();
 
@@ -49,6 +50,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
         services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
         services.TryAddScoped<IIdentityRepository, PostgresIdentityRepository>();
+        services.TryAddScoped<IInvitationRepository, PostgresInvitationRepository>();
         services.TryAddScoped<IAuthenticationSessionRepository, PostgresAuthenticationSessionRepository>();
         services.TryAddTransient<SchemaManager>();
 

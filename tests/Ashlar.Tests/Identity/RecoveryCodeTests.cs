@@ -336,6 +336,30 @@ public class RecoveryCodeTests
     }
 
     [Test]
+    public async Task ProviderResolveCredentialAsyncReturnsNullIfCredentialIsMissing()
+    {
+        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
+        var rateLimiter = new Mock<IAuthenticationRateLimiter>();
+        var options = Options.Create(new RecoveryCodeOptions());
+        var repository = new Mock<IIdentityRepository>();
+        var userId = Guid.NewGuid();
+        var rawCode = "code1-ABCD-EFGH-IJKL";
+
+        rateLimiter.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Allowed, Remaining = 5, WindowResetAt = DateTimeOffset.UtcNow });
+
+        repository.Setup(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserCredential?)null);
+
+        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, rateLimiter.Object, options);
+        var assertion = new RecoveryCodeAssertion(rawCode);
+
+        var result = await provider.ResolveCredentialAsync(userId, assertion, repository.Object);
+
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
     public async Task ProviderResolveCredentialAsyncReturnsNullIfExpired()
     {
         var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);

@@ -235,6 +235,34 @@ public static class AshlarServiceCollectionExtensions
     }
 
     /// <summary>
+    /// Registers Ashlar's generic invitation and onboarding services.
+    /// </summary>
+    /// <remarks>
+    /// This method intentionally does not register <see cref="IInvitationRepository"/> or
+    /// <see cref="IIdentityRepository"/>. Applications should provide those dependencies explicitly,
+    /// such as by using Ashlar.Postgres or custom repository implementations.
+    /// </remarks>
+    public static IServiceCollection AddAshlarInvitations(
+        this IServiceCollection services,
+        Action<InvitationOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.AddOptions();
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddScoped<IInvitationService, InvitationService>();
+        services.TryAddScoped<InvitationStoreContext>();
+        services.TryAddScoped<InvitationDependencies>();
+
+        return services;
+    }
+
+    /// <summary>
     /// Registers <see cref="DataProtectionSecretProtector"/> as Ashlar's secret protector.
     /// </summary>
     /// <remarks>
