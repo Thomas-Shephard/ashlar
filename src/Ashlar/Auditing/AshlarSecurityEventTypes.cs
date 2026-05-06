@@ -33,4 +33,11 @@ public static class AshlarSecurityEventTypes
     public const string InvitationAccepted = "ashlar.invitation.accepted";
     public const string InvitationRevoked = "ashlar.invitation.revoked";
     public const string InvitationRateLimited = "ashlar.invitation.rate_limited";
+    public const string AuthenticationHandshakeCreated = "ashlar.authentication.handshake.created";
+    public const string AuthenticationHandshakeFactorVerified = "ashlar.authentication.handshake.factor_verified";
+    public const string AuthenticationHandshakeCompleted = "ashlar.authentication.handshake.completed";
+    public const string AuthenticationHandshakeRevoked = "ashlar.authentication.handshake.revoked";
+    public const string AuthenticationHandshakeExpired = "ashlar.authentication.handshake.expired";
+    public const string AuthenticationHandshakeFailed = "ashlar.authentication.handshake.failed";
+    public const string AuthenticationHandshakeVerificationRateLimited = "ashlar.authentication.handshake.verification_rate_limited";
 }

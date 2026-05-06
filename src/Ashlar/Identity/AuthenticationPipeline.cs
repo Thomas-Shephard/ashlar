@@ -30,7 +30,7 @@ public sealed class AuthenticationPipeline(
         var (user, credential, originalCredential, unprotectFailed) = await _credentialService.ResolveAsync(context, assertion, provider, cancellationToken);
 
         var result = await provider.AuthenticateAsync(assertion, credential, cancellationToken);
-        if (unprotectFailed || result.Status is not (AuthenticationResultStatus.Succeeded or AuthenticationResultStatus.SucceededWithCredentialUpdate) || user == null)
+        if (unprotectFailed || result.Status is not (AuthenticationResultStatus.Succeeded or AuthenticationResultStatus.SucceededWithCredentialUpdate or AuthenticationResultStatus.MfaRequired) || user == null)
         {
             var reason = unprotectFailed ? SecurityEventFailureReasons.UnprotectFailed : SecurityEventFailureReasons.InvalidCredentials;
             return await RecordFailureAsync(context, provider.Key, user?.Id, reason, cancellationToken);
@@ -39,6 +39,11 @@ public sealed class AuthenticationPipeline(
         if (!user.IsActive)
         {
             return await RecordFailureAsync(context, provider.Key, user.Id, SecurityEventFailureReasons.UserDisabled, cancellationToken, user, AuthenticationStatus.Disabled);
+        }
+
+        if (result.Status == AuthenticationResultStatus.MfaRequired)
+        {
+            return new AuthenticationResponse(false, user, AuthenticationStatus.MfaRequired, result.Claims);
         }
 
         var status = result.Status == AuthenticationResultStatus.SucceededWithCredentialUpdate ? AuthenticationStatus.SuccessWithCredentialUpdate : AuthenticationStatus.Success;

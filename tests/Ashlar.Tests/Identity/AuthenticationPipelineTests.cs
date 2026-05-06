@@ -108,6 +108,37 @@ public class AuthenticationPipelineTests
     }
 
     [Test]
+    public async Task LoginAsyncWithMfaRequiredShouldReturnMfaRequiredWithoutCredentialUsageUpdate()
+    {
+        var context = new AuthenticationContext("test@example.com");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var credential = CreateCredential(user.Id);
+        var claims = new Dictionary<string, string> { ["amr"] = "pwd" };
+        var result = new AuthenticationResult(AuthenticationResultStatus.MfaRequired, claims);
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.User, Is.SameAs(user));
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.MfaRequired));
+            Assert.That(response.Claims, Is.SameAs(claims));
+        }
+
+        _credentialServiceMock.Verify(
+            s => s.UpdateCredentialUsageAsync(It.IsAny<UserCredential>(), It.IsAny<UserCredential?>(), It.IsAny<AuthenticationResult>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Test]
     public async Task LoginAsyncWithSuccessfulAuthenticationShouldUpdateCredentialAndReturnClaims()
     {
         var context = new AuthenticationContext("test@example.com");

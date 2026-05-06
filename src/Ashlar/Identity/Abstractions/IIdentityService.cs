@@ -20,7 +20,8 @@ public enum AuthenticationStatus
     Failed = 0,
     Success = 1,
     SuccessWithCredentialUpdate = 2,
-    Disabled = 3
+    Disabled = 3,
+    MfaRequired = 4
 }
 
 public sealed record AuthenticationResponse(
