@@ -280,4 +280,31 @@ public static class AshlarServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Registers Ashlar's generic multi-factor authentication handshake infrastructure.
+    /// </summary>
+    public static IServiceCollection AddAshlarMfaHandshakes(
+        this IServiceCollection services,
+        Action<AuthenticationHandshakeOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.AddOptions();
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<AuthenticationHandshakeOptions>>().Value);
+        services.TryAddScoped(provider => new AuthenticationHandshakeServiceDependencies(
+            provider.GetRequiredService<IOptions<AuthenticationHandshakeOptions>>(),
+            provider.GetService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>(),
+            provider.GetService<IAuthenticationRateLimiter>()));
+        services.TryAddScoped<IAuthenticationHandshakeService, AuthenticationHandshakeService>();
+
+        return services;
+    }
 }

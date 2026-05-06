@@ -103,3 +103,19 @@ CREATE TABLE IF NOT EXISTS ashlar_security_events (
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_events_occurred_at ON ashlar_security_events (occurred_at);
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_events_user_id ON ashlar_security_events (user_id);
+
+CREATE TABLE IF NOT EXISTS ashlar_mfa_handshakes (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    is_revoked BOOLEAN NOT NULL DEFAULT FALSE,
+    is_completed BOOLEAN NOT NULL DEFAULT FALSE,
+    required_factors JSONB NOT NULL,
+    verified_factors JSONB NOT NULL,
+    metadata JSONB
+);
+
+CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_user_id ON ashlar_mfa_handshakes (user_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_expires_at ON ashlar_mfa_handshakes (expires_at) WHERE is_revoked = FALSE AND is_completed = FALSE;

@@ -205,6 +205,48 @@ if (authenticationResponse.Succeeded)
 }
 ```
 
+## Multi-Factor Authentication (MFA) Handshakes
+Ashlar includes a generic infrastructure for tracking multi-step authentication flows through "handshakes". This allows primary authentication (like passwords) to be verified while requiring additional factors before a final session is issued.
+
+Register MFA handshake services:
+
+```csharp
+services.AddAshlarMfaHandshakes(options =>
+{
+    options.Expiry = TimeSpan.FromMinutes(15);
+});
+```
+
+`AddAshlarMfaHandshakes()` registers the service layer only. Applications must also register an `IAuthenticationHandshakeRepository` implementation, such as by calling `AddAshlarPostgres(connectionString)`, or provide their own repository.
+
+When a user's primary authentication succeeds but MFA is required, initiate a handshake:
+
+```csharp
+var handshakeService = httpContext.RequestServices.GetRequiredService<IAuthenticationHandshakeService>();
+
+var (handshake, token) = await handshakeService.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(
+    userId,
+    RequiredFactors: ["totp"]));
+
+// Return the 'token' to the client. It will be needed to verify factors.
+```
+
+Verify a factor to continue or complete the handshake:
+
+```csharp
+var result = await handshakeService.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest(
+    HandshakeToken: tokenFromClient,
+    FactorType: "totp"));
+
+if (result.Succeeded && result.Handshake!.IsCompleted)
+{
+    // All required factors verified! Create the final session.
+    await signInManager.SignInAsync(httpContext, result.Handshake.UserId);
+}
+```
+
+Handshakes are time-limited, single-use, and stored as hashed continuation tokens. They track generic "factor types" allowing applications to implement any MFA method (TOTP, Email Code, Passkeys, etc.) and integrate them into a unified handshake flow.
+
 When supplied to `CreateSessionAsync`, session IP address, user agent, and metadata are persisted by default. These values can contain personal data, so applications should only pass them when their privacy policy and security requirements allow it. Use `AuthenticationSessionOptions.StoreIpAddress`, `StoreUserAgent`, and `StoreMetadata` to opt out, and tune the max-length options if the defaults do not fit your storage policy.
 
 ```csharp

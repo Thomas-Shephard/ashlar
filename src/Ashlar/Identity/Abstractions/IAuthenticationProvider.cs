@@ -98,7 +98,8 @@ public enum AuthenticationResultStatus
 {
     Failed = 0,
     Succeeded = 1,
-    SucceededWithCredentialUpdate = 2
+    SucceededWithCredentialUpdate = 2,
+    MfaRequired = 3
 }
 
 /// <summary>

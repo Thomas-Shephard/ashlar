@@ -77,6 +77,27 @@ public sealed class SecurityAuditEventTests
     }
 
     [Test]
+    public async Task MfaRequiredLoginDoesNotEmitFailureEvent()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sink);
+        var context = CreateContext();
+
+        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.MfaRequired));
+
+        var response = await pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.MfaRequired));
+            Assert.That(sink.Events, Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task DisabledUserLoginEmitsDisabledFailureEvent()
     {
         var sink = new RecordingSecurityEventSink();
