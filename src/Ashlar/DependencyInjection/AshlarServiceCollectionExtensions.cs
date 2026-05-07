@@ -307,4 +307,27 @@ public static class AshlarServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Registers Ashlar's MFA policy and authentication orchestration services.
+    /// </summary>
+    public static IServiceCollection AddAshlarMfaOrchestration(
+        this IServiceCollection services,
+        Action<MfaOrchestrationOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.AddAshlarMfaHandshakes();
+        services.AddOptions();
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddScoped<IMfaPolicyEvaluator, MfaPolicyEvaluator>();
+        services.TryAddScoped<IAuthenticationOrchestrator, AuthenticationOrchestrator>();
+
+        return services;
+    }
 }
