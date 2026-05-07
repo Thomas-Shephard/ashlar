@@ -7,4 +7,5 @@ public sealed record AuthenticationContext(
     string? UserAgent = null,
     string? CorrelationId = null,
     string? ReturnUrl = null,
-    IReadOnlyDictionary<string, string>? Items = null);
+    IReadOnlyDictionary<string, string>? Items = null,
+    Guid? UserId = null);

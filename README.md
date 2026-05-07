@@ -205,6 +205,53 @@ if (authenticationResponse.Succeeded)
 }
 ```
 
+## MFA Policy and Orchestration
+Ashlar provides a high-level orchestration layer that connects primary authentication to MFA policy enforcement and handshake management. This allows applications to define generic MFA requirements and manage the multi-step verification process.
+
+Register the orchestration services:
+
+```csharp
+services.AddAshlarMfaOrchestration();
+```
+
+Perform a primary authentication that might require MFA:
+
+```csharp
+var orchestrator = httpContext.RequestServices.GetRequiredService<IAuthenticationOrchestrator>();
+
+var result = await orchestrator.AuthenticateAsync(
+    new AuthenticationContext(IpAddress: ip),
+    new LocalPasswordAssertion(email, password));
+
+if (result.Status == MfaAuthenticationStatus.MfaRequired)
+{
+    // Primary auth succeeded, but MFA is required.
+    // Send the raw continuation token and required factors to the client.
+    return Results.Ok(new { 
+        token = result.HandshakeToken, 
+        factors = result.RequiredFactors 
+    });
+}
+```
+
+Verify an additional factor using the continuation token:
+
+```csharp
+var result = await orchestrator.VerifyFactorAsync(
+    tokenFromClient,
+    "email_code",
+    new AuthenticationContext(IpAddress: ip),
+    new EmailCodeAssertion(code));
+
+if (result.Status == MfaAuthenticationStatus.Succeeded)
+{
+    // All factors verified! Now create the session.
+    await signInManager.SignInAsync(httpContext, result.User!.Id, result.Claims);
+}
+```
+
+The orchestrator ensures that factor verification happens through the same provider machinery as primary authentication. It also aggregates claims from all authentication steps into the final result.
+
 ## Multi-Factor Authentication (MFA) Handshakes
 Ashlar includes a generic infrastructure for tracking multi-step authentication flows through "handshakes". This allows primary authentication (like passwords) to be verified while requiring additional factors before a final session is issued.
 
