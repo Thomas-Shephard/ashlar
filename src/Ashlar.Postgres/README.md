@@ -48,5 +48,69 @@ This will create the following tables:
 - **Case-Insensitive Identity**: Emails are normalized and looked up case-insensitively using optimized indexes.
 - **Modern Npgsql**: Built for `NpgsqlDataSource` and .NET 8+.
 
+## Email Outbox
+
+The PostgreSQL-backed email outbox allows you to persist email messages durably within your database transactions and dispatch them asynchronously.
+
+### Registration
+
+Register the outbox sender and the hosted dispatcher in `Program.cs`:
+
+```csharp
+// Register the outbox sender (implements IEmailSender)
+services.AddAshlarPostgresEmailOutbox();
+
+// Register the hosted dispatcher with a custom transport
+services.AddAshlarPostgresEmailOutboxHostedService<MySmtpTransport>(options =>
+{
+    options.BatchSize = 100;
+    options.PollingInterval = TimeSpan.FromSeconds(5);
+    options.MaxAttempts = 10;
+});
+```
+
+### Implementing a Transport
+
+The dispatcher requires an implementation of `IEmailTransport` to physically deliver the messages:
+
+```csharp
+public class MySmtpTransport : IEmailTransport
+{
+    public async Task DeliverAsync(EmailMessage message, CancellationToken cancellationToken = default)
+    {
+        // Use your preferred SMTP client or API to send the email
+        // ...
+    }
+}
+```
+
+### Transactional Integrity
+
+When using `AddAshlarPostgresEmailOutbox`, calling `IEmailSender.SendAsync` inside an Ashlar PostgreSQL transaction will automatically include the message in that transaction:
+
+```csharp
+await using (var tx = await transactionProvider.BeginTransactionAsync())
+{
+    // ... perform identity operations ...
+
+    // This message is only persisted if the transaction commits
+    await emailSender.SendAsync(new EmailMessage("user@example.com", "Welcome", "Hello!"));
+
+    await tx.CommitAsync();
+}
+```
+
+### Cleanup and Retention
+
+The email outbox integrates with the Ashlar cleanup service. You can configure retention periods via `AshlarCleanupOptions`:
+
+```csharp
+services.Configure<AshlarCleanupOptions>(options =>
+{
+    options.RemoveSentEmailsAfter = TimeSpan.FromDays(7);
+    options.RemoveFailedEmailsAfter = TimeSpan.FromDays(30);
+});
+```
+
 Session token hashing assumes the application session-issuing code creates high-entropy random tokens.
 Ashlar uses a dedicated fast session token hasher rather than password hashing because session tokens are server-generated secrets that are checked frequently.

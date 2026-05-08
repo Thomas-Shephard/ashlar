@@ -127,3 +127,32 @@ CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_user_id ON ashlar_mfa_handsh
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_expires_at ON ashlar_mfa_handshakes (expires_at) WHERE is_revoked = FALSE AND is_completed = FALSE;
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_completed_at ON ashlar_mfa_handshakes (completed_at) WHERE completed_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_revoked_at ON ashlar_mfa_handshakes (revoked_at) WHERE revoked_at IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS ashlar_email_outbox (
+    id UUID PRIMARY KEY,
+    to_address TEXT NOT NULL,
+    from_address TEXT,
+    reply_to_address TEXT,
+    subject TEXT NOT NULL,
+    text_body TEXT,
+    html_body TEXT,
+    headers JSONB,
+    metadata JSONB,
+    created_at TIMESTAMPTZ NOT NULL,
+    available_at TIMESTAMPTZ NOT NULL,
+    locked_until TIMESTAMPTZ,
+    locked_by TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at TIMESTAMPTZ,
+    sent_at TIMESTAMPTZ,
+    failed_at TIMESTAMPTZ,
+    last_error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_pending ON ashlar_email_outbox (available_at)
+WHERE sent_at IS NULL AND failed_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_created_at ON ashlar_email_outbox (created_at);
+CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_locked_until ON ashlar_email_outbox (locked_until) WHERE locked_until IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_sent_at ON ashlar_email_outbox (sent_at) WHERE sent_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_failed_at ON ashlar_email_outbox (failed_at) WHERE failed_at IS NOT NULL;
