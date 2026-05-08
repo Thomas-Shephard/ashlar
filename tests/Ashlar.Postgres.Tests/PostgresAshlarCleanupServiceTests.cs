@@ -45,7 +45,7 @@ public sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
     {
         await using var connection = await GetDataSource().OpenConnectionAsync();
         await connection.ExecuteAsync("""
-            TRUNCATE ashlar_security_events, ashlar_rate_limits, ashlar_mfa_handshakes, ashlar_invitations, ashlar_sessions, ashlar_credentials, ashlar_users;
+            TRUNCATE ashlar_security_events, ashlar_rate_limits, ashlar_mfa_handshakes, ashlar_invitations, ashlar_sessions, ashlar_credentials, ashlar_authorization_grants, ashlar_users;
             """);
     }
 
@@ -72,6 +72,8 @@ public sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
             Assert.That(result.RevokedSessions, Is.EqualTo(1));
             Assert.That(result.ExpiredCredentials, Is.EqualTo(1));
             Assert.That(result.RevokedCredentials, Is.EqualTo(1));
+            Assert.That(result.ExpiredAuthorizationGrants, Is.EqualTo(1));
+            Assert.That(result.RevokedAuthorizationGrants, Is.EqualTo(1));
             Assert.That(result.ExpiredInvitations, Is.EqualTo(1));
             Assert.That(result.AcceptedInvitations, Is.EqualTo(1));
             Assert.That(result.RevokedInvitations, Is.EqualTo(1));
@@ -87,6 +89,7 @@ public sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
         {
             Assert.That(await CountAsync(connection, "ashlar_sessions"), Is.EqualTo(2));
             Assert.That(await CountAsync(connection, "ashlar_credentials"), Is.EqualTo(2));
+            Assert.That(await CountAsync(connection, "ashlar_authorization_grants"), Is.EqualTo(2));
             Assert.That(await CountAsync(connection, "ashlar_invitations"), Is.EqualTo(3));
             Assert.That(await CountAsync(connection, "ashlar_mfa_handshakes"), Is.EqualTo(3));
             Assert.That(await CountAsync(connection, "ashlar_rate_limits"), Is.EqualTo(1));
@@ -258,6 +261,12 @@ public sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
             (@c3, @userId, 'local', 'password', 'active', 'v1', @now, @future, NULL, 1),
             (@c4, @userId, 'local', 'password', 'recent-revoked', 'v1', @now, NULL, @recent, 2);
 
+            INSERT INTO ashlar_authorization_grants (id, user_id, permission, created_at, expires_at, revoked_at) VALUES
+            (@g1, @userId, 'expired', @old, @old, NULL),
+            (@g2, @userId, 'revoked', @old, NULL, @old),
+            (@g3, @userId, 'active', @now, @future, NULL),
+            (@g4, @userId, 'recent-revoked', @now, NULL, @recent);
+
             INSERT INTO ashlar_invitations (id, email, normalized_email, token_hash, created_at, expires_at, accepted_at, revoked_at, version) VALUES
             (@i1, 'a@example.com', 'a@example.com', 'expired-invite', @old, @old, NULL, NULL, 'v1'),
             (@i2, 'b@example.com', 'b@example.com', 'accepted-invite', @old, @future, @old, NULL, 'v1'),
@@ -298,6 +307,10 @@ public sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
             c2 = Guid.NewGuid(),
             c3 = Guid.NewGuid(),
             c4 = Guid.NewGuid(),
+            g1 = Guid.NewGuid(),
+            g2 = Guid.NewGuid(),
+            g3 = Guid.NewGuid(),
+            g4 = Guid.NewGuid(),
             i1 = Guid.NewGuid(),
             i2 = Guid.NewGuid(),
             i3 = Guid.NewGuid(),

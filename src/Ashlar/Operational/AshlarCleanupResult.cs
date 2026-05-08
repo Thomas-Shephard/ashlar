@@ -14,7 +14,9 @@ public sealed record AshlarCleanupResult(
     int ExpiredRateLimits,
     int AuditEvents,
     int SentEmails,
-    int FailedEmails)
+    int FailedEmails,
+    int ExpiredAuthorizationGrants = 0,
+    int RevokedAuthorizationGrants = 0)
 {
     public static AshlarCleanupResult Empty { get; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
@@ -23,6 +25,8 @@ public sealed record AshlarCleanupResult(
         + RevokedSessions
         + ExpiredCredentials
         + RevokedCredentials
+        + ExpiredAuthorizationGrants
+        + RevokedAuthorizationGrants
         + ExpiredInvitations
         + AcceptedInvitations
         + RevokedInvitations
@@ -52,6 +56,8 @@ public sealed record AshlarCleanupResult(
             ExpiredRateLimits + other.ExpiredRateLimits,
             AuditEvents + other.AuditEvents,
             SentEmails + other.SentEmails,
-            FailedEmails + other.FailedEmails);
+            FailedEmails + other.FailedEmails,
+            ExpiredAuthorizationGrants + other.ExpiredAuthorizationGrants,
+            RevokedAuthorizationGrants + other.RevokedAuthorizationGrants);
     }
 }

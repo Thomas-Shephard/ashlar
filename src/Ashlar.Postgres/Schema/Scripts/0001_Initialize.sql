@@ -38,6 +38,33 @@ CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_user_id ON ashlar_credentials (
 CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_expires_at ON ashlar_credentials (expires_at) WHERE expires_at IS NOT NULL AND revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_revoked_at ON ashlar_credentials (revoked_at) WHERE revoked_at IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS ashlar_authorization_grants (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
+    tenant_id UUID,
+    scope_type TEXT,
+    scope_id TEXT,
+    role TEXT,
+    permission TEXT,
+    created_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+    metadata JSONB,
+    CONSTRAINT ck_ashlar_authorization_grants_role_or_permission CHECK (
+        (role IS NOT NULL AND permission IS NULL) OR (role IS NULL AND permission IS NOT NULL)
+    ),
+    CONSTRAINT ck_ashlar_authorization_grants_scope CHECK (
+        (scope_type IS NULL AND scope_id IS NULL) OR (scope_type IS NOT NULL AND scope_id IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_user_id ON ashlar_authorization_grants (user_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_tenant_id ON ashlar_authorization_grants (tenant_id) WHERE tenant_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_scope ON ashlar_authorization_grants (scope_type, scope_id) WHERE scope_type IS NOT NULL AND scope_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_active_user ON ashlar_authorization_grants (user_id, tenant_id, scope_type, scope_id) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_expires_at ON ashlar_authorization_grants (expires_at) WHERE expires_at IS NOT NULL AND revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_revoked_at ON ashlar_authorization_grants (revoked_at) WHERE revoked_at IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS ashlar_sessions (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,

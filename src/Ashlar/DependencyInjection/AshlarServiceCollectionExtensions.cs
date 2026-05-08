@@ -1,6 +1,9 @@
 // ReSharper disable CheckNamespace
 
 using Ashlar.Auditing;
+using Ashlar.Authorization;
+using Ashlar.Authorization.Abstractions;
+using Ashlar.Authorization.Models;
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
@@ -91,6 +94,35 @@ public static class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.TryAddSingleton<IEmailSender, NullEmailSender>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers Ashlar's framework-neutral authorization grant services.
+    /// </summary>
+    /// <remarks>
+    /// This method intentionally does not register <see cref="IAuthorizationGrantRepository"/>.
+    /// Applications should provide that dependency explicitly, such as by using Ashlar.Postgres.
+    /// </remarks>
+    public static IServiceCollection AddAshlarAuthorization(
+        this IServiceCollection services,
+        Action<AuthorizationGrantOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddOptions<AuthorizationGrantOptions>()
+            .Validate(AuthorizationGrantOptions.Validate, "Authorization grant options are invalid.");
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<AuthorizationGrantOptions>>().Value);
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<ISecurityEventSink, NullSecurityEventSink>();
+        services.TryAddScoped<IAuthorizationGrantService, AuthorizationGrantService>();
+        services.TryAddScoped<IAuthorizationEvaluator, AuthorizationEvaluator>();
 
         return services;
     }

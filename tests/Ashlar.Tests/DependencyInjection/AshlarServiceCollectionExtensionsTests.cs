@@ -1,4 +1,7 @@
 using Ashlar.Identity;
+using Ashlar.Authorization;
+using Ashlar.Authorization.Abstractions;
+using Ashlar.Authorization.Models;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Providers.External;
@@ -110,6 +113,39 @@ public class AshlarServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<TimeProvider>(), Is.SameAs(TimeProvider.System));
+    }
+
+    [Test]
+    public void AddAshlarAuthorizationRegistersCoreServicesAndOptions()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarAuthorization(options => options.MaxPermissionLength = 42);
+
+        using var provider = services.BuildServiceProvider();
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertDescriptor<IAuthorizationGrantService, AuthorizationGrantService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IAuthorizationEvaluator, AuthorizationEvaluator>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<AuthorizationGrantOptions>(services, ServiceLifetime.Singleton);
+            Assert.That(provider.GetRequiredService<AuthorizationGrantOptions>().MaxPermissionLength, Is.EqualTo(42));
+            Assert.That(services.Any(d => d.ServiceType == typeof(IAuthorizationGrantRepository)), Is.False);
+        }
+    }
+
+    [Test]
+    public void AddAshlarAuthorizationDoesNotOverrideCustomServices()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<IAuthorizationGrantService, CustomAuthorizationGrantService>();
+
+        services.AddAshlarAuthorization();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantService>(), Is.TypeOf<CustomAuthorizationGrantService>());
     }
 
     [Test]
@@ -346,5 +382,23 @@ public class AshlarServiceCollectionExtensionsTests
     private sealed class CustomEmailSender : IEmailSender
     {
         public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class CustomAuthorizationGrantService : IAuthorizationGrantService
+    {
+        public Task<AuthorizationGrant> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<bool> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IReadOnlyList<AuthorizationGrant>> ListGrantsAsync(ListAuthorizationGrantsRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
     }
 }
