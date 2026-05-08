@@ -117,6 +117,66 @@ await emailCodes.RequestCodeAsync(email, context);
 var authenticationResult = await emailCodes.VerifyCodeAsync(email, code, context);
 ```
 
+## TOTP Authenticator
+Ashlar includes a framework-neutral service for managing and verifying TOTP (Time-based One-Time Password) authenticator factors. These are standard RFC 6238 codes compatible with apps like Google Authenticator, Microsoft Authenticator, and 1Password.
+
+Register TOTP with core identity services:
+
+```csharp
+services.AddAshlarTotp(options =>
+{
+    options.CodeDigits = 6;
+    options.StepSeconds = 30;
+});
+```
+
+### Enrollment
+To enroll a user, generate a new shared secret and an authenticator URI:
+
+```csharp
+// 1. Start enrollment (totpService is ITotpService)
+var enrollment = await totpService.StartEnrollmentAsync(userId, "Ashlar", "user@example.com");
+
+// 2. Return enrollment.AuthenticatorUri to the client for QR code generation.
+// 3. Keep enrollment.SharedSecret temporarily to verify the first code.
+```
+
+The user must verify a code from their authenticator app to finalize enrollment:
+
+```csharp
+// 4. Verify first code and finalize enrollment
+bool success = await totpService.VerifyAndEnrollAsync(userId, sharedSecret, userInputCode);
+```
+
+`VerifyAndEnrollAsync` replaces any existing TOTP credential for the user and stores the new secret as a protected credential value.
+
+### Verification
+To verify a TOTP code during sign-in, use the standard `AuthenticationPipeline` or `AuthenticationOrchestrator` with a `TotpAssertion`:
+
+```csharp
+var orchestrator = httpContext.RequestServices.GetRequiredService<IAuthenticationOrchestrator>();
+
+var result = await orchestrator.VerifyFactorAsync(
+    handshakeToken,
+    "totp",
+    new AuthenticationContext(IpAddress: ip),
+    new TotpAssertion(userInputCode));
+
+if (result.Status == MfaAuthenticationStatus.Succeeded)
+{
+    // TOTP verified!
+}
+```
+
+### Management
+To disable TOTP for a user:
+
+```csharp
+await totpService.DisableTotpAsync(userId);
+```
+
+TOTP verification is automatically throttled by `IAuthenticationRateLimiter` to protect against brute-force attacks. Shared secrets are never stored in raw form; they are always encrypted using `ISecretProtector`.
+
 ## Invitations
 Ashlar includes a generic invitation and onboarding flow that supports inviting users by email address, even when they do not yet exist in the system.
 

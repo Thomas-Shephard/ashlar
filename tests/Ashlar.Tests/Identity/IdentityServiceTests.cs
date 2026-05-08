@@ -207,7 +207,7 @@ public class IdentityServiceTests
         await service.LinkCredentialAsync(userId, assertion, "pass");
 
         providerRegistry.Verify(r => r.TryGetProvider(assertion, out providerObject), Times.Once);
-        credentialService.Verify(s => s.LinkCredentialAsync(userId, assertion, providerObject, "pass", It.IsAny<CancellationToken>()), Times.Once);
+        credentialService.Verify(s => s.LinkCredentialAsync(userId, assertion, providerObject, "pass", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]

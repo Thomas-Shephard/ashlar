@@ -4,8 +4,10 @@ using Ashlar.Auditing;
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Identity.Models.Totp;
 using Ashlar.Identity.Providers.Email;
 using Ashlar.Identity.Providers.RecoveryCode;
+using Ashlar.Identity.Providers.Totp;
 using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
@@ -198,6 +200,8 @@ public static class AshlarServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.AddOptions();
+        services.AddOptions<TotpOptions>()
+            .Validate(TotpOptions.Validate, "TOTP options are invalid.");
         if (configure != null)
         {
             services.Configure(configure);
@@ -230,6 +234,28 @@ public static class AshlarServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, RecoveryCodeAuthenticationProvider>());
         services.TryAddScoped<IRecoveryCodeService, RecoveryCodeService>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IPasswordHasher, PasswordHasherV1>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers Ashlar's TOTP authenticator MFA provider and management service.
+    /// </summary>
+    public static IServiceCollection AddAshlarTotp(
+        this IServiceCollection services,
+        Action<TotpOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.AddOptions();
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, TotpAuthenticationProvider>());
+        services.TryAddScoped<ITotpService, TotpService>();
 
         return services;
     }
