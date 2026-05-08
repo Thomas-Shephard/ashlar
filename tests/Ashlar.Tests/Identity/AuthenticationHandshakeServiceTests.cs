@@ -136,9 +136,10 @@ public sealed class AuthenticationHandshakeServiceTests
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Handshake?.VerifiedFactors, Contains.Item("totp"));
             Assert.That(result.Handshake?.IsCompleted, Is.True);
+            Assert.That(result.Handshake?.CompletedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
         }
 
-        _repositoryMock.Verify(r => r.UpdateAsync(It.Is<AuthenticationHandshake>(h => h.IsCompleted), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.UpdateAsync(It.Is<AuthenticationHandshake>(h => h.IsCompleted && h.CompletedAt == _timeProvider.GetUtcNow()), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -513,7 +514,7 @@ public sealed class AuthenticationHandshakeServiceTests
 
         await _service.RevokeHandshakeAsync("raw-token");
 
-        _repositoryMock.Verify(r => r.UpdateAsync(It.Is<AuthenticationHandshake>(h => h.IsRevoked), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.UpdateAsync(It.Is<AuthenticationHandshake>(h => h.IsRevoked && h.RevokedAt == _timeProvider.GetUtcNow()), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]

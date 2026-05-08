@@ -1,9 +1,11 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.RateLimiting.Abstractions;
+using Ashlar.Operational;
 using Ashlar.Postgres;
 using Ashlar.Postgres.Schema;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Npgsql;
 
 // ReSharper disable CheckNamespace
@@ -85,6 +87,44 @@ public static class AshlarPostgresServiceCollectionExtensions
         }
 
         services.Replace(ServiceDescriptor.Singleton<IAuthenticationRateLimiter, PostgresAuthenticationRateLimiter>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar PostgreSQL cleanup service for explicit cleanup calls.
+    /// </summary>
+    public static IServiceCollection AddAshlarPostgresCleanup(
+        this IServiceCollection services,
+        Action<AshlarCleanupOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddOptions<AshlarCleanupOptions>()
+            .Validate(AshlarCleanupOptions.Validate, "Cleanup options are invalid.");
+
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddScoped<IAshlarCleanupService, PostgresAshlarCleanupService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar PostgreSQL cleanup service and starts a hosted cleanup loop.
+    /// </summary>
+    public static IServiceCollection AddAshlarPostgresCleanupHostedService(
+        this IServiceCollection services,
+        Action<AshlarCleanupOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarPostgresCleanup(configure);
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, PostgresAshlarCleanupHostedService>());
 
         return services;
     }

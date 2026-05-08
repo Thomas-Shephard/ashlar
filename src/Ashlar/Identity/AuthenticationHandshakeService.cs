@@ -161,6 +161,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         {
             VerifiedFactors = verifiedFactors,
             IsCompleted = isCompleted,
+            CompletedAt = isCompleted ? now : handshake.CompletedAt,
             Metadata = MergeMetadata(handshake.Metadata, request.Metadata)
         };
 
@@ -201,7 +202,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         var handshake = await _repository.FindByTokenHashAsync(tokenHash, forUpdate: true, cancellationToken: cancellationToken);
         if (handshake == null || handshake.IsRevoked) return;
 
-        var updatedHandshake = handshake with { IsRevoked = true };
+        var updatedHandshake = handshake with { IsRevoked = true, RevokedAt = _timeProvider.GetUtcNow() };
 
         await _repository.UpdateAsync(updatedHandshake, cancellationToken);
 

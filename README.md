@@ -467,6 +467,47 @@ The PostgreSQL implementation uses the same schema initialized by `InitializeAsh
 
 Callers should choose rate limit keys carefully (e.g., per-email, per-IP, or composite keys) to isolate flows correctly.
 
+## Cleanup and Retention
+Ashlar can explicitly remove expired or retained operational data from PostgreSQL: expired/revoked sessions and credentials, expired/accepted/revoked invitations, expired/completed/revoked MFA handshakes, expired rate-limit rows, and old audit events. Audit-event retention is disabled by default and must be configured intentionally.
+
+Register the cleanup service and call it from an administrative job or maintenance endpoint:
+
+```csharp
+services.AddAshlarPostgres(connectionString);
+services.AddAshlarPostgresCleanup(options =>
+{
+    options.BatchSize = 500;
+    options.MaxBatchesPerRun = 10;
+    options.RemoveAuditEventsAfter = TimeSpan.FromDays(365);
+});
+```
+
+```csharp
+public sealed class MaintenanceJob(IServiceScopeFactory scopeFactory)
+{
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var cleanup = scope.ServiceProvider.GetRequiredService<IAshlarCleanupService>();
+
+        AshlarCleanupResult result = await cleanup.CleanupAsync(cancellationToken);
+    }
+}
+```
+
+Applications that want automatic background cleanup can opt in explicitly:
+
+```csharp
+services.AddAshlarPostgres(connectionString);
+services.AddAshlarPostgresCleanupHostedService(options =>
+{
+    options.CleanupInterval = TimeSpan.FromHours(1);
+    options.RemoveExpiredSessionsAfter = TimeSpan.FromDays(7);
+});
+```
+
+Cleanup uses bounded batches and the application's `TimeProvider`, so repeated or concurrent runs are safe and deterministic in tests. `MaxBatchesPerRun` lets one cleanup run catch up on backlog without making the run unbounded.
+
 ## Transactions
 Ashlar supports scoped database transactions through the `IAshlarTransactionProvider` abstraction. This allows multiple repository operations within a single service scope to participate in a shared unit of work.
 

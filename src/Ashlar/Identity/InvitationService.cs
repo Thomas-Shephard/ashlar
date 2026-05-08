@@ -42,7 +42,7 @@ public sealed class InvitationService(
                 EventType = AshlarSecurityEventTypes.InvitationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
                 FailureReason = "rate_limited",
-                Properties = new Dictionary<string, string> { ["email"] = normalizedEmail, ["operation"] = "create" },
+                Properties = AddEmailIfEnabled(new Dictionary<string, string> { ["operation"] = "create" }, normalizedEmail),
                 Context = context
             }, cancellationToken);
             throw new InvalidOperationException("Invitation creation is currently rate-limited for this email address.");
@@ -79,7 +79,7 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationCreated,
                 Outcome = SecurityEventOutcomes.Success,
-                Properties = new Dictionary<string, string> { ["invitation_id"] = invitation.Id.ToString(), ["email"] = normalizedEmail },
+                Properties = AddEmailIfEnabled(new Dictionary<string, string> { ["invitation_id"] = invitation.Id.ToString() }, normalizedEmail),
                 Context = context
             }, ct);
         });
@@ -211,9 +211,19 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationRevoked,
                 Outcome = SecurityEventOutcomes.Success,
-                Properties = new Dictionary<string, string> { ["email"] = normalizedEmail, ["count"] = revokedCount.ToString(CultureInfo.InvariantCulture) }
+                Properties = AddEmailIfEnabled(new Dictionary<string, string> { ["count"] = revokedCount.ToString(CultureInfo.InvariantCulture) }, normalizedEmail)
             }, cancellationToken);
         }
+    }
+
+    private Dictionary<string, string> AddEmailIfEnabled(Dictionary<string, string> properties, string email)
+    {
+        if (_options.Value.StoreEmailInAudit)
+        {
+            properties["email"] = email;
+        }
+
+        return properties;
     }
 
     private static string ConstructCallbackUrl(Uri baseUri, string token)

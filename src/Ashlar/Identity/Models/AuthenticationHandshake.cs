@@ -10,4 +10,6 @@ public sealed record AuthenticationHandshake(
     bool IsCompleted,
     IReadOnlySet<string> RequiredFactors,
     IReadOnlySet<string> VerifiedFactors,
-    IDictionary<string, string>? Metadata = null);
+    IDictionary<string, string>? Metadata = null,
+    DateTimeOffset? RevokedAt = null,
+    DateTimeOffset? CompletedAt = null);

@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS ashlar_credentials (
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_user_id ON ashlar_credentials (user_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_expires_at ON ashlar_credentials (expires_at) WHERE expires_at IS NOT NULL AND revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_revoked_at ON ashlar_credentials (revoked_at) WHERE revoked_at IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS ashlar_sessions (
     id UUID PRIMARY KEY,
@@ -53,7 +55,7 @@ CREATE TABLE IF NOT EXISTS ashlar_sessions (
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_user_id ON ashlar_sessions (user_id);
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_expires_at ON ashlar_sessions (expires_at) INCLUDE (id, user_id) WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_active_user ON ashlar_sessions (user_id, expires_at) WHERE revoked_at IS NULL;
-CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_cleanup ON ashlar_sessions (expires_at) WHERE revoked_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_revoked_at ON ashlar_sessions (revoked_at) WHERE revoked_at IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS ashlar_rate_limits (
     purpose TEXT NOT NULL,
@@ -84,6 +86,8 @@ CREATE TABLE IF NOT EXISTS ashlar_invitations (
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_email_tenant ON ashlar_invitations (normalized_email, tenant_id);
 CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_expires_at ON ashlar_invitations (expires_at);
+CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_accepted_at ON ashlar_invitations (accepted_at) WHERE accepted_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_revoked_at ON ashlar_invitations (revoked_at) WHERE revoked_at IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS ashlar_security_events (
     id UUID PRIMARY KEY,
@@ -112,6 +116,8 @@ CREATE TABLE IF NOT EXISTS ashlar_mfa_handshakes (
     expires_at TIMESTAMPTZ NOT NULL,
     is_revoked BOOLEAN NOT NULL DEFAULT FALSE,
     is_completed BOOLEAN NOT NULL DEFAULT FALSE,
+    revoked_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
     required_factors JSONB NOT NULL,
     verified_factors JSONB NOT NULL,
     metadata JSONB
@@ -119,3 +125,5 @@ CREATE TABLE IF NOT EXISTS ashlar_mfa_handshakes (
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_user_id ON ashlar_mfa_handshakes (user_id);
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_expires_at ON ashlar_mfa_handshakes (expires_at) WHERE is_revoked = FALSE AND is_completed = FALSE;
+CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_completed_at ON ashlar_mfa_handshakes (completed_at) WHERE completed_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_revoked_at ON ashlar_mfa_handshakes (revoked_at) WHERE revoked_at IS NOT NULL;
