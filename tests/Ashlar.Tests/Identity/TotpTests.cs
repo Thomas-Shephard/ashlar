@@ -107,6 +107,34 @@ public class TotpTests
     }
 
     [Test]
+    public void AddAshlarTotpRegistersTotpOptionsValidation()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarTotp(options => options.CodeDigits = 5);
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<TotpOptions>>();
+        var exception = Assert.Throws<OptionsValidationException>(() => _ = options.Value);
+        Assert.That(exception.Failures, Does.Contain("TOTP options are invalid."));
+    }
+
+    [Test]
+    public void AddAshlarTotpIsIdempotentForProviderAndServiceRegistrations()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarTotp();
+        services.AddAshlarTotp();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(services.Where(descriptor => descriptor.ServiceType == typeof(IAuthenticationProvider) && descriptor.ImplementationType == typeof(TotpAuthenticationProvider)), Has.Exactly(1).Items);
+            Assert.That(services.Where(descriptor => descriptor.ServiceType == typeof(ITotpService) && descriptor.ImplementationType == typeof(TotpService)), Has.Exactly(1).Items);
+        }
+    }
+
+    [Test]
     public void SimpleTotpRelatedModelsExposeAllProperties()
     {
         var providerKey = new AuthenticationProviderKey(ProviderType.Mfa, "custom-totp");

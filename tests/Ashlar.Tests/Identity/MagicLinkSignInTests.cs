@@ -3,6 +3,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Identity.Models.Totp;
 using Ashlar.Identity.Providers.Email;
 using Ashlar.Identity.Providers.Local;
 using Ashlar.Identity.RateLimiting.Abstractions;
@@ -408,6 +409,21 @@ public sealed class MagicLinkSignInTests
             Assert.That(scope.ServiceProvider.GetRequiredService<IMagicLinkSignInService>(), Is.TypeOf<MagicLinkSignInService>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IEnumerable<IAuthenticationProvider>>().Any(p => p.Key == AuthenticationProviderKey.MagicLink), Is.True);
         }
+    }
+
+    [Test]
+    public void AddAshlarMagicLinkSignInDoesNotRegisterTotpOptionsValidation()
+    {
+        var services = new ServiceCollection();
+        services.Configure<TotpOptions>(options => options.CodeDigits = 5);
+
+        services.AddAshlarMagicLinkSignIn();
+
+        using var provider = services.BuildServiceProvider();
+
+        var options = provider.GetRequiredService<IOptions<TotpOptions>>().Value;
+
+        Assert.That(options.CodeDigits, Is.EqualTo(5));
     }
 
     private static Fixture CreateFixture(User? user = null, bool requestAllowed = true, bool verifyAllowed = true, MagicLinkSignInOptions? options = null)

@@ -20,6 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Ashlar.AspNetCore\Ashlar.AspNetCore.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.Postgres\Ashlar.Postgres.csproj" />
   </ItemGroup>
 

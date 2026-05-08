@@ -200,8 +200,6 @@ public static class AshlarServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.AddOptions();
-        services.AddOptions<TotpOptions>()
-            .Validate(TotpOptions.Validate, "TOTP options are invalid.");
         if (configure != null)
         {
             services.Configure(configure);
@@ -249,6 +247,8 @@ public static class AshlarServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.AddOptions();
+        services.AddOptions<TotpOptions>()
+            .Validate(TotpOptions.Validate, "TOTP options are invalid.");
         if (configure != null)
         {
             services.Configure(configure);
