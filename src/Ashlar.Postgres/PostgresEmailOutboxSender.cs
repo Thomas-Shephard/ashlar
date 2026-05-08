@@ -7,9 +7,12 @@ namespace Ashlar.Postgres;
 /// <summary>
 /// A PostgreSQL-backed implementation of <see cref="IEmailSender"/> that persists messages to an outbox table.
 /// </summary>
-public sealed class PostgresEmailOutboxSender(IPostgresConnectionProvider connectionProvider) : IEmailSender
+public sealed class PostgresEmailOutboxSender(
+    IPostgresConnectionProvider connectionProvider,
+    TimeProvider timeProvider) : IEmailSender
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
+    private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
     /// <inheritdoc />
     public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
@@ -25,7 +28,7 @@ public sealed class PostgresEmailOutboxSender(IPostgresConnectionProvider connec
             """;
 
         var id = Guid.NewGuid();
-        var now = DateTimeOffset.UtcNow;
+        var now = _timeProvider.GetUtcNow();
         var headersJson = message.Headers != null ? JsonSerializer.Serialize(message.Headers) : null;
         var metadataJson = message.Metadata != null ? JsonSerializer.Serialize(message.Metadata) : null;
 
