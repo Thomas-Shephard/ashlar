@@ -1,77 +1,34 @@
 using Ashlar.Messaging;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
 
 namespace Ashlar.Postgres;
 
 /// <summary>
-/// A background service that dispatches pending email messages from the PostgreSQL outbox.
+/// A PostgreSQL-backed implementation of <see cref="IEmailOutboxDispatcher"/> that dispatches pending email messages.
 /// </summary>
 /// <typeparam name="TTransport">The type of <see cref="IEmailTransport"/> to use for delivery.</typeparam>
 public sealed class PostgresEmailOutboxDispatcher<TTransport>(
     IServiceProvider serviceProvider,
-    IOptions<PostgresEmailOutboxOptions> options) : BackgroundService
+    TimeProvider timeProvider,
+    IOptions<PostgresEmailOutboxOptions> options) : IEmailOutboxDispatcher
     where TTransport : IEmailTransport
 {
     private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+    private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     private readonly PostgresEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
     private readonly string _lockId = Guid.NewGuid().ToString();
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    /// <inheritdoc />
+    public async Task<int> ProcessBatchAsync(CancellationToken cancellationToken = default)
     {
         if (!PostgresEmailOutboxOptions.Validate(_options))
         {
             throw new InvalidOperationException("Email outbox options are invalid.");
         }
 
-        // TODO: Add logging for dispatcher start
-
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
-            {
-                var processedCount = await ProcessBatchAsync(stoppingToken);
-
-                if (processedCount < _options.BatchSize)
-                {
-                    await Task.Delay(_options.PollingInterval, stoppingToken);
-                }
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception)
-            {
-                // TODO: Add logging for batch error
-                if (!await DelayUntilNextPollAsync(_options.PollingInterval, stoppingToken))
-                {
-                    break;
-                }
-            }
-        }
-
-        // TODO: Add logging for dispatcher stop
-    }
-
-    private static async ValueTask<bool> DelayUntilNextPollAsync(TimeSpan delay, CancellationToken stoppingToken)
-    {
-        try
-        {
-            await Task.Delay(delay, stoppingToken);
-            return true;
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            return false;
-        }
-    }
-
-    internal async Task<int> ProcessBatchAsync(CancellationToken cancellationToken)
-    {
         const string claimSql = """
             UPDATE ashlar_email_outbox
             SET locked_until = @LockedUntil,
@@ -94,7 +51,7 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
                       attempt_count AS AttemptCount
             """;
 
-        var now = DateTimeOffset.UtcNow;
+        var now = _timeProvider.GetUtcNow();
         var lockedUntil = now.Add(_options.LockDuration);
 
         List<OutboxEntry> entries;
@@ -162,11 +119,12 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
             WHERE id = @Id AND locked_by = @LockedBy
             """;
 
+        var now = _timeProvider.GetUtcNow();
         var connectionProvider = provider.GetRequiredService<IPostgresConnectionProvider>();
         var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, new { Id = id, LockedBy = _lockId, Now = DateTimeOffset.UtcNow }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql, new { Id = id, LockedBy = _lockId, Now = now }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             await connectionHandle.Connection.ExecuteAsync(command);
         }
     }
@@ -175,7 +133,7 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
     {
         var attemptCount = entry.AttemptCount + 1;
         var isFinalFailure = attemptCount >= _options.MaxAttempts;
-        var now = DateTimeOffset.UtcNow;
+        var now = _timeProvider.GetUtcNow();
 
         // Exponential backoff: InitialDelay * 2^(attempt - 1), safely capped to prevent overflow
         var backoffMultiplier = Math.Pow(2, attemptCount - 1);
