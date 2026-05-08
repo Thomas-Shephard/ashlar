@@ -10,4 +10,10 @@ public sealed class InvitationOptions
 
     public RateLimitRule CreationRateLimit { get; set; } = new() { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) };
     public RateLimitRule AcceptanceRateLimit { get; set; } = new() { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) };
+
+    /// <summary>
+    /// Whether to include the user's email address in invitation-related security audit events.
+    /// Defaults to <c>true</c>.
+    /// </summary>
+    public bool StoreEmailInAudit { get; set; } = true;
 }

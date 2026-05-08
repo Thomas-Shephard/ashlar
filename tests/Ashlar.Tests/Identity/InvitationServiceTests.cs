@@ -45,6 +45,19 @@ public sealed class InvitationServiceTests
     }
 
     [Test]
+    public async Task CreateInvitationDoesNotLogEmailWhenStoreEmailInAuditIsDisabled()
+    {
+        var fixture = CreateFixture(configureOptions: options => options.StoreEmailInAudit = false);
+        var request = new CreateInvitationRequest { Email = "invitee@example.com" };
+        var baseUri = new Uri("https://myapp.com/join");
+
+        await fixture.Service.CreateInvitationAsync(request, baseUri);
+
+        var auditEvent = fixture.Audit.Events.First(e => e.EventType == AshlarSecurityEventTypes.InvitationCreated);
+        Assert.That(GetProperties(auditEvent).ContainsKey("email"), Is.False);
+    }
+
+    [Test]
     public async Task CreateInvitationRevokesPreviousInvitationsForSameEmail()
     {
         var fixture = CreateFixture();
@@ -388,7 +401,7 @@ public sealed class InvitationServiceTests
         }
     }
 
-    private static Fixture CreateFixture(User? user = null, bool creationAllowed = true, bool acceptanceAllowed = true)
+    private static Fixture CreateFixture(User? user = null, bool creationAllowed = true, bool acceptanceAllowed = true, Action<InvitationOptions>? configureOptions = null)
     {
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 5, 3, 12, 0, 0, TimeSpan.Zero));
         var identityRepository = new InMemoryIdentityRepository(user);
@@ -399,6 +412,9 @@ public sealed class InvitationServiceTests
         var tokenGenerator = new SecureTokenGenerator();
         var transactionProvider = new NullTransactionProvider();
         var rateLimiter = new StubRateLimiter(creationAllowed, acceptanceAllowed, time);
+
+        var options = new InvitationOptions();
+        configureOptions?.Invoke(options);
 
         var service = new InvitationService(
             CreateDependencies(
@@ -411,7 +427,7 @@ public sealed class InvitationServiceTests
                 rateLimiter,
                 audit,
                 time),
-            Options.Create(new InvitationOptions()));
+            Options.Create(options));
 
         return new Fixture(service, invitationRepository, identityRepository, emailSender, audit, time, tokenHasher, rateLimiter);
     }

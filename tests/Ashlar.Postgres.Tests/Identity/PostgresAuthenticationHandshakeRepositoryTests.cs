@@ -106,6 +106,8 @@ public sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresTes
         {
             IsRevoked = true,
             IsCompleted = true,
+            RevokedAt = DateTimeOffset.UtcNow,
+            CompletedAt = DateTimeOffset.UtcNow,
             VerifiedFactors = new HashSet<string> { "totp" },
             Metadata = new Dictionary<string, string> { ["updated"] = "true" }
         };
@@ -119,6 +121,8 @@ public sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresTes
         {
             Assert.That(fetched.IsRevoked, Is.True);
             Assert.That(fetched.IsCompleted, Is.True);
+            Assert.That(fetched.RevokedAt, Is.Not.Null);
+            Assert.That(fetched.CompletedAt, Is.Not.Null);
             Assert.That(fetched.VerifiedFactors, Is.EquivalentTo(updatedHandshake.VerifiedFactors));
             if (updatedHandshake.Metadata != null)
             {

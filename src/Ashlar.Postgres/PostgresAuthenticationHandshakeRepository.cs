@@ -5,17 +5,18 @@ using System.Text.Json;
 
 namespace Ashlar.Postgres;
 
-public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectionProvider connectionProvider) : IAuthenticationHandshakeRepository
+public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IAuthenticationHandshakeRepository
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
     public async Task CreateAsync(AuthenticationHandshake handshake, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(handshake);
 
         const string sql = """
-            INSERT INTO ashlar_mfa_handshakes (id, user_id, token_hash, created_at, expires_at, is_revoked, is_completed, required_factors, verified_factors, metadata)
-            VALUES (@Id, @UserId, @TokenHash, @CreatedAt, @ExpiresAt, @IsRevoked, @IsCompleted, @RequiredFactors::jsonb, @VerifiedFactors::jsonb, @Metadata::jsonb)
+            INSERT INTO ashlar_mfa_handshakes (id, user_id, token_hash, created_at, expires_at, is_revoked, is_completed, revoked_at, completed_at, required_factors, verified_factors, metadata)
+            VALUES (@Id, @UserId, @TokenHash, @CreatedAt, @ExpiresAt, @IsRevoked, @IsCompleted, @RevokedAt, @CompletedAt, @RequiredFactors::jsonb, @VerifiedFactors::jsonb, @Metadata::jsonb)
             """;
 
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -30,6 +31,8 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
                 handshake.ExpiresAt,
                 handshake.IsRevoked,
                 handshake.IsCompleted,
+                handshake.RevokedAt,
+                handshake.CompletedAt,
                 RequiredFactors = JsonSerializer.Serialize(handshake.RequiredFactors),
                 VerifiedFactors = JsonSerializer.Serialize(handshake.VerifiedFactors),
                 Metadata = SerializeMetadata(handshake.Metadata)
@@ -44,7 +47,7 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
 
         var sql = """
             SELECT id AS Id, user_id AS UserId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
-                   is_revoked AS IsRevoked, is_completed AS IsCompleted, required_factors AS RequiredFactorsRaw,
+                   is_revoked AS IsRevoked, is_completed AS IsCompleted, revoked_at AS RevokedAt, completed_at AS CompletedAt, required_factors AS RequiredFactorsRaw,
                    verified_factors AS VerifiedFactorsRaw, metadata AS MetadataRaw
             FROM ashlar_mfa_handshakes
             WHERE token_hash = @TokenHash
@@ -78,7 +81,9 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
                 reader.GetBoolean(reader.GetOrdinal("IsCompleted")),
                 JsonSerializer.Deserialize<HashSet<string>>(reader.GetString(reader.GetOrdinal("RequiredFactorsRaw"))) ?? [],
                 JsonSerializer.Deserialize<HashSet<string>>(reader.GetString(reader.GetOrdinal("VerifiedFactorsRaw"))) ?? [],
-                metadataRaw == null ? null : JsonSerializer.Deserialize<Dictionary<string, string>>(metadataRaw)
+                metadataRaw == null ? null : JsonSerializer.Deserialize<Dictionary<string, string>>(metadataRaw),
+                await GetNullableDateTimeOffsetAsync(reader, "RevokedAt", cancellationToken),
+                await GetNullableDateTimeOffsetAsync(reader, "CompletedAt", cancellationToken)
             );
         }
 
@@ -91,10 +96,16 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
 
         const string sql = """
             UPDATE ashlar_mfa_handshakes
-            SET is_revoked = @IsRevoked, is_completed = @IsCompleted, verified_factors = @VerifiedFactors::jsonb, metadata = @Metadata::jsonb
+            SET is_revoked = @IsRevoked,
+                is_completed = @IsCompleted,
+                revoked_at = @RevokedAt,
+                completed_at = @CompletedAt,
+                verified_factors = @VerifiedFactors::jsonb,
+                metadata = @Metadata::jsonb
             WHERE id = @Id
             """;
 
+        var now = _timeProvider.GetUtcNow();
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
@@ -103,6 +114,8 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
                 handshake.Id,
                 handshake.IsRevoked,
                 handshake.IsCompleted,
+                RevokedAt = handshake.IsRevoked ? handshake.RevokedAt ?? now : (DateTimeOffset?)null,
+                CompletedAt = handshake.IsCompleted ? handshake.CompletedAt ?? now : (DateTimeOffset?)null,
                 VerifiedFactors = JsonSerializer.Serialize(handshake.VerifiedFactors),
                 Metadata = SerializeMetadata(handshake.Metadata)
             }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
@@ -113,5 +126,16 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
     private static string? SerializeMetadata(IDictionary<string, string>? metadata)
     {
         return metadata == null ? null : JsonSerializer.Serialize(metadata);
+    }
+
+    private static async Task<DateTimeOffset?> GetNullableDateTimeOffsetAsync(
+        System.Data.Common.DbDataReader reader,
+        string columnName,
+        CancellationToken cancellationToken)
+    {
+        var ordinal = reader.GetOrdinal(columnName);
+        return await reader.IsDBNullAsync(ordinal, cancellationToken)
+            ? null
+            : await reader.GetFieldValueAsync<DateTimeOffset>(ordinal, cancellationToken);
     }
 }

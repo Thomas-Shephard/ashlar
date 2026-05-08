@@ -1,5 +1,8 @@
+using System.Diagnostics.CodeAnalysis;
+using Ashlar.Operational;
 using Ashlar.Postgres.Schema;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Npgsql;
 
 namespace Ashlar.Postgres.Tests.DependencyInjection;
@@ -48,5 +51,42 @@ public sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresTes
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.ThrowsAsync<ArgumentNullException>(async () => await AshlarPostgresServiceCollectionExtensions.InitializeAshlarPostgresSchemaAsync(null!));
+    }
+
+    [Test]
+    public void AddAshlarPostgresCleanupRegistersCleanupService()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarPostgres(GetDataSource());
+        services.AddAshlarPostgresCleanup(options => options.BatchSize = 42);
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarCleanupService>(), Is.TypeOf<PostgresAshlarCleanupService>());
+            Assert.That(provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AshlarCleanupOptions>>().Value.BatchSize, Is.EqualTo(42));
+        }
+    }
+
+    [Test]
+    public void AddAshlarPostgresCleanupHostedServiceRegistersHostedService()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarPostgres(GetDataSource());
+        services.AddAshlarPostgresCleanupHostedService();
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetServices<IHostedService>().Single(), Is.TypeOf<PostgresAshlarCleanupHostedService>());
+    }
+
+    [Test]
+    [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
+    public void AddAshlarPostgresCleanupNullArgumentsShouldThrow()
+    {
+        Assert.Throws<ArgumentNullException>(() => AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresCleanup(null!));
+        Assert.Throws<ArgumentNullException>(() => AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresCleanupHostedService(null!));
     }
 }
