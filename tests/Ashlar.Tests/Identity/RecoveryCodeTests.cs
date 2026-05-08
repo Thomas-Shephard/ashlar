@@ -228,6 +228,7 @@ public class RecoveryCodeTests
         var repository = new Mock<IIdentityRepository>();
         var transactionProvider = new Mock<IAshlarTransactionProvider>();
         var transaction = new Mock<IAshlarTransaction>();
+        var onCommitted = new List<Func<CancellationToken, Task>>();
         var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
         var options = Options.Create(new RecoveryCodeOptions());
         var userId = Guid.NewGuid();
@@ -237,6 +238,18 @@ public class RecoveryCodeTests
 
         transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(transaction.Object);
+        transaction.Setup(t => t.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()))
+            .Callback<Func<CancellationToken, Task>>(onCommitted.Add);
+        transaction.Setup(t => t.CommitAsync(It.IsAny<CancellationToken>()))
+            .Returns<CancellationToken>(async ct =>
+            {
+                foreach (var action in onCommitted)
+                {
+                    await action(ct);
+                }
+
+                onCommitted.Clear();
+            });
 
         var service = new RecoveryCodeService(repository.Object, transactionProvider.Object, hasherSelector, options);
 

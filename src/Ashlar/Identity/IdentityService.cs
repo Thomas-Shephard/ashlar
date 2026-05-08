@@ -93,6 +93,6 @@ public sealed class IdentityService(
             throw new ArgumentException($"Provider '{assertion.ProviderIdentity}' is not supported.", nameof(assertion));
         }
 
-        await _credentialService.LinkCredentialAsync(userId, assertion, provider, credentialValue, cancellationToken);
+        await _credentialService.LinkCredentialAsync(userId, assertion, provider, credentialValue, cancellationToken: cancellationToken);
     }
 }
