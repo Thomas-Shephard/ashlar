@@ -356,4 +356,67 @@ public static class AshlarServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Explicitly registers the no-MFA policy evaluator.
+    /// </summary>
+    public static IServiceCollection AddAshlarNoMfaPolicy(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarMfaOrchestration();
+        services.Replace(ServiceDescriptor.Scoped<IMfaPolicyEvaluator, MfaPolicyEvaluator>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers a reusable policy evaluator that requires MFA for every active user.
+    /// </summary>
+    public static IServiceCollection AddAshlarRequireMfaForAllUsers(
+        this IServiceCollection services,
+        Action<RequireMfaForAllUsersPolicyOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        services.AddOptions<RequireMfaForAllUsersPolicyOptions>()
+            .Configure(configure)
+            .Validate(RequireMfaForAllUsersPolicyOptions.Validate, "At least one non-empty required factor must be configured.");
+
+        return services.AddAshlarMfaPolicyEvaluator<RequireMfaForAllUsersPolicyEvaluator>();
+    }
+
+    /// <summary>
+    /// Registers a reusable policy evaluator that requires MFA when a qualifying active credential exists.
+    /// </summary>
+    public static IServiceCollection AddAshlarRequireMfaWhenCredentialExists(
+        this IServiceCollection services,
+        Action<CredentialBackedMfaPolicyOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        services.AddOptions<CredentialBackedMfaPolicyOptions>()
+            .Configure(configure)
+            .Validate(CredentialBackedMfaPolicyOptions.Validate, "At least one credential provider key and one non-empty required factor must be configured.");
+
+        return services.AddAshlarMfaPolicyEvaluator<RequireMfaWhenCredentialExistsPolicyEvaluator>();
+    }
+
+    /// <summary>
+    /// Adds a custom MFA policy evaluator to the composite policy.
+    /// </summary>
+    public static IServiceCollection AddAshlarMfaPolicyEvaluator<T>(this IServiceCollection services)
+        where T : class, IMfaPolicyEvaluator
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarMfaOrchestration();
+        services.TryAddScoped<T>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IMfaPolicyEvaluatorComponent, MfaPolicyEvaluatorComponent<T>>());
+        services.Replace(ServiceDescriptor.Scoped<IMfaPolicyEvaluator, CompositeMfaPolicyEvaluator>());
+
+        return services;
+    }
 }

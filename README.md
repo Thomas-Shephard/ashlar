@@ -274,6 +274,37 @@ Register the orchestration services:
 services.AddAshlarMfaOrchestration();
 ```
 
+By default, Ashlar registers a no-MFA policy. Primary authentication can complete without a handshake unless an authentication provider itself returns `AuthenticationStatus.MfaRequired` or an application explicitly registers a policy:
+
+```csharp
+services.AddAshlarMfaOrchestration();
+// Equivalent explicit policy:
+services.AddAshlarNoMfaPolicy();
+```
+
+To require TOTP only for users who already have an active TOTP credential, register a credential-backed policy:
+
+```csharp
+services
+    .AddAshlarTotp()
+    .AddAshlarRequireMfaWhenCredentialExists(options =>
+    {
+        options.CredentialProviderKeys.Add(new AuthenticationProviderKey(ProviderType.Mfa, "totp"));
+        options.RequiredFactors.Add("totp");
+    });
+```
+
+The credential-backed policy checks configured provider identities only. It uses active, non-revoked, non-expired credentials and does not inspect credential values.
+
+To require MFA for every active user:
+
+```csharp
+services.AddAshlarRequireMfaForAllUsers(options =>
+{
+    options.RequiredFactors.Add("totp");
+});
+```
+
 Perform a primary authentication that might require MFA:
 
 ```csharp
