@@ -1,6 +1,7 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.RateLimiting.Abstractions;
+using Ashlar.Messaging;
 using Ashlar.Operational;
 using Ashlar.Postgres;
 using Ashlar.Postgres.Schema;
@@ -138,6 +139,46 @@ public static class AshlarPostgresServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.Replace(ServiceDescriptor.Singleton<ISecurityEventSink, PostgresSecurityEventSink>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar PostgreSQL-backed email outbox sender.
+    /// </summary>
+    public static IServiceCollection AddAshlarPostgresEmailOutbox(
+        this IServiceCollection services,
+        Action<PostgresEmailOutboxOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddOptions<PostgresEmailOutboxOptions>()
+            .Validate(PostgresEmailOutboxOptions.Validate, "Email outbox options are invalid.");
+
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.Replace(ServiceDescriptor.Scoped<IEmailSender, PostgresEmailOutboxSender>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar PostgreSQL-backed email outbox dispatcher as a hosted service.
+    /// </summary>
+    /// <typeparam name="TTransport">The type of <see cref="IEmailTransport"/> to use for delivery.</typeparam>
+    public static IServiceCollection AddAshlarPostgresEmailOutboxHostedService<TTransport>(
+        this IServiceCollection services,
+        Action<PostgresEmailOutboxOptions>? configure = null)
+        where TTransport : class, IEmailTransport
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarPostgresEmailOutbox(configure);
+        services.TryAddScoped<TTransport>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, PostgresEmailOutboxDispatcher<TTransport>>());
 
         return services;
     }

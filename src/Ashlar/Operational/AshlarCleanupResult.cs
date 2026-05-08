@@ -12,9 +12,11 @@ public sealed record AshlarCleanupResult(
     int CompletedHandshakes,
     int RevokedHandshakes,
     int ExpiredRateLimits,
-    int AuditEvents)
+    int AuditEvents,
+    int SentEmails,
+    int FailedEmails)
 {
-    public static AshlarCleanupResult Empty { get; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    public static AshlarCleanupResult Empty { get; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     public int Total =>
         ExpiredSessions
@@ -28,7 +30,9 @@ public sealed record AshlarCleanupResult(
         + CompletedHandshakes
         + RevokedHandshakes
         + ExpiredRateLimits
-        + AuditEvents;
+        + AuditEvents
+        + SentEmails
+        + FailedEmails;
 
     public AshlarCleanupResult Add(AshlarCleanupResult other)
     {
@@ -46,6 +50,8 @@ public sealed record AshlarCleanupResult(
             CompletedHandshakes + other.CompletedHandshakes,
             RevokedHandshakes + other.RevokedHandshakes,
             ExpiredRateLimits + other.ExpiredRateLimits,
-            AuditEvents + other.AuditEvents);
+            AuditEvents + other.AuditEvents,
+            SentEmails + other.SentEmails,
+            FailedEmails + other.FailedEmails);
     }
 }

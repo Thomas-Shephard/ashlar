@@ -77,6 +77,16 @@ public sealed class AshlarCleanupOptions
     /// </summary>
     public TimeSpan? RemoveAuditEventsAfter { get; set; }
 
+    /// <summary>
+    /// Retention period after email messages are sent. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes sent rows on the next cleanup run.
+    /// </summary>
+    public TimeSpan? RemoveSentEmailsAfter { get; set; } = TimeSpan.FromDays(7);
+
+    /// <summary>
+    /// Retention period after email messages are marked as failed (all attempts exhausted). Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes failed rows on the next cleanup run.
+    /// </summary>
+    public TimeSpan? RemoveFailedEmailsAfter { get; set; } = TimeSpan.FromDays(30);
+
     public static bool Validate(AshlarCleanupOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -97,7 +107,9 @@ public sealed class AshlarCleanupOptions
             && IsValid(options.RemoveCompletedHandshakesAfter)
             && IsValid(options.RemoveRevokedHandshakesAfter)
             && IsValid(options.RemoveExpiredRateLimitsAfter)
-            && IsValid(options.RemoveAuditEventsAfter);
+            && IsValid(options.RemoveAuditEventsAfter)
+            && IsValid(options.RemoveSentEmailsAfter)
+            && IsValid(options.RemoveFailedEmailsAfter);
     }
 
     private static bool IsValid(TimeSpan? value) => value == null || value.Value >= TimeSpan.Zero;

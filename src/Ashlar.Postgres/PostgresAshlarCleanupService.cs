@@ -50,7 +50,9 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
                 await DeleteIfActiveAsync(activeCategories.CompletedHandshakes, connection, CleanupDeleteDefinitions.CompletedHandshakes, Threshold(now, _options.RemoveCompletedHandshakesAfter), cancellationToken),
                 await DeleteIfActiveAsync(activeCategories.RevokedHandshakes, connection, CleanupDeleteDefinitions.RevokedHandshakes, Threshold(now, _options.RemoveRevokedHandshakesAfter), cancellationToken),
                 await DeleteIfActiveAsync(activeCategories.ExpiredRateLimits, connection, CleanupDeleteDefinitions.ExpiredRateLimits, Threshold(now, _options.RemoveExpiredRateLimitsAfter), cancellationToken),
-                await DeleteIfActiveAsync(activeCategories.AuditEvents, connection, CleanupDeleteDefinitions.AuditEvents, Threshold(now, _options.RemoveAuditEventsAfter), cancellationToken));
+                await DeleteIfActiveAsync(activeCategories.AuditEvents, connection, CleanupDeleteDefinitions.AuditEvents, Threshold(now, _options.RemoveAuditEventsAfter), cancellationToken),
+                await DeleteIfActiveAsync(activeCategories.SentEmails, connection, CleanupDeleteDefinitions.SentEmails, Threshold(now, _options.RemoveSentEmailsAfter), cancellationToken),
+                await DeleteIfActiveAsync(activeCategories.FailedEmails, connection, CleanupDeleteDefinitions.FailedEmails, Threshold(now, _options.RemoveFailedEmailsAfter), cancellationToken));
 
             result = result.Add(batchResult);
             activeCategories = AshlarCleanupCategories.FromBatchResult(batchResult, _options.BatchSize);
@@ -110,6 +112,7 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         private const string HandshakesTable = "ashlar_mfa_handshakes";
         private const string RateLimitsTable = "ashlar_rate_limits";
         private const string SecurityEventsTable = "ashlar_security_events";
+        private const string EmailOutboxTable = "ashlar_email_outbox";
         private const string ExpiresAtColumn = "expires_at";
         private const string RevokedAtColumn = "revoked_at";
         private const string AcceptedAtColumn = "accepted_at";
@@ -128,6 +131,8 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         public static readonly CleanupDeleteDefinition RevokedHandshakes = new(HandshakesTable, "is_revoked = TRUE AND revoked_at IS NOT NULL AND revoked_at < @cutoff", RevokedAtColumn);
         public static readonly CleanupDeleteDefinition ExpiredRateLimits = new(RateLimitsTable, "expires_at < @cutoff", ExpiresAtColumn);
         public static readonly CleanupDeleteDefinition AuditEvents = new(SecurityEventsTable, "occurred_at < @cutoff", OccurredAtColumn);
+        public static readonly CleanupDeleteDefinition SentEmails = new(EmailOutboxTable, "sent_at IS NOT NULL AND sent_at < @cutoff", "sent_at");
+        public static readonly CleanupDeleteDefinition FailedEmails = new(EmailOutboxTable, "failed_at IS NOT NULL AND failed_at < @cutoff", "failed_at");
     }
 
     private sealed record AshlarCleanupCategories(
@@ -142,9 +147,11 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         bool CompletedHandshakes,
         bool RevokedHandshakes,
         bool ExpiredRateLimits,
-        bool AuditEvents)
+        bool AuditEvents,
+        bool SentEmails,
+        bool FailedEmails)
     {
-        public static AshlarCleanupCategories All { get; } = new(true, true, true, true, true, true, true, true, true, true, true, true);
+        public static AshlarCleanupCategories All { get; } = new(true, true, true, true, true, true, true, true, true, true, true, true, true, true);
 
         public bool HasAny =>
             ExpiredSessions
@@ -158,7 +165,9 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
             || CompletedHandshakes
             || RevokedHandshakes
             || ExpiredRateLimits
-            || AuditEvents;
+            || AuditEvents
+            || SentEmails
+            || FailedEmails;
 
         public static AshlarCleanupCategories FromBatchResult(AshlarCleanupResult result, int batchSize)
         {
@@ -174,7 +183,9 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
                 result.CompletedHandshakes == batchSize,
                 result.RevokedHandshakes == batchSize,
                 result.ExpiredRateLimits == batchSize,
-                result.AuditEvents == batchSize);
+                result.AuditEvents == batchSize,
+                result.SentEmails == batchSize,
+                result.FailedEmails == batchSize);
         }
     }
 }
