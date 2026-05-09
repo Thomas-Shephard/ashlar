@@ -315,6 +315,120 @@ public sealed class AshlarSignInManagerTests
     }
 
     [Test]
+    public async Task ListSessionsForCurrentUserAsyncShouldThrowWhenNotAuthenticated()
+    {
+        await using var provider = CreateProvider(out _);
+        var context = new DefaultHttpContext { RequestServices = provider };
+        var manager = provider.GetRequiredService<IAshlarSignInManager>();
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => manager.ListSessionsForCurrentUserAsync(context));
+    }
+
+    [Test]
+    public async Task ListSessionsForCurrentUserAsyncShouldPassClaimsToService()
+    {
+        await using var provider = CreateProvider(out var repository);
+        var context = CreateContext(provider);
+        var manager = provider.GetRequiredService<IAshlarSignInManager>();
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString("D")),
+            new Claim(AshlarClaimTypes.SessionId, sessionId.ToString("D"))
+        ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
+
+        await manager.ListSessionsForCurrentUserAsync(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.ListUserId, Is.EqualTo(userId));
+            Assert.That(repository.ListActiveOnly, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task RevokeSessionForCurrentUserAsyncShouldPassClaimsToService()
+    {
+        await using var provider = CreateProvider(out var repository);
+        var context = CreateContext(provider);
+        var manager = provider.GetRequiredService<IAshlarSignInManager>();
+        var userId = Guid.NewGuid();
+        var targetSessionId = Guid.NewGuid();
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString("D"))
+        ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
+
+        await manager.RevokeSessionForCurrentUserAsync(context, targetSessionId, "cleanup");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.RevokedSessionId, Is.EqualTo(targetSessionId));
+            Assert.That(repository.RevokedUserId, Is.EqualTo(userId));
+            Assert.That(repository.RevocationReason, Is.EqualTo("cleanup"));
+        }
+    }
+
+    [Test]
+    public async Task RevokeSessionForCurrentUserAsyncShouldThrowWhenNotAuthenticated()
+    {
+        await using var provider = CreateProvider(out _);
+        var context = CreateContext(provider);
+        var manager = provider.GetRequiredService<IAshlarSignInManager>();
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => manager.RevokeSessionForCurrentUserAsync(context, Guid.NewGuid()));
+    }
+
+    [Test]
+    public async Task RevokeOtherSessionsForCurrentUserAsyncShouldPassClaimsToService()
+    {
+        await using var provider = CreateProvider(out var repository);
+        var context = CreateContext(provider);
+        var manager = provider.GetRequiredService<IAshlarSignInManager>();
+        var userId = Guid.NewGuid();
+        var currentSessionId = Guid.NewGuid();
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString("D")),
+            new Claim(AshlarClaimTypes.SessionId, currentSessionId.ToString("D"))
+        ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
+
+        await manager.RevokeOtherSessionsForCurrentUserAsync(context, "security-sweep");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.RevokedUserId, Is.EqualTo(userId));
+            Assert.That(repository.ExcludedSessionId, Is.EqualTo(currentSessionId));
+            Assert.That(repository.RevocationReason, Is.EqualTo("security-sweep"));
+        }
+    }
+
+    [Test]
+    public async Task RevokeOtherSessionsForCurrentUserAsyncShouldThrowWhenNotAuthenticated()
+    {
+        await using var provider = CreateProvider(out _);
+        var context = CreateContext(provider);
+        var manager = provider.GetRequiredService<IAshlarSignInManager>();
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => manager.RevokeOtherSessionsForCurrentUserAsync(context));
+    }
+
+    [Test]
+    public async Task RevokeOtherSessionsForCurrentUserAsyncShouldThrowWhenNoSessionClaim()
+    {
+        await using var provider = CreateProvider(out _);
+        var context = CreateContext(provider);
+        var manager = provider.GetRequiredService<IAshlarSignInManager>();
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString("D"))
+        ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => manager.RevokeOtherSessionsForCurrentUserAsync(context));
+    }
+
+    [Test]
     public void ConstructorShouldThrowOnNullSessionService()
     {
         Assert.Throws<ArgumentNullException>(() => _ = new AshlarSignInManager(
@@ -408,7 +522,11 @@ public sealed class AshlarSignInManagerTests
 
         public AuthenticationSession? CreatedSession => _session;
         public Guid? RevokedSessionId { get; private set; }
+        public Guid? RevokedUserId { get; private set; }
+        public Guid? ExcludedSessionId { get; private set; }
         public string? RevocationReason { get; private set; }
+        public Guid? ListUserId { get; private set; }
+        public bool? ListActiveOnly { get; private set; }
 
         public Task CreateSessionAsync(AuthenticationSession session, CancellationToken cancellationToken = default)
         {
@@ -448,7 +566,32 @@ public sealed class AshlarSignInManagerTests
 
         public Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
         {
-            throw new NotSupportedException();
+            RevokedUserId = userId;
+            RevocationReason = reason;
+            return Task.FromResult(1);
+        }
+
+        public Task<IReadOnlyList<AuthenticationSession>> ListSessionsForUserAsync(Guid userId, bool activeOnly, DateTimeOffset now, CancellationToken cancellationToken = default)
+        {
+            ListUserId = userId;
+            ListActiveOnly = activeOnly;
+            return Task.FromResult((IReadOnlyList<AuthenticationSession>)new List<AuthenticationSession>().AsReadOnly());
+        }
+
+        public Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
+        {
+            RevokedSessionId = sessionId;
+            RevokedUserId = userId;
+            RevocationReason = reason;
+            return Task.FromResult(true);
+        }
+
+        public Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
+        {
+            RevokedUserId = userId;
+            ExcludedSessionId = excludedSessionId;
+            RevocationReason = reason;
+            return Task.FromResult(1);
         }
     }
 }

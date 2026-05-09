@@ -52,4 +52,40 @@ public interface IAuthenticationSessionService
         Guid userId,
         string? reason = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists authentication sessions for a user.
+    /// </summary>
+    /// <param name="userId">The user identifier.</param>
+    /// <param name="request">Listing parameters.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>A read-only list of session summaries.</returns>
+    Task<IReadOnlyList<AuthenticationSessionSummary>> ListSessionsForUserAsync(
+        Guid userId,
+        ListAuthenticationSessionsRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Revokes a single authentication session for a user.
+    /// </summary>
+    /// <param name="userId">The user identifier who must own the session.</param>
+    /// <param name="request">Revocation parameters.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns><c>true</c> when the session was revoked; otherwise <c>false</c>.</returns>
+    Task<bool> RevokeSessionForUserAsync(
+        Guid userId,
+        RevokeAuthenticationSessionRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Revokes all authentication sessions for a user except one.
+    /// </summary>
+    /// <param name="userId">The user identifier.</param>
+    /// <param name="request">Revocation parameters.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>The number of sessions revoked by this call.</returns>
+    Task<int> RevokeOtherSessionsAsync(
+        Guid userId,
+        RevokeOtherAuthenticationSessionsRequest request,
+        CancellationToken cancellationToken = default);
 }

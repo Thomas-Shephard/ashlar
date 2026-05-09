@@ -80,8 +80,9 @@ CREATE TABLE IF NOT EXISTS ashlar_sessions (
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_user_id ON ashlar_sessions (user_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_user_created ON ashlar_sessions (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_expires_at ON ashlar_sessions (expires_at) INCLUDE (id, user_id) WHERE revoked_at IS NULL;
-CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_active_user ON ashlar_sessions (user_id, expires_at) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_active_user_created ON ashlar_sessions (user_id, created_at DESC) WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_revoked_at ON ashlar_sessions (revoked_at) WHERE revoked_at IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS ashlar_rate_limits (
