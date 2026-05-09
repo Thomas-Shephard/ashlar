@@ -1,6 +1,7 @@
 using Ashlar.Auditing;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.Models;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
 using Ashlar.Operational;
@@ -55,7 +56,51 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.TryAddScoped<IAuthenticationSessionRepository, PostgresAuthenticationSessionRepository>();
         services.TryAddScoped<IAuthenticationHandshakeRepository, PostgresAuthenticationHandshakeRepository>();
         services.TryAddScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
+        services.TryAddScoped<IBootstrapStateRepository, PostgresBootstrapStateRepository>();
         services.TryAddTransient<SchemaManager>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers Ashlar PostgreSQL-backed bootstrap persistence.
+    /// </summary>
+    public static IServiceCollection AddAshlarPostgresBootstrap(
+        this IServiceCollection services,
+        string connectionString,
+        Action<BootstrapOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+
+        services.TryAddSingleton(_ => new NpgsqlDataSourceBuilder(connectionString).Build());
+        return services.AddAshlarPostgresBootstrapPersistence(configure);
+    }
+
+    /// <summary>
+    /// Registers Ashlar PostgreSQL-backed bootstrap persistence using a provided <see cref="NpgsqlDataSource"/>.
+    /// </summary>
+    public static IServiceCollection AddAshlarPostgresBootstrap(
+        this IServiceCollection services,
+        NpgsqlDataSource dataSource,
+        Action<BootstrapOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(dataSource);
+
+        services.TryAddSingleton(dataSource);
+        return services.AddAshlarPostgresBootstrapPersistence(configure);
+    }
+
+    private static IServiceCollection AddAshlarPostgresBootstrapPersistence(
+        this IServiceCollection services,
+        Action<BootstrapOptions>? configure = null)
+    {
+        services.AddAshlarBootstrap(configure);
+        services.TryAddScoped<PostgresTransactionManager>();
+        services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
+        services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
+        services.TryAddScoped<IBootstrapStateRepository, PostgresBootstrapStateRepository>();
 
         return services;
     }

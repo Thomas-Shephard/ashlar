@@ -183,3 +183,11 @@ CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_created_at ON ashlar_email_out
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_locked_until ON ashlar_email_outbox (locked_until) WHERE locked_until IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_sent_at ON ashlar_email_outbox (sent_at) WHERE sent_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_failed_at ON ashlar_email_outbox (failed_at) WHERE failed_at IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS ashlar_bootstrap_state (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    is_initialized BOOLEAN NOT NULL DEFAULT FALSE,
+    initialized_at TIMESTAMPTZ,
+    initialized_by UUID REFERENCES ashlar_users (id),
+    CONSTRAINT singleton_bootstrap_state CHECK (id = 1)
+);

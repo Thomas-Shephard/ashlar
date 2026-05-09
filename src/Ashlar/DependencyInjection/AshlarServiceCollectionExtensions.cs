@@ -321,6 +321,29 @@ public static class AshlarServiceCollectionExtensions
     }
 
     /// <summary>
+    /// Registers Ashlar's generic bootstrap and first-admin setup services.
+    /// </summary>
+    public static IServiceCollection AddAshlarBootstrap(
+        this IServiceCollection services,
+        Action<BootstrapOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.AddAshlarInvitations();
+        services.AddAshlarAuthorization();
+        services.AddOptions();
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddScoped<IBootstrapService, BootstrapService>();
+
+        return services;
+    }
+
+    /// <summary>
     /// Registers <see cref="DataProtectionSecretProtector"/> as Ashlar's secret protector.
     /// </summary>
     /// <remarks>
