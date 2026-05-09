@@ -11,6 +11,7 @@ public readonly record struct ProviderType
     }
 
     public static readonly ProviderType Local = new(nameof(Local));
+    public static readonly ProviderType Internal = new(nameof(Internal));
     public static readonly ProviderType Mfa = new(nameof(Mfa));
     public static readonly ProviderType EmailCode = new(nameof(EmailCode));
     public static readonly ProviderType MagicLink = new(nameof(MagicLink));

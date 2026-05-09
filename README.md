@@ -121,6 +121,84 @@ await emailCodes.RequestCodeAsync(email, context);
 var authenticationResult = await emailCodes.VerifyCodeAsync(email, code, context);
 ```
 
+## Email Verification
+Ashlar includes services for verifying user email addresses. This is typically used during onboarding or after an email change.
+
+Register email verification services:
+
+```csharp
+services.AddAshlarEmailVerification(options =>
+{
+    options.Expiration = TimeSpan.FromHours(24);
+    options.Subject = "Verify your email address";
+});
+```
+
+Request verification for a user:
+
+```csharp
+var verificationService = httpContext.RequestServices.GetRequiredService<IEmailVerificationService>();
+
+await verificationService.RequestVerificationAsync(new EmailVerificationRequest 
+{ 
+    UserId = userId 
+});
+```
+
+Verify the token (e.g., from a link in the email):
+
+```csharp
+var result = await verificationService.VerifyTokenAsync(userId, tokenFromUrl);
+
+if (result.Succeeded)
+{
+    // Email is now marked as verified (user.EmailVerifiedAt is set)
+}
+```
+
+## Email Change
+Ashlar supports a secure two-step email change flow that verifies ownership of the new email address before updating the user record.
+
+Register email change services:
+
+```csharp
+services.AddAshlarEmailChange(options =>
+{
+    options.Expiration = TimeSpan.FromHours(2);
+    options.Subject = "Confirm your new email address";
+    options.RevokeSessions = true; // Optional: revoke all user sessions after change
+});
+```
+
+Step 1: Request an email change:
+
+```csharp
+var emailChangeService = httpContext.RequestServices.GetRequiredService<IEmailChangeService>();
+
+var result = await emailChangeService.RequestChangeAsync(new RequestEmailChangeRequest 
+{ 
+    UserId = userId, 
+    NewEmail = "new-email@example.com" 
+});
+```
+
+Step 2: Confirm the change using the token sent to the NEW email:
+
+```csharp
+var result = await emailChangeService.ConfirmChangeAsync(new ConfirmEmailChangeRequest 
+{ 
+    UserId = userId, 
+    Token = tokenFromNewEmail 
+});
+
+if (result.Succeeded)
+{
+    // User email has been updated and marked as verified
+}
+```
+
+Email change requests are automatically throttled, and the process ensures that the new email is not already in use by another user in the same tenant.
+
 ## TOTP Authenticator
 Ashlar includes a framework-neutral service for managing and verifying TOTP (Time-based One-Time Password) authenticator factors. These are standard RFC 6238 codes compatible with apps like Google Authenticator, Microsoft Authenticator, and 1Password.
 

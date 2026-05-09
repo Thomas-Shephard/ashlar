@@ -37,7 +37,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
 
         const string sql = """
-            SELECT id, email, name, is_active AS IsActive, tenant_id AS TenantId, created_at AS CreatedAt, updated_at AS UpdatedAt
+            SELECT id, email, name, is_active AS IsActive, tenant_id AS TenantId, email_verified_at AS EmailVerifiedAt, created_at AS CreatedAt, updated_at AS UpdatedAt
             FROM ashlar_users
             WHERE normalized_email = @NormalizedEmail AND ((@TenantId IS NULL AND tenant_id IS NULL) OR tenant_id = @TenantId)
             """;
@@ -54,7 +54,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
     public async Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         const string sql = """
-            SELECT id, email, name, is_active AS IsActive, tenant_id AS TenantId, created_at AS CreatedAt, updated_at AS UpdatedAt
+            SELECT id, email, name, is_active AS IsActive, tenant_id AS TenantId, email_verified_at AS EmailVerifiedAt, created_at AS CreatedAt, updated_at AS UpdatedAt
             FROM ashlar_users
             WHERE id = @Id
             """;
@@ -98,7 +98,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         ArgumentException.ThrowIfNullOrWhiteSpace(providerKey);
 
         const string sql = """
-            SELECT u.id, u.email, u.name, u.is_active AS IsActive, u.tenant_id AS TenantId, u.created_at AS CreatedAt, u.updated_at AS UpdatedAt
+            SELECT u.id, u.email, u.name, u.is_active AS IsActive, u.tenant_id AS TenantId, u.email_verified_at AS EmailVerifiedAt, u.created_at AS CreatedAt, u.updated_at AS UpdatedAt
             FROM ashlar_users u
             JOIN ashlar_credentials c ON u.id = c.user_id
             WHERE c.provider_type = @Type AND c.provider_name = @ProviderName AND c.provider_key = @ProviderKey
@@ -120,8 +120,8 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         ArgumentException.ThrowIfNullOrWhiteSpace(user.Email);
 
         const string sql = """
-            INSERT INTO ashlar_users (id, email, normalized_email, name, is_active, tenant_id, created_at)
-            VALUES (@Id, @Email, @NormalizedEmail, @Name, @IsActive, @TenantId, @CreatedAt)
+            INSERT INTO ashlar_users (id, email, normalized_email, name, is_active, tenant_id, email_verified_at, created_at)
+            VALUES (@Id, @Email, @NormalizedEmail, @Name, @IsActive, @TenantId, @EmailVerifiedAt, @CreatedAt)
             """;
 
         var createdAt = user is not IHasAuditMetadata audit || audit.CreatedAt == default ? _timeProvider.GetUtcNow() : audit.CreatedAt;
@@ -135,6 +135,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
             user.Name,
             user.IsActive,
             TenantId = tenantId,
+            user.EmailVerifiedAt,
             CreatedAt = createdAt
         };
 
@@ -153,7 +154,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
 
         const string sql = """
             UPDATE ashlar_users
-            SET email = @Email, normalized_email = @NormalizedEmail, name = @Name, is_active = @IsActive, updated_at = @UpdatedAt
+            SET email = @Email, normalized_email = @NormalizedEmail, name = @Name, is_active = @IsActive, email_verified_at = @EmailVerifiedAt, updated_at = @UpdatedAt
             WHERE id = @Id AND ((@TenantId IS NULL AND tenant_id IS NULL) OR tenant_id = @TenantId)
             """;
 
@@ -167,6 +168,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
             NormalizedEmail = IdentityNormalization.NormalizeEmail(user.Email),
             user.Name,
             user.IsActive,
+            user.EmailVerifiedAt,
             TenantId = tenantId,
             UpdatedAt = now
         };

@@ -6,4 +6,5 @@ public interface IUser
     string Email { get; }
     string? Name { get; }
     bool IsActive { get; }
+    DateTimeOffset? EmailVerifiedAt { get; }
 }

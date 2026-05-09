@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS ashlar_users (
     name TEXT,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     tenant_id UUID,
+    email_verified_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ
 );

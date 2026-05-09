@@ -717,5 +717,6 @@ public sealed class PostgresIdentityRepositoryTests : PostgresTestBase
         public required string Email { get; init; }
         public string? Name { get; init; }
         public bool IsActive { get; init; }
+        public DateTimeOffset? EmailVerifiedAt { get; init; }
     }
 }
