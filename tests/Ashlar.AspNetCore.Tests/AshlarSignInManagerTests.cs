@@ -69,6 +69,55 @@ public sealed class AshlarSignInManagerTests
     }
 
     [Test]
+    public async Task SignInAsyncShouldRevokeExistingSessionIfPresent()
+    {
+        await using var provider = CreateProvider(out var repository);
+        var context = CreateContext(provider);
+        var manager = provider.GetRequiredService<IAshlarSignInManager>();
+
+        var firstSession = await manager.SignInAsync(context, Guid.NewGuid());
+        context.Response.Headers.Clear();
+
+        context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=raw-token";
+
+        var secondSession = await manager.SignInAsync(context, Guid.NewGuid());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.RevokedSessionId, Is.EqualTo(firstSession.Id));
+            Assert.That(repository.RevocationReason, Is.EqualTo("session-replaced"));
+            Assert.That(secondSession.Id, Is.Not.EqualTo(firstSession.Id));
+            Assert.That(repository.CreatedSession?.Id, Is.EqualTo(secondSession.Id));
+            Assert.That(context.Response.Headers.SetCookie.ToString(), Does.Contain("raw-token"));
+        }
+    }
+
+    [Test]
+    public async Task SignInAsyncShouldRevokeExistingSessionIfPresentInPrincipal()
+    {
+        await using var provider = CreateProvider(out var repository);
+        var context = CreateContext(provider);
+        var manager = provider.GetRequiredService<IAshlarSignInManager>();
+
+        var firstSession = await manager.SignInAsync(context, Guid.NewGuid());
+        context.Response.Headers.Clear();
+
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(AshlarClaimTypes.SessionId, firstSession.Id.ToString("D"))
+        ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
+
+        var secondSession = await manager.SignInAsync(context, Guid.NewGuid());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.RevokedSessionId, Is.EqualTo(firstSession.Id));
+            Assert.That(repository.RevocationReason, Is.EqualTo("session-replaced"));
+            Assert.That(secondSession.Id, Is.Not.EqualTo(firstSession.Id));
+        }
+    }
+
+    [Test]
     public async Task SignOutAsyncShouldRevokeCurrentSessionAndDeleteCookie()
     {
         await using var provider = CreateProvider(out var repository);
@@ -126,6 +175,34 @@ public sealed class AshlarSignInManagerTests
 
         using (Assert.EnterMultipleScope())
         {
+            sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            Assert.That(context.Response.Headers.SetCookie.ToString(), Does.Contain($"{AshlarSessionAuthenticationDefaults.CookieName}="));
+        }
+    }
+
+    [Test]
+    public async Task SignOutAsyncShouldDeleteCookieWithoutRevocationWhenCookieValidationSucceedsWithoutSession()
+    {
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        sessionService
+            .Setup(s => s.ValidateSessionAsync("raw-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidateAuthenticationSessionResult(
+                Succeeded: true,
+                Session: null,
+                UserId: Guid.NewGuid(),
+                Status: AuthenticationSessionValidationStatus.Success));
+        var manager = new AshlarSignInManager(
+            sessionService.Object,
+            CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var context = new DefaultHttpContext();
+        context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=raw-token";
+
+        await manager.SignOutAsync(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            sessionService.Verify(s => s.ValidateSessionAsync("raw-token", It.IsAny<CancellationToken>()), Times.Once);
             sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
             Assert.That(context.Response.Headers.SetCookie.ToString(), Does.Contain($"{AshlarSessionAuthenticationDefaults.CookieName}="));
         }
