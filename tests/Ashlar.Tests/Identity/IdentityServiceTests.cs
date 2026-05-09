@@ -435,7 +435,7 @@ public class IdentityServiceTests
 
         await _identityService.LinkCredentialAsync(userId, assertion);
 
-        _repositoryMock.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c =>
+        _repositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.UserId == userId &&
             c.ProviderType == type &&
             c.ProviderName == providerName &&
@@ -564,7 +564,7 @@ public class IdentityServiceTests
 
         await _identityService.LinkCredentialAsync(userId, new LocalPasswordAssertion(password), password);
 
-        _repositoryMock.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c =>
+        _repositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.UserId == userId &&
             c.CredentialValue == expectedHash), It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -612,7 +612,7 @@ public class IdentityServiceTests
 
         await _identityService.LinkCredentialAsync(userId, new LocalPasswordAssertion(password), password);
 
-        _repositoryMock.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c =>
+        _repositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.ProviderName == AuthenticationProviderKey.Local.Name), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -930,7 +930,7 @@ public class IdentityServiceTests
 
         await _identityService.LinkCredentialAsync(userId, assertion);
 
-        _repositoryMock.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c =>
+        _repositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.CredentialValue == null), It.IsAny<CancellationToken>()), Times.Once);
 
         _secretProtectorMock.Verify(s => s.Protect(It.IsAny<string>()), Times.Never);
@@ -1154,7 +1154,7 @@ public class IdentityServiceTests
 
         await _identityService.LinkCredentialAsync(userId, assertion, plainToken);
 
-        _repositoryMock.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c =>
+        _repositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.CredentialValue == protectedToken), It.IsAny<CancellationToken>()), Times.Once);
         _secretProtectorMock.Verify(s => s.Protect(plainToken), Times.Once);
     }

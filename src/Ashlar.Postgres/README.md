@@ -60,7 +60,7 @@ Register the outbox sender and the hosted dispatcher in `Program.cs`:
 
 ```csharp
 // Register the outbox sender (implements IEmailSender)
-services.AddAshlarPostgresEmailOutbox();
+services.AddAshlarPostgresEmailOutboxSender();
 
 // Register the hosted dispatcher with a custom transport
 services.AddAshlarPostgresEmailOutboxHostedService<MySmtpTransport>(options =>
@@ -70,6 +70,8 @@ services.AddAshlarPostgresEmailOutboxHostedService<MySmtpTransport>(options =>
     options.MaxAttempts = 10;
 });
 ```
+
+Use `AddAshlarPostgresEmailOutboxDispatcher<TTransport>()` when you want to register a dispatcher without the hosted polling loop.
 
 ### Implementing a Transport
 
@@ -88,7 +90,7 @@ public class MySmtpTransport : IEmailTransport
 
 ### Transactional Integrity
 
-When using `AddAshlarPostgresEmailOutbox`, calling `IEmailSender.SendAsync` inside an Ashlar PostgreSQL transaction will automatically include the message in that transaction:
+When using the PostgreSQL outbox sender, calling `IEmailSender.SendAsync` inside an Ashlar PostgreSQL transaction will automatically include the message in that transaction:
 
 ```csharp
 await using (var tx = await transactionProvider.BeginTransactionAsync())

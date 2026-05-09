@@ -448,7 +448,7 @@ public sealed class CredentialService(
             CredentialValue = credentialValue
         };
 
-        await _repository.CreateCredentialAsync(credential, cancellationToken);
+        await _repository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
         transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.CredentialLinked,

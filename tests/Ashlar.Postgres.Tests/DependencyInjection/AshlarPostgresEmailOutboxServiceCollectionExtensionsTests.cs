@@ -8,12 +8,12 @@ namespace Ashlar.Postgres.Tests.DependencyInjection;
 public sealed class AshlarPostgresEmailOutboxServiceCollectionExtensionsTests
 {
     [Test]
-    public void AddAshlarPostgresEmailOutboxRegistersRequiredServices()
+    public void AddAshlarPostgresEmailOutboxSenderRegistersRequiredServices()
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddAshlarPostgres("Host=localhost;Database=test");
-        services.AddAshlarPostgresEmailOutbox();
+        services.AddAshlarPostgresEmailOutboxSender();
 
         var provider = services.BuildServiceProvider();
 
@@ -26,12 +26,12 @@ public sealed class AshlarPostgresEmailOutboxServiceCollectionExtensionsTests
     }
 
     [Test]
-    public void AddAshlarPostgresEmailOutboxConfiguresOptions()
+    public void AddAshlarPostgresEmailOutboxSenderConfiguresOptions()
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddAshlarPostgres("Host=localhost;Database=test");
-        services.AddAshlarPostgresEmailOutbox(options =>
+        services.AddAshlarPostgresEmailOutboxSender(options =>
         {
             options.BatchSize = 123;
         });
@@ -40,6 +40,32 @@ public sealed class AshlarPostgresEmailOutboxServiceCollectionExtensionsTests
         var options = provider.GetRequiredService<IOptions<PostgresEmailOutboxOptions>>().Value;
 
         Assert.That(options.BatchSize, Is.EqualTo(123));
+    }
+
+    [Test]
+    public void AddAshlarPostgresEmailOutboxSenderRegistersEnqueueSender()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAshlarPostgres("Host=localhost;Database=test");
+        services.AddAshlarPostgresEmailOutboxSender();
+
+        var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetService<IEmailSender>(), Is.InstanceOf<PostgresEmailOutboxSender>());
+    }
+
+    [Test]
+    public void AddAshlarPostgresEmailOutboxDispatcherRegistersDispatcher()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAshlarPostgres("Host=localhost;Database=test");
+        services.AddAshlarPostgresEmailOutboxDispatcher<TestTransport>();
+
+        var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetService<IEmailOutboxDispatcher>(), Is.InstanceOf<PostgresEmailOutboxDispatcher<TestTransport>>());
     }
 
     [Test]
@@ -62,31 +88,31 @@ public sealed class AshlarPostgresEmailOutboxServiceCollectionExtensionsTests
     }
 
     [Test]
-    public void AddAshlarPostgresEmailOutboxRegistersConcreteTransport()
+    public void AddAshlarPostgresEmailOutboxDispatcherRegistersConcreteTransport()
     {
         var services = new ServiceCollection();
 
-        services.AddAshlarPostgresEmailOutbox<TestTransport>();
+        services.AddAshlarPostgresEmailOutboxDispatcher<TestTransport>();
 
         Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(TestTransport)), Is.True);
     }
 
     [Test]
-    public void AddAshlarPostgresEmailOutboxDoesNotRegisterAbstractTransport()
+    public void AddAshlarPostgresEmailOutboxDispatcherDoesNotRegisterAbstractTransport()
     {
         var services = new ServiceCollection();
 
-        services.AddAshlarPostgresEmailOutbox<AbstractTransport>();
+        services.AddAshlarPostgresEmailOutboxDispatcher<AbstractTransport>();
 
         Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(AbstractTransport)), Is.False);
     }
 
     [Test]
-    public void AddAshlarPostgresEmailOutboxDoesNotRegisterInterfaceTransport()
+    public void AddAshlarPostgresEmailOutboxDispatcherDoesNotRegisterInterfaceTransport()
     {
         var services = new ServiceCollection();
 
-        services.AddAshlarPostgresEmailOutbox<IEmailTransport>();
+        services.AddAshlarPostgresEmailOutboxDispatcher<IEmailTransport>();
 
         Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(IEmailTransport)), Is.False);
     }

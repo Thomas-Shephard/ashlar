@@ -229,9 +229,9 @@ public static class AshlarPostgresServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers the Ashlar PostgreSQL-backed email outbox sender.
+    /// Registers the Ashlar PostgreSQL-backed email outbox enqueue sender.
     /// </summary>
-    public static IServiceCollection AddAshlarPostgresEmailOutbox(
+    public static IServiceCollection AddAshlarPostgresEmailOutboxSender(
         this IServiceCollection services,
         Action<PostgresEmailOutboxOptions>? configure = null)
     {
@@ -255,14 +255,14 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// Registers the Ashlar PostgreSQL-backed email outbox sender and dispatcher.
     /// </summary>
     /// <typeparam name="TTransport">The type of <see cref="IEmailTransport"/> to use for delivery.</typeparam>
-    public static IServiceCollection AddAshlarPostgresEmailOutbox<TTransport>(
+    public static IServiceCollection AddAshlarPostgresEmailOutboxDispatcher<TTransport>(
         this IServiceCollection services,
         Action<PostgresEmailOutboxOptions>? configure = null)
         where TTransport : class, IEmailTransport
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddAshlarPostgresEmailOutbox(configure);
+        services.AddAshlarPostgresEmailOutboxSender(configure);
         if (!typeof(TTransport).IsInterface && !typeof(TTransport).IsAbstract)
         {
             services.TryAddScoped<TTransport>();
@@ -283,7 +283,7 @@ public static class AshlarPostgresServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddAshlarPostgresEmailOutbox<TTransport>(configure);
+        services.AddAshlarPostgresEmailOutboxDispatcher<TTransport>(configure);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, PostgresEmailOutboxHostedService>());
 
         return services;

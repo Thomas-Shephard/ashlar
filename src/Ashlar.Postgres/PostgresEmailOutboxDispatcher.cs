@@ -55,7 +55,7 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
         var lockedUntil = now.Add(_options.LockDuration);
 
         List<OutboxEntry> entries;
-        using (var scope = _serviceProvider.CreateScope())
+        await using (var scope = _serviceProvider.CreateAsyncScope())
         {
             var connectionProvider = scope.ServiceProvider.GetRequiredService<IPostgresConnectionProvider>();
             var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken);
@@ -80,7 +80,7 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
 
         foreach (var entry in entries)
         {
-            using var scope = _serviceProvider.CreateScope();
+            await using var scope = _serviceProvider.CreateAsyncScope();
             await ProcessEntryAsync(entry, scope.ServiceProvider, cancellationToken);
         }
 
