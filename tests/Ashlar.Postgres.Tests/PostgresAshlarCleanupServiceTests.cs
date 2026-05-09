@@ -45,7 +45,7 @@ public sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
     {
         await using var connection = await GetDataSource().OpenConnectionAsync();
         await connection.ExecuteAsync("""
-            TRUNCATE ashlar_security_events, ashlar_rate_limits, ashlar_mfa_handshakes, ashlar_invitations, ashlar_sessions, ashlar_credentials, ashlar_authorization_grants, ashlar_users;
+            TRUNCATE ashlar_security_events, ashlar_rate_limits, ashlar_mfa_handshakes, ashlar_invitations, ashlar_sessions, ashlar_credentials, ashlar_authorization_grants, ashlar_users CASCADE;
             """);
     }
 

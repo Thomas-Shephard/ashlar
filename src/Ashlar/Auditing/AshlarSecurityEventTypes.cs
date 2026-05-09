@@ -46,4 +46,6 @@ public static class AshlarSecurityEventTypes
     public const string TotpEnrollmentCompleted = "ashlar.totp.enrollment_completed";
     public const string TotpDisabled = "ashlar.totp.disabled";
     public const string TotpVerificationRateLimited = "ashlar.totp.verification_rate_limited";
+    public const string BootstrapInvitationCreated = "ashlar.bootstrap.invitation.created";
+    public const string BootstrapCompleted = "ashlar.bootstrap.completed";
 }

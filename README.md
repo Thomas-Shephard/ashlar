@@ -223,6 +223,57 @@ if (result.Succeeded)
 
 `CreateInvitationAsync` generates a high-entropy token, stores its hash, and sends an invitation link via `IEmailSender`. When an invitation is accepted, Ashlar automatically creates a new active user if one does not exist, or activates/links an existing inactive user. Acceptance is atomic and single-use.
 
+## Bootstrap and First-Admin Setup
+Ashlar includes generic bootstrap primitives that allow a newly self-hosted application to safely create its first administrative user without manual database edits.
+
+Register bootstrap services:
+
+```csharp
+services.AddAshlarBootstrap(options =>
+{
+    options.Grants.Add(new BootstrapGrantTemplate 
+    { 
+        Role = "admin" 
+    });
+});
+```
+
+Check bootstrap status and create the first-admin invitation:
+
+```csharp
+var bootstrap = httpContext.RequestServices.GetRequiredService<IBootstrapService>();
+
+if (await bootstrap.GetStatusAsync() == BootstrapStatus.Uninitialized)
+{
+    var result = await bootstrap.CreateBootstrapInvitationAsync(new CreateBootstrapInvitationRequest
+    {
+        Email = "admin@example.com"
+    });
+
+    if (result.Succeeded)
+    {
+        // Display result.Token to the administrator
+    }
+}
+```
+
+Accept the bootstrap invitation:
+
+```csharp
+var result = await bootstrap.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest
+{
+    Token = tokenFromUrl,
+    UserName = "Admin User"
+});
+
+if (result.Succeeded)
+{
+    // The system is now initialized and the user has 'admin' role.
+}
+```
+
+Bootstrap is available only while the application is uninitialized. Initialization is determined by a persistent marker in the database. Accepting a bootstrap invitation is atomic, single-use, and assigns all configured grants to the new user before marking the system as initialized.
+
 ## Recovery Codes
 Ashlar includes a framework-neutral service for generating and verifying backup recovery codes. These are typically used as a fallback authentication method when a user loses access to their primary multi-factor authentication device.
 
