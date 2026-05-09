@@ -52,7 +52,9 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
                 await DeleteIfActiveAsync(activeCategories.ExpiredRateLimits, connection, CleanupDeleteDefinitions.ExpiredRateLimits, Threshold(now, _options.RemoveExpiredRateLimitsAfter), cancellationToken),
                 await DeleteIfActiveAsync(activeCategories.AuditEvents, connection, CleanupDeleteDefinitions.AuditEvents, Threshold(now, _options.RemoveAuditEventsAfter), cancellationToken),
                 await DeleteIfActiveAsync(activeCategories.SentEmails, connection, CleanupDeleteDefinitions.SentEmails, Threshold(now, _options.RemoveSentEmailsAfter), cancellationToken),
-                await DeleteIfActiveAsync(activeCategories.FailedEmails, connection, CleanupDeleteDefinitions.FailedEmails, Threshold(now, _options.RemoveFailedEmailsAfter), cancellationToken));
+                await DeleteIfActiveAsync(activeCategories.FailedEmails, connection, CleanupDeleteDefinitions.FailedEmails, Threshold(now, _options.RemoveFailedEmailsAfter), cancellationToken),
+                await DeleteIfActiveAsync(activeCategories.ExpiredAuthorizationGrants, connection, CleanupDeleteDefinitions.ExpiredAuthorizationGrants, Threshold(now, _options.RemoveExpiredAuthorizationGrantsAfter), cancellationToken),
+                await DeleteIfActiveAsync(activeCategories.RevokedAuthorizationGrants, connection, CleanupDeleteDefinitions.RevokedAuthorizationGrants, Threshold(now, _options.RemoveRevokedAuthorizationGrantsAfter), cancellationToken));
 
             result = result.Add(batchResult);
             activeCategories = AshlarCleanupCategories.FromBatchResult(batchResult, _options.BatchSize);
@@ -108,6 +110,7 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
     {
         private const string SessionsTable = "ashlar_sessions";
         private const string CredentialsTable = "ashlar_credentials";
+        private const string AuthorizationGrantsTable = "ashlar_authorization_grants";
         private const string InvitationsTable = "ashlar_invitations";
         private const string HandshakesTable = "ashlar_mfa_handshakes";
         private const string RateLimitsTable = "ashlar_rate_limits";
@@ -115,17 +118,20 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         private const string EmailOutboxTable = "ashlar_email_outbox";
         private const string ExpiresAtColumn = "expires_at";
         private const string RevokedAtColumn = "revoked_at";
+        private const string RevokedBeforeCutoffPredicate = "revoked_at IS NOT NULL AND revoked_at < @cutoff";
         private const string AcceptedAtColumn = "accepted_at";
         private const string CompletedAtColumn = "completed_at";
         private const string OccurredAtColumn = "occurred_at";
 
         public static readonly CleanupDeleteDefinition ExpiredSessions = new(SessionsTable, "expires_at < @cutoff AND revoked_at IS NULL", ExpiresAtColumn);
-        public static readonly CleanupDeleteDefinition RevokedSessions = new(SessionsTable, "revoked_at IS NOT NULL AND revoked_at < @cutoff", RevokedAtColumn);
+        public static readonly CleanupDeleteDefinition RevokedSessions = new(SessionsTable, RevokedBeforeCutoffPredicate, RevokedAtColumn);
         public static readonly CleanupDeleteDefinition ExpiredCredentials = new(CredentialsTable, "expires_at IS NOT NULL AND expires_at < @cutoff AND revoked_at IS NULL", ExpiresAtColumn);
-        public static readonly CleanupDeleteDefinition RevokedCredentials = new(CredentialsTable, "revoked_at IS NOT NULL AND revoked_at < @cutoff", RevokedAtColumn);
+        public static readonly CleanupDeleteDefinition RevokedCredentials = new(CredentialsTable, RevokedBeforeCutoffPredicate, RevokedAtColumn);
+        public static readonly CleanupDeleteDefinition ExpiredAuthorizationGrants = new(AuthorizationGrantsTable, "expires_at IS NOT NULL AND expires_at < @cutoff AND revoked_at IS NULL", ExpiresAtColumn);
+        public static readonly CleanupDeleteDefinition RevokedAuthorizationGrants = new(AuthorizationGrantsTable, RevokedBeforeCutoffPredicate, RevokedAtColumn);
         public static readonly CleanupDeleteDefinition ExpiredInvitations = new(InvitationsTable, "expires_at < @cutoff AND accepted_at IS NULL AND revoked_at IS NULL", ExpiresAtColumn);
         public static readonly CleanupDeleteDefinition AcceptedInvitations = new(InvitationsTable, "accepted_at IS NOT NULL AND accepted_at < @cutoff", AcceptedAtColumn);
-        public static readonly CleanupDeleteDefinition RevokedInvitations = new(InvitationsTable, "revoked_at IS NOT NULL AND revoked_at < @cutoff", RevokedAtColumn);
+        public static readonly CleanupDeleteDefinition RevokedInvitations = new(InvitationsTable, RevokedBeforeCutoffPredicate, RevokedAtColumn);
         public static readonly CleanupDeleteDefinition ExpiredHandshakes = new(HandshakesTable, "expires_at < @cutoff AND is_revoked = FALSE AND is_completed = FALSE", ExpiresAtColumn);
         public static readonly CleanupDeleteDefinition CompletedHandshakes = new(HandshakesTable, "is_completed = TRUE AND completed_at IS NOT NULL AND completed_at < @cutoff", CompletedAtColumn);
         public static readonly CleanupDeleteDefinition RevokedHandshakes = new(HandshakesTable, "is_revoked = TRUE AND revoked_at IS NOT NULL AND revoked_at < @cutoff", RevokedAtColumn);
@@ -140,6 +146,8 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         bool RevokedSessions,
         bool ExpiredCredentials,
         bool RevokedCredentials,
+        bool ExpiredAuthorizationGrants,
+        bool RevokedAuthorizationGrants,
         bool ExpiredInvitations,
         bool AcceptedInvitations,
         bool RevokedInvitations,
@@ -151,13 +159,15 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         bool SentEmails,
         bool FailedEmails)
     {
-        public static AshlarCleanupCategories All { get; } = new(true, true, true, true, true, true, true, true, true, true, true, true, true, true);
+        public static AshlarCleanupCategories All { get; } = new(true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true);
 
         public bool HasAny =>
             ExpiredSessions
             || RevokedSessions
             || ExpiredCredentials
             || RevokedCredentials
+            || ExpiredAuthorizationGrants
+            || RevokedAuthorizationGrants
             || ExpiredInvitations
             || AcceptedInvitations
             || RevokedInvitations
@@ -176,6 +186,8 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
                 result.RevokedSessions == batchSize,
                 result.ExpiredCredentials == batchSize,
                 result.RevokedCredentials == batchSize,
+                result.ExpiredAuthorizationGrants == batchSize,
+                result.RevokedAuthorizationGrants == batchSize,
                 result.ExpiredInvitations == batchSize,
                 result.AcceptedInvitations == batchSize,
                 result.RevokedInvitations == batchSize,

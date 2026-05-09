@@ -38,6 +38,16 @@ public sealed class AshlarCleanupOptions
     public TimeSpan? RemoveRevokedCredentialsAfter { get; set; } = TimeSpan.FromDays(30);
 
     /// <summary>
+    /// Retention period after authorization grant expiration. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
+    /// </summary>
+    public TimeSpan? RemoveExpiredAuthorizationGrantsAfter { get; set; } = TimeSpan.FromDays(30);
+
+    /// <summary>
+    /// Retention period after authorization grant revocation. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes revoked rows on the next cleanup run.
+    /// </summary>
+    public TimeSpan? RemoveRevokedAuthorizationGrantsAfter { get; set; } = TimeSpan.FromDays(30);
+
+    /// <summary>
     /// Retention period after invitation expiration. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveExpiredInvitationsAfter { get; set; } = TimeSpan.FromDays(30);
@@ -100,6 +110,8 @@ public sealed class AshlarCleanupOptions
             && IsValid(options.RemoveRevokedSessionsAfter)
             && IsValid(options.RemoveExpiredCredentialsAfter)
             && IsValid(options.RemoveRevokedCredentialsAfter)
+            && IsValid(options.RemoveExpiredAuthorizationGrantsAfter)
+            && IsValid(options.RemoveRevokedAuthorizationGrantsAfter)
             && IsValid(options.RemoveExpiredInvitationsAfter)
             && IsValid(options.RemoveAcceptedInvitationsAfter)
             && IsValid(options.RemoveRevokedInvitationsAfter)

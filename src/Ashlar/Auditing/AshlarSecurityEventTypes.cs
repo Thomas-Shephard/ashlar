@@ -40,6 +40,8 @@ public static class AshlarSecurityEventTypes
     public const string AuthenticationHandshakeExpired = "ashlar.authentication.handshake.expired";
     public const string AuthenticationHandshakeFailed = "ashlar.authentication.handshake.failed";
     public const string AuthenticationHandshakeVerificationRateLimited = "ashlar.authentication.handshake.verification_rate_limited";
+    public const string AuthorizationGrantCreated = "ashlar.authorization.grant.created";
+    public const string AuthorizationGrantRevoked = "ashlar.authorization.grant.revoked";
     public const string TotpEnrollmentStarted = "ashlar.totp.enrollment_started";
     public const string TotpEnrollmentCompleted = "ashlar.totp.enrollment_completed";
     public const string TotpDisabled = "ashlar.totp.disabled";

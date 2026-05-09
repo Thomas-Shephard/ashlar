@@ -35,6 +35,16 @@ public sealed class AshlarCleanupOptionsTests
     }
 
     [Test]
+    public void ValidateRejectsNegativeAuthorizationGrantRetention()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AshlarCleanupOptions.Validate(new AshlarCleanupOptions { RemoveExpiredAuthorizationGrantsAfter = TimeSpan.FromTicks(-1) }), Is.False);
+            Assert.That(AshlarCleanupOptions.Validate(new AshlarCleanupOptions { RemoveRevokedAuthorizationGrantsAfter = TimeSpan.FromTicks(-1) }), Is.False);
+        }
+    }
+
+    [Test]
     public void ValidateThrowsForNullOptions()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed

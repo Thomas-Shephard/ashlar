@@ -1,4 +1,5 @@
 using Ashlar.Auditing;
+using Ashlar.Authorization.Abstractions;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
@@ -53,7 +54,46 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.TryAddScoped<IInvitationRepository, PostgresInvitationRepository>();
         services.TryAddScoped<IAuthenticationSessionRepository, PostgresAuthenticationSessionRepository>();
         services.TryAddScoped<IAuthenticationHandshakeRepository, PostgresAuthenticationHandshakeRepository>();
+        services.TryAddScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
         services.TryAddTransient<SchemaManager>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers Ashlar PostgreSQL-backed authorization persistence.
+    /// </summary>
+    public static IServiceCollection AddAshlarPostgresAuthorization(
+        this IServiceCollection services,
+        string connectionString)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+
+        services.TryAddSingleton(_ => new NpgsqlDataSourceBuilder(connectionString).Build());
+        return services.AddAshlarPostgresAuthorizationPersistence();
+    }
+
+    /// <summary>
+    /// Registers Ashlar PostgreSQL-backed authorization persistence using a provided <see cref="NpgsqlDataSource"/>.
+    /// </summary>
+    public static IServiceCollection AddAshlarPostgresAuthorization(
+        this IServiceCollection services,
+        NpgsqlDataSource dataSource)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(dataSource);
+
+        services.TryAddSingleton(dataSource);
+        return services.AddAshlarPostgresAuthorizationPersistence();
+    }
+
+    private static IServiceCollection AddAshlarPostgresAuthorizationPersistence(this IServiceCollection services)
+    {
+        services.AddAshlarAuthorization();
+        services.TryAddScoped<PostgresTransactionManager>();
+        services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
+        services.TryAddScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
 
         return services;
     }

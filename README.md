@@ -405,6 +405,53 @@ if (validation.Succeeded)
 await sessionService.RevokeSessionAsync(createResult.Session.Id, "signed-out");
 ```
 
+## Authorization Grants
+Ashlar includes framework-neutral authorization primitives for durable grants. Grants are generic: they can assign one normalized role or one normalized permission to a user, optionally within a tenant and explicit scope. Ashlar evaluates these grants, but it does not replace ASP.NET Core Authorization policies or requirements.
+
+```csharp
+services.AddAshlarAuthorization();
+services.AddAshlarPostgres(connectionString);
+```
+
+Grant a permission:
+
+```csharp
+var grant = await grantService.CreateGrantAsync(new CreateAuthorizationGrantRequest(
+    UserId: userId,
+    Permission: "posts.edit"));
+```
+
+Grant a scoped role:
+
+```csharp
+await grantService.CreateGrantAsync(new CreateAuthorizationGrantRequest(
+    UserId: userId,
+    TenantId: tenantId,
+    ScopeType: "project",
+    ScopeId: projectId.ToString("D"),
+    Role: "reviewer"));
+```
+
+Evaluate access:
+
+```csharp
+var result = await authorizationEvaluator.EvaluateAsync(new AuthorizationEvaluationRequest(
+    UserId: userId,
+    TenantId: tenantId,
+    ScopeType: "project",
+    ScopeId: projectId.ToString("D"),
+    Permission: "posts.edit"));
+
+if (!result.Succeeded)
+{
+    return Results.Forbid();
+}
+```
+
+Scope matching is explicit. A scoped grant applies only when the evaluation request uses the same tenant, scope type, and scope id. A global grant is represented by omitting tenant and scope values.
+
+ASP.NET Core applications can call `IAuthorizationEvaluator` from custom authorization handlers. Avoid copying all grants into cookies unless you accept stale authorization until the cookie is refreshed.
+
 ## ASP.NET Core Session Cookies
 Use **Ashlar.AspNetCore** to authenticate Ashlar sessions through the normal ASP.NET Core authentication middleware:
 
