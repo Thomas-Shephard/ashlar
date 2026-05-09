@@ -1,0 +1,161 @@
+using System.Security.Claims;
+using Ashlar.AspNetCore.Sessions;
+using Ashlar.Identity;
+using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.Models;
+using Ashlar.Identity.Models.Totp;
+using Ashlar.Sample.AspNetCore.Extensions;
+using Ashlar.Sample.AspNetCore.Views;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+
+namespace Ashlar.Sample.AspNetCore.Endpoints;
+
+internal static class MfaEndpoints
+{
+    public static void MapMfaEndpoints(this IEndpointRouteBuilder app)
+    {
+        app.MapPost("/mfa/verify", VerifyMfaAsync);
+
+        app.MapGet("/mfa/settings", async (
+            ITotpService totp,
+            IIdentityRepository users,
+            ClaimsPrincipal user,
+            IOptions<SampleAshlarOptions> options,
+            CancellationToken cancellationToken) =>
+        {
+            var userId = user.GetAshlarUserId();
+            var ashlarUser = await users.GetUserByIdAsync(userId, cancellationToken);
+            if (ashlarUser == null) return Results.NotFound();
+
+            var totpCredential = await users.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, cancellationToken);
+            var hasTotp = totpCredential != null;
+
+            if (!hasTotp)
+            {
+                var enrollment = await totp.StartEnrollmentAsync(userId, options.Value.AppName, ashlarUser.Email, cancellationToken);
+                return AppViews.RenderMfaSetup(enrollment.SharedSecret, enrollment.AuthenticatorUri);
+            }
+
+            var recoveryCredential = await users.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", null, cancellationToken);
+            var hasRecoveryCodes = recoveryCredential != null;
+
+            return AppViews.RenderMfaSettings(hasRecoveryCodes);
+        }).RequireAuthorization();
+
+        app.MapPost("/mfa/totp/verify", async Task<IResult> (
+            TotpVerifyRequest request,
+            ITotpService totp,
+            ClaimsPrincipal user,
+            CancellationToken cancellationToken) =>
+        {
+            var verified = await totp.VerifyAndEnrollAsync(user.GetAshlarUserId(), request.SharedSecret, request.Code, cancellationToken);
+            return verified ? Results.Ok() : Results.BadRequest(new { error = "invalid_totp" });
+        }).RequireAuthorization();
+
+        app.MapPost("/mfa/totp/reset", async (
+            IIdentityRepository users,
+            ClaimsPrincipal user,
+            CancellationToken cancellationToken) =>
+        {
+            await users.RevokeCredentialsAsync(user.GetAshlarUserId(), ProviderType.Mfa, "totp", cancellationToken);
+            return Results.Ok();
+        }).RequireAuthorization();
+
+        app.MapPost("/mfa/recovery-codes", async (
+            IRecoveryCodeService recoveryCodes,
+            ClaimsPrincipal user,
+            CancellationToken cancellationToken) =>
+        {
+            var codes = await recoveryCodes.GenerateRecoveryCodesAsync(user.GetAshlarUserId(), cancellationToken: cancellationToken);
+            return Results.Ok(new { codes });
+        }).RequireAuthorization();
+    }
+
+    private static async Task<IResult> VerifyMfaAsync(
+            MfaVerifyRequest request,
+            [AsParameters] MfaVerifyServices services,
+            HttpContext httpContext,
+            CancellationToken cancellationToken)
+    {
+        var authContext = httpContext.ToAuthenticationContext();
+        var handshake = await services.HandshakeService.GetHandshakeAsync(request.HandshakeToken, cancellationToken);
+        if (handshake == null)
+        {
+            return Results.BadRequest(new { error = "handshake_not_found" });
+        }
+
+        var code = request.Code.Trim();
+        if (IsTotpCode(code))
+        {
+            return await VerifyTotpAsync(request.HandshakeToken, code, authContext, services, httpContext, cancellationToken);
+        }
+
+        return await VerifyRecoveryCodeAsync(request.HandshakeToken, code, handshake, authContext, services, httpContext, cancellationToken);
+    }
+
+    private static bool IsTotpCode(string code) => code.Length == 6 && code.All(char.IsDigit);
+
+    private static async Task<IResult> VerifyTotpAsync(
+        string handshakeToken,
+        string code,
+        AuthenticationContext authContext,
+        MfaVerifyServices services,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var response = await services.Orchestrator.VerifyFactorAsync(
+            handshakeToken,
+            "totp",
+            authContext,
+            new TotpAssertion(code),
+            cancellationToken: cancellationToken);
+
+        if (response is not { Status: MfaAuthenticationStatus.Succeeded, User: not null })
+        {
+            return Results.BadRequest(new { error = response.ErrorMessage ?? "invalid_totp" });
+        }
+
+        await services.SignInManager.SignInAsync(httpContext, response.User.Id, cancellationToken: cancellationToken);
+        return Results.Ok(new { userId = response.User.Id });
+    }
+
+    private static async Task<IResult> VerifyRecoveryCodeAsync(
+        string handshakeToken,
+        string code,
+        AuthenticationHandshake handshake,
+        AuthenticationContext authContext,
+        MfaVerifyServices services,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var user = await services.Users.GetUserByIdAsync(handshake.UserId, cancellationToken);
+        var factorContext = authContext with { UserId = handshake.UserId, Email = user?.Email };
+        var recoveryResponse = await services.Pipeline.LoginAsync(factorContext, new RecoveryCodeAssertion(code), cancellationToken);
+
+        if (!recoveryResponse.Succeeded || recoveryResponse.User?.Id != handshake.UserId)
+        {
+            return Results.BadRequest(new { error = "invalid_mfa_code" });
+        }
+
+        var factorToSatisfy = handshake.RequiredFactors.FirstOrDefault() ?? "totp";
+        var result = await services.HandshakeService.VerifyFactorAsync(
+            new VerifyAuthenticationHandshakeRequest(handshakeToken, factorToSatisfy, new Dictionary<string, string> { ["mfa_recovery"] = "true" }),
+            cancellationToken);
+
+        if (result is not { Succeeded: true, Handshake: not null })
+        {
+            return Results.BadRequest(new { error = "invalid_mfa_code" });
+        }
+
+        await services.SignInManager.SignInAsync(httpContext, recoveryResponse.User.Id, cancellationToken: cancellationToken);
+        return Results.Ok(new { userId = recoveryResponse.User.Id });
+    }
+
+    private sealed record MfaVerifyServices(
+        [FromServices] IAuthenticationOrchestrator Orchestrator,
+        [FromServices] IAuthenticationHandshakeService HandshakeService,
+        [FromServices] IAuthenticationPipeline Pipeline,
+        [FromServices] IIdentityRepository Users,
+        [FromServices] IAshlarSignInManager SignInManager);
+}
