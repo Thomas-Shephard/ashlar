@@ -13,6 +13,7 @@ using Ashlar.Security.Tokens;
 using Ashlar.Tests.Identity;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Moq;
 
 namespace Ashlar.Tests.DependencyInjection;
@@ -400,5 +401,60 @@ public class AshlarServiceCollectionExtensionsTests
         {
             throw new NotSupportedException();
         }
+    }
+
+    [Test]
+    public void AddAshlarEmailVerificationRegistersService()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IIdentityRepository>());
+        services.AddSingleton(Mock.Of<ISecretProtector>());
+        services.AddAshlarEmailVerification();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        Assert.That(scope.ServiceProvider.GetRequiredService<IEmailVerificationService>(), Is.TypeOf<EmailVerificationService>());
+    }
+
+    [Test]
+    public void AddAshlarEmailVerificationAppliesConfiguration()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IIdentityRepository>());
+        services.AddAshlarEmailVerification(options => options.Subject = "Verify custom");
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetRequiredService<IOptions<EmailVerificationOptions>>().Value.Subject, Is.EqualTo("Verify custom"));
+    }
+
+    [Test]
+    public void AddAshlarEmailChangeRegistersService()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IIdentityRepository>());
+        services.AddSingleton(Mock.Of<ISecretProtector>());
+        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarEmailChange();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        Assert.That(scope.ServiceProvider.GetRequiredService<IEmailChangeService>(), Is.TypeOf<EmailChangeService>());
+    }
+
+    [Test]
+    public void AddAshlarEmailChangeAppliesConfiguration()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IIdentityRepository>());
+        services.AddSingleton(Mock.Of<ISecretProtector>());
+        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddAshlarEmailChange(options => options.Subject = "Change custom");
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetRequiredService<IOptions<EmailChangeOptions>>().Value.Subject, Is.EqualTo("Change custom"));
     }
 }

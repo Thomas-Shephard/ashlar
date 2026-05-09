@@ -48,4 +48,14 @@ public static class AshlarSecurityEventTypes
     public const string TotpVerificationRateLimited = "ashlar.totp.verification_rate_limited";
     public const string BootstrapInvitationCreated = "ashlar.bootstrap.invitation.created";
     public const string BootstrapCompleted = "ashlar.bootstrap.completed";
+    public const string EmailVerificationRequested = "ashlar.email_verification.requested";
+    public const string EmailVerified = "ashlar.email_verification.verified";
+    public const string EmailVerificationRateLimited = "ashlar.email_verification.rate_limited";
+    public const string EmailVerificationVerificationRateLimited = "ashlar.email_verification.verification_rate_limited";
+    public const string EmailChangeRequested = "ashlar.email_change.requested";
+    public const string EmailChangeRequestSuppressed = "ashlar.email_change.request_suppressed";
+    public const string EmailChanged = "ashlar.email_change.changed";
+    public const string EmailChangeFailed = "ashlar.email_change.failed";
+    public const string EmailChangeRateLimited = "ashlar.email_change.rate_limited";
+    public const string EmailChangeVerificationRateLimited = "ashlar.email_change.verification_rate_limited";
 }

@@ -474,4 +474,48 @@ public static class AshlarServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Registers Ashlar's email verification services.
+    /// </summary>
+    public static IServiceCollection AddAshlarEmailVerification(
+        this IServiceCollection services,
+        Action<EmailVerificationOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.AddOptions();
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddScoped<IEmailVerificationService, EmailVerificationService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers Ashlar's email change services.
+    /// </summary>
+    public static IServiceCollection AddAshlarEmailChange(
+        this IServiceCollection services,
+        Action<EmailChangeOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.AddOptions();
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddScoped<EmailChangeAuditDependencies>();
+        services.TryAddScoped<EmailChangeDependencies>();
+        services.TryAddScoped<IEmailChangeService, EmailChangeService>();
+
+        return services;
+    }
 }

@@ -1,0 +1,421 @@
+using Ashlar.Auditing;
+using Ashlar.Identity;
+using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.Models;
+using Ashlar.Identity.RateLimiting.Abstractions;
+using Ashlar.Identity.RateLimiting.Models;
+using Ashlar.Messaging;
+using Ashlar.Security.Encryption;
+using Ashlar.Security.Tokens;
+using Microsoft.Extensions.Time.Testing;
+using Moq;
+
+namespace Ashlar.Tests.Identity;
+
+public sealed class EmailChangeServiceTests
+{
+    private static AshlarUser CreateUser(string email = "old@example.com") => new() { Id = Guid.NewGuid(), Email = email, IsActive = true };
+
+    [Test]
+    public void ConstructorThrowsOnNullDependencies()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _ = new EmailChangeService(null!));
+    }
+
+    [Test]
+    public async Task RequestChangeSendsEmailAndStoresCredential()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" };
+
+        var result = await fixture.Service.RequestChangeAsync(request);
+
+        Assert.That(result.Succeeded, Is.True, result.ErrorMessage);
+        var message = fixture.EmailSender.Messages.Single();
+        var credential = fixture.IdentityRepository.Credentials.Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message.To, Is.EqualTo("new@example.com"));
+            Assert.That(credential.UserId, Is.EqualTo(user.Id));
+            Assert.That(fixture.SecretProtector.Unprotect(credential.CredentialValue!), Is.EqualTo("new@example.com"));
+            Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailChangeRequested), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task RequestChangeFailsIfNewEmailIsSameAsCurrent()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "old@example.com" };
+
+        var result = await fixture.Service.RequestChangeAsync(request);
+
+        Assert.That(result.Succeeded, Is.False, "Should have failed because email is the same");
+    }
+
+    [Test]
+    public async Task RequestChangeFailsIfUserNotFound()
+    {
+        var fixture = CreateFixture();
+
+        var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = Guid.NewGuid(), NewEmail = "new@example.com" });
+
+        Assert.That(result.ErrorMessage, Is.EqualTo("User not found or inactive."));
+    }
+
+    [Test]
+    public async Task RequestChangeRateLimits()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(users: [user], requestAllowed: false);
+
+        var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorMessage, Is.EqualTo("Too many requests."));
+            Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailChangeRateLimited), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task RequestChangeSuppressesIfNewEmailIsAlreadyInUse()
+    {
+        var user = CreateUser();
+        var existingUser = CreateUser("taken@example.com");
+        var fixture = CreateFixture(users: [user, existingUser]);
+        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "taken@example.com" };
+
+        var result = await fixture.Service.RequestChangeAsync(request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixture.EmailSender.Messages, Has.Count.EqualTo(1));
+            Assert.That(fixture.EmailSender.Messages.Single().TextBody, Contains.Substring("No changes were made"));
+            Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailChangeRequestSuppressed), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task ConfirmChangeUpdatesUserAndRevokesSessions()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+
+        var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True, result.ErrorMessage);
+            Assert.That(user.Email, Is.EqualTo("new@example.com"));
+            Assert.That(user.EmailVerifiedAt, Is.Not.Null);
+            Assert.That(fixture.SessionRepository.RevokedUserId, Is.EqualTo(user.Id));
+            Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailChanged), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task ConfirmChangeFailsIfNewEmailBecameTaken()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+
+        // Now someone else takes the email
+        var otherUser = CreateUser("new@example.com");
+        fixture.IdentityRepository.Users.Add(otherUser);
+
+        var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.ErrorMessage, Contains.Substring("already in use"));
+        }
+    }
+
+    [Test]
+    public async Task ConfirmChangePreservesAuditMetadataForMetadataBackedUser()
+    {
+        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "old@example.com", IsActive = true, CreatedAt = DateTimeOffset.UtcNow.AddDays(-1) };
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+
+        var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True, result.ErrorMessage);
+            Assert.That(user.Email, Is.EqualTo("new@example.com"));
+            Assert.That(user.UpdatedAt, Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public async Task ConfirmChangeRateLimits()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(users: [user], verifyAllowed: false);
+
+        var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = "token" });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorMessage, Is.EqualTo("Too many attempts."));
+            Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailChangeVerificationRateLimited), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task ConfirmChangeFailsForInvalidToken()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+
+        var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = "invalid" });
+
+        Assert.That(result.ErrorMessage, Is.EqualTo("Invalid or expired token."));
+    }
+
+    [Test]
+    public async Task ConfirmChangeFailsForInvalidTokenData()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(users: [user], secretProtector: new ThrowingSecretProtector());
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+
+        var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
+
+        Assert.That(result.ErrorMessage, Is.EqualTo("Invalid token data."));
+    }
+
+    [Test]
+    public async Task ConfirmChangeFailsIfUserNoLongerExists()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+        fixture.IdentityRepository.Users.Clear();
+
+        var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
+
+        Assert.That(result.ErrorMessage, Is.EqualTo("User not found or inactive."));
+    }
+
+    [Test]
+    public async Task ConfirmChangeFailsIfCredentialWasConsumedConcurrently()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(users: [user], consumeSucceeds: false);
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+
+        var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
+
+        Assert.That(result.ErrorMessage, Is.EqualTo("Token already used or expired."));
+    }
+
+    private static string ExtractToken(EmailMessage message)
+    {
+        var body = message.TextBody!;
+        return body.Split(": ").Last();
+    }
+
+    private static Fixture CreateFixture(
+        IUser? user = null,
+        IUser?[]? users = null,
+        bool requestAllowed = true,
+        bool verifyAllowed = true,
+        bool consumeSucceeds = true,
+        ISecretProtector? secretProtector = null)
+    {
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 5, 9, 12, 0, 0, TimeSpan.Zero));
+        var identityRepository = new InMemoryIdentityRepository(users ?? [user]);
+        var audit = new RecordingSecurityEventSink();
+        var emailSender = new RecordingEmailSender();
+        var tokenHasher = new Sha256TokenHasher();
+        var tokenGenerator = new SecureTokenGenerator();
+        var transactionProvider = new NullTransactionProvider();
+        var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed);
+        var resolvedSecretProtector = secretProtector ?? new FakeSecretProtector();
+        var sessionRepository = new StubSessionRepository();
+        identityRepository.ConsumeSucceeds = consumeSucceeds;
+
+        var dependencies = new EmailChangeDependencies(
+            new IdentityContext(identityRepository, Mock.Of<IIdentityService>(), transactionProvider),
+            new SecureTokenContext(tokenGenerator, tokenHasher),
+            emailSender,
+            rateLimiter,
+            sessionRepository,
+            resolvedSecretProtector,
+            new EmailChangeAuditDependencies(time, audit));
+        var service = new EmailChangeService(dependencies);
+
+        return new Fixture(service, identityRepository, emailSender, audit, resolvedSecretProtector, sessionRepository);
+    }
+
+    private sealed record Fixture(EmailChangeService Service, InMemoryIdentityRepository IdentityRepository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, ISecretProtector SecretProtector, StubSessionRepository SessionRepository);
+
+    private sealed class StubRateLimiter(bool requestAllowed, bool verifyAllowed) : IAuthenticationRateLimiter
+    {
+        public Task<RateLimitDecision> CheckAsync(RateLimitAttempt attempt, RateLimitRule rule, CancellationToken cancellationToken = default)
+        {
+            var allowed = attempt.Purpose == "email-change-request" ? requestAllowed : verifyAllowed;
+            return Task.FromResult(new RateLimitDecision
+            {
+                Status = allowed ? RateLimitStatus.Allowed : RateLimitStatus.Blocked,
+                Remaining = allowed ? 1 : 0,
+                WindowResetAt = DateTimeOffset.UtcNow.Add(rule.Window)
+            });
+        }
+    }
+
+    private sealed class RecordingEmailSender : IEmailSender
+    {
+        public List<EmailMessage> Messages { get; } = [];
+        public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+        {
+            Messages.Add(message);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingSecurityEventSink : ISecurityEventSink
+    {
+        public List<AshlarSecurityEvent> Events { get; } = [];
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            Events.Add(securityEvent);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeSecretProtector : ISecretProtector
+    {
+        public byte[] Protect(byte[] data) => data;
+        public byte[] Unprotect(byte[] data) => data;
+        public string Protect(string plaintext) => "protected:" + plaintext;
+        public string Unprotect(string protectedText) => protectedText.Replace("protected:", "");
+    }
+
+    private sealed class ThrowingSecretProtector : ISecretProtector
+    {
+        public byte[] Protect(byte[] data) => data;
+        public byte[] Unprotect(byte[] data) => throw new InvalidOperationException();
+        public string Protect(string plaintext) => "protected:" + plaintext;
+        public string Unprotect(string protectedText) => throw new InvalidOperationException();
+    }
+
+    private sealed class StubSessionRepository : IAuthenticationSessionRepository
+    {
+        public Guid? RevokedUserId { get; private set; }
+        public Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
+        {
+            RevokedUserId = userId;
+            return Task.FromResult(1);
+        }
+
+        public Task CreateSessionAsync(AuthenticationSession session, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<AuthenticationSession?> GetSessionByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<bool> UpdateSessionLastSeenAsync(Guid sessionId, DateTimeOffset lastSeenAt, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<bool> RevokeSessionAsync(Guid sessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<IReadOnlyList<AuthenticationSession>> ListSessionsForUserAsync(Guid userId, bool activeOnly, DateTimeOffset now, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    }
+
+    private sealed class InMemoryIdentityRepository : IIdentityRepository
+    {
+        public List<IUser> Users { get; } = [];
+        public List<UserCredential> Credentials { get; } = [];
+        public bool ConsumeSucceeds { get; set; } = true;
+
+        public InMemoryIdentityRepository(params IUser?[] users)
+        {
+            Users.AddRange(users.OfType<IUser>());
+        }
+
+        public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
+        {
+            var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
+            return Task.FromResult(Users.SingleOrDefault(u => string.Equals(IdentityNormalization.NormalizeEmail(u.Email), normalizedEmail, StringComparison.OrdinalIgnoreCase) && (u as ITenantUser)?.TenantId == tenantId));
+        }
+        public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => Task.FromResult(Users.SingleOrDefault(u => u.Id == userId));
+        public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task UpdateUserAsync(IUser user, CancellationToken cancellationToken = default)
+        {
+            var existing = Users.Single(u => u.Id == user.Id);
+            switch (existing)
+            {
+                case AshlarUser ashlarUser:
+                    ashlarUser.Email = user.Email;
+                    ashlarUser.EmailVerifiedAt = user.EmailVerifiedAt;
+                    break;
+                case MetadataUser metadataUser:
+                    metadataUser.Email = user.Email;
+                    metadataUser.EmailVerifiedAt = user.EmailVerifiedAt;
+                    break;
+            }
+            _ = user.Name;
+            _ = user.IsActive;
+            _ = (user as ITenantUser)?.TenantId;
+            _ = (user as IHasAuditMetadata)?.CreatedAt;
+            if (user is IHasAuditMetadata metadata)
+            {
+                metadata.UpdatedAt = DateTimeOffset.UtcNow;
+                _ = metadata.UpdatedAt;
+            }
+            return Task.CompletedTask;
+        }
+
+        public Task<UserCredential?> GetCredentialForUserAsync(Guid userId, ProviderType type, string providerName, string? providerKey = null, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(Credentials.SingleOrDefault(c => c.UserId == userId && c.ProviderType == type && c.ProviderName == providerName && (providerKey == null || c.ProviderKey == providerKey)));
+        }
+
+        public Task<IUser?> GetUserByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task CreateCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task CreateOrReplaceCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default)
+        {
+            Credentials.Add(credential);
+            return Task.CompletedTask;
+        }
+        public Task<bool> UpdateCredentialAsync(UserCredential credential, string expectedVersion, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<bool> ConsumeCredentialAsync(Guid credentialId, string expectedVersion, CancellationToken cancellationToken = default)
+        {
+            if (!ConsumeSucceeds) return Task.FromResult(false);
+            var credential = Credentials.SingleOrDefault(c => c.Id == credentialId && c.Version == expectedVersion);
+            if (credential == null) return Task.FromResult(false);
+            Credentials.Remove(credential);
+            return Task.FromResult(true);
+        }
+        public Task<int> RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default)
+        {
+            var toRevoke = Credentials.Where(c => c.UserId == userId && c.ProviderType == type && c.ProviderName == providerName && c.RevokedAt == null).ToList();
+            foreach (var c in toRevoke) c.RevokedAt = DateTimeOffset.UtcNow;
+            return Task.FromResult(toRevoke.Count);
+        }
+    }
+
+    private sealed class MetadataUser : IUser, IHasAuditMetadata
+    {
+        public required Guid Id { get; init; }
+        public required string Email { get; set; }
+        public string? Name { get; set; }
+        public bool IsActive { get; set; }
+        public DateTimeOffset? EmailVerifiedAt { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+        public DateTimeOffset? UpdatedAt { get; set; }
+    }
+}

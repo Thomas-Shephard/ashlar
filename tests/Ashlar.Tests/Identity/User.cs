@@ -9,4 +9,5 @@ public sealed class User : ITenantUser
     public string? Name { get; set; }
     public bool IsActive { get; set; } = true;
     public Guid? TenantId { get; set; }
+    public DateTimeOffset? EmailVerifiedAt { get; set; }
 }

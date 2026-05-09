@@ -269,5 +269,6 @@ public class ExternalAuthenticationProviderTests
     {
         public string? Name => null;
         public bool IsActive => true;
+        public DateTimeOffset? EmailVerifiedAt => null;
     }
 }
