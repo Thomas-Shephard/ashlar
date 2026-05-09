@@ -52,7 +52,19 @@ public sealed class TotpAuthenticationProvider : IAuthenticationProvider
     /// <inheritdoc />
     public Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default)
     {
-        // TOTP is typically an MFA factor and doesn't find users by itself in Ashlar's default flow.
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(repository);
+
+        if (assertion is not TotpAssertion)
+        {
+            return Task.FromResult<IUser?>(null);
+        }
+
+        if (context.UserId.HasValue)
+        {
+            return repository.GetUserByIdAsync(context.UserId.Value, cancellationToken);
+        }
+
         return Task.FromResult<IUser?>(null);
     }
 
@@ -104,8 +116,9 @@ public sealed class TotpAuthenticationProvider : IAuthenticationProvider
         }
 
         var now = _timeProvider.GetUtcNow();
+        var normalizedCode = totpAssertion.Code.Trim();
 
-        var (verified, verifiedStep) = TotpAuthenticator.VerifyTotp(secretBytes, totpAssertion.Code, now, _options.StepSeconds, _options.CodeDigits, _options.AllowedSkewSteps);
+        var (verified, verifiedStep) = TotpAuthenticator.VerifyTotp(secretBytes, normalizedCode, now, _options.StepSeconds, _options.CodeDigits, _options.AllowedSkewSteps);
 
         if (!verified)
         {

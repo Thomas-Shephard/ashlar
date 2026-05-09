@@ -560,6 +560,52 @@ public class RecoveryCodeTests
     }
 
     [Test]
+    public async Task ProviderFindUserAsyncReturnsUserByUserId()
+    {
+        var repository = new Mock<IIdentityRepository>();
+        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), new Mock<IAuthenticationRateLimiter>().Object, Options.Create(new RecoveryCodeOptions()));
+        var userId = Guid.NewGuid();
+        var context = new AuthenticationContext(UserId: userId);
+        var user = new User { Id = userId, Email = "test@example.com" };
+
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        var found = await provider.FindUserAsync(new RecoveryCodeAssertion("CODE"), context, repository.Object);
+
+        Assert.That(found, Is.Not.Null);
+        Assert.That(found.Id, Is.EqualTo(userId));
+    }
+
+    [Test]
+    public async Task ProviderResolveCredentialAsyncResilientToWhitespaceAndCasing()
+    {
+        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
+        var rateLimiter = new Mock<IAuthenticationRateLimiter>();
+        var options = Options.Create(new RecoveryCodeOptions());
+        var repository = new Mock<IIdentityRepository>();
+        var userId = Guid.NewGuid();
+        var providerKey = "CODE1";
+        var secretCode = "ABCD-EFGH-IJKL";
+        var rawCode = "  code 1 - abcd - efgh - ijkl  "; // Mixed casing and spaces
+        var hashedCode = Convert.ToBase64String(hasherSelector.DefaultHasher.HashPassword(secretCode));
+
+        rateLimiter.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Allowed, Remaining = 5, WindowResetAt = DateTimeOffset.UtcNow });
+
+        repository.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateCredential(userId, hashedCode, providerKey));
+
+        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, rateLimiter.Object, options);
+        var assertion = new RecoveryCodeAssertion(rawCode);
+
+        var result = await provider.ResolveCredentialAsync(userId, assertion, repository.Object);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.ProviderKey, Is.EqualTo(providerKey));
+    }
+
+    [Test]
     public async Task ProviderFindUserAsyncReturnsNullOnWrongConditions()
     {
         var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), new Mock<IAuthenticationRateLimiter>().Object, Options.Create(new RecoveryCodeOptions()));
