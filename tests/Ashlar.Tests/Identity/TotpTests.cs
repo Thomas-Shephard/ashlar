@@ -97,13 +97,18 @@ public class TotpTests
     public void AddAshlarTotpWithoutConfigureRegistersDefaultOptions()
     {
         var services = new ServiceCollection();
-
         services.AddAshlarTotp();
 
         using var provider = services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptions<TotpOptions>>().Value;
 
         Assert.That(options.CodeDigits, Is.EqualTo(6));
+    }
+
+    [Test]
+    public void AssertionConstructorThrowsOnInvalidCode()
+    {
+        Assert.Throws<ArgumentException>(() => _ = new TotpAssertion(" "));
     }
 
     [Test]
@@ -160,7 +165,7 @@ public class TotpTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new TotpAssertion("123456", ProviderKey: providerKey).ProviderIdentity, Is.EqualTo(providerKey));
+            Assert.That(new TotpAssertion("123456", providerKey: providerKey).ProviderIdentity, Is.EqualTo(providerKey));
             Assert.That(context.ReturnUrl, Is.EqualTo("/return"));
             Assert.That(context.Items, Contains.Key("key"));
             Assert.That(attempt.UserId, Is.EqualTo("user-id"));
@@ -773,11 +778,72 @@ public class TotpTests
     }
 
     [Test]
-    public async Task ProviderFindUserAsyncReturnsNull()
+    public async Task ProviderFindUserAsyncReturnsUserByUserId()
     {
         var provider = CreateProvider();
-        var result = await provider.FindUserAsync(new TotpAssertion("123456"), new AuthenticationContext("user@example.com", Guid.NewGuid(), "127.0.0.1"), _repository.Object);
-        Assert.That(result, Is.Null);
+        var userId = Guid.NewGuid();
+        var user = new User { Id = userId, Email = "test@example.com" };
+        var context = new AuthenticationContext(UserId: userId);
+
+        _repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        var found = await provider.FindUserAsync(new TotpAssertion("123456"), context, _repository.Object);
+
+        Assert.That(found, Is.Not.Null);
+        Assert.That(found.Id, Is.EqualTo(userId));
+    }
+
+    [Test]
+    public async Task ProviderFindUserAsyncReturnsNullOnWrongAssertion()
+    {
+        var provider = CreateProvider();
+        var context = new AuthenticationContext(UserId: Guid.NewGuid());
+
+        var found = await provider.FindUserAsync(new Mock<IAuthenticationAssertion>().Object, context, _repository.Object);
+
+        Assert.That(found, Is.Null);
+        _repository.Verify(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task ProviderFindUserAsyncReturnsNullWithoutUserId()
+    {
+        var provider = CreateProvider();
+        var context = new AuthenticationContext();
+
+        var found = await provider.FindUserAsync(new TotpAssertion("123456"), context, _repository.Object);
+
+        Assert.That(found, Is.Null);
+        _repository.Verify(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task ProviderAuthenticateAsyncResilientToWhitespace()
+    {
+        var provider = CreateProvider();
+        var secretBytes = new byte[20];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(secretBytes);
+        var secret = Base32.Encode(secretBytes);
+        var code = TotpAuthenticator.GenerateCode(secretBytes, _timeProvider.GetUtcNow().ToUnixTimeSeconds() / 30);
+
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = _options.ProviderKey.Type,
+            ProviderName = _options.ProviderKey.Name,
+            ProviderKey = "test",
+            CredentialValue = secret,
+            Status = CredentialStatus.Active,
+            CreatedAt = DateTimeOffset.UtcNow,
+            Version = "1"
+        };
+
+        // Note the spaces around the code
+        var result = await provider.AuthenticateAsync(new TotpAssertion($"  {code}  "), credential);
+
+        Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.SucceededWithCredentialUpdate));
     }
 
     [Test]

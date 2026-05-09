@@ -67,6 +67,11 @@ public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
             return Task.FromResult<IUser?>(null);
         }
 
+        if (context.UserId.HasValue)
+        {
+            return repository.GetUserByIdAsync(context.UserId.Value, cancellationToken);
+        }
+
         var email = context.Email;
         if (string.IsNullOrWhiteSpace(email))
         {
@@ -101,12 +106,13 @@ public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
             return null;
         }
 
-        var codeSpan = recoveryCodeAssertion.Code.AsSpan();
+        var normalizedCode = recoveryCodeAssertion.Code.Replace(" ", "").ToUpperInvariant();
+        var codeSpan = normalizedCode.AsSpan();
         var separatorIndex = codeSpan.IndexOf('-');
         if (separatorIndex <= 0 || separatorIndex == codeSpan.Length - 1)
         {
             // Dummy verification to mitigate timing attacks
-            _hasherSelector.VerifyPassword(recoveryCodeAssertion.Code, []);
+            _hasherSelector.VerifyPassword(normalizedCode, []);
             return null;
         }
 
@@ -119,7 +125,7 @@ public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
         if (credential == null || !credential.IsAvailable(_timeProvider.GetUtcNow()))
         {
             // Dummy verification to mitigate timing attacks
-            _hasherSelector.VerifyPassword(recoveryCodeAssertion.Code, []);
+            _hasherSelector.VerifyPassword(normalizedCode, []);
             return null;
         }
 
