@@ -86,7 +86,7 @@ public class CredentialServiceTests
 
         await _service.LinkCredentialAsync(userId, assertionMock.Object, providerMock.Object);
 
-        _repositoryMock.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c =>
+        _repositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.CreatedAt == testTime), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -784,7 +784,7 @@ public class CredentialServiceTests
         await _service.LinkCredentialAsync(userId, assertionMock.Object, providerMock.Object, "raw", initialMetadata);
         var afterLink = _timeProvider.GetUtcNow();
 
-        _repositoryMock.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c =>
+        _repositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.UserId == userId &&
             c.ProviderKey == "new-key" &&
             c.CredentialValue == "protected-prepared" &&

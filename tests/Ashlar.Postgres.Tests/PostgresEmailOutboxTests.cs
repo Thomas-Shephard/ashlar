@@ -24,7 +24,7 @@ public sealed class PostgresEmailOutboxTests : PostgresTestBase
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddAshlarPostgres(GetConnectionString());
-        services.AddAshlarPostgresEmailOutbox();
+        services.AddAshlarPostgresEmailOutboxSender();
         services.AddAshlarPostgresCleanup();
         services.AddSingleton<TimeProvider>(_timeProvider);
         _serviceProvider = services.BuildServiceProvider();
@@ -524,7 +524,7 @@ public sealed class PostgresEmailOutboxTests : PostgresTestBase
         services.AddSingleton(transport);
         services.AddSingleton(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>());
         services.AddSingleton<TimeProvider>(_timeProvider);
-        services.AddAshlarPostgresEmailOutbox<TestTransport>();
+        services.AddAshlarPostgresEmailOutboxDispatcher<TestTransport>();
         var dispatcherProvider = services.BuildServiceProvider();
 
         var hostedService = new PostgresEmailOutboxHostedService(
@@ -547,7 +547,7 @@ public sealed class PostgresEmailOutboxTests : PostgresTestBase
         services.AddSingleton(new TestTransport());
         services.AddSingleton(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>());
         services.AddSingleton<TimeProvider>(_timeProvider);
-        services.AddAshlarPostgresEmailOutbox<TestTransport>();
+        services.AddAshlarPostgresEmailOutboxDispatcher<TestTransport>();
         var dispatcherProvider = services.BuildServiceProvider();
 
         var hostedService = new PostgresEmailOutboxHostedService(
@@ -565,7 +565,7 @@ public sealed class PostgresEmailOutboxTests : PostgresTestBase
         services.AddSingleton(transport);
         services.AddSingleton(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>());
         services.AddSingleton<TimeProvider>(_timeProvider);
-        services.AddAshlarPostgresEmailOutbox<TestTransport>();
+        services.AddAshlarPostgresEmailOutboxDispatcher<TestTransport>();
         var dispatcherProvider = services.BuildServiceProvider();
 
         var hostedService = new PostgresEmailOutboxHostedService(
@@ -603,7 +603,7 @@ public sealed class PostgresEmailOutboxTests : PostgresTestBase
         services.AddSingleton(transport);
         services.AddSingleton(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>());
         services.AddSingleton<TimeProvider>(_timeProvider);
-        services.AddAshlarPostgresEmailOutbox<TestTransport>();
+        services.AddAshlarPostgresEmailOutboxDispatcher<TestTransport>();
         var dispatcherProvider = services.BuildServiceProvider();
 
         await SeedMessageAsync("batch-one@example.com");
@@ -647,7 +647,7 @@ public sealed class PostgresEmailOutboxTests : PostgresTestBase
         services.AddSingleton(providerMock.Object);
         services.AddSingleton<TimeProvider>(_timeProvider);
         services.AddSingleton(new TestTransport());
-        services.AddAshlarPostgresEmailOutbox<TestTransport>();
+        services.AddAshlarPostgresEmailOutboxDispatcher<TestTransport>();
         var dispatcherProvider = services.BuildServiceProvider();
 
         var hostedService = new PostgresEmailOutboxHostedService(

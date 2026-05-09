@@ -370,6 +370,25 @@ public class TotpTests
     }
 
     [Test]
+    public async Task VerifyAndEnrollAsyncUsesReplaceCredentialPath()
+    {
+        var service = CreateService();
+        var userId = Guid.NewGuid();
+        var secretBytes = new byte[20];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(secretBytes);
+        var secret = Base32.Encode(secretBytes);
+        var code = TotpAuthenticator.GenerateCode(secretBytes, _timeProvider.GetUtcNow().ToUnixTimeSeconds() / 30);
+
+        _repository.Setup(x => x.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
+        var result = await service.VerifyAndEnrollAsync(userId, secret, code);
+
+        Assert.That(result, Is.True);
+        _credentialService.Verify(x => x.LinkCredentialAsync(userId, It.IsAny<TotpAssertion>(), It.IsAny<IAuthenticationProvider>(), secret, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
     public async Task VerifyAndEnrollAsyncReplacesExistingCredential()
     {
         var service = CreateService();
