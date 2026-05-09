@@ -21,6 +21,7 @@ public sealed class AuthenticationSessionService(
 {
     private const int MinimumTokenByteLength = 32;
     private const int MaximumTokenByteLength = 192;
+    private const string UserIdCannotBeEmptyMessage = "User ID cannot be empty.";
     private readonly IAuthenticationSessionRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly ISecureTokenHasher _tokenHasher = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
     private readonly ISecureTokenGenerator _tokenGenerator = tokenGenerator ?? throw new ArgumentNullException(nameof(tokenGenerator));
@@ -34,7 +35,7 @@ public sealed class AuthenticationSessionService(
         CreateAuthenticationSessionRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        if (userId == Guid.Empty) throw new ArgumentException(UserIdCannotBeEmptyMessage, nameof(userId));
         ArgumentNullException.ThrowIfNull(request);
 
         var lifetime = request.Lifetime ?? _options.DefaultLifetime;
@@ -201,7 +202,7 @@ public sealed class AuthenticationSessionService(
         string? reason = null,
         CancellationToken cancellationToken = default)
     {
-        if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        if (userId == Guid.Empty) throw new ArgumentException(UserIdCannotBeEmptyMessage, nameof(userId));
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
@@ -210,6 +211,93 @@ public sealed class AuthenticationSessionService(
         if (reason != null)
         {
             properties["reason"] = reason;
+        }
+
+        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.SessionsRevokedForUser,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = userId,
+            Properties = properties
+        }, ct));
+
+        await transaction.CommitAsync(cancellationToken);
+        return revoked;
+    }
+
+    public async Task<IReadOnlyList<AuthenticationSessionSummary>> ListSessionsForUserAsync(
+        Guid userId,
+        ListAuthenticationSessionsRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty) throw new ArgumentException(UserIdCannotBeEmptyMessage, nameof(userId));
+        ArgumentNullException.ThrowIfNull(request);
+
+        var now = _timeProvider.GetUtcNow();
+        var sessions = await _repository.ListSessionsForUserAsync(userId, request.ActiveOnly, now, cancellationToken);
+
+        return sessions.Select(s => new AuthenticationSessionSummary
+        {
+            Id = s.Id,
+            CreatedAt = s.CreatedAt,
+            ExpiresAt = s.ExpiresAt,
+            LastSeenAt = s.LastSeenAt,
+            RevokedAt = s.RevokedAt,
+            RevocationReason = s.RevocationReason,
+            IpAddress = s.IpAddress,
+            UserAgent = s.UserAgent,
+            Metadata = s.Metadata,
+            IsCurrent = request.CurrentSessionId.HasValue && s.Id == request.CurrentSessionId.Value,
+            IsActive = s.IsActive(now)
+        }).ToList().AsReadOnly();
+    }
+
+    public async Task<bool> RevokeSessionForUserAsync(
+        Guid userId,
+        RevokeAuthenticationSessionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty) throw new ArgumentException(UserIdCannotBeEmptyMessage, nameof(userId));
+        ArgumentNullException.ThrowIfNull(request);
+
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
+
+        var revoked = await _repository.RevokeSessionByIdAsync(request.SessionId, userId, _timeProvider.GetUtcNow(), request.Reason, cancellationToken);
+        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.SessionRevoked,
+            Outcome = revoked ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
+            UserId = userId,
+            SessionId = request.SessionId,
+            Properties = request.Reason == null
+                ? null
+                : new Dictionary<string, string> { ["reason"] = request.Reason }
+        }, ct));
+
+        await transaction.CommitAsync(cancellationToken);
+        return revoked;
+    }
+
+    public async Task<int> RevokeOtherSessionsAsync(
+        Guid userId,
+        RevokeOtherAuthenticationSessionsRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty) throw new ArgumentException(UserIdCannotBeEmptyMessage, nameof(userId));
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.CurrentSessionId == Guid.Empty) throw new ArgumentException("Current session ID cannot be empty.", nameof(request));
+
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
+
+        var revoked = await _repository.RevokeOtherSessionsForUserAsync(userId, request.CurrentSessionId, _timeProvider.GetUtcNow(), request.Reason, cancellationToken);
+        var properties = new Dictionary<string, string>
+        {
+            ["count"] = revoked.ToString(CultureInfo.InvariantCulture),
+            ["current_session_id"] = request.CurrentSessionId.ToString()
+        };
+        if (request.Reason != null)
+        {
+            properties["reason"] = request.Reason;
         }
 
         transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor

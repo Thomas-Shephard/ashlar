@@ -460,6 +460,57 @@ if (validation.Succeeded)
 await sessionService.RevokeSessionAsync(createResult.Session.Id, "signed-out");
 ```
 
+### Session and Device Management
+Ashlar provides user-facing APIs for listing and revoking active sessions. This allows applications to build "Security" or "Devices" pages where users can see their active sessions and sign out of other devices.
+
+#### Core Service API
+Use `IAuthenticationSessionService` for low-level session management:
+
+```csharp
+// 1. List active sessions for a user
+var request = new ListAuthenticationSessionsRequest 
+{ 
+    ActiveOnly = true, 
+    CurrentSessionId = currentSessionId 
+};
+var sessions = await sessionService.ListSessionsForUserAsync(userId, request);
+
+foreach (var summary in sessions)
+{
+    // summary includes Id, CreatedAt, LastSeenAt, IpAddress, UserAgent, IsCurrent, etc.
+}
+
+// 2. Revoke a specific session (ownership is enforced)
+await sessionService.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest 
+{ 
+    SessionId = targetSessionId, 
+    Reason = "user-initiated" 
+});
+
+// 3. Revoke all other sessions for a user
+await sessionService.RevokeOtherSessionsAsync(userId, new RevokeOtherAuthenticationSessionsRequest 
+{ 
+    CurrentSessionId = currentSessionId, 
+    Reason = "security-sweep" 
+});
+```
+
+#### ASP.NET Core Helpers
+Use `IAshlarSignInManager` for simplified management of the currently authenticated user:
+
+```csharp
+// List sessions for the current user
+var sessions = await signInManager.ListSessionsForCurrentUserAsync(httpContext);
+
+// Revoke a specific session for the current user
+await signInManager.RevokeSessionForCurrentUserAsync(httpContext, targetSessionId);
+
+// Revoke all other sessions for the current user
+await signInManager.RevokeOtherSessionsForCurrentUserAsync(httpContext);
+```
+
+Session listing is ordered by `CreatedAt` descending (newest first). Sensitive fields like IP address and user agent are only populated if they were enabled during session creation. Token hashes are never exposed through these APIs.
+
 ## Authorization Grants
 Ashlar includes framework-neutral authorization primitives for durable grants. Grants are generic: they can assign one normalized role or one normalized permission to a user, optionally within a tenant and explicit scope. Ashlar evaluates these grants, but it does not replace ASP.NET Core Authorization policies or requirements.
 

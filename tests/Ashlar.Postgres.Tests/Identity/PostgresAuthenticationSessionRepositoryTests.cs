@@ -300,6 +300,99 @@ public sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTestB
     }
 
     [Test]
+    public async Task ListSessionsForUserShouldReturnSessionsInCorrectOrder()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var first = CreateSession(user.Id, createdAt: new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
+        var second = CreateSession(user.Id, createdAt: new DateTimeOffset(2026, 1, 2, 12, 0, 0, TimeSpan.Zero));
+
+        await sessionRepository.CreateSessionAsync(first);
+        await sessionRepository.CreateSessionAsync(second);
+
+        var sessions = await sessionRepository.ListSessionsForUserAsync(user.Id, activeOnly: false, DateTimeOffset.UtcNow);
+
+        Assert.That(sessions, Has.Count.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sessions[0].Id, Is.EqualTo(second.Id));
+            Assert.That(sessions[1].Id, Is.EqualTo(first.Id));
+        }
+    }
+
+    [Test]
+    public async Task ListSessionsForUserShouldFilterActiveOnly()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var active = CreateSession(user.Id, expiresAt: DateTimeOffset.UtcNow.AddDays(1));
+        var revoked = CreateSession(user.Id, expiresAt: DateTimeOffset.UtcNow.AddDays(1));
+        var expired = CreateSession(user.Id, expiresAt: DateTimeOffset.UtcNow.AddHours(-1));
+
+        await sessionRepository.CreateSessionAsync(active);
+        await sessionRepository.CreateSessionAsync(revoked);
+        await sessionRepository.CreateSessionAsync(expired);
+        await sessionRepository.RevokeSessionAsync(revoked.Id, DateTimeOffset.UtcNow, "test");
+
+        var sessions = await sessionRepository.ListSessionsForUserAsync(user.Id, activeOnly: true, DateTimeOffset.UtcNow);
+
+        Assert.That(sessions, Has.Count.EqualTo(1));
+        Assert.That(sessions[0].Id, Is.EqualTo(active.Id));
+    }
+
+    [Test]
+    public async Task RevokeSessionByIdShouldEnforceOwnership()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var owner = await CreateTestUser(identityRepository);
+        var other = await CreateTestUser(identityRepository);
+        var session = CreateSession(owner.Id);
+
+        await sessionRepository.CreateSessionAsync(session);
+
+        var revokedByOther = await sessionRepository.RevokeSessionByIdAsync(session.Id, other.Id, DateTimeOffset.UtcNow, "theft");
+        var revokedByOwner = await sessionRepository.RevokeSessionByIdAsync(session.Id, owner.Id, DateTimeOffset.UtcNow, "done");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revokedByOther, Is.False);
+            Assert.That(revokedByOwner, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task RevokeOtherSessionsForUserShouldPreserveCurrentSession()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var current = CreateSession(user.Id);
+        var other1 = CreateSession(user.Id);
+        var other2 = CreateSession(user.Id);
+
+        await sessionRepository.CreateSessionAsync(current);
+        await sessionRepository.CreateSessionAsync(other1);
+        await sessionRepository.CreateSessionAsync(other2);
+
+        var count = await sessionRepository.RevokeOtherSessionsForUserAsync(user.Id, current.Id, DateTimeOffset.UtcNow, "security-sweep");
+
+        var fetchedCurrent = await sessionRepository.GetSessionByTokenHashAsync(current.TokenHash);
+        var fetchedOther1 = await sessionRepository.GetSessionByTokenHashAsync(other1.TokenHash);
+        var fetchedOther2 = await sessionRepository.GetSessionByTokenHashAsync(other2.TokenHash);
+
+        Assert.That(count, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fetchedCurrent?.RevokedAt, Is.Null);
+            Assert.That(fetchedOther1?.RevokedAt, Is.Not.Null);
+            Assert.That(fetchedOther2?.RevokedAt, Is.Not.Null);
+        }
+    }
+
+    [Test]
     public async Task DeletingUserShouldCascadeDeleteSessions()
     {
         var identityRepository = GetIdentityRepository();
@@ -343,15 +436,19 @@ public sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTestB
         return user;
     }
 
-    private static AuthenticationSession CreateSession(Guid userId, string? tokenHash = null)
+    private static AuthenticationSession CreateSession(
+        Guid userId,
+        string? tokenHash = null,
+        DateTimeOffset? createdAt = null,
+        DateTimeOffset? expiresAt = null)
     {
         return new AuthenticationSession
         {
             Id = Guid.NewGuid(),
             UserId = userId,
             TokenHash = tokenHash ?? $"sha256:{Guid.NewGuid():N}",
-            CreatedAt = new DateTimeOffset(2026, 1, 2, 12, 0, 0, TimeSpan.Zero),
-            ExpiresAt = new DateTimeOffset(2026, 1, 3, 12, 0, 0, TimeSpan.Zero)
+            CreatedAt = createdAt ?? new DateTimeOffset(2026, 1, 2, 12, 0, 0, TimeSpan.Zero),
+            ExpiresAt = expiresAt ?? new DateTimeOffset(2026, 1, 3, 12, 0, 0, TimeSpan.Zero)
         };
     }
 }

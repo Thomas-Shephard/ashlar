@@ -15,4 +15,20 @@ public interface IAshlarSignInManager
         HttpContext httpContext,
         string? reason = null,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<AuthenticationSessionSummary>> ListSessionsForCurrentUserAsync(
+        HttpContext httpContext,
+        bool activeOnly = true,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> RevokeSessionForCurrentUserAsync(
+        HttpContext httpContext,
+        Guid sessionId,
+        string? reason = null,
+        CancellationToken cancellationToken = default);
+
+    Task<int> RevokeOtherSessionsForCurrentUserAsync(
+        HttpContext httpContext,
+        string? reason = null,
+        CancellationToken cancellationToken = default);
 }

@@ -427,6 +427,142 @@ public sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
+    public async Task ListSessionsForUserAsyncShouldReturnSummaries()
+    {
+        var userId = Guid.NewGuid();
+        var sessions = new List<AuthenticationSession>
+        {
+            CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1), userId: userId),
+            CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(-1), userId: userId)
+        };
+        sessions[0].IpAddress = "1.1.1.1";
+        sessions[0].UserAgent = "agent-1";
+
+        _repositoryMock
+            .Setup(r => r.ListSessionsForUserAsync(userId, true, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(sessions.Where(s => s.IsActive(_timeProvider.GetUtcNow())).ToList().AsReadOnly());
+
+        var result = await _service.ListSessionsForUserAsync(userId, new ListAuthenticationSessionsRequest { ActiveOnly = true, CurrentSessionId = sessions[0].Id });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Has.Count.EqualTo(1));
+            Assert.That(result[0].Id, Is.EqualTo(sessions[0].Id));
+            Assert.That(result[0].IpAddress, Is.EqualTo("1.1.1.1"));
+            Assert.That(result[0].UserAgent, Is.EqualTo("agent-1"));
+            Assert.That(result[0].IsCurrent, Is.True);
+            Assert.That(result[0].IsActive, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task ListSessionsForUserAsyncShouldIncludeInactiveWhenRequested()
+    {
+        var userId = Guid.NewGuid();
+        var sessions = new List<AuthenticationSession>
+        {
+            CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1), userId: userId),
+            CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(-1), userId: userId)
+        };
+
+        _repositoryMock
+            .Setup(r => r.ListSessionsForUserAsync(userId, false, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(sessions.AsReadOnly());
+
+        var result = await _service.ListSessionsForUserAsync(userId, new ListAuthenticationSessionsRequest { ActiveOnly = false });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Has.Count.EqualTo(2));
+            Assert.That(result[0].IsActive, Is.True);
+            Assert.That(result[1].IsActive, Is.False);
+        }
+    }
+
+    [Test]
+    public void ListSessionsForUserAsyncShouldRejectEmptyUserId()
+    {
+        Assert.ThrowsAsync<ArgumentException>(() => _service.ListSessionsForUserAsync(Guid.Empty, new ListAuthenticationSessionsRequest()));
+    }
+
+    [Test]
+    public void ListSessionsForUserAsyncShouldRejectNullRequest()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.ListSessionsForUserAsync(Guid.NewGuid(), null!));
+    }
+
+    [Test]
+    public async Task RevokeSessionForUserAsyncShouldPassCurrentTimeAndReason()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var now = _timeProvider.GetUtcNow();
+        _repositoryMock
+            .Setup(r => r.RevokeSessionByIdAsync(sessionId, userId, now, "user-initiated", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var revoked = await _service.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest { SessionId = sessionId, Reason = "user-initiated" });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revoked, Is.True);
+            _repositoryMock.Verify(r => r.RevokeSessionByIdAsync(sessionId, userId, now, "user-initiated", It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
+    public void RevokeSessionForUserAsyncShouldRejectEmptyUserId()
+    {
+        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionForUserAsync(Guid.Empty, new RevokeAuthenticationSessionRequest { SessionId = Guid.NewGuid() }));
+    }
+
+    [Test]
+    public void RevokeSessionForUserAsyncShouldRejectNullRequest()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeSessionForUserAsync(Guid.NewGuid(), null!));
+    }
+
+    [Test]
+    public async Task RevokeOtherSessionsAsyncShouldPassCurrentTimeAndReason()
+    {
+        var userId = Guid.NewGuid();
+        var currentSessionId = Guid.NewGuid();
+        var now = _timeProvider.GetUtcNow();
+        _repositoryMock
+            .Setup(r => r.RevokeOtherSessionsForUserAsync(userId, currentSessionId, now, "security-cleanup", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(5);
+
+        var revoked = await _service.RevokeOtherSessionsAsync(userId, new RevokeOtherAuthenticationSessionsRequest { CurrentSessionId = currentSessionId, Reason = "security-cleanup" });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revoked, Is.EqualTo(5));
+            _repositoryMock.Verify(r => r.RevokeOtherSessionsForUserAsync(userId, currentSessionId, now, "security-cleanup", It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
+    public void RevokeOtherSessionsAsyncShouldRejectEmptyUserId()
+    {
+        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeOtherSessionsAsync(Guid.Empty, new RevokeOtherAuthenticationSessionsRequest { CurrentSessionId = Guid.NewGuid() }));
+    }
+
+    [Test]
+    public void RevokeOtherSessionsAsyncShouldRejectNullRequest()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeOtherSessionsAsync(Guid.NewGuid(), null!));
+    }
+
+    [Test]
+    public void RevokeOtherSessionsAsyncShouldRejectEmptyCurrentSessionId()
+    {
+        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeOtherSessionsAsync(Guid.NewGuid(), new RevokeOtherAuthenticationSessionsRequest { CurrentSessionId = Guid.Empty }));
+    }
+
+    [Test]
     public void ConstructorShouldThrowOnNullRepository()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
@@ -552,12 +688,12 @@ public sealed class AuthenticationSessionServiceTests
             new AuthenticationSessionOptions { MaxMetadataLength = 0 }));
     }
 
-    private AuthenticationSession CreateSession(DateTimeOffset expiresAt, DateTimeOffset? lastSeenAt = null)
+    private AuthenticationSession CreateSession(DateTimeOffset expiresAt, DateTimeOffset? lastSeenAt = null, Guid? userId = null)
     {
         return new AuthenticationSession
         {
             Id = Guid.NewGuid(),
-            UserId = Guid.NewGuid(),
+            UserId = userId ?? Guid.NewGuid(),
             TokenHash = "hashed:raw-token",
             CreatedAt = _timeProvider.GetUtcNow().AddDays(-1),
             ExpiresAt = expiresAt,

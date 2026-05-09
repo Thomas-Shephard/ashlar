@@ -68,4 +68,36 @@ public interface IAuthenticationSessionRepository
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>The number of sessions revoked by this call.</returns>
     Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists sessions for a user.
+    /// </summary>
+    /// <param name="userId">The identifier of the user.</param>
+    /// <param name="activeOnly">Whether to only include active sessions.</param>
+    /// <param name="now">The current time to evaluate expiration against.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>A read-only list of matching sessions.</returns>
+    Task<IReadOnlyList<AuthenticationSession>> ListSessionsForUserAsync(Guid userId, bool activeOnly, DateTimeOffset now, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Revokes a single authentication session if it belongs to the specified user.
+    /// </summary>
+    /// <param name="sessionId">The identifier of the session to revoke.</param>
+    /// <param name="userId">The identifier of the user who must own the session.</param>
+    /// <param name="revokedAt">The timestamp to store as the revocation time.</param>
+    /// <param name="reason">An optional provider-neutral reason for revocation.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns><c>true</c> when the session was revoked; otherwise <c>false</c>.</returns>
+    Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Revokes all currently unrevoked sessions for a user except the specified session.
+    /// </summary>
+    /// <param name="userId">The identifier of the user.</param>
+    /// <param name="excludedSessionId">The identifier of the session to exclude from revocation.</param>
+    /// <param name="revokedAt">The timestamp to store as the revocation time.</param>
+    /// <param name="reason">An optional provider-neutral reason for revocation.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>The number of sessions revoked by this call.</returns>
+    Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default);
 }
