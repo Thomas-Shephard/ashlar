@@ -25,6 +25,14 @@ public sealed class AshlarSignInManager(
         ArgumentNullException.ThrowIfNull(httpContext);
 
         var authenticationOptions = GetOptions();
+
+        // If there is an existing session in the request, revoke it before creating a new one.
+        var existingSessionId = await GetExistingSessionIdAsync(httpContext, authenticationOptions, cancellationToken);
+        if (existingSessionId.HasValue)
+        {
+            await _sessionService.RevokeSessionAsync(existingSessionId.Value, "session-replaced", cancellationToken);
+        }
+
         var sessionRequest = request ?? CreateRequestFromHttpContext(httpContext);
         var result = await _sessionService.CreateSessionAsync(userId, sessionRequest, cancellationToken);
 
@@ -43,12 +51,7 @@ public sealed class AshlarSignInManager(
         ArgumentNullException.ThrowIfNull(httpContext);
 
         var authenticationOptions = GetOptions();
-        var sessionId = TryGetSessionId(httpContext.User);
-        if (sessionId == null && httpContext.Request.Cookies.TryGetValue(authenticationOptions.CookieName, out var token) && !string.IsNullOrWhiteSpace(token))
-        {
-            var validation = await _sessionService.ValidateSessionAsync(token, cancellationToken);
-            sessionId = validation.Session?.Id;
-        }
+        var sessionId = await GetExistingSessionIdAsync(httpContext, authenticationOptions, cancellationToken);
 
         if (sessionId.HasValue)
         {
@@ -56,6 +59,21 @@ public sealed class AshlarSignInManager(
         }
 
         httpContext.Response.Cookies.Delete(authenticationOptions.CookieName, authenticationOptions.Cookie.Build(httpContext));
+    }
+
+    private async Task<Guid?> GetExistingSessionIdAsync(
+        HttpContext httpContext,
+        AshlarSessionAuthenticationOptions authenticationOptions,
+        CancellationToken cancellationToken)
+    {
+        var sessionId = TryGetSessionId(httpContext.User);
+        if (sessionId == null && httpContext.Request.Cookies.TryGetValue(authenticationOptions.CookieName, out var token) && !string.IsNullOrWhiteSpace(token))
+        {
+            var validation = await _sessionService.ValidateSessionAsync(token, cancellationToken);
+            sessionId = validation.Succeeded ? validation.Session?.Id : null;
+        }
+
+        return sessionId;
     }
 
     private AshlarSessionAuthenticationOptions GetOptions()
