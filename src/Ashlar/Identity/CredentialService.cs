@@ -44,6 +44,11 @@ public sealed class CredentialService(
 
         var user = await provider.FindUserAsync(assertion, context, _repository, cancellationToken);
 
+        if (user == null && context.UserId.HasValue)
+        {
+            user = await _repository.GetUserByIdAsync(context.UserId.Value, cancellationToken);
+        }
+
         var userId = user?.Id ?? Guid.NewGuid();
 
         var (unprotectedCredential, credential, unprotectFailed) = await ResolveCredentialCoreAsync(userId, assertion, provider, cancellationToken);
