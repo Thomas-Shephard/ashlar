@@ -1,6 +1,10 @@
 # Ashlar
 Building blocks for modern ASP.NET applications. Includes generic auth, security, and utility components.
 
+## Reference Sample
+
+A small ASP.NET Core reference app is available at [samples/Ashlar.Sample.AspNetCore](samples/Ashlar.Sample.AspNetCore/README.md). It shows the recommended composition for PostgreSQL persistence, Data Protection secret protection, Ashlar session cookies, magic-link sign-in, bootstrap setup, invitations, authorization grants, scoped ASP.NET Core policies, TOTP MFA, recovery codes, the PostgreSQL email outbox, cleanup, audit sink, and rate limiting.
+
 ## Persistence
 Ashlar does not register persistence by default. The following official packages are available:
 
@@ -217,7 +221,7 @@ var result = await invitations.AcceptInvitationAsync(
 
 if (result.Succeeded)
 {
-    var userId = result.UserId!.Value;
+    var userId = result.UserId.Value;
 }
 ```
 
@@ -388,7 +392,7 @@ var result = await orchestrator.VerifyFactorAsync(
 if (result.Status == MfaAuthenticationStatus.Succeeded)
 {
     // All factors verified! Now create the session.
-    await signInManager.SignInAsync(httpContext, result.User!.Id, result.Claims);
+    await signInManager.SignInAsync(httpContext, result.User.Id, result.Claims);
 }
 ```
 
@@ -427,7 +431,7 @@ var result = await handshakeService.VerifyFactorAsync(new VerifyAuthenticationHa
     HandshakeToken: tokenFromClient,
     FactorType: "totp"));
 
-if (result.Succeeded && result.Handshake!.IsCompleted)
+if (result.Succeeded && result.Handshake.IsCompleted)
 {
     // All required factors verified! Create the final session.
     await signInManager.SignInAsync(httpContext, result.Handshake.UserId);
@@ -440,7 +444,7 @@ When supplied to `CreateSessionAsync`, session IP address, user agent, and metad
 
 ```csharp
 var createResult = await sessionService.CreateSessionAsync(
-    authenticationResult.User!.Id,
+    authenticationResult.User.Id,
     new CreateAuthenticationSessionRequest(
         IpAddress: ipAddress,
         UserAgent: userAgent));
@@ -450,7 +454,7 @@ var rawToken = createResult.Token;
 var validation = await sessionService.ValidateSessionAsync(rawTokenFromRequest);
 if (validation.Succeeded)
 {
-    var userId = validation.UserId!.Value;
+    var userId = validation.UserId.Value;
 }
 
 await sessionService.RevokeSessionAsync(createResult.Session.Id, "signed-out");
@@ -566,7 +570,7 @@ var signInManager = httpContext.RequestServices.GetRequiredService<IAshlarSignIn
 
 await signInManager.SignInAsync(
     httpContext,
-    authenticationResult.User!.Id);
+    authenticationResult.User.Id);
 ```
 
 `AddAshlarAspNetCoreSessions` registers the `"Ashlar"` authentication scheme by default. The handler reads the configured cookie, validates it with `IAuthenticationSessionService`, and creates an authenticated `ClaimsPrincipal` containing `ClaimTypes.NameIdentifier`, the Ashlar session id claim, and the authentication method claim.

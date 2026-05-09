@@ -9,4 +9,7 @@
     <Project Path="tests/Ashlar.AspNetCore.Tests/Ashlar.AspNetCore.Tests.csproj" />
     <Project Path="tests/Ashlar.Postgres.Tests/Ashlar.Postgres.Tests.csproj" />
   </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Ashlar.Sample.AspNetCore/Ashlar.Sample.AspNetCore.csproj" />
+  </Folder>
 </Solution>

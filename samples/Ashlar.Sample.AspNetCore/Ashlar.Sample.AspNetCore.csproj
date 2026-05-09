@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <ProjectReference Include="..\..\src\Ashlar\Ashlar.csproj" />
+    <ProjectReference Include="..\..\src\Ashlar.AspNetCore\Ashlar.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\Ashlar.Postgres\Ashlar.Postgres.csproj" />
+  </ItemGroup>
+</Project>
