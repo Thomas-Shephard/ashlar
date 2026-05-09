@@ -450,7 +450,42 @@ if (!result.Succeeded)
 
 Scope matching is explicit. A scoped grant applies only when the evaluation request uses the same tenant, scope type, and scope id. A global grant is represented by omitting tenant and scope values.
 
-ASP.NET Core applications can call `IAuthorizationEvaluator` from custom authorization handlers. Avoid copying all grants into cookies unless you accept stale authorization until the cookie is refreshed.
+### ASP.NET Core Authorization
+Use **Ashlar.AspNetCore** to integrate Ashlar grants with standard ASP.NET Core authorization policies:
+
+```csharp
+services.AddAshlarAspNetCoreAuthorization(options =>
+{
+    // Global permission policy
+    options.AddPermissionPolicy("PostsEdit", "posts.edit");
+
+    // Scoped permission policy (resolves postId from route values)
+    options.AddPermissionPolicy("ProjectMember", "project.member", scope =>
+    {
+        scope.ScopeType = "project";
+        scope.ScopeIdRouteValueName = "projectId";
+        scope.TenantIdSource = "tenantId"; // Optional: also resolve tenantId from route
+    });
+
+    // Role policy
+    options.AddRolePolicy("Admin", "admin");
+});
+```
+
+Use the registered policies in your controllers or minimal APIs:
+
+```csharp
+[Authorize(Policy = "PostsEdit")]
+public IActionResult EditPost() => Ok();
+
+[Authorize(Policy = "ProjectMember")]
+[HttpGet("/projects/{projectId}/settings")]
+public IActionResult ProjectSettings(Guid projectId) => Ok();
+```
+
+The integration automatically registers a `IAuthorizationHandler` that resolves the user ID from `ClaimTypes.NameIdentifier`, extracts scope/tenant data from route values as configured, and performs a live evaluation using `IAuthorizationEvaluator`. Scoped checks fail safely if the required route values are missing or invalid.
+
+ASP.NET Core applications can also call `IAuthorizationEvaluator` directly from custom handlers for more complex logic. Avoid copying all grants into cookies unless you accept stale authorization until the cookie is refreshed.
 
 ## ASP.NET Core Session Cookies
 Use **Ashlar.AspNetCore** to authenticate Ashlar sessions through the normal ASP.NET Core authentication middleware:

@@ -1,7 +1,9 @@
 // ReSharper disable CheckNamespace
 
 using Ashlar.AspNetCore.Authentication;
+using Ashlar.AspNetCore.Authorization;
 using Ashlar.AspNetCore.Sessions;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -42,6 +44,43 @@ public static class AshlarAspNetCoreServiceCollectionExtensions
                 CopyOptions(configuredOptions, options);
                 ValidateOptions(options);
             });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds Ashlar ASP.NET Core authorization integration.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configure">Optional configuration for Ashlar authorization.</param>
+    /// <returns>The service collection.</returns>
+    public static IServiceCollection AddAshlarAspNetCoreAuthorization(
+        this IServiceCollection services,
+        Action<AshlarAuthorizationOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        var options = new AshlarAuthorizationOptions();
+        configure?.Invoke(options);
+
+        services.Configure<AshlarAuthorizationOptions>(opt =>
+        {
+            foreach (var (name, scope) in options.PolicyScopes)
+            {
+                opt.AddPolicyScope(name, scope);
+            }
+        });
+
+        services.AddAuthorization(authOptions =>
+        {
+            foreach (var (name, policy) in options.Policies)
+            {
+                authOptions.AddPolicy(name, policy);
+            }
+        });
+
+        services.AddHttpContextAccessor();
+        services.TryAddEnumerable(ServiceDescriptor.Transient<IAuthorizationHandler, AshlarAuthorizationHandler>());
 
         return services;
     }
