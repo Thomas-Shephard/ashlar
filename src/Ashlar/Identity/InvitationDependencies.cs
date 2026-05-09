@@ -1,5 +1,6 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.Notifications;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
 using Ashlar.Security.Tokens;
@@ -15,7 +16,8 @@ public sealed class InvitationDependencies(
     IEmailSender emailSender,
     IAuthenticationRateLimiter rateLimiter,
     TimeProvider timeProvider,
-    ISecurityEventSink? securityEventSink = null)
+    ISecurityEventSink? securityEventSink = null,
+    ISecurityNotificationService? notificationService = null)
 {
     private readonly InvitationStoreContext _storeContext = storeContext ?? throw new ArgumentNullException(nameof(storeContext));
     private readonly SecureTokenContext _tokenContext = tokenContext ?? throw new ArgumentNullException(nameof(tokenContext));
@@ -28,4 +30,5 @@ public sealed class InvitationDependencies(
     public IAuthenticationRateLimiter RateLimiter { get; } = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
     public TimeProvider TimeProvider { get; } = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
+    public ISecurityNotificationService? NotificationService { get; } = notificationService;
 }

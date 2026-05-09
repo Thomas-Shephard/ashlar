@@ -8,6 +8,7 @@ using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Models.Totp;
+using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Providers.Email;
 using Ashlar.Identity.Providers.RecoveryCode;
 using Ashlar.Identity.Providers.Totp;
@@ -70,6 +71,12 @@ public static class AshlarServiceCollectionExtensions
         services.TryAddScoped<IAuthenticationPipeline, AuthenticationPipeline>();
         services.TryAddScoped<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>();
         services.TryAddScoped<ICredentialService, CredentialService>();
+        services.TryAddScoped(provider => new AuthenticationSessionServiceDependencies(
+            provider.GetService<AuthenticationSessionOptions>(),
+            provider.GetService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>(),
+            provider.GetService<IIdentityRepository>(),
+            provider.GetService<ISecurityNotificationService>()));
         services.TryAddScoped<IAuthenticationSessionService, AuthenticationSessionService>();
         services.TryAddScoped<IdentityContext>();
         services.TryAddScoped<PasswordHasherSelector>();
@@ -287,6 +294,11 @@ public static class AshlarServiceCollectionExtensions
         }
 
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, TotpAuthenticationProvider>());
+        services.TryAddScoped(provider => new TotpServiceDependencies(
+            provider.GetRequiredService<IOptions<TotpOptions>>(),
+            provider.GetService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>(),
+            provider.GetService<ISecurityNotificationService>()));
         services.TryAddScoped<ITotpService, TotpService>();
 
         return services;
@@ -383,7 +395,9 @@ public static class AshlarServiceCollectionExtensions
             provider.GetRequiredService<IOptions<AuthenticationHandshakeOptions>>(),
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>(),
-            provider.GetService<IAuthenticationRateLimiter>()));
+            provider.GetService<IAuthenticationRateLimiter>(),
+            provider.GetService<IIdentityRepository>(),
+            provider.GetService<ISecurityNotificationService>()));
         services.TryAddScoped<IAuthenticationHandshakeService, AuthenticationHandshakeService>();
 
         return services;
@@ -491,6 +505,11 @@ public static class AshlarServiceCollectionExtensions
             services.Configure(configure);
         }
 
+        services.TryAddScoped(provider => new EmailVerificationServiceDependencies(
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>() ?? new NullSecurityEventSink(),
+            provider.GetService<IOptions<EmailVerificationOptions>>(),
+            provider.GetService<ISecurityNotificationService>()));
         services.TryAddScoped<IEmailVerificationService, EmailVerificationService>();
 
         return services;
@@ -512,9 +531,34 @@ public static class AshlarServiceCollectionExtensions
             services.Configure(configure);
         }
 
-        services.TryAddScoped<EmailChangeAuditDependencies>();
+        services.TryAddScoped(provider => new EmailChangeAuditDependencies(
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>() ?? new NullSecurityEventSink(),
+            provider.GetService<ISecurityNotificationService>()));
         services.TryAddScoped<EmailChangeDependencies>();
         services.TryAddScoped<IEmailChangeService, EmailChangeService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers Ashlar's generic security notification services.
+    /// </summary>
+    public static IServiceCollection AddAshlarSecurityNotifications(
+        this IServiceCollection services,
+        Action<SecurityNotificationOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.AddOptions();
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddSingleton<ISecurityNotificationSuppressionStore, InMemorySecurityNotificationSuppressionStore>();
+        services.TryAddScoped<ISecurityNotificationService, SecurityNotificationService>();
 
         return services;
     }

@@ -2,6 +2,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Identity.Notifications;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Security.Tokens;
@@ -99,6 +100,49 @@ public sealed class AuthenticationHandshakeServiceTests
     public void CreateHandshakeAsyncShouldThrowOnEmptyRequiredFactors()
     {
         Assert.ThrowsAsync<ArgumentException>(() => _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), [])));
+    }
+
+    [Test]
+    public void CreateHandshakeAsyncShouldRejectOversizedMetadata()
+    {
+        var metadata = new Dictionary<string, string> { ["device"] = new('x', 513) };
+
+        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"], metadata)));
+    }
+
+    [Test]
+    public void CreateHandshakeAsyncShouldRejectTooManyMetadataEntries()
+    {
+        var metadata = Enumerable.Range(0, 21).ToDictionary(i => $"key-{i}", _ => "value");
+
+        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"], metadata)));
+    }
+
+    [Test]
+    public void CreateHandshakeAsyncShouldRejectBlankMetadataKey()
+    {
+        var metadata = new Dictionary<string, string> { [" "] = "value" };
+
+        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"], metadata)));
+    }
+
+    [Test]
+    public void CreateHandshakeAsyncShouldRejectOversizedMetadataKey()
+    {
+        var metadata = new Dictionary<string, string> { [new string('k', 129)] = "value" };
+
+        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"], metadata)));
+    }
+
+    [Test]
+    public async Task CreateHandshakeAsyncShouldTreatNullMetadataValueAsEmpty()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        var metadata = new Dictionary<string, string> { ["device"] = null! };
+
+        var (handshake, _) = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"], metadata));
+
+        Assert.That(handshake.Metadata?["device"], Is.EqualTo(string.Empty));
     }
 
     [Test]
@@ -412,6 +456,173 @@ public sealed class AuthenticationHandshakeServiceTests
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.ErrorMessage, Is.EqualTo("Rate limit exceeded."));
         }
+    }
+
+    [Test]
+    public void VerifyFactorAsyncShouldRejectOversizedMetadata()
+    {
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(15),
+            false,
+            false,
+            new HashSet<string> { "totp" },
+            new HashSet<string>());
+
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var metadata = new Dictionary<string, string> { ["device"] = new string('x', 513) };
+
+        Assert.ThrowsAsync<ArgumentException>(() => _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp", metadata)));
+    }
+
+    [Test]
+    public async Task VerifyFactorAsyncShouldTreatNullMetadataValueAsEmpty()
+    {
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(15),
+            false,
+            false,
+            new HashSet<string> { "totp" },
+            new HashSet<string>());
+
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest(
+            "raw-token",
+            "totp",
+            // ReSharper disable once NullableWarningSuppressionIsUsed
+            new Dictionary<string, string> { ["device"] = null! }));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Handshake?.Metadata?["device"], Is.EqualTo(string.Empty));
+        }
+    }
+
+    [Test]
+    public async Task VerifyFactorAsyncShouldNotTrustHandshakeMetadataContextInSuspiciousAttemptNotification()
+    {
+        var userId = Guid.NewGuid();
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            userId,
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(15),
+            false,
+            false,
+            new HashSet<string> { "totp" },
+            new HashSet<string>(),
+            new Dictionary<string, string>
+            {
+                ["ip_address"] = "203.0.113.10",
+                ["user_agent"] = "Mozilla/5.0"
+            });
+        var identityRepository = new Mock<IIdentityRepository>();
+        var notificationService = new Mock<ISecurityNotificationService>();
+        var service = new AuthenticationHandshakeService(
+            _repositoryMock.Object,
+            new FixedTokenGenerator("raw-token"),
+            _tokenHasherMock.Object,
+            new NullTransactionProvider(),
+            new AuthenticationHandshakeServiceDependencies(
+                Options.Create(new AuthenticationHandshakeOptions()),
+                _timeProvider,
+                _eventSinkMock.Object,
+                _rateLimiterMock.Object,
+                identityRepository.Object,
+                notificationService.Object));
+
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+        _rateLimiterMock.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RateLimitDecision
+            {
+                Status = RateLimitStatus.Blocked,
+                Remaining = 0,
+                WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
+            });
+        identityRepository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
+
+        await service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+
+        notificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
+            notification.Type == SecurityNotificationType.SuspiciousAuthenticationAttempt &&
+            notification.IpAddress == null &&
+            notification.UserAgent == null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task VerifyFactorAsyncShouldNotTrustRequestMetadataContextInSuspiciousAttemptNotification()
+    {
+        var userId = Guid.NewGuid();
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            userId,
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(15),
+            false,
+            false,
+            new HashSet<string> { "totp" },
+            new HashSet<string>(),
+            new Dictionary<string, string>
+            {
+                ["ip_address"] = "198.51.100.1",
+                ["user_agent"] = "Original"
+            });
+        var identityRepository = new Mock<IIdentityRepository>();
+        var notificationService = new Mock<ISecurityNotificationService>();
+        var service = new AuthenticationHandshakeService(
+            _repositoryMock.Object,
+            new FixedTokenGenerator("raw-token"),
+            _tokenHasherMock.Object,
+            new NullTransactionProvider(),
+            new AuthenticationHandshakeServiceDependencies(
+                Options.Create(new AuthenticationHandshakeOptions()),
+                _timeProvider,
+                _eventSinkMock.Object,
+                _rateLimiterMock.Object,
+                identityRepository.Object,
+                notificationService.Object));
+
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+        _rateLimiterMock.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RateLimitDecision
+            {
+                Status = RateLimitStatus.Blocked,
+                Remaining = 0,
+                WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
+            });
+        identityRepository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
+
+        await service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest(
+            "raw-token",
+            "totp",
+            new Dictionary<string, string>
+            {
+                ["ip_address"] = "203.0.113.10",
+                ["user_agent"] = "Attempt"
+            }));
+
+        notificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
+            notification.Type == SecurityNotificationType.SuspiciousAuthenticationAttempt &&
+            notification.IpAddress == null &&
+            notification.UserAgent == null), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]

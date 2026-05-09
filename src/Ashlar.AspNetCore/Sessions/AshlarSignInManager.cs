@@ -89,7 +89,13 @@ public sealed class AshlarSignInManager(
 
         return await _sessionService.RevokeSessionForUserAsync(
             userId,
-            new RevokeAuthenticationSessionRequest { SessionId = sessionId, Reason = reason },
+            new RevokeAuthenticationSessionRequest
+            {
+                SessionId = sessionId,
+                Reason = reason,
+                IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
+                UserAgent = httpContext.Request.Headers.UserAgent.ToString()
+            },
             cancellationToken);
     }
 
@@ -105,7 +111,13 @@ public sealed class AshlarSignInManager(
 
         return await _sessionService.RevokeOtherSessionsAsync(
             userId,
-            new RevokeOtherAuthenticationSessionsRequest { CurrentSessionId = currentSessionId, Reason = reason },
+            new RevokeOtherAuthenticationSessionsRequest
+            {
+                CurrentSessionId = currentSessionId,
+                Reason = reason,
+                IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
+                UserAgent = httpContext.Request.Headers.UserAgent.ToString()
+            },
             cancellationToken);
     }
 

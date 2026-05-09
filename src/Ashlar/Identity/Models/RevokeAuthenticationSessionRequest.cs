@@ -14,4 +14,14 @@ public sealed record RevokeAuthenticationSessionRequest
     /// An optional reason for revocation.
     /// </summary>
     public string? Reason { get; init; }
+
+    /// <summary>
+    /// The IP address of the client requesting revocation.
+    /// </summary>
+    public string? IpAddress { get; init; }
+
+    /// <summary>
+    /// The user agent of the client requesting revocation.
+    /// </summary>
+    public string? UserAgent { get; init; }
 }

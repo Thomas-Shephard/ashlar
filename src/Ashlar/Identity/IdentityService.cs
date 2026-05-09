@@ -69,19 +69,22 @@ public sealed class IdentityService(
 
     public async Task<IUser> CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(user);
+        var sanitizedUser = SanitizeUserEmail(user);
+
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         
-        await _repository.CreateUserAsync(user, cancellationToken);
+        await _repository.CreateUserAsync(sanitizedUser, cancellationToken);
         transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.UserCreated,
             Outcome = SecurityEventOutcomes.Success,
-            UserId = user.Id
+            UserId = sanitizedUser.Id
         }, ct));
 
         await transaction.CommitAsync(cancellationToken);
         
-        return user;
+        return sanitizedUser;
     }
 
     public async Task LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default)
@@ -94,5 +97,35 @@ public sealed class IdentityService(
         }
 
         await _credentialService.LinkCredentialAsync(userId, assertion, provider, credentialValue, cancellationToken: cancellationToken);
+    }
+
+    private static IUser SanitizeUserEmail(IUser user)
+    {
+        var email = IdentityNormalization.SanitizeEmailForDelivery(user.Email);
+        return string.Equals(email, user.Email, StringComparison.Ordinal)
+            ? user
+            : new SanitizedUserWrapper(user, email);
+    }
+
+    private sealed class SanitizedUserWrapper(IUser original, string email) : ITenantUser, IHasAuditMetadata
+    {
+        public Guid Id => original.Id;
+        public string Email { get; } = email;
+        public string? Name => original.Name;
+        public bool IsActive => original.IsActive;
+        public Guid? TenantId => (original as ITenantUser)?.TenantId;
+        public DateTimeOffset? EmailVerifiedAt => original.EmailVerifiedAt;
+        public DateTimeOffset CreatedAt => (original as IHasAuditMetadata)?.CreatedAt ?? default;
+        public DateTimeOffset? UpdatedAt
+        {
+            get => (original as IHasAuditMetadata)?.UpdatedAt;
+            set
+            {
+                if (original is IHasAuditMetadata metadata)
+                {
+                    metadata.UpdatedAt = value;
+                }
+            }
+        }
     }
 }

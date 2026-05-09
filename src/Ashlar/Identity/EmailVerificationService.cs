@@ -5,31 +5,44 @@ using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
 using Ashlar.Security.Tokens;
+using Ashlar.Identity.Notifications;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity;
 
-public sealed class EmailVerificationService(
-    IdentityContext identityContext,
-    SecureTokenContext tokenContext,
-    IEmailSender emailSender,
-    IAuthenticationRateLimiter rateLimiter,
-    TimeProvider timeProvider,
-    ISecurityEventSink securityEventSink,
-    IOptions<EmailVerificationOptions>? options = null)
-    : IEmailVerificationService
+public sealed class EmailVerificationService : IEmailVerificationService
 {
     private const string RequestPurpose = "email-verification-request";
     private const string VerifyPurpose = "email-verification-verify";
     private const string CredentialPurpose = "email-verification";
     private const string ProviderName = "email-verification";
-    private readonly IdentityContext _identityContext = identityContext ?? throw new ArgumentNullException(nameof(identityContext));
-    private readonly SecureTokenContext _tokenContext = tokenContext ?? throw new ArgumentNullException(nameof(tokenContext));
-    private readonly IEmailSender _emailSender = emailSender ?? throw new ArgumentNullException(nameof(emailSender));
-    private readonly IAuthenticationRateLimiter _rateLimiter = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
-    private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-    private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider);
-    private readonly IOptions<EmailVerificationOptions> _options = options ?? Options.Create(new EmailVerificationOptions());
+    private readonly IdentityContext _identityContext;
+    private readonly SecureTokenContext _tokenContext;
+    private readonly IEmailSender _emailSender;
+    private readonly IAuthenticationRateLimiter _rateLimiter;
+    private readonly TimeProvider _timeProvider;
+    private readonly SecurityEventEmitter _securityEvents;
+    private readonly IOptions<EmailVerificationOptions> _options;
+    private readonly SecurityNotificationEmitter _notifications;
+
+    public EmailVerificationService(
+        IdentityContext identityContext,
+        SecureTokenContext tokenContext,
+        IEmailSender emailSender,
+        IAuthenticationRateLimiter rateLimiter,
+        EmailVerificationServiceDependencies dependencies)
+    {
+        ArgumentNullException.ThrowIfNull(dependencies);
+
+        _identityContext = identityContext ?? throw new ArgumentNullException(nameof(identityContext));
+        _tokenContext = tokenContext ?? throw new ArgumentNullException(nameof(tokenContext));
+        _emailSender = emailSender ?? throw new ArgumentNullException(nameof(emailSender));
+        _rateLimiter = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
+        _timeProvider = dependencies.TimeProvider;
+        _securityEvents = new SecurityEventEmitter(dependencies.SecurityEventSink, dependencies.TimeProvider);
+        _options = dependencies.Options ?? Options.Create(new EmailVerificationOptions());
+        _notifications = new SecurityNotificationEmitter(dependencies.NotificationService);
+    }
 
     public async Task<EmailVerificationResult> RequestVerificationAsync(EmailVerificationRequest request, CancellationToken cancellationToken = default)
     {
@@ -136,7 +149,8 @@ public sealed class EmailVerificationService(
         var tokenHash = _tokenContext.Hasher.HashToken(token);
         var credential = await _identityContext.Repository.GetCredentialForUserAsync(userId, ProviderType.Internal, ProviderName, tokenHash, cancellationToken);
 
-        if (credential == null || !credential.IsAvailable(_timeProvider.GetUtcNow()))
+        var now = _timeProvider.GetUtcNow();
+        if (credential == null || !credential.IsAvailable(now))
         {
             return EmailVerificationResult.Failure("Invalid or expired token.");
         }
@@ -155,7 +169,7 @@ public sealed class EmailVerificationService(
             return EmailVerificationResult.Failure("User not found or inactive.");
         }
 
-        var updatedUser = new UpdatedUserWrapper(user, _timeProvider.GetUtcNow());
+        var updatedUser = new UpdatedUserWrapper(user, now);
         await _identityContext.Repository.UpdateUserAsync(updatedUser, cancellationToken);
 
         transaction.OnCommitted(async ct =>
@@ -166,6 +180,8 @@ public sealed class EmailVerificationService(
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = userId
             }, ct);
+
+            await _notifications.NotifyAsync(SecurityNotificationType.EmailVerificationCompleted, updatedUser, now, cancellationToken: ct);
         });
 
         await transaction.CommitAsync(cancellationToken);
@@ -192,4 +208,16 @@ public sealed class EmailVerificationService(
             }
         }
     }
+}
+
+public sealed class EmailVerificationServiceDependencies(
+    TimeProvider timeProvider,
+    ISecurityEventSink securityEventSink,
+    IOptions<EmailVerificationOptions>? options = null,
+    ISecurityNotificationService? notificationService = null)
+{
+    public TimeProvider TimeProvider { get; } = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+    public ISecurityEventSink SecurityEventSink { get; } = securityEventSink ?? throw new ArgumentNullException(nameof(securityEventSink));
+    public IOptions<EmailVerificationOptions>? Options { get; } = options;
+    public ISecurityNotificationService? NotificationService { get; } = notificationService;
 }

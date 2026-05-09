@@ -827,6 +827,73 @@ services.AddAshlarPostgres(connectionString);
 services.AddAshlarPostgresAuditSink();
 ```
 
+## Security Notifications
+Ashlar includes generic opt-in security notifications to notify users about important account and security events, such as new sign-ins, session revocations, and MFA changes.
+
+Register the notification services:
+
+```csharp
+services.AddAshlarSecurityNotifications(options =>
+{
+    options.Enabled = true;
+    options.EnabledTypes.Add(SecurityNotificationType.SignIn);
+    options.EnabledTypes.Add(SecurityNotificationType.TotpEnrolled);
+    options.EnabledTypes.Add(SecurityNotificationType.TotpDisabled);
+    // ... other types
+});
+```
+
+Security notifications use the existing `IEmailSender` abstraction, so ensure you have registered a functional email sender. Notifications are sent post-commit for transactional flows and include only safe context (no secrets or raw tokens).
+
+Repeated notifications are suppressed by recipient and notification type to avoid user spam. Most notification types default to a 15 minute cooldown; `SuspiciousAuthenticationAttempt` defaults to a 1 hour cooldown because it can be triggered by hostile verification traffic after authentication rate limits are reached. Applications can override or disable a cooldown:
+
+```csharp
+services.AddAshlarSecurityNotifications(options =>
+{
+    options.Enabled = true;
+    options.EnabledTypes.Add(SecurityNotificationType.SignIn);
+    options.Cooldowns[SecurityNotificationType.SignIn] = TimeSpan.FromHours(1);
+    options.Cooldowns[SecurityNotificationType.TotpDisabled] = TimeSpan.Zero; // always send
+});
+```
+
+### Supported Event Types
+- `SignIn`: New session created.
+- `SessionRevoked`: A specific session was revoked.
+- `AllOtherSessionsRevoked`: All other sessions for the user were revoked.
+- `AllSessionsRevoked`: All sessions for the user were revoked.
+- `TotpEnrolled`: MFA enrollment completed.
+- `TotpDisabled`: MFA disabled.
+- `RecoveryCodesGenerated`: New recovery codes generated.
+- `InvitationAccepted`: User invitation accepted.
+- `BootstrapCompleted`: System bootstrap completed.
+- `EmailChanged`: User email address changed.
+- `EmailVerificationCompleted`: Email verification successful.
+- `SuspiciousAuthenticationAttempt`: Rate-limited authentication handshake attempt.
+
+### Customizing Templates
+Applications can override the default notification subjects and bodies:
+
+```csharp
+services.AddAshlarSecurityNotifications(options =>
+{
+    options.Enabled = true;
+    options.EnabledTypes.Add(SecurityNotificationType.SignIn);
+    options.TemplateOverrides[SecurityNotificationType.SignIn] = new SecurityNotificationTemplate
+    {
+        Subject = "Security Alert: New Sign-in",
+        Body = "We detected a new sign-in to your account at {OccurredAt} from {IpAddress}."
+    };
+});
+```
+
+Available placeholders in templates:
+- `{RecipientEmail}`: The email address receiving the notification.
+- `{OccurredAt}`: The timestamp of the event.
+- `{Type}`: The notification type.
+- `{IpAddress}`: The approximate IP address (if enabled and available).
+- `{UserAgent}`: The user agent string (if enabled and available).
+- `{SessionId}`: The session identifier (if applicable).
 
 ## Contributions
 Contributions are welcome! Read the [contributing guide](CONTRIBUTING.md) to get started.

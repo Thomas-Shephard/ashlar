@@ -1,6 +1,7 @@
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Identity.Notifications;
 using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
@@ -28,7 +29,7 @@ public sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            timeProvider: _timeProvider);
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider));
     }
 
     [Test]
@@ -117,13 +118,12 @@ public sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionOptions
+            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions
             {
                 StoreIpAddress = false,
                 StoreUserAgent = false,
                 StoreMetadata = false
-            },
-            _timeProvider);
+            }, _timeProvider));
 
         AuthenticationSession? storedSession = null;
         _repositoryMock
@@ -383,6 +383,10 @@ public sealed class AuthenticationSessionServiceTests
     {
         var sessionId = Guid.NewGuid();
         var now = _timeProvider.GetUtcNow();
+        var session = CreateSession(expiresAt: now.AddHours(1));
+        _repositoryMock
+            .Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
         _repositoryMock
             .Setup(r => r.RevokeSessionAsync(sessionId, now, "signed-out", It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -400,6 +404,92 @@ public sealed class AuthenticationSessionServiceTests
     public void RevokeSessionAsyncShouldRejectEmptySessionId()
     {
         Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionAsync(Guid.Empty));
+    }
+
+    [Test]
+    public void ConstructorShouldUseDefaultDependencies()
+    {
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider());
+
+        Assert.That(service, Is.Not.Null);
+    }
+
+    [Test]
+    public async Task RevokeSessionAsyncShouldNotNotifyWhenUserCannotBeLoaded()
+    {
+        var sessionId = Guid.NewGuid();
+        var now = _timeProvider.GetUtcNow();
+        var session = CreateSession(expiresAt: now.AddHours(1));
+        var identityRepository = new Mock<IIdentityRepository>();
+        var notificationService = new Mock<ISecurityNotificationService>();
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(
+                TimeProvider: _timeProvider,
+                IdentityRepository: identityRepository.Object,
+                NotificationService: notificationService.Object));
+
+        _repositoryMock
+            .Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        _repositoryMock
+            .Setup(r => r.RevokeSessionAsync(sessionId, now, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        identityRepository
+            .Setup(r => r.GetUserByIdAsync(session.UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IUser?)null);
+
+        var revoked = await service.RevokeSessionAsync(sessionId);
+
+        Assert.That(revoked, Is.True);
+        notificationService.Verify(n => n.NotifyAsync(It.IsAny<SecurityNotification>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task RevokeSessionAsyncShouldNotifyWhenUserCanBeLoaded()
+    {
+        var sessionId = Guid.NewGuid();
+        var now = _timeProvider.GetUtcNow();
+        var session = CreateSession(expiresAt: now.AddHours(1));
+        var user = new User { Id = session.UserId, Email = "user@example.com" };
+        var identityRepository = new Mock<IIdentityRepository>();
+        var notificationService = new Mock<ISecurityNotificationService>();
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(
+                TimeProvider: _timeProvider,
+                IdentityRepository: identityRepository.Object,
+                NotificationService: notificationService.Object));
+
+        _repositoryMock
+            .Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        _repositoryMock
+            .Setup(r => r.RevokeSessionAsync(sessionId, now, "manual", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        identityRepository
+            .Setup(r => r.GetUserByIdAsync(session.UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        var revoked = await service.RevokeSessionAsync(sessionId, "manual");
+
+        Assert.That(revoked, Is.True);
+        notificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
+            notification.Type == SecurityNotificationType.SessionRevoked &&
+            notification.RecipientEmail == "user@example.com" &&
+            notification.SessionId == sessionId &&
+            notification.Metadata != null &&
+            notification.Metadata["reason"] == "manual"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -424,6 +514,42 @@ public sealed class AuthenticationSessionServiceTests
     public void RevokeSessionsForUserAsyncShouldRejectEmptyUserId()
     {
         Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionsForUserAsync(Guid.Empty));
+    }
+
+    [Test]
+    public async Task RevokeSessionsForUserAsyncShouldNotifyAllSessionsRevoked()
+    {
+        var userId = Guid.NewGuid();
+        var now = _timeProvider.GetUtcNow();
+        var user = new User { Id = userId, Email = "user@example.com" };
+        var identityRepository = new Mock<IIdentityRepository>();
+        var notificationService = new Mock<ISecurityNotificationService>();
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(
+                TimeProvider: _timeProvider,
+                IdentityRepository: identityRepository.Object,
+                NotificationService: notificationService.Object));
+
+        _repositoryMock
+            .Setup(r => r.RevokeSessionsForUserAsync(userId, now, "password-reset", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2);
+        identityRepository
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        await service.RevokeSessionsForUserAsync(userId, "password-reset");
+
+        notificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
+            notification.Type == SecurityNotificationType.AllSessionsRevoked &&
+            notification.RecipientEmail == user.Email &&
+            notification.OccurredAt == now &&
+            notification.Metadata != null &&
+            notification.Metadata["count"] == "2" &&
+            notification.Metadata["reason"] == "password-reset"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -525,6 +651,14 @@ public sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
+    public void RevokeSessionForUserAsyncShouldRejectOversizedReason()
+    {
+        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionForUserAsync(
+            Guid.NewGuid(),
+            new RevokeAuthenticationSessionRequest { SessionId = Guid.NewGuid(), Reason = new string('x', 513) }));
+    }
+
+    [Test]
     public async Task RevokeOtherSessionsAsyncShouldPassCurrentTimeAndReason()
     {
         var userId = Guid.NewGuid();
@@ -563,6 +697,14 @@ public sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
+    public void RevokeOtherSessionsAsyncShouldRejectOversizedReason()
+    {
+        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeOtherSessionsAsync(
+            Guid.NewGuid(),
+            new RevokeOtherAuthenticationSessionsRequest { CurrentSessionId = Guid.NewGuid(), Reason = new string('x', 513) }));
+    }
+
+    [Test]
     public void ConstructorShouldThrowOnNullRepository()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
@@ -598,7 +740,7 @@ public sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionOptions
+            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions
             {
                 DefaultLifetime = TimeSpan.FromDays(7),
                 LastSeenUpdateThreshold = TimeSpan.Zero,
@@ -606,7 +748,7 @@ public sealed class AuthenticationSessionServiceTests
                 MaxIpAddressLength = 1,
                 MaxUserAgentLength = 1,
                 MaxMetadataLength = 1
-            });
+            }));
 
         Assert.That(service, Is.Not.Null);
     }
@@ -619,7 +761,7 @@ public sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionOptions { DefaultLifetime = TimeSpan.Zero }));
+            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions { DefaultLifetime = TimeSpan.Zero })));
     }
 
     [Test]
@@ -630,7 +772,7 @@ public sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionOptions { LastSeenUpdateThreshold = TimeSpan.FromTicks(-1) }));
+            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions { LastSeenUpdateThreshold = TimeSpan.FromTicks(-1) })));
     }
 
     [Test]
@@ -641,7 +783,7 @@ public sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionOptions { TokenByteLength = 31 }));
+            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions { TokenByteLength = 31 })));
     }
 
     [Test]
@@ -652,7 +794,7 @@ public sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionOptions { TokenByteLength = 193 }));
+            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions { TokenByteLength = 193 })));
     }
 
     [Test]
@@ -663,7 +805,7 @@ public sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionOptions { MaxIpAddressLength = 0 }));
+            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions { MaxIpAddressLength = 0 })));
     }
 
     [Test]
@@ -674,7 +816,7 @@ public sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionOptions { MaxUserAgentLength = 0 }));
+            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions { MaxUserAgentLength = 0 })));
     }
 
     [Test]
@@ -685,7 +827,7 @@ public sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionOptions { MaxMetadataLength = 0 }));
+            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions { MaxMetadataLength = 0 })));
     }
 
     private AuthenticationSession CreateSession(DateTimeOffset expiresAt, DateTimeOffset? lastSeenAt = null, Guid? userId = null)

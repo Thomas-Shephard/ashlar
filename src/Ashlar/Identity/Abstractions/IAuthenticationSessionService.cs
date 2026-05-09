@@ -51,6 +51,7 @@ public interface IAuthenticationSessionService
     Task<int> RevokeSessionsForUserAsync(
         Guid userId,
         string? reason = null,
+        AuthenticationContext? context = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

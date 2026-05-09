@@ -1,5 +1,6 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.Notifications;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
@@ -23,14 +24,17 @@ public sealed class EmailChangeDependencies(
     public IAuthenticationSessionRepository SessionRepository { get; } = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
     public ISecretProtector SecretProtector { get; } = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
     public EmailChangeAuditDependencies Audit { get; } = audit ?? throw new ArgumentNullException(nameof(audit));
+    public ISecurityNotificationService? NotificationService => Audit.NotificationService;
     public TimeProvider TimeProvider => Audit.TimeProvider;
     public ISecurityEventSink SecurityEventSink => Audit.SecurityEventSink;
 }
 
 public sealed class EmailChangeAuditDependencies(
     TimeProvider timeProvider,
-    ISecurityEventSink securityEventSink)
+    ISecurityEventSink securityEventSink,
+    ISecurityNotificationService? notificationService = null)
 {
     public TimeProvider TimeProvider { get; } = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     public ISecurityEventSink SecurityEventSink { get; } = securityEventSink ?? throw new ArgumentNullException(nameof(securityEventSink));
+    public ISecurityNotificationService? NotificationService { get; } = notificationService;
 }

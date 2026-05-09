@@ -3,6 +3,7 @@ using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Identity.Notifications;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
 
@@ -13,7 +14,8 @@ public sealed class BootstrapService(
     IInvitationService invitationService,
     InvitationDependencies invitationDependencies,
     IAuthorizationGrantService grantService,
-    IOptions<BootstrapOptions>? options = null)
+    IOptions<BootstrapOptions>? options = null,
+    ISecurityNotificationService? notificationService = null)
     : IBootstrapService
 {
     private const string BootstrapMetadataKey = "ashlar.bootstrap";
@@ -23,6 +25,7 @@ public sealed class BootstrapService(
     private readonly IAuthorizationGrantService _grantService = grantService ?? throw new ArgumentNullException(nameof(grantService));
     private readonly IOptions<BootstrapOptions> _options = options ?? Options.Create(new BootstrapOptions());
     private readonly SecurityEventEmitter _securityEvents = new(invitationDependencies.SecurityEventSink, invitationDependencies.TimeProvider);
+    private readonly SecurityNotificationEmitter _notifications = new(notificationService);
 
     public Task<BootstrapStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
@@ -41,6 +44,8 @@ public sealed class BootstrapService(
         var token = _invitationDependencies.TokenGenerator.GenerateToken();
         var tokenHash = _invitationDependencies.TokenHasher.HashToken(token);
         var now = _invitationDependencies.TimeProvider.GetUtcNow();
+        var email = IdentityNormalization.SanitizeEmailForDelivery(request.Email);
+        var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
 
         var metadataDict = new Dictionary<string, object>();
         if (!string.IsNullOrWhiteSpace(request.Metadata))
@@ -64,7 +69,7 @@ public sealed class BootstrapService(
         var invitation = new UserInvitation
         {
             Id = Guid.NewGuid(),
-            Email = request.Email.Trim(),
+            Email = email,
             TenantId = request.TenantId,
             TokenHash = tokenHash,
             CreatedAt = now,
@@ -80,7 +85,7 @@ public sealed class BootstrapService(
         // For now, we rely on the repository implementation to handle concurrency if it can.
 
         await _invitationDependencies.InvitationRepository.RevokeInvitationsByEmailAsync(
-            IdentityNormalization.NormalizeEmail(request.Email),
+            normalizedEmail,
             request.TenantId,
             cancellationToken);
 
@@ -95,7 +100,7 @@ public sealed class BootstrapService(
                 Properties = new Dictionary<string, string>
                 {
                     ["invitation_id"] = invitation.Id.ToString(),
-                    ["email"] = request.Email.Trim()
+                    ["email"] = email
                 }
             }, ct);
         });
@@ -127,6 +132,8 @@ public sealed class BootstrapService(
             return InvitationAcceptanceResult.Failure("already_initialized");
         }
 
+        var now = _invitationDependencies.TimeProvider.GetUtcNow();
+
         // We use a transaction to ensure atomicity of invitation acceptance, grant assignment, and state update.
         await using var transaction = await _invitationDependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
@@ -153,7 +160,7 @@ public sealed class BootstrapService(
         }
 
         // Mark as initialized
-        var initialized = await _stateRepository.MarkAsInitializedAsync(userId, _invitationDependencies.TimeProvider.GetUtcNow(), cancellationToken);
+        var initialized = await _stateRepository.MarkAsInitializedAsync(userId, now, cancellationToken);
         if (!initialized)
         {
             // This should only happen if someone else initialized the system concurrently.
@@ -170,6 +177,12 @@ public sealed class BootstrapService(
                 UserId = userId,
                 Context = context
             }, ct);
+
+            var notifiedUser = await _invitationDependencies.IdentityRepository.GetUserByIdAsync(userId, ct);
+            if (notifiedUser != null)
+            {
+                await _notifications.NotifyAsync(SecurityNotificationType.BootstrapCompleted, notifiedUser, now, context: context, cancellationToken: ct);
+            }
         });
 
         await transaction.CommitAsync(cancellationToken);

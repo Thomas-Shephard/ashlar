@@ -1,6 +1,7 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Identity.Notifications;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Providers.RecoveryCode;
@@ -16,6 +17,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
     private readonly RecoveryCodeOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
+    private readonly SecurityNotificationEmitter _notifications;
 
     public RecoveryCodeService(
         IIdentityRepository repository,
@@ -23,7 +25,8 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         Security.Hashing.PasswordHasherSelector hasherSelector,
         IOptions<RecoveryCodeOptions> options,
         TimeProvider? timeProvider = null,
-        ISecurityEventSink? securityEventSink = null)
+        ISecurityEventSink? securityEventSink = null,
+        ISecurityNotificationService? notificationService = null)
     {
         ArgumentNullException.ThrowIfNull(repository);
         ArgumentNullException.ThrowIfNull(transactionProvider);
@@ -37,6 +40,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         _options = options.Value;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
+        _notifications = new SecurityNotificationEmitter(notificationService);
     }
 
     /// <inheritdoc />
@@ -110,17 +114,25 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
             await _repository.CreateCredentialAsync(credential, cancellationToken);
         }
 
-        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        transaction.OnCommitted(async ct =>
         {
-            EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
-            Outcome = SecurityEventOutcomes.Success,
-            UserId = userId,
-            Provider = _options.ProviderKey,
-            Properties = new Dictionary<string, string>
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
+                Outcome = SecurityEventOutcomes.Success,
+                UserId = userId,
+                Provider = _options.ProviderKey,
+                Properties = new Dictionary<string, string>
+                {
+                    ["count"] = codeCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                }
+            }, ct);
+
+            await _notifications.NotifyAsync(SecurityNotificationType.RecoveryCodesGenerated, user, now, metadata: new Dictionary<string, string>
             {
                 ["count"] = codeCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
-            }
-        }, ct));
+            }, cancellationToken: ct);
+        });
 
         await transaction.CommitAsync(cancellationToken);
 

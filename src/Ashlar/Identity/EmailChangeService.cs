@@ -1,6 +1,7 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Identity.Notifications;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
 using Microsoft.Extensions.Options;
@@ -19,6 +20,7 @@ public sealed class EmailChangeService(
     private readonly EmailChangeDependencies _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
     private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider);
     private readonly IOptions<EmailChangeOptions> _options = options ?? Options.Create(new EmailChangeOptions());
+    private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
 
     public async Task<EmailChangeResult> RequestChangeAsync(RequestEmailChangeRequest request, CancellationToken cancellationToken = default)
     {
@@ -30,7 +32,8 @@ public sealed class EmailChangeService(
             return EmailChangeResult.Failure("User not found or inactive.");
         }
 
-        var normalizedNewEmail = IdentityNormalization.NormalizeEmail(request.NewEmail);
+        var newEmail = IdentityNormalization.SanitizeEmailForDelivery(request.NewEmail);
+        var normalizedNewEmail = IdentityNormalization.NormalizeEmail(newEmail);
         if (normalizedNewEmail == IdentityNormalization.NormalizeEmail(user.Email))
         {
             return EmailChangeResult.Failure("New email must be different from the current email.");
@@ -56,7 +59,7 @@ public sealed class EmailChangeService(
         }
 
         var existingUser = await _dependencies.IdentityContext.Repository.GetUserByEmailAsync(normalizedNewEmail, (user as ITenantUser)?.TenantId, cancellationToken);
-        if (existingUser != null) return await SuppressEmailChangeRequestAsync(request, user, cancellationToken);
+        if (existingUser != null) return await SuppressEmailChangeRequestAsync(newEmail, user, cancellationToken);
 
         var token = _dependencies.TokenContext.Generator.GenerateToken();
         var tokenHash = _dependencies.TokenContext.Hasher.HashToken(token);
@@ -70,7 +73,7 @@ public sealed class EmailChangeService(
             ProviderName = ProviderName,
             ProviderKey = tokenHash,
             Version = Guid.NewGuid().ToString("N"),
-            CredentialValue = _dependencies.SecretProtector.Protect(request.NewEmail),
+            CredentialValue = _dependencies.SecretProtector.Protect(newEmail),
             CreatedAt = now,
             ExpiresAt = now.Add(_options.Value.Expiration),
             Status = CredentialStatus.Active,
@@ -85,7 +88,7 @@ public sealed class EmailChangeService(
         transaction.OnCommitted(async ct =>
         {
             await _dependencies.EmailSender.SendAsync(new EmailMessage(
-                request.NewEmail,
+                newEmail,
                 _options.Value.Subject,
                 $"Confirmation token: {token}",
                 options: new EmailMessageOptions { From = _options.Value.FromAddress }), ct);
@@ -95,7 +98,7 @@ public sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeRequested,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = user.Id,
-                Properties = new Dictionary<string, string> { ["new_email"] = request.NewEmail }
+                Properties = new Dictionary<string, string> { ["new_email"] = newEmail }
             }, ct);
         });
 
@@ -104,13 +107,13 @@ public sealed class EmailChangeService(
         return EmailChangeResult.Success();
     }
 
-    private async Task<EmailChangeResult> SuppressEmailChangeRequestAsync(RequestEmailChangeRequest request, IUser user, CancellationToken cancellationToken)
+    private async Task<EmailChangeResult> SuppressEmailChangeRequestAsync(string newEmail, IUser user, CancellationToken cancellationToken)
     {
         await using var suppressionTransaction = await _dependencies.IdentityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
         suppressionTransaction.OnCommitted(async ct =>
         {
             await _dependencies.EmailSender.SendAsync(new EmailMessage(
-                request.NewEmail,
+                newEmail,
                 _options.Value.Subject,
                 "An attempt was made to change another account's email address to this one. No changes were made, and no further action is required.",
                 options: new EmailMessageOptions { From = _options.Value.FromAddress }), ct);
@@ -155,7 +158,8 @@ public sealed class EmailChangeService(
         var tokenHash = _dependencies.TokenContext.Hasher.HashToken(request.Token);
         var credential = await _dependencies.IdentityContext.Repository.GetCredentialForUserAsync(request.UserId, ProviderType.Internal, ProviderName, tokenHash, cancellationToken);
 
-        if (credential == null || !credential.IsAvailable(_dependencies.TimeProvider.GetUtcNow()) || string.IsNullOrWhiteSpace(credential.CredentialValue))
+        var now = _dependencies.TimeProvider.GetUtcNow();
+        if (credential == null || !credential.IsAvailable(now) || string.IsNullOrWhiteSpace(credential.CredentialValue))
         {
             return EmailChangeResult.Failure("Invalid or expired token.");
         }
@@ -163,7 +167,7 @@ public sealed class EmailChangeService(
         string newEmail;
         try
         {
-            newEmail = _dependencies.SecretProtector.Unprotect(credential.CredentialValue);
+            newEmail = IdentityNormalization.SanitizeEmailForDelivery(_dependencies.SecretProtector.Unprotect(credential.CredentialValue));
         }
         catch (Exception)
         {
@@ -205,7 +209,7 @@ public sealed class EmailChangeService(
 
         var oldEmail = user.Email;
         // Update user
-        var updatedUser = new UpdatedUserWrapper(user, newEmail, _dependencies.TimeProvider.GetUtcNow());
+        var updatedUser = new UpdatedUserWrapper(user, newEmail, now);
 
         await _dependencies.IdentityContext.Repository.UpdateUserAsync(updatedUser, cancellationToken);
 
@@ -213,7 +217,7 @@ public sealed class EmailChangeService(
         {
             if (_options.Value.RevokeSessions)
             {
-                await _dependencies.SessionRepository.RevokeSessionsForUserAsync(user.Id, _dependencies.TimeProvider.GetUtcNow(), "Email changed", ct);
+                await _dependencies.SessionRepository.RevokeSessionsForUserAsync(user.Id, now, "Email changed", ct);
             }
 
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -227,6 +231,15 @@ public sealed class EmailChangeService(
                     ["new_email"] = newEmail
                 }
             }, ct);
+
+            var notificationMetadata = new Dictionary<string, string>
+            {
+                ["old_email"] = oldEmail,
+                ["new_email"] = newEmail
+            };
+
+            await _notifications.NotifyAsync(SecurityNotificationType.EmailChanged, oldEmail, now, metadata: notificationMetadata, cancellationToken: ct);
+            await _notifications.NotifyAsync(SecurityNotificationType.EmailChanged, updatedUser, now, metadata: notificationMetadata, cancellationToken: ct);
         });
 
         await transaction.CommitAsync(cancellationToken);

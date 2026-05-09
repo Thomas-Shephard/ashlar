@@ -16,4 +16,24 @@ public static class IdentityNormalization
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         return email.Trim().ToUpperInvariant();
     }
+
+    /// <summary>
+    /// Trims an email address and rejects values that could escape email headers.
+    /// </summary>
+    /// <param name="email">The email address to sanitize.</param>
+    /// <returns>The trimmed email address.</returns>
+    /// <exception cref="ArgumentException">Thrown if the email is null, whitespace, or contains line breaks.</exception>
+    public static string SanitizeEmailForDelivery(string email)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+
+        if (email.Contains('\r') || email.Contains('\n'))
+        {
+            throw new ArgumentException("Email address cannot contain line breaks.", nameof(email));
+        }
+
+        var sanitized = email.Trim();
+        _ = NormalizeEmail(sanitized);
+        return sanitized;
+    }
 }

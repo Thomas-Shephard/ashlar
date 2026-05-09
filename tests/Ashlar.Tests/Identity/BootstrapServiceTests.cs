@@ -164,6 +164,19 @@ public class BootstrapServiceTests
     }
 
     [Test]
+    public void CreateBootstrapInvitationAsyncRejectsEmailWithLineBreaks()
+    {
+        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Uninitialized);
+
+        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateBootstrapInvitationAsync(new CreateBootstrapInvitationRequest
+        {
+            Email = "admin@example.com\r\nBcc: attacker@example.com"
+        }));
+
+        _invitationRepository.Verify(r => r.CreateInvitationAsync(It.IsAny<UserInvitation>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public async Task CreateBootstrapInvitationAsyncUsesRequestedExpiry()
     {
         _timeProvider.SetUtcNow(new DateTimeOffset(2026, 5, 9, 10, 0, 0, TimeSpan.Zero));

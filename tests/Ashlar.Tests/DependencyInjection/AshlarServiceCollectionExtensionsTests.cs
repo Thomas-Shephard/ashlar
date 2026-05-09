@@ -4,6 +4,7 @@ using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.Providers.Local;
 using Ashlar.Messaging;
@@ -212,6 +213,29 @@ public class AshlarServiceCollectionExtensionsTests
         var service = scope.ServiceProvider.GetRequiredService<IAuthenticationSessionService>();
 
         Assert.That(service, Is.TypeOf<AuthenticationSessionService>());
+    }
+
+    [Test]
+    public void AddAshlarMfaHandshakesPassesNotificationDependencies()
+    {
+        var services = new ServiceCollection();
+        var identityRepository = Mock.Of<IIdentityRepository>();
+        var notificationService = Mock.Of<ISecurityNotificationService>();
+        services.AddSingleton(identityRepository);
+        services.AddSingleton(notificationService);
+
+        services.AddAshlarMfaHandshakes();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var dependencies = scope.ServiceProvider.GetRequiredService<AuthenticationHandshakeServiceDependencies>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dependencies.IdentityRepository, Is.SameAs(identityRepository));
+            Assert.That(dependencies.NotificationService, Is.SameAs(notificationService));
+        }
     }
 
     [Test]
@@ -456,5 +480,32 @@ public class AshlarServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<IOptions<EmailChangeOptions>>().Value.Subject, Is.EqualTo("Change custom"));
+    }
+
+    [Test]
+    public void AddAshlarSecurityNotificationsRegistersService()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarSecurityNotifications();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityNotificationService>(), Is.TypeOf<SecurityNotificationService>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityNotificationSuppressionStore>(), Is.TypeOf<InMemorySecurityNotificationSuppressionStore>());
+        }
+    }
+
+    [Test]
+    public void AddAshlarSecurityNotificationsAppliesConfiguration()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarSecurityNotifications(options => options.Enabled = true);
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetRequiredService<IOptions<SecurityNotificationOptions>>().Value.Enabled, Is.True);
     }
 }
