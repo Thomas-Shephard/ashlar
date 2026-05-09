@@ -171,6 +171,34 @@ public class CredentialServiceTests
     }
 
     [Test]
+    public async Task ResolveAsyncShouldRespectUserIdFromContextWhenProviderFindUserReturnsNull()
+    {
+        var userId = Guid.NewGuid();
+        var user = new User { Id = userId, Email = "test@example.com" };
+        var context = new AuthenticationContext(UserId: userId);
+        var assertionMock = new Mock<IAuthenticationAssertion>();
+        var providerMock = new Mock<IAuthenticationProvider>();
+
+        providerMock.Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IUser?)null);
+        providerMock.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey(ProviderType.Mfa, "totp"));
+        providerMock.Setup(p => p.GetProviderKey(assertionMock.Object, userId)).Returns(userId.ToString("D"));
+
+        _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", userId.ToString("D"), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateCredential(userId));
+
+        var (resolvedUser, _, _, _) = await _service.ResolveAsync(context, assertionMock.Object, providerMock.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolvedUser, Is.Not.Null);
+            Assert.That(resolvedUser!.Id, Is.EqualTo(userId));
+            _repositoryMock.Verify(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
     public async Task UnprotectCredentialWithNoProtectionShouldReturnCredential()
     {
         var credential = new UserCredential
