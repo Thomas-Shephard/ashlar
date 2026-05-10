@@ -2,11 +2,13 @@
   <Folder Name="/src/">
     <Project Path="src/Ashlar/Ashlar.csproj" />
     <Project Path="src/Ashlar.AspNetCore/Ashlar.AspNetCore.csproj" />
+    <Project Path="src/Ashlar.Email.Smtp/Ashlar.Email.Smtp.csproj" />
     <Project Path="src/Ashlar.Postgres/Ashlar.Postgres.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Ashlar.Tests/Ashlar.Tests.csproj" />
     <Project Path="tests/Ashlar.AspNetCore.Tests/Ashlar.AspNetCore.Tests.csproj" />
+    <Project Path="tests/Ashlar.Email.Smtp.Tests/Ashlar.Email.Smtp.Tests.csproj" />
     <Project Path="tests/Ashlar.Postgres.Tests/Ashlar.Postgres.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">

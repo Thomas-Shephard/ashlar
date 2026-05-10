@@ -160,4 +160,68 @@ public sealed class EmailMessageTests
             Assert.That(message.Metadata["UserId"], Is.EqualTo("123"));
         }
     }
+
+    [Test]
+    public void EmailMessageRejectsHeaderInjection()
+    {
+        Assert.Throws<ArgumentException>(() => _ = new EmailMessage(
+            to: "recipient@example.com",
+            subject: "Test Subject",
+            textBody: "Hello",
+            options: new EmailMessageOptions
+            {
+                Headers = new Dictionary<string, string> { { "X-Injected\nNewline", "Value" } }
+            }));
+
+        Assert.Throws<ArgumentException>(() => _ = new EmailMessage(
+            to: "recipient@example.com",
+            subject: "Test Subject",
+            textBody: "Hello",
+            options: new EmailMessageOptions
+            {
+                Headers = new Dictionary<string, string> { { "X-Normal", "Value\rInjection" } }
+            }));
+
+        Assert.Throws<ArgumentException>(() => _ = new EmailMessage(
+            to: "recipient@example.com",
+            subject: "Test Subject",
+            textBody: "Hello",
+            options: new EmailMessageOptions
+            {
+                Headers = new Dictionary<string, string> { { "X-Null", "Value\0Injection" } }
+            }));
+    }
+
+    [Test]
+    public void EmailMessageAcceptsNullHeaderValue()
+    {
+        var message = new EmailMessage(
+            to: "recipient@example.com",
+            subject: "Test Subject",
+            textBody: "Hello",
+            options: new EmailMessageOptions
+            {
+                Headers = new Dictionary<string, string> { { "X-Nullable", null! } }
+            });
+
+        Assert.That(message.Headers!["X-Nullable"], Is.Null);
+    }
+
+    [Test]
+    public void EmailMessageRejectsSubjectInjection()
+    {
+        Assert.Throws<ArgumentException>(() => _ = new EmailMessage(
+            to: "recipient@example.com",
+            subject: "Test Subject\nInjected-Header: Value",
+            textBody: "Hello"));
+    }
+
+    [Test]
+    public void EmailMessageRejectsToInjection()
+    {
+        Assert.Throws<ArgumentException>(() => _ = new EmailMessage(
+            to: "recipient@example.com\r\nBcc: victim@example.com",
+            subject: "Subject",
+            textBody: "Hello"));
+    }
 }
