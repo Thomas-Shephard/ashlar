@@ -43,18 +43,6 @@ public sealed class TotpService : ITotpService
             ?? throw new InvalidOperationException($"Required provider '{nameof(TotpAuthenticationProvider)}' not registered.");
     }
 
-    public TotpService(
-        IIdentityRepository repository,
-        ICredentialService credentialService,
-        IAshlarTransactionProvider transactionProvider,
-        IEnumerable<IAuthenticationProvider> providers,
-        IOptions<TotpOptions> options,
-        TimeProvider? timeProvider = null,
-        ISecurityEventSink? securityEventSink = null)
-        : this(repository, credentialService, transactionProvider, providers, new TotpServiceDependencies(options, timeProvider, securityEventSink))
-    {
-    }
-
     /// <inheritdoc />
     public async Task<TotpEnrollment> StartEnrollmentAsync(Guid userId, string issuer, string accountName, CancellationToken cancellationToken = default)
     {
