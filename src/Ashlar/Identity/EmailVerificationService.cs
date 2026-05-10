@@ -102,12 +102,15 @@ public sealed class EmailVerificationService : IEmailVerificationService
         await _identityContext.Repository.RevokeCredentialsAsync(user.Id, ProviderType.Internal, ProviderName, cancellationToken);
         await _identityContext.Repository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
 
+        var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(request.CallbackBaseUri, user.Id, token, _options.Value.TokenParameterName, _options.Value.UserIdParameterName);
+        var message = IdentityUrlHelper.FormatEmailBody(_options.Value.EmailTextTemplate, callbackUrl, "Verification token", token);
+
         transaction.OnCommitted(async ct =>
         {
             await _emailSender.SendAsync(new EmailMessage(
                 user.Email,
                 _options.Value.Subject,
-                $"Verification token: {token}",
+                message,
                 options: new EmailMessageOptions { From = _options.Value.FromAddress }), ct);
 
             await _securityEvents.RecordAsync(new SecurityEventDescriptor

@@ -29,7 +29,7 @@ public sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" };
+        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") };
 
         var result = await fixture.Service.RequestChangeAsync(request);
 
@@ -51,7 +51,7 @@ public sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = " new@example.com\r\nBcc: attacker@example.com " };
+        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = " new@example.com\r\nBcc: attacker@example.com ", CallbackBaseUri = new Uri("http://localhost/confirm") };
 
         Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RequestChangeAsync(request));
     }
@@ -61,7 +61,7 @@ public sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "old@example.com" };
+        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "old@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") };
 
         var result = await fixture.Service.RequestChangeAsync(request);
 
@@ -73,7 +73,7 @@ public sealed class EmailChangeServiceTests
     {
         var fixture = CreateFixture();
 
-        var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = Guid.NewGuid(), NewEmail = "new@example.com" });
+        var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = Guid.NewGuid(), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
 
         Assert.That(result.ErrorMessage, Is.EqualTo("User not found or inactive."));
     }
@@ -84,7 +84,7 @@ public sealed class EmailChangeServiceTests
         var user = CreateUser();
         var fixture = CreateFixture(users: [user], requestAllowed: false);
 
-        var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
 
         using (Assert.EnterMultipleScope())
         {
@@ -99,7 +99,7 @@ public sealed class EmailChangeServiceTests
         var user = CreateUser();
         var existingUser = CreateUser("taken@example.com");
         var fixture = CreateFixture(users: [user, existingUser]);
-        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "taken@example.com" };
+        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "taken@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") };
 
         var result = await fixture.Service.RequestChangeAsync(request);
 
@@ -117,7 +117,7 @@ public sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
@@ -137,7 +137,7 @@ public sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var credential = fixture.IdentityRepository.Credentials.Single();
         credential.CredentialValue = fixture.SecretProtector.Protect(" changed@example.com\r\nBcc: attacker@example.com ");
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
@@ -152,7 +152,7 @@ public sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
@@ -177,7 +177,7 @@ public sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         // Now someone else takes the email
@@ -198,7 +198,7 @@ public sealed class EmailChangeServiceTests
     {
         var user = new MetadataUser { Id = Guid.NewGuid(), Email = "old@example.com", IsActive = true, CreatedAt = DateTimeOffset.UtcNow.AddDays(-1) };
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
@@ -242,7 +242,7 @@ public sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(users: [user], secretProtector: new ThrowingSecretProtector());
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
@@ -255,7 +255,7 @@ public sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
         fixture.IdentityRepository.Users.Clear();
 
@@ -269,7 +269,7 @@ public sealed class EmailChangeServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(users: [user], consumeSucceeds: false);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
@@ -280,7 +280,8 @@ public sealed class EmailChangeServiceTests
     private static string ExtractToken(EmailMessage message)
     {
         var body = message.TextBody!;
-        return body.Split(": ").Last();
+        var uri = new Uri(body.Split(": ").Last());
+        return System.Web.HttpUtility.ParseQueryString(uri.Query)["t"]!;
     }
 
     private static Fixture CreateFixture(

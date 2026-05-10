@@ -4,14 +4,19 @@ public sealed class EmailChangeOptions
 {
     public TimeSpan Expiration { get; set; } = TimeSpan.FromHours(2);
     public string Subject { get; set; } = "Confirm your new email address";
+    public string EmailTextTemplate { get; set; } = "Click the following link to confirm your new email address: {0}";
     public string? FromAddress { get; set; }
     public bool RevokeSessions { get; set; } = true;
+    public string TokenParameterName { get; set; } = "t";
+    public string UserIdParameterName { get; set; } = "u";
 }
 
 public sealed class RequestEmailChangeRequest
 {
     public required Guid UserId { get; init; }
     public required string NewEmail { get; init; }
+    public Uri? CallbackBaseUri { get; init; }
+    public AuthenticationContext? Context { get; init; }
 }
 
 public sealed class ConfirmEmailChangeRequest
