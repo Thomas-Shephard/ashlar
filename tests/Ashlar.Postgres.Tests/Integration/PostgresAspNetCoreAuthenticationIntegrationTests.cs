@@ -33,6 +33,7 @@ public sealed class PostgresAspNetCoreAuthenticationIntegrationTests : PostgresT
         services.AddAshlarDataProtectionSecretProtector();
         services.AddAshlarMagicLinkSignIn();
         services.AddAshlarAspNetCoreSessions();
+        services.Configure<Ashlar.Identity.Models.UriValidationOptions>(o => o.AllowedCallbackUris.Add("https://example.test/"));
 
         _serviceProvider = services.BuildServiceProvider();
         await ServiceProvider.InitializeAshlarPostgresSchemaAsync();

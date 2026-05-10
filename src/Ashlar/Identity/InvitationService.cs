@@ -24,6 +24,8 @@ public sealed class InvitationService(
         ArgumentNullException.ThrowIfNull(callbackBaseUri);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Email);
 
+        _dependencies.UriValidator.ValidateOrThrow(callbackBaseUri);
+
         var email = IdentityNormalization.SanitizeEmailForDelivery(request.Email);
         var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
         var invitationOptions = _options.Value;
@@ -73,11 +75,12 @@ public sealed class InvitationService(
         await _dependencies.InvitationRepository.RevokeInvitationsByEmailAsync(normalizedEmail, request.TenantId, cancellationToken);
         await _dependencies.InvitationRepository.CreateInvitationAsync(invitation, cancellationToken);
 
-        var callbackUrl = ConstructCallbackUrl(callbackBaseUri, token);
+        var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(callbackBaseUri, invitationOptions.TokenParameterName, token);
+        var message = IdentityUrlHelper.FormatEmailBody(invitationOptions.EmailTextTemplate, callbackUrl);
 
         transaction.OnCommitted(async ct =>
         {
-            await _dependencies.EmailSender.SendAsync(new EmailMessage(email, invitationOptions.EmailSubject, string.Format(CultureInfo.InvariantCulture, invitationOptions.EmailTextTemplate, callbackUrl)), ct);
+            await _dependencies.EmailSender.SendAsync(new EmailMessage(email, invitationOptions.EmailSubject, message), ct);
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.InvitationCreated,
@@ -234,14 +237,5 @@ public sealed class InvitationService(
         }
 
         return properties;
-    }
-
-    private static string ConstructCallbackUrl(Uri baseUri, string token)
-    {
-        var builder = new UriBuilder(baseUri);
-        var query = System.Web.HttpUtility.ParseQueryString(builder.Query);
-        query["t"] = token;
-        builder.Query = query.ToString();
-        return builder.Uri.AbsoluteUri;
     }
 }

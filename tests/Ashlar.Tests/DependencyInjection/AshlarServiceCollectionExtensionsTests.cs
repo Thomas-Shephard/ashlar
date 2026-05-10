@@ -88,6 +88,24 @@ public class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarUriValidationConfiguresOptions()
+    {
+        var services = new ServiceCollection();
+        const string allowedUri = "https://example.com/app";
+
+        services.AddAshlarUriValidation(options => options.AllowedCallbackUris.Add(allowedUri));
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<UriValidationOptions>>().Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertDescriptor<IUriValidator, UriValidator>(services, ServiceLifetime.Singleton);
+            Assert.That(options.AllowedCallbackUris, Contains.Item(allowedUri));
+        }
+    }
+
+    [Test]
     public void AddAshlarIdentityResolvesIdentityServiceWhenRequiredDependenciesArePresent()
     {
         var services = new ServiceCollection();

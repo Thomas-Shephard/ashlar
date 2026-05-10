@@ -79,6 +79,14 @@ public static class AshlarServiceCollectionExtensions
             provider.GetService<ISecurityNotificationService>()));
         services.TryAddScoped<IAuthenticationSessionService, AuthenticationSessionService>();
         services.TryAddScoped<IdentityContext>();
+        services.TryAddScoped(provider => new IdentityInfrastructureContext(
+            provider.GetRequiredService<IEmailSender>(),
+            provider.GetRequiredService<IAuthenticationRateLimiter>(),
+            provider.GetRequiredService<IUriValidator>()));
+        services.TryAddScoped(provider => new IdentityAuditContext(
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<ISecurityEventSink>(),
+            provider.GetService<ISecurityNotificationService>()));
         services.TryAddScoped<PasswordHasherSelector>();
         services.TryAddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         services.TryAddSingleton<ISecureTokenHasher, Sha256TokenHasher>();
@@ -89,6 +97,27 @@ public static class AshlarServiceCollectionExtensions
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<AuthenticationSessionOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarTransactionProvider, NullTransactionProvider>();
+        services.AddAshlarUriValidation();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers Ashlar's URI validation services.
+    /// </summary>
+    public static IServiceCollection AddAshlarUriValidation(
+        this IServiceCollection services,
+        Action<UriValidationOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddOptions();
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddSingleton<IUriValidator, UriValidator>();
 
         return services;
     }
@@ -506,10 +535,11 @@ public static class AshlarServiceCollectionExtensions
         }
 
         services.TryAddScoped(provider => new EmailVerificationServiceDependencies(
-            provider.GetRequiredService<TimeProvider>(),
-            provider.GetService<ISecurityEventSink>() ?? new NullSecurityEventSink(),
-            provider.GetService<IOptions<EmailVerificationOptions>>(),
-            provider.GetService<ISecurityNotificationService>()));
+            provider.GetRequiredService<IdentityContext>(),
+            provider.GetRequiredService<SecureTokenContext>(),
+            provider.GetRequiredService<IdentityInfrastructureContext>(),
+            provider.GetRequiredService<IdentityAuditContext>(),
+            provider.GetService<IOptions<EmailVerificationOptions>>()));
         services.TryAddScoped<IEmailVerificationService, EmailVerificationService>();
 
         return services;
@@ -531,11 +561,13 @@ public static class AshlarServiceCollectionExtensions
             services.Configure(configure);
         }
 
-        services.TryAddScoped(provider => new EmailChangeAuditDependencies(
-            provider.GetRequiredService<TimeProvider>(),
-            provider.GetService<ISecurityEventSink>() ?? new NullSecurityEventSink(),
-            provider.GetService<ISecurityNotificationService>()));
-        services.TryAddScoped<EmailChangeDependencies>();
+        services.TryAddScoped(provider => new EmailChangeDependencies(
+            provider.GetRequiredService<IdentityContext>(),
+            provider.GetRequiredService<SecureTokenContext>(),
+            provider.GetRequiredService<IdentityInfrastructureContext>(),
+            provider.GetRequiredService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredService<ISecretProtector>(),
+            provider.GetRequiredService<IdentityAuditContext>()));
         services.TryAddScoped<IEmailChangeService, EmailChangeService>();
 
         return services;

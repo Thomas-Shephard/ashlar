@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Ashlar.Auditing;
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
@@ -17,32 +16,24 @@ public sealed class EmailVerificationServiceTests
     private readonly AshlarUser _user = new() { Id = Guid.NewGuid(), Email = "user@example.com", IsActive = true };
 
     [Test]
-    [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
-    public void ConstructorThrowsOnNullDependencies()
+    public void ConstructorUsesDefaultOptionsWhenOptionsAreNull()
     {
-        var repository = new InMemoryIdentityRepository();
-        var identityContext = new IdentityContext(repository, Mock.Of<IIdentityService>(), new NullTransactionProvider());
+        var identityContext = new IdentityContext(new InMemoryIdentityRepository(), Mock.Of<IIdentityService>(), new NullTransactionProvider());
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), new Sha256TokenHasher());
-        var emailSender = new RecordingEmailSender();
-        var rateLimiter = new StubRateLimiter(true, true);
-        var time = new FakeTimeProvider();
-        var audit = new RecordingSecurityEventSink();
+        var infrastructure = new IdentityInfrastructureContext(Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), Mock.Of<IUriValidator>());
+        var audit = new IdentityAuditContext(new FakeTimeProvider(), new RecordingSecurityEventSink());
 
-        var dependencies = new EmailVerificationServiceDependencies(time, audit);
+        var dependencies = new EmailVerificationServiceDependencies(identityContext, tokenContext, infrastructure, audit, options: null);
+        var service = new EmailVerificationService(dependencies);
 
-        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationService(null!, tokenContext, emailSender, rateLimiter, dependencies));
-        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationService(identityContext, null!, emailSender, rateLimiter, dependencies));
-        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationService(identityContext, tokenContext, null!, rateLimiter, dependencies));
-        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationService(identityContext, tokenContext, emailSender, null!, dependencies));
-        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationService(identityContext, tokenContext, emailSender, rateLimiter, null!));
-        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationServiceDependencies(null!, audit));
+        Assert.That(service, Is.Not.Null);
     }
 
     [Test]
     public async Task RequestVerificationSendsEmailAndStoresCredential()
     {
         var fixture = CreateFixture(_user);
-        var request = new EmailVerificationRequest { UserId = _user.Id };
+        var request = new EmailVerificationRequest { UserId = _user.Id, CallbackBaseUri = new Uri("https://example.com/callback") };
 
         var result = await fixture.Service.RequestVerificationAsync(request);
 
@@ -64,7 +55,7 @@ public sealed class EmailVerificationServiceTests
     {
         var verifiedUser = new AshlarUser { Id = Guid.NewGuid(), Email = "verified@example.com", IsActive = true, EmailVerifiedAt = DateTimeOffset.UtcNow };
         var fixture = CreateFixture(verifiedUser);
-        var request = new EmailVerificationRequest { UserId = verifiedUser.Id };
+        var request = new EmailVerificationRequest { UserId = verifiedUser.Id, CallbackBaseUri = new Uri("https://example.com/callback") };
 
         var result = await fixture.Service.RequestVerificationAsync(request);
 
@@ -79,7 +70,7 @@ public sealed class EmailVerificationServiceTests
     public async Task RequestVerificationFailsIfUserNotFound()
     {
         var fixture = CreateFixture();
-        var request = new EmailVerificationRequest { UserId = Guid.NewGuid() };
+        var request = new EmailVerificationRequest { UserId = Guid.NewGuid(), CallbackBaseUri = new Uri("https://example.com/callback") };
 
         var result = await fixture.Service.RequestVerificationAsync(request);
 
@@ -94,7 +85,7 @@ public sealed class EmailVerificationServiceTests
     public async Task RequestVerificationRateLimits()
     {
         var fixture = CreateFixture(_user, requestAllowed: false);
-        var request = new EmailVerificationRequest { UserId = _user.Id };
+        var request = new EmailVerificationRequest { UserId = _user.Id, CallbackBaseUri = new Uri("https://example.com/callback") };
 
         var result = await fixture.Service.RequestVerificationAsync(request);
 
@@ -109,7 +100,7 @@ public sealed class EmailVerificationServiceTests
     public async Task VerifyTokenSucceedsAndUpdatesUser()
     {
         var fixture = CreateFixture(_user);
-        await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = _user.Id });
+        await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = _user.Id, CallbackBaseUri = new Uri("https://example.com/callback") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         var result = await fixture.Service.VerifyTokenAsync(_user.Id, token);
@@ -128,7 +119,7 @@ public sealed class EmailVerificationServiceTests
     {
         var user = new MetadataUser { Id = Guid.NewGuid(), Email = "user@example.com", IsActive = true, CreatedAt = DateTimeOffset.UtcNow.AddDays(-1) };
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = user.Id });
+        await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = user.Id, CallbackBaseUri = new Uri("https://example.com/callback") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         var result = await fixture.Service.VerifyTokenAsync(user.Id, token);
@@ -158,7 +149,7 @@ public sealed class EmailVerificationServiceTests
     public async Task VerifyTokenFailsForExpiredToken()
     {
         var fixture = CreateFixture(_user);
-        await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = _user.Id });
+        await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = _user.Id, CallbackBaseUri = new Uri("https://example.com/callback") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
         fixture.Time.Advance(TimeSpan.FromDays(2));
 
@@ -171,25 +162,25 @@ public sealed class EmailVerificationServiceTests
     public async Task VerifyTokenFailsIfCredentialWasConsumedConcurrently()
     {
         var fixture = CreateFixture(_user, consumeSucceeds: false);
-        await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = _user.Id });
+        await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = _user.Id, CallbackBaseUri = new Uri("https://example.com/callback") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         var result = await fixture.Service.VerifyTokenAsync(_user.Id, token);
 
-        Assert.That(result.ErrorMessage, Is.EqualTo("Token already used or expired."));
+        Assert.That(result.ErrorMessage, Is.EqualTo("Invalid or expired token."));
     }
 
     [Test]
     public async Task VerifyTokenFailsIfUserNoLongerExists()
     {
         var fixture = CreateFixture(_user);
-        await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = _user.Id });
+        await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = _user.Id, CallbackBaseUri = new Uri("http://localhost") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
         fixture.IdentityRepository.Users.Clear();
 
         var result = await fixture.Service.VerifyTokenAsync(_user.Id, token);
 
-        Assert.That(result.ErrorMessage, Is.EqualTo("User not found or inactive."));
+        Assert.That(result.ErrorMessage, Is.EqualTo("Invalid or expired token."));
     }
 
     [Test]
@@ -205,10 +196,27 @@ public sealed class EmailVerificationServiceTests
         }
     }
 
+    [Test]
+    public async Task RequestVerificationFailsForInvalidCallbackUri()
+    {
+        var fixture = CreateFixture(_user);
+        fixture.UriValidator.Setup(v => v.IsValid(It.IsAny<Uri?>())).Returns(false);
+        var request = new EmailVerificationRequest { UserId = _user.Id, CallbackBaseUri = new Uri("https://evil.com") };
+
+        var result = await fixture.Service.RequestVerificationAsync(request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.ErrorMessage, Contains.Substring("not allowed"));
+        }
+    }
+
     private static string ExtractToken(EmailMessage message)
     {
         var body = message.TextBody!;
-        return body.Split(": ").Last();
+        var uri = new Uri(body.Split(": ").Last());
+        return System.Web.HttpUtility.ParseQueryString(uri.Query)["t"]!;
     }
 
     private static Fixture CreateFixture(IUser? user = null, bool requestAllowed = true, bool verifyAllowed = true, bool consumeSucceeds = true)
@@ -223,17 +231,20 @@ public sealed class EmailVerificationServiceTests
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed);
         identityRepository.ConsumeSucceeds = consumeSucceeds;
 
-        var service = new EmailVerificationService(
-            new IdentityContext(identityRepository, Mock.Of<IIdentityService>(), transactionProvider),
-            new SecureTokenContext(tokenGenerator, tokenHasher),
-            emailSender,
-            rateLimiter,
-            new EmailVerificationServiceDependencies(time, audit));
+        var uriValidator = new Mock<IUriValidator>();
+        uriValidator.Setup(v => v.IsValid(It.IsAny<Uri?>())).Returns(true);
 
-        return new Fixture(service, identityRepository, emailSender, audit, time, tokenHasher, rateLimiter);
+        var service = new EmailVerificationService(
+            new EmailVerificationServiceDependencies(
+                new IdentityContext(identityRepository, Mock.Of<IIdentityService>(), transactionProvider),
+                new SecureTokenContext(tokenGenerator, tokenHasher),
+                new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator.Object),
+                new IdentityAuditContext(time, audit)));
+
+        return new Fixture(service, identityRepository, emailSender, audit, time, tokenHasher, rateLimiter, uriValidator);
     }
 
-    private sealed record Fixture(EmailVerificationService Service, InMemoryIdentityRepository IdentityRepository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, ISecureTokenHasher TokenHasher, StubRateLimiter RateLimiter);
+    private sealed record Fixture(EmailVerificationService Service, InMemoryIdentityRepository IdentityRepository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, ISecureTokenHasher TokenHasher, StubRateLimiter RateLimiter, Mock<IUriValidator> UriValidator);
 
     private sealed class StubRateLimiter(bool requestAllowed, bool verifyAllowed) : IAuthenticationRateLimiter
     {

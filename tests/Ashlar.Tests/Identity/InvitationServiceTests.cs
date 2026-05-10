@@ -274,6 +274,8 @@ public sealed class InvitationServiceTests
     {
         var storeContext = new InvitationStoreContext(Mock.Of<IInvitationRepository>(), Mock.Of<IIdentityRepository>(), Mock.Of<IAshlarTransactionProvider>());
         var tokenContext = new SecureTokenContext(Mock.Of<ISecureTokenGenerator>(), Mock.Of<ISecureTokenHasher>());
+        var infrastructure = new IdentityInfrastructureContext(Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), Mock.Of<IUriValidator>());
+        var audit = new IdentityAuditContext(TimeProvider.System, Mock.Of<ISecurityEventSink>());
 
         using (Assert.EnterMultipleScope())
         {
@@ -281,11 +283,10 @@ public sealed class InvitationServiceTests
             Assert.Throws<ArgumentNullException>(() => _ = new InvitationStoreContext(null!, Mock.Of<IIdentityRepository>(), Mock.Of<IAshlarTransactionProvider>()));
             Assert.Throws<ArgumentNullException>(() => _ = new InvitationStoreContext(Mock.Of<IInvitationRepository>(), null!, Mock.Of<IAshlarTransactionProvider>()));
             Assert.Throws<ArgumentNullException>(() => _ = new InvitationStoreContext(Mock.Of<IInvitationRepository>(), Mock.Of<IIdentityRepository>(), null!));
-            Assert.Throws<ArgumentNullException>(() => _ = new InvitationDependencies(null!, tokenContext, Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => _ = new InvitationDependencies(storeContext, null!, Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => _ = new InvitationDependencies(storeContext, tokenContext, null!, Mock.Of<IAuthenticationRateLimiter>(), TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => _ = new InvitationDependencies(storeContext, tokenContext, Mock.Of<IEmailSender>(), null!, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => _ = new InvitationDependencies(storeContext, tokenContext, Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new InvitationDependencies(null!, tokenContext, infrastructure, audit));
+            Assert.Throws<ArgumentNullException>(() => _ = new InvitationDependencies(storeContext, null!, infrastructure, audit));
+            Assert.Throws<ArgumentNullException>(() => _ = new InvitationDependencies(storeContext, tokenContext, null!, audit));
+            Assert.Throws<ArgumentNullException>(() => _ = new InvitationDependencies(storeContext, tokenContext, infrastructure, null!));
         }
     }
 
@@ -504,13 +505,14 @@ public sealed class InvitationServiceTests
         ISecurityEventSink? securityEventSink = null,
         TimeProvider? timeProvider = null)
     {
+        var uriValidator = new Mock<IUriValidator>();
+        uriValidator.Setup(v => v.IsValid(It.IsAny<Uri?>())).Returns(true);
+
         return new InvitationDependencies(
             new InvitationStoreContext(invitationRepository, identityRepository, transactionProvider),
             new SecureTokenContext(tokenGenerator, tokenHasher),
-            emailSender,
-            rateLimiter,
-            timeProvider ?? TimeProvider.System,
-            securityEventSink);
+            new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator.Object),
+            new IdentityAuditContext(timeProvider ?? TimeProvider.System, securityEventSink ?? new NullSecurityEventSink()));
     }
 
     private sealed record Fixture(InvitationService Service, InMemoryInvitationRepository InvitationRepository, InMemoryIdentityRepository IdentityRepository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, ISecureTokenHasher TokenHasher, StubRateLimiter RateLimiter);

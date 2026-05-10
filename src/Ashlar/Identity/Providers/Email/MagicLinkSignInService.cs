@@ -29,6 +29,9 @@ public sealed class MagicLinkSignInService : IMagicLinkSignInService
     public async Task RequestLinkAsync(string email, Uri callbackBaseUri, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(callbackBaseUri);
+
+        _dependencies.UriValidator.ValidateOrThrow(callbackBaseUri);
+
         var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
         context = (context ?? new AuthenticationContext()) with { Email = normalizedEmail };
 
@@ -73,11 +76,12 @@ public sealed class MagicLinkSignInService : IMagicLinkSignInService
         await _dependencies.Repository.RevokeCredentialsAsync(user.Id, _dependencies.Provider.Key.Type, _dependencies.Provider.Key.Name, cancellationToken);
         await _dependencies.Repository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
 
-        var callbackUrl = ConstructCallbackUrl(callbackBaseUri, token, signInOptions);
+        var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(callbackBaseUri, signInOptions.LinkTokenParameterName, token);
+        var message = IdentityUrlHelper.FormatEmailBody(signInOptions.EmailTextTemplate, callbackUrl);
 
         transaction.OnCommitted(async ct =>
         {
-            await _dependencies.EmailSender.SendAsync(new EmailMessage(normalizedEmail, signInOptions.EmailSubject, string.Format(CultureInfo.InvariantCulture, signInOptions.EmailTextTemplate, callbackUrl)), ct);
+            await _dependencies.EmailSender.SendAsync(new EmailMessage(normalizedEmail, signInOptions.EmailSubject, message), ct);
             await RecordAsync(AshlarSecurityEventTypes.MagicLinkRequested, SecurityEventOutcomes.Success, context, user.Id, null, ct);
         });
 
@@ -145,14 +149,5 @@ public sealed class MagicLinkSignInService : IMagicLinkSignInService
         }
 
         return $"token:{_dependencies.TokenHasher.HashToken(token)}";
-    }
-
-    private static string ConstructCallbackUrl(Uri baseUri, string token, MagicLinkSignInOptions options)
-    {
-        var builder = new UriBuilder(baseUri);
-        var query = System.Web.HttpUtility.ParseQueryString(builder.Query);
-        query[options.LinkTokenParameterName] = token;
-        builder.Query = query.ToString();
-        return builder.Uri.AbsoluteUri;
     }
 }

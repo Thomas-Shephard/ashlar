@@ -23,6 +23,7 @@ public class BootstrapServiceTests
     private Mock<IAuthorizationGrantService> _grantService;
     private Mock<ISecureTokenGenerator> _tokenGenerator;
     private Mock<ISecureTokenHasher> _tokenHasher;
+    private Mock<IUriValidator> _uriValidator;
     private FakeTimeProvider _timeProvider;
     private Mock<ISecurityEventSink> _securityEventSink;
     private BootstrapOptions _options;
@@ -40,17 +41,22 @@ public class BootstrapServiceTests
         _grantService = new Mock<IAuthorizationGrantService>();
         _tokenGenerator = new Mock<ISecureTokenGenerator>();
         _tokenHasher = new Mock<ISecureTokenHasher>();
+        _uriValidator = new Mock<IUriValidator>();
         _timeProvider = new FakeTimeProvider();
         _securityEventSink = new Mock<ISecurityEventSink>();
         _options = new BootstrapOptions();
 
+        var infrastructure = new IdentityInfrastructureContext(
+            Mock.Of<Ashlar.Messaging.IEmailSender>(),
+            Mock.Of<Ashlar.Identity.RateLimiting.Abstractions.IAuthenticationRateLimiter>(),
+            _uriValidator.Object);
+        var audit = new IdentityAuditContext(_timeProvider, _securityEventSink.Object);
+
         _dependencies = new InvitationDependencies(
             new InvitationStoreContext(_invitationRepository.Object, _identityRepository.Object, _transactionProvider.Object),
             new SecureTokenContext(_tokenGenerator.Object, _tokenHasher.Object),
-            Mock.Of<Ashlar.Messaging.IEmailSender>(),
-            Mock.Of<Ashlar.Identity.RateLimiting.Abstractions.IAuthenticationRateLimiter>(),
-            _timeProvider,
-            _securityEventSink.Object);
+            infrastructure,
+            audit);
 
         _service = new BootstrapService(
             _stateRepository.Object,
