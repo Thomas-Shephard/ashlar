@@ -9,13 +9,13 @@ internal static class BootstrapEndpoints
 {
     public static void MapBootstrapEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/bootstrap/status", async (IBootstrapService bootstrap, CancellationToken cancellationToken) =>
+        app.MapGet("/api/bootstrap/status", async (IBootstrapService bootstrap, CancellationToken cancellationToken) =>
         {
             var status = await bootstrap.GetStatusAsync(cancellationToken);
             return Results.Ok(new { status = status.ToString() });
         });
 
-        app.MapPost("/bootstrap/invitations", async Task<IResult> (
+        app.MapPost("/api/bootstrap/invitations", async Task<IResult> (
             HttpRequest httpRequest,
             IBootstrapService bootstrap,
             IAshlarSignInManager signInManager,
