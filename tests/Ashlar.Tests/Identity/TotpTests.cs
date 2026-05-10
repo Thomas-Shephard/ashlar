@@ -61,9 +61,7 @@ public class TotpTests
             _credentialService.Object,
             _transactionProvider.Object,
             [CreateProvider()],
-            Options.Create(_options),
-            _timeProvider,
-            _securityEvents.Object);
+            new TotpServiceDependencies(Options.Create(_options), _timeProvider, _securityEvents.Object));
     }
 
     private TotpAuthenticationProvider CreateProvider()
@@ -193,14 +191,15 @@ public class TotpTests
     public void TotpServiceConstructorWithNullDependenciesShouldThrow()
     {
         var provider = CreateProvider();
+        var deps = new TotpServiceDependencies(Options.Create(_options));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(null!, _credentialService.Object, _transactionProvider.Object, [provider], Options.Create(_options)));
-            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, null!, _transactionProvider.Object, [provider], Options.Create(_options)));
-            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, _credentialService.Object, null!, [provider], Options.Create(_options)));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(null!, _credentialService.Object, _transactionProvider.Object, [provider], deps));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, null!, _transactionProvider.Object, [provider], deps));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, _credentialService.Object, null!, [provider], deps));
             Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, _credentialService.Object, _transactionProvider.Object, [provider], null!));
-            Assert.Throws<InvalidOperationException>(() => _ = new TotpService(_repository.Object, _credentialService.Object, _transactionProvider.Object, [], Options.Create(_options)));
+            Assert.Throws<InvalidOperationException>(() => _ = new TotpService(_repository.Object, _credentialService.Object, _transactionProvider.Object, [], deps));
         }
     }
 
@@ -212,7 +211,7 @@ public class TotpTests
             _credentialService.Object,
             _transactionProvider.Object,
             [CreateProvider()],
-            Options.Create(_options)));
+            new TotpServiceDependencies(Options.Create(_options))));
     }
 
     [Test]
