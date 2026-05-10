@@ -2,7 +2,7 @@ namespace Ashlar.Identity;
 
 internal static class IdentityUrlHelper
 {
-    public static string? ConstructCallbackUrl(Uri? baseUri, Guid userId, string token, string tokenParam, string userIdParam)
+    public static string? ConstructCallbackUrl(Uri? baseUri, string tokenParam, string token, Guid? userId = null, string? userIdParam = null)
     {
         if (baseUri == null) return null;
         if (!baseUri.IsAbsoluteUri)
@@ -13,13 +13,19 @@ internal static class IdentityUrlHelper
         var builder = new UriBuilder(baseUri);
         var query = System.Web.HttpUtility.ParseQueryString(builder.Query);
         query[tokenParam] = token;
-        query[userIdParam] = userId.ToString();
+
+        if (userId.HasValue && !string.IsNullOrWhiteSpace(userIdParam))
+        {
+            query[userIdParam] = userId.Value.ToString();
+        }
+
         builder.Query = query.ToString();
         return builder.Uri.AbsoluteUri;
     }
 
-    public static string FormatEmailBody(string template, string? callbackUrl, string fallbackLabel, string token)
+    public static string FormatEmailBody(string? template, string? callbackUrl, string? fallbackLabel = null, string? token = null)
     {
+        if (template == null) return string.Empty;
         if (callbackUrl != null)
         {
             return template.Contains("{0}")
@@ -27,6 +33,11 @@ internal static class IdentityUrlHelper
                 : $"{template} {callbackUrl}";
         }
 
-        return $"{fallbackLabel}: {token}";
+        if (fallbackLabel != null && token != null)
+        {
+            return $"{fallbackLabel}: {token}";
+        }
+
+        return template;
     }
 }

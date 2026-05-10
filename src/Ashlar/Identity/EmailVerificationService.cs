@@ -20,24 +20,21 @@ public sealed class EmailVerificationService : IEmailVerificationService
     private readonly SecureTokenContext _tokenContext;
     private readonly IEmailSender _emailSender;
     private readonly IAuthenticationRateLimiter _rateLimiter;
+    private readonly IUriValidator _uriValidator;
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
     private readonly IOptions<EmailVerificationOptions> _options;
     private readonly SecurityNotificationEmitter _notifications;
 
-    public EmailVerificationService(
-        IdentityContext identityContext,
-        SecureTokenContext tokenContext,
-        IEmailSender emailSender,
-        IAuthenticationRateLimiter rateLimiter,
-        EmailVerificationServiceDependencies dependencies)
+    public EmailVerificationService(EmailVerificationServiceDependencies dependencies)
     {
         ArgumentNullException.ThrowIfNull(dependencies);
 
-        _identityContext = identityContext ?? throw new ArgumentNullException(nameof(identityContext));
-        _tokenContext = tokenContext ?? throw new ArgumentNullException(nameof(tokenContext));
-        _emailSender = emailSender ?? throw new ArgumentNullException(nameof(emailSender));
-        _rateLimiter = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
+        _identityContext = dependencies.IdentityContext;
+        _tokenContext = dependencies.TokenContext;
+        _emailSender = dependencies.EmailSender;
+        _rateLimiter = dependencies.RateLimiter;
+        _uriValidator = dependencies.UriValidator;
         _timeProvider = dependencies.TimeProvider;
         _securityEvents = new SecurityEventEmitter(dependencies.SecurityEventSink, dependencies.TimeProvider);
         _options = dependencies.Options ?? Options.Create(new EmailVerificationOptions());
@@ -47,6 +44,11 @@ public sealed class EmailVerificationService : IEmailVerificationService
     public async Task<EmailVerificationResult> RequestVerificationAsync(EmailVerificationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        if (!_uriValidator.IsValid(request.CallbackBaseUri))
+        {
+            return EmailVerificationResult.Failure($"The URI '{request.CallbackBaseUri}' is not allowed.");
+        }
 
         var user = await _identityContext.Repository.GetUserByIdAsync(request.UserId, cancellationToken);
         if (user is not { IsActive: true })
@@ -102,7 +104,7 @@ public sealed class EmailVerificationService : IEmailVerificationService
         await _identityContext.Repository.RevokeCredentialsAsync(user.Id, ProviderType.Internal, ProviderName, cancellationToken);
         await _identityContext.Repository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
 
-        var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(request.CallbackBaseUri, user.Id, token, _options.Value.TokenParameterName, _options.Value.UserIdParameterName);
+        var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(request.CallbackBaseUri, _options.Value.TokenParameterName, token, user.Id, _options.Value.UserIdParameterName);
         var message = IdentityUrlHelper.FormatEmailBody(_options.Value.EmailTextTemplate, callbackUrl, "Verification token", token);
 
         transaction.OnCommitted(async ct =>
@@ -163,13 +165,13 @@ public sealed class EmailVerificationService : IEmailVerificationService
         var consumed = await _identityContext.Repository.ConsumeCredentialAsync(credential.Id, credential.Version, cancellationToken);
         if (!consumed)
         {
-            return EmailVerificationResult.Failure("Token already used or expired.");
+            return EmailVerificationResult.Failure("Invalid or expired token.");
         }
 
         var user = await _identityContext.Repository.GetUserByIdAsync(userId, cancellationToken);
         if (user is not { IsActive: true })
         {
-            return EmailVerificationResult.Failure("User not found or inactive.");
+            return EmailVerificationResult.Failure("Invalid or expired token.");
         }
 
         var updatedUser = new UpdatedUserWrapper(user, now);
@@ -214,13 +216,21 @@ public sealed class EmailVerificationService : IEmailVerificationService
 }
 
 public sealed class EmailVerificationServiceDependencies(
-    TimeProvider timeProvider,
-    ISecurityEventSink securityEventSink,
-    IOptions<EmailVerificationOptions>? options = null,
-    ISecurityNotificationService? notificationService = null)
+    IdentityContext identityContext,
+    SecureTokenContext tokenContext,
+    IdentityInfrastructureContext infrastructure,
+    IdentityAuditContext audit,
+    IOptions<EmailVerificationOptions>? options = null)
 {
-    public TimeProvider TimeProvider { get; } = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-    public ISecurityEventSink SecurityEventSink { get; } = securityEventSink ?? throw new ArgumentNullException(nameof(securityEventSink));
+    public IdentityContext IdentityContext { get; } = identityContext ?? throw new ArgumentNullException(nameof(identityContext));
+    public SecureTokenContext TokenContext { get; } = tokenContext ?? throw new ArgumentNullException(nameof(tokenContext));
+    public IdentityInfrastructureContext Infrastructure { get; } = infrastructure ?? throw new ArgumentNullException(nameof(infrastructure));
+    public IdentityAuditContext Audit { get; } = audit ?? throw new ArgumentNullException(nameof(audit));
     public IOptions<EmailVerificationOptions>? Options { get; } = options;
-    public ISecurityNotificationService? NotificationService { get; } = notificationService;
+    public IEmailSender EmailSender => Infrastructure.EmailSender;
+    public IAuthenticationRateLimiter RateLimiter => Infrastructure.RateLimiter;
+    public IUriValidator UriValidator => Infrastructure.UriValidator;
+    public TimeProvider TimeProvider => Audit.TimeProvider;
+    public ISecurityEventSink SecurityEventSink => Audit.SecurityEventSink;
+    public ISecurityNotificationService? NotificationService => Audit.NotificationService;
 }

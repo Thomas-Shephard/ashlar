@@ -344,9 +344,12 @@ public sealed class MagicLinkSignInTests
         var emailSender = new RecordingEmailSender();
         var rateLimiter = new StubRateLimiter(true, true, TimeProvider.System);
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), new Sha256TokenHasher());
+        var uriValidator = Mock.Of<IUriValidator>();
         var provider = new MagicLinkAuthenticationProvider(tokenContext.Hasher);
         var core = new IdentityContext(repository, identity, new NullTransactionProvider());
-        var dependencies = new MagicLinkSignInDependencies(core, emailSender, tokenContext, rateLimiter, provider, TimeProvider.System);
+        var infrastructure = new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator);
+        var audit = new IdentityAuditContext(TimeProvider.System, Mock.Of<ISecurityEventSink>());
+        var dependencies = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, provider, audit);
 
         using (Assert.EnterMultipleScope())
         {
@@ -363,20 +366,18 @@ public sealed class MagicLinkSignInTests
         var repository = new InMemoryIdentityRepository(_user);
         var identity = Mock.Of<IIdentityService>();
         var core = new IdentityContext(repository, identity, new NullTransactionProvider());
-        var emailSender = new RecordingEmailSender();
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), new Sha256TokenHasher());
-        var rateLimiter = new StubRateLimiter(true, true, TimeProvider.System);
+        var infrastructure = new IdentityInfrastructureContext(Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), Mock.Of<IUriValidator>());
         var provider = new MagicLinkAuthenticationProvider(tokenContext.Hasher);
-        var timeProvider = TimeProvider.System;
+        var audit = new IdentityAuditContext(TimeProvider.System, Mock.Of<ISecurityEventSink>());
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(null!, emailSender, tokenContext, rateLimiter, provider, timeProvider));
-            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, null!, tokenContext, rateLimiter, provider, timeProvider));
-            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, emailSender, null!, rateLimiter, provider, timeProvider));
-            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, emailSender, tokenContext, null!, provider, timeProvider));
-            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, emailSender, tokenContext, rateLimiter, null!, timeProvider));
-            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, emailSender, tokenContext, rateLimiter, provider, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(null!, tokenContext, infrastructure, provider, audit));
+            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, null!, infrastructure, provider, audit));
+            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, tokenContext, null!, provider, audit));
+            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, null!, audit));
+            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, provider, null!));
         }
     }
 
@@ -442,7 +443,13 @@ public sealed class MagicLinkSignInTests
         var core = new IdentityContext(repository, identity, transactionProvider);
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), tokenHasher);
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed, time);
-        var dependencies = new MagicLinkSignInDependencies(core, emailSender, tokenContext, rateLimiter, provider, time, audit);
+        var uriValidator = new Mock<IUriValidator>();
+        uriValidator.Setup(v => v.IsValid(It.IsAny<Uri?>())).Returns(true);
+
+        var infrastructure = new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator.Object);
+        var auditContext = new IdentityAuditContext(time, audit);
+
+        var dependencies = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, provider, auditContext);
         var service = new MagicLinkSignInService(dependencies, Options.Create(options ?? new MagicLinkSignInOptions()));
         return new Fixture(service, repository, emailSender, audit, time, tokenHasher, rateLimiter);
     }

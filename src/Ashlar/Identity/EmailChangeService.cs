@@ -26,6 +26,11 @@ public sealed class EmailChangeService(
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        if (!_dependencies.UriValidator.IsValid(request.CallbackBaseUri))
+        {
+            return EmailChangeResult.Failure($"The URI '{request.CallbackBaseUri}' is not allowed.");
+        }
+
         var user = await _dependencies.IdentityContext.Repository.GetUserByIdAsync(request.UserId, cancellationToken);
         if (user is not { IsActive: true })
         {
@@ -85,7 +90,7 @@ public sealed class EmailChangeService(
         await _dependencies.IdentityContext.Repository.RevokeCredentialsAsync(user.Id, ProviderType.Internal, ProviderName, cancellationToken);
         await _dependencies.IdentityContext.Repository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
 
-        var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(request.CallbackBaseUri, user.Id, token, _options.Value.TokenParameterName, _options.Value.UserIdParameterName);
+        var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(request.CallbackBaseUri, _options.Value.TokenParameterName, token, user.Id, _options.Value.UserIdParameterName);
         var message = IdentityUrlHelper.FormatEmailBody(_options.Value.EmailTextTemplate, callbackUrl, "Confirmation token", token);
 
         transaction.OnCommitted(async ct =>
@@ -184,13 +189,13 @@ public sealed class EmailChangeService(
         var user = await _dependencies.IdentityContext.Repository.GetUserByIdAsync(request.UserId, cancellationToken);
         if (user is not { IsActive: true })
         {
-            return EmailChangeResult.Failure("User not found or inactive.");
+            return EmailChangeResult.Failure("Invalid or expired token.");
         }
 
         var consumed = await _dependencies.IdentityContext.Repository.ConsumeCredentialAsync(credential.Id, credential.Version, cancellationToken);
         if (!consumed)
         {
-            return EmailChangeResult.Failure("Token already used or expired.");
+            return EmailChangeResult.Failure("Invalid or expired token.");
         }
 
         var existingUser = await _dependencies.IdentityContext.Repository.GetUserByEmailAsync(normalizedNewEmail, (user as ITenantUser)?.TenantId, cancellationToken);

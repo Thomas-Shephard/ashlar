@@ -11,30 +11,21 @@ namespace Ashlar.Identity;
 public sealed class EmailChangeDependencies(
     IdentityContext identityContext,
     SecureTokenContext tokenContext,
-    IEmailSender emailSender,
-    IAuthenticationRateLimiter rateLimiter,
+    IdentityInfrastructureContext infrastructure,
     IAuthenticationSessionRepository sessionRepository,
     ISecretProtector secretProtector,
-    EmailChangeAuditDependencies audit)
+    IdentityAuditContext audit)
 {
     public IdentityContext IdentityContext { get; } = identityContext ?? throw new ArgumentNullException(nameof(identityContext));
     public SecureTokenContext TokenContext { get; } = tokenContext ?? throw new ArgumentNullException(nameof(tokenContext));
-    public IEmailSender EmailSender { get; } = emailSender ?? throw new ArgumentNullException(nameof(emailSender));
-    public IAuthenticationRateLimiter RateLimiter { get; } = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
+    public IdentityInfrastructureContext Infrastructure { get; } = infrastructure ?? throw new ArgumentNullException(nameof(infrastructure));
     public IAuthenticationSessionRepository SessionRepository { get; } = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
     public ISecretProtector SecretProtector { get; } = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
-    public EmailChangeAuditDependencies Audit { get; } = audit ?? throw new ArgumentNullException(nameof(audit));
+    public IdentityAuditContext Audit { get; } = audit ?? throw new ArgumentNullException(nameof(audit));
     public ISecurityNotificationService? NotificationService => Audit.NotificationService;
     public TimeProvider TimeProvider => Audit.TimeProvider;
     public ISecurityEventSink SecurityEventSink => Audit.SecurityEventSink;
-}
-
-public sealed class EmailChangeAuditDependencies(
-    TimeProvider timeProvider,
-    ISecurityEventSink securityEventSink,
-    ISecurityNotificationService? notificationService = null)
-{
-    public TimeProvider TimeProvider { get; } = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-    public ISecurityEventSink SecurityEventSink { get; } = securityEventSink ?? throw new ArgumentNullException(nameof(securityEventSink));
-    public ISecurityNotificationService? NotificationService { get; } = notificationService;
+    public IEmailSender EmailSender => Infrastructure.EmailSender;
+    public IAuthenticationRateLimiter RateLimiter => Infrastructure.RateLimiter;
+    public IUriValidator UriValidator => Infrastructure.UriValidator;
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Ashlar.Auditing;
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
@@ -18,10 +19,41 @@ public sealed class EmailChangeServiceTests
     private static AshlarUser CreateUser(string email = "old@example.com") => new() { Id = Guid.NewGuid(), Email = email, IsActive = true };
 
     [Test]
+    [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void ConstructorThrowsOnNullDependencies()
     {
-        // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.Throws<ArgumentNullException>(() => _ = new EmailChangeService(null!));
+    }
+
+    [Test]
+    public void ConstructorUsesDefaultOptionsWhenOptionsAreNull()
+    {
+        var identityContext = new IdentityContext(new InMemoryIdentityRepository(), Mock.Of<IIdentityService>(), new NullTransactionProvider());
+        var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), new Sha256TokenHasher());
+        var infrastructure = new IdentityInfrastructureContext(Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), Mock.Of<IUriValidator>());
+        var audit = new IdentityAuditContext(new FakeTimeProvider(), new RecordingSecurityEventSink());
+
+        var dependencies = new EmailChangeDependencies(identityContext, tokenContext, infrastructure, Mock.Of<IAuthenticationSessionRepository>(), Mock.Of<ISecretProtector>(), audit);
+        var service = new EmailChangeService(dependencies, options: null);
+
+        Assert.That(service, Is.Not.Null);
+    }
+
+    [Test]
+    public async Task RequestChangeFailsForInvalidCallbackUri()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        fixture.UriValidator.Setup(v => v.IsValid(It.IsAny<Uri?>())).Returns(false);
+        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("https://evil.com") };
+
+        var result = await fixture.Service.RequestChangeAsync(request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.ErrorMessage, Contains.Substring("not allowed"));
+        }
     }
 
     [Test]
@@ -261,7 +293,7 @@ public sealed class EmailChangeServiceTests
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
 
-        Assert.That(result.ErrorMessage, Is.EqualTo("User not found or inactive."));
+        Assert.That(result.ErrorMessage, Is.EqualTo("Invalid or expired token."));
     }
 
     [Test]
@@ -274,7 +306,7 @@ public sealed class EmailChangeServiceTests
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
 
-        Assert.That(result.ErrorMessage, Is.EqualTo("Token already used or expired."));
+        Assert.That(result.ErrorMessage, Is.EqualTo("Invalid or expired token."));
     }
 
     private static string ExtractToken(EmailMessage message)
@@ -308,20 +340,22 @@ public sealed class EmailChangeServiceTests
             .ReturnsAsync(SecurityNotificationResult.Success());
         identityRepository.ConsumeSucceeds = consumeSucceeds;
 
+        var uriValidator = new Mock<IUriValidator>();
+        uriValidator.Setup(v => v.IsValid(It.IsAny<Uri?>())).Returns(true);
+
         var dependencies = new EmailChangeDependencies(
             new IdentityContext(identityRepository, Mock.Of<IIdentityService>(), transactionProvider),
             new SecureTokenContext(tokenGenerator, tokenHasher),
-            emailSender,
-            rateLimiter,
+            new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator.Object),
             sessionRepository,
             resolvedSecretProtector,
-            new EmailChangeAuditDependencies(time, audit, notificationService.Object));
+            new IdentityAuditContext(time, audit, notificationService.Object));
         var service = new EmailChangeService(dependencies);
 
-        return new Fixture(service, identityRepository, emailSender, audit, resolvedSecretProtector, sessionRepository, notificationService);
+        return new Fixture(service, identityRepository, emailSender, audit, resolvedSecretProtector, sessionRepository, notificationService, uriValidator);
     }
 
-    private sealed record Fixture(EmailChangeService Service, InMemoryIdentityRepository IdentityRepository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, ISecretProtector SecretProtector, StubSessionRepository SessionRepository, Mock<ISecurityNotificationService> NotificationService);
+    private sealed record Fixture(EmailChangeService Service, InMemoryIdentityRepository IdentityRepository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, ISecretProtector SecretProtector, StubSessionRepository SessionRepository, Mock<ISecurityNotificationService> NotificationService, Mock<IUriValidator> UriValidator);
 
     private sealed class StubRateLimiter(bool requestAllowed, bool verifyAllowed) : IAuthenticationRateLimiter
     {
