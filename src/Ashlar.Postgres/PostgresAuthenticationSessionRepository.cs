@@ -58,6 +58,24 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         }
     }
 
+    public async Task<AuthenticationSession?> GetSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            SELECT id AS Id, user_id AS UserId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
+                   last_seen_at AS LastSeenAt, revoked_at AS RevokedAt, revocation_reason AS RevocationReason,
+                   ip_address AS IpAddress, user_agent AS UserAgent, metadata AS Metadata
+            FROM ashlar_sessions
+            WHERE id = @Id
+            """;
+
+        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using (connectionHandle)
+        {
+            var command = new CommandDefinition(sql, new { Id = sessionId }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            return await connectionHandle.Connection.QueryFirstOrDefaultAsync<AuthenticationSession>(command);
+        }
+    }
+
     public async Task<bool> UpdateSessionLastSeenAsync(Guid sessionId, DateTimeOffset lastSeenAt, CancellationToken cancellationToken = default)
     {
         const string sql = """

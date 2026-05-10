@@ -761,6 +761,83 @@ public class IdentityServiceTests
     }
 
     [Test]
+    public void CreateUserAsyncShouldRejectEmailWithLineBreaks()
+    {
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com\r\nBcc: attacker@example.com" };
+
+        Assert.ThrowsAsync<ArgumentException>(() => _identityService.CreateUserAsync(user));
+
+        _repositoryMock.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task CreateUserAsyncShouldTrimEmailBeforePersisting()
+    {
+        var createdAt = new DateTimeOffset(2026, 5, 10, 12, 0, 0, TimeSpan.Zero);
+        var updatedAt = createdAt.AddMinutes(1);
+        var user = new AuditedUser
+        {
+            Id = Guid.NewGuid(),
+            Email = " test@example.com ",
+            Name = "Test User",
+            IsActive = true,
+            TenantId = Guid.NewGuid(),
+            EmailVerifiedAt = createdAt,
+            CreatedAt = createdAt,
+            UpdatedAt = updatedAt
+        };
+        IUser? persistedUser = null;
+        _repositoryMock
+            .Setup(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()))
+            .Callback<IUser, CancellationToken>((u, _) => persistedUser = u)
+            .Returns(Task.CompletedTask);
+
+        var result = await _identityService.CreateUserAsync(user);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Email, Is.EqualTo("test@example.com"));
+            Assert.That(persistedUser?.Email, Is.EqualTo("test@example.com"));
+            Assert.That(persistedUser?.Name, Is.EqualTo(user.Name));
+            Assert.That(persistedUser?.IsActive, Is.True);
+            Assert.That((persistedUser as ITenantUser)?.TenantId, Is.EqualTo(user.TenantId));
+            Assert.That(persistedUser?.EmailVerifiedAt, Is.EqualTo(user.EmailVerifiedAt));
+            Assert.That((persistedUser as IHasAuditMetadata)?.CreatedAt, Is.EqualTo(createdAt));
+            Assert.That((persistedUser as IHasAuditMetadata)?.UpdatedAt, Is.EqualTo(updatedAt));
+        }
+
+        ((IHasAuditMetadata)persistedUser!).UpdatedAt = updatedAt.AddMinutes(1);
+        Assert.That(user.UpdatedAt, Is.EqualTo(updatedAt.AddMinutes(1)));
+    }
+
+    [Test]
+    public async Task CreateUserAsyncShouldTrimEmailForNonTenantUserWithoutAuditMetadata()
+    {
+        var user = new BasicUser
+        {
+            Id = Guid.NewGuid(),
+            Email = " basic@example.com ",
+            IsActive = true
+        };
+        IUser? persistedUser = null;
+        _repositoryMock
+            .Setup(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()))
+            .Callback<IUser, CancellationToken>((u, _) => persistedUser = u)
+            .Returns(Task.CompletedTask);
+
+        await _identityService.CreateUserAsync(user);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((persistedUser as ITenantUser)?.TenantId, Is.Null);
+            Assert.That((persistedUser as IHasAuditMetadata)?.CreatedAt, Is.EqualTo(default(DateTimeOffset)));
+            Assert.That((persistedUser as IHasAuditMetadata)?.UpdatedAt, Is.Null);
+        }
+
+        ((IHasAuditMetadata)persistedUser!).UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    [Test]
     public void SupportedProviderKeysShouldReturnKeys()
     {
         var keys = _identityService.SupportedProviderKeys.ToList();
@@ -2236,5 +2313,26 @@ public class IdentityServiceTests
         var response = await service.LoginAsync(new AuthenticationContext(email), new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "key", new Dictionary<string, string>()));
 
         Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+    }
+
+    private sealed class AuditedUser : ITenantUser, IHasAuditMetadata
+    {
+        public required Guid Id { get; init; }
+        public required string Email { get; set; }
+        public string? Name { get; set; }
+        public bool IsActive { get; set; }
+        public Guid? TenantId { get; set; }
+        public DateTimeOffset? EmailVerifiedAt { get; set; }
+        public DateTimeOffset CreatedAt { get; init; }
+        public DateTimeOffset? UpdatedAt { get; set; }
+    }
+
+    private sealed class BasicUser : IUser
+    {
+        public required Guid Id { get; init; }
+        public required string Email { get; init; }
+        public string? Name { get; init; }
+        public bool IsActive { get; init; }
+        public DateTimeOffset? EmailVerifiedAt { get; init; }
     }
 }

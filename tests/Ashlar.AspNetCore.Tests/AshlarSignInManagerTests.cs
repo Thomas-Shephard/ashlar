@@ -371,6 +371,61 @@ public sealed class AshlarSignInManagerTests
     }
 
     [Test]
+    public async Task RevokeSessionForCurrentUserAsyncShouldPassRequestContext()
+    {
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        sessionService
+            .Setup(s => s.RevokeSessionForUserAsync(It.IsAny<Guid>(), It.IsAny<RevokeAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
+            .Returns(completion.Task);
+        var manager = new AshlarSignInManager(
+            sessionService.Object,
+            CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var context = new DefaultHttpContext();
+        var userId = Guid.NewGuid();
+        var targetSessionId = Guid.NewGuid();
+        context.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.10");
+        context.Request.Headers.UserAgent = "NUnit";
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString("D"))
+        ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
+
+        var revokeTask = manager.RevokeSessionForCurrentUserAsync(context, targetSessionId);
+        Assert.That(revokeTask.IsCompleted, Is.False);
+        completion.SetResult(true);
+        Assert.That(await revokeTask, Is.True);
+
+        sessionService.Verify(s => s.RevokeSessionForUserAsync(userId, It.Is<RevokeAuthenticationSessionRequest>(r =>
+            r.SessionId == targetSessionId &&
+            r.IpAddress == "203.0.113.10" &&
+            r.UserAgent == "NUnit"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public void RevokeSessionForCurrentUserAsyncShouldPropagateServiceFailure()
+    {
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        sessionService
+            .Setup(s => s.RevokeSessionForUserAsync(It.IsAny<Guid>(), It.IsAny<RevokeAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("revoke failed"));
+        var manager = new AshlarSignInManager(
+            sessionService.Object,
+            CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString("D"))
+            ], AshlarSessionAuthenticationDefaults.AuthenticationScheme))
+        };
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => manager.RevokeSessionForCurrentUserAsync(context, Guid.NewGuid()));
+    }
+
+    [Test]
     public async Task RevokeSessionForCurrentUserAsyncShouldThrowWhenNotAuthenticated()
     {
         await using var provider = CreateProvider(out _);
@@ -402,6 +457,63 @@ public sealed class AshlarSignInManagerTests
             Assert.That(repository.ExcludedSessionId, Is.EqualTo(currentSessionId));
             Assert.That(repository.RevocationReason, Is.EqualTo("security-sweep"));
         }
+    }
+
+    [Test]
+    public async Task RevokeOtherSessionsForCurrentUserAsyncShouldPassRequestContext()
+    {
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        var completion = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        sessionService
+            .Setup(s => s.RevokeOtherSessionsAsync(It.IsAny<Guid>(), It.IsAny<RevokeOtherAuthenticationSessionsRequest>(), It.IsAny<CancellationToken>()))
+            .Returns(completion.Task);
+        var manager = new AshlarSignInManager(
+            sessionService.Object,
+            CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var context = new DefaultHttpContext();
+        var userId = Guid.NewGuid();
+        var currentSessionId = Guid.NewGuid();
+        context.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.11");
+        context.Request.Headers.UserAgent = "NUnit";
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString("D")),
+            new Claim(AshlarClaimTypes.SessionId, currentSessionId.ToString("D"))
+        ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
+
+        var revokeTask = manager.RevokeOtherSessionsForCurrentUserAsync(context);
+        Assert.That(revokeTask.IsCompleted, Is.False);
+        completion.SetResult(1);
+        Assert.That(await revokeTask, Is.EqualTo(1));
+
+        sessionService.Verify(s => s.RevokeOtherSessionsAsync(userId, It.Is<RevokeOtherAuthenticationSessionsRequest>(r =>
+            r.CurrentSessionId == currentSessionId &&
+            r.IpAddress == "203.0.113.11" &&
+            r.UserAgent == "NUnit"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public void RevokeOtherSessionsForCurrentUserAsyncShouldPropagateServiceFailure()
+    {
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        sessionService
+            .Setup(s => s.RevokeOtherSessionsAsync(It.IsAny<Guid>(), It.IsAny<RevokeOtherAuthenticationSessionsRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("revoke failed"));
+        var manager = new AshlarSignInManager(
+            sessionService.Object,
+            CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString("D")),
+                new Claim(AshlarClaimTypes.SessionId, Guid.NewGuid().ToString("D"))
+            ], AshlarSessionAuthenticationDefaults.AuthenticationScheme))
+        };
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => manager.RevokeOtherSessionsForCurrentUserAsync(context));
     }
 
     [Test]
@@ -537,6 +649,11 @@ public sealed class AshlarSignInManagerTests
         public Task<AuthenticationSession?> GetSessionByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(_session?.TokenHash == tokenHash ? _session : null);
+        }
+
+        public Task<AuthenticationSession?> GetSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(_session?.Id == sessionId ? _session : null);
         }
 
         public Task<bool> UpdateSessionLastSeenAsync(Guid sessionId, DateTimeOffset lastSeenAt, CancellationToken cancellationToken = default)

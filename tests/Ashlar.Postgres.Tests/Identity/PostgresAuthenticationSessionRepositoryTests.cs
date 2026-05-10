@@ -78,6 +78,26 @@ public sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTestB
     }
 
     [Test]
+    public async Task GetSessionAsyncShouldReturnSessionById()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var session = CreateSession(user.Id);
+
+        await sessionRepository.CreateSessionAsync(session);
+
+        var fetched = await sessionRepository.GetSessionAsync(session.Id);
+
+        Assert.That(fetched, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fetched.Id, Is.EqualTo(session.Id));
+            Assert.That(fetched.UserId, Is.EqualTo(user.Id));
+        }
+    }
+
+    [Test]
     public async Task CreateSessionShouldRejectEmptySessionId()
     {
         var identityRepository = GetIdentityRepository();

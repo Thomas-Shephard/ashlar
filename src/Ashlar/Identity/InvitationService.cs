@@ -2,6 +2,7 @@ using System.Globalization;
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Identity.Notifications;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
 using Microsoft.Extensions.Options;
@@ -15,6 +16,7 @@ public sealed class InvitationService(
     private readonly InvitationDependencies _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
     private readonly IOptions<InvitationOptions> _options = options ?? Options.Create(new InvitationOptions());
     private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider);
+    private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
 
     public async Task CreateInvitationAsync(CreateInvitationRequest request, Uri callbackBaseUri, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
@@ -22,7 +24,8 @@ public sealed class InvitationService(
         ArgumentNullException.ThrowIfNull(callbackBaseUri);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Email);
 
-        var normalizedEmail = IdentityNormalization.NormalizeEmail(request.Email);
+        var email = IdentityNormalization.SanitizeEmailForDelivery(request.Email);
+        var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
         var invitationOptions = _options.Value;
 
         var rateLimitKey = $"invitation-create:{normalizedEmail}";
@@ -55,7 +58,7 @@ public sealed class InvitationService(
         var invitation = new UserInvitation
         {
             Id = Guid.NewGuid(),
-            Email = request.Email.Trim(),
+            Email = email,
             TenantId = request.TenantId,
             TokenHash = tokenHash,
             CreatedAt = now,
@@ -74,7 +77,7 @@ public sealed class InvitationService(
 
         transaction.OnCommitted(async ct =>
         {
-            await _dependencies.EmailSender.SendAsync(new EmailMessage(request.Email.Trim(), invitationOptions.EmailSubject, string.Format(CultureInfo.InvariantCulture, invitationOptions.EmailTextTemplate, callbackUrl)), ct);
+            await _dependencies.EmailSender.SendAsync(new EmailMessage(email, invitationOptions.EmailSubject, string.Format(CultureInfo.InvariantCulture, invitationOptions.EmailTextTemplate, callbackUrl)), ct);
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.InvitationCreated,
@@ -191,6 +194,12 @@ public sealed class InvitationService(
                 Properties = new Dictionary<string, string> { ["invitation_id"] = invitation.Id.ToString() },
                 Context = context
             }, ct);
+
+            var notifiedUser = await _dependencies.IdentityRepository.GetUserByIdAsync(userId, ct);
+            if (notifiedUser != null)
+            {
+                await _notifications.NotifyAsync(SecurityNotificationType.InvitationAccepted, notifiedUser, now, context: context, metadata: new Dictionary<string, string> { ["invitation_id"] = invitation.Id.ToString() }, cancellationToken: ct);
+            }
         });
 
         await transaction.CommitAsync(cancellationToken);
@@ -202,7 +211,8 @@ public sealed class InvitationService(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
 
-        var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
+        var sanitizedEmail = IdentityNormalization.SanitizeEmailForDelivery(email);
+        var normalizedEmail = IdentityNormalization.NormalizeEmail(sanitizedEmail);
         var revokedCount = await _dependencies.InvitationRepository.RevokeInvitationsByEmailAsync(normalizedEmail, tenantId, cancellationToken);
 
         if (revokedCount > 0)

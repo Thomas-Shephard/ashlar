@@ -91,6 +91,21 @@ public sealed class InvitationServiceTests
     }
 
     [Test]
+    public void CreateInvitationRejectsEmailWithLineBreaks()
+    {
+        var fixture = CreateFixture();
+        var request = new CreateInvitationRequest { Email = "invitee@example.com\r\nBcc: attacker@example.com" };
+
+        Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.CreateInvitationAsync(request, new Uri("https://myapp.com/join")));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.EmailSender.Messages, Is.Empty);
+            Assert.That(fixture.InvitationRepository.Invitations, Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task CreateInvitationUsesContextForRateLimit()
     {
         var fixture = CreateFixture();
@@ -228,6 +243,14 @@ public sealed class InvitationServiceTests
             Assert.That(fixture.Audit.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.InvitationRevoked));
             Assert.That(GetProperties(fixture.Audit.Events.Single())["count"], Is.EqualTo("1"));
         }
+    }
+
+    [Test]
+    public void RevokeInvitationsRejectsEmailWithLineBreaks()
+    {
+        var fixture = CreateFixture();
+
+        Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RevokeInvitationsAsync("test@example.com\nCc: attacker@example.com"));
     }
 
     [Test]

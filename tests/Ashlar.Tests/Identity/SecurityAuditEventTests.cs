@@ -327,6 +327,9 @@ public sealed class SecurityAuditEventTests
         var sink = new RecordingSecurityEventSink();
         var service = CreateSessionService(sink, out var repository, out _);
         var sessionId = Guid.NewGuid();
+        var session = CreateSession(DateTimeOffset.UtcNow.AddHours(1));
+        repository.Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
         repository.Setup(r => r.RevokeSessionAsync(sessionId, It.IsAny<DateTimeOffset>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
@@ -448,8 +451,9 @@ public sealed class SecurityAuditEventTests
             hasher.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            timeProvider: timeProvider,
-            securityEventSink: sink);
+            new AuthenticationSessionServiceDependencies(
+                TimeProvider: timeProvider,
+                SecurityEventSink: sink));
     }
 
     private static AuthenticationSession CreateSession(DateTimeOffset expiresAt)

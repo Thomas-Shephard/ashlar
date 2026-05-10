@@ -2,6 +2,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Identity.Notifications;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
@@ -43,6 +44,16 @@ public sealed class EmailChangeServiceTests
             Assert.That(fixture.SecretProtector.Unprotect(credential.CredentialValue!), Is.EqualTo("new@example.com"));
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailChangeRequested), Is.True);
         }
+    }
+
+    [Test]
+    public void RequestChangeRejectsEmailWithLineBreaks()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = " new@example.com\r\nBcc: attacker@example.com " };
+
+        Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RequestChangeAsync(request));
     }
 
     [Test]
@@ -119,6 +130,46 @@ public sealed class EmailChangeServiceTests
             Assert.That(fixture.SessionRepository.RevokedUserId, Is.EqualTo(user.Id));
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailChanged), Is.True);
         }
+    }
+
+    [Test]
+    public async Task ConfirmChangeRejectsStoredEmailWithLineBreaks()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        var credential = fixture.IdentityRepository.Credentials.Single();
+        credential.CredentialValue = fixture.SecretProtector.Protect(" changed@example.com\r\nBcc: attacker@example.com ");
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+
+        var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
+
+        Assert.That(result.ErrorMessage, Is.EqualTo("Invalid token data."));
+    }
+
+    [Test]
+    public async Task ConfirmChangeNotifiesOldAndNewEmailAddresses()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com" });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+
+        var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
+
+        Assert.That(result.Succeeded, Is.True, result.ErrorMessage);
+        fixture.NotificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
+            notification.Type == SecurityNotificationType.EmailChanged &&
+            notification.RecipientEmail == "old@example.com" &&
+            notification.Metadata != null &&
+            notification.Metadata["old_email"] == "old@example.com" &&
+            notification.Metadata["new_email"] == "new@example.com"), It.IsAny<CancellationToken>()), Times.Once);
+        fixture.NotificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
+            notification.Type == SecurityNotificationType.EmailChanged &&
+            notification.RecipientEmail == "new@example.com" &&
+            notification.Metadata != null &&
+            notification.Metadata["old_email"] == "old@example.com" &&
+            notification.Metadata["new_email"] == "new@example.com"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -250,6 +301,10 @@ public sealed class EmailChangeServiceTests
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed);
         var resolvedSecretProtector = secretProtector ?? new FakeSecretProtector();
         var sessionRepository = new StubSessionRepository();
+        var notificationService = new Mock<ISecurityNotificationService>();
+        notificationService
+            .Setup(n => n.NotifyAsync(It.IsAny<SecurityNotification>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SecurityNotificationResult.Success());
         identityRepository.ConsumeSucceeds = consumeSucceeds;
 
         var dependencies = new EmailChangeDependencies(
@@ -259,13 +314,13 @@ public sealed class EmailChangeServiceTests
             rateLimiter,
             sessionRepository,
             resolvedSecretProtector,
-            new EmailChangeAuditDependencies(time, audit));
+            new EmailChangeAuditDependencies(time, audit, notificationService.Object));
         var service = new EmailChangeService(dependencies);
 
-        return new Fixture(service, identityRepository, emailSender, audit, resolvedSecretProtector, sessionRepository);
+        return new Fixture(service, identityRepository, emailSender, audit, resolvedSecretProtector, sessionRepository, notificationService);
     }
 
-    private sealed record Fixture(EmailChangeService Service, InMemoryIdentityRepository IdentityRepository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, ISecretProtector SecretProtector, StubSessionRepository SessionRepository);
+    private sealed record Fixture(EmailChangeService Service, InMemoryIdentityRepository IdentityRepository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, ISecretProtector SecretProtector, StubSessionRepository SessionRepository, Mock<ISecurityNotificationService> NotificationService);
 
     private sealed class StubRateLimiter(bool requestAllowed, bool verifyAllowed) : IAuthenticationRateLimiter
     {
@@ -328,6 +383,7 @@ public sealed class EmailChangeServiceTests
 
         public Task CreateSessionAsync(AuthenticationSession session, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<AuthenticationSession?> GetSessionByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<AuthenticationSession?> GetSessionAsync(Guid sessionId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<bool> UpdateSessionLastSeenAsync(Guid sessionId, DateTimeOffset lastSeenAt, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<bool> RevokeSessionAsync(Guid sessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<IReadOnlyList<AuthenticationSession>> ListSessionsForUserAsync(Guid userId, bool activeOnly, DateTimeOffset now, CancellationToken cancellationToken = default) => throw new NotImplementedException();

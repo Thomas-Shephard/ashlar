@@ -31,6 +31,14 @@ public interface IAuthenticationSessionRepository
     Task<AuthenticationSession?> GetSessionByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Retrieves a session by its unique identifier.
+    /// </summary>
+    /// <param name="sessionId">The identifier of the session to retrieve.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>The matching session, or <c>null</c> when no session exists for the identifier.</returns>
+    Task<AuthenticationSession?> GetSessionAsync(Guid sessionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Updates the time a session was last observed.
     /// </summary>
     /// <remarks>

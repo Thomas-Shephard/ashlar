@@ -1,6 +1,7 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Identity.Notifications;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Security.Tokens;
@@ -11,6 +12,9 @@ namespace Ashlar.Identity;
 public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeService
 {
     private const string HandshakeIdProperty = "handshake_id";
+    private const int MaxMetadataEntries = 20;
+    private const int MaxMetadataKeyLength = 128;
+    private const int MaxMetadataValueLength = 512;
 
     private readonly IAuthenticationHandshakeRepository _repository;
     private readonly ISecureTokenGenerator _tokenGenerator;
@@ -20,6 +24,8 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
     private readonly IAuthenticationRateLimiter? _rateLimiter;
+    private readonly IIdentityRepository? _identityRepository;
+    private readonly SecurityNotificationEmitter _notifications;
 
     public AuthenticationHandshakeService(
         IAuthenticationHandshakeRepository repository,
@@ -36,6 +42,8 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         _timeProvider = dependencies?.TimeProvider ?? TimeProvider.System;
         _securityEvents = new SecurityEventEmitter(dependencies?.SecurityEventSink, _timeProvider);
         _rateLimiter = dependencies?.RateLimiter;
+        _identityRepository = dependencies?.IdentityRepository;
+        _notifications = new SecurityNotificationEmitter(dependencies?.NotificationService);
     }
 
     public async Task<(AuthenticationHandshake Handshake, string Token)> CreateHandshakeAsync(
@@ -48,6 +56,8 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
 
         var requiredFactors = request.RequiredFactors.ToHashSet();
         if (requiredFactors.Count == 0) throw new ArgumentException("At least one required factor must be specified.", nameof(request));
+        ValidateMetadata(request.Metadata, nameof(request));
+        var metadata = NormalizeMetadata(request.Metadata);
 
         var token = _tokenGenerator.GenerateToken();
         var tokenHash = _tokenHasher.HashToken(token);
@@ -63,7 +73,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
             false,
             requiredFactors,
             new HashSet<string>(),
-            request.Metadata);
+            metadata);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
@@ -156,6 +166,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         verifiedFactors.Add(request.FactorType);
 
         var isCompleted = handshake.RequiredFactors.All(verifiedFactors.Contains);
+        ValidateMetadata(request.Metadata, nameof(request));
 
         var updatedHandshake = handshake with
         {
@@ -254,6 +265,16 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
             UserId = handshake.UserId,
             Properties = new Dictionary<string, string> { [HandshakeIdProperty] = handshake.Id.ToString() }
         }, cancellationToken);
+
+        if (_identityRepository != null)
+        {
+            var user = await _identityRepository.GetUserByIdAsync(handshake.UserId, cancellationToken);
+            if (user != null)
+            {
+                await _notifications.NotifyAsync(SecurityNotificationType.SuspiciousAuthenticationAttempt, user, _timeProvider.GetUtcNow(), cancellationToken: cancellationToken);
+            }
+        }
+
         return new AuthenticationHandshakeResult(false, ErrorMessage: "Rate limit exceeded.");
     }
 
@@ -261,7 +282,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         IDictionary<string, string>? existingMetadata,
         IDictionary<string, string>? requestMetadata)
     {
-        Dictionary<string, string>? updatedMetadata = existingMetadata == null ? null : new Dictionary<string, string>(existingMetadata);
+        Dictionary<string, string>? updatedMetadata = NormalizeMetadata(existingMetadata);
         if (requestMetadata == null)
         {
             return updatedMetadata;
@@ -270,15 +291,68 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         updatedMetadata ??= [];
         foreach (var kvp in requestMetadata)
         {
-            updatedMetadata[kvp.Key] = kvp.Value;
+            updatedMetadata[kvp.Key] = NormalizeMetadataValue(kvp.Value);
         }
 
         return updatedMetadata;
     }
+
+    private static Dictionary<string, string>? NormalizeMetadata(IDictionary<string, string>? metadata)
+    {
+        if (metadata == null)
+        {
+            return null;
+        }
+
+        var normalized = new Dictionary<string, string>(metadata.Count, StringComparer.Ordinal);
+        foreach (var kvp in metadata)
+        {
+            normalized[kvp.Key] = NormalizeMetadataValue(kvp.Value);
+        }
+
+        return normalized;
+    }
+
+    private static void ValidateMetadata(IDictionary<string, string>? metadata, string paramName)
+    {
+        if (metadata == null)
+        {
+            return;
+        }
+
+        if (metadata.Count > MaxMetadataEntries)
+        {
+            throw new ArgumentException($"Metadata cannot contain more than {MaxMetadataEntries} entries.", paramName);
+        }
+
+        foreach (var kvp in metadata)
+        {
+            if (string.IsNullOrWhiteSpace(kvp.Key))
+            {
+                throw new ArgumentException("Metadata keys cannot be null or whitespace.", paramName);
+            }
+
+            if (kvp.Key.Length > MaxMetadataKeyLength)
+            {
+                throw new ArgumentException($"Metadata keys cannot exceed {MaxMetadataKeyLength} characters.", paramName);
+            }
+
+            if (GetMetadataValueLength(kvp.Value) > MaxMetadataValueLength)
+            {
+                throw new ArgumentException($"Metadata values cannot exceed {MaxMetadataValueLength} characters.", paramName);
+            }
+        }
+    }
+
+    private static string NormalizeMetadataValue(string? value) => value ?? string.Empty;
+
+    private static int GetMetadataValueLength(string? value) => value?.Length ?? 0;
 }
 
 public sealed record AuthenticationHandshakeServiceDependencies(
     IOptions<AuthenticationHandshakeOptions>? Options = null,
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,
-    IAuthenticationRateLimiter? RateLimiter = null);
+    IAuthenticationRateLimiter? RateLimiter = null,
+    IIdentityRepository? IdentityRepository = null,
+    ISecurityNotificationService? NotificationService = null);

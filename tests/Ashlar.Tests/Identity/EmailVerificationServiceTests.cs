@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Ashlar.Auditing;
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
@@ -16,6 +17,7 @@ public sealed class EmailVerificationServiceTests
     private readonly AshlarUser _user = new() { Id = Guid.NewGuid(), Email = "user@example.com", IsActive = true };
 
     [Test]
+    [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void ConstructorThrowsOnNullDependencies()
     {
         var repository = new InMemoryIdentityRepository();
@@ -26,11 +28,14 @@ public sealed class EmailVerificationServiceTests
         var time = new FakeTimeProvider();
         var audit = new RecordingSecurityEventSink();
 
-        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationService(null!, tokenContext, emailSender, rateLimiter, time, audit));
-        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationService(identityContext, null!, emailSender, rateLimiter, time, audit));
-        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationService(identityContext, tokenContext, null!, rateLimiter, time, audit));
-        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationService(identityContext, tokenContext, emailSender, null!, time, audit));
-        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationService(identityContext, tokenContext, emailSender, rateLimiter, null!, audit));
+        var dependencies = new EmailVerificationServiceDependencies(time, audit);
+
+        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationService(null!, tokenContext, emailSender, rateLimiter, dependencies));
+        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationService(identityContext, null!, emailSender, rateLimiter, dependencies));
+        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationService(identityContext, tokenContext, null!, rateLimiter, dependencies));
+        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationService(identityContext, tokenContext, emailSender, null!, dependencies));
+        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationService(identityContext, tokenContext, emailSender, rateLimiter, null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new EmailVerificationServiceDependencies(null!, audit));
     }
 
     [Test]
@@ -223,8 +228,7 @@ public sealed class EmailVerificationServiceTests
             new SecureTokenContext(tokenGenerator, tokenHasher),
             emailSender,
             rateLimiter,
-            time,
-            audit);
+            new EmailVerificationServiceDependencies(time, audit));
 
         return new Fixture(service, identityRepository, emailSender, audit, time, tokenHasher, rateLimiter);
     }
