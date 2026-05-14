@@ -140,51 +140,17 @@ public sealed class InvitationService(
             return InvitationAcceptanceResult.Failure("concurrency_conflict");
         }
 
-        var user = await _dependencies.IdentityRepository.GetUserByEmailAsync(invitation.Email, invitation.TenantId, cancellationToken);
-        Guid userId;
-        var isNewUser = false;
-
-        if (user == null)
-        {
-            userId = Guid.NewGuid();
-            var newUser = new AshlarUser
-            {
-                Id = userId,
-                Email = invitation.Email,
-                Name = request.UserName,
-                IsActive = true,
-                TenantId = invitation.TenantId
-            };
-            await _dependencies.IdentityRepository.CreateUserAsync(newUser, cancellationToken);
-            isNewUser = true;
-        }
-        else if (!user.IsActive)
-        {
-            userId = user.Id;
-            var updatedUser = new AshlarUser
-            {
-                Id = user.Id,
-                Email = user.Email,
-                Name = request.UserName ?? user.Name,
-                IsActive = true,
-                TenantId = invitation.TenantId
-            };
-            await _dependencies.IdentityRepository.UpdateUserAsync(updatedUser, cancellationToken);
-        }
-        else
-        {
-            userId = user.Id;
-        }
+        var acceptedUser = await AcceptInvitationUserAsync(invitation, request.UserName, now, cancellationToken);
 
         transaction.OnCommitted(async ct =>
         {
-            if (isNewUser)
+            if (acceptedUser.IsNewUser)
             {
                 await _securityEvents.RecordAsync(new SecurityEventDescriptor
                 {
                     EventType = AshlarSecurityEventTypes.UserCreated,
                     Outcome = SecurityEventOutcomes.Success,
-                    UserId = userId,
+                    UserId = acceptedUser.UserId,
                     Context = context
                 }, ct);
             }
@@ -193,12 +159,12 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationAccepted,
                 Outcome = SecurityEventOutcomes.Success,
-                UserId = userId,
+                UserId = acceptedUser.UserId,
                 Properties = new Dictionary<string, string> { ["invitation_id"] = invitation.Id.ToString() },
                 Context = context
             }, ct);
 
-            var notifiedUser = await _dependencies.IdentityRepository.GetUserByIdAsync(userId, ct);
+            var notifiedUser = await _dependencies.IdentityRepository.GetUserByIdAsync(acceptedUser.UserId, ct);
             if (notifiedUser != null)
             {
                 await _notifications.NotifyAsync(SecurityNotificationType.InvitationAccepted, notifiedUser, now, context: context, metadata: new Dictionary<string, string> { ["invitation_id"] = invitation.Id.ToString() }, cancellationToken: ct);
@@ -207,7 +173,44 @@ public sealed class InvitationService(
 
         await transaction.CommitAsync(cancellationToken);
 
-        return InvitationAcceptanceResult.Success(userId);
+        return InvitationAcceptanceResult.Success(acceptedUser.UserId);
+    }
+
+    private async Task<AcceptedInvitationUser> AcceptInvitationUserAsync(UserInvitation invitation, string? requestedUserName, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var user = await _dependencies.IdentityRepository.GetUserByEmailAsync(invitation.Email, invitation.TenantId, cancellationToken);
+
+        if (user == null)
+        {
+            var userId = Guid.NewGuid();
+            var newUser = new AshlarUser
+            {
+                Id = userId,
+                Email = invitation.Email,
+                Name = requestedUserName,
+                IsActive = true,
+                EmailVerifiedAt = _options.Value.VerifyEmailOnAcceptance ? now : null,
+                TenantId = invitation.TenantId
+            };
+            await _dependencies.IdentityRepository.CreateUserAsync(newUser, cancellationToken);
+            return new AcceptedInvitationUser(userId, IsNewUser: true);
+        }
+
+        if (!user.IsActive || (!user.EmailVerifiedAt.HasValue && _options.Value.VerifyEmailOnAcceptance))
+        {
+            var updatedUser = new AshlarUser
+            {
+                Id = user.Id,
+                Email = user.Email,
+                Name = requestedUserName ?? user.Name,
+                IsActive = true,
+                EmailVerifiedAt = _options.Value.VerifyEmailOnAcceptance ? (user.EmailVerifiedAt ?? now) : user.EmailVerifiedAt,
+                TenantId = invitation.TenantId
+            };
+            await _dependencies.IdentityRepository.UpdateUserAsync(updatedUser, cancellationToken);
+        }
+
+        return new AcceptedInvitationUser(user.Id, IsNewUser: false);
     }
 
     public async Task RevokeInvitationsAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
@@ -238,4 +241,6 @@ public sealed class InvitationService(
 
         return properties;
     }
+
+    private sealed record AcceptedInvitationUser(Guid UserId, bool IsNewUser);
 }

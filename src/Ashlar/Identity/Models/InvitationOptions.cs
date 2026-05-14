@@ -18,4 +18,10 @@ public sealed class InvitationOptions
     /// Defaults to <c>true</c>.
     /// </summary>
     public bool StoreEmailInAudit { get; set; } = true;
+
+    /// <summary>
+    /// Whether to automatically mark the user's email as verified when they accept an invitation.
+    /// Defaults to <c>true</c>.
+    /// </summary>
+    public bool VerifyEmailOnAcceptance { get; set; } = true;
 }
