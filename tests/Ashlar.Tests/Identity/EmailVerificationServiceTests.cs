@@ -104,11 +104,13 @@ public sealed class EmailVerificationServiceTests
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         var result = await fixture.Service.VerifyTokenAsync(_user.Id, token);
+        var updatedUser = await fixture.IdentityRepository.GetUserByIdAsync(_user.Id);
 
+        Assert.That(updatedUser, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(_user.EmailVerifiedAt, Is.Not.Null);
+            Assert.That(updatedUser.EmailVerifiedAt, Is.Not.Null);
             Assert.That(fixture.IdentityRepository.Credentials, Is.Empty);
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailVerified), Is.True);
         }
@@ -300,8 +302,9 @@ public sealed class EmailVerificationServiceTests
             switch (existing)
             {
                 case AshlarUser ashlarUser:
-                    ashlarUser.Email = user.Email;
-                    ashlarUser.EmailVerifiedAt = user.EmailVerifiedAt;
+                    var updatedAshlar = ashlarUser with { Email = user.Email, EmailVerifiedAt = user.EmailVerifiedAt };
+                    Users.Remove(ashlarUser);
+                    Users.Add(updatedAshlar);
                     break;
                 case MetadataUser metadataUser:
                     metadataUser.Email = user.Email;
