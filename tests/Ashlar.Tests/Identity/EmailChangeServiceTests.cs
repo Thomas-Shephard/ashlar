@@ -153,12 +153,14 @@ public sealed class EmailChangeServiceTests
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
+        var updatedUser = await fixture.IdentityRepository.GetUserByIdAsync(user.Id);
 
+        Assert.That(updatedUser, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True, result.ErrorMessage);
-            Assert.That(user.Email, Is.EqualTo("new@example.com"));
-            Assert.That(user.EmailVerifiedAt, Is.Not.Null);
+            Assert.That(updatedUser.Email, Is.EqualTo("new@example.com"));
+            Assert.That(updatedUser.EmailVerifiedAt, Is.Not.Null);
             Assert.That(fixture.SessionRepository.RevokedUserId, Is.EqualTo(user.Id));
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailChanged), Is.True);
         }
@@ -450,8 +452,9 @@ public sealed class EmailChangeServiceTests
             switch (existing)
             {
                 case AshlarUser ashlarUser:
-                    ashlarUser.Email = user.Email;
-                    ashlarUser.EmailVerifiedAt = user.EmailVerifiedAt;
+                    var updatedAshlar = ashlarUser with { Email = user.Email, EmailVerifiedAt = user.EmailVerifiedAt };
+                    Users.Remove(ashlarUser);
+                    Users.Add(updatedAshlar);
                     break;
                 case MetadataUser metadataUser:
                     metadataUser.Email = user.Email;
