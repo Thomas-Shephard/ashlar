@@ -108,7 +108,7 @@ public class AuthenticationOrchestratorTests
 
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, requiredFactors.ToHashSet(), new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((handshake, "token"));
+            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -140,7 +140,7 @@ public class AuthenticationOrchestratorTests
 
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, requiredFactors.ToHashSet(), new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((handshake, "token"));
+            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -164,7 +164,7 @@ public class AuthenticationOrchestratorTests
         var requiredFactors = new HashSet<string> { "totp", "email_code" };
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, requiredFactors, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((handshake, "token"));
+            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -195,7 +195,7 @@ public class AuthenticationOrchestratorTests
         var requiredFactors = new HashSet<string> { "email_code" };
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, requiredFactors, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((handshake, "token"));
+            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
 
         var result = await _orchestrator.AuthenticateAsync(
             _context,
@@ -228,7 +228,7 @@ public class AuthenticationOrchestratorTests
         var requiredFactors = new HashSet<string> { "email_code" };
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, requiredFactors, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((handshake, "token"));
+            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -274,7 +274,7 @@ public class AuthenticationOrchestratorTests
         var handshakeFactors = new HashSet<string> { "TOTP" };
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, handshakeFactors, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((handshake, "token"));
+            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -303,7 +303,7 @@ public class AuthenticationOrchestratorTests
         var handshakeFactors = new HashSet<string> { "totp" };
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, handshakeFactors, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((handshake, "token"));
+            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -372,7 +372,7 @@ public class AuthenticationOrchestratorTests
 
         var updatedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "totp" } };
         _handshakeServiceMock.Setup(h => h.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationHandshakeResult(true, updatedHandshake));
+            .ReturnsAsync(Result.Success(updatedHandshake));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
@@ -402,7 +402,7 @@ public class AuthenticationOrchestratorTests
 
         var updatedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "totp" } };
         _handshakeServiceMock.Setup(h => h.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationHandshakeResult(true, updatedHandshake));
+            .ReturnsAsync(Result.Success(updatedHandshake));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "TOTP", _context, _assertionMock.Object);
 
@@ -429,7 +429,7 @@ public class AuthenticationOrchestratorTests
 
         var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "totp" }, IsCompleted = true, Metadata = new Dictionary<string, string>(metadata) { ["claim:new_claim"] = "new_val" } };
         _handshakeServiceMock.Setup(h => h.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationHandshakeResult(true, completedHandshake));
+            .ReturnsAsync(Result.Success(completedHandshake));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
@@ -568,7 +568,7 @@ public class AuthenticationOrchestratorTests
 
         var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "TOTP" }, IsCompleted = true };
         _handshakeServiceMock.Setup(h => h.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationHandshakeResult(true, completedHandshake));
+            .ReturnsAsync(Result.Success(completedHandshake));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, assertion.Object);
 
@@ -667,7 +667,7 @@ public class AuthenticationOrchestratorTests
             .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
 
         _handshakeServiceMock.Setup(h => h.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationHandshakeResult(false, ErrorMessage: "Handshake error"));
+            .ReturnsAsync(Result.Failure<AuthenticationHandshake>("Handshake error"));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
@@ -689,7 +689,7 @@ public class AuthenticationOrchestratorTests
             .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
 
         _handshakeServiceMock.Setup(h => h.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationHandshakeResult(false));
+            .ReturnsAsync(Result.Failure<AuthenticationHandshake>("Factor verification failed."));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
@@ -761,7 +761,7 @@ public class AuthenticationOrchestratorTests
 
         var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "totp" }, IsCompleted = true };
         _handshakeServiceMock.Setup(h => h.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationHandshakeResult(true, completedHandshake));
+            .ReturnsAsync(Result.Success(completedHandshake));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
@@ -789,7 +789,7 @@ public class AuthenticationOrchestratorTests
 
         var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "totp" }, IsCompleted = true, Metadata = metadata };
         _handshakeServiceMock.Setup(h => h.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationHandshakeResult(true, completedHandshake));
+            .ReturnsAsync(Result.Success(completedHandshake));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 

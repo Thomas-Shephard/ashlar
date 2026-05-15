@@ -110,12 +110,12 @@ public sealed class AuthenticationOrchestrator(
             new VerifyAuthenticationHandshakeRequest(handshakeToken, resolvedFactorType, metadata),
             cancellationToken);
 
-        if (!result.Succeeded || result.Handshake == null)
+        if (!result.Succeeded || result.Value == null)
         {
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: result.ErrorMessage ?? "Factor verification failed.");
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: result.FailureReason ?? "Factor verification failed.");
         }
 
-        return CreateResultFromHandshake(result.Handshake, response.User, handshakeToken);
+        return CreateResultFromHandshake(result.Value, response.User, handshakeToken);
     }
 
     private static MfaAuthenticationResult CreateResultFromHandshake(AuthenticationHandshake handshake, IUser user, string handshakeToken)
@@ -152,15 +152,20 @@ public sealed class AuthenticationOrchestrator(
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: "MFA is required but no factors are configured.");
         }
 
-        var (handshake, token) = await _handshakeService.CreateHandshakeAsync(
+        var result = await _handshakeService.CreateHandshakeAsync(
             new CreateAuthenticationHandshakeRequest(user.Id, requiredFactors, BuildClaimMetadata(response.Claims)),
             cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: result.FailureReason ?? "Failed to create MFA handshake.");
+        }
 
         return new MfaAuthenticationResult(
             MfaAuthenticationStatus.MfaRequired,
             user,
-            token,
-            handshake.RequiredFactors);
+            result.Value!.Token,
+            result.Value!.Handshake.RequiredFactors);
     }
 
     private static HashSet<string> ResolveRequiredFactors(

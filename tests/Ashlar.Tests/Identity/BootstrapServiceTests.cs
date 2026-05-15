@@ -156,7 +156,7 @@ public class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Token, Is.EqualTo("raw-token"));
+            Assert.That(result.Value, Is.EqualTo("raw-token"));
         }
 
         _invitationRepository.Verify(r => r.CreateInvitationAsync(It.Is<UserInvitation>(i =>
@@ -358,9 +358,21 @@ public class BootstrapServiceTests
 
         var userId = Guid.NewGuid();
         _invitationService.Setup(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(InvitationAcceptanceResult.Success(userId));
+            .ReturnsAsync(Result.Success(userId));
 
         _options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
+        _grantService.Setup(s => s.CreateGrantAsync(It.IsAny<CreateAuthorizationGrantRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CreateAuthorizationGrantRequest request, CancellationToken _) => Result.Success(new AuthorizationGrant
+            {
+                Id = Guid.NewGuid(),
+                UserId = request.UserId,
+                TenantId = request.TenantId,
+                ScopeType = request.ScopeType,
+                ScopeId = request.ScopeId,
+                Role = request.Role,
+                Permission = request.Permission,
+                CreatedAt = _timeProvider.GetUtcNow()
+            }));
         _stateRepository.Setup(r => r.MarkAsInitializedAsync(userId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var transaction = new Mock<IAshlarTransaction>();
@@ -371,7 +383,7 @@ public class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.UserId, Is.EqualTo(userId));
+            Assert.That(result.Value, Is.EqualTo(userId));
         }
 
         _grantService.Verify(s => s.CreateGrantAsync(It.Is<CreateAuthorizationGrantRequest>(r =>
@@ -400,7 +412,7 @@ public class BootstrapServiceTests
 
         var userId = Guid.NewGuid();
         _invitationService.Setup(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(InvitationAcceptanceResult.Success(userId));
+            .ReturnsAsync(Result.Success(userId));
 
         _stateRepository.Setup(r => r.MarkAsInitializedAsync(userId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
 
@@ -415,6 +427,47 @@ public class BootstrapServiceTests
             Assert.That(result.FailureReason, Is.EqualTo("already_initialized"));
         }
         transaction.Verify(t => t.RollbackAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task AcceptBootstrapInvitationAsyncFailsIfGrantCreationFails()
+    {
+        var invitation = new UserInvitation
+        {
+            Id = Guid.NewGuid(),
+            Email = "admin@example.com",
+            TokenHash = "hashed",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            ExpiresAt = _timeProvider.GetUtcNow().AddDays(1),
+            Version = "1",
+            Metadata = "{\"ashlar.bootstrap\": true}"
+        };
+        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
+        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
+        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Uninitialized);
+
+        var userId = Guid.NewGuid();
+        _invitationService.Setup(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(userId));
+        _grantService.Setup(s => s.CreateGrantAsync(It.IsAny<CreateAuthorizationGrantRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure<AuthorizationGrant>("invalid_grant_shape"));
+
+        _options.Grants.Add(new BootstrapGrantTemplate { Role = "admin", Permission = "manage" });
+
+        var transaction = new Mock<IAshlarTransaction>();
+        _transactionProvider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
+
+        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("invalid_grant_shape"));
+        }
+
+        _stateRepository.Verify(r => r.MarkAsInitializedAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        transaction.Verify(t => t.RollbackAsync(It.IsAny<CancellationToken>()), Times.Once);
+        transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -434,7 +487,7 @@ public class BootstrapServiceTests
         _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
         _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Uninitialized);
         _invitationService.Setup(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(InvitationAcceptanceResult.Failure("email_mismatch"));
+            .ReturnsAsync(Result.Failure<Guid>("email_mismatch"));
 
         var transaction = new Mock<IAshlarTransaction>();
         _transactionProvider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);

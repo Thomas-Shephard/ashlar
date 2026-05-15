@@ -49,8 +49,8 @@ internal static class MfaEndpoints
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
-            var verified = await totp.VerifyAndEnrollAsync(user.GetAshlarUserId(), request.SharedSecret, request.Code, cancellationToken);
-            return verified ? Results.Ok() : Results.BadRequest(new { error = "invalid_totp" });
+            var result = await totp.VerifyAndEnrollAsync(user.GetAshlarUserId(), request.SharedSecret, request.Code, cancellationToken);
+            return result.Succeeded ? Results.Ok() : Results.BadRequest(new { error = "invalid_totp" });
         }).RequireAuthorization();
 
         app.MapPost("/mfa/totp/reset", async (
@@ -67,8 +67,8 @@ internal static class MfaEndpoints
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
-            var codes = await recoveryCodes.GenerateRecoveryCodesAsync(user.GetAshlarUserId(), cancellationToken: cancellationToken);
-            return Results.Ok(new { codes });
+            var result = await recoveryCodes.GenerateRecoveryCodesAsync(user.GetAshlarUserId(), cancellationToken: cancellationToken);
+            return result.Succeeded ? Results.Ok(new { codes = result.Value }) : Results.BadRequest(new { error = result.FailureReason });
         }).RequireAuthorization();
     }
 
@@ -143,7 +143,7 @@ internal static class MfaEndpoints
             new VerifyAuthenticationHandshakeRequest(handshakeToken, factorToSatisfy, new Dictionary<string, string> { ["mfa_recovery"] = "true" }),
             cancellationToken);
 
-        if (result is not { Succeeded: true, Handshake: not null })
+        if (result is not { Succeeded: true, Value: not null })
         {
             return Results.BadRequest(new { error = "invalid_mfa_code" });
         }

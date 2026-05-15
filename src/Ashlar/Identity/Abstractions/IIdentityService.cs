@@ -12,7 +12,7 @@ public interface IIdentityService
     Task<AuthenticationResponse> LoginAsync(AuthenticationContext context, IAuthenticationAssertion assertion, CancellationToken cancellationToken = default);
 
     Task<IUser> CreateUserAsync(IUser user, CancellationToken cancellationToken = default);
-    Task LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default);
+    Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default);
 }
 
 public enum AuthenticationStatus

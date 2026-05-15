@@ -45,8 +45,8 @@ public interface ICredentialService
     /// <param name="provider">The authentication provider.</param>
     /// <param name="credentialValue">The optional raw credential value to store.</param>
     /// <param name="initialMetadata">The optional initial metadata to store with the credential.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    Task LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue = null, string? initialMetadata = null, CancellationToken cancellationToken = default);
+    /// <returns>A result indicating whether the link operation succeeded.</returns>
+    Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue = null, string? initialMetadata = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates the usage information, consumes, or potentially changes the secret value of a credential after a successful authentication attempt.

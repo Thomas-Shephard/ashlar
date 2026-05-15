@@ -429,7 +429,7 @@ public class AshlarServiceCollectionExtensionsTests
 
     private sealed class CustomAuthorizationGrantService : IAuthorizationGrantService
     {
-        public Task<AuthorizationGrant> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
+        public Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }

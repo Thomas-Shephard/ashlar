@@ -32,24 +32,24 @@ internal static class BootstrapEndpoints
                 UserName = userName
             }, cancellationToken);
 
-            if (!createResult.Succeeded || createResult.Token == null)
+            if (!createResult.Succeeded || createResult.Value == null)
             {
                 return Results.BadRequest(new { error = createResult.FailureReason });
             }
 
             var acceptResult = await bootstrap.AcceptBootstrapInvitationAsync(
-                new AcceptInvitationRequest { Token = createResult.Token, UserName = userName },
+                new AcceptInvitationRequest { Token = createResult.Value, UserName = userName },
                 httpContext.ToAuthenticationContext(),
                 cancellationToken);
 
-            if (!acceptResult.Succeeded || acceptResult.UserId == null)
+            if (!acceptResult.Succeeded || acceptResult.Value == Guid.Empty)
             {
                 return Results.BadRequest(new { error = acceptResult.FailureReason });
             }
 
-            await signInManager.SignInAsync(httpContext, acceptResult.UserId.Value, cancellationToken: cancellationToken);
+            await signInManager.SignInAsync(httpContext, acceptResult.Value, cancellationToken: cancellationToken);
 
-            return Results.Ok(new { userId = acceptResult.UserId });
+            return Results.Ok(new { userId = acceptResult.Value });
         });
     }
 }

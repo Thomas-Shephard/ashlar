@@ -60,10 +60,16 @@ public sealed class AuthenticationHandshakeServiceTests
         var userId = Guid.NewGuid();
         var requiredFactors = new[] { "totp", "email" };
 
-        var (handshake, token) = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(userId, requiredFactors));
+        var result = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(userId, requiredFactors));
+
+        Assert.That(result.Value, Is.Not.Null);
+
+        var handshake = result.Value.Handshake;
+        var token = result.Value.Token;
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(result.Succeeded, Is.True);
             Assert.That(token, Is.EqualTo("raw-token"));
             Assert.That(handshake.UserId, Is.EqualTo(userId));
             Assert.That(handshake.TokenHash, Is.EqualTo("hashed:raw-token"));
@@ -97,41 +103,69 @@ public sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public void CreateHandshakeAsyncShouldThrowOnEmptyRequiredFactors()
+    public async Task CreateHandshakeAsyncShouldReturnFailureOnEmptyRequiredFactors()
     {
-        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), [])));
+        var result = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), []));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("no_factors_specified"));
+        }
     }
 
     [Test]
-    public void CreateHandshakeAsyncShouldRejectOversizedMetadata()
+    public async Task CreateHandshakeAsyncShouldReturnFailureOnOversizedMetadata()
     {
         var metadata = new Dictionary<string, string> { ["device"] = new('x', 513) };
 
-        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"], metadata)));
+        var result = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"], metadata));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("invalid_metadata"));
+        }
     }
 
     [Test]
-    public void CreateHandshakeAsyncShouldRejectTooManyMetadataEntries()
+    public async Task CreateHandshakeAsyncShouldReturnFailureOnTooManyMetadataEntries()
     {
         var metadata = Enumerable.Range(0, 21).ToDictionary(i => $"key-{i}", _ => "value");
 
-        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"], metadata)));
+        var result = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"], metadata));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("invalid_metadata"));
+        }
     }
 
     [Test]
-    public void CreateHandshakeAsyncShouldRejectBlankMetadataKey()
+    public async Task CreateHandshakeAsyncShouldReturnFailureOnBlankMetadataKey()
     {
         var metadata = new Dictionary<string, string> { [" "] = "value" };
 
-        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"], metadata)));
+        var result = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"], metadata));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("invalid_metadata"));
+        }
     }
 
     [Test]
-    public void CreateHandshakeAsyncShouldRejectOversizedMetadataKey()
+    public async Task CreateHandshakeAsyncShouldReturnFailureOnOversizedMetadataKey()
     {
         var metadata = new Dictionary<string, string> { [new string('k', 129)] = "value" };
 
-        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"], metadata)));
+        var result = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"], metadata));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("invalid_metadata"));
+        }
     }
 
     [Test]
@@ -140,7 +174,10 @@ public sealed class AuthenticationHandshakeServiceTests
         // ReSharper disable once NullableWarningSuppressionIsUsed
         var metadata = new Dictionary<string, string> { ["device"] = null! };
 
-        var (handshake, _) = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"], metadata));
+        var result = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"], metadata));
+
+        Assert.That(result.Value, Is.Not.Null);
+        var handshake = result.Value.Handshake;
 
         Assert.That(handshake.Metadata?["device"], Is.EqualTo(string.Empty));
     }
@@ -150,7 +187,10 @@ public sealed class AuthenticationHandshakeServiceTests
     {
         var requiredFactors = new SinglePassEnumerable<string>(["totp", "email"]);
 
-        var (handshake, _) = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), requiredFactors));
+        var result = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), requiredFactors));
+
+        Assert.That(result.Value, Is.Not.Null);
+        var handshake = result.Value.Handshake;
 
         Assert.That(handshake.RequiredFactors, Is.EquivalentTo(ExpectedRequiredFactors));
     }
@@ -178,9 +218,9 @@ public sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Handshake?.VerifiedFactors, Contains.Item("totp"));
-            Assert.That(result.Handshake?.IsCompleted, Is.True);
-            Assert.That(result.Handshake?.CompletedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
+            Assert.That(result.Value?.VerifiedFactors, Contains.Item("totp"));
+            Assert.That(result.Value?.IsCompleted, Is.True);
+            Assert.That(result.Value?.CompletedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
         }
 
         _repositoryMock.Verify(r => r.UpdateAsync(It.Is<AuthenticationHandshake>(h => h.IsCompleted && h.CompletedAt == _timeProvider.GetUtcNow()), It.IsAny<CancellationToken>()), Times.Once);
@@ -217,7 +257,7 @@ public sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Handshake?.IsCompleted, Is.True);
+            Assert.That(result.Value?.IsCompleted, Is.True);
         }
 
         _rateLimiterMock.Verify(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -246,8 +286,8 @@ public sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Handshake?.VerifiedFactors, Contains.Item("totp"));
-            Assert.That(result.Handshake?.IsCompleted, Is.False);
+            Assert.That(result.Value?.VerifiedFactors, Contains.Item("totp"));
+            Assert.That(result.Value?.IsCompleted, Is.False);
         }
     }
 
@@ -279,8 +319,8 @@ public sealed class AuthenticationHandshakeServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(handshake.Metadata, Is.EquivalentTo(new Dictionary<string, string> { ["existing"] = "original" }));
-            Assert.That(result.Handshake?.Metadata, Is.EquivalentTo(new Dictionary<string, string> { ["existing"] = "updated", ["new"] = "value" }));
-            Assert.That(result.Handshake?.Metadata, Is.Not.SameAs(metadata));
+            Assert.That(result.Value?.Metadata, Is.EquivalentTo(new Dictionary<string, string> { ["existing"] = "updated", ["new"] = "value" }));
+            Assert.That(result.Value?.Metadata, Is.Not.SameAs(metadata));
         }
     }
 
@@ -309,7 +349,7 @@ public sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Handshake?.Metadata, Is.EquivalentTo(new Dictionary<string, string> { ["device"] = "trusted" }));
+            Assert.That(result.Value?.Metadata, Is.EquivalentTo(new Dictionary<string, string> { ["device"] = "trusted" }));
         }
     }
 
@@ -327,7 +367,7 @@ public sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.ErrorMessage, Is.EqualTo("Token is required."));
+            Assert.That(result.FailureReason, Is.EqualTo("empty_token"));
         }
     }
 
@@ -335,14 +375,14 @@ public sealed class AuthenticationHandshakeServiceTests
     public async Task VerifyFactorAsyncShouldFailWhenHandshakeNotFound()
     {
         _repositoryMock.Setup(r => r.FindByTokenHashAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((AuthenticationHandshake?)null);
+                       .ReturnsAsync((AuthenticationHandshake?)null);
 
         var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("invalid", "totp"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.ErrorMessage, Is.EqualTo("Handshake not found."));
+            Assert.That(result.FailureReason, Is.EqualTo("handshake_not_found"));
         }
     }
 
@@ -361,14 +401,14 @@ public sealed class AuthenticationHandshakeServiceTests
             new HashSet<string>());
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(handshake);
+                       .ReturnsAsync(handshake);
 
         var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.ErrorMessage, Is.EqualTo("Handshake expired."));
+            Assert.That(result.FailureReason, Is.EqualTo("handshake_expired"));
         }
     }
 
@@ -387,14 +427,14 @@ public sealed class AuthenticationHandshakeServiceTests
             new HashSet<string>());
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(handshake);
+                       .ReturnsAsync(handshake);
 
         var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.ErrorMessage, Is.EqualTo("Handshake is revoked."));
+            Assert.That(result.FailureReason, Is.EqualTo("handshake_revoked"));
         }
     }
 
@@ -413,14 +453,14 @@ public sealed class AuthenticationHandshakeServiceTests
             new HashSet<string> { "totp" });
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(handshake);
+                       .ReturnsAsync(handshake);
 
         var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.ErrorMessage, Is.EqualTo("Handshake is already completed."));
+            Assert.That(result.FailureReason, Is.EqualTo("handshake_already_completed"));
         }
     }
 
@@ -439,27 +479,27 @@ public sealed class AuthenticationHandshakeServiceTests
             new HashSet<string>());
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(handshake);
+                       .ReturnsAsync(handshake);
 
         _rateLimiterMock.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RateLimitDecision
-            {
-                Status = RateLimitStatus.Blocked,
-                Remaining = 0,
-                WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
-            });
+                        .ReturnsAsync(new RateLimitDecision
+                        {
+                            Status = RateLimitStatus.Blocked,
+                            Remaining = 0,
+                            WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
+                        });
 
         var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.ErrorMessage, Is.EqualTo("Rate limit exceeded."));
+            Assert.That(result.FailureReason, Is.EqualTo("Rate limit exceeded."));
         }
     }
 
     [Test]
-    public void VerifyFactorAsyncShouldRejectOversizedMetadata()
+    public async Task VerifyFactorAsyncShouldRejectOversizedMetadata()
     {
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -473,11 +513,17 @@ public sealed class AuthenticationHandshakeServiceTests
             new HashSet<string>());
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(handshake);
+                       .ReturnsAsync(handshake);
 
         var metadata = new Dictionary<string, string> { ["device"] = new string('x', 513) };
 
-        Assert.ThrowsAsync<ArgumentException>(() => _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp", metadata)));
+        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp", metadata));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("invalid_metadata"));
+        }
     }
 
     [Test]
@@ -495,7 +541,7 @@ public sealed class AuthenticationHandshakeServiceTests
             new HashSet<string>());
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(handshake);
+                       .ReturnsAsync(handshake);
 
         var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest(
             "raw-token",
@@ -506,7 +552,7 @@ public sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Handshake?.Metadata?["device"], Is.EqualTo(string.Empty));
+            Assert.That(result.Value?.Metadata?["device"], Is.EqualTo(string.Empty));
         }
     }
 
@@ -545,16 +591,16 @@ public sealed class AuthenticationHandshakeServiceTests
                 notificationService.Object));
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(handshake);
+                       .ReturnsAsync(handshake);
         _rateLimiterMock.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RateLimitDecision
-            {
-                Status = RateLimitStatus.Blocked,
-                Remaining = 0,
-                WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
-            });
+                        .ReturnsAsync(new RateLimitDecision
+                        {
+                            Status = RateLimitStatus.Blocked,
+                            Remaining = 0,
+                            WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
+                        });
         identityRepository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
+                          .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
 
         await service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
@@ -599,16 +645,16 @@ public sealed class AuthenticationHandshakeServiceTests
                 notificationService.Object));
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(handshake);
+                       .ReturnsAsync(handshake);
         _rateLimiterMock.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RateLimitDecision
-            {
-                Status = RateLimitStatus.Blocked,
-                Remaining = 0,
-                WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
-            });
+                        .ReturnsAsync(new RateLimitDecision
+                        {
+                            Status = RateLimitStatus.Blocked,
+                            Remaining = 0,
+                            WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
+                        });
         identityRepository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
+                          .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
 
         await service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest(
             "raw-token",
@@ -640,14 +686,14 @@ public sealed class AuthenticationHandshakeServiceTests
             new HashSet<string>());
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(handshake);
+                       .ReturnsAsync(handshake);
 
         var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "invalid"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.ErrorMessage, Is.EqualTo("Invalid factor type."));
+            Assert.That(result.FailureReason, Is.EqualTo("invalid_factor_type"));
         }
     }
 
@@ -666,14 +712,14 @@ public sealed class AuthenticationHandshakeServiceTests
             new HashSet<string> { "totp" });
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(handshake);
+                       .ReturnsAsync(handshake);
 
         var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.ErrorMessage, Is.EqualTo("Factor already verified."));
+            Assert.That(result.FailureReason, Is.EqualTo("factor_already_verified"));
         }
     }
 
@@ -692,7 +738,7 @@ public sealed class AuthenticationHandshakeServiceTests
             new HashSet<string>());
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(handshake);
+                       .ReturnsAsync(handshake);
 
         var result = await _service.GetHandshakeAsync("raw-token");
 
@@ -721,7 +767,7 @@ public sealed class AuthenticationHandshakeServiceTests
             new HashSet<string>());
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(handshake);
+                       .ReturnsAsync(handshake);
 
         await _service.RevokeHandshakeAsync("raw-token");
 
@@ -739,7 +785,7 @@ public sealed class AuthenticationHandshakeServiceTests
     public async Task RevokeHandshakeAsyncShouldDoNothingWhenHandshakeNotFound()
     {
         _repositoryMock.Setup(r => r.FindByTokenHashAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((AuthenticationHandshake?)null);
+                       .ReturnsAsync((AuthenticationHandshake?)null);
 
         await _service.RevokeHandshakeAsync("raw-token");
 
@@ -761,7 +807,7 @@ public sealed class AuthenticationHandshakeServiceTests
             new HashSet<string>());
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(handshake);
+                       .ReturnsAsync(handshake);
 
         await _service.RevokeHandshakeAsync("raw-token");
 

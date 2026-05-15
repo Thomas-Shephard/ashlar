@@ -67,15 +67,47 @@ public sealed class TotpService : ITotpService
     }
 
     /// <inheritdoc />
-    public async Task<bool> VerifyAndEnrollAsync(Guid userId, string sharedSecret, string code, CancellationToken cancellationToken = default)
+    public async Task<Result> VerifyAndEnrollAsync(Guid userId, string sharedSecret, string code, CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
-        if (string.IsNullOrWhiteSpace(code)) return false;
-        if (string.IsNullOrWhiteSpace(sharedSecret) || sharedSecret.Length > 256) return false;
+
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Provider = _options.ProviderKey,
+                FailureReason = "empty_code"
+            }, cancellationToken);
+            return Result.Failure("empty_code");
+        }
+
+        if (string.IsNullOrWhiteSpace(sharedSecret) || sharedSecret.Length > 256)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Provider = _options.ProviderKey,
+                FailureReason = "invalid_secret"
+            }, cancellationToken);
+            return Result.Failure("invalid_secret");
+        }
 
         if (!Base32.TryDecode(sharedSecret, out var secretBytes) || secretBytes.Length < 16)
         {
-            return false;
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Provider = _options.ProviderKey,
+                FailureReason = "invalid_secret_format"
+            }, cancellationToken);
+            return Result.Failure("invalid_secret_format");
         }
 
         var now = _timeProvider.GetUtcNow();
@@ -84,7 +116,15 @@ public sealed class TotpService : ITotpService
 
         if (!verified)
         {
-            return false;
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Provider = _options.ProviderKey,
+                FailureReason = "invalid_code"
+            }, cancellationToken);
+            return Result.Failure("invalid_code");
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
@@ -94,7 +134,20 @@ public sealed class TotpService : ITotpService
 
         var assertion = new TotpAssertion(code);
         var initialMetadata = System.Text.Json.JsonSerializer.Serialize(new { LastUsedStep = verifiedStep });
-        await _credentialService.LinkCredentialAsync(userId, assertion, _provider, sharedSecret, initialMetadata, cancellationToken);
+        var linkResult = await _credentialService.LinkCredentialAsync(userId, assertion, _provider, sharedSecret, initialMetadata, cancellationToken);
+
+        if (!linkResult.Succeeded)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Provider = _options.ProviderKey,
+                FailureReason = linkResult.FailureReason ?? "link_failed"
+            }, cancellationToken);
+            return Result.Failure(linkResult.FailureReason ?? "link_failed");
+        }
 
         transaction.OnCommitted(async ct =>
         {
@@ -114,8 +167,7 @@ public sealed class TotpService : ITotpService
         });
 
         await transaction.CommitAsync(cancellationToken);
-        return true;
-
+        return Result.Success();
     }
 
     /// <inheritdoc />

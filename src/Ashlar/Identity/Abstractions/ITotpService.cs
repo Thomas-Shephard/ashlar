@@ -1,3 +1,4 @@
+using Ashlar.Identity.Models;
 using Ashlar.Identity.Models.Totp;
 
 namespace Ashlar.Identity.Abstractions;
@@ -27,8 +28,8 @@ public interface ITotpService
     /// <param name="sharedSecret">The shared secret generated during enrollment.</param>
     /// <param name="code">The TOTP code provided by the user.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>True if verification succeeded and enrollment was finalized; otherwise, false.</returns>
-    Task<bool> VerifyAndEnrollAsync(Guid userId, string sharedSecret, string code, CancellationToken cancellationToken = default);
+    /// <returns>A result indicating whether verification succeeded and enrollment was finalized.</returns>
+    Task<Result> VerifyAndEnrollAsync(Guid userId, string sharedSecret, string code, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Disables TOTP for a user.

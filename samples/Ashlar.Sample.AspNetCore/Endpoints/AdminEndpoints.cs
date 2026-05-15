@@ -35,13 +35,18 @@ internal static class AdminEndpoints
             IAuthorizationGrantService grants,
             CancellationToken cancellationToken) =>
         {
-            var grant = await grants.CreateGrantAsync(new CreateAuthorizationGrantRequest(
+            var result = await grants.CreateGrantAsync(new CreateAuthorizationGrantRequest(
                 UserId: request.UserId,
                 ScopeType: "project",
                 ScopeId: projectId,
                 Permission: "project.manage"), cancellationToken);
 
-            return Results.Ok(new { grant.Id });
+            if (!result.Succeeded || result.Value == null)
+            {
+                return Results.BadRequest(new { error = result.FailureReason ?? "Failed to create grant" });
+            }
+
+            return Results.Ok(new { result.Value.Id });
         }).RequireAuthorization("admin");
 
         app.MapGet("/projects/{projectId}/manage", (string projectId) => LandingPages.Layout("Project Management", $"""
