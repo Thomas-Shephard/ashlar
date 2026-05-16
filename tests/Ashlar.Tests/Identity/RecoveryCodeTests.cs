@@ -110,8 +110,11 @@ public class RecoveryCodeTests
 
         var result = await service.GenerateRecoveryCodesAsync(userId);
 
-        Assert.That(result.Succeeded, Is.True);
-        Assert.That(result.Value, Has.Count.EqualTo(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value, Has.Count.EqualTo(5));
+        }
         repository.Verify(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()), Times.Once);
         repository.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c => c.Purpose == "recovery-code" && c.ExpiresAt != null), It.IsAny<CancellationToken>()), Times.Exactly(5));
         transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
@@ -138,8 +141,11 @@ public class RecoveryCodeTests
         var request = new RecoveryCodeGenerationRequest { CodeCount = 3, ReplaceExisting = false, ExpiresAfter = TimeSpan.FromHours(1) };
         var result = await service.GenerateRecoveryCodesAsync(userId, request);
 
-        Assert.That(result.Succeeded, Is.True);
-        Assert.That(result.Value, Has.Count.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value, Has.Count.EqualTo(3));
+        }
         repository.Verify(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()), Times.Never);
         repository.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c => c.ExpiresAt != null), It.IsAny<CancellationToken>()), Times.Exactly(3));
     }
@@ -164,8 +170,11 @@ public class RecoveryCodeTests
 
         var result = await service.GenerateRecoveryCodesAsync(userId);
 
-        Assert.That(result.Succeeded, Is.True);
-        Assert.That(result.Value, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value, Has.Count.EqualTo(1));
+        }
         repository.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c => c.ExpiresAt == null), It.IsAny<CancellationToken>()), Times.Once);
     }
 

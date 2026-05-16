@@ -190,12 +190,9 @@ public class CredentialServiceTests
 
         var (resolvedUser, _, _, _) = await _service.ResolveAsync(context, assertionMock.Object, providerMock.Object);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(resolvedUser, Is.Not.Null);
-            Assert.That(resolvedUser.Id, Is.EqualTo(userId));
-            _repositoryMock.Verify(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()), Times.Once);
-        }
+        Assert.That(resolvedUser, Is.Not.Null);
+        Assert.That(resolvedUser.Id, Is.EqualTo(userId));
+        _repositoryMock.Verify(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]

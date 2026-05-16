@@ -45,17 +45,22 @@ public sealed class AuthorizationGrantServiceTests
     {
         var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), Permission: "read", Metadata: " "));
 
-        Assert.That(result.Succeeded, Is.True);
-        Assert.That(result.Value!.Metadata, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value!.Metadata, Is.Null);
+        }
     }
 
     [Test]
     public async Task CreateGrantAsyncShouldRejectInvalidJsonMetadata()
     {
         var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), Permission: "read", Metadata: "{invalid"));
-        
-        Assert.That(result.Succeeded, Is.False);
-        Assert.That(result.FailureReason, Is.EqualTo("invalid_metadata_json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("invalid_metadata_json"));
+        }
     }
 
     [Test]
