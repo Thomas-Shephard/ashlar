@@ -7,6 +7,14 @@ namespace Ashlar.Messaging;
 /// </summary>
 public sealed record EmailMessage
 {
+    /// <summary>
+    /// Initializes a configured service instance.
+    /// </summary>
+    /// <param name="to">The to value.</param>
+    /// <param name="subject">The subject value.</param>
+    /// <param name="textBody">The text body value.</param>
+    /// <param name="htmlBody">The html body value.</param>
+    /// <param name="options">The options value.</param>
     public EmailMessage(
         string to,
         string subject,
@@ -91,24 +99,54 @@ public sealed record EmailMessage
         return value?.Any(c => c is '\r' or '\n' or '\0') ?? false;
     }
 
+    /// <summary>
+    /// Gets or sets the to value.
+    /// </summary>
     public string To { get; }
 
+    /// <summary>
+    /// Gets or sets the subject value.
+    /// </summary>
     public string Subject { get; }
 
+    /// <summary>
+    /// Gets or sets the text body value.
+    /// </summary>
     public string? TextBody { get; }
 
+    /// <summary>
+    /// Gets or sets the html body value.
+    /// </summary>
     public string? HtmlBody { get; }
 
+    /// <summary>
+    /// Gets or sets the from value.
+    /// </summary>
     public string? From { get; }
 
+    /// <summary>
+    /// Gets or sets the reply to value.
+    /// </summary>
     public string? ReplyTo { get; }
 
+    /// <summary>
+    /// Gets or sets the cc value.
+    /// </summary>
     public string? Cc { get; }
 
+    /// <summary>
+    /// Gets or sets the bcc value.
+    /// </summary>
     public string? Bcc { get; }
 
+    /// <summary>
+    /// Gets or sets the headers value.
+    /// </summary>
     public IReadOnlyDictionary<string, string>? Headers { get; }
 
+    /// <summary>
+    /// Gets or sets the metadata value.
+    /// </summary>
     public IReadOnlyDictionary<string, string>? Metadata { get; }
 }
 
@@ -117,15 +155,33 @@ public sealed record EmailMessage
 /// </summary>
 public sealed record EmailMessageOptions
 {
+    /// <summary>
+    /// Gets or sets the from value.
+    /// </summary>
     public string? From { get; init; }
 
+    /// <summary>
+    /// Gets or sets the reply to value.
+    /// </summary>
     public string? ReplyTo { get; init; }
 
+    /// <summary>
+    /// Gets or sets the cc value.
+    /// </summary>
     public string? Cc { get; init; }
 
+    /// <summary>
+    /// Gets or sets the bcc value.
+    /// </summary>
     public string? Bcc { get; init; }
 
+    /// <summary>
+    /// Gets or sets the headers value.
+    /// </summary>
     public IReadOnlyDictionary<string, string>? Headers { get; init; }
 
+    /// <summary>
+    /// Gets or sets the metadata value.
+    /// </summary>
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
 }

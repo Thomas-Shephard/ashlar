@@ -5,7 +5,7 @@ using Npgsql;
 namespace Ashlar.Postgres.Tests.Identity;
 
 [TestFixture]
-public class PostgresBootstrapStateRepositoryTests : PostgresTestBase
+internal sealed class PostgresBootstrapStateRepositoryTests : PostgresTestBase
 {
     private PostgresBootstrapStateRepository _repository;
     private SchemaManager _schemaManager;

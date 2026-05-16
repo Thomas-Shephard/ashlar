@@ -2,7 +2,7 @@ using Ashlar.Operational;
 
 namespace Ashlar.Tests.Operational;
 
-public sealed class AshlarCleanupOptionsTests
+internal sealed class AshlarCleanupOptionsTests
 {
     [Test]
     public void ValidateAcceptsDefaults()

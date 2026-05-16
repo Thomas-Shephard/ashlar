@@ -4,7 +4,7 @@ using Microsoft.Extensions.Time.Testing;
 
 namespace Ashlar.Tests.Identity.RateLimiting;
 
-public class InMemoryAuthenticationRateLimiterTests
+internal sealed class InMemoryAuthenticationRateLimiterTests
 {
     [Test]
     public async Task CheckAsyncFirstAttemptIsAllowed()

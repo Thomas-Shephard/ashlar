@@ -4,6 +4,13 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Notifications;
 
+/// <summary>
+/// Provides security notification service behavior.
+/// </summary>
+/// <param name="emailSender">The email sender value.</param>
+/// <param name="options">The options value.</param>
+/// <param name="suppressionStore">The suppression store value.</param>
+/// <param name="timeProvider">The time provider value.</param>
 public sealed partial class SecurityNotificationService(
     IEmailSender emailSender,
     IOptions<SecurityNotificationOptions> options,

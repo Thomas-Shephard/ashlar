@@ -13,7 +13,7 @@ using Moq;
 
 namespace Ashlar.AspNetCore.Tests;
 
-public sealed class AshlarSessionAuthenticationHandlerTests
+internal sealed class AshlarSessionAuthenticationHandlerTests
 {
     [Test]
     public async Task AuthenticateAsyncShouldReturnNoResultWhenCookieIsMissing()

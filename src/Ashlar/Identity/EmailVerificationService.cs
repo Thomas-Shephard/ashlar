@@ -10,6 +10,9 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity;
 
+/// <summary>
+/// Provides email verification service behavior.
+/// </summary>
 public sealed class EmailVerificationService : IEmailVerificationService
 {
     private const string RequestPurpose = "email-verification-request";
@@ -26,6 +29,10 @@ public sealed class EmailVerificationService : IEmailVerificationService
     private readonly IOptions<EmailVerificationOptions> _options;
     private readonly SecurityNotificationEmitter _notifications;
 
+    /// <summary>
+    /// Initializes a new instance of the email verification service class.
+    /// </summary>
+    /// <param name="dependencies">The dependencies value.</param>
     public EmailVerificationService(EmailVerificationServiceDependencies dependencies)
     {
         ArgumentNullException.ThrowIfNull(dependencies);
@@ -41,6 +48,12 @@ public sealed class EmailVerificationService : IEmailVerificationService
         _notifications = new SecurityNotificationEmitter(dependencies.NotificationService);
     }
 
+    /// <summary>
+    /// Performs the request verification <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<Result> RequestVerificationAsync(EmailVerificationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -142,6 +155,13 @@ public sealed class EmailVerificationService : IEmailVerificationService
         return Result.Success();
     }
 
+    /// <summary>
+    /// Performs the verify token <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="userId">The user id value.</param>
+    /// <param name="token">The token value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<Result> VerifyTokenAsync(Guid userId, string token, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
@@ -231,12 +251,33 @@ public sealed class EmailVerificationService : IEmailVerificationService
 
     private sealed class UpdatedUserWrapper(IUser original, DateTimeOffset? emailVerifiedAt) : ITenantUser, IHasAuditMetadata
     {
+        /// <summary>
+        /// Gets or sets the id value.
+        /// </summary>
         public Guid Id => original.Id;
+        /// <summary>
+        /// Gets or sets the email value.
+        /// </summary>
         public string Email => original.Email;
+        /// <summary>
+        /// Gets or sets the name value.
+        /// </summary>
         public string? Name => original.Name;
+        /// <summary>
+        /// Gets or sets the is active value.
+        /// </summary>
         public bool IsActive => original.IsActive;
+        /// <summary>
+        /// Gets or sets the tenant id value.
+        /// </summary>
         public Guid? TenantId => (original as ITenantUser)?.TenantId;
+        /// <summary>
+        /// Gets or sets the email verified at value.
+        /// </summary>
         public DateTimeOffset? EmailVerifiedAt { get; } = emailVerifiedAt;
+        /// <summary>
+        /// Gets or sets the created at value.
+        /// </summary>
         public DateTimeOffset CreatedAt => (original as IHasAuditMetadata)?.CreatedAt ?? default;
         public DateTimeOffset? UpdatedAt
         {
@@ -250,6 +291,14 @@ public sealed class EmailVerificationService : IEmailVerificationService
     }
 }
 
+/// <summary>
+/// Provides email verification service dependencies behavior.
+/// </summary>
+/// <param name="identityContext">The identity context value.</param>
+/// <param name="tokenContext">The token context value.</param>
+/// <param name="infrastructure">The infrastructure value.</param>
+/// <param name="audit">The audit value.</param>
+/// <param name="options">The options value.</param>
 public sealed class EmailVerificationServiceDependencies(
     IdentityContext identityContext,
     SecureTokenContext tokenContext,
@@ -257,15 +306,48 @@ public sealed class EmailVerificationServiceDependencies(
     IdentityAuditContext audit,
     IOptions<EmailVerificationOptions>? options = null)
 {
+    /// <summary>
+    /// Gets the configured dependency value.
+    /// </summary>
     public IdentityContext IdentityContext { get; } = identityContext ?? throw new ArgumentNullException(nameof(identityContext));
+    /// <summary>
+    /// Gets the configured dependency value.
+    /// </summary>
     public SecureTokenContext TokenContext { get; } = tokenContext ?? throw new ArgumentNullException(nameof(tokenContext));
+    /// <summary>
+    /// Gets the configured dependency value.
+    /// </summary>
     public IdentityInfrastructureContext Infrastructure { get; } = infrastructure ?? throw new ArgumentNullException(nameof(infrastructure));
+    /// <summary>
+    /// Gets the configured dependency value.
+    /// </summary>
     public IdentityAuditContext Audit { get; } = audit ?? throw new ArgumentNullException(nameof(audit));
+    /// <summary>
+    /// Gets or sets the options value.
+    /// </summary>
     public IOptions<EmailVerificationOptions>? Options { get; } = options;
+    /// <summary>
+    /// Gets or sets the email sender value.
+    /// </summary>
     public IEmailSender EmailSender => Infrastructure.EmailSender;
+    /// <summary>
+    /// Gets or sets the rate limiter value.
+    /// </summary>
     public IAuthenticationRateLimiter RateLimiter => Infrastructure.RateLimiter;
+    /// <summary>
+    /// Gets or sets the uri validator value.
+    /// </summary>
     public IUriValidator UriValidator => Infrastructure.UriValidator;
+    /// <summary>
+    /// Gets or sets the time provider value.
+    /// </summary>
     public TimeProvider TimeProvider => Audit.TimeProvider;
+    /// <summary>
+    /// Gets or sets the security event sink value.
+    /// </summary>
     public ISecurityEventSink SecurityEventSink => Audit.SecurityEventSink;
+    /// <summary>
+    /// Gets or sets the notification service value.
+    /// </summary>
     public ISecurityNotificationService? NotificationService => Audit.NotificationService;
 }

@@ -9,6 +9,12 @@ namespace Ashlar.Identity;
 /// <summary>
 /// Implements credential management services including resolution, linking, and lifecycle updates.
 /// </summary>
+/// <param name="repository">The repository value.</param>
+/// <param name="secretProtector">The secret protector value.</param>
+/// <param name="transactionProvider">The transaction provider value.</param>
+/// <param name="options">The options value.</param>
+/// <param name="timeProvider">The time provider value.</param>
+/// <param name="securityEventSink">The security event sink value.</param>
 /// <remarks>
 /// This service implements timing attack resistance by ensuring that unprotection operations
 /// are performed even when a user or credential is not found, using provider-specific dummy values.
@@ -30,7 +36,6 @@ public sealed class CredentialService(
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider ?? TimeProvider.System);
     private readonly ConcurrentDictionary<int, string> _dummyValues = new();
-
     /// <inheritdoc />
     public async Task<(IUser? User, UserCredential? Credential, UserCredential? OriginalCredential, bool UnprotectFailed)> ResolveAsync(
         AuthenticationContext context,
@@ -54,7 +59,6 @@ public sealed class CredentialService(
         var (unprotectedCredential, credential, unprotectFailed) = await ResolveCredentialCoreAsync(userId, assertion, provider, cancellationToken);
         return (user, unprotectedCredential, credential, unprotectFailed);
     }
-
     /// <inheritdoc />
     public async Task<(IUser? User, UserCredential? Credential, UserCredential? OriginalCredential, bool UnprotectFailed)> ResolveAsync(
         Guid userId,
@@ -97,11 +101,9 @@ public sealed class CredentialService(
     /// <summary>
     /// Unprotects the credential value if the provider requires protection.
     /// </summary>
-    /// <param name="credential">The credential to unprotect.</param>
-    /// <param name="provider">The authentication provider.</param>
-    /// <returns>A tuple containing the unprotected credential and a flag indicating if unprotection failed.</returns>
+    /// <param name="provider">The provider value.</param>
     /// <remarks>
-    /// This method is timing-safe. If the <paramref name="credential"/> is null, it performs an unprotection
+    /// This method is timing-safe. If the <paramref name="credential"/> is <see langword="null" />, it performs an unprotection
     /// operation on a cached dummy value matching the provider's typical credential length.
     /// </remarks>
     private (UserCredential? Credential, bool UnprotectFailed) UnprotectCredential(UserCredential? credential, IAuthenticationProvider provider)

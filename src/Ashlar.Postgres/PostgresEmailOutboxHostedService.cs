@@ -7,6 +7,8 @@ namespace Ashlar.Postgres;
 /// <summary>
 /// A background service that periodically triggers the <see cref="IEmailOutboxDispatcher"/>.
 /// </summary>
+/// <param name="serviceProvider">The service provider value.</param>
+/// <param name="options">The options value.</param>
 public sealed class PostgresEmailOutboxHostedService(
     IServiceProvider serviceProvider,
     IOptions<PostgresEmailOutboxOptions> options) : BackgroundService
@@ -14,7 +16,11 @@ public sealed class PostgresEmailOutboxHostedService(
     private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
     private readonly PostgresEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Validates options and starts the background email outbox dispatcher.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous start operation.</returns>
     public override Task StartAsync(CancellationToken cancellationToken)
     {
         if (!PostgresEmailOutboxOptions.Validate(_options))
@@ -25,6 +31,11 @@ public sealed class PostgresEmailOutboxHostedService(
         return base.StartAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Performs the execute <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="stoppingToken">The stopping token value.</param>
+    /// <returns>The operation result.</returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)

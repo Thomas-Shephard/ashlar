@@ -7,7 +7,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public sealed class MfaPolicyEvaluatorTests
+internal sealed class MfaPolicyEvaluatorTests
 {
     private static readonly string[] TotpFactor = ["totp"];
     private static readonly string[] CompositeFactors = ["TOTP", "email_code"];

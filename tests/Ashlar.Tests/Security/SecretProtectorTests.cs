@@ -4,7 +4,7 @@ using Moq;
 
 namespace Ashlar.Tests.Security;
 
-public class SecretProtectorTests
+internal sealed class SecretProtectorTests
 {
     [Test]
     public void ProtectShouldCallDataProtector()

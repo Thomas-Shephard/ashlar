@@ -3,7 +3,7 @@ using Testcontainers.PostgreSql;
 
 namespace Ashlar.Postgres.Tests;
 
-public abstract class PostgresTestBase
+internal abstract class PostgresTestBase
 {
     private static readonly SemaphoreSlim ContainerLock = new(1, 1);
     private static readonly Lazy<PostgreSqlContainer> PostgresContainer = new(() => new PostgreSqlBuilder("postgres:15-alpine").Build());

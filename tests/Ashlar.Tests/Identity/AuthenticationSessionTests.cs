@@ -2,7 +2,7 @@ using Ashlar.Identity.Models;
 
 namespace Ashlar.Tests.Identity;
 
-public sealed class AuthenticationSessionTests
+internal sealed class AuthenticationSessionTests
 {
     [Test]
     public void IsActiveShouldBeTrueBeforeExpiryAndWithoutRevocation()

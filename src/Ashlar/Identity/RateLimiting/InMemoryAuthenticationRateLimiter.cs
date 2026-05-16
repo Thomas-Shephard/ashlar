@@ -17,6 +17,10 @@ public sealed class InMemoryAuthenticationRateLimiter : IAuthenticationRateLimit
     // ReSharper disable once InconsistentlySynchronizedField
     internal int StateCount => _cache.Count;
 
+    /// <summary>
+    /// Initializes a new instance of the in memory authentication rate limiter class.
+    /// </summary>
+    /// <param name="timeProvider">The time provider value.</param>
     public InMemoryAuthenticationRateLimiter(TimeProvider timeProvider)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -34,6 +38,13 @@ public sealed class InMemoryAuthenticationRateLimiter : IAuthenticationRateLimit
         }
     }
 
+    /// <summary>
+    /// Performs the check <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="attempt">The attempt value.</param>
+    /// <param name="rule">The rule value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public Task<RateLimitDecision> CheckAsync(RateLimitAttempt attempt, RateLimitRule rule, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(attempt);
@@ -87,6 +98,9 @@ public sealed class InMemoryAuthenticationRateLimiter : IAuthenticationRateLimit
         return Task.FromResult(decision);
     }
 
+    /// <summary>
+    /// Performs the dispose operation and returns the result.
+    /// </summary>
     public void Dispose()
     {
         _cache.Dispose();
@@ -94,12 +108,21 @@ public sealed class InMemoryAuthenticationRateLimiter : IAuthenticationRateLimit
 
     private sealed class CacheEntry(RateLimitState state)
     {
+        /// <summary>
+        /// Gets or sets the state value.
+        /// </summary>
         public RateLimitState State { get; } = state;
+        /// <summary>
+        /// Gets or sets the expires at value.
+        /// </summary>
         public DateTimeOffset? ExpiresAt { get; set; }
     }
 
     private sealed class TimeProviderSystemClock(TimeProvider timeProvider) : ISystemClock
     {
+        /// <summary>
+        /// Gets or sets the utc now value.
+        /// </summary>
         public DateTimeOffset UtcNow => timeProvider.GetUtcNow();
     }
 }

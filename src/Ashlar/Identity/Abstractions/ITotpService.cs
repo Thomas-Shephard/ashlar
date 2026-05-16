@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 using Ashlar.Identity.Models.Totp;
 
 namespace Ashlar.Identity.Abstractions;
@@ -11,10 +10,11 @@ public interface ITotpService
     /// <summary>
     /// Starts a new TOTP enrollment for a user.
     /// </summary>
-    /// <param name="userId">The ID of the user.</param>
-    /// <param name="issuer">The name of the system issuing the TOTP (e.g., "Ashlar").</param>
-    /// <param name="accountName">The name of the user's account (e.g., their email).</param>
-    /// <returns>The enrollment data containing the secret and authenticator URI.</returns>
+    /// <param name="userId">The user id value.</param>
+    /// <param name="issuer">The issuer value.</param>
+    /// <param name="accountName">The account name value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     /// <remarks>
     /// This method generates a new secret but does not persist it. The secret must be verified
     /// via <see cref="VerifyAndEnrollAsync"/> to be finalized.
@@ -24,18 +24,18 @@ public interface ITotpService
     /// <summary>
     /// Verifies a TOTP code and finalizes enrollment for a user.
     /// </summary>
-    /// <param name="userId">The ID of the user.</param>
-    /// <param name="sharedSecret">The shared secret generated during enrollment.</param>
-    /// <param name="code">The TOTP code provided by the user.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A result indicating whether verification succeeded and enrollment was finalized.</returns>
+    /// <param name="userId">The user id value.</param>
+    /// <param name="sharedSecret">The shared secret value.</param>
+    /// <param name="code">The code value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     Task<Result> VerifyAndEnrollAsync(Guid userId, string sharedSecret, string code, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Disables TOTP for a user.
     /// </summary>
-    /// <param name="userId">The ID of the user.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>True if TOTP was disabled; otherwise, false.</returns>
+    /// <param name="userId">The user id value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     Task<bool> DisableTotpAsync(Guid userId, CancellationToken cancellationToken = default);
 }

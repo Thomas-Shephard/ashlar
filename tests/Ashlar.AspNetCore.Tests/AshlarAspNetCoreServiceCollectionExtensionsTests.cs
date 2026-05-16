@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.AspNetCore.Tests;
 
-public sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
+internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
 {
     [Test]
     public void AshlarPermissionRequirementShouldNormalizePermission()

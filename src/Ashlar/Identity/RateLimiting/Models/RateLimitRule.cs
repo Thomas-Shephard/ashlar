@@ -17,7 +17,7 @@ public sealed class RateLimitRule
 
     /// <summary>
     /// An optional duration to block further attempts once the permit limit has been exceeded.
-    /// If null, the caller is only blocked until the current window expires.
+    /// If <see langword="null" />, the caller is only blocked until the current window expires.
     /// </summary>
     public TimeSpan? BlockDuration { get; init; }
 }

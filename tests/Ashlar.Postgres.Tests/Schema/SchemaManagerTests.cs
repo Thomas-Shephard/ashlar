@@ -6,7 +6,7 @@ using Testcontainers.PostgreSql;
 
 namespace Ashlar.Postgres.Tests.Schema;
 
-public sealed class SchemaManagerTests : PostgresTestBase
+internal sealed class SchemaManagerTests : PostgresTestBase
 {
     [Test]
     public void ConstructorNullDataSourceShouldThrow()

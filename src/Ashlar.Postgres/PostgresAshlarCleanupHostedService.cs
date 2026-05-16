@@ -5,6 +5,12 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Postgres;
 
+/// <summary>
+/// Provides postgres ashlar cleanup hosted service behavior.
+/// </summary>
+/// <param name="scopeFactory">The scope factory value.</param>
+/// <param name="timeProvider">The time provider value.</param>
+/// <param name="options">The options value.</param>
 public sealed class PostgresAshlarCleanupHostedService(
     IServiceScopeFactory scopeFactory,
     TimeProvider timeProvider,
@@ -14,6 +20,11 @@ public sealed class PostgresAshlarCleanupHostedService(
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     private readonly AshlarCleanupOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
 
+    /// <summary>
+    /// Performs the execute <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="stoppingToken">The stopping token value.</param>
+    /// <returns>The operation result.</returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!AshlarCleanupOptions.Validate(_options))

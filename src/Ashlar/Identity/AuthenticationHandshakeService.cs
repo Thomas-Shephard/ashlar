@@ -9,6 +9,9 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity;
 
+/// <summary>
+/// Provides authentication handshake service behavior.
+/// </summary>
 public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeService
 {
     private const string HandshakeIdProperty = "handshake_id";
@@ -28,6 +31,14 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
     private readonly IIdentityRepository? _identityRepository;
     private readonly SecurityNotificationEmitter _notifications;
 
+    /// <summary>
+    /// Initializes a configured service instance.
+    /// </summary>
+    /// <param name="repository">The repository value.</param>
+    /// <param name="tokenGenerator">The token generator value.</param>
+    /// <param name="tokenHasher">The token hasher value.</param>
+    /// <param name="transactionProvider">The transaction provider value.</param>
+    /// <param name="dependencies">The dependencies value.</param>
     public AuthenticationHandshakeService(
         IAuthenticationHandshakeRepository repository,
         ISecureTokenGenerator tokenGenerator,
@@ -243,6 +254,12 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         return Result.Success(updatedHandshake);
     }
 
+    /// <summary>
+    /// Performs the get handshake <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="handshakeToken">The handshake token value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<AuthenticationHandshake?> GetHandshakeAsync(string handshakeToken, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(handshakeToken)) return null;
@@ -250,6 +267,12 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         return await _repository.FindByTokenHashAsync(tokenHash, cancellationToken: cancellationToken);
     }
 
+    /// <summary>
+    /// Performs the revoke handshake <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="handshakeToken">The handshake token value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<Result> RevokeHandshakeAsync(string handshakeToken, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(handshakeToken)) return Result.Failure("empty_token");
@@ -398,6 +421,15 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
     private static int GetMetadataValueLength(string? value) => value?.Length ?? 0;
 }
 
+/// <summary>
+/// Represents the authentication handshake service dependencies data model.
+/// </summary>
+/// <param name="Options">The options value.</param>
+/// <param name="TimeProvider">The time provider value.</param>
+/// <param name="SecurityEventSink">The security event sink value.</param>
+/// <param name="RateLimiter">The rate limiter value.</param>
+/// <param name="IdentityRepository">The identity repository value.</param>
+/// <param name="NotificationService">The notification service value.</param>
 public sealed record AuthenticationHandshakeServiceDependencies(
     IOptions<AuthenticationHandshakeOptions>? Options = null,
     TimeProvider? TimeProvider = null,

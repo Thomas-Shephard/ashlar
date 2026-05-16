@@ -10,7 +10,7 @@ using Moq;
 
 namespace Ashlar.Postgres.Tests;
 
-public sealed class PostgresEmailOutboxTests : PostgresTestBase
+internal sealed class PostgresEmailOutboxTests : PostgresTestBase
 {
     private IServiceProvider _serviceProvider;
     private FakeTimeProvider _timeProvider;
@@ -752,7 +752,7 @@ public sealed class PostgresEmailOutboxTests : PostgresTestBase
             new { id = Guid.NewGuid(), to, now = _timeProvider.GetUtcNow() });
     }
 
-    public class TestTransport : IEmailTransport
+    private sealed class TestTransport : IEmailTransport
     {
         private int _deliveredCount;
 

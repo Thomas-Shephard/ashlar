@@ -1,4 +1,3 @@
-using System.Globalization;
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
@@ -8,6 +7,9 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Providers.Email;
 
+/// <summary>
+/// Provides magic link sign in service behavior.
+/// </summary>
 public sealed class MagicLinkSignInService : IMagicLinkSignInService
 {
     private const string RequestPurpose = "magic-link-request";
@@ -17,6 +19,11 @@ public sealed class MagicLinkSignInService : IMagicLinkSignInService
     private readonly IOptions<MagicLinkSignInOptions> _options;
     private readonly SecurityEventEmitter _securityEvents;
 
+    /// <summary>
+    /// Initializes a configured service instance.
+    /// </summary>
+    /// <param name="dependencies">The dependencies value.</param>
+    /// <param name="options">The options value.</param>
     public MagicLinkSignInService(
         MagicLinkSignInDependencies dependencies,
         IOptions<MagicLinkSignInOptions>? options = null)
@@ -26,6 +33,14 @@ public sealed class MagicLinkSignInService : IMagicLinkSignInService
         _securityEvents = new SecurityEventEmitter(_dependencies.SecurityEventSink, _dependencies.TimeProvider);
     }
 
+    /// <summary>
+    /// Performs the request link <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="email">The email value.</param>
+    /// <param name="callbackBaseUri">The callback base uri value.</param>
+    /// <param name="context">The context value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task RequestLinkAsync(string email, Uri callbackBaseUri, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(callbackBaseUri);
@@ -88,6 +103,13 @@ public sealed class MagicLinkSignInService : IMagicLinkSignInService
         await transaction.CommitAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Performs the verify link <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="token">The token value.</param>
+    /// <param name="context">The context value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<AuthenticationResponse> VerifyLinkAsync(string token, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);

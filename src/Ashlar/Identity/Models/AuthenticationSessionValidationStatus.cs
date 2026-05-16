@@ -5,8 +5,20 @@ namespace Ashlar.Identity.Models;
 /// </summary>
 public enum AuthenticationSessionValidationStatus
 {
+    /// <summary>
+    /// Represents the failed value.
+    /// </summary>
     Failed = 0,
+    /// <summary>
+    /// Represents the success value.
+    /// </summary>
     Success = 1,
+    /// <summary>
+    /// Represents the expired value.
+    /// </summary>
     Expired = 2,
+    /// <summary>
+    /// Represents the revoked value.
+    /// </summary>
     Revoked = 3
 }

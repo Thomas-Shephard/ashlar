@@ -1,5 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using Ashlar;
 using Ashlar.Auditing;
 using Ashlar.Authorization;
 using Ashlar.Authorization.Abstractions;
@@ -8,7 +7,7 @@ using Microsoft.Extensions.Time.Testing;
 
 namespace Ashlar.Tests.Authorization;
 
-public sealed class AuthorizationGrantServiceTests
+internal sealed class AuthorizationGrantServiceTests
 {
     private FakeTimeProvider _timeProvider;
     private FakeRepository _repository;

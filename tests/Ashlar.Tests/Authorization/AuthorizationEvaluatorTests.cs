@@ -5,7 +5,7 @@ using Microsoft.Extensions.Time.Testing;
 
 namespace Ashlar.Tests.Authorization;
 
-public sealed class AuthorizationEvaluatorTests
+internal sealed class AuthorizationEvaluatorTests
 {
     private FakeTimeProvider _timeProvider;
     private FakeRepository _repository;

@@ -3,7 +3,7 @@ using Ashlar.Security.Tokens;
 
 namespace Ashlar.Tests.Security;
 
-public sealed partial class SecureTokenGeneratorTests
+internal sealed partial class SecureTokenGeneratorTests
 {
     private static readonly Regex UrlSafeTokenPattern = UrlSafeTokenPatternRegex();
 

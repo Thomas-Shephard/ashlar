@@ -2,6 +2,15 @@ namespace Ashlar.Identity;
 
 internal static class IdentityUrlHelper
 {
+    /// <summary>
+    /// Performs the construct callback url operation and returns the result.
+    /// </summary>
+    /// <param name="baseUri">The base uri value.</param>
+    /// <param name="tokenParam">The token param value.</param>
+    /// <param name="token">The token value.</param>
+    /// <param name="userId">The user id value.</param>
+    /// <param name="userIdParam">The user id param value.</param>
+    /// <returns>The operation result.</returns>
     public static string? ConstructCallbackUrl(Uri? baseUri, string tokenParam, string token, Guid? userId = null, string? userIdParam = null)
     {
         if (baseUri == null) return null;
@@ -23,6 +32,14 @@ internal static class IdentityUrlHelper
         return builder.Uri.AbsoluteUri;
     }
 
+    /// <summary>
+    /// Performs the format email body operation and returns the result.
+    /// </summary>
+    /// <param name="template">The template value.</param>
+    /// <param name="callbackUrl">The callback url value.</param>
+    /// <param name="fallbackLabel">The fallback label value.</param>
+    /// <param name="token">The token value.</param>
+    /// <returns>The operation result.</returns>
     public static string FormatEmailBody(string? template, string? callbackUrl, string? fallbackLabel = null, string? token = null)
     {
         if (template == null) return string.Empty;

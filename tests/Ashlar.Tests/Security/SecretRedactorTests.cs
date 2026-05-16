@@ -3,7 +3,7 @@ using Ashlar.Security;
 namespace Ashlar.Tests.Security;
 
 [TestFixture]
-public class SecretRedactorTests
+internal sealed class SecretRedactorTests
 {
     [Test]
     public void ContainsSecretShouldReturnTrueWhenSecretIsPresent()

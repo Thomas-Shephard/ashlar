@@ -18,6 +18,11 @@ public sealed class Sha256TokenHasher : ISecureTokenHasher
     // A UTF-16 char can encode at most 3 UTF-8 bytes; astral characters use two chars and 4 UTF-8 bytes.
     private const int MaxTokenUtf8Bytes = MaxTokenLength * 3;
 
+    /// <summary>
+    /// Performs the hash token operation and returns the result.
+    /// </summary>
+    /// <param name="token">The token value.</param>
+    /// <returns>The operation result.</returns>
     public string HashToken(string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);

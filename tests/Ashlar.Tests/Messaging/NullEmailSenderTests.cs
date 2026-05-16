@@ -2,7 +2,7 @@ using Ashlar.Messaging;
 
 namespace Ashlar.Tests.Messaging;
 
-public sealed class NullEmailSenderTests
+internal sealed class NullEmailSenderTests
 {
     [Test]
     public async Task NullEmailSenderCompletesSuccessfully()

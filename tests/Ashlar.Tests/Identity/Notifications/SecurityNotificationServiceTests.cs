@@ -9,7 +9,7 @@ using Moq;
 namespace Ashlar.Tests.Identity.Notifications;
 
 [TestFixture]
-public class SecurityNotificationServiceTests
+internal sealed class SecurityNotificationServiceTests
 {
     private Mock<IEmailSender> _emailSender;
     private SecurityNotificationOptions _options;

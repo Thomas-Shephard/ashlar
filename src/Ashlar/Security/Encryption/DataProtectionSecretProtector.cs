@@ -14,18 +14,32 @@ public sealed class DataProtectionSecretProtector : ISecretProtector
 {
     private readonly IDataProtector _protector;
 
+    /// <summary>
+    /// Initializes a new instance of the data protection secret protector class.
+    /// </summary>
+    /// <param name="provider">The provider value.</param>
     public DataProtectionSecretProtector(IDataProtectionProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
         _protector = provider.CreateProtector("Ashlar.Identity.Credentials");
     }
 
+    /// <summary>
+    /// Performs the protect operation and returns the result.
+    /// </summary>
+    /// <param name="data">The data value.</param>
+    /// <returns>The operation result.</returns>
     public byte[] Protect(byte[] data)
     {
         ArgumentNullException.ThrowIfNull(data);
         return _protector.Protect(data);
     }
 
+    /// <summary>
+    /// Performs the unprotect operation and returns the result.
+    /// </summary>
+    /// <param name="data">The data value.</param>
+    /// <returns>The operation result.</returns>
     public byte[] Unprotect(byte[] data)
     {
         ArgumentNullException.ThrowIfNull(data);

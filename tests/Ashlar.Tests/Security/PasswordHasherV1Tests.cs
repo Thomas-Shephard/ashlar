@@ -2,7 +2,7 @@ using Ashlar.Security.Hashing;
 
 namespace Ashlar.Tests.Security;
 
-public class PasswordHasherV1Tests
+internal sealed class PasswordHasherV1Tests
 {
     private const int ExpectedHashLength = 1 + 16 + 32;
     private PasswordHasherV1 _hasher;

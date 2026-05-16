@@ -7,7 +7,7 @@ using System.Text.Json.Nodes;
 
 namespace Ashlar.Postgres.Tests.Identity;
 
-public sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTestBase
+internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTestBase
 {
     private IServiceProvider _serviceProvider;
 

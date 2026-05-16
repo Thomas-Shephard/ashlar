@@ -12,7 +12,7 @@ public sealed class UriValidationOptions
     public IList<string> AllowedCallbackUris { get; set; } = [];
 
     /// <summary>
-    /// Gets or sets whether null URIs are allowed.
+    /// Gets or sets whether <see langword="null" /> URIs are allowed.
     /// </summary>
     public bool AllowNull { get; set; }
 }

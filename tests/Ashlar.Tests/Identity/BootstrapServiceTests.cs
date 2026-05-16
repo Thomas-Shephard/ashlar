@@ -13,7 +13,7 @@ using Moq;
 namespace Ashlar.Tests.Identity;
 
 [TestFixture]
-public class BootstrapServiceTests
+internal sealed class BootstrapServiceTests
 {
     private Mock<IBootstrapStateRepository> _stateRepository;
     private Mock<IInvitationService> _invitationService;

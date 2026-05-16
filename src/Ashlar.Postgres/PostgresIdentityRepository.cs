@@ -6,6 +6,11 @@ using Dapper;
 
 namespace Ashlar.Postgres;
 
+/// <summary>
+/// Provides postgres identity repository behavior.
+/// </summary>
+/// <param name="connectionProvider">The connection provider value.</param>
+/// <param name="timeProvider">The time provider value.</param>
 public sealed class PostgresIdentityRepository(IPostgresConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IIdentityRepository
 {
     private const string InsertCredentialSql = """
@@ -32,6 +37,13 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
+    /// <summary>
+    /// Performs the get user by email <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="email">The email value.</param>
+    /// <param name="tenantId">The tenant id value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
@@ -51,6 +63,12 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         }
     }
 
+    /// <summary>
+    /// Performs the get user by id <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="userId">The user id value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         const string sql = """
@@ -67,6 +85,15 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         }
     }
 
+    /// <summary>
+    /// Performs the get credential for user <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="userId">The user id value.</param>
+    /// <param name="type">The type value.</param>
+    /// <param name="providerName">The provider name value.</param>
+    /// <param name="providerKey">The provider key value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<UserCredential?> GetCredentialForUserAsync(Guid userId, ProviderType type, string providerName, string? providerKey = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerName);
@@ -92,6 +119,14 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         }
     }
 
+    /// <summary>
+    /// Performs the get user by provider key <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="type">The type value.</param>
+    /// <param name="providerName">The provider name value.</param>
+    /// <param name="providerKey">The provider key value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<IUser?> GetUserByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerName);
@@ -114,6 +149,12 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         }
     }
 
+    /// <summary>
+    /// Performs the create user <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="user">The user value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
@@ -147,6 +188,12 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         }
     }
 
+    /// <summary>
+    /// Performs the update user <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="user">The user value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task UpdateUserAsync(IUser user, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
@@ -186,6 +233,12 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         }
     }
 
+    /// <summary>
+    /// Performs the create credential <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="credential">The credential value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task CreateCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(credential);
@@ -198,6 +251,12 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         }
     }
 
+    /// <summary>
+    /// Performs the create or replace credential <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="credential">The credential value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task CreateOrReplaceCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(credential);
@@ -210,6 +269,13 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         }
     }
 
+    /// <summary>
+    /// Performs the update credential <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="credential">The credential value.</param>
+    /// <param name="expectedVersion">The expected version value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<bool> UpdateCredentialAsync(UserCredential credential, string expectedVersion, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(credential);
@@ -257,6 +323,13 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         }
     }
 
+    /// <summary>
+    /// Performs the consume credential <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="credentialId">The credential id value.</param>
+    /// <param name="expectedVersion">The expected version value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<bool> ConsumeCredentialAsync(Guid credentialId, string expectedVersion, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(expectedVersion);
@@ -273,6 +346,14 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         }
     }
 
+    /// <summary>
+    /// Performs the revoke credentials <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="userId">The user id value.</param>
+    /// <param name="type">The type value.</param>
+    /// <param name="providerName">The provider name value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<int> RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerName);
@@ -285,7 +366,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
 
         var revokedAt = _timeProvider.GetUtcNow();
         var parameters = new { UserId = userId, Type = type.Value, Name = providerName, RevokedAt = revokedAt, NewVersion = Guid.NewGuid().ToString("N"), RevokedStatus = (int)CredentialStatus.Revoked, ActiveStatus = (int)CredentialStatus.Active };
-        
+
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {

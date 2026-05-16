@@ -15,6 +15,10 @@ public sealed class PostgresSecurityEventSink : ISecurityEventSink, IAsyncDispos
     private readonly Channel<AshlarSecurityEvent> _channel;
     private readonly Task _backgroundTask;
 
+    /// <summary>
+    /// Initializes a new instance of the postgres security event sink class.
+    /// </summary>
+    /// <param name="dataSource">The data source value.</param>
     public PostgresSecurityEventSink(NpgsqlDataSource dataSource)
     {
         _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
@@ -27,7 +31,12 @@ public sealed class PostgresSecurityEventSink : ISecurityEventSink, IAsyncDispos
         _backgroundTask = Task.Run(ProcessChannelAsync);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Records a security event for asynchronous persistence.
+    /// </summary>
+    /// <param name="securityEvent">The security event.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous record operation.</returns>
     public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(securityEvent);
@@ -85,6 +94,10 @@ public sealed class PostgresSecurityEventSink : ISecurityEventSink, IAsyncDispos
         }
     }
 
+    /// <summary>
+    /// Performs the dispose <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public async ValueTask DisposeAsync()
     {
         _channel.Writer.TryComplete();

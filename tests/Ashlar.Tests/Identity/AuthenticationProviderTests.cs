@@ -1,10 +1,9 @@
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
-using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public class AuthenticationProviderTests
+internal sealed class AuthenticationProviderTests
 {
     private sealed class TestProvider : IAuthenticationProvider
     {

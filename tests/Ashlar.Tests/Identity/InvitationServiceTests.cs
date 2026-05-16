@@ -14,7 +14,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public sealed class InvitationServiceTests
+internal sealed class InvitationServiceTests
 {
     private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Email = "existing@example.com", IsActive = true };
 
@@ -608,13 +608,13 @@ public sealed class InvitationServiceTests
         var url = parts.Last();
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
         {
-             throw new AssertionException($"Invalid URL in email body: '{url}'. Body: '{body}'");
+            throw new AssertionException($"Invalid URL in email body: '{url}'. Body: '{body}'");
         }
         var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
         var token = query["t"];
         if (token == null)
         {
-             throw new AssertionException($"Token 't' not found in query string: '{uri.Query}'. URL: '{url}'. Body: '{body}'");
+            throw new AssertionException($"Token 't' not found in query string: '{uri.Query}'. URL: '{url}'. Body: '{body}'");
         }
         return token;
     }

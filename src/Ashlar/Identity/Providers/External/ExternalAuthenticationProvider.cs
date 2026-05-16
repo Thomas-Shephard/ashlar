@@ -3,14 +3,34 @@ using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Providers.External;
 
+/// <summary>
+/// Provides external authentication provider behavior.
+/// </summary>
+/// <param name="supportedType">The supported type value.</param>
+/// <param name="providerName">The provider name value.</param>
 public abstract class ExternalAuthenticationProvider(ProviderType supportedType, string providerName) : IAuthenticationProvider
 {
+    /// <summary>
+    /// Executes the new operation.
+    /// </summary>
     public AuthenticationProviderKey Key { get; } = new(supportedType, providerName);
 
+    /// <summary>
+    /// Gets or sets the protects credentials value.
+    /// </summary>
     public virtual bool ProtectsCredentials => true;
 
+    /// <summary>
+    /// Gets or sets the typical credential length value.
+    /// </summary>
     public virtual int TypicalCredentialLength => 256;
 
+    /// <summary>
+    /// Performs the get provider key operation and returns the result.
+    /// </summary>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="userId">The user id value.</param>
+    /// <returns>The operation result.</returns>
     public virtual string GetProviderKey(IAuthenticationAssertion assertion, Guid userId)
     {
         ArgumentNullException.ThrowIfNull(assertion);
@@ -23,11 +43,25 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType,
         return string.Empty;
     }
 
+    /// <summary>
+    /// Performs the prepare credential value operation and returns the result.
+    /// </summary>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="rawValue">The raw value value.</param>
+    /// <returns>The operation result.</returns>
     public virtual string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue)
     {
         return rawValue;
     }
 
+    /// <summary>
+    /// Performs the find user <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="context">The context value.</param>
+    /// <param name="repository">The repository value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public virtual async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -45,29 +79,36 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType,
             case null:
                 return null;
             case ITenantUser tenantUser:
-            {
-                if (tenantUser.TenantId != context.TenantId)
                 {
-                    return null;
-                }
+                    if (tenantUser.TenantId != context.TenantId)
+                    {
+                        return null;
+                    }
 
-                break;
-            }
+                    break;
+                }
             default:
-            {
-                if (context.TenantId.HasValue)
                 {
-                    // User is a global user (not ITenantUser), but a specific tenant was requested.
-                    return null;
-                }
+                    if (context.TenantId.HasValue)
+                    {
+                        // User is a global user (not ITenantUser), but a specific tenant was requested.
+                        return null;
+                    }
 
-                break;
-            }
+                    break;
+                }
         }
 
         return user;
     }
 
+    /// <summary>
+    /// Performs the authenticate <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="credential">The credential value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public virtual Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(assertion);
@@ -99,14 +140,32 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType,
     }
 }
 
+/// <summary>
+/// Provides oidc authentication provider behavior.
+/// </summary>
+/// <param name="providerName">The provider name value.</param>
 public sealed class OidcAuthenticationProvider(string providerName) : ExternalAuthenticationProvider(ProviderType.Oidc, providerName)
 {
+    /// <summary>
+    /// Gets or sets the typical credential length value.
+    /// </summary>
     public override int TypicalCredentialLength => 512;
 }
 
+/// <summary>
+/// Provides oauth authentication provider behavior.
+/// </summary>
+/// <param name="providerName">The provider name value.</param>
 public sealed class OAuthAuthenticationProvider(string providerName) : ExternalAuthenticationProvider(ProviderType.OAuth, providerName);
 
+/// <summary>
+/// Provides saml2 authentication provider behavior.
+/// </summary>
+/// <param name="providerName">The provider name value.</param>
 public sealed class Saml2AuthenticationProvider(string providerName) : ExternalAuthenticationProvider(ProviderType.Saml2, providerName)
 {
+    /// <summary>
+    /// Gets or sets the typical credential length value.
+    /// </summary>
     public override int TypicalCredentialLength => 3072;
 }

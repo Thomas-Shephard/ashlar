@@ -4,12 +4,22 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity;
 
+/// <summary>
+/// Provides require mfa when credential exists policy evaluator behavior.
+/// </summary>
 public sealed class RequireMfaWhenCredentialExistsPolicyEvaluator : IMfaPolicyEvaluator
 {
     private readonly IIdentityRepository _repository;
     private readonly CredentialBackedMfaPolicyOptions _options;
     private readonly TimeProvider _timeProvider;
 
+    /// <summary>
+    /// Initializes a configured service instance.
+    /// </summary>
+    /// <param name="repository">The repository value.</param>
+    /// <param name="options">The options value.</param>
+    /// <param name="timeProvider">The time provider value.</param>
+    /// <exception cref="OptionsValidationException">Thrown when the configured credential-backed MFA policy options are invalid.</exception>
     public RequireMfaWhenCredentialExistsPolicyEvaluator(
         IIdentityRepository repository,
         IOptions<CredentialBackedMfaPolicyOptions> options,
@@ -29,6 +39,13 @@ public sealed class RequireMfaWhenCredentialExistsPolicyEvaluator : IMfaPolicyEv
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
+    /// <summary>
+    /// Performs the evaluate <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="user">The user value.</param>
+    /// <param name="context">The context value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<MfaPolicyEvaluation> EvaluateAsync(IUser user, AuthenticationContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);

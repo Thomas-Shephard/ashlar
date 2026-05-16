@@ -10,6 +10,11 @@ namespace Ashlar.Identity;
 /// <summary>
 /// Implements provider-neutral authentication session lifecycle operations.
 /// </summary>
+/// <param name="repository">The repository value.</param>
+/// <param name="tokenHasher">The token hasher value.</param>
+/// <param name="tokenGenerator">The token generator value.</param>
+/// <param name="transactionProvider">The transaction provider value.</param>
+/// <param name="dependencies">The dependencies value.</param>
 public sealed class AuthenticationSessionService(
     IAuthenticationSessionRepository repository,
     ISecureTokenHasher tokenHasher,
@@ -18,6 +23,13 @@ public sealed class AuthenticationSessionService(
     AuthenticationSessionServiceDependencies dependencies)
     : IAuthenticationSessionService
 {
+    /// <summary>
+    /// Initializes a configured service instance.
+    /// </summary>
+    /// <param name="repository">The repository value.</param>
+    /// <param name="tokenHasher">The token hasher value.</param>
+    /// <param name="tokenGenerator">The token generator value.</param>
+    /// <param name="transactionProvider">The transaction provider value.</param>
     public AuthenticationSessionService(
         IAuthenticationSessionRepository repository,
         ISecureTokenHasher tokenHasher,
@@ -514,6 +526,14 @@ public sealed class AuthenticationSessionService(
     }
 }
 
+/// <summary>
+/// Represents the authentication session service dependencies data model.
+/// </summary>
+/// <param name="Options">The options value.</param>
+/// <param name="TimeProvider">The time provider value.</param>
+/// <param name="SecurityEventSink">The security event sink value.</param>
+/// <param name="IdentityRepository">The identity repository value.</param>
+/// <param name="NotificationService">The notification service value.</param>
 public sealed record AuthenticationSessionServiceDependencies(
     AuthenticationSessionOptions? Options = null,
     TimeProvider? TimeProvider = null,

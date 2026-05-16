@@ -1,10 +1,26 @@
 namespace Ashlar.Identity.Models;
 
+/// <summary>
+/// Provides user credential behavior.
+/// </summary>
+/// <returns>The operation result.</returns>
 public sealed class UserCredential
 {
+    /// <summary>
+    /// Gets or sets the id value.
+    /// </summary>
     public required Guid Id { get; init; }
+    /// <summary>
+    /// Gets or sets the user id value.
+    /// </summary>
     public required Guid UserId { get; init; }
+    /// <summary>
+    /// Gets or sets the provider type value.
+    /// </summary>
     public required ProviderType ProviderType { get; init; }
+    /// <summary>
+    /// Gets or sets the provider name value.
+    /// </summary>
     public required string ProviderName { get; init; }
 
     /// <summary>
@@ -21,7 +37,8 @@ public sealed class UserCredential
     /// <summary>
     /// Indicates whether the credential is active, not revoked, and has not yet expired.
     /// </summary>
-    /// <param name="now">The reference time to check against, typically UTC now.</param>
+    /// <param name="now">The now value.</param>
+    /// <returns>The operation result.</returns>
     public bool IsAvailable(DateTimeOffset now)
     {
         if (Status != CredentialStatus.Active)
@@ -45,6 +62,7 @@ public sealed class UserCredential
     /// <summary>
     /// Creates a detached copy of this credential.
     /// </summary>
+    /// <returns>The operation result.</returns>
     public UserCredential Clone()
     {
         return new UserCredential

@@ -10,7 +10,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public sealed class SecurityAuditEventTests
+internal sealed class SecurityAuditEventTests
 {
     private static readonly DateTimeOffset TestTime = new(2025, 1, 1, 12, 0, 0, TimeSpan.Zero);
     private static readonly string[] ExpiredAndRevokedEventTypes =

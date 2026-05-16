@@ -13,25 +13,27 @@ public interface IAshlarTransaction : IAsyncDisposable
     /// <summary>
     /// Commits the transaction.
     /// </summary>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     Task CommitAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Rolls back the transaction.
     /// </summary>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     Task RollbackAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Registers an action to be executed only after the transaction has successfully committed.
     /// Actions are executed in the order they were registered.
     /// </summary>
+    /// <param name="action">The action value.</param>
     /// <remarks>
     /// Registered actions are executed after the transaction commit has completed and receive a cancellation token
     /// that is not linked to the caller's commit token. Non-cancellation failures are isolated from later actions
     /// and reported from <see cref="CommitAsync"/> as an <see cref="AggregateException"/> after all registered
     /// actions have been attempted.
     /// </remarks>
-    /// <param name="action">The action to execute.</param>
     void OnCommitted(Func<CancellationToken, Task> action);
 }

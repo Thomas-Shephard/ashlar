@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Ashlar.Postgres.Tests.Identity;
 
-public sealed class PostgresInvitationRepositoryTests : PostgresTestBase
+internal sealed class PostgresInvitationRepositoryTests : PostgresTestBase
 {
     private IServiceProvider _serviceProvider;
 

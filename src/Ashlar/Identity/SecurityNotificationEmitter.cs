@@ -4,8 +4,23 @@ using Ashlar.Identity.Notifications;
 
 namespace Ashlar.Identity;
 
+/// <summary>
+/// Provides security notification emitter behavior.
+/// </summary>
+/// <param name="notificationService">The notification service value.</param>
 public sealed class SecurityNotificationEmitter(ISecurityNotificationService? notificationService)
 {
+    /// <summary>
+    /// Sends a security notification to a user.
+    /// </summary>
+    /// <param name="type">The notification type.</param>
+    /// <param name="user">The recipient user.</param>
+    /// <param name="occurredAt">The occurrence time.</param>
+    /// <param name="context">The authentication context.</param>
+    /// <param name="sessionId">The session id value.</param>
+    /// <param name="metadata">The metadata value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task NotifyAsync(
         SecurityNotificationType type,
         IUser user,
@@ -29,6 +44,17 @@ public sealed class SecurityNotificationEmitter(ISecurityNotificationService? no
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Sends a security notification to an email recipient.
+    /// </summary>
+    /// <param name="type">The notification type.</param>
+    /// <param name="recipientEmail">The recipient email address.</param>
+    /// <param name="occurredAt">The occurrence time.</param>
+    /// <param name="context">The authentication context.</param>
+    /// <param name="sessionId">The session id value.</param>
+    /// <param name="metadata">The metadata value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task NotifyAsync(
         SecurityNotificationType type,
         string recipientEmail,

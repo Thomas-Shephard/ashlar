@@ -4,10 +4,17 @@ using Ashlar.Identity.Models;
 namespace Ashlar.Identity.Providers.External;
 
 /// <summary>
-/// Represents an identity assertion from an external provider (OIDC, SAML, etc.)
+/// Represents authentication data supplied by an external identity provider.
 /// </summary>
 public sealed record ExternalIdentityAssertion : IAuthenticationAssertion
 {
+    /// <summary>
+    /// Initializes a new instance of the external identity assertion class.
+    /// </summary>
+    /// <param name="type">The type value.</param>
+    /// <param name="providerName">The provider name value.</param>
+    /// <param name="providerKey">The provider key value.</param>
+    /// <param name="claims">The claims value.</param>
     public ExternalIdentityAssertion(ProviderType type, string providerName, string providerKey, IDictionary<string, string> claims)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerKey);
@@ -18,9 +25,18 @@ public sealed record ExternalIdentityAssertion : IAuthenticationAssertion
         ProviderIdentity = new AuthenticationProviderKey(type, providerName);
     }
 
+    /// <summary>
+    /// Gets or sets the provider key value.
+    /// </summary>
     public string ProviderKey { get; }
 
+    /// <summary>
+    /// Gets or sets the claims value.
+    /// </summary>
     public IDictionary<string, string> Claims { get; }
 
+    /// <summary>
+    /// Gets or sets the provider identity value.
+    /// </summary>
     public AuthenticationProviderKey ProviderIdentity { get; }
 }

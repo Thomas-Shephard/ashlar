@@ -8,7 +8,7 @@ using Moq;
 
 namespace Ashlar.AspNetCore.Tests;
 
-public sealed class AshlarAuthorizationHandlerTests
+internal sealed class AshlarAuthorizationHandlerTests
 {
     private Mock<Ashlar.Authorization.Abstractions.IAuthorizationEvaluator> _evaluatorMock;
     private Mock<IHttpContextAccessor> _httpContextAccessorMock;

@@ -1,6 +1,6 @@
 namespace Ashlar.Tests;
 
-public sealed class ResultTests
+internal sealed class ResultTests
 {
     [Test]
     public void ImplicitBooleanConversionReflectsSuccess()

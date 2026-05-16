@@ -18,7 +18,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public sealed class MagicLinkSignInTests
+internal sealed class MagicLinkSignInTests
 {
     private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Email = "user@example.com", IsActive = true };
 
@@ -512,8 +512,8 @@ public sealed class MagicLinkSignInTests
 
         public Task<IUser?> GetUserByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default)
         {
-             var credential = Credentials.SingleOrDefault(c => c.ProviderType == type && string.Equals(c.ProviderName, providerName, StringComparison.OrdinalIgnoreCase) && c.ProviderKey == providerKey);
-             return Task.FromResult<IUser?>(credential == null ? null : _users.SingleOrDefault(u => u.Id == credential.UserId));
+            var credential = Credentials.SingleOrDefault(c => c.ProviderType == type && string.Equals(c.ProviderName, providerName, StringComparison.OrdinalIgnoreCase) && c.ProviderKey == providerKey);
+            return Task.FromResult<IUser?>(credential == null ? null : _users.SingleOrDefault(u => u.Id == credential.UserId));
         }
 
         public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default) { _users.Add((User)user); return Task.CompletedTask; }

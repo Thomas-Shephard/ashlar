@@ -4,6 +4,14 @@ using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity;
 
+/// <summary>
+/// Provides authentication pipeline behavior.
+/// </summary>
+/// <param name="providerRegistry">The provider registry value.</param>
+/// <param name="credentialService">The credential service value.</param>
+/// <param name="transactionProvider">The transaction provider value.</param>
+/// <param name="securityEventSink">The security event sink value.</param>
+/// <param name="timeProvider">The time provider value.</param>
 public sealed class AuthenticationPipeline(
     IAuthenticationProviderRegistry providerRegistry,
     ICredentialService credentialService,
@@ -17,6 +25,13 @@ public sealed class AuthenticationPipeline(
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider ?? TimeProvider.System);
 
+    /// <summary>
+    /// Performs the login <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="context">The context value.</param>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<AuthenticationResponse> LoginAsync(AuthenticationContext context, IAuthenticationAssertion assertion, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);

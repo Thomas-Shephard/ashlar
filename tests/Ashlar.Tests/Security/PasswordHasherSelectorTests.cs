@@ -3,7 +3,7 @@ using Ashlar.Tests.Identity;
 
 namespace Ashlar.Tests.Security;
 
-public class PasswordHasherSelectorTests
+internal sealed class PasswordHasherSelectorTests
 {
     [Test]
     public void ConstructorShouldThrowOnNullHashers()

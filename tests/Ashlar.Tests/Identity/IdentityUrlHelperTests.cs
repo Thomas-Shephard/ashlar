@@ -2,7 +2,7 @@ using Ashlar.Identity;
 
 namespace Ashlar.Tests.Identity;
 
-public class IdentityUrlHelperTests
+internal sealed class IdentityUrlHelperTests
 {
     [Test]
     public void ConstructCallbackUrlThrowsArgumentExceptionWhenBaseUriIsNotAbsolute()

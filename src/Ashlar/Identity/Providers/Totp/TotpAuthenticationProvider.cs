@@ -20,6 +20,13 @@ public sealed class TotpAuthenticationProvider : IAuthenticationProvider
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
 
+    /// <summary>
+    /// Initializes a configured service instance.
+    /// </summary>
+    /// <param name="rateLimiter">The rate limiter value.</param>
+    /// <param name="options">The options value.</param>
+    /// <param name="timeProvider">The time provider value.</param>
+    /// <param name="securityEventSink">The security event sink value.</param>
     public TotpAuthenticationProvider(
         IAuthenticationRateLimiter rateLimiter,
         IOptions<TotpOptions> options,
@@ -152,6 +159,9 @@ public sealed class TotpAuthenticationProvider : IAuthenticationProvider
 
     private sealed class TotpMetadata
     {
+        /// <summary>
+        /// Gets or sets the last used step value.
+        /// </summary>
         public long LastUsedStep { get; init; }
     }
 }

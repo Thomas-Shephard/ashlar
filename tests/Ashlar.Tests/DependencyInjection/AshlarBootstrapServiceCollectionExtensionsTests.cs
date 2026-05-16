@@ -8,7 +8,7 @@ using Moq;
 namespace Ashlar.Tests.DependencyInjection;
 
 [TestFixture]
-public class AshlarBootstrapServiceCollectionExtensionsTests
+internal sealed class AshlarBootstrapServiceCollectionExtensionsTests
 {
     [Test]
     public void AddAshlarBootstrapRegistersRequiredServices()

@@ -190,9 +190,10 @@ internal static class AppViews
 
     private static string RenderProjectSection(List<(string Id, string Name, bool HasAccess)> projects)
     {
-        var projectItems = projects.Select(p => {
+        var projectItems = projects.Select(p =>
+        {
             var badge = p.HasAccess ? "<span class=\"badge badge-success\">Manager</span>" : "<span class=\"badge\">No Access</span>";
-            var button = $"""<button class="secondary" onclick="location.href='/projects/{System.Web.HttpUtility.JavaScriptStringEncode(System.Net.WebUtility.UrlEncode(p.Id))}'" { (p.HasAccess ? "" : "disabled") } style="margin-top: 0.5rem; height: 2.5rem;">Manage {System.Net.WebUtility.HtmlEncode(p.Name)}</button>""";
+            var button = $"""<button class="secondary" onclick="location.href='/projects/{System.Web.HttpUtility.JavaScriptStringEncode(System.Net.WebUtility.UrlEncode(p.Id))}'" {(p.HasAccess ? "" : "disabled")} style="margin-top: 0.5rem; height: 2.5rem;">Manage {System.Net.WebUtility.HtmlEncode(p.Name)}</button>""";
 
             return $"""
                 <div style="border-bottom: 1px solid #e5e7eb; padding: 1rem 0;">
@@ -209,7 +210,7 @@ internal static class AppViews
             <div class="card">
                 <h2>Your Projects</h2>
                 <div class="status-box" style="margin-bottom: 0;">
-                    { (projects.Count > 0 ? string.Join("", projectItems) : "No projects found.") }
+                    {(projects.Count > 0 ? string.Join("", projectItems) : "No projects found.")}
                 </div>
             </div>
         """;

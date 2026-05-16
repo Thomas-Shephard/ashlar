@@ -5,6 +5,9 @@ using System.Text.Json;
 
 namespace Ashlar.Authorization;
 
+/// <summary>
+/// Provides documented behavior for this member.
+/// </summary>
 public sealed class AuthorizationGrantService : IAuthorizationGrantService
 {
     private readonly IAuthorizationGrantRepository _repository;
@@ -12,6 +15,11 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
 
+    /// <summary>Provides documented behavior for this member.</summary>
+    /// <param name="repository">The repository value.</param>
+    /// <param name="options">The options value.</param>
+    /// <param name="timeProvider">The time provider value.</param>
+    /// <param name="securityEventSink">The security event sink value.</param>
     public AuthorizationGrantService(
         IAuthorizationGrantRepository repository,
         AuthorizationGrantOptions? options = null,
@@ -29,6 +37,12 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
         _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
     }
 
+    /// <summary>
+    /// Performs the create grant <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -87,7 +101,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
         }
 
         var metadata = string.IsNullOrWhiteSpace(request.Metadata) ? null : request.Metadata;
-        
+
         if (metadata is { Length: > 0 } && metadata.Length > _options.MaxMetadataLength)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -145,6 +159,12 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
         return Result<AuthorizationGrant>.Success(grant);
     }
 
+    /// <summary>
+    /// Performs the revoke grant <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<bool> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -169,6 +189,12 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
         return revoked;
     }
 
+    /// <summary>
+    /// Performs the list grants <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public Task<IReadOnlyList<AuthorizationGrant>> ListGrantsAsync(ListAuthorizationGrantsRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

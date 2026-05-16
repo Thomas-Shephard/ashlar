@@ -3,7 +3,7 @@ using System.Data;
 
 namespace Ashlar.Postgres.Tests;
 
-public sealed class PostgresTransactionManagerTests : PostgresTestBase
+internal sealed class PostgresTransactionManagerTests : PostgresTestBase
 {
     private static readonly int[] ExpectedHookExecutionOrder = [1, 2, 3];
 

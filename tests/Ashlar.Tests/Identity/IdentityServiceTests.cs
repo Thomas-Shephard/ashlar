@@ -10,7 +10,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public class IdentityServiceTests
+internal sealed class IdentityServiceTests
 {
     private Mock<IIdentityRepository> _repositoryMock;
     private Mock<ISecretProtector> _secretProtectorMock;

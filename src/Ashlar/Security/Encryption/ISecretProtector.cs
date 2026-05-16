@@ -11,15 +11,15 @@ public interface ISecretProtector
     /// <summary>
     /// Protects the specified data.
     /// </summary>
-    /// <param name="data">The data to protect.</param>
-    /// <returns>The protected data.</returns>
+    /// <param name="data">The data value.</param>
+    /// <returns>The operation result.</returns>
     byte[] Protect(byte[] data);
 
     /// <summary>
     /// Protects the specified plain text.
     /// </summary>
-    /// <param name="plainText">The text to protect.</param>
-    /// <returns>The protected cipher text (Base64 encoded).</returns>
+    /// <param name="plainText">The plain text value.</param>
+    /// <returns>The operation result.</returns>
     string Protect(string plainText)
     {
         ArgumentNullException.ThrowIfNull(plainText);
@@ -31,16 +31,16 @@ public interface ISecretProtector
     /// <summary>
     /// Unprotects the specified data.
     /// </summary>
-    /// <param name="data">The protected data.</param>
-    /// <returns>The original data.</returns>
+    /// <param name="data">The data value.</param>
+    /// <returns>The operation result.</returns>
     /// <exception cref="System.Security.Cryptography.CryptographicException">Thrown when the data is malformed or decryption fails.</exception>
     byte[] Unprotect(byte[] data);
 
     /// <summary>
     /// Unprotects the specified cipher text.
     /// </summary>
-    /// <param name="cipherText">The protected cipher text (Base64 encoded).</param>
-    /// <returns>The original plain text.</returns>
+    /// <param name="cipherText">The cipher text value.</param>
+    /// <returns>The operation result.</returns>
     /// <exception cref="System.Security.Cryptography.CryptographicException">Thrown when the cipher text is malformed or decryption fails.</exception>
     string Unprotect(string cipherText)
     {

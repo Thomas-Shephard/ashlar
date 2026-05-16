@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Postgres.Tests.DependencyInjection;
 
-public sealed class AshlarPostgresEmailOutboxServiceCollectionExtensionsTests
+internal sealed class AshlarPostgresEmailOutboxServiceCollectionExtensionsTests
 {
     [Test]
     public void AddAshlarPostgresEmailOutboxSenderRegistersRequiredServices()

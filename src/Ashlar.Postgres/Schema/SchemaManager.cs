@@ -9,6 +9,11 @@ internal class SchemaManager(NpgsqlDataSource dataSource)
 {
     private readonly NpgsqlDataSource _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
 
+    /// <summary>
+    /// Performs the initialize <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await EnsureMinimumVersionAsync(cancellationToken);
@@ -50,6 +55,12 @@ internal class SchemaManager(NpgsqlDataSource dataSource)
         }
     }
 
+    /// <summary>
+    /// Performs the get server version <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     [ExcludeFromCodeCoverage]
     protected virtual async Task<string?> GetServerVersionAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
     {

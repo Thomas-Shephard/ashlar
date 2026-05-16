@@ -6,11 +6,22 @@ using Dapper;
 
 namespace Ashlar.Postgres;
 
+/// <summary>
+/// Provides postgres invitation repository behavior.
+/// </summary>
+/// <param name="connectionProvider">The connection provider value.</param>
+/// <param name="timeProvider">The time provider value.</param>
 public sealed class PostgresInvitationRepository(IPostgresConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IInvitationRepository
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
+    /// <summary>
+    /// Performs the create invitation <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="invitation">The invitation value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task CreateInvitationAsync(UserInvitation invitation, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(invitation);
@@ -43,6 +54,12 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         }
     }
 
+    /// <summary>
+    /// Performs the get invitation by token hash <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="tokenHash">The token hash value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<UserInvitation?> GetInvitationByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tokenHash);
@@ -62,6 +79,13 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         }
     }
 
+    /// <summary>
+    /// Performs the update invitation <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="invitation">The invitation value.</param>
+    /// <param name="expectedVersion">The expected version value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<bool> UpdateInvitationAsync(UserInvitation invitation, string expectedVersion, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(invitation);
@@ -103,6 +127,13 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         }
     }
 
+    /// <summary>
+    /// Performs the revoke invitations by email <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="email">The email value.</param>
+    /// <param name="tenantId">The tenant id value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<int> RevokeInvitationsByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);

@@ -8,7 +8,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public sealed class AuthenticationSessionServiceTests
+internal sealed class AuthenticationSessionServiceTests
 {
     private Mock<IAuthenticationSessionRepository> _repositoryMock;
     private Mock<ISecureTokenHasher> _tokenHasherMock;
