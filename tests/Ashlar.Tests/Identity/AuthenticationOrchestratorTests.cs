@@ -667,19 +667,19 @@ public class AuthenticationOrchestratorTests
             .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
 
         _handshakeServiceMock.Setup(h => h.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Failure<AuthenticationHandshake>("Handshake error"));
+            .ReturnsAsync(Result.Failure<AuthenticationHandshake>("handshake_expired"));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
-            Assert.That(result.ErrorMessage, Is.EqualTo("Handshake error"));
+            Assert.That(result.ErrorMessage, Is.EqualTo("Handshake has expired."));
         }
     }
 
     [Test]
-    public async Task VerifyFactorAsyncUsesDefaultErrorWhenHandshakeServiceFailsWithoutMessage()
+    public async Task VerifyFactorAsyncUsesDefaultErrorWhenHandshakeServiceFailsWithUnknownReason()
     {
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.GetHandshakeAsync("token", It.IsAny<CancellationToken>()))
@@ -689,7 +689,7 @@ public class AuthenticationOrchestratorTests
             .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
 
         _handshakeServiceMock.Setup(h => h.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Failure<AuthenticationHandshake>("Factor verification failed."));
+            .ReturnsAsync(Result.Failure<AuthenticationHandshake>("unexpected_internal_reason"));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 

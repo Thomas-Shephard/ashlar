@@ -494,7 +494,7 @@ public sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("Rate limit exceeded."));
+            Assert.That(result.FailureReason, Is.EqualTo("rate_limit_exceeded"));
         }
     }
 

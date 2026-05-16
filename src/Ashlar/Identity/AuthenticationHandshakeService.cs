@@ -323,7 +323,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
             }
         }
 
-        return Result.Failure<AuthenticationHandshake>("Rate limit exceeded.");
+        return Result.Failure<AuthenticationHandshake>("rate_limit_exceeded");
     }
 
     private static Dictionary<string, string>? MergeMetadata(
