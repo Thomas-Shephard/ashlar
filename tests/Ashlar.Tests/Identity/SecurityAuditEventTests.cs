@@ -145,7 +145,11 @@ internal sealed class SecurityAuditEventTests
         var sink = new RecordingSecurityEventSink();
         var repository = new Mock<IIdentityRepository>();
         var protector = new Mock<ISecretProtector>();
-        var service = new CredentialService(repository.Object, protector.Object, new NullTransactionProvider(), timeProvider: new FakeTimeProvider(TestTime), securityEventSink: sink);
+        var service = new CredentialService(
+            repository.Object,
+            protector.Object,
+            new NullTransactionProvider(),
+            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: sink));
         var userId = Guid.NewGuid();
         var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
         var provider = new Mock<IAuthenticationProvider>();
@@ -181,8 +185,7 @@ internal sealed class SecurityAuditEventTests
             repository.Object,
             Mock.Of<ISecretProtector>(),
             new NullTransactionProvider(),
-            timeProvider: new FakeTimeProvider(TestTime),
-            securityEventSink: sink);
+            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: sink));
         var credential = CreateCredential(Guid.NewGuid());
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
         repository.Setup(r => r.ConsumeCredentialAsync(credential.Id, credential.Version, It.IsAny<CancellationToken>()))
@@ -210,8 +213,7 @@ internal sealed class SecurityAuditEventTests
             repository.Object,
             protector.Object,
             new NullTransactionProvider(),
-            timeProvider: new FakeTimeProvider(TestTime),
-            securityEventSink: sink);
+            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: sink));
         var userId = Guid.NewGuid();
         var provider = new Mock<IAuthenticationProvider>();
         provider.SetupGet(p => p.Key).Returns(AuthenticationProviderKey.Local);

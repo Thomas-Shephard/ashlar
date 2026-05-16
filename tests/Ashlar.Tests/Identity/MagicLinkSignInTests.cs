@@ -437,7 +437,11 @@ internal sealed class MagicLinkSignInTests
         var provider = new MagicLinkAuthenticationProvider(tokenHasher);
         var registry = new AuthenticationProviderRegistry([provider]);
         var transactionProvider = new NullTransactionProvider();
-        var credentialService = new CredentialService(repository, Mock.Of<ISecretProtector>(), transactionProvider, timeProvider: time, securityEventSink: audit);
+        var credentialService = new CredentialService(
+            repository,
+            Mock.Of<ISecretProtector>(),
+            transactionProvider,
+            new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: audit));
         var pipeline = new AuthenticationPipeline(registry, credentialService, transactionProvider, audit, time);
         var identity = new IdentityService(repository, registry, credentialService, pipeline, transactionProvider, audit, time);
         var core = new IdentityContext(repository, identity, transactionProvider);

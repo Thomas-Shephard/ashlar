@@ -23,12 +23,6 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
     ILogger<PostgresEmailOutboxDispatcher<TTransport>>? logger = null) : IEmailOutboxDispatcher
     where TTransport : IEmailTransport
 {
-    private static readonly Action<ILogger, Guid, int, bool, Exception?> EmailOutboxDeliveryFailed =
-        LoggerMessage.Define<Guid, int, bool>(
-            LogLevel.Warning,
-            new EventId(1000, nameof(EmailOutboxDeliveryFailed)),
-            "Email outbox delivery failed. MessageId={MessageId} AttemptCount={AttemptCount} FinalFailure={FinalFailure}");
-
     private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     private readonly PostgresEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
@@ -118,7 +112,7 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
         catch (Exception ex)
         {
             var attemptCount = entry.AttemptCount + 1;
-            EmailOutboxDeliveryFailed(_logger, entry.Id, attemptCount, attemptCount >= _options.MaxAttempts, ex);
+            PostgresEmailOutboxDispatcherLog.EmailOutboxDeliveryFailed(_logger, entry.Id, attemptCount, attemptCount >= _options.MaxAttempts, ex);
             await MarkAsFailedAsync(entry, ex, provider, CancellationToken.None);
         }
     }
@@ -256,4 +250,13 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
         /// </summary>
         public int AttemptCount { get; init; }
     }
+}
+
+internal static class PostgresEmailOutboxDispatcherLog
+{
+    public static readonly Action<ILogger, Guid, int, bool, Exception?> EmailOutboxDeliveryFailed =
+        LoggerMessage.Define<Guid, int, bool>(
+            LogLevel.Warning,
+            new EventId(1000, nameof(EmailOutboxDeliveryFailed)),
+            "Email outbox delivery failed. MessageId={MessageId} AttemptCount={AttemptCount} FinalFailure={FinalFailure}");
 }

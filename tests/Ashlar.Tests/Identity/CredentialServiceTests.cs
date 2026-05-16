@@ -27,7 +27,11 @@ internal sealed class CredentialServiceTests
         _secretProtectorMock.Setup(s => s.Protect(It.IsAny<string>())).Returns<string>(s => $"protected({s})");
         _secretProtectorMock.Setup(s => s.Unprotect(It.IsAny<string>())).Returns<string>(s => s.StartsWith("protected(", StringComparison.Ordinal) ? s[10..^1] : s);
 
-        _service = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object, new NullTransactionProvider(), timeProvider: _timeProvider);
+        _service = new CredentialService(
+            _repositoryMock.Object,
+            _secretProtectorMock.Object,
+            new NullTransactionProvider(),
+            new CredentialServiceDependencies(TimeProvider: _timeProvider));
     }
 
     [Test]
@@ -740,8 +744,7 @@ internal sealed class CredentialServiceTests
             _repositoryMock.Object,
             _secretProtectorMock.Object,
             new NullTransactionProvider(),
-            timeProvider: _timeProvider,
-            logger: logger);
+            new CredentialServiceDependencies(TimeProvider: _timeProvider, Logger: logger));
 
         var (_, resolvedCredential, _, unprotectFailed) = await service.ResolveAsync(userId, assertionMock.Object, providerMock.Object);
 
@@ -786,8 +789,7 @@ internal sealed class CredentialServiceTests
             _repositoryMock.Object,
             _secretProtectorMock.Object,
             new NullTransactionProvider(),
-            timeProvider: _timeProvider,
-            logger: logger);
+            new CredentialServiceDependencies(TimeProvider: _timeProvider, Logger: logger));
 
         var (_, resolvedCredential, originalCredential, unprotectFailed) = await service.ResolveAsync(userId, assertionMock.Object, providerMock.Object);
 
@@ -1185,6 +1187,13 @@ internal sealed class CredentialServiceTests
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.Throws<ArgumentNullException>(() => _ = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object, null!));
+    }
+
+    [Test]
+    public void ConstructorShouldThrowOnNullDependencies()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _ = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object, new NullTransactionProvider(), null!));
     }
 
     private async Task<UserCredential?> ResolveCredentialAsync(UserCredential credential)

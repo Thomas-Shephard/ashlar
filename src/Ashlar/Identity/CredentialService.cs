@@ -14,26 +14,18 @@ namespace Ashlar.Identity;
 /// <param name="repository">The repository value.</param>
 /// <param name="secretProtector">The secret protector value.</param>
 /// <param name="transactionProvider">The transaction provider value.</param>
-/// <param name="options">The options value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-/// <param name="securityEventSink">The security event sink value.</param>
-/// <param name="logger">The logger used for operational messages emitted directly by this service.</param>
-/// <param name="loggerFactory">The logger factory used only to create the embedded security event emitter logger.</param>
+/// <param name="dependencies">The dependencies value.</param>
 /// <remarks>
 /// This service implements timing attack resistance by ensuring that unprotection operations
 /// are performed even when a user or credential is not found, using provider-specific dummy values.
-/// Pass both <paramref name="logger" /> and <paramref name="loggerFactory" /> when constructing this service manually and operational
+/// Configure both dependency log members when constructing this service manually and operational
 /// logging is desired for both credential operations and security event sink failures.
 /// </remarks>
 public sealed class CredentialService(
     IIdentityRepository repository,
     ISecretProtector secretProtector,
     IAshlarTransactionProvider transactionProvider,
-    IdentityServiceOptions? options = null,
-    TimeProvider? timeProvider = null,
-    ISecurityEventSink? securityEventSink = null,
-    ILogger<CredentialService>? logger = null,
-    ILoggerFactory? loggerFactory = null)
+    CredentialServiceDependencies dependencies)
     : ICredentialService
 {
     private static readonly Action<ILogger, Guid, Guid, string, string, Exception?> CredentialProtectionFailedRequired =
@@ -82,11 +74,33 @@ public sealed class CredentialService(
     private readonly IIdentityRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly ISecretProtector _secretProtector = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
-    private readonly IdentityServiceOptions _options = options ?? new IdentityServiceOptions();
-    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
-    private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider ?? TimeProvider.System, loggerFactory);
-    private readonly ILogger<CredentialService> _logger = logger ?? NullLogger<CredentialService>.Instance;
+    private readonly IdentityServiceOptions _options = ValidateDependencies(dependencies).Options ?? new IdentityServiceOptions();
+    private readonly TimeProvider _timeProvider = ValidateDependencies(dependencies).TimeProvider ?? TimeProvider.System;
+    private readonly SecurityEventEmitter _securityEvents = new(
+        ValidateDependencies(dependencies).SecurityEventSink,
+        ValidateDependencies(dependencies).TimeProvider ?? TimeProvider.System,
+        ValidateDependencies(dependencies).LoggerFactory);
+    private readonly ILogger<CredentialService> _logger = ValidateDependencies(dependencies).Logger ?? NullLogger<CredentialService>.Instance;
     private readonly ConcurrentDictionary<int, string> _dummyValues = new();
+
+    /// <summary>
+    /// Initializes a configured service instance.
+    /// </summary>
+    /// <param name="repository">The repository value.</param>
+    /// <param name="secretProtector">The secret protector value.</param>
+    /// <param name="transactionProvider">The transaction provider value.</param>
+    public CredentialService(
+        IIdentityRepository repository,
+        ISecretProtector secretProtector,
+        IAshlarTransactionProvider transactionProvider)
+        : this(repository, secretProtector, transactionProvider, new CredentialServiceDependencies())
+    {
+    }
+
+    private static CredentialServiceDependencies ValidateDependencies(CredentialServiceDependencies? dependencies)
+    {
+        return dependencies ?? throw new ArgumentNullException(nameof(dependencies));
+    }
     /// <inheritdoc />
     public async Task<(IUser? User, UserCredential? Credential, UserCredential? OriginalCredential, bool UnprotectFailed)> ResolveAsync(
         AuthenticationContext context,
@@ -601,3 +615,18 @@ public sealed class CredentialService(
         }, cancellationToken);
     }
 }
+
+/// <summary>
+/// Represents the credential service dependencies data model.
+/// </summary>
+/// <param name="Options">The options value.</param>
+/// <param name="TimeProvider">The time provider value.</param>
+/// <param name="SecurityEventSink">The security event sink value.</param>
+/// <param name="Logger">Receives operational messages emitted directly by the credential service.</param>
+/// <param name="LoggerFactory">Creates diagnostics for embedded security event sink failures.</param>
+public sealed record CredentialServiceDependencies(
+    IdentityServiceOptions? Options = null,
+    TimeProvider? TimeProvider = null,
+    ISecurityEventSink? SecurityEventSink = null,
+    ILogger<CredentialService>? Logger = null,
+    ILoggerFactory? LoggerFactory = null);
