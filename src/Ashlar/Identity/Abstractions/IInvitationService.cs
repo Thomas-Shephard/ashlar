@@ -3,33 +3,35 @@ using Ashlar.Identity.Models;
 namespace Ashlar.Identity.Abstractions;
 
 /// <summary>
-/// Defines the contract for iinvitation service operations.
+/// Creates, accepts, and revokes user invitations.
 /// </summary>
 public interface IInvitationService
 {
     /// <summary>
-    /// Performs the create invitation <see langword="async" /> operation and returns the result.
+    /// Creates an invitation and sends the recipient an acceptance link.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="callbackBaseUri">The callback base uri value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">The invitation details.</param>
+    /// <param name="callbackBaseUri">The callback URI that receives the invitation token as a query parameter.</param>
+    /// <param name="context">Optional request context for auditing and notifications.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>A result describing whether the invitation was created.</returns>
     Task<Result> CreateInvitationAsync(CreateInvitationRequest request, Uri callbackBaseUri, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
+
     /// <summary>
-    /// Performs the accept invitation <see langword="async" /> operation and returns the result.
+    /// Accepts an invitation token and creates the invited user.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">The invitation acceptance details.</param>
+    /// <param name="context">Optional request context for auditing and notifications.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>The created user ID when the invitation is accepted.</returns>
     Task<Result<Guid>> AcceptInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
+
     /// <summary>
-    /// Performs the revoke invitations <see langword="async" /> operation and returns the result.
+    /// Revokes pending invitations for an email address and optional tenant.
     /// </summary>
-    /// <param name="email">The email value.</param>
-    /// <param name="tenantId">The tenant id value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="email">The invited email address.</param>
+    /// <param name="tenantId">The tenant to revoke invitations for, or <see langword="null" /> for global invitations.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>A result describing whether pending invitations were revoked.</returns>
     Task<Result> RevokeInvitationsAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default);
 }

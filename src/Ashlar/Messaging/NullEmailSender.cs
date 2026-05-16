@@ -6,11 +6,10 @@ namespace Ashlar.Messaging;
 public sealed class NullEmailSender : IEmailSender
 {
     /// <summary>
-    /// Performs the send <see langword="async" /> operation and returns the result.
+    /// Validates the message and completes without delivering it.
     /// </summary>
-    /// <param name="message">The message value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="message">The message to validate.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
     public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(message);

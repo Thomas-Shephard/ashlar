@@ -1,5 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <Description>Core identity, authentication, authorization, messaging, and security primitives for .NET applications.</Description>
+    <PackageTags>ashlar;identity;authentication;authorization;security</PackageTags>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />

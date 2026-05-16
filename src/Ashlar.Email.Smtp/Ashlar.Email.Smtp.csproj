@@ -1,5 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <Description>SMTP email delivery integration for Ashlar using MailKit.</Description>
+    <PackageTags>ashlar;smtp;email;mailkit;authentication;security</PackageTags>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="MailKit" />
     <PackageReference Include="MimeKit" />

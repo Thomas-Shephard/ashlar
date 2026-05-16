@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Models;
 
 /// <summary>
-/// Represents the struct data model.
+/// Identifies the category of an authentication provider or stored credential.
 /// </summary>
 public readonly record struct ProviderType
 {
@@ -11,7 +11,7 @@ public readonly record struct ProviderType
     public const string UnknownValue = "UNKNOWN";
 
     /// <summary>
-    /// Executes the invalid operation exception operation.
+    /// Gets the normalized provider type value.
     /// </summary>
     public string Value => field ?? throw new InvalidOperationException("ProviderType must be initialized with a non-empty value.");
 
@@ -27,67 +27,58 @@ public readonly record struct ProviderType
     }
 
     /// <summary>
-    /// Performs the new operation and returns the result.
+    /// Local interactive credentials such as passwords.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static readonly ProviderType Local = new(nameof(Local));
     /// <summary>
-    /// Performs the new operation and returns the result.
+    /// Internal system-issued credentials.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static readonly ProviderType Internal = new(nameof(Internal));
     /// <summary>
-    /// Performs the new operation and returns the result.
+    /// MFA credentials.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static readonly ProviderType Mfa = new(nameof(Mfa));
     /// <summary>
-    /// Performs the new operation and returns the result.
+    /// Passwordless one-time email code credentials.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static readonly ProviderType EmailCode = new(nameof(EmailCode));
     /// <summary>
-    /// Performs the new operation and returns the result.
+    /// Passwordless magic-link credentials.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static readonly ProviderType MagicLink = new(nameof(MagicLink));
     /// <summary>
-    /// Performs the new operation and returns the result.
+    /// Recovery code credentials.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static readonly ProviderType RecoveryCode = new(nameof(RecoveryCode));
     /// <summary>
-    /// Performs the new operation and returns the result.
+    /// OAuth credentials.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static readonly ProviderType OAuth = new(nameof(OAuth));
     /// <summary>
-    /// Performs the new operation and returns the result.
+    /// OpenID Connect credentials.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static readonly ProviderType Oidc = new(nameof(Oidc));
     /// <summary>
-    /// Performs the new operation and returns the result.
+    /// SAML 2.0 credentials.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static readonly ProviderType Saml2 = new(nameof(Saml2));
 
     /// <summary>
-    /// Executes the to string operation.
+    /// Returns the normalized provider type value.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>The normalized provider type value.</returns>
     public override string ToString() => Value;
 
     /// <summary>
-    /// Executes the string operation.
+    /// Converts a provider type to its normalized string value.
     /// </summary>
-    /// <param name="type">The type value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="type">The provider type to convert.</param>
+    /// <returns>The normalized provider type value.</returns>
     public static implicit operator string(ProviderType type) => type.Value;
     /// <summary>
-    /// Executes the provider type operation.
+    /// Creates a provider type from a non-empty string.
     /// </summary>
     /// <param name="value">The provider type value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The provider type.</returns>
     public static implicit operator ProviderType(string value) => new(value);
 }

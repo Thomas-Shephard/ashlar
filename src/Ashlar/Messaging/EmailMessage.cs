@@ -8,13 +8,13 @@ namespace Ashlar.Messaging;
 public sealed record EmailMessage
 {
     /// <summary>
-    /// Initializes a configured service instance.
+    /// Creates an email message.
     /// </summary>
-    /// <param name="to">The to value.</param>
-    /// <param name="subject">The subject value.</param>
-    /// <param name="textBody">The text body value.</param>
-    /// <param name="htmlBody">The html body value.</param>
-    /// <param name="options">The options value.</param>
+    /// <param name="to">The recipient address.</param>
+    /// <param name="subject">The message subject.</param>
+    /// <param name="textBody">The plain text body.</param>
+    /// <param name="htmlBody">The HTML body.</param>
+    /// <param name="options">Optional sender, routing, headers, and metadata.</param>
     public EmailMessage(
         string to,
         string subject,
@@ -100,32 +100,32 @@ public sealed record EmailMessage
     }
 
     /// <summary>
-    /// Gets or sets the to value.
+    /// Gets the recipient address.
     /// </summary>
     public string To { get; }
 
     /// <summary>
-    /// Gets or sets the subject value.
+    /// Gets the message subject.
     /// </summary>
     public string Subject { get; }
 
     /// <summary>
-    /// Gets or sets the text body value.
+    /// Gets the plain text body.
     /// </summary>
     public string? TextBody { get; }
 
     /// <summary>
-    /// Gets or sets the html body value.
+    /// Gets the HTML body.
     /// </summary>
     public string? HtmlBody { get; }
 
     /// <summary>
-    /// Gets or sets the from value.
+    /// Gets the optional sender address.
     /// </summary>
     public string? From { get; }
 
     /// <summary>
-    /// Gets or sets the reply to value.
+    /// Gets the optional reply-to address.
     /// </summary>
     public string? ReplyTo { get; }
 

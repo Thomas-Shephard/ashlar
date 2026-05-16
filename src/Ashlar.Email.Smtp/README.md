@@ -1,6 +1,6 @@
 # Ashlar.Email.Smtp
 
-SMTP email transport for Ashlar using MailKit.
+SMTP email delivery for Ashlar using MailKit. Use it as a direct `IEmailSender` or as the transport for the PostgreSQL email outbox.
 
 ## Installation
 
@@ -70,3 +70,9 @@ services.AddAshlarPostgresEmailOutboxHostedService<SmtpEmailTransport>();
 - Passwords are never logged.
 - Exceptions are sanitized to avoid leaking credentials.
 - Email headers are validated against injection attacks.
+
+## Related Packages
+
+- `Ashlar`: Core identity, authorization, messaging, and security primitives.
+- `Ashlar.Postgres`: PostgreSQL persistence and email outbox support.
+- `Ashlar.AspNetCore`: ASP.NET Core session authentication and authorization integration.
