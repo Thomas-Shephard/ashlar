@@ -26,7 +26,11 @@ internal static partial class AdminEndpoints
             var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
             await using (connection)
             {
-                var users = await connection.Connection.QueryAsync("SELECT id, email, name FROM ashlar_users", transaction: connection.Transaction);
+                var users = await connection.Connection.QueryAsync(new CommandDefinition(
+                    "SELECT id, email, name FROM ashlar_users",
+                    transaction: connection.Transaction,
+                    cancellationToken: cancellationToken));
+
                 return Results.Ok(users);
             }
         }).RequireAuthorization(AdminPolicy);
@@ -38,7 +42,11 @@ internal static partial class AdminEndpoints
             var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
             await using (connection)
             {
-                var projects = await connection.Connection.QueryAsync("SELECT id, name FROM sample_projects ORDER BY created_at", transaction: connection.Transaction);
+                var projects = await connection.Connection.QueryAsync(new CommandDefinition(
+                    "SELECT id, name FROM sample_projects ORDER BY created_at",
+                    transaction: connection.Transaction,
+                    cancellationToken: cancellationToken));
+
                 return Results.Ok(projects);
             }
         }).RequireAuthorization(AdminPolicy);
@@ -61,10 +69,11 @@ internal static partial class AdminEndpoints
             var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
             await using (connection)
             {
-                var rows = await connection.Connection.ExecuteAsync(
+                var rows = await connection.Connection.ExecuteAsync(new CommandDefinition(
                     "INSERT INTO sample_projects (id, name) VALUES (@Id, @Name) ON CONFLICT DO NOTHING",
                     new { request.Id, request.Name },
-                    transaction: connection.Transaction);
+                    transaction: connection.Transaction,
+                    cancellationToken: cancellationToken));
                 
                 if (connection.Transaction != null)
                 {

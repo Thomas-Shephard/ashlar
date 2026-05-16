@@ -23,9 +23,7 @@ internal static class HomeEndpoints
         {
             var status = await services.Bootstrap.GetStatusAsync(cancellationToken);
             var isAuthenticated = user.Identity?.IsAuthenticated ?? false;
-            string? userEmail = null;
             string? userName = null;
-            bool isEmailVerified = false;
             bool isAdmin = false;
             var projectsWithAccess = new List<(string Id, string Name, bool HasAccess)>();
 
@@ -33,18 +31,17 @@ internal static class HomeEndpoints
             {
                 var userId = user.GetAshlarUserId();
                 var ashlarUser = await services.Users.GetUserByIdAsync(userId, cancellationToken);
-                userEmail = ashlarUser?.Email;
                 userName = ashlarUser?.Name;
-                isEmailVerified = ashlarUser?.EmailVerifiedAt.HasValue ?? false;
 
                 isAdmin = (await services.Auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), cancellationToken)).Succeeded;
 
                 var connection = await services.ConnectionProvider.GetConnectionAsync(cancellationToken);
                 await using (connection)
                 {
-                    var projects = await connection.Connection.QueryAsync<(string Id, string Name)>(
+                    var projects = await connection.Connection.QueryAsync<(string Id, string Name)>(new CommandDefinition(
                         "SELECT id, name FROM sample_projects ORDER BY created_at",
-                        transaction: connection.Transaction);
+                        transaction: connection.Transaction,
+                        cancellationToken: cancellationToken));
 
                     var userGrants = await services.Grants.ListGrantsAsync(new ListAuthorizationGrantsRequest(
                         UserId: userId,
@@ -63,7 +60,7 @@ internal static class HomeEndpoints
                 }
             }
 
-            return AppViews.RenderDashboard(status, isAuthenticated, userEmail, userName, isEmailVerified, isAdmin, projectsWithAccess);
+            return AppViews.RenderDashboard(status, isAuthenticated, userName, isAdmin, projectsWithAccess);
         });
     }
 

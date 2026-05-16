@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Ashlar.Messaging;
 using Ashlar.Postgres;
+using Dapper;
 using Testcontainers.PostgreSql;
 
 namespace Ashlar.Sample.AspNetCore;
@@ -34,7 +35,6 @@ internal sealed record MfaVerifyRequest(string HandshakeToken, string Code);
 internal sealed record ProjectGrantRequest(Guid UserId);
 internal sealed record EmailCodeRequest(string Email);
 internal sealed record EmailCodeVerifyRequest(string Email, string Code);
-internal sealed record SampleEmailVerificationRequest(string Email);
 internal sealed record SampleEmailChangeRequest(string NewEmail);
 internal sealed record SampleEmailChangeConfirmRequest(string Token);
 internal sealed record SampleEmailVerificationConfirmRequest(string Token);
@@ -81,7 +81,7 @@ internal static class SampleSchemaInitializer
         var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connection)
         {
-            await Dapper.SqlMapper.ExecuteAsync(connection.Connection, """
+            await connection.Connection.ExecuteAsync(new CommandDefinition("""
                 CREATE TABLE IF NOT EXISTS sample_projects (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
@@ -91,7 +91,7 @@ internal static class SampleSchemaInitializer
                 INSERT INTO sample_projects (id, name) 
                 VALUES ('alpha', 'Project Alpha'), ('beta', 'Project Beta') 
                 ON CONFLICT DO NOTHING;
-            """, transaction: connection.Transaction);
+            """, transaction: connection.Transaction, cancellationToken: cancellationToken));
 
             if (connection.Transaction != null)
             {

@@ -51,11 +51,11 @@ dotnet run --project samples/Ashlar.Sample.AspNetCore/Ashlar.Sample.AspNetCore.c
 Navigate to `http://localhost:5000` in your browser.
 
 1. **Bootstrap**: Since the system starts uninitialized, you will see a bootstrap form. Enter an email and username to initialize the system and automatically sign in as the first administrator.
-2. **Dashboard**: Once signed in, you can view your profile, manage MFA settings, and perform administrative tasks.
-3. **MFA Setup**: Go to "MFA Settings" to enroll in TOTP. A QR code will be generated for your authenticator app. After verifying your first code, you can also generate recovery codes.
+2. **Dashboard**: Once signed in, you can view your project access and navigate to account or administration tasks.
+3. **MFA Setup**: Go to Account → Security to enroll in TOTP. A QR code will be generated for your authenticator app. After verifying your first code, you can also generate recovery codes.
 4. **Email Verification**: If your email is unverified, click "Resend Verification Email" and check the console for the link.
 5. **Email Change**: Use "Change Email" in your profile to request a new email address. Confirm the change via the link in the console.
-6. **Session Management**: View your active sessions at the bottom of the dashboard. You can revoke specific sessions or all other sessions.
+6. **Session Management**: Go to Account → Security to view your active sessions. You can revoke specific sessions or all other sessions.
 7. **Invitations**: As an administrator, you can invite new users by entering their email address.
 8. **Accepting Invitations**: Check the application console to find the (simulated) invitation email. Click the link provided to join the application. You will be automatically signed in as the new user.
 9. **Authorization**: Use the administration section to grant "project.manage" permissions to other users for the "alpha" or "beta" projects. The dashboard dynamically updates to show where you have manager access.

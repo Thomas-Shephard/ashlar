@@ -107,7 +107,7 @@ internal static class AppViews
         </script>
     """;
 
-    public static IResult RenderDashboard(BootstrapStatus status, bool isAuthenticated, string? userEmail, string? userName, bool isEmailVerified, bool isAdmin, List<(string Id, string Name, bool HasAccess)> projects)
+    public static IResult RenderDashboard(BootstrapStatus status, bool isAuthenticated, string? userName, bool isAdmin, List<(string Id, string Name, bool HasAccess)> projects)
     {
         var bootstrapSection = RenderBootstrapSection(status, isAuthenticated);
         var authSection = RenderAuthSection(status, isAuthenticated, userName);
@@ -386,10 +386,27 @@ internal static class AppViews
                 }
 
                 const loadSessions = async () => {
-                    const response = await fetch('/api/sessions');
-                    const sessions = await response.json();
                     const list = document.getElementById('sessionList');
                     const revokeOthersBtn = document.getElementById('revokeOthersBtn');
+                    const showSessionError = () => {
+                        list.innerHTML = '<div class="status-box">Unable to load active sessions.</div>';
+                        revokeOthersBtn.classList.add('hidden');
+                    };
+
+                    const response = await fetch('/api/sessions');
+                    if (!response.ok || !response.headers.get('Content-Type')?.includes('application/json')) {
+                        showSessionError();
+                        return;
+                    }
+
+                    let sessions = [];
+                    try {
+                        sessions = await response.json();
+                    } catch (err) {
+                        showSessionError();
+                        return;
+                    }
+
                     list.innerHTML = '';
                     if (sessions.length === 0) { list.innerHTML = '<div class="status-box">No active sessions found.</div>'; revokeOthersBtn.classList.add('hidden'); return; }
 
