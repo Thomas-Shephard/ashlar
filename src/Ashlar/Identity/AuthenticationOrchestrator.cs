@@ -1,5 +1,7 @@
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity;
@@ -11,17 +13,38 @@ namespace Ashlar.Identity;
 /// <param name="handshakeService">The handshake service value.</param>
 /// <param name="policyEvaluator">The policy evaluator value.</param>
 /// <param name="globalOptions">The global options value.</param>
+/// <param name="logger">The logger value.</param>
 public sealed class AuthenticationOrchestrator(
     IAuthenticationPipeline pipeline,
     IAuthenticationHandshakeService handshakeService,
     IMfaPolicyEvaluator policyEvaluator,
-    IOptions<MfaOrchestrationOptions>? globalOptions = null)
+    IOptions<MfaOrchestrationOptions>? globalOptions = null,
+    ILogger<AuthenticationOrchestrator>? logger = null)
     : IAuthenticationOrchestrator
 {
+    private static readonly Action<ILogger, string, Exception?> MfaFactorVerificationRejected =
+        LoggerMessage.Define<string>(
+            LogLevel.Debug,
+            new EventId(1000, nameof(MfaFactorVerificationRejected)),
+            "MFA factor verification rejected. Reason={Reason}");
+
+    private static readonly Action<ILogger, Guid, string, Exception?> MfaHandshakeFactorVerificationRejected =
+        LoggerMessage.Define<Guid, string>(
+            LogLevel.Debug,
+            new EventId(1001, nameof(MfaHandshakeFactorVerificationRejected)),
+            "MFA factor verification rejected for handshake. UserId={UserId} Reason={Reason}");
+
+    private static readonly Action<ILogger, Guid, string?, Exception?> MfaHandshakeOperationFailed =
+        LoggerMessage.Define<Guid, string?>(
+            LogLevel.Warning,
+            new EventId(1002, nameof(MfaHandshakeOperationFailed)),
+            "MFA handshake operation failed. UserId={UserId} FailureReason={FailureReason}");
+
     private readonly IAuthenticationPipeline _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
     private readonly IAuthenticationHandshakeService _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
     private readonly IMfaPolicyEvaluator _policyEvaluator = policyEvaluator ?? throw new ArgumentNullException(nameof(policyEvaluator));
     private readonly MfaOrchestrationOptions _globalOptions = globalOptions?.Value ?? new MfaOrchestrationOptions();
+    private readonly ILogger<AuthenticationOrchestrator> _logger = logger ?? NullLogger<AuthenticationOrchestrator>.Instance;
 
     public async Task<MfaAuthenticationResult> AuthenticateAsync(
         AuthenticationContext context,
@@ -77,21 +100,25 @@ public sealed class AuthenticationOrchestrator(
         var handshake = await _handshakeService.GetHandshakeAsync(handshakeToken, cancellationToken);
         if (handshake == null)
         {
+            MfaFactorVerificationRejected(_logger, "handshake_not_found", null);
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Handshake not found.");
         }
 
         if (!TryResolveRequiredFactor(handshake, factorType, out var resolvedFactorType))
         {
+            MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "invalid_factor_type", null);
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Invalid factor type.");
         }
 
         if (handshake.VerifiedFactors.Any(verifiedFactor => FactorsMatch(verifiedFactor, resolvedFactorType)))
         {
+            MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "factor_already_verified", null);
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Factor already verified.");
         }
 
         if (!IsAssertionAuthorizedForFactor(assertion, resolvedFactorType))
         {
+            MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "assertion_not_authorized_for_factor", null);
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Factor verification failed.");
         }
 
@@ -99,6 +126,7 @@ public sealed class AuthenticationOrchestrator(
         var response = await _pipeline.LoginAsync(factorContext, assertion, cancellationToken);
         if (!response.Succeeded || response.User?.Id != handshake.UserId)
         {
+            MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "factor_authentication_failed", null);
             var errorMessage = response.Status == AuthenticationStatus.Disabled ? "User is disabled." : "Factor verification failed.";
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: errorMessage);
         }
@@ -119,6 +147,7 @@ public sealed class AuthenticationOrchestrator(
 
         if (!result.Succeeded || result.Value == null)
         {
+            MfaHandshakeOperationFailed(_logger, handshake.UserId, result.FailureReason, null);
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: GetHandshakeVerificationFailureMessage(result.FailureReason));
         }
 
@@ -156,6 +185,7 @@ public sealed class AuthenticationOrchestrator(
         var requiredFactors = ResolveRequiredFactors(policyEvaluation, response.Claims, options.ProviderFactorsClaimName);
         if (requiredFactors.Count == 0)
         {
+            MfaHandshakeOperationFailed(_logger, user.Id, "no_factors_configured", null);
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: "MFA is required but no factors are configured.");
         }
 
@@ -165,6 +195,7 @@ public sealed class AuthenticationOrchestrator(
 
         if (!result.Succeeded)
         {
+            MfaHandshakeOperationFailed(_logger, user.Id, result.FailureReason, null);
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: GetHandshakeCreationFailureMessage(result.FailureReason));
         }
 

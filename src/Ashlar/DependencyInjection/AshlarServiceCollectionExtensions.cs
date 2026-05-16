@@ -81,7 +81,9 @@ public static class AshlarServiceCollectionExtensions
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>(),
             provider.GetService<IIdentityRepository>(),
-            provider.GetService<ISecurityNotificationService>()));
+            provider.GetService<ISecurityNotificationService>(),
+            provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationSessionService>>(),
+            provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()));
         services.TryAddScoped<IAuthenticationSessionService, AuthenticationSessionService>();
         services.TryAddScoped<IdentityContext>();
         services.TryAddScoped(provider => new IdentityInfrastructureContext(

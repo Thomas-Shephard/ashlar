@@ -377,6 +377,34 @@ internal sealed class SecurityAuditEventTests
     }
 
     [Test]
+    public async Task AuditSinkExceptionWithUninitializedProviderTypeDoesNotFailLogin()
+    {
+        var sink = new ThrowingSecurityEventSink();
+        var registry = new Mock<IAuthenticationProviderRegistry>();
+        var credentialService = new Mock<ICredentialService>();
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.SetupGet(p => p.Key).Returns(default(AuthenticationProviderKey));
+        var assertion = new TestAssertion(default);
+        var provider = providerMock.Object;
+        registry.Setup(r => r.TryGetProvider(assertion, out provider)).Returns(true);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var credential = CreateCredential(user.Id);
+        var context = CreateContext();
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
+        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+        credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        var pipeline = new AuthenticationPipeline(registry.Object, credentialService.Object, new NullTransactionProvider(), sink, new FakeTimeProvider(TestTime));
+
+        var login = await pipeline.LoginAsync(context, assertion);
+
+        Assert.That(login.Succeeded, Is.True);
+    }
+
+    [Test]
     public async Task AuditSinkOperationCanceledExceptionIsSwallowedWhenCancellationNotRequested()
     {
         var sinkMock = new Mock<ISecurityEventSink>();

@@ -3,6 +3,8 @@ using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Security.Encryption;
+using Ashlar.Tests.Testing;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
 
@@ -416,6 +418,35 @@ internal sealed class CredentialServiceTests
     }
 
     [Test]
+    public async Task UpdateCredentialUsageAsyncWithUninitializedProviderTypeInFailurePathShouldReturnTrue()
+    {
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = default,
+            ProviderName = "broken-provider",
+            ProviderKey = "sub",
+            Version = "v1",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            Status = CredentialStatus.Active,
+            CredentialValue = "unprotected-secret"
+        };
+        var result = new AuthenticationResult(
+            AuthenticationResultStatus.SucceededWithCredentialUpdate,
+            NewCredentialValue: "rotated-secret",
+            CredentialUpdateRequirement: CredentialUpdateRequirement.BestEffort);
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
+
+        _secretProtectorMock.Setup(s => s.Protect("rotated-secret")).Throws(new InvalidOperationException("Protection failed"));
+
+        var success = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+
+        Assert.That(success, Is.True);
+    }
+
+    [Test]
     public async Task UpdateCredentialUsageAsyncWithRequiredUpdateExceptionShouldReturnFalse()
     {
         var credential = new UserCredential
@@ -704,13 +735,25 @@ internal sealed class CredentialServiceTests
         assertionMock.Setup(a => a.ProviderIdentity).Returns(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
 
         _secretProtectorMock.Setup(s => s.Unprotect("bad-value")).Throws(new System.Security.Cryptography.CryptographicException());
+        var logger = new RecordingLogger<CredentialService>();
+        var service = new CredentialService(
+            _repositoryMock.Object,
+            _secretProtectorMock.Object,
+            new NullTransactionProvider(),
+            timeProvider: _timeProvider,
+            logger: logger);
 
-        var (_, resolvedCredential, _, unprotectFailed) = await _service.ResolveAsync(userId, assertionMock.Object, providerMock.Object);
+        var (_, resolvedCredential, _, unprotectFailed) = await service.ResolveAsync(userId, assertionMock.Object, providerMock.Object);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(unprotectFailed, Is.True);
             Assert.That(resolvedCredential?.CredentialValue, Is.Null);
+            Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
+                entry.Level == LogLevel.Warning
+                && entry.Exception is System.Security.Cryptography.CryptographicException
+                && entry.Message.Contains("Credential value unprotection failed", StringComparison.Ordinal)
+                && entry.Message.Contains($"CredentialId={credential.Id}", StringComparison.Ordinal)));
         }
     }
 
@@ -738,14 +781,26 @@ internal sealed class CredentialServiceTests
         _secretProtectorMock.Setup(s => s.Protect(It.IsAny<string>())).Returns("protected-dummy");
         // Mock unprotect to throw.
         _secretProtectorMock.Setup(s => s.Unprotect("protected-dummy")).Throws<System.Security.Cryptography.CryptographicException>();
+        var logger = new RecordingLogger<CredentialService>();
+        var service = new CredentialService(
+            _repositoryMock.Object,
+            _secretProtectorMock.Object,
+            new NullTransactionProvider(),
+            timeProvider: _timeProvider,
+            logger: logger);
 
-        var (_, resolvedCredential, originalCredential, unprotectFailed) = await _service.ResolveAsync(userId, assertionMock.Object, providerMock.Object);
+        var (_, resolvedCredential, originalCredential, unprotectFailed) = await service.ResolveAsync(userId, assertionMock.Object, providerMock.Object);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(unprotectFailed, Is.False);
             Assert.That(resolvedCredential, Is.Null);
             Assert.That(originalCredential, Is.Null);
+            Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
+                entry.Level == LogLevel.Debug
+                && entry.Exception is System.Security.Cryptography.CryptographicException
+                && entry.Message.Contains("Dummy credential unprotection failed", StringComparison.Ordinal)
+                && entry.Message.Contains("ProviderName=Google", StringComparison.Ordinal)));
         }
     }
 

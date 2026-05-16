@@ -1,6 +1,8 @@
 using Ashlar.Postgres.Schema;
+using Ashlar.Postgres.Tests.Testing;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using Testcontainers.PostgreSql;
 
@@ -8,6 +10,26 @@ namespace Ashlar.Postgres.Tests.Schema;
 
 internal sealed class SchemaManagerTests : PostgresTestBase
 {
+    private static readonly LogLevel[] ExpectedDbUpLogLevels =
+    [
+        LogLevel.Trace,
+        LogLevel.Debug,
+        LogLevel.Information,
+        LogLevel.Warning,
+        LogLevel.Error,
+        LogLevel.Error
+    ];
+
+    private static readonly string[] ExpectedDbUpLogMessages =
+    [
+        "trace 1",
+        "debug",
+        "info 2",
+        "warning 3",
+        "error 4",
+        "error with exception 5"
+    ];
+
     [Test]
     public void ConstructorNullDataSourceShouldThrow()
     {
@@ -96,4 +118,33 @@ internal sealed class SchemaManagerTests : PostgresTestBase
         );
         Assert.That(exists, Is.True);
     }
+
+    [Test]
+    public void DbUpUpgradeLoggerForwardsAllLevels()
+    {
+        var logger = new RecordingLogger();
+        var upgradeLogger = new SchemaManager.DbUpUpgradeLogger(logger);
+        var exception = new InvalidOperationException("upgrade failed");
+
+        upgradeLogger.LogTrace("trace {0}", 1);
+        upgradeLogger.LogDebug("debug");
+        upgradeLogger.LogInformation("info {0}", 2);
+        upgradeLogger.LogWarning("warning {0}", 3);
+        upgradeLogger.LogError("error {0}", 4);
+        upgradeLogger.LogError(exception, "error with exception {0}", 5);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.Entries.Select(entry => entry.Level), Is.EqualTo(ExpectedDbUpLogLevels));
+            Assert.That(logger.Entries.Select(entry => entry.Message), Is.EqualTo(ExpectedDbUpLogMessages));
+            Assert.That(logger.Entries.Last().Exception, Is.SameAs(exception));
+        }
+    }
+
+    [Test]
+    public void DbUpUpgradeLoggerRejectsNullLogger()
+    {
+        Assert.Throws<ArgumentNullException>(() => _ = new SchemaManager.DbUpUpgradeLogger(null!));
+    }
+
 }

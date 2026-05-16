@@ -4,6 +4,8 @@ using Ashlar.Identity.Models;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity;
@@ -13,11 +15,19 @@ namespace Ashlar.Identity;
 /// </summary>
 /// <param name="dependencies">The dependencies value.</param>
 /// <param name="options">The options value.</param>
+/// <param name="logger">The logger value.</param>
 public sealed class EmailChangeService(
     EmailChangeDependencies dependencies,
-    IOptions<EmailChangeOptions>? options = null)
+    IOptions<EmailChangeOptions>? options = null,
+    ILogger<EmailChangeService>? logger = null)
     : IEmailChangeService
 {
+    private static readonly Action<ILogger, Guid, Guid, Exception?> EmailChangeCredentialUnprotectFailed =
+        LoggerMessage.Define<Guid, Guid>(
+            LogLevel.Warning,
+            new EventId(1000, nameof(EmailChangeCredentialUnprotectFailed)),
+            "Email change credential unprotection failed. UserId={UserId} CredentialId={CredentialId}");
+
     private const string RequestPurpose = "email-change-request";
     private const string VerifyPurpose = "email-change-verify";
     private const string CredentialPurpose = "email-change";
@@ -26,6 +36,7 @@ public sealed class EmailChangeService(
     private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider);
     private readonly IOptions<EmailChangeOptions> _options = options ?? Options.Create(new EmailChangeOptions());
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
+    private readonly ILogger<EmailChangeService> _logger = logger ?? NullLogger<EmailChangeService>.Instance;
 
     /// <summary>
     /// Performs the request change <see langword="async" /> operation and returns the result.
@@ -222,8 +233,9 @@ public sealed class EmailChangeService(
         {
             newEmail = IdentityNormalization.SanitizeEmailForDelivery(_dependencies.SecretProtector.Unprotect(credential.CredentialValue));
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            EmailChangeCredentialUnprotectFailed(_logger, request.UserId, credential.Id, ex);
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.EmailChangeFailed,

@@ -1,9 +1,12 @@
 using System.Diagnostics.CodeAnalysis;
 using Ashlar.Operational;
+using Ashlar.Postgres.Tests.Testing;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
+using Npgsql;
 
 namespace Ashlar.Postgres.Tests;
 
@@ -226,6 +229,31 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
             Assert.That(result.AuditEvents, Is.Zero);
             Assert.That(await CountAsync(connection, "ashlar_security_events"), Is.EqualTo(1));
         }
+    }
+
+    [Test]
+    public async Task CleanupAsyncLogsCategoryWhenDeleteFails()
+    {
+        var connectionStringBuilder = new NpgsqlConnectionStringBuilder(GetConnectionString())
+        {
+            SearchPath = "missing_schema"
+        };
+        await using var dataSource = new NpgsqlDataSourceBuilder(connectionStringBuilder.ConnectionString).Build();
+        var logger = new RecordingLogger<PostgresAshlarCleanupService>();
+        var service = new PostgresAshlarCleanupService(
+            dataSource,
+            _timeProvider,
+            Options.Create(new AshlarCleanupOptions()),
+            logger);
+
+        Assert.ThrowsAsync<PostgresException>(async () => await service.CleanupAsync());
+
+        Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
+            entry.Level == LogLevel.Error
+            && entry.Exception is PostgresException
+            && entry.Message.Contains("PostgreSQL cleanup category failed", StringComparison.Ordinal)
+            && entry.Message.Contains("Category=expired_sessions", StringComparison.Ordinal)
+            && entry.Message.Contains("TableName=ashlar_sessions", StringComparison.Ordinal)));
     }
 
     private CleanupServiceScope CreateCleanupService()

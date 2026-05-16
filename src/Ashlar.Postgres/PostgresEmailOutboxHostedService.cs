@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.Postgres;
@@ -9,12 +11,21 @@ namespace Ashlar.Postgres;
 /// </summary>
 /// <param name="serviceProvider">The service provider value.</param>
 /// <param name="options">The options value.</param>
+/// <param name="logger">The logger value.</param>
 public sealed class PostgresEmailOutboxHostedService(
     IServiceProvider serviceProvider,
-    IOptions<PostgresEmailOutboxOptions> options) : BackgroundService
+    IOptions<PostgresEmailOutboxOptions> options,
+    ILogger<PostgresEmailOutboxHostedService>? logger = null) : BackgroundService
 {
+    private static readonly Action<ILogger, int, Exception?> OutboxBatchFailed =
+        LoggerMessage.Define<int>(
+            LogLevel.Error,
+            new EventId(1000, nameof(OutboxBatchFailed)),
+            "PostgreSQL email outbox hosted service batch failed. BatchSize={BatchSize}");
+
     private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
     private readonly PostgresEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
+    private readonly ILogger<PostgresEmailOutboxHostedService> _logger = logger ?? NullLogger<PostgresEmailOutboxHostedService>.Instance;
 
     /// <summary>
     /// Validates options and starts the background email outbox dispatcher.
@@ -58,9 +69,9 @@ public sealed class PostgresEmailOutboxHostedService(
             {
                 break;
             }
-            catch (Exception)
+            catch (Exception exception)
             {
-                // TODO: log here.
+                OutboxBatchFailed(_logger, _options.BatchSize, exception);
                 if (!await DelayUntilNextPollAsync(_options.PollingInterval, stoppingToken))
                 {
                     break;

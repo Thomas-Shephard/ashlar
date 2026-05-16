@@ -1,4 +1,6 @@
 using Ashlar.Identity.Abstractions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 
 namespace Ashlar.Postgres;
@@ -8,7 +10,14 @@ namespace Ashlar.Postgres;
 /// </summary>
 internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, IPostgresConnectionProvider, IAsyncDisposable
 {
+    private static readonly Action<ILogger, int, int, Exception?> PostCommitHookFailed =
+        LoggerMessage.Define<int, int>(
+            LogLevel.Warning,
+            new EventId(1000, nameof(PostCommitHookFailed)),
+            "Post-commit hook failed. HookIndex={HookIndex} HookCount={HookCount}");
+
     private readonly Func<CancellationToken, ValueTask<NpgsqlConnection>> _openConnectionAsync;
+    private readonly ILogger<PostgresTransactionManager> _logger;
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
     private readonly List<Func<CancellationToken, Task>> _postCommitHooks = [];
     private NpgsqlConnection? _connection;
@@ -19,14 +28,18 @@ internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, I
     /// Initializes a new instance of the postgres transaction manager class.
     /// </summary>
     /// <param name="dataSource">The data source value.</param>
-    public PostgresTransactionManager(NpgsqlDataSource dataSource)
-        : this((dataSource ?? throw new ArgumentNullException(nameof(dataSource))).OpenConnectionAsync)
+    /// <param name="logger">The logger value.</param>
+    public PostgresTransactionManager(NpgsqlDataSource dataSource, ILogger<PostgresTransactionManager>? logger = null)
+        : this((dataSource ?? throw new ArgumentNullException(nameof(dataSource))).OpenConnectionAsync, logger)
     {
     }
 
-    internal PostgresTransactionManager(Func<CancellationToken, ValueTask<NpgsqlConnection>> openConnectionAsync)
+    internal PostgresTransactionManager(
+        Func<CancellationToken, ValueTask<NpgsqlConnection>> openConnectionAsync,
+        ILogger<PostgresTransactionManager>? logger = null)
     {
         _openConnectionAsync = openConnectionAsync ?? throw new ArgumentNullException(nameof(openConnectionAsync));
+        _logger = logger ?? NullLogger<PostgresTransactionManager>.Instance;
     }
 
     private void RegisterPostCommitHook(Func<CancellationToken, Task> action)
@@ -240,14 +253,15 @@ internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, I
             _disposed = true;
 
             List<Exception>? hookExceptions = null;
-            foreach (var hook in hooks)
+            for (var i = 0; i < hooks.Length; i++)
             {
                 try
                 {
-                    await hook(CancellationToken.None);
+                    await hooks[i](CancellationToken.None);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    PostCommitHookFailed(manager._logger, i, hooks.Length, ex);
                     (hookExceptions ??= []).Add(ex);
                 }
             }

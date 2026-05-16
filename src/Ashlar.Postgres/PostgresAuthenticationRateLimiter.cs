@@ -3,6 +3,8 @@ using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Dapper;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Npgsql;
 
@@ -13,9 +15,16 @@ namespace Ashlar.Postgres;
 /// </summary>
 public sealed class PostgresAuthenticationRateLimiter : IAuthenticationRateLimiter
 {
+    private static readonly Action<ILogger, Exception?> OpportunisticCleanupFailed =
+        LoggerMessage.Define(
+            LogLevel.Warning,
+            new EventId(1000, nameof(OpportunisticCleanupFailed)),
+            "PostgreSQL authentication rate limiter opportunistic cleanup failed.");
+
     private readonly NpgsqlDataSource _dataSource;
     private readonly TimeProvider _timeProvider;
     private readonly PostgresAuthenticationRateLimiterOptions _options;
+    private readonly ILogger<PostgresAuthenticationRateLimiter> _logger;
     private DateTimeOffset _nextCleanupTime = DateTimeOffset.MinValue;
     private readonly object _cleanupLock = new();
 
@@ -27,10 +36,12 @@ public sealed class PostgresAuthenticationRateLimiter : IAuthenticationRateLimit
     /// <param name="dataSource">The PostgreSQL data source.</param>
     /// <param name="timeProvider">The time provider.</param>
     /// <param name="options">The rate limiter options.</param>
+    /// <param name="logger">The logger value.</param>
     public PostgresAuthenticationRateLimiter(
         NpgsqlDataSource dataSource,
         TimeProvider timeProvider,
-        IOptions<PostgresAuthenticationRateLimiterOptions> options)
+        IOptions<PostgresAuthenticationRateLimiterOptions> options,
+        ILogger<PostgresAuthenticationRateLimiter>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(dataSource);
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -39,6 +50,7 @@ public sealed class PostgresAuthenticationRateLimiter : IAuthenticationRateLimit
         _dataSource = dataSource;
         _timeProvider = timeProvider;
         _options = options.Value;
+        _logger = logger ?? NullLogger<PostgresAuthenticationRateLimiter>.Instance;
         if (!ValidateOptions(_options))
         {
             throw new ArgumentException("CleanupInterval must be greater than zero and MaxCleanupRows must be greater than zero.", nameof(options));
@@ -197,8 +209,9 @@ public sealed class PostgresAuthenticationRateLimiter : IAuthenticationRateLimit
         {
             await CleanupExpiredRowsAsync(CancellationToken.None);
         }
-        catch
+        catch (Exception ex)
         {
+            OpportunisticCleanupFailed(_logger, ex);
             // Cleanup is opportunistic; failures should not block authentication attempts.
         }
     }

@@ -1,6 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using Ashlar.Operational;
+using Ashlar.Postgres.Tests.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
@@ -35,17 +37,23 @@ internal sealed class PostgresAshlarCleanupHostedServiceTests
     {
         var cleanup = new RecordingCleanupService { ThrowOnFirstCall = true };
         var timeProvider = new FakeTimeProvider();
+        var logger = new RecordingLogger<PostgresAshlarCleanupHostedService>();
         await using var provider = BuildProvider(cleanup);
         var service = new PostgresAshlarCleanupHostedService(
             provider.GetRequiredService<IServiceScopeFactory>(),
             timeProvider,
-            Options.Create(new AshlarCleanupOptions { CleanupInterval = TimeSpan.FromSeconds(1) }));
+            Options.Create(new AshlarCleanupOptions { CleanupInterval = TimeSpan.FromSeconds(1) }),
+            logger);
 
         await service.StartAsync(CancellationToken.None);
         await WaitForCountAsync(cleanup, 1);
         timeProvider.Advance(TimeSpan.FromSeconds(1));
         await WaitForCountAsync(cleanup, 2);
         await service.StopAsync(CancellationToken.None);
+
+        Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
+            entry.Level == LogLevel.Error
+            && entry.Message.Contains("cleanup hosted service run failed", StringComparison.Ordinal)));
     }
 
     [Test]
@@ -143,4 +151,5 @@ internal sealed class PostgresAshlarCleanupHostedServiceTests
             return AshlarCleanupResult.Empty;
         }
     }
+
 }

@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 using Ashlar.Messaging;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Notifications;
@@ -11,16 +13,31 @@ namespace Ashlar.Identity.Notifications;
 /// <param name="options">The options value.</param>
 /// <param name="suppressionStore">The suppression store value.</param>
 /// <param name="timeProvider">The time provider value.</param>
+/// <param name="logger">The logger value.</param>
 public sealed partial class SecurityNotificationService(
     IEmailSender emailSender,
     IOptions<SecurityNotificationOptions> options,
     ISecurityNotificationSuppressionStore? suppressionStore = null,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    ILogger<SecurityNotificationService>? logger = null)
     : ISecurityNotificationService
 {
+    private static readonly Action<ILogger, SecurityNotificationType, Guid?, Exception?> SecurityNotificationDeliveryFailed =
+        LoggerMessage.Define<SecurityNotificationType, Guid?>(
+            LogLevel.Warning,
+            new EventId(1000, nameof(SecurityNotificationDeliveryFailed)),
+            "Security notification delivery failed. NotificationType={NotificationType} SessionId={SessionId}");
+
+    private static readonly Action<ILogger, SecurityNotificationType, Exception?> SecurityNotificationTemplateMissing =
+        LoggerMessage.Define<SecurityNotificationType>(
+            LogLevel.Warning,
+            new EventId(1001, nameof(SecurityNotificationTemplateMissing)),
+            "Security notification template is missing. NotificationType={NotificationType}");
+
     private readonly IEmailSender _emailSender = emailSender ?? throw new ArgumentNullException(nameof(emailSender));
     private readonly IOptions<SecurityNotificationOptions> _options = options ?? throw new ArgumentNullException(nameof(options));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly ILogger<SecurityNotificationService> _logger = logger ?? NullLogger<SecurityNotificationService>.Instance;
 
     public async Task<SecurityNotificationResult> NotifyAsync(
         SecurityNotification notification,
@@ -37,6 +54,7 @@ public sealed partial class SecurityNotificationService(
         if (!opt.TemplateOverrides.TryGetValue(notification.Type, out var template)
             && !SecurityNotificationOptions.DefaultTemplates.TryGetValue(notification.Type, out template))
         {
+            SecurityNotificationTemplateMissing(_logger, notification.Type, null);
             return SecurityNotificationResult.Failure($"No template found for notification type {notification.Type}");
         }
 
@@ -62,6 +80,7 @@ public sealed partial class SecurityNotificationService(
         }
         catch (Exception ex)
         {
+            SecurityNotificationDeliveryFailed(_logger, notification.Type, notification.SessionId, ex);
             return SecurityNotificationResult.Failure(ex.Message);
         }
 

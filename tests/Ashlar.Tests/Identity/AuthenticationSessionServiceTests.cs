@@ -3,6 +3,8 @@ using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Notifications;
 using Ashlar.Security.Tokens;
+using Ashlar.Tests.Testing;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
 
@@ -361,6 +363,15 @@ internal sealed class AuthenticationSessionServiceTests
     public async Task ValidateSessionAsyncShouldSucceedWhenLastSeenUpdateFails()
     {
         var session = CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1));
+        var logger = new RecordingLogger<AuthenticationSessionService>();
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider),
+            logger);
+
         _repositoryMock
             .Setup(r => r.GetSessionByTokenHashAsync("hashed:raw-token", It.IsAny<CancellationToken>()))
             .ReturnsAsync(session);
@@ -368,7 +379,7 @@ internal sealed class AuthenticationSessionServiceTests
             .Setup(r => r.UpdateSessionLastSeenAsync(session.Id, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("store unavailable"));
 
-        var result = await _service.ValidateSessionAsync("raw-token");
+        var result = await service.ValidateSessionAsync("raw-token");
 
         using (Assert.EnterMultipleScope())
         {
@@ -376,6 +387,10 @@ internal sealed class AuthenticationSessionServiceTests
             Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Success));
             Assert.That(session.LastSeenAt, Is.Null);
         }
+
+        Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
+            entry.Level == LogLevel.Warning
+            && entry.Message.Contains("last-seen update failed", StringComparison.Ordinal)));
     }
 
     [Test]
@@ -850,4 +865,5 @@ internal sealed class AuthenticationSessionServiceTests
             return token;
         }
     }
+
 }

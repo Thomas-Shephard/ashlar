@@ -1,3 +1,5 @@
+using Ashlar.Postgres.Tests.Testing;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using System.Data;
 
@@ -314,7 +316,8 @@ internal sealed class PostgresTransactionManagerTests : PostgresTestBase
     [Test]
     public async Task PostCommitHooksAreIsolatedFromEachOtherButPropagateErrors()
     {
-        await using var manager = new PostgresTransactionManager(GetDataSource());
+        var logger = new RecordingLogger<PostgresTransactionManager>();
+        await using var manager = new PostgresTransactionManager(GetDataSource(), logger);
         await using var transaction = await manager.BeginTransactionAsync();
         var firstHookExecuted = false;
         var secondHookExecuted = false;
@@ -339,6 +342,11 @@ internal sealed class PostgresTransactionManagerTests : PostgresTestBase
             Assert.That(secondHookExecuted, Is.True);
             Assert.That(ex.InnerExceptions, Has.Count.EqualTo(1));
             Assert.That(ex.InnerExceptions[0].Message, Is.EqualTo("First hook failed"));
+            Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
+                entry.Level == LogLevel.Warning
+                && entry.Exception is InvalidOperationException
+                && entry.Message.Contains("Post-commit hook failed", StringComparison.Ordinal)
+                && entry.Message.Contains("HookIndex=0", StringComparison.Ordinal)));
         }
     }
 
