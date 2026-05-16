@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace Ashlar.Postgres.Tests.Testing;
+namespace Ashlar.Testing;
 
 internal sealed class RecordingLogger<T> : RecordingLogger, ILogger<T>
 {

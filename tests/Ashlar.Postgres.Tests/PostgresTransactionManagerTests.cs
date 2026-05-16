@@ -1,4 +1,4 @@
-using Ashlar.Postgres.Tests.Testing;
+using Ashlar.Testing;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using System.Data;

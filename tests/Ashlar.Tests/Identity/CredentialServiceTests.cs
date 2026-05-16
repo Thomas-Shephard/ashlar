@@ -3,7 +3,7 @@ using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Security.Encryption;
-using Ashlar.Tests.Testing;
+using Ashlar.Testing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Moq;

@@ -1,5 +1,5 @@
 using Ashlar.Postgres.Schema;
-using Ashlar.Postgres.Tests.Testing;
+using Ashlar.Testing;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;

@@ -1,6 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Ashlar.Operational;
-using Ashlar.Postgres.Tests.Testing;
+using Ashlar.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
