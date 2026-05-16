@@ -4,6 +4,8 @@ namespace Ashlar.Sample.AspNetCore.Views;
 
 internal static class AppViews
 {
+    private const string AdminLink = """<a href="/admin">Administration</a>""";
+
     private const string SharedScripts = """
         const sampleErrorMessages = {
             handshake_not_found: 'Your sign-in session has expired. Request a new magic link and try again.',
@@ -108,7 +110,7 @@ internal static class AppViews
     public static IResult RenderDashboard(BootstrapStatus status, bool isAuthenticated, string? userEmail, string? userName, bool isEmailVerified, bool isAdmin, List<(string Id, string Name, bool HasAccess)> projects)
     {
         var bootstrapSection = RenderBootstrapSection(status, isAuthenticated);
-        var authSection = RenderAuthSection(status, isAuthenticated, userEmail, userName, isEmailVerified);
+        var authSection = RenderAuthSection(status, isAuthenticated, userName);
         var projectSection = isAuthenticated ? RenderProjectSection(projects) : "";
 
         var navLinks = "";
@@ -117,7 +119,7 @@ internal static class AppViews
             navLinks = $"""
                 <a href="/">Dashboard</a>
                 <a href="/account">Account</a>
-                {(isAdmin ? "<a href=\"/admin\">Administration</a>" : "")}
+                {(isAdmin ? AdminLink : "")}
                 <form action="/api/auth/logout" method="POST" style="display: inline;"><button type="submit" class="link-btn">Sign Out</button></form>
             """;
         }
@@ -155,7 +157,7 @@ internal static class AppViews
         """;
     }
 
-    private static string RenderAuthSection(BootstrapStatus status, bool isAuthenticated, string? userEmail, string? userName, bool isEmailVerified)
+    private static string RenderAuthSection(BootstrapStatus status, bool isAuthenticated, string? userName)
     {
         if (isAuthenticated)
         {
@@ -233,10 +235,11 @@ internal static class AppViews
             ? "<span class=\"badge badge-success\">Enabled</span> Authenticator App (TOTP) is active."
             : "<span class=\"badge badge-warning\">Disabled</span> Two-Factor Authentication is not configured.";
 
+        var recoveryCodesButtonText = hasRecoveryCodes ? "Regenerate Recovery Codes" : "Generate Recovery Codes";
         var mfaActions = hasTotp
             ? $"""
                 <div class="grid" style="margin-top: 1rem;">
-                    <button id="generateBtn" class="secondary" style="height: 2.5rem;">{ (hasRecoveryCodes ? "Regenerate Recovery Codes" : "Generate Recovery Codes") }</button>
+                    <button id="generateBtn" class="secondary" style="height: 2.5rem;">{recoveryCodesButtonText}</button>
                     <button id="resetMfaBtn" class="secondary danger" style="height: 2.5rem;">Reset MFA</button>
                 </div>
                 <div id="codesResult" style="margin-top: 1.5rem;"></div>
@@ -250,7 +253,7 @@ internal static class AppViews
         var navLinks = $"""
             <a href="/">Dashboard</a>
             <a href="/account">Account</a>
-            {(isAdmin ? "<a href=\"/admin\">Administration</a>" : "")}
+            {(isAdmin ? AdminLink : "")}
             <form action="/api/auth/logout" method="POST" style="display: inline;"><button type="submit" class="link-btn">Sign Out</button></form>
         """;
 
@@ -427,10 +430,10 @@ internal static class AppViews
 
     public static IResult RenderAdminManage()
     {
-        var navLinks = """
+        var navLinks = $"""
             <a href="/">Dashboard</a>
             <a href="/account">Account</a>
-            <a href="/admin">Administration</a>
+            {AdminLink}
             <form action="/api/auth/logout" method="POST" style="display: inline;"><button type="submit" class="link-btn">Sign Out</button></form>
         """;
 
@@ -727,7 +730,7 @@ internal static class AppViews
         var navLinks = $"""
             <a href="/">Dashboard</a>
             <a href="/account">Account</a>
-            {(isAdmin ? "<a href=\"/admin\">Administration</a>" : "")}
+            {(isAdmin ? AdminLink : "")}
             <form action="/api/auth/logout" method="POST" style="display: inline;"><button type="submit" class="link-btn">Sign Out</button></form>
         """;
 
@@ -791,7 +794,7 @@ internal static class AppViews
         var navLinks = $"""
             <a href="/">Dashboard</a>
             <a href="/account">Account</a>
-            {(isAdmin ? "<a href=\"/admin\">Administration</a>" : "")}
+            {(isAdmin ? AdminLink : "")}
             <form action="/api/auth/logout" method="POST" style="display: inline;"><button type="submit" class="link-btn">Sign Out</button></form>
         """;
 

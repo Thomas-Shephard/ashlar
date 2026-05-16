@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.Postgres;
@@ -10,11 +11,13 @@ namespace Ashlar.Sample.AspNetCore.Endpoints;
 
 internal sealed record CreateProjectRequest(string Id, string Name);
 
-internal static class AdminEndpoints
+internal static partial class AdminEndpoints
 {
+    private const string AdminPolicy = "admin";
+
     public static void MapAdminEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/admin", () => AppViews.RenderAdminManage()).RequireAuthorization("admin");
+        app.MapGet("/admin", () => AppViews.RenderAdminManage()).RequireAuthorization(AdminPolicy);
 
         app.MapGet("/api/admin/users", async (
             IPostgresConnectionProvider connectionProvider,
@@ -26,7 +29,7 @@ internal static class AdminEndpoints
                 var users = await connection.Connection.QueryAsync("SELECT id, email, name FROM ashlar_users", transaction: connection.Transaction);
                 return Results.Ok(users);
             }
-        }).RequireAuthorization("admin");
+        }).RequireAuthorization(AdminPolicy);
 
         app.MapGet("/api/admin/projects", async (
             IPostgresConnectionProvider connectionProvider,
@@ -38,7 +41,7 @@ internal static class AdminEndpoints
                 var projects = await connection.Connection.QueryAsync("SELECT id, name FROM sample_projects ORDER BY created_at", transaction: connection.Transaction);
                 return Results.Ok(projects);
             }
-        }).RequireAuthorization("admin");
+        }).RequireAuthorization(AdminPolicy);
 
         app.MapPost("/api/admin/projects", async (
             CreateProjectRequest request,
@@ -50,7 +53,7 @@ internal static class AdminEndpoints
                 return Results.BadRequest(new { error = "Invalid project data." });
             }
 
-            if (!System.Text.RegularExpressions.Regex.IsMatch(request.Id, "^[a-z0-9-]+$"))
+            if (!ProjectIdRegex().IsMatch(request.Id))
             {
                 return Results.BadRequest(new { error = "Project ID must contain only lowercase letters, numbers, and dashes." });
             }
@@ -72,7 +75,7 @@ internal static class AdminEndpoints
                     ? Results.Created($"/projects/{request.Id}", new { id = request.Id })
                     : Results.Conflict(new { error = "Project already exists." });
             }
-        }).RequireAuthorization("admin");
+        }).RequireAuthorization(AdminPolicy);
 
         app.MapPost("/api/projects/{projectId}/grants", async (
             string projectId,
@@ -92,7 +95,7 @@ internal static class AdminEndpoints
             }
 
             return Results.Ok(new { result.Value.Id });
-        }).RequireAuthorization("admin");
+        }).RequireAuthorization(AdminPolicy);
 
         app.MapGet("/projects/{projectId}", async (
             string projectId,
@@ -100,8 +103,11 @@ internal static class AdminEndpoints
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
-            var isAdmin = (await auth.EvaluateAsync(new AuthorizationEvaluationRequest(user.GetAshlarUserId(), Role: "admin"), cancellationToken)).Succeeded;
+            var isAdmin = (await auth.EvaluateAsync(new AuthorizationEvaluationRequest(user.GetAshlarUserId(), Role: AdminPolicy), cancellationToken)).Succeeded;
             return AppViews.RenderProjectManage(projectId, isAdmin);
         }).RequireAuthorization("project.manage");
     }
+
+    [GeneratedRegex("^[a-z0-9-]+$", RegexOptions.CultureInvariant)]
+    private static partial Regex ProjectIdRegex();
 }
