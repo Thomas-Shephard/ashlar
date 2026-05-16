@@ -1,35 +1,92 @@
+using System.Security.Claims;
+using System.Text.RegularExpressions;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.Postgres;
+using Ashlar.Sample.AspNetCore.Extensions;
+using Ashlar.Sample.AspNetCore.Views;
+using Dapper;
 
 namespace Ashlar.Sample.AspNetCore.Endpoints;
 
-internal static class AdminEndpoints
+internal sealed record CreateProjectRequest(string Id, string Name);
+
+internal static partial class AdminEndpoints
 {
+    private const string AdminPolicy = "admin";
+
     public static void MapAdminEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/admin", () => LandingPages.Layout("Admin Check", """
-            <div class="card">
-                <h1>Admin Access</h1>
-                <div class="badge badge-success">Verified</div>
-                <p style="margin-top: 1rem;">You have successfully accessed the protected administrative area.</p>
-                <button class="secondary" onclick="location.href='/'">Back to Dashboard</button>
-            </div>
-        """)).RequireAuthorization("admin");
+        app.MapGet("/admin", () => AppViews.RenderAdminManage()).RequireAuthorization(AdminPolicy);
 
-        app.MapGet("/admin/users", async (
+        app.MapGet("/api/admin/users", async (
             IPostgresConnectionProvider connectionProvider,
             CancellationToken cancellationToken) =>
         {
             var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
             await using (connection)
             {
-                var users = await Dapper.SqlMapper.QueryAsync(connection.Connection, "SELECT id, email, name FROM ashlar_users", transaction: connection.Transaction);
+                var users = await connection.Connection.QueryAsync(new CommandDefinition(
+                    "SELECT id, email, name FROM ashlar_users",
+                    transaction: connection.Transaction,
+                    cancellationToken: cancellationToken));
+
                 return Results.Ok(users);
             }
-        }).RequireAuthorization("admin");
+        }).RequireAuthorization(AdminPolicy);
 
-        app.MapPost("/projects/{projectId}/grants", async (
+        app.MapGet("/api/admin/projects", async (
+            IPostgresConnectionProvider connectionProvider,
+            CancellationToken cancellationToken) =>
+        {
+            var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
+            await using (connection)
+            {
+                var projects = await connection.Connection.QueryAsync(new CommandDefinition(
+                    "SELECT id, name FROM sample_projects ORDER BY created_at",
+                    transaction: connection.Transaction,
+                    cancellationToken: cancellationToken));
+
+                return Results.Ok(projects);
+            }
+        }).RequireAuthorization(AdminPolicy);
+
+        app.MapPost("/api/admin/projects", async (
+            CreateProjectRequest request,
+            IPostgresConnectionProvider connectionProvider,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Id) || string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 100)
+            {
+                return Results.BadRequest(new { error = "Invalid project data." });
+            }
+
+            if (!ProjectIdRegex().IsMatch(request.Id))
+            {
+                return Results.BadRequest(new { error = "Project ID must contain only lowercase letters, numbers, and dashes." });
+            }
+
+            var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
+            await using (connection)
+            {
+                var rows = await connection.Connection.ExecuteAsync(new CommandDefinition(
+                    "INSERT INTO sample_projects (id, name) VALUES (@Id, @Name) ON CONFLICT DO NOTHING",
+                    new { request.Id, request.Name },
+                    transaction: connection.Transaction,
+                    cancellationToken: cancellationToken));
+                
+                if (connection.Transaction != null)
+                {
+                    await connection.Transaction.CommitAsync(cancellationToken);
+                }
+
+                return rows > 0 
+                    ? Results.Created($"/projects/{request.Id}", new { id = request.Id })
+                    : Results.Conflict(new { error = "Project already exists." });
+            }
+        }).RequireAuthorization(AdminPolicy);
+
+        app.MapPost("/api/projects/{projectId}/grants", async (
             string projectId,
             ProjectGrantRequest request,
             IAuthorizationGrantService grants,
@@ -47,15 +104,19 @@ internal static class AdminEndpoints
             }
 
             return Results.Ok(new { result.Value.Id });
-        }).RequireAuthorization("admin");
+        }).RequireAuthorization(AdminPolicy);
 
-        app.MapGet("/projects/{projectId}/manage", (string projectId) => LandingPages.Layout("Project Management", $"""
-            <div class="card">
-                <h1>Manage Project: {System.Net.WebUtility.HtmlEncode(projectId)}</h1>
-                <div class="badge badge-success">Manager</div>
-                <p style="margin-top: 1rem;">You have 'project.manage' permission for project '{System.Net.WebUtility.HtmlEncode(projectId)}'.</p>
-                <button class="secondary" onclick="location.href='/'">Back to Dashboard</button>
-            </div>
-        """)).RequireAuthorization("project.manage");
+        app.MapGet("/projects/{projectId}", async (
+            string projectId,
+            IAuthorizationEvaluator auth,
+            ClaimsPrincipal user,
+            CancellationToken cancellationToken) =>
+        {
+            var isAdmin = (await auth.EvaluateAsync(new AuthorizationEvaluationRequest(user.GetAshlarUserId(), Role: AdminPolicy), cancellationToken)).Succeeded;
+            return AppViews.RenderProjectManage(projectId, isAdmin);
+        }).RequireAuthorization("project.manage");
     }
+
+    [GeneratedRegex("^[a-z0-9-]+$", RegexOptions.CultureInvariant)]
+    private static partial Regex ProjectIdRegex();
 }

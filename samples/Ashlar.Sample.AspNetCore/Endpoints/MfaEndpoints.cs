@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using Ashlar.AspNetCore.Sessions;
+using Ashlar.Authorization.Abstractions;
+using Ashlar.Authorization.Models;
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
@@ -15,11 +17,12 @@ internal static class MfaEndpoints
 {
     public static void MapMfaEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/mfa/verify", VerifyMfaAsync);
+        app.MapPost("/api/mfa/verify", VerifyMfaAsync);
 
-        app.MapGet("/mfa/settings", async (
+        app.MapGet("/account/mfa/enroll", async (
             ITotpService totp,
             IIdentityRepository users,
+            IAuthorizationEvaluator auth,
             ClaimsPrincipal user,
             IOptions<SampleAshlarOptions> options,
             CancellationToken cancellationToken) =>
@@ -34,16 +37,14 @@ internal static class MfaEndpoints
             if (!hasTotp)
             {
                 var enrollment = await totp.StartEnrollmentAsync(userId, options.Value.AppName, ashlarUser.Email, cancellationToken);
-                return AppViews.RenderMfaSetup(enrollment.SharedSecret, enrollment.AuthenticatorUri);
+                var isAdmin = (await auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), cancellationToken)).Succeeded;
+                return AppViews.RenderMfaSetup(enrollment.SharedSecret, enrollment.AuthenticatorUri, isAdmin);
             }
 
-            var recoveryCredential = await users.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", null, cancellationToken);
-            var hasRecoveryCodes = recoveryCredential != null;
-
-            return AppViews.RenderMfaSettings(hasRecoveryCodes);
+            return Results.Redirect("/account");
         }).RequireAuthorization();
 
-        app.MapPost("/mfa/totp/verify", async Task<IResult> (
+        app.MapPost("/api/mfa/totp/verify", async Task<IResult> (
             TotpVerifyRequest request,
             ITotpService totp,
             ClaimsPrincipal user,
@@ -53,7 +54,7 @@ internal static class MfaEndpoints
             return result.Succeeded ? Results.Ok() : Results.BadRequest(new { error = "invalid_totp" });
         }).RequireAuthorization();
 
-        app.MapPost("/mfa/totp/reset", async (
+        app.MapPost("/api/mfa/totp/reset", async (
             IIdentityRepository users,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
@@ -62,7 +63,7 @@ internal static class MfaEndpoints
             return Results.Ok();
         }).RequireAuthorization();
 
-        app.MapPost("/mfa/recovery-codes", async (
+        app.MapPost("/api/mfa/recovery-codes", async (
             IRecoveryCodeService recoveryCodes,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>

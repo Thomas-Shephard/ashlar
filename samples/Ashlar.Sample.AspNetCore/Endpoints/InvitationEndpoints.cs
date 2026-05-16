@@ -11,7 +11,7 @@ internal static class InvitationEndpoints
 {
     public static void MapInvitationEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/invitations", async (
+        app.MapPost("/api/invitations", async (
             CreateInvitationRequest request,
             IInvitationService invitations,
             IOptions<SampleAshlarOptions> options,
@@ -19,11 +19,11 @@ internal static class InvitationEndpoints
             CancellationToken cancellationToken) =>
         {
             var callback = new Uri(new Uri(options.Value.PublicAppUrl), "/invitations/accept");
-            await invitations.CreateInvitationAsync(request, callback, httpContext.ToAuthenticationContext(), cancellationToken);
-            return Results.Accepted();
+            var result = await invitations.CreateInvitationAsync(request, callback, httpContext.ToAuthenticationContext(), cancellationToken);
+            return result.Succeeded ? Results.Accepted() : Results.BadRequest(new { error = result.FailureReason });
         }).RequireAuthorization("admin");
 
-        app.MapPost("/invitations/accept", async Task<IResult> (
+        app.MapPost("/api/invitations/accept", async Task<IResult> (
             AcceptInvitationRequest request,
             IInvitationService invitations,
             IAshlarSignInManager signInManager,

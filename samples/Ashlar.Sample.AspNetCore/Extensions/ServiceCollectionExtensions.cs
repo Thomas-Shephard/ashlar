@@ -20,9 +20,17 @@ internal static class ServiceCollectionExtensions
         services.AddDataProtection();
 
         services.AddAshlarIdentity();
+        services.Configure<Identity.Models.UriValidationOptions>(options =>
+        {
+            options.AllowedCallbackUris.Add(sampleOptions.PublicAppUrl);
+        });
         services.AddAshlarPostgres(postgresStartup.ConnectionString);
         services.AddAshlarDataProtectionSecretProtector();
         services.AddAshlarMagicLinkSignIn(options => options.LinkTokenParameterName = "t");
+        services.AddAshlarEmailCodeSignIn();
+        services.AddAshlarEmailVerification();
+        services.AddAshlarEmailChange();
+        services.AddAshlarSecurityNotifications();
         services.AddAshlarInvitations();
         services.AddAshlarBootstrap(options =>
         {
