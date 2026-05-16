@@ -438,6 +438,41 @@ public class TotpTests
         _credentialService.Verify(x => x.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [TestCase("link_failed")]
+    [TestCase(null)]
+    public async Task VerifyAndEnrollAsyncFailsWhenCredentialLinkFails(string? failureReason)
+    {
+        var service = CreateService();
+        var userId = Guid.NewGuid();
+        var secretBytes = new byte[20];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(secretBytes);
+        var secret = Base32.Encode(secretBytes);
+        var code = TotpAuthenticator.GenerateCode(secretBytes, _timeProvider.GetUtcNow().ToUnixTimeSeconds() / 30);
+
+        _credentialService.Setup(x => x.LinkCredentialAsync(
+                userId,
+                It.IsAny<TotpAssertion>(),
+                It.IsAny<IAuthenticationProvider>(),
+                secret,
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result(false, failureReason));
+
+        var result = await service.VerifyAndEnrollAsync(userId, secret, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo(failureReason ?? "link_failed"));
+        }
+
+        _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(d =>
+            d.EventType == AshlarSecurityEventTypes.TotpEnrollmentCompleted &&
+            d.Outcome == SecurityEventOutcomes.Failure &&
+            d.FailureReason == (failureReason ?? "link_failed")), It.IsAny<CancellationToken>()), Times.Once);
+        _transaction.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Test]
     public async Task VerifyAndEnrollAsyncFailsWithEmptyCode()
     {

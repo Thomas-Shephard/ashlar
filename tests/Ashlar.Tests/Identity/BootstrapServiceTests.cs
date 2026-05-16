@@ -471,6 +471,45 @@ public class BootstrapServiceTests
     }
 
     [Test]
+    public async Task AcceptBootstrapInvitationAsyncUsesDefaultFailureWhenGrantCreationFailsWithoutReason()
+    {
+        var invitation = new UserInvitation
+        {
+            Id = Guid.NewGuid(),
+            Email = "admin@example.com",
+            TokenHash = "hashed",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            ExpiresAt = _timeProvider.GetUtcNow().AddDays(1),
+            Version = "1",
+            Metadata = "{\"ashlar.bootstrap\": true}"
+        };
+        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
+        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
+        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Uninitialized);
+
+        var userId = Guid.NewGuid();
+        _invitationService.Setup(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(userId));
+        _grantService.Setup(s => s.CreateGrantAsync(It.IsAny<CreateAuthorizationGrantRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<AuthorizationGrant>(false));
+
+        _options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
+
+        var transaction = new Mock<IAshlarTransaction>();
+        _transactionProvider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
+
+        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("grant_creation_failed"));
+        }
+
+        transaction.Verify(t => t.RollbackAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
     public async Task AcceptBootstrapInvitationAsyncReturnsFailureIfInvitationAcceptanceFails()
     {
         var invitation = new UserInvitation

@@ -678,6 +678,31 @@ public class AuthenticationOrchestratorTests
         }
     }
 
+    [TestCase("empty_token", "Handshake token is required.")]
+    [TestCase("handshake_not_found", "Handshake not found.")]
+    [TestCase("handshake_revoked", "Handshake is no longer valid.")]
+    [TestCase("handshake_already_completed", "Handshake has already been completed.")]
+    [TestCase("rate_limit_exceeded", "Rate limit exceeded.")]
+    [TestCase("invalid_factor_type", "Invalid factor type.")]
+    [TestCase("factor_already_verified", "Factor already verified.")]
+    [TestCase("invalid_metadata", "Invalid metadata.")]
+    public async Task VerifyFactorAsyncMapsHandshakeFailureReasonsToPublicMessages(string failureReason, string expectedMessage)
+    {
+        var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
+        _handshakeServiceMock.Setup(h => h.GetHandshakeAsync("token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+
+        _handshakeServiceMock.Setup(h => h.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure<AuthenticationHandshake>(failureReason));
+
+        var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
+
+        Assert.That(result.ErrorMessage, Is.EqualTo(expectedMessage));
+    }
+
     [Test]
     public async Task VerifyFactorAsyncUsesDefaultErrorWhenHandshakeServiceFailsWithUnknownReason()
     {
@@ -697,6 +722,29 @@ public class AuthenticationOrchestratorTests
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
             Assert.That(result.ErrorMessage, Is.EqualTo("Factor verification failed."));
+        }
+    }
+
+    [TestCase("no_factors_specified", "MFA is required but no factors are configured.")]
+    [TestCase("invalid_metadata", "Invalid metadata.")]
+    [TestCase("unexpected_internal_reason", "Failed to create MFA handshake.")]
+    public async Task AuthenticateAsyncMapsHandshakeCreationFailureReasonsToPublicMessages(string failureReason, string expectedMessage)
+    {
+        _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+
+        _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
+
+        _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure<AuthenticationHandshakeCreated>(failureReason));
+
+        var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
+            Assert.That(result.ErrorMessage, Is.EqualTo(expectedMessage));
         }
     }
 

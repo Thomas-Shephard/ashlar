@@ -265,6 +265,61 @@ public sealed class InvitationServiceTests
     }
 
     [Test]
+    public async Task AcceptInvitationVerifiesExistingActiveUnverifiedUserWhenConfigured()
+    {
+        var activeUser = new User { Id = Guid.NewGuid(), Email = "ACTIVE@EXAMPLE.COM", IsActive = true, Name = "Active User" };
+        var fixture = CreateFixture(activeUser, configureOptions: options => options.VerifyEmailOnAcceptance = true);
+        fixture.InvitationRepository.Invitations.Add(new UserInvitation
+        {
+            Id = Guid.NewGuid(),
+            Email = "active@example.com",
+            TokenHash = fixture.TokenHasher.HashToken("token"),
+            CreatedAt = fixture.Time.GetUtcNow(),
+            ExpiresAt = fixture.Time.GetUtcNow().AddDays(1),
+            Version = "1"
+        });
+
+        var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = "token" });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            var user = fixture.IdentityRepository.Users.First(u => u.Id == activeUser.Id);
+            Assert.That(user.IsActive, Is.True);
+            Assert.That(user.EmailVerifiedAt, Is.EqualTo(fixture.Time.GetUtcNow()));
+            Assert.That(fixture.IdentityRepository.UpdateCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task AcceptInvitationDoesNotUpdateExistingActiveUserWhenNoActivationOrVerificationIsNeeded()
+    {
+        var verifiedAt = new DateTimeOffset(2026, 5, 1, 9, 0, 0, TimeSpan.Zero);
+        var activeUser = new User { Id = Guid.NewGuid(), Email = "ACTIVE@EXAMPLE.COM", IsActive = true, Name = "Active User", EmailVerifiedAt = verifiedAt };
+        var fixture = CreateFixture(activeUser, configureOptions: options => options.VerifyEmailOnAcceptance = true);
+        fixture.InvitationRepository.Invitations.Add(new UserInvitation
+        {
+            Id = Guid.NewGuid(),
+            Email = "active@example.com",
+            TokenHash = fixture.TokenHasher.HashToken("token"),
+            CreatedAt = fixture.Time.GetUtcNow(),
+            ExpiresAt = fixture.Time.GetUtcNow().AddDays(1),
+            Version = "1"
+        });
+
+        var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = "token", UserName = "Ignored Name" });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            var user = fixture.IdentityRepository.Users.First(u => u.Id == activeUser.Id);
+            Assert.That(user.Name, Is.EqualTo("Active User"));
+            Assert.That(user.EmailVerifiedAt, Is.EqualTo(verifiedAt));
+            Assert.That(fixture.IdentityRepository.UpdateCount, Is.Zero);
+        }
+    }
+
+    [Test]
     public async Task AcceptInvitationFailsForExpiredToken()
     {
         var fixture = CreateFixture();
@@ -646,6 +701,7 @@ public sealed class InvitationServiceTests
     private sealed class InMemoryIdentityRepository(params User?[] users) : IIdentityRepository
     {
         public List<User> Users { get; } = users.OfType<User>().ToList();
+        public int UpdateCount { get; private set; }
         public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(Users.FirstOrDefault(u => string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase)));
         public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(Users.FirstOrDefault(u => u.Id == userId));
         public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
@@ -664,6 +720,7 @@ public sealed class InvitationServiceTests
         }
         public Task UpdateUserAsync(IUser user, CancellationToken cancellationToken = default)
         {
+            UpdateCount++;
             var existing = Users.FirstOrDefault(u => u.Id == user.Id);
             if (existing != null)
             {

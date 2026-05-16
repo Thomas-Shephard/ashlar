@@ -161,7 +161,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         var rateLimitResult = await CheckRateLimitAsync(handshake, cancellationToken);
         if (rateLimitResult != null)
         {
-            return Result.Failure<AuthenticationHandshake>(rateLimitResult.FailureReason ?? "rate_limited");
+            return rateLimitResult;
         }
 
         var now = _timeProvider.GetUtcNow();

@@ -46,6 +46,26 @@ public sealed class EmailMessageTests
     }
 
     [Test]
+    public void EmailMessageAcceptsCcAndBccOptions()
+    {
+        var message = new EmailMessage(
+            "user@example.com",
+            "Sign in",
+            "Use this code.",
+            options: new EmailMessageOptions
+            {
+                Cc = "cc@example.com",
+                Bcc = "bcc@example.com"
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message.Cc, Is.EqualTo("cc@example.com"));
+            Assert.That(message.Bcc, Is.EqualTo("bcc@example.com"));
+        }
+    }
+
+    [Test]
     public void EmailMessageRejectsEmptyTo()
     {
         var exception = Assert.Throws<ArgumentException>(() => _ = new EmailMessage(" ", "Subject", "Body"));
