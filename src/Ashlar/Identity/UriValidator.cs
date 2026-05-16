@@ -11,6 +11,11 @@ public sealed class UriValidator : IUriValidator
 {
     private readonly UriValidationOptions _options;
     private readonly List<Uri> _allowedUris;
+    private static readonly HashSet<string> AllowedSchemes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        Uri.UriSchemeHttps,
+        Uri.UriSchemeHttp
+    };
 
     /// <summary>
     /// Initializes a new instance of the uri validator class.
@@ -32,6 +37,11 @@ public sealed class UriValidator : IUriValidator
             if (!Uri.TryCreate(allowedUri, UriKind.Absolute, out var baseUri))
             {
                 throw new InvalidOperationException($"The configured allowed callback URI '{allowedUri}' is not a valid absolute URI.");
+            }
+
+            if (!IsSafeAbsoluteUri(baseUri))
+            {
+                throw new InvalidOperationException($"The configured allowed callback URI '{allowedUri}' must use http or https and must not include a query string or fragment.");
             }
 
             _allowedUris.Add(baseUri);
@@ -60,6 +70,13 @@ public sealed class UriValidator : IUriValidator
             return false;
         }
 
+        if (!IsSafeAbsoluteUri(uri))
+        {
+            return false;
+        }
+
+        var targetPath = uri.AbsolutePath.TrimEnd('/');
+
         return _allowedUris.Any(baseUri =>
         {
             if (!string.Equals(baseUri.Scheme, uri.Scheme, StringComparison.OrdinalIgnoreCase) ||
@@ -70,18 +87,28 @@ public sealed class UriValidator : IUriValidator
             }
 
             var basePath = baseUri.AbsolutePath.TrimEnd('/');
-            var targetPath = uri.AbsolutePath.TrimEnd('/');
 
-            // Exact match (ignoring trailing slash)
             if (targetPath.Equals(basePath, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
 
-            // Sub-path match. Ensure the base path is followed by a slash.
-            // Example: base is /app, target is /app/callback
+            if (basePath.Length == 0)
+            {
+                return targetPath.Length == 0;
+            }
+
             var basePathWithSlash = basePath + "/";
-            return uri.AbsolutePath.StartsWith(basePathWithSlash, StringComparison.OrdinalIgnoreCase);
+            return targetPath.StartsWith(basePathWithSlash, StringComparison.OrdinalIgnoreCase);
         });
+    }
+
+    private static bool IsSafeAbsoluteUri(Uri uri)
+    {
+        return uri.IsAbsoluteUri &&
+            AllowedSchemes.Contains(uri.Scheme) &&
+            string.IsNullOrEmpty(uri.UserInfo) &&
+            string.IsNullOrEmpty(uri.Query) &&
+            string.IsNullOrEmpty(uri.Fragment);
     }
 }

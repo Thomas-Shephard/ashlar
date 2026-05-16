@@ -57,6 +57,21 @@ Session token generation and hashing use the reusable `Ashlar.Security.Tokens` p
 
 `SecureTokenGenerator` generates Base64Url tokens from 32 to 192 random bytes. The upper bound keeps generated tokens compatible with the default `Sha256TokenHasher` input limit. Existing code that customized the old session-specific token generator or hasher should register `ISecureTokenGenerator` or `ISecureTokenHasher` instead.
 
+## Callback URI Validation
+Ashlar validates token-bearing callback bases through `IUriValidator` before generating links for magic-link sign-in, invitations, email verification, and email change. Configure trusted public application roots or callback paths with `UriValidationOptions.AllowedCallbackUris`:
+
+```csharp
+services.Configure<UriValidationOptions>(options =>
+{
+    options.AllowedCallbackUris.Add("https://app.example.com");
+    options.AllowedCallbackUris.Add("https://admin.example.com/invitations");
+});
+```
+
+Allowed entries must be absolute `https` or `http` URIs without query strings or fragments. Candidate callback bases must use the same scheme, host, and port, and their path must match exactly or be under the allowed path on a path-segment boundary. For example, allowing `https://app.example.com/app` permits `/app` and `/app/callback`, but not `/app2`. Allowing `https://app.example.com` permits only the root callback path; add each trusted callback path explicitly.
+
+Use `https` in production. For local development, explicitly allow the loopback HTTP origin you run, such as `http://localhost:5000`, and avoid modeling production with arbitrary callback URLs from user input. Ashlar appends token query parameters after validation; do not include query strings or fragments in callback bases.
+
 ## Messaging
 Ashlar includes a framework-neutral email abstraction for identity and security flows that need to send or queue email messages, such as passwordless email sign-in, password reset, MFA recovery, and security notifications.
 
