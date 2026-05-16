@@ -321,7 +321,11 @@ internal sealed class EmailCodeSignInTests
         var emailSender = new RecordingEmailSender();
         var provider = CreateProvider();
         var registry = new AuthenticationProviderRegistry([provider]);
-        var credentialService = new CredentialService(repository, Mock.Of<ISecretProtector>(), new NullTransactionProvider(), timeProvider: time, securityEventSink: audit);
+        var credentialService = new CredentialService(
+            repository,
+            Mock.Of<ISecretProtector>(),
+            new NullTransactionProvider(),
+            new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: audit));
         var pipeline = new AuthenticationPipeline(registry, credentialService, new NullTransactionProvider(), audit, time);
         var identity = new IdentityService(repository, registry, credentialService, pipeline, new NullTransactionProvider(), audit, time);
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed, time);

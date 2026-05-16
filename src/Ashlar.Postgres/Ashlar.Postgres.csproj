@@ -7,6 +7,7 @@
     <PackageReference Include="Dapper" />
     <PackageReference Include="dbup-postgresql" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Npgsql" />
   </ItemGroup>
 

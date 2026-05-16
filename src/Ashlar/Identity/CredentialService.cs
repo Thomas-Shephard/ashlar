@@ -3,6 +3,8 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Security.Encryption;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Identity;
 
@@ -12,30 +14,93 @@ namespace Ashlar.Identity;
 /// <param name="repository">The repository value.</param>
 /// <param name="secretProtector">The secret protector value.</param>
 /// <param name="transactionProvider">The transaction provider value.</param>
-/// <param name="options">The options value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-/// <param name="securityEventSink">The security event sink value.</param>
+/// <param name="dependencies">The dependencies value.</param>
 /// <remarks>
 /// This service implements timing attack resistance by ensuring that unprotection operations
 /// are performed even when a user or credential is not found, using provider-specific dummy values.
+/// Configure both dependency log members when constructing this service manually and operational
+/// logging is desired for both credential operations and security event sink failures.
 /// </remarks>
 public sealed class CredentialService(
     IIdentityRepository repository,
     ISecretProtector secretProtector,
     IAshlarTransactionProvider transactionProvider,
-    IdentityServiceOptions? options = null,
-    TimeProvider? timeProvider = null,
-    ISecurityEventSink? securityEventSink = null)
+    CredentialServiceDependencies dependencies)
     : ICredentialService
 {
+    private static readonly Action<ILogger, Guid, Guid, string, string, Exception?> CredentialProtectionFailedRequired =
+        LoggerMessage.Define<Guid, Guid, string, string>(
+            LogLevel.Warning,
+            new EventId(1000, nameof(CredentialProtectionFailedRequired)),
+            "Credential value protection failed and required credential update cannot continue. UserId={UserId} CredentialId={CredentialId} ProviderType={ProviderType} ProviderName={ProviderName}");
+
+    private static readonly Action<ILogger, Guid, Guid, string, string, Exception?> CredentialUpdateWipeRisk =
+        LoggerMessage.Define<Guid, Guid, string, string>(
+            LogLevel.Warning,
+            new EventId(1001, nameof(CredentialUpdateWipeRisk)),
+            "Skipped credential update because it could wipe a protected credential value. UserId={UserId} CredentialId={CredentialId} ProviderType={ProviderType} ProviderName={ProviderName}");
+
+    private static readonly Action<ILogger, Guid, Guid, string, string, Exception?> CredentialProtectionFailed =
+        LoggerMessage.Define<Guid, Guid, string, string>(
+            LogLevel.Warning,
+            new EventId(1002, nameof(CredentialProtectionFailed)),
+            "Credential value protection failed. UserId={UserId} CredentialId={CredentialId} ProviderType={ProviderType} ProviderName={ProviderName}");
+
+    private static readonly Action<ILogger, Guid, Guid, string, string, Exception?> CredentialUpdateConcurrencyConflict =
+        LoggerMessage.Define<Guid, Guid, string, string>(
+            LogLevel.Warning,
+            new EventId(1003, nameof(CredentialUpdateConcurrencyConflict)),
+            "Credential update was not persisted due to a concurrency conflict. UserId={UserId} CredentialId={CredentialId} ProviderType={ProviderType} ProviderName={ProviderName}");
+
+    private static readonly Action<ILogger, Guid, Guid, string, string, Exception?> CredentialUpdatePersistenceFailed =
+        LoggerMessage.Define<Guid, Guid, string, string>(
+            LogLevel.Warning,
+            new EventId(1004, nameof(CredentialUpdatePersistenceFailed)),
+            "Credential update persistence failed. UserId={UserId} CredentialId={CredentialId} ProviderType={ProviderType} ProviderName={ProviderName}");
+
+    private static readonly Action<ILogger, Guid, Guid, string, string, Exception?> CredentialUnprotectFailed =
+        LoggerMessage.Define<Guid, Guid, string, string>(
+            LogLevel.Warning,
+            new EventId(1005, nameof(CredentialUnprotectFailed)),
+            "Credential value unprotection failed. UserId={UserId} CredentialId={CredentialId} ProviderType={ProviderType} ProviderName={ProviderName}");
+
+    private static readonly Action<ILogger, string, string, int, Exception?> DummyCredentialUnprotectFailed =
+        LoggerMessage.Define<string, string, int>(
+            LogLevel.Debug,
+            new EventId(1006, nameof(DummyCredentialUnprotectFailed)),
+            "Dummy credential unprotection failed during timing-resistant credential resolution. ProviderType={ProviderType} ProviderName={ProviderName} TypicalCredentialLength={TypicalCredentialLength}");
+
     private const string CredentialIdPropertyName = "credential_id";
     private readonly IIdentityRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly ISecretProtector _secretProtector = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
-    private readonly IdentityServiceOptions _options = options ?? new IdentityServiceOptions();
-    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
-    private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider ?? TimeProvider.System);
+    private readonly IdentityServiceOptions _options = ValidateDependencies(dependencies).Options ?? new IdentityServiceOptions();
+    private readonly TimeProvider _timeProvider = ValidateDependencies(dependencies).TimeProvider ?? TimeProvider.System;
+    private readonly SecurityEventEmitter _securityEvents = new(
+        ValidateDependencies(dependencies).SecurityEventSink,
+        ValidateDependencies(dependencies).TimeProvider ?? TimeProvider.System,
+        ValidateDependencies(dependencies).LoggerFactory);
+    private readonly ILogger<CredentialService> _logger = ValidateDependencies(dependencies).Logger ?? NullLogger<CredentialService>.Instance;
     private readonly ConcurrentDictionary<int, string> _dummyValues = new();
+
+    /// <summary>
+    /// Initializes a configured service instance.
+    /// </summary>
+    /// <param name="repository">The repository value.</param>
+    /// <param name="secretProtector">The secret protector value.</param>
+    /// <param name="transactionProvider">The transaction provider value.</param>
+    public CredentialService(
+        IIdentityRepository repository,
+        ISecretProtector secretProtector,
+        IAshlarTransactionProvider transactionProvider)
+        : this(repository, secretProtector, transactionProvider, new CredentialServiceDependencies())
+    {
+    }
+
+    private static CredentialServiceDependencies ValidateDependencies(CredentialServiceDependencies? dependencies)
+    {
+        return dependencies ?? throw new ArgumentNullException(nameof(dependencies));
+    }
     /// <inheritdoc />
     public async Task<(IUser? User, UserCredential? Credential, UserCredential? OriginalCredential, bool UnprotectFailed)> ResolveAsync(
         AuthenticationContext context,
@@ -120,8 +185,14 @@ public sealed class CredentialService(
                 {
                     _secretProtector.Unprotect(dummyProtectedValue);
                 }
-                catch (System.Security.Cryptography.CryptographicException)
+                catch (System.Security.Cryptography.CryptographicException ex)
                 {
+                    DummyCredentialUnprotectFailed(
+                        _logger,
+                        provider.Key.Type.ValueOrUnknown,
+                        provider.Key.Name,
+                        provider.TypicalCredentialLength,
+                        ex);
                     // Swallowing exception for timing resistance.
                 }
             }
@@ -148,8 +219,15 @@ public sealed class CredentialService(
                 unprotectedValue = _secretProtector.Unprotect(credential.CredentialValue);
             }
         }
-        catch (System.Security.Cryptography.CryptographicException)
+        catch (System.Security.Cryptography.CryptographicException ex)
         {
+            CredentialUnprotectFailed(
+                _logger,
+                credential.UserId,
+                credential.Id,
+                credential.ProviderType.ValueOrUnknown,
+                credential.ProviderName,
+                ex);
             unprotectFailed = true;
         }
 
@@ -208,12 +286,26 @@ public sealed class CredentialService(
 
         if (!protectionSucceeded && !HandleProtectionFailure(unprotectedCredential, originalCredential, result, ref needsUpdate))
         {
+            CredentialProtectionFailedRequired(
+                _logger,
+                unprotectedCredential.UserId,
+                unprotectedCredential.Id,
+                unprotectedCredential.ProviderType.ValueOrUnknown,
+                unprotectedCredential.ProviderName,
+                null);
             transaction.OnCommitted(ct => RecordCredentialUpdateFailedAsync(unprotectedCredential, "protect_failed", ct));
             return false;
         }
 
         if (needsUpdate && IsWipeRisk(unprotectedCredential, originalCredential, provider))
         {
+            CredentialUpdateWipeRisk(
+                _logger,
+                unprotectedCredential.UserId,
+                unprotectedCredential.Id,
+                unprotectedCredential.ProviderType.ValueOrUnknown,
+                unprotectedCredential.ProviderName,
+                null);
             transaction.OnCommitted(ct => RecordCredentialUpdateFailedAsync(unprotectedCredential, "wipe_risk", ct));
             return false;
         }
@@ -332,6 +424,13 @@ public sealed class CredentialService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            CredentialProtectionFailed(
+                _logger,
+                credential.UserId,
+                credential.Id,
+                credential.ProviderType.ValueOrUnknown,
+                credential.ProviderName,
+                ex);
             return false;
         }
     }
@@ -352,7 +451,6 @@ public sealed class CredentialService(
             needsUpdate = false;
         }
 
-        // TODO: Log exception.
         return result.CredentialUpdateRequirement != CredentialUpdateRequirement.Required;
     }
 
@@ -372,7 +470,13 @@ public sealed class CredentialService(
             var updateSucceeded = await _repository.UpdateCredentialAsync(credential, GetExpectedVersion(credential, original), cancellationToken);
             if (!updateSucceeded)
             {
-                // TODO: Log concurrency conflict.
+                CredentialUpdateConcurrencyConflict(
+                    _logger,
+                    credential.UserId,
+                    credential.Id,
+                    credential.ProviderType.ValueOrUnknown,
+                    credential.ProviderName,
+                    null);
                 return (result.CredentialUpdateRequirement != CredentialUpdateRequirement.Required, false);
             }
 
@@ -380,7 +484,13 @@ public sealed class CredentialService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // TODO: Log exception.
+            CredentialUpdatePersistenceFailed(
+                _logger,
+                credential.UserId,
+                credential.Id,
+                credential.ProviderType.ValueOrUnknown,
+                credential.ProviderName,
+                ex);
             return (result.CredentialUpdateRequirement != CredentialUpdateRequirement.Required, false);
         }
     }
@@ -505,3 +615,18 @@ public sealed class CredentialService(
         }, cancellationToken);
     }
 }
+
+/// <summary>
+/// Represents the credential service dependencies data model.
+/// </summary>
+/// <param name="Options">The options value.</param>
+/// <param name="TimeProvider">The time provider value.</param>
+/// <param name="SecurityEventSink">The security event sink value.</param>
+/// <param name="Logger">Receives operational messages emitted directly by the credential service.</param>
+/// <param name="LoggerFactory">Creates diagnostics for embedded security event sink failures.</param>
+public sealed record CredentialServiceDependencies(
+    IdentityServiceOptions? Options = null,
+    TimeProvider? TimeProvider = null,
+    ISecurityEventSink? SecurityEventSink = null,
+    ILogger<CredentialService>? Logger = null,
+    ILoggerFactory? LoggerFactory = null);

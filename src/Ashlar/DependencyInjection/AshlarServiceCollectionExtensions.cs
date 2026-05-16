@@ -75,13 +75,21 @@ public static class AshlarServiceCollectionExtensions
             ServiceLifetime.Scoped));
         services.TryAddScoped<IAuthenticationPipeline, AuthenticationPipeline>();
         services.TryAddScoped<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>();
+        services.TryAddScoped(provider => new CredentialServiceDependencies(
+            provider.GetService<IdentityServiceOptions>(),
+            provider.GetService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>(),
+            provider.GetService<global::Microsoft.Extensions.Logging.ILogger<CredentialService>>(),
+            provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()));
         services.TryAddScoped<ICredentialService, CredentialService>();
         services.TryAddScoped(provider => new AuthenticationSessionServiceDependencies(
             provider.GetService<AuthenticationSessionOptions>(),
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>(),
             provider.GetService<IIdentityRepository>(),
-            provider.GetService<ISecurityNotificationService>()));
+            provider.GetService<ISecurityNotificationService>(),
+            provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationSessionService>>(),
+            provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()));
         services.TryAddScoped<IAuthenticationSessionService, AuthenticationSessionService>();
         services.TryAddScoped<IdentityContext>();
         services.TryAddScoped(provider => new IdentityInfrastructureContext(

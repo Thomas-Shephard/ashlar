@@ -4,6 +4,8 @@ using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Notifications;
 using Ashlar.Security.Tokens;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Identity;
 
@@ -15,14 +17,28 @@ namespace Ashlar.Identity;
 /// <param name="tokenGenerator">The token generator value.</param>
 /// <param name="transactionProvider">The transaction provider value.</param>
 /// <param name="dependencies">The dependencies value.</param>
+/// <param name="logger">The logger value.</param>
 public sealed class AuthenticationSessionService(
     IAuthenticationSessionRepository repository,
     ISecureTokenHasher tokenHasher,
     ISecureTokenGenerator tokenGenerator,
     IAshlarTransactionProvider transactionProvider,
-    AuthenticationSessionServiceDependencies dependencies)
+    AuthenticationSessionServiceDependencies dependencies,
+    ILogger<AuthenticationSessionService>? logger = null)
     : IAuthenticationSessionService
 {
+    private static readonly Action<ILogger, Guid, Guid, Exception?> SessionLastSeenUpdateNotPersisted =
+        LoggerMessage.Define<Guid, Guid>(
+            LogLevel.Warning,
+            new EventId(1000, nameof(SessionLastSeenUpdateNotPersisted)),
+            "Authentication session last-seen update was not persisted. SessionId={SessionId} UserId={UserId}");
+
+    private static readonly Action<ILogger, Guid, Guid, Exception?> SessionLastSeenUpdateFailed =
+        LoggerMessage.Define<Guid, Guid>(
+            LogLevel.Warning,
+            new EventId(1001, nameof(SessionLastSeenUpdateFailed)),
+            "Authentication session last-seen update failed. SessionId={SessionId} UserId={UserId}");
+
     /// <summary>
     /// Initializes a configured service instance.
     /// </summary>
@@ -49,7 +65,8 @@ public sealed class AuthenticationSessionService(
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly AuthenticationSessionOptions _options = ValidateOptions(dependencies.Options ?? new AuthenticationSessionOptions());
     private readonly TimeProvider _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
-    private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider ?? TimeProvider.System);
+    private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider ?? TimeProvider.System, dependencies.LoggerFactory);
+    private readonly ILogger<AuthenticationSessionService> _logger = logger ?? dependencies.Logger ?? NullLogger<AuthenticationSessionService>.Instance;
     private readonly IIdentityRepository? _identityRepository = dependencies.IdentityRepository;
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
 
@@ -455,10 +472,22 @@ public sealed class AuthenticationSessionService(
             {
                 session.LastSeenAt = now;
             }
+            else
+            {
+                SessionLastSeenUpdateNotPersisted(
+                    _logger,
+                    session.Id,
+                    session.UserId,
+                    null);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // TODO: Log last-seen update failures when Ashlar has a core logging convention.
+            SessionLastSeenUpdateFailed(
+                _logger,
+                session.Id,
+                session.UserId,
+                ex);
         }
     }
 
@@ -534,9 +563,13 @@ public sealed class AuthenticationSessionService(
 /// <param name="SecurityEventSink">The security event sink value.</param>
 /// <param name="IdentityRepository">The identity repository value.</param>
 /// <param name="NotificationService">The notification service value.</param>
+/// <param name="Logger">Receives operational messages emitted directly by the session service.</param>
+/// <param name="LoggerFactory">Creates diagnostics for embedded security event sink failures.</param>
 public sealed record AuthenticationSessionServiceDependencies(
     AuthenticationSessionOptions? Options = null,
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,
     IIdentityRepository? IdentityRepository = null,
-    ISecurityNotificationService? NotificationService = null);
+    ISecurityNotificationService? NotificationService = null,
+    ILogger<AuthenticationSessionService>? Logger = null,
+    ILoggerFactory? LoggerFactory = null);

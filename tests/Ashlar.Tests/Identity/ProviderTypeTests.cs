@@ -12,6 +12,7 @@ internal sealed class ProviderTypeTests
         {
             Assert.Throws<InvalidOperationException>(() => _ = type.Value);
             Assert.Throws<InvalidOperationException>(() => _ = type.ToString());
+            Assert.That(type.ValueOrUnknown, Is.EqualTo(ProviderType.UnknownValue));
         }
     }
 
@@ -47,5 +48,11 @@ internal sealed class ProviderTypeTests
         var type1 = (ProviderType)"OIDC";
         var type2 = ProviderType.Oidc;
         Assert.That(type1, Is.EqualTo(type2));
+    }
+
+    [Test]
+    public void ValueOrUnknownShouldReturnInitializedValue()
+    {
+        Assert.That(ProviderType.Oidc.ValueOrUnknown, Is.EqualTo("OIDC"));
     }
 }

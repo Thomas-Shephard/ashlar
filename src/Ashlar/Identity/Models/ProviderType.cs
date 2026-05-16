@@ -6,9 +6,19 @@ namespace Ashlar.Identity.Models;
 public readonly record struct ProviderType
 {
     /// <summary>
+    /// Gets the provider type value used when a provider type was not initialized.
+    /// </summary>
+    public const string UnknownValue = "UNKNOWN";
+
+    /// <summary>
     /// Executes the invalid operation exception operation.
     /// </summary>
     public string Value => field ?? throw new InvalidOperationException("ProviderType must be initialized with a non-empty value.");
+
+    /// <summary>
+    /// Gets the provider type value, or a stable sentinel when this instance was not initialized.
+    /// </summary>
+    public string ValueOrUnknown => this == default ? UnknownValue : Value;
 
     private ProviderType(string value)
     {

@@ -2,6 +2,8 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Ashlar.Auditing;
 using Dapper;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 
 namespace Ashlar.Postgres;
@@ -11,7 +13,20 @@ namespace Ashlar.Postgres;
 /// </summary>
 public sealed class PostgresSecurityEventSink : ISecurityEventSink, IAsyncDisposable
 {
+    private static readonly Action<ILogger, string, Guid?, Guid?, string?, string?, Exception?> SecurityEventQueueFailed =
+        LoggerMessage.Define<string, Guid?, Guid?, string?, string?>(
+            LogLevel.Warning,
+            new EventId(1000, nameof(SecurityEventQueueFailed)),
+            "Security event could not be queued for persistence. EventType={EventType} UserId={UserId} SessionId={SessionId} ProviderType={ProviderType} ProviderName={ProviderName}");
+
+    private static readonly Action<ILogger, string, Guid?, Guid?, string?, string?, Exception?> SecurityEventPersistenceFailed =
+        LoggerMessage.Define<string, Guid?, Guid?, string?, string?>(
+            LogLevel.Warning,
+            new EventId(1001, nameof(SecurityEventPersistenceFailed)),
+            "Security event persistence failed. EventType={EventType} UserId={UserId} SessionId={SessionId} ProviderType={ProviderType} ProviderName={ProviderName}");
+
     private readonly NpgsqlDataSource _dataSource;
+    private readonly ILogger<PostgresSecurityEventSink> _logger;
     private readonly Channel<AshlarSecurityEvent> _channel;
     private readonly Task _backgroundTask;
 
@@ -19,9 +34,11 @@ public sealed class PostgresSecurityEventSink : ISecurityEventSink, IAsyncDispos
     /// Initializes a new instance of the postgres security event sink class.
     /// </summary>
     /// <param name="dataSource">The data source value.</param>
-    public PostgresSecurityEventSink(NpgsqlDataSource dataSource)
+    /// <param name="logger">The logger value.</param>
+    public PostgresSecurityEventSink(NpgsqlDataSource dataSource, ILogger<PostgresSecurityEventSink>? logger = null)
     {
         _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
+        _logger = logger ?? NullLogger<PostgresSecurityEventSink>.Instance;
         _channel = Channel.CreateUnbounded<AshlarSecurityEvent>(new UnboundedChannelOptions
         {
             SingleReader = true,
@@ -42,7 +59,14 @@ public sealed class PostgresSecurityEventSink : ISecurityEventSink, IAsyncDispos
         ArgumentNullException.ThrowIfNull(securityEvent);
         if (!_channel.Writer.TryWrite(securityEvent))
         {
-            // TODO: add logging
+            SecurityEventQueueFailed(
+                _logger,
+                securityEvent.EventType,
+                securityEvent.UserId,
+                securityEvent.SessionId,
+                Ashlar.Identity.Models.AuthenticationProviderKey.GetTypeValueOrNull(securityEvent.Provider),
+                GetProviderName(securityEvent.Provider),
+                null);
         }
         return Task.CompletedTask;
     }
@@ -72,8 +96,8 @@ public sealed class PostgresSecurityEventSink : ISecurityEventSink, IAsyncDispos
                     securityEvent.OccurredAt,
                     securityEvent.UserId,
                     securityEvent.SessionId,
-                    ProviderType = securityEvent.Provider?.Type.Value,
-                    ProviderName = securityEvent.Provider?.Name,
+                    ProviderType = Ashlar.Identity.Models.AuthenticationProviderKey.GetTypeValueOrNull(securityEvent.Provider),
+                    ProviderName = GetProviderName(securityEvent.Provider),
                     securityEvent.IpAddress,
                     securityEvent.UserAgent,
                     securityEvent.CorrelationId,
@@ -86,12 +110,23 @@ public sealed class PostgresSecurityEventSink : ISecurityEventSink, IAsyncDispos
                 var command = new CommandDefinition(sql, parameters);
                 await connection.ExecuteAsync(command);
             }
-            catch
+            catch (Exception exception)
             {
-                // Swallowing to prevent background task termination
-                // TODO: add logging
+                SecurityEventPersistenceFailed(
+                    _logger,
+                    securityEvent.EventType,
+                    securityEvent.UserId,
+                    securityEvent.SessionId,
+                    Ashlar.Identity.Models.AuthenticationProviderKey.GetTypeValueOrNull(securityEvent.Provider),
+                    GetProviderName(securityEvent.Provider),
+                    exception);
             }
         }
+    }
+
+    private static string? GetProviderName(Ashlar.Identity.Models.AuthenticationProviderKey? provider)
+    {
+        return provider?.Name;
     }
 
     /// <summary>

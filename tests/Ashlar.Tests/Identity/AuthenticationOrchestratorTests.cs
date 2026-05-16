@@ -2,6 +2,8 @@ using System.Diagnostics.CodeAnalysis;
 using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Testing;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 
@@ -445,21 +447,29 @@ internal sealed class AuthenticationOrchestratorTests
     [Test]
     public async Task VerifyFactorAsyncFailsWhenHandshakeNotFound()
     {
+        var logger = new RecordingLogger<AuthenticationOrchestrator>();
+        var orchestrator = CreateOrchestrator(logger);
         _handshakeServiceMock.Setup(h => h.GetHandshakeAsync("token", It.IsAny<CancellationToken>()))
             .ReturnsAsync((AuthenticationHandshake?)null);
 
-        var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
+        var result = await orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
             Assert.That(result.ErrorMessage, Is.EqualTo("Handshake not found."));
+            Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
+                entry.Level == LogLevel.Debug
+                && entry.Message.Contains("MFA factor verification rejected", StringComparison.Ordinal)
+                && entry.Message.Contains("Reason=handshake_not_found", StringComparison.Ordinal)));
         }
     }
 
     [Test]
     public async Task VerifyFactorAsyncFailsWhenAssertionFails()
     {
+        var logger = new RecordingLogger<AuthenticationOrchestrator>();
+        var orchestrator = CreateOrchestrator(logger);
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.GetHandshakeAsync("token", It.IsAny<CancellationToken>()))
             .ReturnsAsync(handshake);
@@ -467,12 +477,17 @@ internal sealed class AuthenticationOrchestratorTests
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResponse(false, Status: AuthenticationStatus.Failed));
 
-        var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
+        var result = await orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
             Assert.That(result.ErrorMessage, Is.EqualTo("Factor verification failed."));
+            Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
+                entry.Level == LogLevel.Debug
+                && entry.Message.Contains("MFA factor verification rejected for handshake", StringComparison.Ordinal)
+                && entry.Message.Contains("Reason=factor_authentication_failed", StringComparison.Ordinal)
+                && entry.Message.Contains($"UserId={handshake.UserId}", StringComparison.Ordinal)));
         }
     }
 
@@ -517,18 +532,25 @@ internal sealed class AuthenticationOrchestratorTests
     [Test]
     public async Task VerifyFactorAsyncFailsWhenAssertionProviderDoesNotMatchFactor()
     {
+        var logger = new RecordingLogger<AuthenticationOrchestrator>();
+        var orchestrator = CreateOrchestrator(logger);
         var passwordAssertion = new Mock<IAuthenticationAssertion>();
         passwordAssertion.Setup(a => a.ProviderIdentity).Returns(AuthenticationProviderKey.Local);
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.GetHandshakeAsync("token", It.IsAny<CancellationToken>()))
             .ReturnsAsync(handshake);
 
-        var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, passwordAssertion.Object);
+        var result = await orchestrator.VerifyFactorAsync("token", "totp", _context, passwordAssertion.Object);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
             Assert.That(result.ErrorMessage, Is.EqualTo("Factor verification failed."));
+            Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
+                entry.Level == LogLevel.Debug
+                && entry.Message.Contains("MFA factor verification rejected for handshake", StringComparison.Ordinal)
+                && entry.Message.Contains("Reason=assertion_not_authorized_for_factor", StringComparison.Ordinal)
+                && entry.Message.Contains($"UserId={handshake.UserId}", StringComparison.Ordinal)));
         }
 
         _pipelineMock.Verify(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -538,16 +560,23 @@ internal sealed class AuthenticationOrchestratorTests
     [Test]
     public async Task VerifyFactorAsyncFailsBeforeAuthenticationWhenFactorIsNotRequired()
     {
+        var logger = new RecordingLogger<AuthenticationOrchestrator>();
+        var orchestrator = CreateOrchestrator(logger);
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "sms" }, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.GetHandshakeAsync("token", It.IsAny<CancellationToken>()))
             .ReturnsAsync(handshake);
 
-        var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
+        var result = await orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
             Assert.That(result.ErrorMessage, Is.EqualTo("Invalid factor type."));
+            Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
+                entry.Level == LogLevel.Debug
+                && entry.Message.Contains("MFA factor verification rejected for handshake", StringComparison.Ordinal)
+                && entry.Message.Contains("Reason=invalid_factor_type", StringComparison.Ordinal)
+                && entry.Message.Contains($"UserId={handshake.UserId}", StringComparison.Ordinal)));
         }
 
         _pipelineMock.Verify(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -581,16 +610,23 @@ internal sealed class AuthenticationOrchestratorTests
     [Test]
     public async Task VerifyFactorAsyncFailsBeforeAuthenticationWhenFactorAlreadyVerified()
     {
+        var logger = new RecordingLogger<AuthenticationOrchestrator>();
+        var orchestrator = CreateOrchestrator(logger);
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "TOTP", "sms" }, new HashSet<string> { "totp" });
         _handshakeServiceMock.Setup(h => h.GetHandshakeAsync("token", It.IsAny<CancellationToken>()))
             .ReturnsAsync(handshake);
 
-        var result = await _orchestrator.VerifyFactorAsync("token", "TOTP", _context, _assertionMock.Object);
+        var result = await orchestrator.VerifyFactorAsync("token", "TOTP", _context, _assertionMock.Object);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
             Assert.That(result.ErrorMessage, Is.EqualTo("Factor already verified."));
+            Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
+                entry.Level == LogLevel.Debug
+                && entry.Message.Contains("MFA factor verification rejected for handshake", StringComparison.Ordinal)
+                && entry.Message.Contains("Reason=factor_already_verified", StringComparison.Ordinal)
+                && entry.Message.Contains($"UserId={handshake.UserId}", StringComparison.Ordinal)));
         }
 
         _pipelineMock.Verify(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -659,6 +695,8 @@ internal sealed class AuthenticationOrchestratorTests
     [Test]
     public async Task VerifyFactorAsyncFailsWhenHandshakeServiceFails()
     {
+        var logger = new RecordingLogger<AuthenticationOrchestrator>();
+        var orchestrator = CreateOrchestrator(logger);
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.GetHandshakeAsync("token", It.IsAny<CancellationToken>()))
             .ReturnsAsync(handshake);
@@ -669,12 +707,17 @@ internal sealed class AuthenticationOrchestratorTests
         _handshakeServiceMock.Setup(h => h.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Failure<AuthenticationHandshake>("handshake_expired"));
 
-        var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
+        var result = await orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
             Assert.That(result.ErrorMessage, Is.EqualTo("Handshake has expired."));
+            Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
+                entry.Level == LogLevel.Warning
+                && entry.Message.Contains("MFA handshake operation failed", StringComparison.Ordinal)
+                && entry.Message.Contains("FailureReason=handshake_expired", StringComparison.Ordinal)
+                && entry.Message.Contains($"UserId={handshake.UserId}", StringComparison.Ordinal)));
         }
     }
 
@@ -730,6 +773,8 @@ internal sealed class AuthenticationOrchestratorTests
     [TestCase("unexpected_internal_reason", "Failed to create MFA handshake.")]
     public async Task AuthenticateAsyncMapsHandshakeCreationFailureReasonsToPublicMessages(string failureReason, string expectedMessage)
     {
+        var logger = new RecordingLogger<AuthenticationOrchestrator>();
+        var orchestrator = CreateOrchestrator(logger);
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
 
@@ -739,12 +784,17 @@ internal sealed class AuthenticationOrchestratorTests
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Failure<AuthenticationHandshakeCreated>(failureReason));
 
-        var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
+        var result = await orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
             Assert.That(result.ErrorMessage, Is.EqualTo(expectedMessage));
+            Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
+                entry.Level == LogLevel.Warning
+                && entry.Message.Contains("MFA handshake operation failed", StringComparison.Ordinal)
+                && entry.Message.Contains($"FailureReason={failureReason}", StringComparison.Ordinal)
+                && entry.Message.Contains($"UserId={_userMock.Object.Id}", StringComparison.Ordinal)));
         }
     }
 
@@ -847,5 +897,14 @@ internal sealed class AuthenticationOrchestratorTests
             Assert.That(result.User, Is.EqualTo(_userMock.Object));
             Assert.That(result.Claims, Is.Empty);
         }
+    }
+
+    private AuthenticationOrchestrator CreateOrchestrator(RecordingLogger<AuthenticationOrchestrator> logger)
+    {
+        return new AuthenticationOrchestrator(
+            _pipelineMock.Object,
+            _handshakeServiceMock.Object,
+            _policyEvaluatorMock.Object,
+            logger: logger);
     }
 }

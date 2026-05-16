@@ -1,6 +1,8 @@
 using Ashlar.Messaging;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
 
@@ -13,15 +15,18 @@ namespace Ashlar.Postgres;
 /// <param name="serviceProvider">The service provider value.</param>
 /// <param name="timeProvider">The time provider value.</param>
 /// <param name="options">The options value.</param>
+/// <param name="logger">The logger value.</param>
 public sealed class PostgresEmailOutboxDispatcher<TTransport>(
     IServiceProvider serviceProvider,
     TimeProvider timeProvider,
-    IOptions<PostgresEmailOutboxOptions> options) : IEmailOutboxDispatcher
+    IOptions<PostgresEmailOutboxOptions> options,
+    ILogger<PostgresEmailOutboxDispatcher<TTransport>>? logger = null) : IEmailOutboxDispatcher
     where TTransport : IEmailTransport
 {
     private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     private readonly PostgresEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
+    private readonly ILogger<PostgresEmailOutboxDispatcher<TTransport>> _logger = logger ?? NullLogger<PostgresEmailOutboxDispatcher<TTransport>>.Instance;
     private readonly string _lockId = Guid.NewGuid().ToString();
 
     /// <inheritdoc />
@@ -106,6 +111,8 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
         }
         catch (Exception ex)
         {
+            var attemptCount = entry.AttemptCount + 1;
+            PostgresEmailOutboxDispatcherLog.EmailOutboxDeliveryFailed(_logger, entry.Id, attemptCount, attemptCount >= _options.MaxAttempts, ex);
             await MarkAsFailedAsync(entry, ex, provider, CancellationToken.None);
         }
     }
@@ -243,4 +250,13 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
         /// </summary>
         public int AttemptCount { get; init; }
     }
+}
+
+internal static class PostgresEmailOutboxDispatcherLog
+{
+    public static readonly Action<ILogger, Guid, int, bool, Exception?> EmailOutboxDeliveryFailed =
+        LoggerMessage.Define<Guid, int, bool>(
+            LogLevel.Warning,
+            new EventId(1000, nameof(EmailOutboxDeliveryFailed)),
+            "Email outbox delivery failed. MessageId={MessageId} AttemptCount={AttemptCount} FinalFailure={FinalFailure}");
 }

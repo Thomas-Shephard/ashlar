@@ -126,6 +126,31 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
     }
 
     [Test]
+    public async Task RecordAsyncWithUninitializedProviderTypePersistsUnknownProviderType()
+    {
+        var securityEvent = new AshlarSecurityEvent
+        {
+            Id = Guid.NewGuid(),
+            EventType = "TestEvent",
+            OccurredAt = DateTimeOffset.UtcNow,
+            Provider = (AuthenticationProviderKey?)default(AuthenticationProviderKey)
+        };
+
+        await using (var sink = new PostgresSecurityEventSink(GetDataSource()))
+        {
+            await sink.RecordAsync(securityEvent);
+        }
+
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        var row = await connection.QuerySingleAsync<dynamic>("SELECT provider_type, provider_name FROM ashlar_security_events");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string)row.provider_type, Is.EqualTo("UNKNOWN"));
+            Assert.That((string)row.provider_name, Is.EqualTo(string.Empty));
+        }
+    }
+
+    [Test]
     public async Task RecordAsyncThrowsIfEventIsNull()
     {
         await using var sink = new PostgresSecurityEventSink(GetDataSource());

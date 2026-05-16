@@ -46,7 +46,11 @@ internal sealed class IdentityServiceTests
             new Saml2AuthenticationProvider("Okta")
         };
 
-        var credentialService = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object, new NullTransactionProvider(), timeProvider: _timeProvider);
+        var credentialService = new CredentialService(
+            _repositoryMock.Object,
+            _secretProtectorMock.Object,
+            new NullTransactionProvider(),
+            new CredentialServiceDependencies(TimeProvider: _timeProvider));
         _identityService = new IdentityService(_repositoryMock.Object, providers, credentialService, new NullTransactionProvider());
         // Clear constructor-time Protect() calls so Verify() in tests only inspects invocations triggered by LoginAsync.
         _secretProtectorMock.Invocations.Clear();

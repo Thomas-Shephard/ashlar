@@ -1,5 +1,7 @@
 using Ashlar.Operational;
 using Dapper;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Npgsql;
 
@@ -10,9 +12,16 @@ namespace Ashlar.Postgres;
 /// </summary>
 public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
 {
+    private static readonly Action<ILogger, string, string, Exception?> CleanupCategoryFailed =
+        LoggerMessage.Define<string, string>(
+            LogLevel.Error,
+            new EventId(1000, nameof(CleanupCategoryFailed)),
+            "PostgreSQL cleanup category failed. Category={Category} TableName={TableName}");
+
     private readonly NpgsqlDataSource _dataSource;
     private readonly TimeProvider _timeProvider;
     private readonly AshlarCleanupOptions _options;
+    private readonly ILogger<PostgresAshlarCleanupService> _logger;
 
     /// <summary>
     /// Initializes a configured PostgreSQL cleanup service.
@@ -20,10 +29,12 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
     /// <param name="dataSource">The PostgreSQL data source.</param>
     /// <param name="timeProvider">The time provider.</param>
     /// <param name="options">The cleanup options.</param>
+    /// <param name="logger">The logger value.</param>
     public PostgresAshlarCleanupService(
         NpgsqlDataSource dataSource,
         TimeProvider timeProvider,
-        IOptions<AshlarCleanupOptions> options)
+        IOptions<AshlarCleanupOptions> options,
+        ILogger<PostgresAshlarCleanupService>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(dataSource);
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -32,6 +43,7 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         _dataSource = dataSource;
         _timeProvider = timeProvider;
         _options = options.Value;
+        _logger = logger ?? NullLogger<PostgresAshlarCleanupService>.Instance;
         if (!AshlarCleanupOptions.Validate(_options))
         {
             throw new ArgumentException("Cleanup options are invalid.", nameof(options));
@@ -79,16 +91,27 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
 
     private static DateTimeOffset? Threshold(DateTimeOffset now, TimeSpan? retention) => now - retention;
 
-    private Task<int> DeleteIfActiveAsync(
+    private async Task<int> DeleteIfActiveAsync(
         bool isActive,
         NpgsqlConnection connection,
         CleanupDeleteDefinition definition,
         DateTimeOffset? cutoff,
         CancellationToken cancellationToken)
     {
-        return isActive
-            ? DeleteAsync(connection, definition, cutoff, cancellationToken)
-            : Task.FromResult(0);
+        if (!isActive)
+        {
+            return 0;
+        }
+
+        try
+        {
+            return await DeleteAsync(connection, definition, cutoff, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            CleanupCategoryFailed(_logger, definition.Category, definition.TableName, ex);
+            throw;
+        }
     }
 
     private async Task<int> DeleteAsync(
@@ -118,7 +141,7 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         return await connection.ExecuteAsync(command);
     }
 
-    private sealed record CleanupDeleteDefinition(string TableName, string Predicate, string OrderColumn);
+    private sealed record CleanupDeleteDefinition(string Category, string TableName, string Predicate, string OrderColumn);
 
     private static class CleanupDeleteDefinitions
     {
@@ -143,7 +166,7 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         /// <param name="SessionsTable">The sessions table value.</param>
         /// <param name="ExpiresAtColumn">The expires at column value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition ExpiredSessions = new(SessionsTable, "expires_at < @cutoff AND revoked_at IS NULL", ExpiresAtColumn);
+        public static readonly CleanupDeleteDefinition ExpiredSessions = new("expired_sessions", SessionsTable, "expires_at < @cutoff AND revoked_at IS NULL", ExpiresAtColumn);
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
@@ -151,14 +174,14 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         /// <param name="RevokedBeforeCutoffPredicate">The revoked before cutoff predicate value.</param>
         /// <param name="RevokedAtColumn">The revoked at column value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition RevokedSessions = new(SessionsTable, RevokedBeforeCutoffPredicate, RevokedAtColumn);
+        public static readonly CleanupDeleteDefinition RevokedSessions = new("revoked_sessions", SessionsTable, RevokedBeforeCutoffPredicate, RevokedAtColumn);
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
         /// <param name="CredentialsTable">The credentials table value.</param>
         /// <param name="ExpiresAtColumn">The expires at column value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition ExpiredCredentials = new(CredentialsTable, "expires_at IS NOT NULL AND expires_at < @cutoff AND revoked_at IS NULL", ExpiresAtColumn);
+        public static readonly CleanupDeleteDefinition ExpiredCredentials = new("expired_credentials", CredentialsTable, "expires_at IS NOT NULL AND expires_at < @cutoff AND revoked_at IS NULL", ExpiresAtColumn);
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
@@ -166,14 +189,14 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         /// <param name="RevokedBeforeCutoffPredicate">The revoked before cutoff predicate value.</param>
         /// <param name="RevokedAtColumn">The revoked at column value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition RevokedCredentials = new(CredentialsTable, RevokedBeforeCutoffPredicate, RevokedAtColumn);
+        public static readonly CleanupDeleteDefinition RevokedCredentials = new("revoked_credentials", CredentialsTable, RevokedBeforeCutoffPredicate, RevokedAtColumn);
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
         /// <param name="AuthorizationGrantsTable">The authorization grants table value.</param>
         /// <param name="ExpiresAtColumn">The expires at column value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition ExpiredAuthorizationGrants = new(AuthorizationGrantsTable, "expires_at IS NOT NULL AND expires_at < @cutoff AND revoked_at IS NULL", ExpiresAtColumn);
+        public static readonly CleanupDeleteDefinition ExpiredAuthorizationGrants = new("expired_authorization_grants", AuthorizationGrantsTable, "expires_at IS NOT NULL AND expires_at < @cutoff AND revoked_at IS NULL", ExpiresAtColumn);
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
@@ -181,21 +204,21 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         /// <param name="RevokedBeforeCutoffPredicate">The revoked before cutoff predicate value.</param>
         /// <param name="RevokedAtColumn">The revoked at column value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition RevokedAuthorizationGrants = new(AuthorizationGrantsTable, RevokedBeforeCutoffPredicate, RevokedAtColumn);
+        public static readonly CleanupDeleteDefinition RevokedAuthorizationGrants = new("revoked_authorization_grants", AuthorizationGrantsTable, RevokedBeforeCutoffPredicate, RevokedAtColumn);
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
         /// <param name="InvitationsTable">The invitations table value.</param>
         /// <param name="ExpiresAtColumn">The expires at column value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition ExpiredInvitations = new(InvitationsTable, "expires_at < @cutoff AND accepted_at IS NULL AND revoked_at IS NULL", ExpiresAtColumn);
+        public static readonly CleanupDeleteDefinition ExpiredInvitations = new("expired_invitations", InvitationsTable, "expires_at < @cutoff AND accepted_at IS NULL AND revoked_at IS NULL", ExpiresAtColumn);
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
         /// <param name="InvitationsTable">The invitations table value.</param>
         /// <param name="AcceptedAtColumn">The accepted at column value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition AcceptedInvitations = new(InvitationsTable, "accepted_at IS NOT NULL AND accepted_at < @cutoff", AcceptedAtColumn);
+        public static readonly CleanupDeleteDefinition AcceptedInvitations = new("accepted_invitations", InvitationsTable, "accepted_at IS NOT NULL AND accepted_at < @cutoff", AcceptedAtColumn);
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
@@ -203,52 +226,52 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         /// <param name="RevokedBeforeCutoffPredicate">The revoked before cutoff predicate value.</param>
         /// <param name="RevokedAtColumn">The revoked at column value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition RevokedInvitations = new(InvitationsTable, RevokedBeforeCutoffPredicate, RevokedAtColumn);
+        public static readonly CleanupDeleteDefinition RevokedInvitations = new("revoked_invitations", InvitationsTable, RevokedBeforeCutoffPredicate, RevokedAtColumn);
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
         /// <param name="HandshakesTable">The handshakes table value.</param>
         /// <param name="is_revoked">The is revoked value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition ExpiredHandshakes = new(HandshakesTable, "expires_at < @cutoff AND is_revoked = FALSE AND is_completed = FALSE", ExpiresAtColumn);
+        public static readonly CleanupDeleteDefinition ExpiredHandshakes = new("expired_handshakes", HandshakesTable, "expires_at < @cutoff AND is_revoked = FALSE AND is_completed = FALSE", ExpiresAtColumn);
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
         /// <param name="HandshakesTable">The handshakes table value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition CompletedHandshakes = new(HandshakesTable, "is_completed = TRUE AND completed_at IS NOT NULL AND completed_at < @cutoff", CompletedAtColumn);
+        public static readonly CleanupDeleteDefinition CompletedHandshakes = new("completed_handshakes", HandshakesTable, "is_completed = TRUE AND completed_at IS NOT NULL AND completed_at < @cutoff", CompletedAtColumn);
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
         /// <param name="HandshakesTable">The handshakes table value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition RevokedHandshakes = new(HandshakesTable, "is_revoked = TRUE AND revoked_at IS NOT NULL AND revoked_at < @cutoff", RevokedAtColumn);
+        public static readonly CleanupDeleteDefinition RevokedHandshakes = new("revoked_handshakes", HandshakesTable, "is_revoked = TRUE AND revoked_at IS NOT NULL AND revoked_at < @cutoff", RevokedAtColumn);
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
         /// <param name="RateLimitsTable">The rate limits table value.</param>
         /// <param name="ExpiresAtColumn">The expires at column value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition ExpiredRateLimits = new(RateLimitsTable, "expires_at < @cutoff", ExpiresAtColumn);
+        public static readonly CleanupDeleteDefinition ExpiredRateLimits = new("expired_rate_limits", RateLimitsTable, "expires_at < @cutoff", ExpiresAtColumn);
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
         /// <param name="SecurityEventsTable">The security events table value.</param>
         /// <param name="OccurredAtColumn">The occurred at column value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition AuditEvents = new(SecurityEventsTable, "occurred_at < @cutoff", OccurredAtColumn);
+        public static readonly CleanupDeleteDefinition AuditEvents = new("audit_events", SecurityEventsTable, "occurred_at < @cutoff", OccurredAtColumn);
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
         /// <param name="EmailOutboxTable">The email outbox table value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition SentEmails = new(EmailOutboxTable, "sent_at IS NOT NULL AND sent_at < @cutoff", "sent_at");
+        public static readonly CleanupDeleteDefinition SentEmails = new("sent_emails", EmailOutboxTable, "sent_at IS NOT NULL AND sent_at < @cutoff", "sent_at");
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
         /// <param name="EmailOutboxTable">The email outbox table value.</param>
         /// <returns>The operation result.</returns>
-        public static readonly CleanupDeleteDefinition FailedEmails = new(EmailOutboxTable, "failed_at IS NOT NULL AND failed_at < @cutoff", "failed_at");
+        public static readonly CleanupDeleteDefinition FailedEmails = new("failed_emails", EmailOutboxTable, "failed_at IS NOT NULL AND failed_at < @cutoff", "failed_at");
     }
 
     private sealed record AshlarCleanupCategories(

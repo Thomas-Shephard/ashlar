@@ -1,11 +1,26 @@
 using Ashlar.Identity.Models;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Auditing;
 
-internal sealed class SecurityEventEmitter(ISecurityEventSink? sink, TimeProvider? timeProvider)
+internal sealed class SecurityEventEmitter(ISecurityEventSink? sink, TimeProvider? timeProvider, ILoggerFactory? loggerFactory = null)
 {
+    private static readonly Action<ILogger, string, Guid?, Guid?, string?, string?, Exception?> SecurityEventEmissionCanceled =
+        LoggerMessage.Define<string, Guid?, Guid?, string?, string?>(
+            LogLevel.Warning,
+            new EventId(1000, nameof(SecurityEventEmissionCanceled)),
+            "Security event emission was canceled by the sink. EventType={EventType} UserId={UserId} SessionId={SessionId} ProviderType={ProviderType} ProviderName={ProviderName}");
+
+    private static readonly Action<ILogger, string, Guid?, Guid?, string?, string?, Exception?> SecurityEventEmissionFailed =
+        LoggerMessage.Define<string, Guid?, Guid?, string?, string?>(
+            LogLevel.Warning,
+            new EventId(1001, nameof(SecurityEventEmissionFailed)),
+            "Security event emission failed. EventType={EventType} UserId={UserId} SessionId={SessionId} ProviderType={ProviderType} ProviderName={ProviderName}");
+
     private readonly ISecurityEventSink _sink = sink ?? NullSecurityEventSinkInstance.Value;
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly ILogger<SecurityEventEmitter> _logger = loggerFactory?.CreateLogger<SecurityEventEmitter>() ?? NullLogger<SecurityEventEmitter>.Instance;
 
     public async Task RecordAsync(
         SecurityEventDescriptor descriptor,
@@ -32,14 +47,33 @@ internal sealed class SecurityEventEmitter(ISecurityEventSink? sink, TimeProvide
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             // Ashlar currently fails open for audit emission to ensure service availability.
-            // TODO: Log audit sink cancellation once Ashlar has a core logging convention.
+            SecurityEventEmissionCanceled(
+                _logger,
+                descriptor.EventType,
+                descriptor.UserId,
+                descriptor.SessionId,
+                AuthenticationProviderKey.GetTypeValueOrNull(descriptor.Provider),
+                GetProviderName(descriptor.Provider),
+                null);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Ashlar currently fails open for audit emission to ensure service availability.
             // In highly regulated environments, this may need to be configurable to fail-closed.
-            // TODO: Log audit sink failures once Ashlar has a core logging convention.
+            SecurityEventEmissionFailed(
+                _logger,
+                descriptor.EventType,
+                descriptor.UserId,
+                descriptor.SessionId,
+                AuthenticationProviderKey.GetTypeValueOrNull(descriptor.Provider),
+                GetProviderName(descriptor.Provider),
+                ex);
         }
+    }
+
+    private static string? GetProviderName(AuthenticationProviderKey? provider)
+    {
+        return provider?.Name;
     }
 
     private static class NullSecurityEventSinkInstance

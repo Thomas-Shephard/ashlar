@@ -15,6 +15,21 @@ public readonly record struct AuthenticationProviderKey
     public string Name => field ?? string.Empty;
 
     /// <summary>
+    /// Gets the provider type value, or a stable sentinel when this key's provider type was not initialized.
+    /// </summary>
+    public string TypeValueOrUnknown => Type.ValueOrUnknown;
+
+    /// <summary>
+    /// Gets the provider type value for an optional provider key, or <see langword="null" /> when no provider key was supplied.
+    /// </summary>
+    /// <param name="provider">The provider key value.</param>
+    /// <returns>The provider type value, the unknown sentinel, or <see langword="null" />.</returns>
+    public static string? GetTypeValueOrNull(AuthenticationProviderKey? provider)
+    {
+        return provider.HasValue ? provider.Value.TypeValueOrUnknown : null;
+    }
+
+    /// <summary>
     /// Initializes a new instance of the authentication provider key class.
     /// </summary>
     /// <param name="type">The type value.</param>

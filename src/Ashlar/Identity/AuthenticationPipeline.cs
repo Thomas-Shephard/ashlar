@@ -1,6 +1,8 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Identity;
 
@@ -12,18 +14,39 @@ namespace Ashlar.Identity;
 /// <param name="transactionProvider">The transaction provider value.</param>
 /// <param name="securityEventSink">The security event sink value.</param>
 /// <param name="timeProvider">The time provider value.</param>
+/// <param name="logger">The logger used for operational messages emitted directly by this pipeline.</param>
+/// <param name="loggerFactory">The logger factory used only to create the embedded security event emitter logger.</param>
+/// <remarks>
+/// Pass both <paramref name="logger" /> and <paramref name="loggerFactory" /> when constructing this pipeline manually and operational
+/// logging is desired for both authentication lifecycle operations and security event sink failures.
+/// </remarks>
 public sealed class AuthenticationPipeline(
     IAuthenticationProviderRegistry providerRegistry,
     ICredentialService credentialService,
     IAshlarTransactionProvider transactionProvider,
     ISecurityEventSink? securityEventSink = null,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    ILogger<AuthenticationPipeline>? logger = null,
+    ILoggerFactory? loggerFactory = null)
     : IAuthenticationPipeline
 {
+    private static readonly Action<ILogger, Guid, Guid?, string, string, Exception?> CredentialLifecycleUpdateFailed =
+        LoggerMessage.Define<Guid, Guid?, string, string>(
+            LogLevel.Warning,
+            new EventId(1000, nameof(CredentialLifecycleUpdateFailed)),
+            "Non-critical credential lifecycle update failed during authentication. UserId={UserId} CredentialId={CredentialId} ProviderType={ProviderType} ProviderName={ProviderName}");
+
+    private static readonly Action<ILogger, Guid, Guid, string, string, Exception?> CriticalCredentialLifecycleUpdateFailed =
+        LoggerMessage.Define<Guid, Guid, string, string>(
+            LogLevel.Error,
+            new EventId(1001, nameof(CriticalCredentialLifecycleUpdateFailed)),
+            "Critical credential lifecycle update failed during authentication. UserId={UserId} CredentialId={CredentialId} ProviderType={ProviderType} ProviderName={ProviderName}");
+
     private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
     private readonly ICredentialService _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
-    private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider ?? TimeProvider.System);
+    private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider ?? TimeProvider.System, loggerFactory);
+    private readonly ILogger<AuthenticationPipeline> _logger = logger ?? NullLogger<AuthenticationPipeline>.Instance;
 
     /// <summary>
     /// Performs the login <see langword="async" /> operation and returns the result.
@@ -101,11 +124,24 @@ public sealed class AuthenticationPipeline(
             // Fail authentication if a critical lifecycle operation (Consume or Required Update) threw an uncaught exception.
             if (lifecycle.Result.IsCredentialConsumed || lifecycle.Result.CredentialUpdateRequirement == CredentialUpdateRequirement.Required)
             {
+                CriticalCredentialLifecycleUpdateFailed(
+                    _logger,
+                    lifecycle.User.Id,
+                    lifecycle.Credential.Id,
+                    lifecycle.Provider.Key.Type.ValueOrUnknown,
+                    lifecycle.Provider.Key.Name,
+                    ex);
                 return await RecordFailureAsync(lifecycle.Context, lifecycle.Provider.Key, lifecycle.User.Id, SecurityEventFailureReasons.CredentialUpdateFailed, cancellationToken);
             }
 
             lifecycleUpdateFailed = true;
-            // TODO: Log the swallowed infrastructure exception once Ashlar has a core logging convention.
+            CredentialLifecycleUpdateFailed(
+                _logger,
+                lifecycle.User.Id,
+                lifecycle.Credential.Id,
+                lifecycle.Provider.Key.Type.ValueOrUnknown,
+                lifecycle.Provider.Key.Name,
+                ex);
         }
 
         return await CompleteSuccessfulLoginAsync(

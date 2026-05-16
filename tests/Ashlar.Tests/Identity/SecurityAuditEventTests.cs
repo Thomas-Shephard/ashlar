@@ -145,7 +145,11 @@ internal sealed class SecurityAuditEventTests
         var sink = new RecordingSecurityEventSink();
         var repository = new Mock<IIdentityRepository>();
         var protector = new Mock<ISecretProtector>();
-        var service = new CredentialService(repository.Object, protector.Object, new NullTransactionProvider(), timeProvider: new FakeTimeProvider(TestTime), securityEventSink: sink);
+        var service = new CredentialService(
+            repository.Object,
+            protector.Object,
+            new NullTransactionProvider(),
+            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: sink));
         var userId = Guid.NewGuid();
         var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
         var provider = new Mock<IAuthenticationProvider>();
@@ -181,8 +185,7 @@ internal sealed class SecurityAuditEventTests
             repository.Object,
             Mock.Of<ISecretProtector>(),
             new NullTransactionProvider(),
-            timeProvider: new FakeTimeProvider(TestTime),
-            securityEventSink: sink);
+            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: sink));
         var credential = CreateCredential(Guid.NewGuid());
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
         repository.Setup(r => r.ConsumeCredentialAsync(credential.Id, credential.Version, It.IsAny<CancellationToken>()))
@@ -210,8 +213,7 @@ internal sealed class SecurityAuditEventTests
             repository.Object,
             protector.Object,
             new NullTransactionProvider(),
-            timeProvider: new FakeTimeProvider(TestTime),
-            securityEventSink: sink);
+            new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: sink));
         var userId = Guid.NewGuid();
         var provider = new Mock<IAuthenticationProvider>();
         provider.SetupGet(p => p.Key).Returns(AuthenticationProviderKey.Local);
@@ -374,6 +376,34 @@ internal sealed class SecurityAuditEventTests
             Assert.That(login.Succeeded, Is.True);
             Assert.That(validation.Succeeded, Is.True);
         }
+    }
+
+    [Test]
+    public async Task AuditSinkExceptionWithUninitializedProviderTypeDoesNotFailLogin()
+    {
+        var sink = new ThrowingSecurityEventSink();
+        var registry = new Mock<IAuthenticationProviderRegistry>();
+        var credentialService = new Mock<ICredentialService>();
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.SetupGet(p => p.Key).Returns(default(AuthenticationProviderKey));
+        var assertion = new TestAssertion(default);
+        var provider = providerMock.Object;
+        registry.Setup(r => r.TryGetProvider(assertion, out provider)).Returns(true);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var credential = CreateCredential(user.Id);
+        var context = CreateContext();
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
+        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+        credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        var pipeline = new AuthenticationPipeline(registry.Object, credentialService.Object, new NullTransactionProvider(), sink, new FakeTimeProvider(TestTime));
+
+        var login = await pipeline.LoginAsync(context, assertion);
+
+        Assert.That(login.Succeeded, Is.True);
     }
 
     [Test]

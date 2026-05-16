@@ -64,6 +64,25 @@ internal sealed class AuthenticationProviderKeyTests
     }
 
     [Test]
+    public void DefaultKeyShouldHaveUnknownProviderTypeValue()
+    {
+        var key = default(AuthenticationProviderKey);
+
+        Assert.That(key.TypeValueOrUnknown, Is.EqualTo(ProviderType.UnknownValue));
+    }
+
+    [Test]
+    public void GetTypeValueOrNullShouldHandleMissingDefaultAndInitializedProviders()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AuthenticationProviderKey.GetTypeValueOrNull(null), Is.Null);
+            Assert.That(AuthenticationProviderKey.GetTypeValueOrNull(default(AuthenticationProviderKey)), Is.EqualTo(ProviderType.UnknownValue));
+            Assert.That(AuthenticationProviderKey.GetTypeValueOrNull(new AuthenticationProviderKey(ProviderType.Oidc, "Google")), Is.EqualTo("OIDC"));
+        }
+    }
+
+    [Test]
     public void HappyPathToStringShouldWork()
     {
         var key = new AuthenticationProviderKey(ProviderType.Oidc, "Google");
