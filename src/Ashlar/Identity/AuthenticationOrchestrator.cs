@@ -76,7 +76,7 @@ public sealed class AuthenticationOrchestrator(
 
         if (response.Status == AuthenticationStatus.MfaRequired || policyEvaluation.IsMfaRequired)
         {
-            return await CreateMfaRequiredResultAsync(response.User, response, policyEvaluation, options, cancellationToken);
+            return await CreateMfaRequiredResultAsync(response.User, response, policyEvaluation, options, context, cancellationToken);
         }
 
         return new MfaAuthenticationResult(
@@ -142,7 +142,7 @@ public sealed class AuthenticationOrchestrator(
         }
 
         var result = await _handshakeService.VerifyFactorAsync(
-            new VerifyAuthenticationHandshakeRequest(handshakeToken, resolvedFactorType, metadata),
+            new VerifyAuthenticationHandshakeRequest(handshakeToken, resolvedFactorType, metadata, factorContext),
             cancellationToken);
 
         if (!result.Succeeded || result.Value == null)
@@ -180,6 +180,7 @@ public sealed class AuthenticationOrchestrator(
         AuthenticationResponse response,
         MfaPolicyEvaluation policyEvaluation,
         MfaOrchestrationOptions options,
+        AuthenticationContext context,
         CancellationToken cancellationToken)
     {
         var requiredFactors = ResolveRequiredFactors(policyEvaluation, response.Claims, options.ProviderFactorsClaimName);
@@ -190,7 +191,7 @@ public sealed class AuthenticationOrchestrator(
         }
 
         var result = await _handshakeService.CreateHandshakeAsync(
-            new CreateAuthenticationHandshakeRequest(user.Id, requiredFactors, BuildClaimMetadata(response.Claims)),
+            new CreateAuthenticationHandshakeRequest(user.Id, requiredFactors, BuildClaimMetadata(response.Claims), context with { UserId = user.Id }),
             cancellationToken);
 
         if (!result.Succeeded)

@@ -239,7 +239,14 @@ internal sealed class BootstrapServiceTests
         _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
         _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
 
-        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" });
+        var actorUserId = Guid.NewGuid();
+        var context = new AuthenticationContext(
+            UserId: actorUserId,
+            IpAddress: "203.0.113.10",
+            UserAgent: "bootstrap-agent",
+            CorrelationId: "bootstrap-correlation");
+
+        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" }, context);
 
         using (Assert.EnterMultipleScope())
         {
@@ -253,6 +260,29 @@ internal sealed class BootstrapServiceTests
     {
         _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
         _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync((UserInvitation?)null);
+        var contextTenantId = Guid.NewGuid();
+
+        var result = await _service.AcceptBootstrapInvitationAsync(
+            new AcceptInvitationRequest { Token = "token" },
+            new AuthenticationContext(TenantId: contextTenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+        }
+
+        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.BootstrapCompleted &&
+            e.Outcome == SecurityEventOutcomes.Failure &&
+            e.TenantId == contextTenantId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task AcceptBootstrapInvitationAsyncFailsIfInvitationNotFoundWithoutContext()
+    {
+        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
+        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync((UserInvitation?)null);
 
         var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" });
 
@@ -261,6 +291,46 @@ internal sealed class BootstrapServiceTests
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
         }
+
+        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.BootstrapCompleted &&
+            e.Outcome == SecurityEventOutcomes.Failure &&
+            e.TenantId == null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task AcceptBootstrapInvitationAsyncUsesInvitationTenantForExpiredInvitationFailure()
+    {
+        var tenantId = Guid.NewGuid();
+        var contextTenantId = Guid.NewGuid();
+        var invitation = new UserInvitation
+        {
+            Id = Guid.NewGuid(),
+            Email = "admin@example.com",
+            TokenHash = "hashed",
+            TenantId = tenantId,
+            CreatedAt = _timeProvider.GetUtcNow().AddDays(-2),
+            ExpiresAt = _timeProvider.GetUtcNow().AddDays(-1),
+            Version = "1",
+            Metadata = "{\"ashlar.bootstrap\": true}"
+        };
+        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
+        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
+
+        var result = await _service.AcceptBootstrapInvitationAsync(
+            new AcceptInvitationRequest { Token = "token" },
+            new AuthenticationContext(TenantId: contextTenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+        }
+
+        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.BootstrapCompleted &&
+            e.Outcome == SecurityEventOutcomes.Failure &&
+            e.TenantId == tenantId), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -279,7 +349,14 @@ internal sealed class BootstrapServiceTests
         _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
         _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
 
-        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" });
+        var actorUserId = Guid.NewGuid();
+        var context = new AuthenticationContext(
+            UserId: actorUserId,
+            IpAddress: "203.0.113.10",
+            UserAgent: "bootstrap-agent",
+            CorrelationId: "bootstrap-correlation");
+
+        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" }, context);
 
         using (Assert.EnterMultipleScope())
         {
@@ -378,7 +455,14 @@ internal sealed class BootstrapServiceTests
         var transaction = new Mock<IAshlarTransaction>();
         _transactionProvider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
 
-        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" });
+        var actorUserId = Guid.NewGuid();
+        var context = new AuthenticationContext(
+            UserId: actorUserId,
+            IpAddress: "203.0.113.10",
+            UserAgent: "bootstrap-agent",
+            CorrelationId: "bootstrap-correlation");
+
+        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" }, context);
 
         using (Assert.EnterMultipleScope())
         {
@@ -387,7 +471,13 @@ internal sealed class BootstrapServiceTests
         }
 
         _grantService.Verify(s => s.CreateGrantAsync(It.Is<CreateAuthorizationGrantRequest>(r =>
-            r.UserId == userId && r.Role == "admin"), It.IsAny<CancellationToken>()), Times.Once);
+            r.UserId == userId &&
+            r.Role == "admin" &&
+            r.Audit != null &&
+            r.Audit.ActorUserId == actorUserId &&
+            r.Audit.IpAddress == "203.0.113.10" &&
+            r.Audit.UserAgent == "bootstrap-agent" &&
+            r.Audit.CorrelationId == "bootstrap-correlation"), It.IsAny<CancellationToken>()), Times.Once);
 
         _stateRepository.Verify(r => r.MarkAsInitializedAsync(userId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
         transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);

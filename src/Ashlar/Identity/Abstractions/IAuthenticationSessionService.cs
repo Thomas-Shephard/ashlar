@@ -1,3 +1,4 @@
+using Ashlar.Auditing;
 using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Abstractions;
@@ -34,11 +35,13 @@ public interface IAuthenticationSessionService
     /// </summary>
     /// <param name="sessionId">The session id value.</param>
     /// <param name="reason">The reason value.</param>
+    /// <param name="audit">The audit metadata value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
     Task<bool> RevokeSessionAsync(
         Guid sessionId,
         string? reason = null,
+        AuditContext? audit = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -46,13 +49,15 @@ public interface IAuthenticationSessionService
     /// </summary>
     /// <param name="userId">The user id value.</param>
     /// <param name="reason">The reason value.</param>
-    /// <param name="context">The context value.</param>
+    /// <param name="tenant">The tenant context value.</param>
+    /// <param name="audit">The audit metadata value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
     Task<int> RevokeSessionsForUserAsync(
         Guid userId,
         string? reason = null,
-        AuthenticationContext? context = null,
+        TenantContext? tenant = null,
+        AuditContext? audit = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

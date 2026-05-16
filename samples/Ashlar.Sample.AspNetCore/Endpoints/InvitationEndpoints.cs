@@ -19,7 +19,14 @@ internal static class InvitationEndpoints
             CancellationToken cancellationToken) =>
         {
             var callback = new Uri(new Uri(options.Value.PublicAppUrl), "/invitations/accept");
-            var result = await invitations.CreateInvitationAsync(request, callback, httpContext.ToAuthenticationContext(), cancellationToken);
+            var invitation = new CreateInvitationRequest
+            {
+                Email = request.Email,
+                TenantId = httpContext.GetAshlarTenantId(),
+                Expiry = request.Expiry,
+                Metadata = request.Metadata
+            };
+            var result = await invitations.CreateInvitationAsync(invitation, callback, httpContext.ToAuthenticationContext(), cancellationToken);
             return result.Succeeded ? Results.Accepted() : Results.BadRequest(SampleResultErrors.From(result));
         }).RequireAuthorization("admin");
 
@@ -36,7 +43,7 @@ internal static class InvitationEndpoints
                 return Results.BadRequest(SampleResultErrors.From(result));
             }
 
-            await signInManager.SignInAsync(httpContext, result.Value, cancellationToken: cancellationToken);
+            await signInManager.SignInAsync(httpContext, result.Value, httpContext.ToSessionRequest(), cancellationToken);
 
             return Results.Ok(new { userId = result.Value });
         });

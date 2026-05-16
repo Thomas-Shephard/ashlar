@@ -14,7 +14,7 @@ namespace Ashlar.Identity;
 /// <param name="tokenContext">The token context value.</param>
 /// <param name="infrastructure">The infrastructure value.</param>
 /// <param name="audit">The audit value.</param>
-public sealed class InvitationDependencies(
+internal sealed class InvitationDependencies(
     InvitationStoreContext storeContext,
     SecureTokenContext tokenContext,
     IdentityInfrastructureContext infrastructure,

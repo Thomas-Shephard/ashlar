@@ -1,3 +1,5 @@
+using Ashlar.Auditing;
+
 namespace Ashlar.Identity.Models;
 
 /// <summary>
@@ -49,7 +51,26 @@ public sealed class EmailVerificationRequest
     /// </remarks>
     public required Uri CallbackBaseUri { get; init; }
     /// <summary>
-    /// Gets or sets the context value.
+    /// Gets or sets audit metadata for the request.
     /// </summary>
-    public AuthenticationContext? Context { get; init; }
+    public AuditContext? Audit { get; init; }
+}
+
+/// <summary>
+/// Provides email verification confirmation request behavior.
+/// </summary>
+public sealed class ConfirmEmailVerificationRequest
+{
+    /// <summary>
+    /// Gets or sets the user id value.
+    /// </summary>
+    public required Guid UserId { get; init; }
+    /// <summary>
+    /// Gets or sets the token value.
+    /// </summary>
+    public required string Token { get; init; }
+    /// <summary>
+    /// Gets or sets audit metadata for the request.
+    /// </summary>
+    public AuditContext? Audit { get; init; }
 }

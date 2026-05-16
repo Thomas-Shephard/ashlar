@@ -34,11 +34,13 @@ internal sealed class SecurityEventEmitter(ISecurityEventSink? sink, TimeProvide
                 EventType = descriptor.EventType,
                 OccurredAt = _timeProvider.GetUtcNow(),
                 UserId = descriptor.UserId,
+                TenantId = descriptor.TenantId ?? descriptor.Context?.TenantId,
+                ActorUserId = descriptor.Audit?.ActorUserId ?? descriptor.Context?.UserId,
                 SessionId = descriptor.SessionId,
                 Provider = descriptor.Provider,
-                IpAddress = descriptor.Context?.IpAddress ?? descriptor.IpAddress,
-                UserAgent = descriptor.Context?.UserAgent ?? descriptor.UserAgent,
-                CorrelationId = descriptor.Context?.CorrelationId ?? descriptor.CorrelationId,
+                IpAddress = descriptor.Audit?.IpAddress ?? descriptor.Context?.IpAddress ?? descriptor.IpAddress,
+                UserAgent = descriptor.Audit?.UserAgent ?? descriptor.Context?.UserAgent ?? descriptor.UserAgent,
+                CorrelationId = descriptor.Audit?.CorrelationId ?? descriptor.Context?.CorrelationId ?? descriptor.CorrelationId,
                 Outcome = descriptor.Outcome,
                 FailureReason = descriptor.FailureReason,
                 Properties = descriptor.Properties
@@ -96,6 +98,14 @@ internal sealed record SecurityEventDescriptor
     /// Gets or sets the user id value.
     /// </summary>
     public Guid? UserId { get; init; }
+    /// <summary>
+    /// Gets or sets the tenant id value.
+    /// </summary>
+    public Guid? TenantId { get; init; }
+    /// <summary>
+    /// Gets or sets the actor user id value.
+    /// </summary>
+    public AuditContext? Audit { get; init; }
     /// <summary>
     /// Gets or sets the session id value.
     /// </summary>

@@ -369,13 +369,28 @@ internal sealed class InvitationServiceTests
     public async Task AcceptInvitationRateLimitBlocksAcceptance()
     {
         var fixture = CreateFixture(acceptanceAllowed: false);
-        var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = "some-token" });
+        var tenantId = Guid.NewGuid();
+        var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = "some-token" }, new AuthenticationContext(TenantId: tenantId));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.RateLimited));
             Assert.That(fixture.Audit.Events.First().EventType, Is.EqualTo(AshlarSecurityEventTypes.InvitationRateLimited));
+            Assert.That(fixture.Audit.Events.First().TenantId, Is.EqualTo(tenantId));
+        }
+    }
+
+    [Test]
+    public async Task AcceptInvitationRateLimitWithoutContextRecordsGlobalTenantScope()
+    {
+        var fixture = CreateFixture(acceptanceAllowed: false);
+        var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = "some-token" });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixture.Audit.Events.First().TenantId, Is.Null);
         }
     }
 
@@ -383,16 +398,23 @@ internal sealed class InvitationServiceTests
     public async Task RevokeInvitationsRecordsAuditEvent()
     {
         var fixture = CreateFixture();
-        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com" }, new Uri("https://myapp.com/join"));
+        var tenantId = Guid.NewGuid();
+        var actorUserId = Guid.NewGuid();
+        var audit = new AuditContext(actorUserId, "203.0.113.40", "NUnit", "corr-revoke");
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = tenantId }, new Uri("https://myapp.com/join"));
 
         fixture.Audit.Events.Clear();
-        await fixture.Service.RevokeInvitationsAsync("test@example.com");
+        await fixture.Service.RevokeInvitationsAsync("test@example.com", tenantId, audit);
+        var securityEvent = fixture.Audit.Events.First();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fixture.InvitationRepository.Invitations.First().RevokedAt, Is.Not.Null);
-            Assert.That(fixture.Audit.Events.First().EventType, Is.EqualTo(AshlarSecurityEventTypes.InvitationRevoked));
-            Assert.That(GetProperties(fixture.Audit.Events.First())["count"], Is.EqualTo("1"));
+            Assert.That(securityEvent.EventType, Is.EqualTo(AshlarSecurityEventTypes.InvitationRevoked));
+            Assert.That(securityEvent.TenantId, Is.EqualTo(tenantId));
+            Assert.That(securityEvent.ActorUserId, Is.EqualTo(actorUserId));
+            Assert.That(securityEvent.IpAddress, Is.EqualTo(audit.IpAddress));
+            Assert.That(GetProperties(securityEvent)["count"], Is.EqualTo("1"));
         }
     }
 
@@ -553,8 +575,13 @@ internal sealed class InvitationServiceTests
     public async Task AcceptInvitationFailsForMissingInvitation()
     {
         var fixture = CreateFixture();
-        var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = "non-existent" });
-        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+        var tenantId = Guid.NewGuid();
+        var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = "non-existent" }, new AuthenticationContext(TenantId: tenantId));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationAccepted).TenantId, Is.EqualTo(tenantId));
+        }
     }
 
     [Test]

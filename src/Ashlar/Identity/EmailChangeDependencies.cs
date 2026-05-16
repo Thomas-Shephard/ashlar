@@ -17,7 +17,7 @@ namespace Ashlar.Identity;
 /// <param name="sessionRepository">The session repository value.</param>
 /// <param name="secretProtector">The secret protector value.</param>
 /// <param name="audit">The audit value.</param>
-public sealed class EmailChangeDependencies(
+internal sealed class EmailChangeDependencies(
     IdentityContext identityContext,
     SecureTokenContext tokenContext,
     IdentityInfrastructureContext infrastructure,

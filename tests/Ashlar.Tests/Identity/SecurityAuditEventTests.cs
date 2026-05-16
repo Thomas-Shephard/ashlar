@@ -25,6 +25,77 @@ internal sealed class SecurityAuditEventTests
     ];
 
     [Test]
+    public async Task SecurityEventEmitterPrefersExplicitAuditAndTenantMetadata()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var emitter = new SecurityEventEmitter(sink, new FakeTimeProvider(TestTime));
+        var explicitTenantId = Guid.NewGuid();
+        var contextTenantId = Guid.NewGuid();
+        var actorUserId = Guid.NewGuid();
+        var contextActorUserId = Guid.NewGuid();
+        var audit = new AuditContext(actorUserId, "203.0.113.10", "audit-agent", "audit-corr", new Dictionary<string, string> { ["safe"] = "metadata" });
+
+        await emitter.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = "test",
+            Outcome = "success",
+            TenantId = explicitTenantId,
+            Audit = audit,
+            Context = new AuthenticationContext(TenantId: contextTenantId, IpAddress: "198.51.100.10", UserAgent: "context-agent", CorrelationId: "context-corr", UserId: contextActorUserId)
+        });
+
+        var securityEvent = sink.Events.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(securityEvent.TenantId, Is.EqualTo(explicitTenantId));
+            Assert.That(securityEvent.ActorUserId, Is.EqualTo(actorUserId));
+            Assert.That(securityEvent.IpAddress, Is.EqualTo(audit.IpAddress));
+            Assert.That(securityEvent.UserAgent, Is.EqualTo(audit.UserAgent));
+            Assert.That(securityEvent.CorrelationId, Is.EqualTo(audit.CorrelationId));
+            Assert.That(audit.Items, Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public async Task SecurityEventEmitterFallsBackThroughContextAndDescriptorMetadata()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var emitter = new SecurityEventEmitter(sink, new FakeTimeProvider(TestTime));
+        var contextTenantId = Guid.NewGuid();
+        var contextActorUserId = Guid.NewGuid();
+
+        await emitter.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = "context",
+            Outcome = "success",
+            Context = new AuthenticationContext(TenantId: contextTenantId, IpAddress: "198.51.100.20", UserAgent: "context-agent", CorrelationId: "context-corr", UserId: contextActorUserId)
+        });
+
+        await emitter.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = "descriptor",
+            Outcome = "success",
+            IpAddress = "192.0.2.20",
+            UserAgent = "descriptor-agent",
+            CorrelationId = "descriptor-corr"
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sink.Events[0].TenantId, Is.EqualTo(contextTenantId));
+            Assert.That(sink.Events[0].ActorUserId, Is.EqualTo(contextActorUserId));
+            Assert.That(sink.Events[0].IpAddress, Is.EqualTo("198.51.100.20"));
+            Assert.That(sink.Events[0].UserAgent, Is.EqualTo("context-agent"));
+            Assert.That(sink.Events[0].CorrelationId, Is.EqualTo("context-corr"));
+            Assert.That(sink.Events[1].TenantId, Is.Null);
+            Assert.That(sink.Events[1].ActorUserId, Is.Null);
+            Assert.That(sink.Events[1].IpAddress, Is.EqualTo("192.0.2.20"));
+            Assert.That(sink.Events[1].UserAgent, Is.EqualTo("descriptor-agent"));
+            Assert.That(sink.Events[1].CorrelationId, Is.EqualTo("descriptor-corr"));
+        }
+    }
+
+    [Test]
     public async Task SuccessfulLoginEmitsSuccessEvent()
     {
         var sink = new RecordingSecurityEventSink();

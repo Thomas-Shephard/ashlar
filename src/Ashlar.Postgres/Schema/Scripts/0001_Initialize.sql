@@ -69,6 +69,7 @@ CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_revoked_at ON ashlar_a
 CREATE TABLE IF NOT EXISTS ashlar_sessions (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
+    tenant_id UUID,
     token_hash TEXT NOT NULL UNIQUE,
     created_at TIMESTAMPTZ NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
@@ -123,6 +124,8 @@ CREATE TABLE IF NOT EXISTS ashlar_security_events (
     event_type TEXT NOT NULL,
     occurred_at TIMESTAMPTZ NOT NULL,
     user_id UUID,
+    tenant_id UUID,
+    actor_user_id UUID,
     session_id UUID,
     provider_type TEXT,
     provider_name TEXT,
@@ -136,6 +139,8 @@ CREATE TABLE IF NOT EXISTS ashlar_security_events (
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_events_occurred_at ON ashlar_security_events (occurred_at);
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_events_user_id ON ashlar_security_events (user_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_security_events_tenant_id ON ashlar_security_events (tenant_id) WHERE tenant_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_security_events_actor_user_id ON ashlar_security_events (actor_user_id) WHERE actor_user_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS ashlar_mfa_handshakes (
     id UUID PRIMARY KEY,

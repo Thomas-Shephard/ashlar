@@ -31,7 +31,8 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
     {
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
-        var session = CreateSession(sessionId, userId, DateTimeOffset.UtcNow.AddHours(1));
+        var tenantId = Guid.NewGuid();
+        var session = CreateSession(sessionId, userId, DateTimeOffset.UtcNow.AddHours(1), tenantId);
         var sessionService = new Mock<IAuthenticationSessionService>();
         sessionService
             .Setup(s => s.ValidateSessionAsync("raw-token", It.IsAny<CancellationToken>()))
@@ -47,6 +48,7 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Principal?.FindFirstValue(ClaimTypes.NameIdentifier), Is.EqualTo(userId.ToString("D")));
             Assert.That(result.Principal?.FindFirstValue(AshlarClaimTypes.SessionId), Is.EqualTo(sessionId.ToString("D")));
+            Assert.That(result.Principal?.FindFirstValue(AshlarClaimTypes.TenantId), Is.EqualTo(tenantId.ToString("D")));
             Assert.That(result.Principal?.FindFirstValue(ClaimTypes.AuthenticationMethod), Is.EqualTo(AshlarSessionAuthenticationDefaults.AuthenticationScheme));
         }
     }
@@ -345,12 +347,13 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
         return provider.GetRequiredService<IAuthenticationService>().AuthenticateAsync(context, scheme);
     }
 
-    private static AuthenticationSession CreateSession(Guid sessionId, Guid userId, DateTimeOffset expiresAt)
+    private static AuthenticationSession CreateSession(Guid sessionId, Guid userId, DateTimeOffset expiresAt, Guid? tenantId = null)
     {
         return new AuthenticationSession
         {
             Id = sessionId,
             UserId = userId,
+            TenantId = tenantId,
             TokenHash = "hashed-token",
             CreatedAt = DateTimeOffset.UtcNow.AddDays(-1),
             ExpiresAt = expiresAt

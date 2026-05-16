@@ -15,11 +15,10 @@ public interface IEmailVerificationService
     /// <returns>The operation result.</returns>
     Task<Result> RequestVerificationAsync(EmailVerificationRequest request, CancellationToken cancellationToken = default);
     /// <summary>
-    /// Performs the verify token <see langword="async" /> operation and returns the result.
+    /// Performs the confirm verification <see langword="async" /> operation and returns the result.
     /// </summary>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="token">The token value.</param>
+    /// <param name="request">The request value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    Task<Result> VerifyTokenAsync(Guid userId, string token, CancellationToken cancellationToken = default);
+    Task<Result> ConfirmVerificationAsync(ConfirmEmailVerificationRequest request, CancellationToken cancellationToken = default);
 }

@@ -489,13 +489,19 @@ internal sealed class AuthenticationHandshakeServiceTests
                             WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
                         });
 
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+        var context = new AuthenticationContext(IpAddress: "203.0.113.80", CorrelationId: "handshake-rate-limit");
+
+        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp", Context: context));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.RateLimitExceeded));
         }
+
+        _rateLimiterMock.Verify(r => r.CheckAsync(It.Is<RateLimitAttempt>(attempt =>
+            attempt.IpAddress == "203.0.113.80" &&
+            attempt.CorrelationId == "handshake-rate-limit"), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]

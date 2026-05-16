@@ -14,6 +14,10 @@ public sealed class AuthenticationSession
     /// </summary>
     public required Guid UserId { get; init; }
     /// <summary>
+    /// Gets or sets the tenant id value.
+    /// </summary>
+    public Guid? TenantId { get; init; }
+    /// <summary>
     /// Gets or sets the token hash value.
     /// </summary>
     public required string TokenHash { get; init; }

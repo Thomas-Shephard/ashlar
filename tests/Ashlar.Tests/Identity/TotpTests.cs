@@ -4,6 +4,7 @@ using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Models.Totp;
+using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Providers.Totp;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
@@ -382,6 +383,43 @@ internal sealed class TotpTests
     }
 
     [Test]
+    public async Task VerifyAndEnrollAsyncPropagatesAuditToEventAndNotification()
+    {
+        var userId = Guid.NewGuid();
+        var audit = new AuditContext(ActorUserId: userId, IpAddress: "203.0.113.40", UserAgent: "totp-agent", CorrelationId: "totp-correlation");
+        var notificationService = new Mock<ISecurityNotificationService>();
+        var service = new TotpService(
+            _repository.Object,
+            _credentialService.Object,
+            _transactionProvider.Object,
+            [CreateProvider()],
+            new TotpServiceDependencies(Options.Create(_options), _timeProvider, _securityEvents.Object, notificationService.Object));
+        var secretBytes = new byte[20];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(secretBytes);
+        var secret = Base32.Encode(secretBytes);
+        var code = TotpAuthenticator.GenerateCode(secretBytes, _timeProvider.GetUtcNow().ToUnixTimeSeconds() / 30);
+
+        _repository.Setup(x => x.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
+
+        var tenantId = Guid.NewGuid();
+        var result = await service.VerifyAndEnrollAsync(userId, secret, code, new TenantContext(tenantId), audit);
+
+        Assert.That(result.Succeeded, Is.True);
+        _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(d =>
+            d.EventType == AshlarSecurityEventTypes.TotpEnrollmentCompleted &&
+            d.TenantId == tenantId &&
+            d.ActorUserId == userId &&
+            d.IpAddress == "203.0.113.40" &&
+            d.UserAgent == "totp-agent" &&
+            d.CorrelationId == "totp-correlation"), It.IsAny<CancellationToken>()), Times.Once);
+        notificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
+            notification.Type == SecurityNotificationType.TotpEnrolled &&
+            notification.IpAddress == "203.0.113.40" &&
+            notification.UserAgent == "totp-agent"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
     public async Task VerifyAndEnrollAsyncUsesReplaceCredentialPath()
     {
         var service = CreateService();
@@ -540,11 +578,19 @@ internal sealed class TotpTests
     [Test]
     public async Task DisableTotpAsyncSucceedsWhenCredentialExists()
     {
-        var service = CreateService();
+        var notificationService = new Mock<ISecurityNotificationService>();
+        var service = new TotpService(
+            _repository.Object,
+            _credentialService.Object,
+            _transactionProvider.Object,
+            [CreateProvider()],
+            new TotpServiceDependencies(Options.Create(_options), _timeProvider, _securityEvents.Object, notificationService.Object));
         var userId = Guid.NewGuid();
 
         _repository.Setup(x => x.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
+        _repository.Setup(x => x.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
 
         var result = await service.DisableTotpAsync(userId);
 
@@ -553,6 +599,10 @@ internal sealed class TotpTests
         _transaction.Verify(x => x.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()), Times.Once);
         _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(d =>
             d.EventType == AshlarSecurityEventTypes.TotpDisabled), It.IsAny<CancellationToken>()), Times.Once);
+        notificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
+            notification.Type == SecurityNotificationType.TotpDisabled &&
+            notification.IpAddress == null &&
+            notification.UserAgent == null), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -784,11 +834,18 @@ internal sealed class TotpTests
         _rateLimiter.Setup(x => x.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Blocked, Remaining = 0, WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(5) });
 
-        var result = await provider.ResolveCredentialAsync(userId, assertion, _repository.Object);
+        var context = new AuthenticationContext(IpAddress: "203.0.113.70", CorrelationId: "totp-rate-limit");
+
+        var result = await provider.ResolveCredentialAsync(userId, assertion, context, _repository.Object);
 
         Assert.That(result, Is.Null);
+        _rateLimiter.Verify(x => x.CheckAsync(It.Is<RateLimitAttempt>(attempt =>
+            attempt.IpAddress == "203.0.113.70" &&
+            attempt.CorrelationId == "totp-rate-limit"), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()), Times.Once);
         _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(d =>
-            d.EventType == AshlarSecurityEventTypes.TotpVerificationRateLimited), It.IsAny<CancellationToken>()), Times.Once);
+            d.EventType == AshlarSecurityEventTypes.TotpVerificationRateLimited &&
+            d.IpAddress == "203.0.113.70" &&
+            d.CorrelationId == "totp-rate-limit"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -798,7 +855,7 @@ internal sealed class TotpTests
         _rateLimiter.Setup(x => x.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Allowed, Remaining = 5, WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(5) });
 
-        var result = await provider.ResolveCredentialAsync(Guid.NewGuid(), new Mock<IAuthenticationAssertion>().Object, _repository.Object);
+        var result = await provider.ResolveCredentialAsync(Guid.NewGuid(), new Mock<IAuthenticationAssertion>().Object, null, _repository.Object);
         Assert.That(result, Is.Null);
     }
 
@@ -815,7 +872,7 @@ internal sealed class TotpTests
         _repository.Setup(x => x.GetCredentialForUserAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, userId.ToString("D"), It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
 
-        var result = await provider.ResolveCredentialAsync(userId, assertion, _repository.Object);
+        var result = await provider.ResolveCredentialAsync(userId, assertion, null, _repository.Object);
 
         Assert.That(result, Is.SameAs(credential));
     }

@@ -12,7 +12,7 @@ namespace Ashlar.Identity.Providers.Email;
 /// <summary>
 /// Provides email code sign in service behavior.
 /// </summary>
-public sealed class EmailCodeSignInService : IEmailCodeSignInService
+internal sealed class EmailCodeSignInService : IEmailCodeSignInService
 {
     private const string RequestPurpose = "email-code-request";
     private const string VerifyPurpose = "email-code-verify";

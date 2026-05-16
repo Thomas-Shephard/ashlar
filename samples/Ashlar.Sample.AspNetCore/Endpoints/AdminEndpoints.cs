@@ -90,13 +90,16 @@ internal static partial class AdminEndpoints
             string projectId,
             ProjectGrantRequest request,
             IAuthorizationGrantService grants,
+            HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
             var result = await grants.CreateGrantAsync(new CreateAuthorizationGrantRequest(
                 UserId: request.UserId,
+                TenantId: httpContext.GetAshlarTenantId(),
                 ScopeType: "project",
                 ScopeId: projectId,
-                Permission: "project.manage"), cancellationToken);
+                Permission: "project.manage",
+                Audit: httpContext.ToAuditContext()), cancellationToken);
 
             if (!result.Succeeded || result.Value == null)
             {

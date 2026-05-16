@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Claims;
+using Ashlar.Auditing;
 using Ashlar.AspNetCore.Authentication;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Identity.Abstractions;
@@ -175,7 +176,7 @@ internal sealed class AshlarSignInManagerTests
 
         using (Assert.EnterMultipleScope())
         {
-            sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<AuditContext?>(), It.IsAny<CancellationToken>()), Times.Never);
             Assert.That(context.Response.Headers.SetCookie.ToString(), Does.Contain($"{AshlarSessionAuthenticationDefaults.CookieName}="));
         }
     }
@@ -203,7 +204,7 @@ internal sealed class AshlarSignInManagerTests
         using (Assert.EnterMultipleScope())
         {
             sessionService.Verify(s => s.ValidateSessionAsync("raw-token", It.IsAny<CancellationToken>()), Times.Once);
-            sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<AuditContext?>(), It.IsAny<CancellationToken>()), Times.Never);
             Assert.That(context.Response.Headers.SetCookie.ToString(), Does.Contain($"{AshlarSessionAuthenticationDefaults.CookieName}="));
         }
     }
@@ -228,7 +229,7 @@ internal sealed class AshlarSignInManagerTests
 
         using (Assert.EnterMultipleScope())
         {
-            sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<AuditContext?>(), It.IsAny<CancellationToken>()), Times.Never);
             Assert.That(context.Response.Headers.SetCookie.ToString(), Does.Contain($"{AshlarSessionAuthenticationDefaults.CookieName}="));
         }
     }
@@ -384,12 +385,14 @@ internal sealed class AshlarSignInManagerTests
             new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
         var context = new DefaultHttpContext();
         var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
         var targetSessionId = Guid.NewGuid();
         context.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.10");
         context.Request.Headers.UserAgent = "NUnit";
         context.User = new ClaimsPrincipal(new ClaimsIdentity(
         [
-            new Claim(ClaimTypes.NameIdentifier, userId.ToString("D"))
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString("D")),
+            new Claim(AshlarClaimTypes.TenantId, tenantId.ToString("D"))
         ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
 
         var revokeTask = manager.RevokeSessionForCurrentUserAsync(context, targetSessionId);
@@ -399,8 +402,12 @@ internal sealed class AshlarSignInManagerTests
 
         sessionService.Verify(s => s.RevokeSessionForUserAsync(userId, It.Is<RevokeAuthenticationSessionRequest>(r =>
             r.SessionId == targetSessionId &&
-            r.IpAddress == "203.0.113.10" &&
-            r.UserAgent == "NUnit"), It.IsAny<CancellationToken>()), Times.Once);
+            r.Tenant != null &&
+            r.Tenant.TenantId == tenantId &&
+            r.Audit != null &&
+            r.Audit.ActorUserId == userId &&
+            r.Audit.IpAddress == "203.0.113.10" &&
+            r.Audit.UserAgent == "NUnit"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -473,13 +480,15 @@ internal sealed class AshlarSignInManagerTests
             new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
         var context = new DefaultHttpContext();
         var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
         var currentSessionId = Guid.NewGuid();
         context.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.11");
         context.Request.Headers.UserAgent = "NUnit";
         context.User = new ClaimsPrincipal(new ClaimsIdentity(
         [
             new Claim(ClaimTypes.NameIdentifier, userId.ToString("D")),
-            new Claim(AshlarClaimTypes.SessionId, currentSessionId.ToString("D"))
+            new Claim(AshlarClaimTypes.SessionId, currentSessionId.ToString("D")),
+            new Claim(AshlarClaimTypes.TenantId, tenantId.ToString("D"))
         ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
 
         var revokeTask = manager.RevokeOtherSessionsForCurrentUserAsync(context);
@@ -489,8 +498,12 @@ internal sealed class AshlarSignInManagerTests
 
         sessionService.Verify(s => s.RevokeOtherSessionsAsync(userId, It.Is<RevokeOtherAuthenticationSessionsRequest>(r =>
             r.CurrentSessionId == currentSessionId &&
-            r.IpAddress == "203.0.113.11" &&
-            r.UserAgent == "NUnit"), It.IsAny<CancellationToken>()), Times.Once);
+            r.Tenant != null &&
+            r.Tenant.TenantId == tenantId &&
+            r.Audit != null &&
+            r.Audit.ActorUserId == userId &&
+            r.Audit.IpAddress == "203.0.113.11" &&
+            r.Audit.UserAgent == "NUnit"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]

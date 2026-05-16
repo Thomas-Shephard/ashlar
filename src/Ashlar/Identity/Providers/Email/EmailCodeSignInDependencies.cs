@@ -14,7 +14,7 @@ namespace Ashlar.Identity.Providers.Email;
 /// <param name="provider">The provider value.</param>
 /// <param name="timeProvider">The time provider value.</param>
 /// <param name="securityEventSink">The security event sink value.</param>
-public sealed class EmailCodeSignInDependencies(
+internal sealed class EmailCodeSignInDependencies(
     IdentityContext identityContext,
     IEmailSender emailSender,
     IAuthenticationRateLimiter rateLimiter,

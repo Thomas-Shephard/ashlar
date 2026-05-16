@@ -1,3 +1,6 @@
+using Ashlar.Auditing;
+using Ashlar.Identity.Models;
+
 namespace Ashlar.Identity;
 
 /// <summary>
@@ -19,7 +22,9 @@ public interface IRecoveryCodeService
     /// </summary>
     /// <param name="userId">The user id value.</param>
     /// <param name="reason">The reason value.</param>
+    /// <param name="tenant">The tenant context value.</param>
+    /// <param name="audit">The audit context value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    Task<int> RevokeRecoveryCodesAsync(Guid userId, string? reason = null, CancellationToken cancellationToken = default);
+    Task<int> RevokeRecoveryCodesAsync(Guid userId, string? reason = null, TenantContext? tenant = null, AuditContext? audit = null, CancellationToken cancellationToken = default);
 }

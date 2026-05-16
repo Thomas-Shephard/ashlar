@@ -61,6 +61,8 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
             throw new ArgumentException("User ID cannot be empty.", nameof(userId));
         }
 
+        request ??= new RecoveryCodeGenerationRequest();
+        var tenant = request.Tenant ?? TenantContext.Global;
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         // Verify user exists
@@ -72,13 +74,15 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
                 EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenant.TenantId,
+                Audit = request.Audit,
                 Provider = _options.ProviderKey,
                 FailureReason = AshlarFailureCodes.UserNotFound.Value
             }, cancellationToken);
             return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.UserNotFound);
         }
 
-        var codeCount = request?.CodeCount ?? _options.CodeCount;
+        var codeCount = request.CodeCount ?? _options.CodeCount;
         if (codeCount <= 0 || codeCount > _options.CodeCount * 2)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -86,6 +90,8 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
                 EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenant.TenantId,
+                Audit = request.Audit,
                 Provider = _options.ProviderKey,
                 FailureReason = AshlarFailureCodes.InvalidCodeCount.Value
             }, cancellationToken);
@@ -99,13 +105,15 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
                 EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenant.TenantId,
+                Audit = request.Audit,
                 Provider = _options.ProviderKey,
                 FailureReason = AshlarFailureCodes.InvalidConfiguration.Value
             }, cancellationToken);
             return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.InvalidConfiguration);
         }
 
-        var expiresAfter = request?.ExpiresAfter ?? _options.ExpiresAfter;
+        var expiresAfter = request.ExpiresAfter ?? _options.ExpiresAfter;
         if (expiresAfter.HasValue && expiresAfter.Value <= TimeSpan.Zero)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -113,6 +121,8 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
                 EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenant.TenantId,
+                Audit = request.Audit,
                 Provider = _options.ProviderKey,
                 FailureReason = AshlarFailureCodes.InvalidExpiry.Value
             }, cancellationToken);
@@ -120,7 +130,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         }
 
         // Revoke existing recovery codes if requested
-        if (request?.ReplaceExisting ?? true)
+        if (request.ReplaceExisting)
         {
             await _repository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
         }
@@ -163,6 +173,8 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
                 EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = userId,
+                TenantId = tenant.TenantId,
+                Audit = request.Audit,
                 Provider = _options.ProviderKey,
                 Properties = new Dictionary<string, string>
                 {
@@ -170,7 +182,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
                 }
             }, ct);
 
-            await _notifications.NotifyAsync(SecurityNotificationType.RecoveryCodesGenerated, user, now, metadata: new Dictionary<string, string>
+            await _notifications.NotifyAsync(SecurityNotificationType.RecoveryCodesGenerated, user, now, context: ToNotificationContext(request.Audit), metadata: new Dictionary<string, string>
             {
                 ["count"] = codeCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
             }, cancellationToken: ct);
@@ -182,12 +194,13 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
     }
 
     /// <inheritdoc />
-    public async Task<int> RevokeRecoveryCodesAsync(Guid userId, string? reason = null, CancellationToken cancellationToken = default)
+    public async Task<int> RevokeRecoveryCodesAsync(Guid userId, string? reason = null, TenantContext? tenant = null, AuditContext? audit = null, CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty)
         {
             throw new ArgumentException("User ID cannot be empty.", nameof(userId));
         }
+        tenant ??= TenantContext.Global;
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
@@ -198,6 +211,8 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
             EventType = AshlarSecurityEventTypes.RecoveryCodesRevoked,
             Outcome = SecurityEventOutcomes.Success,
             UserId = userId,
+            TenantId = tenant.TenantId,
+            Audit = audit,
             Provider = _options.ProviderKey,
             Properties = reason != null ? new Dictionary<string, string> { ["reason"] = reason } : null
         }, ct));
@@ -205,5 +220,16 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         await transaction.CommitAsync(cancellationToken);
 
         return count;
+    }
+
+    private static AuthenticationContext? ToNotificationContext(AuditContext? audit)
+    {
+        if (audit == null) return new AuthenticationContext();
+
+        return new AuthenticationContext(
+            UserId: audit.ActorUserId,
+            IpAddress: audit.IpAddress,
+            UserAgent: audit.UserAgent,
+            CorrelationId: audit.CorrelationId);
     }
 }

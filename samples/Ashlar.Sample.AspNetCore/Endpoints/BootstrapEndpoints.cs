@@ -29,7 +29,9 @@ internal static class BootstrapEndpoints
             var createResult = await bootstrap.CreateBootstrapInvitationAsync(new CreateBootstrapInvitationRequest
             {
                 Email = email,
-                UserName = userName
+                UserName = userName,
+                TenantId = httpContext.GetAshlarTenantId(),
+                Audit = httpContext.ToAuditContext()
             }, cancellationToken);
 
             if (!createResult.Succeeded || createResult.Value == null)
@@ -47,7 +49,7 @@ internal static class BootstrapEndpoints
                 return Results.BadRequest(SampleResultErrors.From(acceptResult));
             }
 
-            await signInManager.SignInAsync(httpContext, acceptResult.Value, cancellationToken: cancellationToken);
+            await signInManager.SignInAsync(httpContext, acceptResult.Value, httpContext.ToSessionRequest(), cancellationToken);
 
             return Results.Ok(new { userId = acceptResult.Value });
         });

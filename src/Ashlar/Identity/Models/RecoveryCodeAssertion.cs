@@ -13,24 +13,17 @@ public sealed record RecoveryCodeAssertion : IAuthenticationAssertion
     /// </summary>
     /// <param name="code">The code value.</param>
     /// <param name="providerIdentity">The provider identity value.</param>
-    /// <param name="ipAddress">The ip address value.</param>
-    public RecoveryCodeAssertion(string code, AuthenticationProviderKey? providerIdentity = null, string? ipAddress = null)
+    public RecoveryCodeAssertion(string code, AuthenticationProviderKey? providerIdentity = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         Code = code;
         ProviderIdentity = providerIdentity ?? new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode");
-        IpAddress = ipAddress;
     }
 
     /// <summary>
     /// Gets the recovery code.
     /// </summary>
     public string Code { get; }
-
-    /// <summary>
-    /// Gets the IP address.
-    /// </summary>
-    public string? IpAddress { get; }
 
     /// <inheritdoc />
     public AuthenticationProviderKey ProviderIdentity { get; }

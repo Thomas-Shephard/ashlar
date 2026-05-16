@@ -101,7 +101,7 @@ internal static class AuthEndpoints
             });
         }
 
-        await signInManager.SignInAsync(httpContext, response.User.Id, cancellationToken: cancellationToken);
+        await signInManager.SignInAsync(httpContext, response.User.Id, httpContext.ToSessionRequest(), cancellationToken);
         return Results.Ok(new { userId = response.User.Id });
     }
 }

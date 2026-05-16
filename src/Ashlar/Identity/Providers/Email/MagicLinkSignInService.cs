@@ -10,7 +10,7 @@ namespace Ashlar.Identity.Providers.Email;
 /// <summary>
 /// Provides magic link sign in service behavior.
 /// </summary>
-public sealed class MagicLinkSignInService : IMagicLinkSignInService
+internal sealed class MagicLinkSignInService : IMagicLinkSignInService
 {
     private const string RequestPurpose = "magic-link-request";
     private const string VerifyPurpose = "magic-link-verify";

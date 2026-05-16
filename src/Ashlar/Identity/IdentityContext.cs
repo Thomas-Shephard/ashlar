@@ -8,7 +8,7 @@ namespace Ashlar.Identity;
 /// <param name="repository">The repository value.</param>
 /// <param name="identityService">The identity service value.</param>
 /// <param name="transactionProvider">The transaction provider value.</param>
-public sealed class IdentityContext(
+internal sealed class IdentityContext(
     IIdentityRepository repository,
     IIdentityService identityService,
     IAshlarTransactionProvider transactionProvider)
