@@ -13,13 +13,5 @@
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-
-    <!-- NuGet Metadata -->
-    <Authors>Thomas Shephard</Authors>
-    <Copyright>Copyright (c) $([System.DateTime]::Now.ToString("yyyy")) $(Authors)</Copyright>
-    <PackageProjectUrl>https://github.com/Thomas-Shephard/ashlar</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/Thomas-Shephard/ashlar.git</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 </Project>

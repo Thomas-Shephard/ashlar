@@ -18,6 +18,12 @@ indent_size = 2
 [*.{cs,vb}]
 #### Naming styles ####
 
+# Diagnostic Severities
+
+dotnet_diagnostic.IDE0055.severity = warning
+dotnet_diagnostic.IDE0005.severity = warning
+dotnet_diagnostic.NUnit2045.severity = warning
+
 # Naming rules
 
 dotnet_naming_rule.interface_should_be_begins_with_i.severity = suggestion
@@ -127,6 +133,3 @@ dotnet_code_quality_unused_parameters = all:suggestion
 
 # Suppression preferences
 dotnet_remove_unnecessary_suppression_exclusions = none
-
-# NUnit2045: Use Assert.EnterMultipleScope or Assert.Multiple
-dotnet_diagnostic.NUnit2045.severity = warning
