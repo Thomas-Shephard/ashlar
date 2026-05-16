@@ -19,7 +19,6 @@ public sealed class InvitationService(
     IOptions<InvitationOptions>? options = null) : IInvitationService
 {
     private const string InvitationIdProperty = "invitation_id";
-    private const string RateLimitedFailureReason = "rate_limited";
 
     private readonly InvitationDependencies _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
     private readonly IOptions<InvitationOptions> _options = options ?? Options.Create(new InvitationOptions());
@@ -62,11 +61,11 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = RateLimitedFailureReason,
+                FailureReason = AshlarFailureCodes.RateLimited.Value,
                 Properties = AddEmailIfEnabled(new Dictionary<string, string> { ["operation"] = "create" }, normalizedEmail),
                 Context = context
             }, cancellationToken);
-            return Result.Failure(RateLimitedFailureReason);
+            return Result.Failure(AshlarFailureCodes.RateLimited);
         }
 
         var existingUser = await _dependencies.IdentityRepository.GetUserByEmailAsync(normalizedEmail, request.TenantId, cancellationToken);
@@ -76,11 +75,11 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationCreated,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = "user_exists",
+                FailureReason = AshlarFailureCodes.UserExists.Value,
                 Properties = AddEmailIfEnabled(new Dictionary<string, string> { ["operation"] = "create" }, normalizedEmail),
                 Context = context
             }, cancellationToken);
-            return Result.Failure("user_exists");
+            return Result.Failure(AshlarFailureCodes.UserExists);
         }
 
         var token = _dependencies.TokenGenerator.GenerateToken();
@@ -152,11 +151,11 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = RateLimitedFailureReason,
+                FailureReason = AshlarFailureCodes.RateLimited.Value,
                 Properties = new Dictionary<string, string> { ["operation"] = "accept" },
                 Context = context
             }, cancellationToken);
-            return Result.Failure<Guid>(RateLimitedFailureReason);
+            return Result.Failure<Guid>(AshlarFailureCodes.RateLimited);
         }
 
         var invitation = await _dependencies.InvitationRepository.GetInvitationByTokenHashAsync(tokenHash, cancellationToken);
@@ -168,10 +167,10 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationAccepted,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = "invalid_invitation",
+                FailureReason = AshlarFailureCodes.InvalidInvitation.Value,
                 Context = context
             }, cancellationToken);
-            return Result.Failure<Guid>("invalid_invitation");
+            return Result.Failure<Guid>(AshlarFailureCodes.InvalidInvitation);
         }
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
@@ -186,11 +185,11 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationAccepted,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = "concurrency_conflict",
+                FailureReason = AshlarFailureCodes.ConcurrencyConflict.Value,
                 Properties = new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() },
                 Context = context
             }, cancellationToken);
-            return Result.Failure<Guid>("concurrency_conflict");
+            return Result.Failure<Guid>(AshlarFailureCodes.ConcurrencyConflict);
         }
 
         var acceptedUser = await AcceptInvitationUserAsync(invitation, request.UserName, now, cancellationToken);

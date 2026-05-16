@@ -207,7 +207,7 @@ internal sealed class RecoveryCodeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("user_not_found"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
         }
     }
 
@@ -225,9 +225,9 @@ internal sealed class RecoveryCodeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tooManyResult.FailureReason, Is.EqualTo("invalid_code_count"));
-            Assert.That(zeroResult.FailureReason, Is.EqualTo("invalid_code_count"));
-            Assert.That(negativeExpiryResult.FailureReason, Is.EqualTo("invalid_expiry"));
+            Assert.That(tooManyResult.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidCodeCount));
+            Assert.That(zeroResult.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidCodeCount));
+            Assert.That(negativeExpiryResult.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidExpiry));
         }
     }
 
@@ -242,8 +242,8 @@ internal sealed class RecoveryCodeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(invalidCodeLengthResult.FailureReason, Is.EqualTo("invalid_configuration"));
-            Assert.That(invalidGroupSizeResult.FailureReason, Is.EqualTo("invalid_configuration"));
+            Assert.That(invalidCodeLengthResult.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidConfiguration));
+            Assert.That(invalidGroupSizeResult.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidConfiguration));
         }
     }
 

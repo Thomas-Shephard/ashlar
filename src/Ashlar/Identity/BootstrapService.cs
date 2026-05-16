@@ -28,7 +28,6 @@ public sealed class BootstrapService(
     : IBootstrapService
 {
     private const string BootstrapMetadataKey = "ashlar.bootstrap";
-    private const string AlreadyInitializedFailureReason = "already_initialized";
     private readonly IBootstrapStateRepository _stateRepository = stateRepository ?? throw new ArgumentNullException(nameof(stateRepository));
     private readonly IInvitationService _invitationService = invitationService ?? throw new ArgumentNullException(nameof(invitationService));
     private readonly InvitationDependencies _invitationDependencies = invitationDependencies ?? throw new ArgumentNullException(nameof(invitationDependencies));
@@ -63,10 +62,10 @@ public sealed class BootstrapService(
             {
                 EventType = AshlarSecurityEventTypes.BootstrapInvitationCreated,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = AlreadyInitializedFailureReason,
+                FailureReason = AshlarFailureCodes.AlreadyInitialized.Value,
                 Properties = new Dictionary<string, string> { ["email"] = request.Email }
             }, cancellationToken);
-            return Result.Failure<string>(AlreadyInitializedFailureReason);
+            return Result.Failure<string>(AshlarFailureCodes.AlreadyInitialized);
         }
 
         var token = _invitationDependencies.TokenGenerator.GenerateToken();
@@ -92,10 +91,10 @@ public sealed class BootstrapService(
                 {
                     EventType = AshlarSecurityEventTypes.BootstrapInvitationCreated,
                     Outcome = SecurityEventOutcomes.Failure,
-                    FailureReason = "invalid_metadata_format",
+                    FailureReason = AshlarFailureCodes.InvalidMetadataFormat.Value,
                     Properties = new Dictionary<string, string> { ["email"] = email }
                 }, cancellationToken);
-                return Result.Failure<string>("invalid_metadata_format");
+                return Result.Failure<string>(AshlarFailureCodes.InvalidMetadataFormat);
             }
         }
         metadataDict[BootstrapMetadataKey] = true;
@@ -165,10 +164,10 @@ public sealed class BootstrapService(
             {
                 EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = "invalid_invitation",
+                FailureReason = AshlarFailureCodes.InvalidInvitation.Value,
                 Context = context
             }, cancellationToken);
-            return Result.Failure<Guid>("invalid_invitation");
+            return Result.Failure<Guid>(AshlarFailureCodes.InvalidInvitation);
         }
 
         if (!IsBootstrapInvitation(invitation))
@@ -177,10 +176,10 @@ public sealed class BootstrapService(
             {
                 EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = "not_a_bootstrap_invitation",
+                FailureReason = AshlarFailureCodes.NotBootstrapInvitation.Value,
                 Context = context
             }, cancellationToken);
-            return Result.Failure<Guid>("not_a_bootstrap_invitation");
+            return Result.Failure<Guid>(AshlarFailureCodes.NotBootstrapInvitation);
         }
 
         if (await GetStatusAsync(cancellationToken) == BootstrapStatus.Initialized)
@@ -189,10 +188,10 @@ public sealed class BootstrapService(
             {
                 EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = AlreadyInitializedFailureReason,
+                FailureReason = AshlarFailureCodes.AlreadyInitialized.Value,
                 Context = context
             }, cancellationToken);
-            return Result.Failure<Guid>(AlreadyInitializedFailureReason);
+            return Result.Failure<Guid>(AshlarFailureCodes.AlreadyInitialized);
         }
 
         var now = _invitationDependencies.TimeProvider.GetUtcNow();
@@ -228,11 +227,11 @@ public sealed class BootstrapService(
                 {
                     EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                     Outcome = SecurityEventOutcomes.Failure,
-                    FailureReason = grantResult.FailureReason ?? "grant_creation_failed",
+                    FailureReason = grantResult.FailureCode?.Value ?? AshlarFailureCodes.GrantCreationFailed.Value,
                     UserId = userId,
                     Context = context
                 }, cancellationToken);
-                return Result.Failure<Guid>(grantResult.FailureReason ?? "grant_creation_failed");
+                return Result.Failure<Guid>(grantResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.GrantCreationFailed));
             }
         }
 
@@ -246,10 +245,10 @@ public sealed class BootstrapService(
             {
                 EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = AlreadyInitializedFailureReason,
+                FailureReason = AshlarFailureCodes.AlreadyInitialized.Value,
                 Context = context
             }, cancellationToken);
-            return Result.Failure<Guid>(AlreadyInitializedFailureReason);
+            return Result.Failure<Guid>(AshlarFailureCodes.AlreadyInitialized);
         }
 
         transaction.OnCommitted(async ct =>

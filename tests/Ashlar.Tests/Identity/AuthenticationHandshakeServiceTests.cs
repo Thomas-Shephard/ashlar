@@ -109,7 +109,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("no_factors_specified"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.NoFactorsSpecified));
         }
     }
 
@@ -122,7 +122,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_metadata"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidMetadata));
         }
     }
 
@@ -136,7 +136,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_metadata"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidMetadata));
         }
     }
 
@@ -150,7 +150,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_metadata"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidMetadata));
         }
     }
 
@@ -164,7 +164,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_metadata"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidMetadata));
         }
     }
 
@@ -367,7 +367,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("empty_token"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.EmptyToken));
         }
     }
 
@@ -382,7 +382,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("handshake_not_found"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeNotFound));
         }
     }
 
@@ -408,7 +408,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("handshake_expired"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeExpired));
         }
     }
 
@@ -434,7 +434,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("handshake_revoked"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeRevoked));
         }
     }
 
@@ -460,7 +460,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("handshake_already_completed"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeAlreadyCompleted));
         }
     }
 
@@ -494,7 +494,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("rate_limit_exceeded"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.RateLimitExceeded));
         }
     }
 
@@ -522,7 +522,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_metadata"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidMetadata));
         }
     }
 
@@ -693,7 +693,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_factor_type"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidFactorType));
         }
     }
 
@@ -719,7 +719,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("factor_already_verified"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.FactorAlreadyVerified));
         }
     }
 

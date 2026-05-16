@@ -15,7 +15,6 @@ namespace Ashlar.Identity;
 public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeService
 {
     private const string HandshakeIdProperty = "handshake_id";
-    private const string InvalidMetadataFailureReason = "invalid_metadata";
     private const int MaxMetadataEntries = 20;
     private const int MaxMetadataKeyLength = 128;
     private const int MaxMetadataValueLength = 512;
@@ -77,9 +76,9 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
                 EventType = AshlarSecurityEventTypes.AuthenticationHandshakeCreated,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = "no_factors_specified"
+                FailureReason = AshlarFailureCodes.NoFactorsSpecified.Value
             }, cancellationToken);
-            return Result.Failure<AuthenticationHandshakeCreated>("no_factors_specified");
+            return Result.Failure<AuthenticationHandshakeCreated>(AshlarFailureCodes.NoFactorsSpecified);
         }
 
         try
@@ -93,9 +92,9 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
                 EventType = AshlarSecurityEventTypes.AuthenticationHandshakeCreated,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = InvalidMetadataFailureReason
+                FailureReason = AshlarFailureCodes.InvalidMetadata.Value
             }, cancellationToken);
-            return Result.Failure<AuthenticationHandshakeCreated>(InvalidMetadataFailureReason);
+            return Result.Failure<AuthenticationHandshakeCreated>(AshlarFailureCodes.InvalidMetadata);
         }
 
         var metadata = NormalizeMetadata(request.Metadata);
@@ -148,9 +147,9 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
             {
                 EventType = AshlarSecurityEventTypes.AuthenticationHandshakeFailed,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = "empty_token"
+                FailureReason = AshlarFailureCodes.EmptyToken.Value
             }, cancellationToken);
-            return Result.Failure<AuthenticationHandshake>("empty_token");
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.EmptyToken);
         }
 
         var tokenHash = _tokenHasher.HashToken(request.HandshakeToken);
@@ -164,9 +163,9 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
             {
                 EventType = AshlarSecurityEventTypes.AuthenticationHandshakeFailed,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = "handshake_not_found"
+                FailureReason = AshlarFailureCodes.HandshakeNotFound.Value
             }, cancellationToken);
-            return Result.Failure<AuthenticationHandshake>("handshake_not_found");
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeNotFound);
         }
 
         var rateLimitResult = await CheckRateLimitAsync(handshake, cancellationToken);
@@ -178,14 +177,14 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         var now = _timeProvider.GetUtcNow();
         if (handshake.IsRevoked)
         {
-            await RecordHandshakeFailedAsync(handshake, "handshake_revoked", cancellationToken);
-            return Result.Failure<AuthenticationHandshake>("handshake_revoked");
+            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.HandshakeRevoked, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeRevoked);
         }
 
         if (handshake.IsCompleted)
         {
-            await RecordHandshakeFailedAsync(handshake, "handshake_already_completed", cancellationToken);
-            return Result.Failure<AuthenticationHandshake>("handshake_already_completed");
+            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.HandshakeAlreadyCompleted, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeAlreadyCompleted);
         }
 
         if (handshake.ExpiresAt <= now)
@@ -197,19 +196,19 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
                 UserId = handshake.UserId,
                 Properties = new Dictionary<string, string> { [HandshakeIdProperty] = handshake.Id.ToString() }
             }, cancellationToken);
-            return Result.Failure<AuthenticationHandshake>("handshake_expired");
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeExpired);
         }
 
         if (!handshake.RequiredFactors.Contains(request.FactorType))
         {
-            await RecordHandshakeFailedAsync(handshake, "invalid_factor_type", cancellationToken);
-            return Result.Failure<AuthenticationHandshake>("invalid_factor_type");
+            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.InvalidFactorType, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.InvalidFactorType);
         }
 
         if (handshake.VerifiedFactors.Contains(request.FactorType))
         {
-            await RecordHandshakeFailedAsync(handshake, "factor_already_verified", cancellationToken);
-            return Result.Failure<AuthenticationHandshake>("factor_already_verified");
+            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.FactorAlreadyVerified, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.FactorAlreadyVerified);
         }
 
         var verifiedFactors = handshake.VerifiedFactors.ToHashSet();
@@ -222,8 +221,8 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         }
         catch (ArgumentException)
         {
-            await RecordHandshakeFailedAsync(handshake, InvalidMetadataFailureReason, cancellationToken);
-            return Result.Failure<AuthenticationHandshake>(InvalidMetadataFailureReason);
+            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.InvalidMetadata, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.InvalidMetadata);
         }
 
         var updatedHandshake = handshake with
@@ -275,13 +274,13 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
     /// <returns>The operation result.</returns>
     public async Task<Result> RevokeHandshakeAsync(string handshakeToken, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(handshakeToken)) return Result.Failure("empty_token");
+        if (string.IsNullOrWhiteSpace(handshakeToken)) return Result.Failure(AshlarFailureCodes.EmptyToken);
         var tokenHash = _tokenHasher.HashToken(handshakeToken);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         var handshake = await _repository.FindByTokenHashAsync(tokenHash, forUpdate: true, cancellationToken: cancellationToken);
-        if (handshake == null) return Result.Failure("handshake_not_found");
+        if (handshake == null) return Result.Failure(AshlarFailureCodes.HandshakeNotFound);
         if (handshake.IsRevoked) return Result.Success();
 
         var updatedHandshake = handshake with { IsRevoked = true, RevokedAt = _timeProvider.GetUtcNow() };
@@ -300,14 +299,14 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         return Result.Success();
     }
 
-    private Task RecordHandshakeFailedAsync(AuthenticationHandshake handshake, string reason, CancellationToken cancellationToken)
+    private Task RecordHandshakeFailedAsync(AuthenticationHandshake handshake, AshlarFailureCode reason, CancellationToken cancellationToken)
     {
         return _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.AuthenticationHandshakeFailed,
             Outcome = SecurityEventOutcomes.Failure,
             UserId = handshake.UserId,
-            FailureReason = reason,
+            FailureReason = reason.Value,
             Properties = new Dictionary<string, string> { [HandshakeIdProperty] = handshake.Id.ToString() }
         }, cancellationToken);
     }
@@ -347,7 +346,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
             }
         }
 
-        return Result.Failure<AuthenticationHandshake>("rate_limit_exceeded");
+        return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.RateLimitExceeded);
     }
 
     private static Dictionary<string, string>? MergeMetadata(

@@ -100,7 +100,7 @@ internal static partial class AdminEndpoints
 
             if (!result.Succeeded || result.Value == null)
             {
-                return Results.BadRequest(new { error = result.FailureReason ?? "Failed to create grant" });
+                return Results.BadRequest(SampleResultErrors.From(result, "Failed to create grant"));
             }
 
             return Results.Ok(new { result.Value.Id });

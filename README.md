@@ -156,6 +156,28 @@ if (result.Succeeded)
 }
 ```
 
+When a service returns `Result` or `Result<T>`, branch on the stable failure code rather than parsing the display message:
+
+```csharp
+var result = await verificationService.VerifyTokenAsync(userId, tokenFromUrl);
+
+if (!result.Succeeded)
+{
+    if (result.FailureCode == AshlarFailureCodes.InvalidOrExpiredToken)
+    {
+        return Results.BadRequest(new { error = "The verification link is invalid or expired." });
+    }
+
+    return Results.BadRequest(new
+    {
+        code = result.FailureCode?.Value,
+        message = result.FailureMessage ?? "The request could not be completed."
+    });
+}
+```
+
+`FailureCode` is the stable, machine-readable value. `FailureMessage` and `FailureReason` are for display/logging and may be deliberately generic to avoid leaking sensitive details.
+
 ## Email Change
 Ashlar supports a secure two-step email change flow that verifies ownership of the new email address before updating the user record.
 

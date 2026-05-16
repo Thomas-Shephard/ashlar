@@ -73,9 +73,9 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
                 Provider = _options.ProviderKey,
-                FailureReason = "user_not_found"
+                FailureReason = AshlarFailureCodes.UserNotFound.Value
             }, cancellationToken);
-            return Result.Failure<IReadOnlyList<string>>("user_not_found");
+            return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.UserNotFound);
         }
 
         var codeCount = request?.CodeCount ?? _options.CodeCount;
@@ -87,9 +87,9 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
                 Provider = _options.ProviderKey,
-                FailureReason = "invalid_code_count"
+                FailureReason = AshlarFailureCodes.InvalidCodeCount.Value
             }, cancellationToken);
-            return Result.Failure<IReadOnlyList<string>>("invalid_code_count");
+            return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.InvalidCodeCount);
         }
 
         if (_options.CodeLength <= 0 || _options.GroupSize <= 0)
@@ -100,9 +100,9 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
                 Provider = _options.ProviderKey,
-                FailureReason = "invalid_configuration"
+                FailureReason = AshlarFailureCodes.InvalidConfiguration.Value
             }, cancellationToken);
-            return Result.Failure<IReadOnlyList<string>>("invalid_configuration");
+            return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.InvalidConfiguration);
         }
 
         var expiresAfter = request?.ExpiresAfter ?? _options.ExpiresAfter;
@@ -114,9 +114,9 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
                 Provider = _options.ProviderKey,
-                FailureReason = "invalid_expiry"
+                FailureReason = AshlarFailureCodes.InvalidExpiry.Value
             }, cancellationToken);
-            return Result.Failure<IReadOnlyList<string>>("invalid_expiry");
+            return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.InvalidExpiry);
         }
 
         // Revoke existing recovery codes if requested

@@ -86,7 +86,7 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("rate_limited"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.RateLimited));
             Assert.That(fixture.EmailSender.Messages, Is.Empty);
             Assert.That(fixture.InvitationRepository.Invitations, Is.Empty);
             Assert.That(fixture.Audit.Events.First().EventType, Is.EqualTo(AshlarSecurityEventTypes.InvitationRateLimited));
@@ -214,7 +214,7 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("user_exists"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserExists));
             Assert.That(fixture.InvitationRepository.Invitations, Is.Empty);
             Assert.That(fixture.EmailSender.Messages, Is.Empty);
             Assert.That(fixture.Audit.Events.Any(e =>
@@ -332,7 +332,7 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_invitation"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
         }
     }
 
@@ -358,7 +358,7 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("rate_limited"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.RateLimited));
             Assert.That(fixture.Audit.Events.First().EventType, Is.EqualTo(AshlarSecurityEventTypes.InvitationRateLimited));
         }
     }
@@ -461,7 +461,7 @@ internal sealed class InvitationServiceTests
 
         var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token });
 
-        Assert.That(result.FailureReason, Is.EqualTo("concurrency_conflict"));
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ConcurrencyConflict));
     }
 
     [Test]
@@ -538,7 +538,7 @@ internal sealed class InvitationServiceTests
     {
         var fixture = CreateFixture();
         var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = "non-existent" });
-        Assert.That(result.FailureReason, Is.EqualTo("invalid_invitation"));
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
     }
 
     [Test]

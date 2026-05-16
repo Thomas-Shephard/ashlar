@@ -55,9 +55,9 @@ public sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = "invalid_callback_uri"
+                FailureReason = AshlarFailureCodes.InvalidCallbackUri.Value
             }, cancellationToken);
-            return Result.Failure($"The URI '{request.CallbackBaseUri}' is not allowed.");
+            return Result.Failure(AshlarFailureCodes.InvalidCallbackUri, $"The URI '{request.CallbackBaseUri}' is not allowed.");
         }
 
         var user = await _dependencies.IdentityContext.Repository.GetUserByIdAsync(request.UserId, cancellationToken);
@@ -68,9 +68,9 @@ public sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = "user_not_found_or_inactive"
+                FailureReason = AshlarFailureCodes.UserNotFoundOrInactive.Value
             }, cancellationToken);
-            return Result.Failure("User not found or inactive.");
+            return Result.Failure(AshlarFailureCodes.UserNotFoundOrInactive, "User not found or inactive.");
         }
 
         var newEmail = IdentityNormalization.SanitizeEmailForDelivery(request.NewEmail);
@@ -82,9 +82,9 @@ public sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = user.Id,
-                FailureReason = "same_email"
+                FailureReason = AshlarFailureCodes.SameEmail.Value
             }, cancellationToken);
-            return Result.Failure("New email must be different from the current email.");
+            return Result.Failure(AshlarFailureCodes.SameEmail, "New email must be different from the current email.");
         }
 
         var rateLimit = await _dependencies.RateLimiter.CheckAsync(new RateLimitAttempt
@@ -101,9 +101,9 @@ public sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = user.Id,
-                FailureReason = "rate_limited"
+                FailureReason = AshlarFailureCodes.RateLimited.Value
             }, cancellationToken);
-            return Result.Failure("Too many requests.");
+            return Result.Failure(AshlarFailureCodes.RateLimited, "Too many requests.");
         }
 
         var existingUser = await _dependencies.IdentityContext.Repository.GetUserByEmailAsync(normalizedNewEmail, (user as ITenantUser)?.TenantId, cancellationToken);
@@ -174,7 +174,7 @@ public sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeRequestSuppressed,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = user.Id,
-                FailureReason = "email_already_in_use"
+                FailureReason = AshlarFailureCodes.EmailAlreadyInUse.Value
             }, ct);
         });
 
@@ -207,9 +207,9 @@ public sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeVerificationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = "rate_limited"
+                FailureReason = AshlarFailureCodes.RateLimited.Value
             }, cancellationToken);
-            return Result.Failure("Too many attempts.");
+            return Result.Failure(AshlarFailureCodes.RateLimited, "Too many attempts.");
         }
 
         var tokenHash = _dependencies.TokenContext.Hasher.HashToken(request.Token);
@@ -223,9 +223,9 @@ public sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = "invalid_or_expired_token"
+                FailureReason = AshlarFailureCodes.InvalidOrExpiredToken.Value
             }, cancellationToken);
-            return Result.Failure("Invalid or expired token.");
+            return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, "Invalid or expired token.");
         }
 
         string newEmail;
@@ -241,9 +241,9 @@ public sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = "invalid_token_data"
+                FailureReason = AshlarFailureCodes.InvalidTokenData.Value
             }, cancellationToken);
-            return Result.Failure("Invalid token data.");
+            return Result.Failure(AshlarFailureCodes.InvalidTokenData, "Invalid token data.");
         }
 
         var normalizedNewEmail = IdentityNormalization.NormalizeEmail(newEmail);
@@ -258,9 +258,9 @@ public sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = "user_not_found_or_inactive"
+                FailureReason = AshlarFailureCodes.UserNotFoundOrInactive.Value
             }, cancellationToken);
-            return Result.Failure("Invalid or expired token.");
+            return Result.Failure(AshlarFailureCodes.UserNotFoundOrInactive, "Invalid or expired token.");
         }
 
         var consumed = await _dependencies.IdentityContext.Repository.ConsumeCredentialAsync(credential.Id, credential.Version, cancellationToken);
@@ -271,9 +271,9 @@ public sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = "token_consumption_failed"
+                FailureReason = AshlarFailureCodes.TokenConsumptionFailed.Value
             }, cancellationToken);
-            return Result.Failure("Invalid or expired token.");
+            return Result.Failure(AshlarFailureCodes.TokenConsumptionFailed, "Invalid or expired token.");
         }
 
         var existingUser = await _dependencies.IdentityContext.Repository.GetUserByEmailAsync(normalizedNewEmail, (user as ITenantUser)?.TenantId, cancellationToken);
@@ -286,11 +286,11 @@ public sealed class EmailChangeService(
                     EventType = AshlarSecurityEventTypes.EmailChangeFailed,
                     Outcome = SecurityEventOutcomes.Failure,
                     UserId = user.Id,
-                    FailureReason = "email_already_in_use"
+                    FailureReason = AshlarFailureCodes.EmailAlreadyInUse.Value
                 }, ct);
             });
             await transaction.CommitAsync(cancellationToken);
-            return Result.Failure("New email is already in use.");
+            return Result.Failure(AshlarFailureCodes.EmailAlreadyInUse, "New email is already in use.");
         }
 
         var oldEmail = user.Email;

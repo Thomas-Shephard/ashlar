@@ -69,7 +69,7 @@ internal static class MfaEndpoints
             CancellationToken cancellationToken) =>
         {
             var result = await recoveryCodes.GenerateRecoveryCodesAsync(user.GetAshlarUserId(), cancellationToken: cancellationToken);
-            return result.Succeeded ? Results.Ok(new { codes = result.Value }) : Results.BadRequest(new { error = result.FailureReason });
+            return result.Succeeded ? Results.Ok(new { codes = result.Value }) : Results.BadRequest(SampleResultErrors.From(result));
         }).RequireAuthorization();
     }
 

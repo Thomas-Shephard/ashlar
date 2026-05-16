@@ -433,7 +433,7 @@ internal sealed class TotpTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_code"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidCode));
         }
         _credentialService.Verify(x => x.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -456,7 +456,7 @@ internal sealed class TotpTests
                 secret,
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Result(false, failureReason));
+            .ReturnsAsync(new Result(false, failureReason is null ? null : new AshlarFailure(new AshlarFailureCode(failureReason))));
 
         var result = await service.VerifyAndEnrollAsync(userId, secret, code);
 
@@ -481,7 +481,7 @@ internal sealed class TotpTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("empty_code"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.EmptyCode));
         }
     }
 
@@ -493,7 +493,7 @@ internal sealed class TotpTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_secret_format"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidSecretFormat));
         }
     }
 
@@ -510,7 +510,7 @@ internal sealed class TotpTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_secret"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidSecret));
         }
     }
 
@@ -525,7 +525,7 @@ internal sealed class TotpTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_secret"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidSecret));
         }
     }
 

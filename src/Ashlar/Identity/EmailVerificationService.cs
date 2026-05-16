@@ -65,9 +65,9 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = "invalid_callback_uri"
+                FailureReason = AshlarFailureCodes.InvalidCallbackUri.Value
             }, cancellationToken);
-            return Result.Failure($"The URI '{request.CallbackBaseUri}' is not allowed.");
+            return Result.Failure(AshlarFailureCodes.InvalidCallbackUri, $"The URI '{request.CallbackBaseUri}' is not allowed.");
         }
 
         var user = await _identityContext.Repository.GetUserByIdAsync(request.UserId, cancellationToken);
@@ -78,9 +78,9 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = "user_not_found_or_inactive"
+                FailureReason = AshlarFailureCodes.UserNotFoundOrInactive.Value
             }, cancellationToken);
-            return Result.Failure("User not found or inactive.");
+            return Result.Failure(AshlarFailureCodes.UserNotFoundOrInactive, "User not found or inactive.");
         }
 
         if (user.EmailVerifiedAt.HasValue)
@@ -103,9 +103,9 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = user.Id,
-                FailureReason = "rate_limited"
+                FailureReason = AshlarFailureCodes.RateLimited.Value
             }, cancellationToken);
-            return Result.Failure("Too many requests.");
+            return Result.Failure(AshlarFailureCodes.RateLimited, "Too many requests.");
         }
 
         var token = _tokenContext.Generator.GenerateToken();
@@ -180,9 +180,9 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationVerificationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
-                FailureReason = "rate_limited"
+                FailureReason = AshlarFailureCodes.RateLimited.Value
             }, cancellationToken);
-            return Result.Failure("Too many attempts.");
+            return Result.Failure(AshlarFailureCodes.RateLimited, "Too many attempts.");
         }
 
         var tokenHash = _tokenContext.Hasher.HashToken(token);
@@ -196,9 +196,9 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
-                FailureReason = "invalid_or_expired_token"
+                FailureReason = AshlarFailureCodes.InvalidOrExpiredToken.Value
             }, cancellationToken);
-            return Result.Failure("Invalid or expired token.");
+            return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, "Invalid or expired token.");
         }
 
         await using var transaction = await _identityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
@@ -211,9 +211,9 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
-                FailureReason = "token_consumption_failed"
+                FailureReason = AshlarFailureCodes.TokenConsumptionFailed.Value
             }, cancellationToken);
-            return Result.Failure("Invalid or expired token.");
+            return Result.Failure(AshlarFailureCodes.TokenConsumptionFailed, "Invalid or expired token.");
         }
 
         var user = await _identityContext.Repository.GetUserByIdAsync(userId, cancellationToken);
@@ -224,9 +224,9 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
-                FailureReason = "user_not_found_or_inactive"
+                FailureReason = AshlarFailureCodes.UserNotFoundOrInactive.Value
             }, cancellationToken);
-            return Result.Failure("Invalid or expired token.");
+            return Result.Failure(AshlarFailureCodes.UserNotFoundOrInactive, "Invalid or expired token.");
         }
 
         var updatedUser = new UpdatedUserWrapper(user, now);

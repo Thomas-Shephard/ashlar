@@ -77,7 +77,7 @@ internal sealed class EmailVerificationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("User not found or inactive."));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrInactive));
         }
     }
 
@@ -143,7 +143,7 @@ internal sealed class EmailVerificationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("Invalid or expired token."));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidOrExpiredToken));
         }
     }
 
@@ -169,7 +169,11 @@ internal sealed class EmailVerificationServiceTests
 
         var result = await fixture.Service.VerifyTokenAsync(_user.Id, token);
 
-        Assert.That(result.FailureReason, Is.EqualTo("Invalid or expired token."));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TokenConsumptionFailed));
+        }
     }
 
     [Test]
@@ -182,7 +186,11 @@ internal sealed class EmailVerificationServiceTests
 
         var result = await fixture.Service.VerifyTokenAsync(_user.Id, token);
 
-        Assert.That(result.FailureReason, Is.EqualTo("Invalid or expired token."));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrInactive));
+        }
     }
 
     [Test]
