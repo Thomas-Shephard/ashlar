@@ -94,6 +94,22 @@ internal sealed class InvitationServiceTests
     }
 
     [Test]
+    public void CreateInvitationRejectsDisallowedCallbackBeforeGeneratingToken()
+    {
+        var fixture = CreateFixture(callbackAllowed: false);
+        var request = new CreateInvitationRequest { Email = "invitee@example.com" };
+
+        var ex = Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.CreateInvitationAsync(request, new Uri("https://evil.example/join")));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex?.ParamName, Is.EqualTo("uri"));
+            Assert.That(fixture.EmailSender.Messages, Is.Empty);
+            Assert.That(fixture.InvitationRepository.Invitations, Is.Empty);
+        }
+    }
+
+    [Test]
     public void CreateInvitationRejectsEmailWithLineBreaks()
     {
         var fixture = CreateFixture();
@@ -560,7 +576,7 @@ internal sealed class InvitationServiceTests
         }
     }
 
-    private static Fixture CreateFixture(User? user = null, bool creationAllowed = true, bool acceptanceAllowed = true, Action<InvitationOptions>? configureOptions = null)
+    private static Fixture CreateFixture(User? user = null, bool creationAllowed = true, bool acceptanceAllowed = true, Action<InvitationOptions>? configureOptions = null, bool callbackAllowed = true)
     {
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 5, 3, 12, 0, 0, TimeSpan.Zero));
         var identityRepository = new InMemoryIdentityRepository(user);
@@ -585,7 +601,8 @@ internal sealed class InvitationServiceTests
                 transactionProvider,
                 rateLimiter,
                 audit,
-                time),
+                time,
+                callbackAllowed),
             Options.Create(options));
 
         return new Fixture(service, invitationRepository, identityRepository, emailSender, audit, time, tokenHasher, rateLimiter);
@@ -638,10 +655,16 @@ internal sealed class InvitationServiceTests
         IAshlarTransactionProvider transactionProvider,
         IAuthenticationRateLimiter rateLimiter,
         ISecurityEventSink? securityEventSink = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        bool callbackAllowed = true)
     {
         var uriValidator = new Mock<IUriValidator>();
-        uriValidator.Setup(v => v.IsValid(It.IsAny<Uri?>())).Returns(true);
+        if (!callbackAllowed)
+        {
+            uriValidator
+                .Setup(v => v.ValidateOrThrow(It.IsAny<Uri?>()))
+                .Throws((Uri? uri) => new ArgumentException("The URI is not allowed.", nameof(uri)));
+        }
 
         return new InvitationDependencies(
             new InvitationStoreContext(invitationRepository, identityRepository, transactionProvider),

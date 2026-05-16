@@ -36,6 +36,8 @@ The sample starts a disposable `postgres:15-alpine` container when `Ashlar:Conne
 
 For local HTTP testing, set `Ashlar:Cookie:Secure` to `false`, use an HTTP `PublicAppUrl`, and do not use a `__Host-` cookie name. `__Host-` cookies require `SecurePolicy.Always`.
 
+The sample derives its allowed callback URIs from `PublicAppUrl` and the fixed magic-link, invitation, email verification, and email change paths it emits. Links are built from this configured value, not from request-supplied return URLs. Keep `PublicAppUrl` to the exact local or public origin you expect, without query strings or fragments. In production, configure an HTTPS public URL and keep `Ashlar:Cookie:Secure` enabled.
+
 ## Database Initialization
 
 The sample calls `InitializeAshlarPostgresSchemaAsync()` at startup. When using a configured connection string, the database must already exist and the connection user must be able to create or update the Ashlar schema objects. When using the auto-container, the temporary database is created for you.

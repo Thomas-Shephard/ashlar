@@ -68,6 +68,21 @@ internal sealed class MagicLinkSignInTests
     }
 
     [Test]
+    public void RequestLinkRejectsDisallowedCallbackBeforeGeneratingToken()
+    {
+        var fixture = CreateFixture(_user, callbackAllowed: false);
+
+        var ex = Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://evil.example/verify")));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex?.ParamName, Is.EqualTo("uri"));
+            Assert.That(fixture.EmailSender.Messages, Is.Empty);
+            Assert.That(fixture.Repository.Credentials, Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task RequestLinkDoesNotSendForInactiveUser()
     {
         var user = new User { Id = Guid.NewGuid(), Email = "inactive@example.com", IsActive = false };
@@ -427,7 +442,7 @@ internal sealed class MagicLinkSignInTests
         Assert.That(options.CodeDigits, Is.EqualTo(5));
     }
 
-    private static Fixture CreateFixture(User? user = null, bool requestAllowed = true, bool verifyAllowed = true, MagicLinkSignInOptions? options = null)
+    private static Fixture CreateFixture(User? user = null, bool requestAllowed = true, bool verifyAllowed = true, MagicLinkSignInOptions? options = null, bool callbackAllowed = true)
     {
         var repository = new InMemoryIdentityRepository(user);
         var audit = new RecordingSecurityEventSink();
@@ -448,7 +463,12 @@ internal sealed class MagicLinkSignInTests
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), tokenHasher);
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed, time);
         var uriValidator = new Mock<IUriValidator>();
-        uriValidator.Setup(v => v.IsValid(It.IsAny<Uri?>())).Returns(true);
+        if (!callbackAllowed)
+        {
+            uriValidator
+                .Setup(v => v.ValidateOrThrow(It.IsAny<Uri?>()))
+                .Throws((Uri? uri) => new ArgumentException("The URI is not allowed.", nameof(uri)));
+        }
 
         var infrastructure = new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator.Object);
         var auditContext = new IdentityAuditContext(time, audit);

@@ -11,7 +11,12 @@ internal static class ServiceCollectionExtensions
     {
         services.AddOptions<SampleAshlarOptions>()
             .Bind(configuration.GetSection("Ashlar"))
-            .Validate(options => Uri.TryCreate(options.PublicAppUrl, UriKind.Absolute, out _), "PublicAppUrl must be an absolute URL.")
+            .Validate(options => Uri.TryCreate(options.PublicAppUrl, UriKind.Absolute, out var uri) &&
+                (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp) &&
+                uri.AbsolutePath == "/" &&
+                string.IsNullOrEmpty(uri.UserInfo) &&
+                string.IsNullOrEmpty(uri.Query) &&
+                string.IsNullOrEmpty(uri.Fragment), "PublicAppUrl must be a root http or https origin (no path, user info, query string, or fragment).")
             .ValidateOnStart();
 
         var sampleOptions = configuration.GetSection("Ashlar").Get<SampleAshlarOptions>()
@@ -22,7 +27,11 @@ internal static class ServiceCollectionExtensions
         services.AddAshlarIdentity();
         services.Configure<Identity.Models.UriValidationOptions>(options =>
         {
-            options.AllowedCallbackUris.Add(sampleOptions.PublicAppUrl);
+            var publicAppUri = new Uri(sampleOptions.PublicAppUrl);
+            options.AllowedCallbackUris.Add(new Uri(publicAppUri, "/auth/magic-link").AbsoluteUri);
+            options.AllowedCallbackUris.Add(new Uri(publicAppUri, "/invitations/accept").AbsoluteUri);
+            options.AllowedCallbackUris.Add(new Uri(publicAppUri, "/account/verify-email").AbsoluteUri);
+            options.AllowedCallbackUris.Add(new Uri(publicAppUri, "/account/change-email").AbsoluteUri);
         });
         services.AddAshlarPostgres(postgresStartup.ConnectionString);
         services.AddAshlarDataProtectionSecretProtector();
