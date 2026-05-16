@@ -865,5 +865,4 @@ internal sealed class AuthenticationSessionServiceTests
             return token;
         }
     }
-
 }

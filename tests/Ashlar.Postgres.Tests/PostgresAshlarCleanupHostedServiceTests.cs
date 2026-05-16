@@ -151,5 +151,4 @@ internal sealed class PostgresAshlarCleanupHostedServiceTests
             return AshlarCleanupResult.Empty;
         }
     }
-
 }
