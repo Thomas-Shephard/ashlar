@@ -13,6 +13,9 @@ public sealed class InvitationService(
     InvitationDependencies dependencies,
     IOptions<InvitationOptions>? options = null) : IInvitationService
 {
+    private const string InvitationIdProperty = "invitation_id";
+    private const string RateLimitedFailureReason = "rate_limited";
+
     private readonly InvitationDependencies _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
     private readonly IOptions<InvitationOptions> _options = options ?? Options.Create(new InvitationOptions());
     private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider);
@@ -46,11 +49,11 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = "rate_limited",
+                FailureReason = RateLimitedFailureReason,
                 Properties = AddEmailIfEnabled(new Dictionary<string, string> { ["operation"] = "create" }, normalizedEmail),
                 Context = context
             }, cancellationToken);
-            return Result.Failure("rate_limited");
+            return Result.Failure(RateLimitedFailureReason);
         }
 
         var existingUser = await _dependencies.IdentityRepository.GetUserByEmailAsync(normalizedEmail, request.TenantId, cancellationToken);
@@ -99,7 +102,7 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationCreated,
                 Outcome = SecurityEventOutcomes.Success,
-                Properties = AddEmailIfEnabled(new Dictionary<string, string> { ["invitation_id"] = invitation.Id.ToString() }, normalizedEmail),
+                Properties = AddEmailIfEnabled(new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() }, normalizedEmail),
                 Context = context
             }, ct);
         });
@@ -129,11 +132,11 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = "rate_limited",
+                FailureReason = RateLimitedFailureReason,
                 Properties = new Dictionary<string, string> { ["operation"] = "accept" },
                 Context = context
             }, cancellationToken);
-            return Result.Failure<Guid>("rate_limited");
+            return Result.Failure<Guid>(RateLimitedFailureReason);
         }
 
         var invitation = await _dependencies.InvitationRepository.GetInvitationByTokenHashAsync(tokenHash, cancellationToken);
@@ -164,7 +167,7 @@ public sealed class InvitationService(
                 EventType = AshlarSecurityEventTypes.InvitationAccepted,
                 Outcome = SecurityEventOutcomes.Failure,
                 FailureReason = "concurrency_conflict",
-                Properties = new Dictionary<string, string> { ["invitation_id"] = invitation.Id.ToString() },
+                Properties = new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() },
                 Context = context
             }, cancellationToken);
             return Result.Failure<Guid>("concurrency_conflict");
@@ -190,14 +193,14 @@ public sealed class InvitationService(
                 EventType = AshlarSecurityEventTypes.InvitationAccepted,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = acceptedUser.UserId,
-                Properties = new Dictionary<string, string> { ["invitation_id"] = invitation.Id.ToString() },
+                Properties = new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() },
                 Context = context
             }, ct);
 
             var notifiedUser = await _dependencies.IdentityRepository.GetUserByIdAsync(acceptedUser.UserId, ct);
             if (notifiedUser != null)
             {
-                await _notifications.NotifyAsync(SecurityNotificationType.InvitationAccepted, notifiedUser, now, context: context, metadata: new Dictionary<string, string> { ["invitation_id"] = invitation.Id.ToString() }, cancellationToken: ct);
+                await _notifications.NotifyAsync(SecurityNotificationType.InvitationAccepted, notifiedUser, now, context: context, metadata: new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() }, cancellationToken: ct);
             }
         });
 

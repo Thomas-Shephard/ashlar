@@ -12,6 +12,7 @@ namespace Ashlar.Identity;
 public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeService
 {
     private const string HandshakeIdProperty = "handshake_id";
+    private const string InvalidMetadataFailureReason = "invalid_metadata";
     private const int MaxMetadataEntries = 20;
     private const int MaxMetadataKeyLength = 128;
     private const int MaxMetadataValueLength = 512;
@@ -81,9 +82,9 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
                 EventType = AshlarSecurityEventTypes.AuthenticationHandshakeCreated,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = "invalid_metadata"
+                FailureReason = InvalidMetadataFailureReason
             }, cancellationToken);
-            return Result.Failure<AuthenticationHandshakeCreated>("invalid_metadata");
+            return Result.Failure<AuthenticationHandshakeCreated>(InvalidMetadataFailureReason);
         }
 
         var metadata = NormalizeMetadata(request.Metadata);
@@ -210,8 +211,8 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         }
         catch (ArgumentException)
         {
-            await RecordHandshakeFailedAsync(handshake, "invalid_metadata", cancellationToken);
-            return Result.Failure<AuthenticationHandshake>("invalid_metadata");
+            await RecordHandshakeFailedAsync(handshake, InvalidMetadataFailureReason, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(InvalidMetadataFailureReason);
         }
 
         var updatedHandshake = handshake with

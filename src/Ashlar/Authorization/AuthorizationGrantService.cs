@@ -234,31 +234,6 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
         return normalized;
     }
 
-    private static void ValidateMetadata(string? metadata, int maxLength)
-    {
-        if (metadata is { Length: > 0 } && metadata.Length > maxLength)
-        {
-            throw new ArgumentException("Metadata exceeds the configured maximum length.", nameof(metadata));
-        }
-    }
-
-    private static void ValidateMetadataJson(string? metadata)
-    {
-        if (metadata == null)
-        {
-            return;
-        }
-
-        try
-        {
-            using var _ = JsonDocument.Parse(metadata);
-        }
-        catch (JsonException exception)
-        {
-            throw new ArgumentException("Metadata must be valid JSON.", nameof(metadata), exception);
-        }
-    }
-
     private static Dictionary<string, string> CreateAuditProperties(AuthorizationGrant grant)
     {
         return CreateAuditProperties(grant.Id, grant);

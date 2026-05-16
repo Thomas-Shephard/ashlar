@@ -19,6 +19,7 @@ public sealed class BootstrapService(
     : IBootstrapService
 {
     private const string BootstrapMetadataKey = "ashlar.bootstrap";
+    private const string AlreadyInitializedFailureReason = "already_initialized";
     private readonly IBootstrapStateRepository _stateRepository = stateRepository ?? throw new ArgumentNullException(nameof(stateRepository));
     private readonly IInvitationService _invitationService = invitationService ?? throw new ArgumentNullException(nameof(invitationService));
     private readonly InvitationDependencies _invitationDependencies = invitationDependencies ?? throw new ArgumentNullException(nameof(invitationDependencies));
@@ -42,10 +43,10 @@ public sealed class BootstrapService(
             {
                 EventType = AshlarSecurityEventTypes.BootstrapInvitationCreated,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = "already_initialized",
+                FailureReason = AlreadyInitializedFailureReason,
                 Properties = new Dictionary<string, string> { ["email"] = request.Email }
             }, cancellationToken);
-            return Result.Failure<string>("already_initialized");
+            return Result.Failure<string>(AlreadyInitializedFailureReason);
         }
 
         var token = _invitationDependencies.TokenGenerator.GenerateToken();
@@ -161,10 +162,10 @@ public sealed class BootstrapService(
             {
                 EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = "already_initialized",
+                FailureReason = AlreadyInitializedFailureReason,
                 Context = context
             }, cancellationToken);
-            return Result.Failure<Guid>("already_initialized");
+            return Result.Failure<Guid>(AlreadyInitializedFailureReason);
         }
 
         var now = _invitationDependencies.TimeProvider.GetUtcNow();
@@ -218,10 +219,10 @@ public sealed class BootstrapService(
             {
                 EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = "already_initialized",
+                FailureReason = AlreadyInitializedFailureReason,
                 Context = context
             }, cancellationToken);
-            return Result.Failure<Guid>("already_initialized");
+            return Result.Failure<Guid>(AlreadyInitializedFailureReason);
         }
 
         transaction.OnCommitted(async ct =>
