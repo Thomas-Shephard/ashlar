@@ -148,7 +148,7 @@ public sealed class AuthenticationOrchestrator(
         if (!result.Succeeded || result.Value == null)
         {
             MfaHandshakeOperationFailed(_logger, handshake.UserId, result.FailureReason, null);
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: GetHandshakeVerificationFailureMessage(result.FailureReason));
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: GetHandshakeVerificationFailureMessage(result.FailureCode));
         }
 
         return CreateResultFromHandshake(result.Value, response.User, handshakeToken);
@@ -196,7 +196,7 @@ public sealed class AuthenticationOrchestrator(
         if (!result.Succeeded)
         {
             MfaHandshakeOperationFailed(_logger, user.Id, result.FailureReason, null);
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: GetHandshakeCreationFailureMessage(result.FailureReason));
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: GetHandshakeCreationFailureMessage(result.FailureCode));
         }
 
         return new MfaAuthenticationResult(
@@ -239,29 +239,29 @@ public sealed class AuthenticationOrchestrator(
             .ToDictionary(kvp => kvp.Key[6..], kvp => kvp.Value) ?? [];
     }
 
-    private static string GetHandshakeVerificationFailureMessage(string? failureReason)
+    private static string GetHandshakeVerificationFailureMessage(AshlarFailureCode? failureCode)
     {
-        return failureReason switch
+        return failureCode?.Value switch
         {
-            "empty_token" => "Handshake token is required.",
-            "handshake_not_found" => "Handshake not found.",
-            "handshake_revoked" => "Handshake is no longer valid.",
-            "handshake_expired" => "Handshake has expired.",
-            "handshake_already_completed" => "Handshake has already been completed.",
-            "rate_limit_exceeded" => "Rate limit exceeded.",
-            "invalid_factor_type" => "Invalid factor type.",
-            "factor_already_verified" => "Factor already verified.",
-            "invalid_metadata" => "Invalid metadata.",
+            AshlarFailureCodes.EmptyTokenValue => "Handshake token is required.",
+            AshlarFailureCodes.HandshakeNotFoundValue => "Handshake not found.",
+            AshlarFailureCodes.HandshakeRevokedValue => "Handshake is no longer valid.",
+            AshlarFailureCodes.HandshakeExpiredValue => "Handshake has expired.",
+            AshlarFailureCodes.HandshakeAlreadyCompletedValue => "Handshake has already been completed.",
+            AshlarFailureCodes.RateLimitExceededValue => "Rate limit exceeded.",
+            AshlarFailureCodes.InvalidFactorTypeValue => "Invalid factor type.",
+            AshlarFailureCodes.FactorAlreadyVerifiedValue => "Factor already verified.",
+            AshlarFailureCodes.InvalidMetadataValue => "Invalid metadata.",
             _ => "Factor verification failed."
         };
     }
 
-    private static string GetHandshakeCreationFailureMessage(string? failureReason)
+    private static string GetHandshakeCreationFailureMessage(AshlarFailureCode? failureCode)
     {
-        return failureReason switch
+        return failureCode?.Value switch
         {
-            "no_factors_specified" => "MFA is required but no factors are configured.",
-            "invalid_metadata" => "Invalid metadata.",
+            AshlarFailureCodes.NoFactorsSpecifiedValue => "MFA is required but no factors are configured.",
+            AshlarFailureCodes.InvalidMetadataValue => "Invalid metadata.",
             _ => "Failed to create MFA handshake."
         };
     }

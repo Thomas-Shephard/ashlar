@@ -159,7 +159,7 @@ public sealed class IdentityService(
 
         if (!_providerRegistry.TryGetProvider(assertion, out var provider))
         {
-            return Result.Failure($"Provider '{assertion.ProviderIdentity}' is not supported.");
+            return Result.Failure(AshlarFailureCodes.ProviderUnsupported, $"Provider '{assertion.ProviderIdentity}' is not supported.");
         }
 
         return await _credentialService.LinkCredentialAsync(userId, assertion, provider, credentialValue, cancellationToken: cancellationToken);

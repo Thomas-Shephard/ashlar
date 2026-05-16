@@ -1007,7 +1007,7 @@ internal sealed class CredentialServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("user_not_found"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
         }
     }
 
@@ -1028,7 +1028,7 @@ internal sealed class CredentialServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_provider_key"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidProviderKey));
         }
     }
 
@@ -1053,7 +1053,7 @@ internal sealed class CredentialServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("already_linked_to_other"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.AlreadyLinkedToOther));
         }
     }
 
@@ -1077,7 +1077,7 @@ internal sealed class CredentialServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("already_linked_to_self"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.AlreadyLinkedToSelf));
         }
     }
 
@@ -1101,7 +1101,7 @@ internal sealed class CredentialServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("already_linked_to_self"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.AlreadyLinkedToSelf));
         }
     }
 

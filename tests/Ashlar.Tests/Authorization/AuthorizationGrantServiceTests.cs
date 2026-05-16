@@ -58,7 +58,7 @@ internal sealed class AuthorizationGrantServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_metadata_json"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidMetadataJson));
         }
     }
 
@@ -106,10 +106,10 @@ internal sealed class AuthorizationGrantServiceTests
         var missingScopeType = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, ScopeId: "1", Permission: "p"));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(missingGrant.FailureReason, Is.EqualTo("invalid_grant_shape"));
-            Assert.That(roleAndPermission.FailureReason, Is.EqualTo("invalid_grant_shape"));
-            Assert.That(missingScopeId.FailureReason, Is.EqualTo("invalid_scope_shape"));
-            Assert.That(missingScopeType.FailureReason, Is.EqualTo("invalid_scope_shape"));
+            Assert.That(missingGrant.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidGrantShape));
+            Assert.That(roleAndPermission.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidGrantShape));
+            Assert.That(missingScopeId.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidScopeShape));
+            Assert.That(missingScopeType.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidScopeShape));
         }
         Assert.ThrowsAsync<ArgumentNullException>(() => _service.CreateGrantAsync(null!));
         Assert.ThrowsAsync<ArgumentNullException>(() => _service.ListGrantsAsync(null!));
@@ -138,11 +138,11 @@ internal sealed class AuthorizationGrantServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(role.FailureReason, Is.EqualTo("validation_error"));
-            Assert.That(permission.FailureReason, Is.EqualTo("validation_error"));
-            Assert.That(scopeType.FailureReason, Is.EqualTo("validation_error"));
-            Assert.That(scopeId.FailureReason, Is.EqualTo("validation_error"));
-            Assert.That(metadata.FailureReason, Is.EqualTo("metadata_too_long"));
+            Assert.That(role.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(permission.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(scopeType.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(scopeId.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(metadata.FailureCode, Is.EqualTo(AshlarFailureCodes.MetadataTooLong));
         }
     }
 

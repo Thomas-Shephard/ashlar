@@ -34,7 +34,7 @@ internal static class BootstrapEndpoints
 
             if (!createResult.Succeeded || createResult.Value == null)
             {
-                return Results.BadRequest(new { error = createResult.FailureReason });
+                return Results.BadRequest(SampleResultErrors.From(createResult));
             }
 
             var acceptResult = await bootstrap.AcceptBootstrapInvitationAsync(
@@ -44,7 +44,7 @@ internal static class BootstrapEndpoints
 
             if (!acceptResult.Succeeded || acceptResult.Value == Guid.Empty)
             {
-                return Results.BadRequest(new { error = acceptResult.FailureReason });
+                return Results.BadRequest(SampleResultErrors.From(acceptResult));
             }
 
             await signInManager.SignInAsync(httpContext, acceptResult.Value, cancellationToken: cancellationToken);

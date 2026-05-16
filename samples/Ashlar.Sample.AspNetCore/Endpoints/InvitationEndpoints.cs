@@ -20,7 +20,7 @@ internal static class InvitationEndpoints
         {
             var callback = new Uri(new Uri(options.Value.PublicAppUrl), "/invitations/accept");
             var result = await invitations.CreateInvitationAsync(request, callback, httpContext.ToAuthenticationContext(), cancellationToken);
-            return result.Succeeded ? Results.Accepted() : Results.BadRequest(new { error = result.FailureReason });
+            return result.Succeeded ? Results.Accepted() : Results.BadRequest(SampleResultErrors.From(result));
         }).RequireAuthorization("admin");
 
         app.MapPost("/api/invitations/accept", async Task<IResult> (
@@ -33,7 +33,7 @@ internal static class InvitationEndpoints
             var result = await invitations.AcceptInvitationAsync(request, httpContext.ToAuthenticationContext(), cancellationToken);
             if (!result.Succeeded)
             {
-                return Results.BadRequest(new { error = result.FailureReason });
+                return Results.BadRequest(SampleResultErrors.From(result));
             }
 
             await signInManager.SignInAsync(httpContext, result.Value, cancellationToken: cancellationToken);

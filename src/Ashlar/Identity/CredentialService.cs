@@ -522,9 +522,9 @@ public sealed class CredentialService(
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
                 Provider = providerKeyIdentity,
-                FailureReason = "user_not_found"
+                FailureReason = AshlarFailureCodes.UserNotFound.Value
             }, cancellationToken);
-            return Result.Failure("user_not_found");
+            return Result.Failure(AshlarFailureCodes.UserNotFound);
         }
 
         var providerKey = provider.GetProviderKey(assertion, userId);
@@ -536,25 +536,25 @@ public sealed class CredentialService(
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
                 Provider = providerKeyIdentity,
-                FailureReason = "invalid_provider_key"
+                FailureReason = AshlarFailureCodes.InvalidProviderKey.Value
             }, cancellationToken);
-            return Result.Failure("invalid_provider_key");
+            return Result.Failure(AshlarFailureCodes.InvalidProviderKey);
         }
 
         var linkedUser = await _repository.GetUserByProviderKeyAsync(providerKeyIdentity.Type, providerName, providerKey, cancellationToken);
 
         if (linkedUser != null)
         {
-            var reason = linkedUser.Id != userId ? "already_linked_to_other" : "already_linked_to_self";
+            var code = linkedUser.Id != userId ? AshlarFailureCodes.AlreadyLinkedToOther : AshlarFailureCodes.AlreadyLinkedToSelf;
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.CredentialLinked,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
                 Provider = providerKeyIdentity,
-                FailureReason = reason
+                FailureReason = code.Value
             }, cancellationToken);
-            return Result.Failure(reason);
+            return Result.Failure(code);
         }
 
         credentialValue = provider.PrepareCredentialValue(assertion, credentialValue);

@@ -96,7 +96,7 @@ public sealed class TotpAuthenticationProvider : IAuthenticationProvider
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
                 Provider = Key,
-                FailureReason = "rate_limited"
+                FailureReason = AshlarFailureCodes.RateLimited.Value
             }, cancellationToken);
             return null;
         }

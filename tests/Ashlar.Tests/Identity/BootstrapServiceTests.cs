@@ -136,7 +136,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("already_initialized"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.AlreadyInitialized));
         }
     }
 
@@ -217,7 +217,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_metadata_format"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidMetadataFormat));
         }
         _transactionProvider.Verify(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
         _invitationRepository.Verify(r => r.CreateInvitationAsync(It.IsAny<UserInvitation>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -244,7 +244,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("not_a_bootstrap_invitation"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.NotBootstrapInvitation));
         }
     }
 
@@ -259,7 +259,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_invitation"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
         }
     }
 
@@ -284,7 +284,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("not_a_bootstrap_invitation"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.NotBootstrapInvitation));
         }
     }
 
@@ -309,7 +309,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("not_a_bootstrap_invitation"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.NotBootstrapInvitation));
         }
     }
 
@@ -335,7 +335,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("already_initialized"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.AlreadyInitialized));
         }
     }
 
@@ -424,7 +424,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("already_initialized"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.AlreadyInitialized));
         }
         transaction.Verify(t => t.RollbackAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -450,7 +450,7 @@ internal sealed class BootstrapServiceTests
         _invitationService.Setup(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(userId));
         _grantService.Setup(s => s.CreateGrantAsync(It.IsAny<CreateAuthorizationGrantRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Failure<AuthorizationGrant>("invalid_grant_shape"));
+            .ReturnsAsync(Result.Failure<AuthorizationGrant>(AshlarFailureCodes.InvalidGrantShape));
 
         _options.Grants.Add(new BootstrapGrantTemplate { Role = "admin", Permission = "manage" });
 
@@ -462,7 +462,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("invalid_grant_shape"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidGrantShape));
         }
 
         _stateRepository.Verify(r => r.MarkAsInitializedAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -503,7 +503,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("grant_creation_failed"));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.GrantCreationFailed));
         }
 
         transaction.Verify(t => t.RollbackAsync(It.IsAny<CancellationToken>()), Times.Once);
@@ -526,7 +526,7 @@ internal sealed class BootstrapServiceTests
         _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
         _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Uninitialized);
         _invitationService.Setup(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Failure<Guid>("email_mismatch"));
+            .ReturnsAsync(Result.Failure<Guid>(new AshlarFailureCode("email_mismatch")));
 
         var transaction = new Mock<IAshlarTransaction>();
         _transactionProvider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
@@ -536,7 +536,7 @@ internal sealed class BootstrapServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureReason, Is.EqualTo("email_mismatch"));
+            Assert.That(result.FailureCode, Is.EqualTo(new AshlarFailureCode("email_mismatch")));
         }
 
         _grantService.Verify(s => s.CreateGrantAsync(It.IsAny<CreateAuthorizationGrantRequest>(), It.IsAny<CancellationToken>()), Times.Never);

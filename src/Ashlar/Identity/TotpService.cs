@@ -87,9 +87,9 @@ public sealed class TotpService : ITotpService
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
                 Provider = _options.ProviderKey,
-                FailureReason = "empty_code"
+                FailureReason = AshlarFailureCodes.EmptyCode.Value
             }, cancellationToken);
-            return Result.Failure("empty_code");
+            return Result.Failure(AshlarFailureCodes.EmptyCode);
         }
 
         if (string.IsNullOrWhiteSpace(sharedSecret) || sharedSecret.Length > 256)
@@ -100,9 +100,9 @@ public sealed class TotpService : ITotpService
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
                 Provider = _options.ProviderKey,
-                FailureReason = "invalid_secret"
+                FailureReason = AshlarFailureCodes.InvalidSecret.Value
             }, cancellationToken);
-            return Result.Failure("invalid_secret");
+            return Result.Failure(AshlarFailureCodes.InvalidSecret);
         }
 
         if (!Base32.TryDecode(sharedSecret, out var secretBytes) || secretBytes.Length < 16)
@@ -113,9 +113,9 @@ public sealed class TotpService : ITotpService
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
                 Provider = _options.ProviderKey,
-                FailureReason = "invalid_secret_format"
+                FailureReason = AshlarFailureCodes.InvalidSecretFormat.Value
             }, cancellationToken);
-            return Result.Failure("invalid_secret_format");
+            return Result.Failure(AshlarFailureCodes.InvalidSecretFormat);
         }
 
         var now = _timeProvider.GetUtcNow();
@@ -130,9 +130,9 @@ public sealed class TotpService : ITotpService
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
                 Provider = _options.ProviderKey,
-                FailureReason = "invalid_code"
+                FailureReason = AshlarFailureCodes.InvalidCode.Value
             }, cancellationToken);
-            return Result.Failure("invalid_code");
+            return Result.Failure(AshlarFailureCodes.InvalidCode);
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
@@ -152,9 +152,9 @@ public sealed class TotpService : ITotpService
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
                 Provider = _options.ProviderKey,
-                FailureReason = linkResult.FailureReason ?? "link_failed"
+                FailureReason = linkResult.FailureCode?.Value ?? AshlarFailureCodes.LinkFailed.Value
             }, cancellationToken);
-            return Result.Failure(linkResult.FailureReason ?? "link_failed");
+            return Result.Failure(linkResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.LinkFailed));
         }
 
         transaction.OnCommitted(async ct =>

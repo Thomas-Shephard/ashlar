@@ -40,6 +40,19 @@ internal sealed record SampleEmailChangeConfirmRequest(string Token);
 internal sealed record SampleEmailVerificationConfirmRequest(string Token);
 internal sealed record UpdateProfileRequest(string? Name);
 
+internal static class SampleResultErrors
+{
+    public static object From(Result result, string? fallbackMessage = null)
+    {
+        var code = result.FailureCode?.Value;
+        return new
+        {
+            code,
+            message = result.FailureMessage ?? fallbackMessage ?? code ?? "Operation failed."
+        };
+    }
+}
+
 internal sealed class SampleAshlarOptions
 {
     public string ConnectionString { get; init; } = string.Empty;

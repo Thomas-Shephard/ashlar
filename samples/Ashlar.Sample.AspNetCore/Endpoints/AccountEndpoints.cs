@@ -88,7 +88,7 @@ internal static class AccountEndpoints
             CallbackBaseUri = callback
         }, cancellationToken);
 
-        return result.Succeeded ? Results.Accepted() : Results.BadRequest(new { error = result.FailureReason });
+        return result.Succeeded ? Results.Accepted() : Results.BadRequest(SampleResultErrors.From(result));
     }
 
     private static async Task<IResult> ConfirmEmailVerificationAsync(
@@ -104,7 +104,7 @@ internal static class AccountEndpoints
         }
 
         var result = await emailVerification.VerifyTokenAsync(userId, request.Token, cancellationToken);
-        return result.Succeeded ? Results.Ok() : Results.BadRequest(new { error = result.FailureReason });
+        return result.Succeeded ? Results.Ok() : Results.BadRequest(SampleResultErrors.From(result));
     }
 
     private static async Task<IResult> RequestEmailChangeAsync(
@@ -129,7 +129,7 @@ internal static class AccountEndpoints
             CallbackBaseUri = callback
         }, cancellationToken);
 
-        return result.Succeeded ? Results.Accepted() : Results.BadRequest(new { error = result.FailureReason });
+        return result.Succeeded ? Results.Accepted() : Results.BadRequest(SampleResultErrors.From(result));
     }
 
     private static async Task<IResult> ConfirmEmailChangeAsync(
@@ -145,7 +145,7 @@ internal static class AccountEndpoints
         }
 
         var result = await emailChange.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = userId, Token = request.Token }, cancellationToken);
-        return result.Succeeded ? Results.Ok() : Results.BadRequest(new { error = result.FailureReason });
+        return result.Succeeded ? Results.Ok() : Results.BadRequest(SampleResultErrors.From(result));
     }
 
     private static bool TryResolveUserId(string? queryUserId, ClaimsPrincipal userPrincipal, out Guid userId)

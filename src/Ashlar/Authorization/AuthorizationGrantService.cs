@@ -59,9 +59,9 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
                 EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = "invalid_grant_shape"
+                FailureReason = AshlarFailureCodes.InvalidGrantShape.Value
             }, cancellationToken);
-            return Result.Failure<AuthorizationGrant>("invalid_grant_shape");
+            return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.InvalidGrantShape);
         }
 
         string? role;
@@ -83,9 +83,9 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
                 EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = "validation_error"
+                FailureReason = AshlarFailureCodes.ValidationError.Value
             }, cancellationToken);
-            return Result.Failure<AuthorizationGrant>("validation_error");
+            return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.ValidationError);
         }
 
         if (string.IsNullOrWhiteSpace(scopeType) != string.IsNullOrWhiteSpace(scopeId))
@@ -95,9 +95,9 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
                 EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = "invalid_scope_shape"
+                FailureReason = AshlarFailureCodes.InvalidScopeShape.Value
             }, cancellationToken);
-            return Result.Failure<AuthorizationGrant>("invalid_scope_shape");
+            return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.InvalidScopeShape);
         }
 
         var metadata = string.IsNullOrWhiteSpace(request.Metadata) ? null : request.Metadata;
@@ -109,9 +109,9 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
                 EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
-                FailureReason = "metadata_too_long"
+                FailureReason = AshlarFailureCodes.MetadataTooLong.Value
             }, cancellationToken);
-            return Result.Failure<AuthorizationGrant>("metadata_too_long");
+            return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.MetadataTooLong);
         }
 
         if (metadata != null)
@@ -127,9 +127,9 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
                     EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
                     Outcome = SecurityEventOutcomes.Failure,
                     UserId = request.UserId,
-                    FailureReason = "invalid_metadata_json"
+                    FailureReason = AshlarFailureCodes.InvalidMetadataJson.Value
                 }, cancellationToken);
-                return Result.Failure<AuthorizationGrant>("invalid_metadata_json");
+                return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.InvalidMetadataJson);
             }
         }
 
