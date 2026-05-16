@@ -50,6 +50,7 @@ public static class AshlarSecurityEventTypes
     public const string BootstrapCompleted = "ashlar.bootstrap.completed";
     public const string EmailVerificationRequested = "ashlar.email_verification.requested";
     public const string EmailVerified = "ashlar.email_verification.verified";
+    public const string EmailVerificationFailed = "ashlar.email_verification.failed";
     public const string EmailVerificationRateLimited = "ashlar.email_verification.rate_limited";
     public const string EmailVerificationVerificationRateLimited = "ashlar.email_verification.verification_rate_limited";
     public const string EmailChangeRequested = "ashlar.email_change.requested";

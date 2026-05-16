@@ -18,6 +18,18 @@ public class UriValidatorTests
     }
 
     [Test]
+    public void ConstructorIgnoresBlankConfiguredUris()
+    {
+        var options = new UriValidationOptions();
+        options.AllowedCallbackUris.Add(" ");
+        options.AllowedCallbackUris.Add("https://example.com/app");
+
+        var validator = new UriValidator(Options.Create(options));
+
+        Assert.That(validator.IsValid(new Uri("https://example.com/app")), Is.True);
+    }
+
+    [Test]
     public void IsValidReturnsTrueForExactMatch()
     {
         var options = new UriValidationOptions();

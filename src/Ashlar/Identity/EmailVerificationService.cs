@@ -41,24 +41,38 @@ public sealed class EmailVerificationService : IEmailVerificationService
         _notifications = new SecurityNotificationEmitter(dependencies.NotificationService);
     }
 
-    public async Task<EmailVerificationResult> RequestVerificationAsync(EmailVerificationRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result> RequestVerificationAsync(EmailVerificationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         if (!_uriValidator.IsValid(request.CallbackBaseUri))
         {
-            return EmailVerificationResult.Failure($"The URI '{request.CallbackBaseUri}' is not allowed.");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = request.UserId,
+                FailureReason = "invalid_callback_uri"
+            }, cancellationToken);
+            return Result.Failure($"The URI '{request.CallbackBaseUri}' is not allowed.");
         }
 
         var user = await _identityContext.Repository.GetUserByIdAsync(request.UserId, cancellationToken);
         if (user is not { IsActive: true })
         {
-            return EmailVerificationResult.Failure("User not found or inactive.");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = request.UserId,
+                FailureReason = "user_not_found_or_inactive"
+            }, cancellationToken);
+            return Result.Failure("User not found or inactive.");
         }
 
         if (user.EmailVerifiedAt.HasValue)
         {
-            return EmailVerificationResult.Success();
+            return Result.Success();
         }
 
         var rateLimit = await _rateLimiter.CheckAsync(new RateLimitAttempt
@@ -78,7 +92,7 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 UserId = user.Id,
                 FailureReason = "rate_limited"
             }, cancellationToken);
-            return EmailVerificationResult.Failure("Too many requests.");
+            return Result.Failure("Too many requests.");
         }
 
         var token = _tokenContext.Generator.GenerateToken();
@@ -125,10 +139,10 @@ public sealed class EmailVerificationService : IEmailVerificationService
 
         await transaction.CommitAsync(cancellationToken);
 
-        return EmailVerificationResult.Success();
+        return Result.Success();
     }
 
-    public async Task<EmailVerificationResult> VerifyTokenAsync(Guid userId, string token, CancellationToken cancellationToken = default)
+    public async Task<Result> VerifyTokenAsync(Guid userId, string token, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
 
@@ -148,7 +162,7 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 UserId = userId,
                 FailureReason = "rate_limited"
             }, cancellationToken);
-            return EmailVerificationResult.Failure("Too many attempts.");
+            return Result.Failure("Too many attempts.");
         }
 
         var tokenHash = _tokenContext.Hasher.HashToken(token);
@@ -157,7 +171,14 @@ public sealed class EmailVerificationService : IEmailVerificationService
         var now = _timeProvider.GetUtcNow();
         if (credential == null || !credential.IsAvailable(now))
         {
-            return EmailVerificationResult.Failure("Invalid or expired token.");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                FailureReason = "invalid_or_expired_token"
+            }, cancellationToken);
+            return Result.Failure("Invalid or expired token.");
         }
 
         await using var transaction = await _identityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
@@ -165,13 +186,27 @@ public sealed class EmailVerificationService : IEmailVerificationService
         var consumed = await _identityContext.Repository.ConsumeCredentialAsync(credential.Id, credential.Version, cancellationToken);
         if (!consumed)
         {
-            return EmailVerificationResult.Failure("Invalid or expired token.");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                FailureReason = "token_consumption_failed"
+            }, cancellationToken);
+            return Result.Failure("Invalid or expired token.");
         }
 
         var user = await _identityContext.Repository.GetUserByIdAsync(userId, cancellationToken);
         if (user is not { IsActive: true })
         {
-            return EmailVerificationResult.Failure("Invalid or expired token.");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                FailureReason = "user_not_found_or_inactive"
+            }, cancellationToken);
+            return Result.Failure("Invalid or expired token.");
         }
 
         var updatedUser = new UpdatedUserWrapper(user, now);
@@ -191,7 +226,7 @@ public sealed class EmailVerificationService : IEmailVerificationService
 
         await transaction.CommitAsync(cancellationToken);
 
-        return EmailVerificationResult.Success();
+        return Result.Success();
     }
 
     private sealed class UpdatedUserWrapper(IUser original, DateTimeOffset? emailVerifiedAt) : ITenantUser, IHasAuditMetadata

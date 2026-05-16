@@ -108,9 +108,13 @@ public class RecoveryCodeTests
 
         var service = new RecoveryCodeService(repository.Object, transactionProvider.Object, hasherSelector, options);
 
-        var codes = await service.GenerateRecoveryCodesAsync(userId);
+        var result = await service.GenerateRecoveryCodesAsync(userId);
 
-        Assert.That(codes, Has.Count.EqualTo(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value, Has.Count.EqualTo(5));
+        }
         repository.Verify(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()), Times.Once);
         repository.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c => c.Purpose == "recovery-code" && c.ExpiresAt != null), It.IsAny<CancellationToken>()), Times.Exactly(5));
         transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
@@ -135,9 +139,13 @@ public class RecoveryCodeTests
         var service = new RecoveryCodeService(repository.Object, transactionProvider.Object, hasherSelector, options);
 
         var request = new RecoveryCodeGenerationRequest { CodeCount = 3, ReplaceExisting = false, ExpiresAfter = TimeSpan.FromHours(1) };
-        var codes = await service.GenerateRecoveryCodesAsync(userId, request);
+        var result = await service.GenerateRecoveryCodesAsync(userId, request);
 
-        Assert.That(codes, Has.Count.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value, Has.Count.EqualTo(3));
+        }
         repository.Verify(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()), Times.Never);
         repository.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c => c.ExpiresAt != null), It.IsAny<CancellationToken>()), Times.Exactly(3));
     }
@@ -160,9 +168,13 @@ public class RecoveryCodeTests
 
         var service = new RecoveryCodeService(repository.Object, transactionProvider.Object, hasherSelector, options);
 
-        var codes = await service.GenerateRecoveryCodesAsync(userId);
+        var result = await service.GenerateRecoveryCodesAsync(userId);
 
-        Assert.That(codes, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value, Has.Count.EqualTo(1));
+        }
         repository.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c => c.ExpiresAt == null), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -174,7 +186,7 @@ public class RecoveryCodeTests
     }
 
     [Test]
-    public void ServiceGenerateRecoveryCodesAsyncThrowsIfUserNotFound()
+    public async Task ServiceGenerateRecoveryCodesAsyncFailsIfUserNotFound()
     {
         var repository = new Mock<IIdentityRepository>();
         var transactionProvider = new Mock<IAshlarTransactionProvider>();
@@ -190,35 +202,48 @@ public class RecoveryCodeTests
 
         var service = new RecoveryCodeService(repository.Object, transactionProvider.Object, hasherSelector, options);
 
-        Assert.That(async () => await service.GenerateRecoveryCodesAsync(userId), Throws.InstanceOf<InvalidOperationException>());
+        var result = await service.GenerateRecoveryCodesAsync(userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("user_not_found"));
+        }
     }
 
     [Test]
-    public void ServiceGenerateRecoveryCodesAsyncThrowsOnInvalidGenerationRequest()
+    public async Task ServiceGenerateRecoveryCodesAsyncFailsOnInvalidGenerationRequest()
     {
         var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 5 });
         var tooMany = new RecoveryCodeGenerationRequest { CodeCount = 11 };
         var zero = new RecoveryCodeGenerationRequest { CodeCount = 0 };
         var negativeExpiry = new RecoveryCodeGenerationRequest { CodeCount = 1, ExpiresAfter = TimeSpan.Zero };
 
+        var tooManyResult = await service.GenerateRecoveryCodesAsync(Guid.NewGuid(), tooMany);
+        var zeroResult = await service.GenerateRecoveryCodesAsync(Guid.NewGuid(), zero);
+        var negativeExpiryResult = await service.GenerateRecoveryCodesAsync(Guid.NewGuid(), negativeExpiry);
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(async () => await service.GenerateRecoveryCodesAsync(Guid.NewGuid(), tooMany), Throws.InstanceOf<ArgumentOutOfRangeException>());
-            Assert.That(async () => await service.GenerateRecoveryCodesAsync(Guid.NewGuid(), zero), Throws.InstanceOf<ArgumentOutOfRangeException>());
-            Assert.That(async () => await service.GenerateRecoveryCodesAsync(Guid.NewGuid(), negativeExpiry), Throws.InstanceOf<ArgumentOutOfRangeException>());
+            Assert.That(tooManyResult.FailureReason, Is.EqualTo("invalid_code_count"));
+            Assert.That(zeroResult.FailureReason, Is.EqualTo("invalid_code_count"));
+            Assert.That(negativeExpiryResult.FailureReason, Is.EqualTo("invalid_expiry"));
         }
     }
 
     [Test]
-    public void ServiceGenerateRecoveryCodesAsyncThrowsOnInvalidOptions()
+    public async Task ServiceGenerateRecoveryCodesAsyncFailsOnInvalidOptions()
     {
         var invalidCodeLength = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeLength = 0 });
         var invalidGroupSize = CreateServiceForGenerationValidation(new RecoveryCodeOptions { GroupSize = 0 });
 
+        var invalidCodeLengthResult = await invalidCodeLength.GenerateRecoveryCodesAsync(Guid.NewGuid());
+        var invalidGroupSizeResult = await invalidGroupSize.GenerateRecoveryCodesAsync(Guid.NewGuid());
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(async () => await invalidCodeLength.GenerateRecoveryCodesAsync(Guid.NewGuid()), Throws.InstanceOf<InvalidOperationException>());
-            Assert.That(async () => await invalidGroupSize.GenerateRecoveryCodesAsync(Guid.NewGuid()), Throws.InstanceOf<InvalidOperationException>());
+            Assert.That(invalidCodeLengthResult.FailureReason, Is.EqualTo("invalid_configuration"));
+            Assert.That(invalidGroupSizeResult.FailureReason, Is.EqualTo("invalid_configuration"));
         }
     }
 

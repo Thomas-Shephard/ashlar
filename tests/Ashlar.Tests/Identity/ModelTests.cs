@@ -147,6 +147,39 @@ public class ModelTests
         }
     }
 
+    [Test]
+    public void SessionRevocationRequestPropertiesShouldWork()
+    {
+        var sessionId = Guid.NewGuid();
+        var currentSessionId = Guid.NewGuid();
+        var revokeRequest = new RevokeAuthenticationSessionRequest
+        {
+            SessionId = sessionId,
+            Reason = "user-initiated",
+            IpAddress = "127.0.0.1",
+            UserAgent = "TestAgent"
+        };
+        var revokeOtherRequest = new RevokeOtherAuthenticationSessionsRequest
+        {
+            CurrentSessionId = currentSessionId,
+            Reason = "security-cleanup",
+            IpAddress = "127.0.0.2",
+            UserAgent = "OtherAgent"
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revokeRequest.SessionId, Is.EqualTo(sessionId));
+            Assert.That(revokeRequest.Reason, Is.EqualTo("user-initiated"));
+            Assert.That(revokeRequest.IpAddress, Is.EqualTo("127.0.0.1"));
+            Assert.That(revokeRequest.UserAgent, Is.EqualTo("TestAgent"));
+            Assert.That(revokeOtherRequest.CurrentSessionId, Is.EqualTo(currentSessionId));
+            Assert.That(revokeOtherRequest.Reason, Is.EqualTo("security-cleanup"));
+            Assert.That(revokeOtherRequest.IpAddress, Is.EqualTo("127.0.0.2"));
+            Assert.That(revokeOtherRequest.UserAgent, Is.EqualTo("OtherAgent"));
+        }
+    }
+
     private static UserCredential CreateCredential()
     {
         return new UserCredential

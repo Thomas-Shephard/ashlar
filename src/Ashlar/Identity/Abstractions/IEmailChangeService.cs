@@ -4,6 +4,6 @@ namespace Ashlar.Identity.Abstractions;
 
 public interface IEmailChangeService
 {
-    Task<EmailChangeResult> RequestChangeAsync(RequestEmailChangeRequest request, CancellationToken cancellationToken = default);
-    Task<EmailChangeResult> ConfirmChangeAsync(ConfirmEmailChangeRequest request, CancellationToken cancellationToken = default);
+    Task<Result> RequestChangeAsync(RequestEmailChangeRequest request, CancellationToken cancellationToken = default);
+    Task<Result> ConfirmChangeAsync(ConfirmEmailChangeRequest request, CancellationToken cancellationToken = default);
 }

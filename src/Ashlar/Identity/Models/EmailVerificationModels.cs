@@ -23,12 +23,3 @@ public sealed class EmailVerificationRequest
     public required Uri CallbackBaseUri { get; init; }
     public AuthenticationContext? Context { get; init; }
 }
-
-public sealed class EmailVerificationResult
-{
-    public bool Succeeded { get; private init; }
-    public string? ErrorMessage { get; private init; }
-
-    public static EmailVerificationResult Success() => new() { Succeeded = true };
-    public static EmailVerificationResult Failure(string errorMessage) => new() { Succeeded = false, ErrorMessage = errorMessage };
-}

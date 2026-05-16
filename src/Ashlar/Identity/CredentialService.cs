@@ -389,44 +389,60 @@ public sealed class CredentialService(
     }
 
     /// <inheritdoc />
-    public async Task LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue = null, string? initialMetadata = null, CancellationToken cancellationToken = default)
+    public async Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue = null, string? initialMetadata = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(assertion);
         ArgumentNullException.ThrowIfNull(provider);
 
         if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
 
+        var providerKeyIdentity = provider.Key;
+        var providerName = providerKeyIdentity.Name;
+
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         var user = await _repository.GetUserByIdAsync(userId, cancellationToken);
         if (user == null)
         {
-            throw new InvalidOperationException($"User with ID '{userId}' not found.");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.CredentialLinked,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Provider = providerKeyIdentity,
+                FailureReason = "user_not_found"
+            }, cancellationToken);
+            return Result.Failure("user_not_found");
         }
 
         var providerKey = provider.GetProviderKey(assertion, userId);
         if (string.IsNullOrWhiteSpace(providerKey))
         {
-            throw new InvalidOperationException($"Could not derive a valid provider key for provider '{assertion.ProviderIdentity}'.");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.CredentialLinked,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Provider = providerKeyIdentity,
+                FailureReason = "invalid_provider_key"
+            }, cancellationToken);
+            return Result.Failure("invalid_provider_key");
         }
-
-        var providerKeyIdentity = provider.Key;
-        var providerName = providerKeyIdentity.Name;
 
         var linkedUser = await _repository.GetUserByProviderKeyAsync(providerKeyIdentity.Type, providerName, providerKey, cancellationToken);
 
         if (linkedUser != null)
         {
-            if (linkedUser.Id != userId)
+            var reason = linkedUser.Id != userId ? "already_linked_to_other" : "already_linked_to_self";
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
-                throw new InvalidOperationException($"The credential from '{providerName}' is already linked to another user.");
-            }
-
-            var message = providerKeyIdentity.Type == ProviderType.Local
-                ? "A local password is already linked to this user."
-                : $"Credential for provider '{providerName}' is already linked to this user.";
-
-            throw new InvalidOperationException(message);
+                EventType = AshlarSecurityEventTypes.CredentialLinked,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Provider = providerKeyIdentity,
+                FailureReason = reason
+            }, cancellationToken);
+            return Result.Failure(reason);
         }
 
         credentialValue = provider.PrepareCredentialValue(assertion, credentialValue);
@@ -467,6 +483,7 @@ public sealed class CredentialService(
         }, ct));
 
         await transaction.CommitAsync(cancellationToken);
+        return Result.Success();
     }
 
     private Task RecordCredentialUpdateFailedAsync(UserCredential credential, string reason, CancellationToken cancellationToken)

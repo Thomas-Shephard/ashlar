@@ -12,6 +12,7 @@ namespace Ashlar.Identity;
 public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeService
 {
     private const string HandshakeIdProperty = "handshake_id";
+    private const string InvalidMetadataFailureReason = "invalid_metadata";
     private const int MaxMetadataEntries = 20;
     private const int MaxMetadataKeyLength = 128;
     private const int MaxMetadataValueLength = 512;
@@ -46,17 +47,46 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         _notifications = new SecurityNotificationEmitter(dependencies?.NotificationService);
     }
 
-    public async Task<(AuthenticationHandshake Handshake, string Token)> CreateHandshakeAsync(
+    public async Task<Result<AuthenticationHandshakeCreated>> CreateHandshakeAsync(
         CreateAuthenticationHandshakeRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.UserId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(request));
+        if (request.UserId == Guid.Empty)
+        {
+            throw new ArgumentException("User ID cannot be empty.", nameof(request));
+        }
         ArgumentNullException.ThrowIfNull(request.RequiredFactors);
 
         var requiredFactors = request.RequiredFactors.ToHashSet();
-        if (requiredFactors.Count == 0) throw new ArgumentException("At least one required factor must be specified.", nameof(request));
-        ValidateMetadata(request.Metadata, nameof(request));
+        if (requiredFactors.Count == 0)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.AuthenticationHandshakeCreated,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = request.UserId,
+                FailureReason = "no_factors_specified"
+            }, cancellationToken);
+            return Result.Failure<AuthenticationHandshakeCreated>("no_factors_specified");
+        }
+
+        try
+        {
+            ValidateMetadata(request.Metadata, nameof(request));
+        }
+        catch (ArgumentException)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.AuthenticationHandshakeCreated,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = request.UserId,
+                FailureReason = InvalidMetadataFailureReason
+            }, cancellationToken);
+            return Result.Failure<AuthenticationHandshakeCreated>(InvalidMetadataFailureReason);
+        }
+
         var metadata = NormalizeMetadata(request.Metadata);
 
         var token = _tokenGenerator.GenerateToken();
@@ -93,15 +123,24 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
 
         await transaction.CommitAsync(cancellationToken);
 
-        return (handshake, token);
+        return Result<AuthenticationHandshakeCreated>.Success(new AuthenticationHandshakeCreated(handshake, token));
     }
 
-    public async Task<AuthenticationHandshakeResult> VerifyFactorAsync(
+    public async Task<Result<AuthenticationHandshake>> VerifyFactorAsync(
         VerifyAuthenticationHandshakeRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (string.IsNullOrWhiteSpace(request.HandshakeToken)) return new AuthenticationHandshakeResult(false, ErrorMessage: "Token is required.");
+        if (string.IsNullOrWhiteSpace(request.HandshakeToken))
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.AuthenticationHandshakeFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                FailureReason = "empty_token"
+            }, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>("empty_token");
+        }
 
         var tokenHash = _tokenHasher.HashToken(request.HandshakeToken);
 
@@ -116,7 +155,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
                 Outcome = SecurityEventOutcomes.Failure,
                 FailureReason = "handshake_not_found"
             }, cancellationToken);
-            return new AuthenticationHandshakeResult(false, ErrorMessage: "Handshake not found.");
+            return Result.Failure<AuthenticationHandshake>("handshake_not_found");
         }
 
         var rateLimitResult = await CheckRateLimitAsync(handshake, cancellationToken);
@@ -129,13 +168,13 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         if (handshake.IsRevoked)
         {
             await RecordHandshakeFailedAsync(handshake, "handshake_revoked", cancellationToken);
-            return new AuthenticationHandshakeResult(false, handshake, "Handshake is revoked.");
+            return Result.Failure<AuthenticationHandshake>("handshake_revoked");
         }
 
         if (handshake.IsCompleted)
         {
             await RecordHandshakeFailedAsync(handshake, "handshake_already_completed", cancellationToken);
-            return new AuthenticationHandshakeResult(false, handshake, "Handshake is already completed.");
+            return Result.Failure<AuthenticationHandshake>("handshake_already_completed");
         }
 
         if (handshake.ExpiresAt <= now)
@@ -147,26 +186,34 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
                 UserId = handshake.UserId,
                 Properties = new Dictionary<string, string> { [HandshakeIdProperty] = handshake.Id.ToString() }
             }, cancellationToken);
-            return new AuthenticationHandshakeResult(false, handshake, "Handshake expired.");
+            return Result.Failure<AuthenticationHandshake>("handshake_expired");
         }
 
         if (!handshake.RequiredFactors.Contains(request.FactorType))
         {
             await RecordHandshakeFailedAsync(handshake, "invalid_factor_type", cancellationToken);
-            return new AuthenticationHandshakeResult(false, handshake, "Invalid factor type.");
+            return Result.Failure<AuthenticationHandshake>("invalid_factor_type");
         }
 
         if (handshake.VerifiedFactors.Contains(request.FactorType))
         {
             await RecordHandshakeFailedAsync(handshake, "factor_already_verified", cancellationToken);
-            return new AuthenticationHandshakeResult(false, handshake, "Factor already verified.");
+            return Result.Failure<AuthenticationHandshake>("factor_already_verified");
         }
 
         var verifiedFactors = handshake.VerifiedFactors.ToHashSet();
         verifiedFactors.Add(request.FactorType);
 
         var isCompleted = handshake.RequiredFactors.All(verifiedFactors.Contains);
-        ValidateMetadata(request.Metadata, nameof(request));
+        try
+        {
+            ValidateMetadata(request.Metadata, nameof(request));
+        }
+        catch (ArgumentException)
+        {
+            await RecordHandshakeFailedAsync(handshake, InvalidMetadataFailureReason, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(InvalidMetadataFailureReason);
+        }
 
         var updatedHandshake = handshake with
         {
@@ -193,7 +240,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
 
         await transaction.CommitAsync(cancellationToken);
 
-        return new AuthenticationHandshakeResult(true, updatedHandshake);
+        return Result.Success(updatedHandshake);
     }
 
     public async Task<AuthenticationHandshake?> GetHandshakeAsync(string handshakeToken, CancellationToken cancellationToken = default)
@@ -203,15 +250,16 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         return await _repository.FindByTokenHashAsync(tokenHash, cancellationToken: cancellationToken);
     }
 
-    public async Task RevokeHandshakeAsync(string handshakeToken, CancellationToken cancellationToken = default)
+    public async Task<Result> RevokeHandshakeAsync(string handshakeToken, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(handshakeToken)) return;
+        if (string.IsNullOrWhiteSpace(handshakeToken)) return Result.Failure("empty_token");
         var tokenHash = _tokenHasher.HashToken(handshakeToken);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         var handshake = await _repository.FindByTokenHashAsync(tokenHash, forUpdate: true, cancellationToken: cancellationToken);
-        if (handshake == null || handshake.IsRevoked) return;
+        if (handshake == null) return Result.Failure("handshake_not_found");
+        if (handshake.IsRevoked) return Result.Success();
 
         var updatedHandshake = handshake with { IsRevoked = true, RevokedAt = _timeProvider.GetUtcNow() };
 
@@ -226,6 +274,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         }, ct));
 
         await transaction.CommitAsync(cancellationToken);
+        return Result.Success();
     }
 
     private Task RecordHandshakeFailedAsync(AuthenticationHandshake handshake, string reason, CancellationToken cancellationToken)
@@ -240,7 +289,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         }, cancellationToken);
     }
 
-    private async Task<AuthenticationHandshakeResult?> CheckRateLimitAsync(AuthenticationHandshake handshake, CancellationToken cancellationToken)
+    private async Task<Result<AuthenticationHandshake>?> CheckRateLimitAsync(AuthenticationHandshake handshake, CancellationToken cancellationToken)
     {
         if (_rateLimiter == null)
         {
@@ -275,7 +324,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
             }
         }
 
-        return new AuthenticationHandshakeResult(false, ErrorMessage: "Rate limit exceeded.");
+        return Result.Failure<AuthenticationHandshake>("rate_limit_exceeded");
     }
 
     private static Dictionary<string, string>? MergeMetadata(

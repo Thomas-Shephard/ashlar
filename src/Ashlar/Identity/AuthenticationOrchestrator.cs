@@ -110,12 +110,12 @@ public sealed class AuthenticationOrchestrator(
             new VerifyAuthenticationHandshakeRequest(handshakeToken, resolvedFactorType, metadata),
             cancellationToken);
 
-        if (!result.Succeeded || result.Handshake == null)
+        if (!result.Succeeded || result.Value == null)
         {
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: result.ErrorMessage ?? "Factor verification failed.");
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: GetHandshakeVerificationFailureMessage(result.FailureReason));
         }
 
-        return CreateResultFromHandshake(result.Handshake, response.User, handshakeToken);
+        return CreateResultFromHandshake(result.Value, response.User, handshakeToken);
     }
 
     private static MfaAuthenticationResult CreateResultFromHandshake(AuthenticationHandshake handshake, IUser user, string handshakeToken)
@@ -152,15 +152,20 @@ public sealed class AuthenticationOrchestrator(
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: "MFA is required but no factors are configured.");
         }
 
-        var (handshake, token) = await _handshakeService.CreateHandshakeAsync(
+        var result = await _handshakeService.CreateHandshakeAsync(
             new CreateAuthenticationHandshakeRequest(user.Id, requiredFactors, BuildClaimMetadata(response.Claims)),
             cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: GetHandshakeCreationFailureMessage(result.FailureReason));
+        }
 
         return new MfaAuthenticationResult(
             MfaAuthenticationStatus.MfaRequired,
             user,
-            token,
-            handshake.RequiredFactors);
+            result.Value!.Token,
+            result.Value!.Handshake.RequiredFactors);
     }
 
     private static HashSet<string> ResolveRequiredFactors(
@@ -194,6 +199,33 @@ public sealed class AuthenticationOrchestrator(
         return metadata?
             .Where(kvp => kvp.Key.StartsWith("claim:", StringComparison.Ordinal))
             .ToDictionary(kvp => kvp.Key[6..], kvp => kvp.Value) ?? [];
+    }
+
+    private static string GetHandshakeVerificationFailureMessage(string? failureReason)
+    {
+        return failureReason switch
+        {
+            "empty_token" => "Handshake token is required.",
+            "handshake_not_found" => "Handshake not found.",
+            "handshake_revoked" => "Handshake is no longer valid.",
+            "handshake_expired" => "Handshake has expired.",
+            "handshake_already_completed" => "Handshake has already been completed.",
+            "rate_limit_exceeded" => "Rate limit exceeded.",
+            "invalid_factor_type" => "Invalid factor type.",
+            "factor_already_verified" => "Factor already verified.",
+            "invalid_metadata" => "Invalid metadata.",
+            _ => "Factor verification failed."
+        };
+    }
+
+    private static string GetHandshakeCreationFailureMessage(string? failureReason)
+    {
+        return failureReason switch
+        {
+            "no_factors_specified" => "MFA is required but no factors are configured.",
+            "invalid_metadata" => "Invalid metadata.",
+            _ => "Failed to create MFA handshake."
+        };
     }
 
     private static bool IsAssertionAuthorizedForFactor(IAuthenticationAssertion assertion, string factorType)

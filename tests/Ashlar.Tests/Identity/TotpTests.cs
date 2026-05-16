@@ -52,6 +52,14 @@ public class TotpTests
                     await action(ct);
                 }
             });
+        _credentialService.Setup(x => x.LinkCredentialAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<IAuthenticationAssertion>(),
+                It.IsAny<IAuthenticationProvider>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
     }
 
     private TotpService CreateService()
@@ -365,7 +373,7 @@ public class TotpTests
 
         var result = await service.VerifyAndEnrollAsync(userId, secret, code);
 
-        Assert.That(result, Is.True);
+        Assert.That(result.Succeeded, Is.True);
         _credentialService.Verify(x => x.LinkCredentialAsync(userId, It.IsAny<TotpAssertion>(), It.IsAny<IAuthenticationProvider>(), secret, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
         _transaction.Verify(x => x.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()), Times.Once);
         _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(d =>
@@ -388,7 +396,7 @@ public class TotpTests
 
         var result = await service.VerifyAndEnrollAsync(userId, secret, code);
 
-        Assert.That(result, Is.True);
+        Assert.That(result.Succeeded, Is.True);
         _credentialService.Verify(x => x.LinkCredentialAsync(userId, It.IsAny<TotpAssertion>(), It.IsAny<IAuthenticationProvider>(), secret, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -407,7 +415,7 @@ public class TotpTests
 
         var result = await service.VerifyAndEnrollAsync(userId, secret, code);
 
-        Assert.That(result, Is.True);
+        Assert.That(result.Succeeded, Is.True);
         _repository.Verify(x => x.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -422,8 +430,47 @@ public class TotpTests
 
         var result = await service.VerifyAndEnrollAsync(userId, secret, "000000");
 
-        Assert.That(result, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("invalid_code"));
+        }
         _credentialService.Verify(x => x.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [TestCase("link_failed")]
+    [TestCase(null)]
+    public async Task VerifyAndEnrollAsyncFailsWhenCredentialLinkFails(string? failureReason)
+    {
+        var service = CreateService();
+        var userId = Guid.NewGuid();
+        var secretBytes = new byte[20];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(secretBytes);
+        var secret = Base32.Encode(secretBytes);
+        var code = TotpAuthenticator.GenerateCode(secretBytes, _timeProvider.GetUtcNow().ToUnixTimeSeconds() / 30);
+
+        _credentialService.Setup(x => x.LinkCredentialAsync(
+                userId,
+                It.IsAny<TotpAssertion>(),
+                It.IsAny<IAuthenticationProvider>(),
+                secret,
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result(false, failureReason));
+
+        var result = await service.VerifyAndEnrollAsync(userId, secret, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo(failureReason ?? "link_failed"));
+        }
+
+        _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(d =>
+            d.EventType == AshlarSecurityEventTypes.TotpEnrollmentCompleted &&
+            d.Outcome == SecurityEventOutcomes.Failure &&
+            d.FailureReason == (failureReason ?? "link_failed")), It.IsAny<CancellationToken>()), Times.Once);
+        _transaction.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -431,7 +478,11 @@ public class TotpTests
     {
         var service = CreateService();
         var result = await service.VerifyAndEnrollAsync(Guid.NewGuid(), "secret", "");
-        Assert.That(result, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("empty_code"));
+        }
     }
 
     [Test]
@@ -439,7 +490,11 @@ public class TotpTests
     {
         var service = CreateService();
         var result = await service.VerifyAndEnrollAsync(Guid.NewGuid(), "invalid-base32!", "123456");
-        Assert.That(result, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("invalid_secret_format"));
+        }
     }
 
     [TestCase(null)]
@@ -452,7 +507,11 @@ public class TotpTests
         // ReSharper disable once NullableWarningSuppressionIsUsed
         var result = await service.VerifyAndEnrollAsync(Guid.NewGuid(), sharedSecret!, "123456");
 
-        Assert.That(result, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("invalid_secret"));
+        }
     }
 
     [Test]
@@ -463,7 +522,11 @@ public class TotpTests
 
         var result = await service.VerifyAndEnrollAsync(Guid.NewGuid(), sharedSecret, "123456");
 
-        Assert.That(result, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("invalid_secret"));
+        }
     }
 
     [Test]
@@ -879,7 +942,7 @@ public class TotpTests
             .ReturnsAsync(new AuthenticationResponse(true, responseUser.Object, AuthenticationStatus.Success));
 
         handshakeService.Setup(x => x.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationHandshakeResult(true, handshake));
+            .ReturnsAsync(Result.Success(handshake));
 
         var result = await orchestrator.VerifyFactorAsync(handshakeToken, "totp", context, assertion);
 
