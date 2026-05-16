@@ -401,7 +401,7 @@ public class IdentityServiceTests
     }
 
     [Test]
-    public Task LinkCredentialAsyncWithExistingCredentialShouldThrowInvalidOperationException()
+    public async Task LinkCredentialAsyncWithExistingCredentialShouldFail()
     {
         var userId = Guid.NewGuid();
         var type = ProviderType.Oidc;
@@ -414,9 +414,13 @@ public class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(type, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _identityService.LinkCredentialAsync(userId, new ExternalIdentityAssertion(type, providerName, providerKey, new Dictionary<string, string>())));
-        return Task.CompletedTask;
+        var result = await _identityService.LinkCredentialAsync(userId, new ExternalIdentityAssertion(type, providerName, providerKey, new Dictionary<string, string>()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("already_linked_to_self"));
+        }
     }
 
     [Test]
@@ -577,7 +581,7 @@ public class IdentityServiceTests
     }
 
     [Test]
-    public Task LinkCredentialAsyncWithAlreadyLinkedToAnotherUserShouldThrowInvalidOperationException()
+    public async Task LinkCredentialAsyncWithAlreadyLinkedToAnotherUserShouldFail()
     {
         var userId = Guid.NewGuid();
         var anotherUserId = Guid.NewGuid();
@@ -592,10 +596,13 @@ public class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(type, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(anotherUser);
 
-        var ex = Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _identityService.LinkCredentialAsync(userId, assertion));
-        Assert.That(ex.Message, Is.EqualTo($"The credential from '{providerName}' is already linked to another user."));
-        return Task.CompletedTask;
+        var result = await _identityService.LinkCredentialAsync(userId, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("already_linked_to_other"));
+        }
     }
 
     [Test]
@@ -860,18 +867,23 @@ public class IdentityServiceTests
     }
 
     [Test]
-    public void LinkCredentialAsyncWithNonExistentUserShouldThrow()
+    public async Task LinkCredentialAsyncWithNonExistentUserShouldFail()
     {
         var userId = Guid.NewGuid();
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
 
-        Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _identityService.LinkCredentialAsync(userId, new LocalPasswordAssertion("pass")));
+        var result = await _identityService.LinkCredentialAsync(userId, new LocalPasswordAssertion("pass"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("user_not_found"));
+        }
     }
 
     [Test]
-    public void LinkCredentialAsyncWithUnsupportedProviderShouldThrow()
+    public async Task LinkCredentialAsyncWithUnsupportedProviderShouldFail()
     {
         var userId = Guid.NewGuid();
         var assertionMock = new Mock<IAuthenticationAssertion>();
@@ -880,12 +892,17 @@ public class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
 
-        Assert.ThrowsAsync<ArgumentException>(() =>
-            _identityService.LinkCredentialAsync(userId, assertionMock.Object));
+        var result = await _identityService.LinkCredentialAsync(userId, assertionMock.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Does.Contain("is not supported"));
+        }
     }
 
     [Test]
-    public Task LinkCredentialAsyncWithSameUserAlreadyLinkedShouldThrow()
+    public async Task LinkCredentialAsyncWithSameUserAlreadyLinkedShouldFail()
     {
         var userId = Guid.NewGuid();
         var user = new User { Id = userId, Email = "test@example.com" };
@@ -896,14 +913,17 @@ public class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Local, AuthenticationProviderKey.Local.Name, userId.ToString(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var ex = Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _identityService.LinkCredentialAsync(userId, assertion));
-        Assert.That(ex.Message, Is.EqualTo("A local password is already linked to this user."));
-        return Task.CompletedTask;
+        var result = await _identityService.LinkCredentialAsync(userId, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("already_linked_to_self"));
+        }
     }
 
     [Test]
-    public Task LinkCredentialAsyncWithSameUserAlreadyLinkedExternalShouldThrow()
+    public async Task LinkCredentialAsyncWithSameUserAlreadyLinkedExternalShouldFail()
     {
         var userId = Guid.NewGuid();
         var user = new User { Id = userId, Email = "test@example.com" };
@@ -914,10 +934,13 @@ public class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var ex = Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _identityService.LinkCredentialAsync(userId, assertion));
-        Assert.That(ex.Message, Is.EqualTo("Credential for provider 'Google' is already linked to this user."));
-        return Task.CompletedTask;
+        var result = await _identityService.LinkCredentialAsync(userId, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("already_linked_to_self"));
+        }
     }
 
     [Test]
@@ -1086,7 +1109,7 @@ public class IdentityServiceTests
     }
 
     [Test]
-    public void LinkCredentialAsyncWithProviderKeyDerivationFailureShouldThrow()
+    public async Task LinkCredentialAsyncWithProviderKeyDerivationFailureShouldFail()
     {
         var userId = Guid.NewGuid();
         var user = new User { Id = userId, Email = "test@example.com" };
@@ -1106,8 +1129,13 @@ public class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.LinkCredentialAsync(userId, assertion));
+        var result = await service.LinkCredentialAsync(userId, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("invalid_provider_key"));
+        }
     }
 
     [Test]
@@ -1144,7 +1172,7 @@ public class IdentityServiceTests
     }
 
     [Test]
-    public Task LinkCredentialAsyncWithExternalAssertionAlreadyLinkedToSameUserShouldThrow()
+    public async Task LinkCredentialAsyncWithExternalAssertionAlreadyLinkedToSameUserShouldFail()
     {
         var userId = Guid.NewGuid();
         var user = new User { Id = userId, Email = "test@example.com" };
@@ -1155,10 +1183,13 @@ public class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var ex = Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _identityService.LinkCredentialAsync(userId, assertion));
-        Assert.That(ex.Message, Is.EqualTo("Credential for provider 'Google' is already linked to this user."));
-        return Task.CompletedTask;
+        var result = await _identityService.LinkCredentialAsync(userId, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureReason, Is.EqualTo("already_linked_to_self"));
+        }
     }
 
     [Test]

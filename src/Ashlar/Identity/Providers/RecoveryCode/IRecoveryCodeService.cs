@@ -1,3 +1,5 @@
+using Ashlar.Identity.Models;
+
 namespace Ashlar.Identity;
 
 /// <summary>
@@ -11,8 +13,8 @@ public interface IRecoveryCodeService
     /// <param name="userId">The user's ID.</param>
     /// <param name="request">The generation request. If null, default options are used.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A list of raw recovery codes. These codes are not stored and are only returned once.</returns>
-    Task<IReadOnlyList<string>> GenerateRecoveryCodesAsync(Guid userId, RecoveryCodeGenerationRequest? request = null, CancellationToken cancellationToken = default);
+    /// <returns>A result containing the new recovery codes if successful.</returns>
+    Task<Result<IReadOnlyList<string>>> GenerateRecoveryCodesAsync(Guid userId, RecoveryCodeGenerationRequest? request = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Revokes all existing recovery codes for the specified user.

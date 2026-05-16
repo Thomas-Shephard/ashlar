@@ -87,16 +87,16 @@ public sealed class IdentityService(
         return sanitizedUser;
     }
 
-    public async Task LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default)
+    public async Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(assertion);
 
         if (!_providerRegistry.TryGetProvider(assertion, out var provider))
         {
-            throw new ArgumentException($"Provider '{assertion.ProviderIdentity}' is not supported.", nameof(assertion));
+            return Result.Failure($"Provider '{assertion.ProviderIdentity}' is not supported.");
         }
 
-        await _credentialService.LinkCredentialAsync(userId, assertion, provider, credentialValue, cancellationToken: cancellationToken);
+        return await _credentialService.LinkCredentialAsync(userId, assertion, provider, credentialValue, cancellationToken: cancellationToken);
     }
 
     private static IUser SanitizeUserEmail(IUser user)

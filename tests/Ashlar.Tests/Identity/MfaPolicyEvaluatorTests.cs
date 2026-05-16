@@ -296,7 +296,7 @@ public sealed class MfaPolicyEvaluatorTests
             new HashSet<string> { "totp" },
             new HashSet<string>());
         handshakeService.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((handshake, "token"));
+            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
 
         var result = await orchestrator.AuthenticateAsync(_context, assertion.Object);
 

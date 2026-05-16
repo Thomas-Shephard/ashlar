@@ -13,12 +13,15 @@ public sealed class InvitationService(
     InvitationDependencies dependencies,
     IOptions<InvitationOptions>? options = null) : IInvitationService
 {
+    private const string InvitationIdProperty = "invitation_id";
+    private const string RateLimitedFailureReason = "rate_limited";
+
     private readonly InvitationDependencies _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
     private readonly IOptions<InvitationOptions> _options = options ?? Options.Create(new InvitationOptions());
     private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider);
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
 
-    public async Task CreateInvitationAsync(CreateInvitationRequest request, Uri callbackBaseUri, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
+    public async Task<Result> CreateInvitationAsync(CreateInvitationRequest request, Uri callbackBaseUri, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(callbackBaseUri);
@@ -46,11 +49,25 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = "rate_limited",
+                FailureReason = RateLimitedFailureReason,
                 Properties = AddEmailIfEnabled(new Dictionary<string, string> { ["operation"] = "create" }, normalizedEmail),
                 Context = context
             }, cancellationToken);
-            throw new InvalidOperationException("Invitation creation is currently rate-limited for this email address.");
+            return Result.Failure(RateLimitedFailureReason);
+        }
+
+        var existingUser = await _dependencies.IdentityRepository.GetUserByEmailAsync(normalizedEmail, request.TenantId, cancellationToken);
+        if (existingUser is { IsActive: true })
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.InvitationCreated,
+                Outcome = SecurityEventOutcomes.Failure,
+                FailureReason = "user_exists",
+                Properties = AddEmailIfEnabled(new Dictionary<string, string> { ["operation"] = "create" }, normalizedEmail),
+                Context = context
+            }, cancellationToken);
+            return Result.Failure("user_exists");
         }
 
         var token = _dependencies.TokenGenerator.GenerateToken();
@@ -85,15 +102,16 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationCreated,
                 Outcome = SecurityEventOutcomes.Success,
-                Properties = AddEmailIfEnabled(new Dictionary<string, string> { ["invitation_id"] = invitation.Id.ToString() }, normalizedEmail),
+                Properties = AddEmailIfEnabled(new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() }, normalizedEmail),
                 Context = context
             }, ct);
         });
 
         await transaction.CommitAsync(cancellationToken);
+        return Result.Success();
     }
 
-    public async Task<InvitationAcceptanceResult> AcceptInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
+    public async Task<Result<Guid>> AcceptInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Token);
@@ -114,11 +132,11 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = "rate_limited",
+                FailureReason = RateLimitedFailureReason,
                 Properties = new Dictionary<string, string> { ["operation"] = "accept" },
                 Context = context
             }, cancellationToken);
-            return InvitationAcceptanceResult.Failure("rate_limited");
+            return Result.Failure<Guid>(RateLimitedFailureReason);
         }
 
         var invitation = await _dependencies.InvitationRepository.GetInvitationByTokenHashAsync(tokenHash, cancellationToken);
@@ -126,7 +144,14 @@ public sealed class InvitationService(
 
         if (invitation == null || !invitation.IsAvailable(now))
         {
-            return InvitationAcceptanceResult.Failure("invalid_invitation");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.InvitationAccepted,
+                Outcome = SecurityEventOutcomes.Failure,
+                FailureReason = "invalid_invitation",
+                Context = context
+            }, cancellationToken);
+            return Result.Failure<Guid>("invalid_invitation");
         }
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
@@ -137,54 +162,28 @@ public sealed class InvitationService(
 
         if (!updated)
         {
-            return InvitationAcceptanceResult.Failure("concurrency_conflict");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.InvitationAccepted,
+                Outcome = SecurityEventOutcomes.Failure,
+                FailureReason = "concurrency_conflict",
+                Properties = new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() },
+                Context = context
+            }, cancellationToken);
+            return Result.Failure<Guid>("concurrency_conflict");
         }
 
-        var user = await _dependencies.IdentityRepository.GetUserByEmailAsync(invitation.Email, invitation.TenantId, cancellationToken);
-        Guid userId;
-        var isNewUser = false;
-
-        if (user == null)
-        {
-            userId = Guid.NewGuid();
-            var newUser = new AshlarUser
-            {
-                Id = userId,
-                Email = invitation.Email,
-                Name = request.UserName,
-                IsActive = true,
-                TenantId = invitation.TenantId
-            };
-            await _dependencies.IdentityRepository.CreateUserAsync(newUser, cancellationToken);
-            isNewUser = true;
-        }
-        else if (!user.IsActive)
-        {
-            userId = user.Id;
-            var updatedUser = new AshlarUser
-            {
-                Id = user.Id,
-                Email = user.Email,
-                Name = request.UserName ?? user.Name,
-                IsActive = true,
-                TenantId = invitation.TenantId
-            };
-            await _dependencies.IdentityRepository.UpdateUserAsync(updatedUser, cancellationToken);
-        }
-        else
-        {
-            userId = user.Id;
-        }
+        var acceptedUser = await AcceptInvitationUserAsync(invitation, request.UserName, now, cancellationToken);
 
         transaction.OnCommitted(async ct =>
         {
-            if (isNewUser)
+            if (acceptedUser.IsNewUser)
             {
                 await _securityEvents.RecordAsync(new SecurityEventDescriptor
                 {
                     EventType = AshlarSecurityEventTypes.UserCreated,
                     Outcome = SecurityEventOutcomes.Success,
-                    UserId = userId,
+                    UserId = acceptedUser.UserId,
                     Context = context
                 }, ct);
             }
@@ -193,24 +192,61 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationAccepted,
                 Outcome = SecurityEventOutcomes.Success,
-                UserId = userId,
-                Properties = new Dictionary<string, string> { ["invitation_id"] = invitation.Id.ToString() },
+                UserId = acceptedUser.UserId,
+                Properties = new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() },
                 Context = context
             }, ct);
 
-            var notifiedUser = await _dependencies.IdentityRepository.GetUserByIdAsync(userId, ct);
+            var notifiedUser = await _dependencies.IdentityRepository.GetUserByIdAsync(acceptedUser.UserId, ct);
             if (notifiedUser != null)
             {
-                await _notifications.NotifyAsync(SecurityNotificationType.InvitationAccepted, notifiedUser, now, context: context, metadata: new Dictionary<string, string> { ["invitation_id"] = invitation.Id.ToString() }, cancellationToken: ct);
+                await _notifications.NotifyAsync(SecurityNotificationType.InvitationAccepted, notifiedUser, now, context: context, metadata: new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() }, cancellationToken: ct);
             }
         });
 
         await transaction.CommitAsync(cancellationToken);
 
-        return InvitationAcceptanceResult.Success(userId);
+        return Result.Success(acceptedUser.UserId);
     }
 
-    public async Task RevokeInvitationsAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
+    private async Task<AcceptedInvitationUser> AcceptInvitationUserAsync(UserInvitation invitation, string? requestedUserName, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var user = await _dependencies.IdentityRepository.GetUserByEmailAsync(invitation.Email, invitation.TenantId, cancellationToken);
+
+        if (user == null)
+        {
+            var userId = Guid.NewGuid();
+            var newUser = new AshlarUser
+            {
+                Id = userId,
+                Email = invitation.Email,
+                Name = requestedUserName,
+                IsActive = true,
+                EmailVerifiedAt = _options.Value.VerifyEmailOnAcceptance ? now : null,
+                TenantId = invitation.TenantId
+            };
+            await _dependencies.IdentityRepository.CreateUserAsync(newUser, cancellationToken);
+            return new AcceptedInvitationUser(userId, IsNewUser: true);
+        }
+
+        if (!user.IsActive || (!user.EmailVerifiedAt.HasValue && _options.Value.VerifyEmailOnAcceptance))
+        {
+            var updatedUser = new AshlarUser
+            {
+                Id = user.Id,
+                Email = user.Email,
+                Name = requestedUserName ?? user.Name,
+                IsActive = true,
+                EmailVerifiedAt = _options.Value.VerifyEmailOnAcceptance ? (user.EmailVerifiedAt ?? now) : user.EmailVerifiedAt,
+                TenantId = invitation.TenantId
+            };
+            await _dependencies.IdentityRepository.UpdateUserAsync(updatedUser, cancellationToken);
+        }
+
+        return new AcceptedInvitationUser(user.Id, IsNewUser: false);
+    }
+
+    public async Task<Result> RevokeInvitationsAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
 
@@ -227,6 +263,8 @@ public sealed class InvitationService(
                 Properties = AddEmailIfEnabled(new Dictionary<string, string> { ["count"] = revokedCount.ToString(CultureInfo.InvariantCulture) }, normalizedEmail)
             }, cancellationToken);
         }
+
+        return Result.Success();
     }
 
     private Dictionary<string, string> AddEmailIfEnabled(Dictionary<string, string> properties, string email)
@@ -238,4 +276,6 @@ public sealed class InvitationService(
 
         return properties;
     }
+
+    private sealed record AcceptedInvitationUser(Guid UserId, bool IsNewUser);
 }

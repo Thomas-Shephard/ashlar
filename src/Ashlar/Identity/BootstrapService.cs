@@ -19,6 +19,7 @@ public sealed class BootstrapService(
     : IBootstrapService
 {
     private const string BootstrapMetadataKey = "ashlar.bootstrap";
+    private const string AlreadyInitializedFailureReason = "already_initialized";
     private readonly IBootstrapStateRepository _stateRepository = stateRepository ?? throw new ArgumentNullException(nameof(stateRepository));
     private readonly IInvitationService _invitationService = invitationService ?? throw new ArgumentNullException(nameof(invitationService));
     private readonly InvitationDependencies _invitationDependencies = invitationDependencies ?? throw new ArgumentNullException(nameof(invitationDependencies));
@@ -32,13 +33,20 @@ public sealed class BootstrapService(
         return _stateRepository.GetBootstrapStatusAsync(cancellationToken);
     }
 
-    public async Task<BootstrapInvitationResult> CreateBootstrapInvitationAsync(CreateBootstrapInvitationRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<string>> CreateBootstrapInvitationAsync(CreateBootstrapInvitationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         if (await GetStatusAsync(cancellationToken) == BootstrapStatus.Initialized)
         {
-            return BootstrapInvitationResult.Failure("already_initialized");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.BootstrapInvitationCreated,
+                Outcome = SecurityEventOutcomes.Failure,
+                FailureReason = AlreadyInitializedFailureReason,
+                Properties = new Dictionary<string, string> { ["email"] = request.Email }
+            }, cancellationToken);
+            return Result.Failure<string>(AlreadyInitializedFailureReason);
         }
 
         var token = _invitationDependencies.TokenGenerator.GenerateToken();
@@ -60,7 +68,14 @@ public sealed class BootstrapService(
             }
             catch (JsonException)
             {
-                return BootstrapInvitationResult.Failure("invalid_metadata_format");
+                await _securityEvents.RecordAsync(new SecurityEventDescriptor
+                {
+                    EventType = AshlarSecurityEventTypes.BootstrapInvitationCreated,
+                    Outcome = SecurityEventOutcomes.Failure,
+                    FailureReason = "invalid_metadata_format",
+                    Properties = new Dictionary<string, string> { ["email"] = email }
+                }, cancellationToken);
+                return Result.Failure<string>("invalid_metadata_format");
             }
         }
         metadataDict[BootstrapMetadataKey] = true;
@@ -107,10 +122,10 @@ public sealed class BootstrapService(
 
         await transaction.CommitAsync(cancellationToken);
 
-        return BootstrapInvitationResult.Success(token);
+        return Result.Success(token);
     }
 
-    public async Task<InvitationAcceptanceResult> AcceptBootstrapInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
+    public async Task<Result<Guid>> AcceptBootstrapInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -119,17 +134,38 @@ public sealed class BootstrapService(
 
         if (invitation == null || !invitation.IsAvailable(_invitationDependencies.TimeProvider.GetUtcNow()))
         {
-            return InvitationAcceptanceResult.Failure("invalid_invitation");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.BootstrapCompleted,
+                Outcome = SecurityEventOutcomes.Failure,
+                FailureReason = "invalid_invitation",
+                Context = context
+            }, cancellationToken);
+            return Result.Failure<Guid>("invalid_invitation");
         }
 
         if (!IsBootstrapInvitation(invitation))
         {
-            return InvitationAcceptanceResult.Failure("not_a_bootstrap_invitation");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.BootstrapCompleted,
+                Outcome = SecurityEventOutcomes.Failure,
+                FailureReason = "not_a_bootstrap_invitation",
+                Context = context
+            }, cancellationToken);
+            return Result.Failure<Guid>("not_a_bootstrap_invitation");
         }
 
         if (await GetStatusAsync(cancellationToken) == BootstrapStatus.Initialized)
         {
-            return InvitationAcceptanceResult.Failure("already_initialized");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.BootstrapCompleted,
+                Outcome = SecurityEventOutcomes.Failure,
+                FailureReason = AlreadyInitializedFailureReason,
+                Context = context
+            }, cancellationToken);
+            return Result.Failure<Guid>(AlreadyInitializedFailureReason);
         }
 
         var now = _invitationDependencies.TimeProvider.GetUtcNow();
@@ -139,17 +175,17 @@ public sealed class BootstrapService(
 
         var result = await _invitationService.AcceptInvitationAsync(request, context, cancellationToken);
 
-        if (!result.Succeeded || result.UserId == null)
+        if (!result.Succeeded || result.Value == Guid.Empty)
         {
             return result;
         }
 
-        var userId = result.UserId.Value;
+        var userId = result.Value;
 
         // Assign configured grants
         foreach (var template in _options.Value.Grants)
         {
-            await _grantService.CreateGrantAsync(new CreateAuthorizationGrantRequest(
+            var grantResult = await _grantService.CreateGrantAsync(new CreateAuthorizationGrantRequest(
                 UserId: userId,
                 TenantId: template.TenantId,
                 ScopeType: template.ScopeType,
@@ -157,6 +193,20 @@ public sealed class BootstrapService(
                 Role: template.Role,
                 Permission: template.Permission
             ), cancellationToken);
+
+            if (!grantResult.Succeeded)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                await _securityEvents.RecordAsync(new SecurityEventDescriptor
+                {
+                    EventType = AshlarSecurityEventTypes.BootstrapCompleted,
+                    Outcome = SecurityEventOutcomes.Failure,
+                    FailureReason = grantResult.FailureReason ?? "grant_creation_failed",
+                    UserId = userId,
+                    Context = context
+                }, cancellationToken);
+                return Result.Failure<Guid>(grantResult.FailureReason ?? "grant_creation_failed");
+            }
         }
 
         // Mark as initialized
@@ -165,7 +215,14 @@ public sealed class BootstrapService(
         {
             // This should only happen if someone else initialized the system concurrently.
             await transaction.RollbackAsync(cancellationToken);
-            return InvitationAcceptanceResult.Failure("already_initialized");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.BootstrapCompleted,
+                Outcome = SecurityEventOutcomes.Failure,
+                FailureReason = AlreadyInitializedFailureReason,
+                Context = context
+            }, cancellationToken);
+            return Result.Failure<Guid>(AlreadyInitializedFailureReason);
         }
 
         transaction.OnCommitted(async ct =>

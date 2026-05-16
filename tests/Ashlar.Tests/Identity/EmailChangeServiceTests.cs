@@ -52,7 +52,7 @@ public sealed class EmailChangeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.ErrorMessage, Contains.Substring("not allowed"));
+            Assert.That(result.FailureReason, Contains.Substring("not allowed"));
         }
     }
 
@@ -65,7 +65,7 @@ public sealed class EmailChangeServiceTests
 
         var result = await fixture.Service.RequestChangeAsync(request);
 
-        Assert.That(result.Succeeded, Is.True, result.ErrorMessage);
+        Assert.That(result.Succeeded, Is.True, result.FailureReason);
         var message = fixture.EmailSender.Messages.Single();
         var credential = fixture.IdentityRepository.Credentials.Single();
 
@@ -107,7 +107,7 @@ public sealed class EmailChangeServiceTests
 
         var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = Guid.NewGuid(), NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
 
-        Assert.That(result.ErrorMessage, Is.EqualTo("User not found or inactive."));
+        Assert.That(result.FailureReason, Is.EqualTo("User not found or inactive."));
     }
 
     [Test]
@@ -120,7 +120,7 @@ public sealed class EmailChangeServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.ErrorMessage, Is.EqualTo("Too many requests."));
+            Assert.That(result.FailureReason, Is.EqualTo("Too many requests."));
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailChangeRateLimited), Is.True);
         }
     }
@@ -158,7 +158,7 @@ public sealed class EmailChangeServiceTests
         Assert.That(updatedUser, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.True, result.ErrorMessage);
+            Assert.That(result.Succeeded, Is.True, result.FailureReason);
             Assert.That(updatedUser.Email, Is.EqualTo("new@example.com"));
             Assert.That(updatedUser.EmailVerifiedAt, Is.Not.Null);
             Assert.That(fixture.SessionRepository.RevokedUserId, Is.EqualTo(user.Id));
@@ -178,7 +178,7 @@ public sealed class EmailChangeServiceTests
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
 
-        Assert.That(result.ErrorMessage, Is.EqualTo("Invalid token data."));
+        Assert.That(result.FailureReason, Is.EqualTo("Invalid token data."));
     }
 
     [Test]
@@ -191,7 +191,7 @@ public sealed class EmailChangeServiceTests
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
 
-        Assert.That(result.Succeeded, Is.True, result.ErrorMessage);
+        Assert.That(result.Succeeded, Is.True, result.FailureReason);
         fixture.NotificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
             notification.Type == SecurityNotificationType.EmailChanged &&
             notification.RecipientEmail == "old@example.com" &&
@@ -223,7 +223,7 @@ public sealed class EmailChangeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.ErrorMessage, Contains.Substring("already in use"));
+            Assert.That(result.FailureReason, Contains.Substring("already in use"));
         }
     }
 
@@ -239,7 +239,7 @@ public sealed class EmailChangeServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.True, result.ErrorMessage);
+            Assert.That(result.Succeeded, Is.True, result.FailureReason);
             Assert.That(user.Email, Is.EqualTo("new@example.com"));
             Assert.That(user.UpdatedAt, Is.Not.Null);
         }
@@ -255,7 +255,7 @@ public sealed class EmailChangeServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.ErrorMessage, Is.EqualTo("Too many attempts."));
+            Assert.That(result.FailureReason, Is.EqualTo("Too many attempts."));
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailChangeVerificationRateLimited), Is.True);
         }
     }
@@ -268,7 +268,7 @@ public sealed class EmailChangeServiceTests
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = "invalid" });
 
-        Assert.That(result.ErrorMessage, Is.EqualTo("Invalid or expired token."));
+        Assert.That(result.FailureReason, Is.EqualTo("Invalid or expired token."));
     }
 
     [Test]
@@ -281,7 +281,7 @@ public sealed class EmailChangeServiceTests
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
 
-        Assert.That(result.ErrorMessage, Is.EqualTo("Invalid token data."));
+        Assert.That(result.FailureReason, Is.EqualTo("Invalid token data."));
     }
 
     [Test]
@@ -295,7 +295,7 @@ public sealed class EmailChangeServiceTests
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
 
-        Assert.That(result.ErrorMessage, Is.EqualTo("Invalid or expired token."));
+        Assert.That(result.FailureReason, Is.EqualTo("Invalid or expired token."));
     }
 
     [Test]
@@ -308,7 +308,7 @@ public sealed class EmailChangeServiceTests
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
 
-        Assert.That(result.ErrorMessage, Is.EqualTo("Invalid or expired token."));
+        Assert.That(result.FailureReason, Is.EqualTo("Invalid or expired token."));
     }
 
     private static string ExtractToken(EmailMessage message)

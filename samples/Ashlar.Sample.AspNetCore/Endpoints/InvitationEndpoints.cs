@@ -31,14 +31,14 @@ internal static class InvitationEndpoints
             CancellationToken cancellationToken) =>
         {
             var result = await invitations.AcceptInvitationAsync(request, httpContext.ToAuthenticationContext(), cancellationToken);
-            if (!result.Succeeded || result.UserId == null)
+            if (!result.Succeeded)
             {
                 return Results.BadRequest(new { error = result.FailureReason });
             }
 
-            await signInManager.SignInAsync(httpContext, result.UserId.Value, cancellationToken: cancellationToken);
+            await signInManager.SignInAsync(httpContext, result.Value, cancellationToken: cancellationToken);
 
-            return Results.Ok(new { userId = result.UserId });
+            return Results.Ok(new { userId = result.Value });
         });
 
         app.MapGet("/invitations/accept", (string t) => AppViews.RenderInvitationAccept(t));

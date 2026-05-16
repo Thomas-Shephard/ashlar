@@ -44,7 +44,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<string>> GenerateRecoveryCodesAsync(Guid userId, RecoveryCodeGenerationRequest? request = null, CancellationToken cancellationToken = default)
+    public async Task<Result<IReadOnlyList<string>>> GenerateRecoveryCodesAsync(Guid userId, RecoveryCodeGenerationRequest? request = null, CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty)
         {
@@ -57,24 +57,56 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         var user = await _repository.GetUserByIdAsync(userId, cancellationToken);
         if (user == null)
         {
-            throw new InvalidOperationException($"User with ID '{userId}' not found.");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Provider = _options.ProviderKey,
+                FailureReason = "user_not_found"
+            }, cancellationToken);
+            return Result.Failure<IReadOnlyList<string>>("user_not_found");
         }
 
         var codeCount = request?.CodeCount ?? _options.CodeCount;
         if (codeCount <= 0 || codeCount > _options.CodeCount * 2)
         {
-            throw new ArgumentOutOfRangeException(nameof(request), "Requested code count exceeds the maximum allowed limit.");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Provider = _options.ProviderKey,
+                FailureReason = "invalid_code_count"
+            }, cancellationToken);
+            return Result.Failure<IReadOnlyList<string>>("invalid_code_count");
         }
 
         if (_options.CodeLength <= 0 || _options.GroupSize <= 0)
         {
-            throw new InvalidOperationException("Recovery code length and group size must be greater than zero.");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Provider = _options.ProviderKey,
+                FailureReason = "invalid_configuration"
+            }, cancellationToken);
+            return Result.Failure<IReadOnlyList<string>>("invalid_configuration");
         }
 
         var expiresAfter = request?.ExpiresAfter ?? _options.ExpiresAfter;
         if (expiresAfter.HasValue && expiresAfter.Value <= TimeSpan.Zero)
         {
-            throw new ArgumentOutOfRangeException(nameof(request), "Expiration duration must be a positive time span.");
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Provider = _options.ProviderKey,
+                FailureReason = "invalid_expiry"
+            }, cancellationToken);
+            return Result.Failure<IReadOnlyList<string>>("invalid_expiry");
         }
 
         // Revoke existing recovery codes if requested
@@ -136,7 +168,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
 
         await transaction.CommitAsync(cancellationToken);
 
-        return rawCodes;
+        return Result.Success<IReadOnlyList<string>>(rawCodes);
     }
 
     /// <inheritdoc />

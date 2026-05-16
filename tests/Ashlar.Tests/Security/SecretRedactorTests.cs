@@ -77,6 +77,7 @@ public class SecretRedactorTests
             Assert.That(SecretRedactor.Redact((string?)null, "secret"), Is.EqualTo(string.Empty));
             Assert.That(SecretRedactor.Redact(string.Empty, "secret"), Is.EqualTo(string.Empty));
             Assert.That(SecretRedactor.Redact("some string"), Is.EqualTo("some string"));
+            Assert.That(SecretRedactor.Redact("some string", null, string.Empty), Is.EqualTo("some string"));
         }
     }
 }

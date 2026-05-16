@@ -29,19 +29,95 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
         _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
     }
 
-    public async Task<AuthorizationGrant> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        ValidateUserId(request.UserId);
-        ValidateGrantShape(request.Role, request.Permission);
-        var role = NormalizeOptional(request.Role, nameof(request.Role), _options.MaxRoleLength);
-        var permission = NormalizeOptional(request.Permission, nameof(request.Permission), _options.MaxPermissionLength);
-        var scopeType = NormalizeOptional(request.ScopeType, nameof(request.ScopeType), _options.MaxScopeTypeLength);
-        var scopeId = NormalizeOptional(request.ScopeId, nameof(request.ScopeId), _options.MaxScopeIdLength);
-        ValidateScopeShape(scopeType, scopeId);
+
+        if (request.UserId == Guid.Empty)
+        {
+            throw new ArgumentException("User id must not be empty.", nameof(request));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Role) == string.IsNullOrWhiteSpace(request.Permission))
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = request.UserId,
+                FailureReason = "invalid_grant_shape"
+            }, cancellationToken);
+            return Result.Failure<AuthorizationGrant>("invalid_grant_shape");
+        }
+
+        string? role;
+        string? permission;
+        string? scopeType;
+        string? scopeId;
+
+        try
+        {
+            role = NormalizeOptional(request.Role, nameof(request.Role), _options.MaxRoleLength);
+            permission = NormalizeOptional(request.Permission, nameof(request.Permission), _options.MaxPermissionLength);
+            scopeType = NormalizeOptional(request.ScopeType, nameof(request.ScopeType), _options.MaxScopeTypeLength);
+            scopeId = NormalizeOptional(request.ScopeId, nameof(request.ScopeId), _options.MaxScopeIdLength);
+        }
+        catch (ArgumentException)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = request.UserId,
+                FailureReason = "validation_error"
+            }, cancellationToken);
+            return Result.Failure<AuthorizationGrant>("validation_error");
+        }
+
+        if (string.IsNullOrWhiteSpace(scopeType) != string.IsNullOrWhiteSpace(scopeId))
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = request.UserId,
+                FailureReason = "invalid_scope_shape"
+            }, cancellationToken);
+            return Result.Failure<AuthorizationGrant>("invalid_scope_shape");
+        }
+
         var metadata = string.IsNullOrWhiteSpace(request.Metadata) ? null : request.Metadata;
-        ValidateMetadata(metadata, _options.MaxMetadataLength);
-        ValidateMetadataJson(metadata);
+        
+        if (metadata is { Length: > 0 } && metadata.Length > _options.MaxMetadataLength)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = request.UserId,
+                FailureReason = "metadata_too_long"
+            }, cancellationToken);
+            return Result.Failure<AuthorizationGrant>("metadata_too_long");
+        }
+
+        if (metadata != null)
+        {
+            try
+            {
+                using var _ = JsonDocument.Parse(metadata);
+            }
+            catch (JsonException)
+            {
+                await _securityEvents.RecordAsync(new SecurityEventDescriptor
+                {
+                    EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
+                    Outcome = SecurityEventOutcomes.Failure,
+                    UserId = request.UserId,
+                    FailureReason = "invalid_metadata_json"
+                }, cancellationToken);
+                return Result.Failure<AuthorizationGrant>("invalid_metadata_json");
+            }
+        }
 
         var grant = new AuthorizationGrant
         {
@@ -66,7 +142,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
             Properties = CreateAuditProperties(grant)
         }, cancellationToken);
 
-        return grant;
+        return Result<AuthorizationGrant>.Success(grant);
     }
 
     public async Task<bool> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
@@ -156,31 +232,6 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
         }
 
         return normalized;
-    }
-
-    private static void ValidateMetadata(string? metadata, int maxLength)
-    {
-        if (metadata is { Length: > 0 } && metadata.Length > maxLength)
-        {
-            throw new ArgumentException("Metadata exceeds the configured maximum length.", nameof(metadata));
-        }
-    }
-
-    private static void ValidateMetadataJson(string? metadata)
-    {
-        if (metadata == null)
-        {
-            return;
-        }
-
-        try
-        {
-            using var _ = JsonDocument.Parse(metadata);
-        }
-        catch (JsonException exception)
-        {
-            throw new ArgumentException("Metadata must be valid JSON.", nameof(metadata), exception);
-        }
     }
 
     private static Dictionary<string, string> CreateAuditProperties(AuthorizationGrant grant)
