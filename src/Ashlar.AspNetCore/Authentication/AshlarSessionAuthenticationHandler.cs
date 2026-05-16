@@ -9,6 +9,13 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.AspNetCore.Authentication;
 
+/// <summary>
+/// Provides ashlar session authentication handler behavior.
+/// </summary>
+/// <param name="options">The options value.</param>
+/// <param name="logger">The logger value.</param>
+/// <param name="encoder">The encoder value.</param>
+/// <param name="sessionService">The session service value.</param>
 public sealed class AshlarSessionAuthenticationHandler(
     IOptionsMonitor<AshlarSessionAuthenticationOptions> options,
     ILoggerFactory logger,
@@ -18,6 +25,10 @@ public sealed class AshlarSessionAuthenticationHandler(
 {
     private readonly IAuthenticationSessionService _sessionService = sessionService ?? throw new ArgumentNullException(nameof(sessionService));
 
+    /// <summary>
+    /// Performs the handle authenticate <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         if (!Request.Cookies.TryGetValue(Options.CookieName, out var token) || string.IsNullOrWhiteSpace(token))
@@ -46,6 +57,11 @@ public sealed class AshlarSessionAuthenticationHandler(
         return AuthenticateResult.Success(ticket);
     }
 
+    /// <summary>
+    /// Performs the handle challenge <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="properties">The properties value.</param>
+    /// <returns>The operation result.</returns>
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
         if (!Options.LoginPath.HasValue)
@@ -63,6 +79,11 @@ public sealed class AshlarSessionAuthenticationHandler(
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Performs the handle forbidden <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="properties">The properties value.</param>
+    /// <returns>The operation result.</returns>
     protected override Task HandleForbiddenAsync(AuthenticationProperties properties)
     {
         if (!Options.AccessDeniedPath.HasValue)

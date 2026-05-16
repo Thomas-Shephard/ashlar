@@ -5,7 +5,7 @@ using Dapper;
 
 namespace Ashlar.Postgres.Tests;
 
-public sealed class PostgresSecurityEventSinkTests : PostgresTestBase
+internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
 {
     private IServiceProvider? _serviceProvider;
 

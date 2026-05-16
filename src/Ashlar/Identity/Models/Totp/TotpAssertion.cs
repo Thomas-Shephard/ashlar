@@ -10,9 +10,9 @@ public sealed record TotpAssertion : IAuthenticationAssertion
     /// <summary>
     /// Initializes a new instance of the <see cref="TotpAssertion"/> class.
     /// </summary>
-    /// <param name="code">The TOTP code.</param>
-    /// <param name="ipAddress">Optional IP address.</param>
-    /// <param name="providerKey">Optional provider key.</param>
+    /// <param name="code">The code value.</param>
+    /// <param name="ipAddress">The ip address value.</param>
+    /// <param name="providerKey">The provider key value.</param>
     public TotpAssertion(string code, string? ipAddress = null, AuthenticationProviderKey? providerKey = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);

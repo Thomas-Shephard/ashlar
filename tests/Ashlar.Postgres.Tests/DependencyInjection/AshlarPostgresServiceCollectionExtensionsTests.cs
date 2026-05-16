@@ -7,7 +7,7 @@ using Npgsql;
 
 namespace Ashlar.Postgres.Tests.DependencyInjection;
 
-public sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresTestBase
+internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresTestBase
 {
     [Test]
     public void AddAshlarPostgresWithDataSourceShouldRegisterServices()

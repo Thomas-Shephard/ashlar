@@ -17,9 +17,9 @@ public sealed class AshlarAuthorizationOptions
     /// <summary>
     /// Adds a policy that requires a specific Ashlar permission.
     /// </summary>
-    /// <param name="policyName">The name of the policy.</param>
-    /// <param name="permission">The required permission.</param>
-    /// <param name="configureScope">Optional configuration for scope resolution.</param>
+    /// <param name="policyName">The policy name value.</param>
+    /// <param name="permission">The permission value.</param>
+    /// <param name="configureScope">The configure scope value.</param>
     public void AddPermissionPolicy(string policyName, string permission, Action<AshlarScopeOptions>? configureScope = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(policyName);
@@ -32,9 +32,9 @@ public sealed class AshlarAuthorizationOptions
     /// <summary>
     /// Adds a policy that requires a specific Ashlar role.
     /// </summary>
-    /// <param name="policyName">The name of the policy.</param>
-    /// <param name="role">The required role.</param>
-    /// <param name="configureScope">Optional configuration for scope resolution.</param>
+    /// <param name="policyName">The policy name value.</param>
+    /// <param name="role">The role value.</param>
+    /// <param name="configureScope">The configure scope value.</param>
     public void AddRolePolicy(string policyName, string role, Action<AshlarScopeOptions>? configureScope = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(policyName);

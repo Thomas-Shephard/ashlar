@@ -8,7 +8,7 @@ using Moq;
 namespace Ashlar.Tests.Identity;
 
 [TestFixture]
-public class AuthenticationOrchestratorTests
+internal sealed class AuthenticationOrchestratorTests
 {
     private Mock<IAuthenticationPipeline> _pipelineMock;
     private Mock<IAuthenticationHandshakeService> _handshakeServiceMock;

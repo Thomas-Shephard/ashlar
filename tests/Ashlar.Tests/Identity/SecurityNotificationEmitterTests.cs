@@ -5,7 +5,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public sealed class SecurityNotificationEmitterTests
+internal sealed class SecurityNotificationEmitterTests
 {
     [Test]
     public void NotifyAsyncWithUserDoesNothingWhenServiceIsNull()

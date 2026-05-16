@@ -3,7 +3,7 @@ using Ashlar.Identity.Providers.External;
 
 namespace Ashlar.Tests.Identity;
 
-public class ExternalIdentityAssertionTests
+internal sealed class ExternalIdentityAssertionTests
 {
     [Test]
     public void ConstructorShouldRejectNullOrWhiteSpaceProviderKey()

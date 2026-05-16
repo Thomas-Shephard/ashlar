@@ -8,7 +8,7 @@ using Npgsql;
 namespace Ashlar.Postgres.Tests.DependencyInjection;
 
 [TestFixture]
-public class AshlarPostgresBootstrapServiceCollectionExtensionsTests
+internal sealed class AshlarPostgresBootstrapServiceCollectionExtensionsTests
 {
     [Test]
     public void AddAshlarPostgresBootstrapRegistersRequiredServices()

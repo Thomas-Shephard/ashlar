@@ -6,7 +6,7 @@ using Dapper;
 
 namespace Ashlar.Postgres.Tests.Identity;
 
-public sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresTestBase
+internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresTestBase
 {
     private IServiceProvider _serviceProvider;
 

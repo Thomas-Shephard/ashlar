@@ -7,7 +7,7 @@ using Npgsql;
 
 namespace Ashlar.Postgres.Tests.Identity;
 
-public sealed class PostgresIdentityRepositoryTests : PostgresTestBase
+internal sealed class PostgresIdentityRepositoryTests : PostgresTestBase
 {
     private IServiceProvider _serviceProvider;
 

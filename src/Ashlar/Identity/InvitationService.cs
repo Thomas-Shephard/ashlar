@@ -9,6 +9,11 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity;
 
+/// <summary>
+/// Provides invitation service behavior.
+/// </summary>
+/// <param name="dependencies">The dependencies value.</param>
+/// <param name="options">The options value.</param>
 public sealed class InvitationService(
     InvitationDependencies dependencies,
     IOptions<InvitationOptions>? options = null) : IInvitationService
@@ -21,6 +26,14 @@ public sealed class InvitationService(
     private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider);
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
 
+    /// <summary>
+    /// Performs the create invitation <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <param name="callbackBaseUri">The callback base uri value.</param>
+    /// <param name="context">The context value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<Result> CreateInvitationAsync(CreateInvitationRequest request, Uri callbackBaseUri, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -111,6 +124,13 @@ public sealed class InvitationService(
         return Result.Success();
     }
 
+    /// <summary>
+    /// Performs the accept invitation <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <param name="context">The context value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<Result<Guid>> AcceptInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -246,6 +266,13 @@ public sealed class InvitationService(
         return new AcceptedInvitationUser(user.Id, IsNewUser: false);
     }
 
+    /// <summary>
+    /// Performs the revoke invitations <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="email">The email value.</param>
+    /// <param name="tenantId">The tenant id value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<Result> RevokeInvitationsAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);

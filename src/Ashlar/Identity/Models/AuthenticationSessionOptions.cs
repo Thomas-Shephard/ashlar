@@ -22,17 +22,17 @@ public sealed class AuthenticationSessionOptions
     public int TokenByteLength { get; set; } = 32;
 
     /// <summary>
-    /// Gets or sets whether session IP addresses are persisted when supplied. Defaults to <c>true</c>.
+    /// Gets or sets whether session IP addresses are persisted when supplied. Defaults to <c><see langword="true" /></c>.
     /// </summary>
     public bool StoreIpAddress { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets whether session user agents are persisted when supplied. Defaults to <c>true</c>.
+    /// Gets or sets whether session user agents are persisted when supplied. Defaults to <c><see langword="true" /></c>.
     /// </summary>
     public bool StoreUserAgent { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets whether session metadata is persisted when supplied. Defaults to <c>true</c>.
+    /// Gets or sets whether session metadata is persisted when supplied. Defaults to <c><see langword="true" /></c>.
     /// </summary>
     public bool StoreMetadata { get; set; } = true;
 

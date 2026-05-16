@@ -17,7 +17,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public sealed class EmailCodeSignInTests
+internal sealed class EmailCodeSignInTests
 {
     private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Email = "user@example.com", IsActive = true };
 

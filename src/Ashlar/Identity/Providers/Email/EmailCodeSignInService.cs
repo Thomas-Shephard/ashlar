@@ -9,6 +9,9 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Providers.Email;
 
+/// <summary>
+/// Provides email code sign in service behavior.
+/// </summary>
 public sealed class EmailCodeSignInService : IEmailCodeSignInService
 {
     private const string RequestPurpose = "email-code-request";
@@ -17,6 +20,11 @@ public sealed class EmailCodeSignInService : IEmailCodeSignInService
     private readonly IOptions<EmailCodeSignInOptions> _options;
     private readonly SecurityEventEmitter _securityEvents;
 
+    /// <summary>
+    /// Initializes a configured service instance.
+    /// </summary>
+    /// <param name="dependencies">The dependencies value.</param>
+    /// <param name="options">The options value.</param>
     public EmailCodeSignInService(
         EmailCodeSignInDependencies dependencies,
         IOptions<EmailCodeSignInOptions>? options = null)
@@ -26,6 +34,13 @@ public sealed class EmailCodeSignInService : IEmailCodeSignInService
         _securityEvents = new SecurityEventEmitter(_dependencies.SecurityEventSink, _dependencies.TimeProvider);
     }
 
+    /// <summary>
+    /// Performs the request code <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="email">The email value.</param>
+    /// <param name="context">The context value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task RequestCodeAsync(string email, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
@@ -45,7 +60,7 @@ public sealed class EmailCodeSignInService : IEmailCodeSignInService
         if (user is not { IsActive: true })
         {
             transaction.OnCommitted(ct => RecordAsync(AshlarSecurityEventTypes.EmailCodeRequestSuppressed, SecurityEventOutcomes.Success, context, user?.Id, user == null ? "user_missing" : "user_disabled", ct));
-            
+
             await transaction.CommitAsync(cancellationToken);
             return;
         }
@@ -78,6 +93,14 @@ public sealed class EmailCodeSignInService : IEmailCodeSignInService
         await transaction.CommitAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Performs the verify code <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="email">The email value.</param>
+    /// <param name="code">The code value.</param>
+    /// <param name="context">The context value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<AuthenticationResponse> VerifyCodeAsync(string email, string code, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         var normalizedEmail = IdentityNormalization.NormalizeEmail(email);

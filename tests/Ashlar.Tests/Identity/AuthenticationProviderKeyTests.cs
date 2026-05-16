@@ -2,7 +2,7 @@ using Ashlar.Identity.Models;
 
 namespace Ashlar.Tests.Identity;
 
-public class AuthenticationProviderKeyTests
+internal sealed class AuthenticationProviderKeyTests
 {
     [Test]
     public void ConstructorShouldTrimProviderName()

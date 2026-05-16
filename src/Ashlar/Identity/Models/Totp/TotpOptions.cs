@@ -8,6 +8,7 @@ public sealed class TotpOptions
     /// <summary>
     /// The default authentication provider key for TOTP.
     /// </summary>
+    /// <returns>The operation result.</returns>
     public static readonly AuthenticationProviderKey DefaultProviderKey = new(ProviderType.Mfa, "totp");
 
     /// <summary>
@@ -50,6 +51,8 @@ public sealed class TotpOptions
     /// <summary>
     /// Validates TOTP options that are required by enrollment and authentication.
     /// </summary>
+    /// <param name="options">The options value.</param>
+    /// <returns>The operation result.</returns>
     public static bool Validate(TotpOptions options)
     {
         return options is { SecretLengthBytes: > 0, CodeDigits: >= 6 and <= 8, StepSeconds: > 0, AllowedSkewSteps: >= 0, RateLimitPermitLimit: > 0 }

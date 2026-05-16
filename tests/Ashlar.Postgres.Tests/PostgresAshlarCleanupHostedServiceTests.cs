@@ -6,7 +6,7 @@ using Microsoft.Extensions.Time.Testing;
 
 namespace Ashlar.Postgres.Tests;
 
-public sealed class PostgresAshlarCleanupHostedServiceTests
+internal sealed class PostgresAshlarCleanupHostedServiceTests
 {
     [Test]
     public async Task HostedServiceRunsCleanupAndWaitsForInterval()

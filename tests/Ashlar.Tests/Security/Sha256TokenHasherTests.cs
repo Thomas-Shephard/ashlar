@@ -2,7 +2,7 @@ using Ashlar.Security.Tokens;
 
 namespace Ashlar.Tests.Security;
 
-public sealed class Sha256TokenHasherTests
+internal sealed class Sha256TokenHasherTests
 {
     [Test]
     public void HashTokenShouldReturnStableHash()

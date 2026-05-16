@@ -3,7 +3,7 @@ using Ashlar.Identity.Abstractions;
 
 namespace Ashlar.Tests.Identity;
 
-public sealed class NullTransactionProviderTests
+internal sealed class NullTransactionProviderTests
 {
     private static readonly int[] ExpectedHookExecutionOrder = [1, 2, 3];
 

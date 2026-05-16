@@ -7,7 +7,7 @@ using Microsoft.Extensions.Time.Testing;
 
 namespace Ashlar.Postgres.Tests;
 
-public sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
+internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
 {
     private IServiceProvider _serviceProvider;
     private FakeTimeProvider _timeProvider;

@@ -7,7 +7,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public sealed class IdentityServiceAuditingTests
+internal sealed class IdentityServiceAuditingTests
 {
     [Test]
     public async Task ManualConstructionWithAuditSinkShouldEmitEvents()

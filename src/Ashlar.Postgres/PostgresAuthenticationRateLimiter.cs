@@ -21,6 +21,12 @@ public sealed class PostgresAuthenticationRateLimiter : IAuthenticationRateLimit
 
     internal Func<NpgsqlConnection, NpgsqlTransaction, string, string, CancellationToken, Task>? AfterInsertForTesting { get; set; }
 
+    /// <summary>
+    /// Initializes a configured PostgreSQL authentication rate limiter.
+    /// </summary>
+    /// <param name="dataSource">The PostgreSQL data source.</param>
+    /// <param name="timeProvider">The time provider.</param>
+    /// <param name="options">The rate limiter options.</param>
     public PostgresAuthenticationRateLimiter(
         NpgsqlDataSource dataSource,
         TimeProvider timeProvider,
@@ -39,6 +45,13 @@ public sealed class PostgresAuthenticationRateLimiter : IAuthenticationRateLimit
         }
     }
 
+    /// <summary>
+    /// Performs the check <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="attempt">The attempt value.</param>
+    /// <param name="rule">The rule value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<RateLimitDecision> CheckAsync(RateLimitAttempt attempt, RateLimitRule rule, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(attempt);
@@ -190,6 +203,11 @@ public sealed class PostgresAuthenticationRateLimiter : IAuthenticationRateLimit
         }
     }
 
+    /// <summary>
+    /// Performs the cleanup expired rows <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<int> CleanupExpiredRowsAsync(CancellationToken cancellationToken = default)
     {
         var now = _timeProvider.GetUtcNow();

@@ -19,9 +19,9 @@ public sealed class AshlarAuthorizationHandler : IAuthorizationHandler
     /// <summary>
     /// Initializes a new instance of the <see cref="AshlarAuthorizationHandler"/> class.
     /// </summary>
-    /// <param name="evaluator">The Ashlar authorization evaluator.</param>
-    /// <param name="httpContextAccessor">The HTTP context accessor.</param>
-    /// <param name="options">The Ashlar authorization options.</param>
+    /// <param name="evaluator">The evaluator value.</param>
+    /// <param name="httpContextAccessor">The http context accessor value.</param>
+    /// <param name="options">The options value.</param>
     public AshlarAuthorizationHandler(
         Ashlar.Authorization.Abstractions.IAuthorizationEvaluator evaluator,
         IHttpContextAccessor httpContextAccessor,
@@ -32,7 +32,11 @@ public sealed class AshlarAuthorizationHandler : IAuthorizationHandler
         _options = options.Value;
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Evaluates pending Ashlar authorization requirements for the current user.
+    /// </summary>
+    /// <param name="context">The authorization handler context.</param>
+    /// <returns>A task that represents the asynchronous authorization operation.</returns>
     public async Task HandleAsync(AuthorizationHandlerContext context)
     {
         var user = context.User;

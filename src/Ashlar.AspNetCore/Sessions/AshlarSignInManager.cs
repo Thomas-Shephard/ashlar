@@ -6,6 +6,12 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.AspNetCore.Sessions;
 
+/// <summary>
+/// Provides ashlar sign in manager behavior.
+/// </summary>
+/// <param name="sessionService">The session service value.</param>
+/// <param name="options">The options value.</param>
+/// <param name="registration">The registration value.</param>
 public sealed class AshlarSignInManager(
     IAuthenticationSessionService sessionService,
     IOptionsMonitor<AshlarSessionAuthenticationOptions> options,

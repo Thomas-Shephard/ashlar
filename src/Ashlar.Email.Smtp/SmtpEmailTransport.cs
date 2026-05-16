@@ -13,13 +13,22 @@ public class SmtpEmailTransport : IEmailTransport
 {
     private readonly SmtpEmailOptions _options;
 
+    /// <summary>
+    /// Initializes a new instance of the smtp email transport class.
+    /// </summary>
+    /// <param name="options">The options value.</param>
     public SmtpEmailTransport(IOptions<SmtpEmailOptions> options)
     {
         _options = options.Value;
         _options.Validate();
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Delivers an email message through the configured SMTP server.
+    /// </summary>
+    /// <param name="message">The email message.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous delivery operation.</returns>
     public async Task DeliverAsync(EmailMessage message, CancellationToken cancellationToken = default)
     {
         var host = _options.Host;
@@ -54,6 +63,7 @@ public class SmtpEmailTransport : IEmailTransport
     /// <summary>
     /// Creates a new <see cref="ISmtpClient"/>.
     /// </summary>
+    /// <returns>The operation result.</returns>
     protected virtual ISmtpClient CreateSmtpClient()
     {
         return new SmtpClient();

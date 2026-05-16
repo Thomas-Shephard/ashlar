@@ -2,8 +2,14 @@ using System.Security.Cryptography;
 
 namespace Ashlar.Security.Hashing;
 
+/// <summary>
+/// Provides password hasher v1 behavior.
+/// </summary>
 public sealed class PasswordHasherV1 : IPasswordHasher
 {
+    /// <summary>
+    /// Gets or sets the version value.
+    /// </summary>
     public byte Version => 0x01;
     private const int SaltLength = 16;
     private const int HashLength = 32;
@@ -14,6 +20,11 @@ public sealed class PasswordHasherV1 : IPasswordHasher
     private readonly ReadOnlyMemory<byte> _dummySalt = RandomNumberGenerator.GetBytes(SaltLength);
     private readonly ReadOnlyMemory<byte> _dummyHash = RandomNumberGenerator.GetBytes(HashLength);
 
+    /// <summary>
+    /// Performs the hash password operation and returns the result.
+    /// </summary>
+    /// <param name="password">The password value.</param>
+    /// <returns>The operation result.</returns>
     public byte[] HashPassword(ReadOnlySpan<char> password)
     {
         byte[] encodedHash = new byte[TotalLength];
@@ -27,6 +38,12 @@ public sealed class PasswordHasherV1 : IPasswordHasher
         return encodedHash;
     }
 
+    /// <summary>
+    /// Performs the verify password operation and returns the result.
+    /// </summary>
+    /// <param name="password">The password value.</param>
+    /// <param name="encodedHash">The encoded hash value.</param>
+    /// <returns>The operation result.</returns>
     public bool VerifyPassword(ReadOnlySpan<char> password, ReadOnlySpan<byte> encodedHash)
     {
         bool isValidFormat = encodedHash is { Length: TotalLength } && encodedHash[0] == Version;

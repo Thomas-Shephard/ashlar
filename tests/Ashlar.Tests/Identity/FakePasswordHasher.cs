@@ -2,7 +2,7 @@ using Ashlar.Security.Hashing;
 
 namespace Ashlar.Tests.Identity;
 
-public sealed class FakePasswordHasher : IPasswordHasher
+internal sealed class FakePasswordHasher : IPasswordHasher
 {
     public byte Version { get; init; } = 0x01;
     public bool ShouldVerify { get; set; } = true;

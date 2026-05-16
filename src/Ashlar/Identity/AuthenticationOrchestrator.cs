@@ -4,6 +4,13 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity;
 
+/// <summary>
+/// Provides authentication orchestrator behavior.
+/// </summary>
+/// <param name="pipeline">The pipeline value.</param>
+/// <param name="handshakeService">The handshake service value.</param>
+/// <param name="policyEvaluator">The policy evaluator value.</param>
+/// <param name="globalOptions">The global options value.</param>
 public sealed class AuthenticationOrchestrator(
     IAuthenticationPipeline pipeline,
     IAuthenticationHandshakeService handshakeService,

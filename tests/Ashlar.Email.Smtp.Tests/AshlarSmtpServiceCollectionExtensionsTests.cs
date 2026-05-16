@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.Email.Smtp.Tests;
 
 [TestFixture]
-public class AshlarSmtpServiceCollectionExtensionsTests
+internal sealed class AshlarSmtpServiceCollectionExtensionsTests
 {
     [Test]
     public void AddAshlarSmtpEmailTransportShouldRegisterServices()

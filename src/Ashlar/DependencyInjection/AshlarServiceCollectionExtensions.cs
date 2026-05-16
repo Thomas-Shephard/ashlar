@@ -28,11 +28,16 @@ namespace Microsoft.Extensions.DependencyInjection;
 /// <summary>
 /// Provides dependency injection registration helpers for Ashlar identity services.
 /// </summary>
+/// <returns>The operation result.</returns>
 public static class AshlarServiceCollectionExtensions
 {
     /// <summary>
     /// Registers Ashlar's core identity services.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <param name="configureSessions">The configure sessions value.</param>
+    /// <returns>The operation result.</returns>
     /// <remarks>
     /// This method intentionally does not register <see cref="IIdentityRepository"/> or
     /// <see cref="ISecretProtector"/>. Applications should provide those dependencies explicitly.
@@ -105,6 +110,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's URI validation services.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarUriValidation(
         this IServiceCollection services,
         Action<UriValidationOptions>? configure = null)
@@ -125,6 +133,8 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's framework-neutral messaging services.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarMessaging(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -137,6 +147,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's framework-neutral authorization grant services.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     /// <remarks>
     /// This method intentionally does not register <see cref="IAuthorizationGrantRepository"/>.
     /// Applications should provide that dependency explicitly, such as by using Ashlar.Postgres.
@@ -166,6 +179,10 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers an authentication provider implementation.
     /// </summary>
+    /// <typeparam name="TProvider">The tprovider type.</typeparam>
+    /// <param name="services">The services value.</param>
+    /// <param name="lifetime">The lifetime value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAuthenticationProvider<TProvider>(
         this IServiceCollection services,
         ServiceLifetime lifetime = ServiceLifetime.Scoped)
@@ -182,6 +199,10 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers an authentication provider factory.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="implementationFactory">The implementation factory value.</param>
+    /// <param name="lifetime">The lifetime value.</param>
+    /// <returns>The operation result.</returns>
     /// <remarks>
     /// Use this overload when multiple named providers are backed by the same implementation type.
     /// </remarks>
@@ -202,6 +223,10 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers a password hasher implementation.
     /// </summary>
+    /// <typeparam name="THasher">The thasher type.</typeparam>
+    /// <param name="services">The services value.</param>
+    /// <param name="lifetime">The lifetime value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddPasswordHasher<THasher>(
         this IServiceCollection services,
         ServiceLifetime lifetime = ServiceLifetime.Singleton)
@@ -218,6 +243,10 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers a password hasher factory.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="implementationFactory">The implementation factory value.</param>
+    /// <param name="lifetime">The lifetime value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddPasswordHasher(
         this IServiceCollection services,
         Func<IServiceProvider, IPasswordHasher> implementationFactory,
@@ -235,6 +264,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's passwordless email code sign-in provider and issuing service.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarEmailCodeSignIn(
         this IServiceCollection services,
         Action<EmailCodeSignInOptions>? configure = null)
@@ -260,6 +292,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's magic-link email sign-in provider and issuing service.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarMagicLinkSignIn(
         this IServiceCollection services,
         Action<MagicLinkSignInOptions>? configure = null)
@@ -284,6 +319,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's recovery code authentication provider and management service.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarRecoveryCodes(
         this IServiceCollection services,
         Action<RecoveryCodeOptions>? configure = null)
@@ -307,6 +345,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's TOTP authenticator MFA provider and management service.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarTotp(
         this IServiceCollection services,
         Action<TotpOptions>? configure = null)
@@ -336,6 +377,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's generic invitation and onboarding services.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     /// <remarks>
     /// This method intentionally does not register <see cref="IInvitationRepository"/> or
     /// <see cref="IIdentityRepository"/>. Applications should provide those dependencies explicitly,
@@ -364,6 +408,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's generic bootstrap and first-admin setup services.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarBootstrap(
         this IServiceCollection services,
         Action<BootstrapOptions>? configure = null)
@@ -387,6 +434,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers <see cref="DataProtectionSecretProtector"/> as Ashlar's secret protector.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="lifetime">The lifetime value.</param>
+    /// <returns>The operation result.</returns>
     /// <remarks>
     /// The application must also register ASP.NET Core Data Protection services or another
     /// <see cref="Microsoft.AspNetCore.DataProtection.IDataProtectionProvider"/>.
@@ -406,6 +456,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's generic multi-factor authentication handshake infrastructure.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarMfaHandshakes(
         this IServiceCollection services,
         Action<AuthenticationHandshakeOptions>? configure = null)
@@ -435,6 +488,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's MFA policy and authentication orchestration services.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarMfaOrchestration(
         this IServiceCollection services,
         Action<MfaOrchestrationOptions>? configure = null)
@@ -458,6 +514,8 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Explicitly registers the no-MFA policy evaluator.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarNoMfaPolicy(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -471,6 +529,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers a reusable policy evaluator that requires MFA for every active user.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarRequireMfaForAllUsers(
         this IServiceCollection services,
         Action<RequireMfaForAllUsersPolicyOptions> configure)
@@ -488,6 +549,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers a reusable policy evaluator that requires MFA when a qualifying active credential exists.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarRequireMfaWhenCredentialExists(
         this IServiceCollection services,
         Action<CredentialBackedMfaPolicyOptions> configure)
@@ -505,6 +569,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Adds a custom MFA policy evaluator to the composite policy.
     /// </summary>
+    /// <typeparam name="T">The result value type.</typeparam>
+    /// <param name="services">The services value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarMfaPolicyEvaluator<T>(this IServiceCollection services)
         where T : class, IMfaPolicyEvaluator
     {
@@ -521,6 +588,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's email verification services.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarEmailVerification(
         this IServiceCollection services,
         Action<EmailVerificationOptions>? configure = null)
@@ -548,6 +618,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's email change services.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarEmailChange(
         this IServiceCollection services,
         Action<EmailChangeOptions>? configure = null)
@@ -576,6 +649,9 @@ public static class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's generic security notification services.
     /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarSecurityNotifications(
         this IServiceCollection services,
         Action<SecurityNotificationOptions>? configure = null)

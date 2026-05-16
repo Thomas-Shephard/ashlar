@@ -2,7 +2,7 @@ using Ashlar.Identity.Models;
 
 namespace Ashlar.Tests.Identity;
 
-public class ModelTests
+internal sealed class ModelTests
 {
     [Test]
     public void TenantPropertiesShouldWork()
@@ -26,7 +26,7 @@ public class ModelTests
 
         tenant.Name = "New Acme";
         tenant.IsActive = true;
-        
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tenant.Name, Is.EqualTo("New Acme"));

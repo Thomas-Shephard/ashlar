@@ -12,7 +12,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public sealed class AuthenticationHandshakeServiceTests
+internal sealed class AuthenticationHandshakeServiceTests
 {
     private static readonly string[] ExpectedRequiredFactors = ["totp", "email"];
 

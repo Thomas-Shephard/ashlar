@@ -12,7 +12,7 @@ using Moq;
 
 namespace Ashlar.AspNetCore.Tests;
 
-public sealed class AshlarSignInManagerTests
+internal sealed class AshlarSignInManagerTests
 {
     [Test]
     public async Task SignInAsyncShouldAppendSecureHttpOnlyCookie()

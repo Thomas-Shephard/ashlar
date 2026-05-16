@@ -16,7 +16,7 @@ using Moq;
 namespace Ashlar.Tests.Identity;
 
 [TestFixture]
-public class TotpTests
+internal sealed class TotpTests
 {
     private Mock<IIdentityRepository> _repository;
     private Mock<ICredentialService> _credentialService;

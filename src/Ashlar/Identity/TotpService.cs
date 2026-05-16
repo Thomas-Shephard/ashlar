@@ -23,6 +23,14 @@ public sealed class TotpService : ITotpService
     private readonly SecurityEventEmitter _securityEvents;
     private readonly SecurityNotificationEmitter _notifications;
 
+    /// <summary>
+    /// Initializes a configured service instance.
+    /// </summary>
+    /// <param name="repository">The repository value.</param>
+    /// <param name="credentialService">The credential service value.</param>
+    /// <param name="transactionProvider">The transaction provider value.</param>
+    /// <param name="providers">The providers value.</param>
+    /// <param name="dependencies">The dependencies value.</param>
     public TotpService(
         IIdentityRepository repository,
         ICredentialService credentialService,
@@ -203,14 +211,33 @@ public sealed class TotpService : ITotpService
     }
 }
 
+/// <summary>
+/// Provides totp service dependencies behavior.
+/// </summary>
+/// <param name="options">The options value.</param>
+/// <param name="timeProvider">The time provider value.</param>
+/// <param name="securityEventSink">The security event sink value.</param>
+/// <param name="notificationService">The notification service value.</param>
 public sealed class TotpServiceDependencies(
     IOptions<TotpOptions> options,
     TimeProvider? timeProvider = null,
     ISecurityEventSink? securityEventSink = null,
     ISecurityNotificationService? notificationService = null)
 {
+    /// <summary>
+    /// Gets the configured dependency value.
+    /// </summary>
     public IOptions<TotpOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
+    /// <summary>
+    /// Gets or sets the time provider value.
+    /// </summary>
     public TimeProvider TimeProvider { get; } = timeProvider ?? TimeProvider.System;
+    /// <summary>
+    /// Gets or sets the security event sink value.
+    /// </summary>
     public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
+    /// <summary>
+    /// Gets or sets the notification service value.
+    /// </summary>
     public ISecurityNotificationService? NotificationService { get; } = notificationService;
 }

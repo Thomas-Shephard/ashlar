@@ -1,10 +1,24 @@
 namespace Ashlar.Identity.Models;
 
+/// <summary>
+/// Represents the struct data model.
+/// </summary>
 public readonly record struct AuthenticationProviderKey
 {
+    /// <summary>
+    /// Gets or sets the type value.
+    /// </summary>
     public ProviderType Type { get; }
+    /// <summary>
+    /// Gets or sets the name value.
+    /// </summary>
     public string Name => field ?? string.Empty;
 
+    /// <summary>
+    /// Initializes a new instance of the authentication provider key class.
+    /// </summary>
+    /// <param name="type">The type value.</param>
+    /// <param name="name">The name value.</param>
     public AuthenticationProviderKey(ProviderType type, string name)
     {
         if (type == default)
@@ -18,24 +32,46 @@ public readonly record struct AuthenticationProviderKey
         Name = name.Trim();
     }
 
+    /// <summary>
+    /// Executes the new operation.
+    /// </summary>
     public static AuthenticationProviderKey Local { get; } = new(ProviderType.Local, ProviderType.Local.Value);
+    /// <summary>
+    /// Executes the new operation.
+    /// </summary>
     public static AuthenticationProviderKey EmailCode { get; } = new(ProviderType.EmailCode, ProviderType.EmailCode.Value);
+    /// <summary>
+    /// Executes the new operation.
+    /// </summary>
     public static AuthenticationProviderKey MagicLink { get; } = new(ProviderType.MagicLink, ProviderType.MagicLink.Value);
 
+    /// <summary>
+    /// Performs the equals operation and returns the result.
+    /// </summary>
+    /// <param name="other">The other value.</param>
+    /// <returns>The operation result.</returns>
     public bool Equals(AuthenticationProviderKey other)
     {
         return Type == other.Type && StringComparer.OrdinalIgnoreCase.Equals(Name, other.Name);
     }
 
+    /// <summary>
+    /// Performs the get hash code operation and returns the result.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public override int GetHashCode()
     {
         return HashCode.Combine(Type, StringComparer.OrdinalIgnoreCase.GetHashCode(Name));
     }
 
+    /// <summary>
+    /// Performs the to string operation and returns the result.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public override string ToString()
     {
-        return Type == default 
-            ? "<uninitialized provider>" 
+        return Type == default
+            ? "<uninitialized provider>"
             : $"{Type.Value}:{Name}";
     }
 }

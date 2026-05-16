@@ -13,9 +13,9 @@ public static class SecretRedactor
     /// <summary>
     /// Checks if a secret is present in the provided exception's message or stack trace.
     /// </summary>
-    /// <param name="exception">The exception to check.</param>
-    /// <param name="secret">The secret to look for.</param>
-    /// <returns>True if the secret is found and is of sufficient length; otherwise, false.</returns>
+    /// <param name="exception">The exception value.</param>
+    /// <param name="secret">The secret value.</param>
+    /// <returns>The operation result.</returns>
     public static bool ContainsSecret(Exception? exception, string? secret)
     {
         if (exception == null || string.IsNullOrEmpty(secret))
@@ -29,9 +29,9 @@ public static class SecretRedactor
     /// <summary>
     /// Redacts secrets from the string representation of an exception.
     /// </summary>
-    /// <param name="exception">The exception to redact.</param>
-    /// <param name="secrets">The secrets to redact.</param>
-    /// <returns>A string representation of the exception with secrets redacted.</returns>
+    /// <param name="exception">The exception value.</param>
+    /// <param name="secrets">The secrets value.</param>
+    /// <returns>The operation result.</returns>
     public static string Redact(Exception exception, params string?[] secrets)
     {
         ArgumentNullException.ThrowIfNull(exception);
@@ -41,9 +41,9 @@ public static class SecretRedactor
     /// <summary>
     /// Redacts secrets from a string.
     /// </summary>
-    /// <param name="value">The string to redact.</param>
-    /// <param name="secrets">The secrets to redact.</param>
-    /// <returns>The string with secrets redacted.</returns>
+    /// <param name="value">The contained result value.</param>
+    /// <param name="secrets">The secrets value.</param>
+    /// <returns>The operation result.</returns>
     public static string Redact(string? value, params string?[] secrets)
     {
         if (string.IsNullOrEmpty(value) || secrets.Length == 0)

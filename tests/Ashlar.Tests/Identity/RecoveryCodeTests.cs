@@ -15,7 +15,7 @@ using Moq;
 namespace Ashlar.Tests.Identity;
 
 [TestFixture]
-public class RecoveryCodeTests
+internal sealed class RecoveryCodeTests
 {
     [Test]
     public void GeneratorGeneratesUniqueCodes()
@@ -507,7 +507,8 @@ public class RecoveryCodeTests
         var services = new ServiceCollection();
         services.AddSingleton(new Mock<IIdentityRepository>().Object);
         services.AddSingleton(new Mock<IAshlarTransactionProvider>().Object);
-        services.AddAshlarRecoveryCodes(opts => {
+        services.AddAshlarRecoveryCodes(opts =>
+        {
             opts.CodeCount = 12;
         });
 

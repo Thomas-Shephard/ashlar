@@ -5,7 +5,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public class AuthenticationPipelineTests
+internal sealed class AuthenticationPipelineTests
 {
     private Mock<IAuthenticationProviderRegistry> _providerRegistryMock;
     private Mock<ICredentialService> _credentialServiceMock;

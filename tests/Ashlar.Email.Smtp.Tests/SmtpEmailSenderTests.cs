@@ -4,7 +4,7 @@ using Moq;
 namespace Ashlar.Email.Smtp.Tests;
 
 [TestFixture]
-public class SmtpEmailSenderTests
+internal sealed class SmtpEmailSenderTests
 {
     [Test]
     public async Task SendAsyncShouldDelegateToTransport()

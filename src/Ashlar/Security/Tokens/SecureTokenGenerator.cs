@@ -7,6 +7,11 @@ namespace Ashlar.Security.Tokens;
 /// </summary>
 public sealed class SecureTokenGenerator : ISecureTokenGenerator
 {
+    /// <summary>
+    /// Performs the generate token operation and returns the result.
+    /// </summary>
+    /// <param name="byteLength">The byte length value.</param>
+    /// <returns>The operation result.</returns>
     public string GenerateToken(int byteLength = ISecureTokenGenerator.DefaultByteLength)
     {
         if (byteLength is < ISecureTokenGenerator.MinimumByteLength or > ISecureTokenGenerator.MaximumByteLength)

@@ -3,7 +3,7 @@ using Ashlar.Messaging;
 
 namespace Ashlar.Tests.Messaging;
 
-public sealed class EmailMessageTests
+internal sealed class EmailMessageTests
 {
     [Test]
     public void EmailMessageAcceptsValidTextEmail()

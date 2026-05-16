@@ -1,19 +1,43 @@
 namespace Ashlar.Identity.Notifications;
 
+/// <summary>
+/// Provides security notification options behavior.
+/// </summary>
 public sealed class SecurityNotificationOptions
 {
+    /// <summary>
+    /// Gets or sets the enabled value.
+    /// </summary>
     public bool Enabled { get; set; }
+    /// <summary>
+    /// Gets or sets the enabled types value.
+    /// </summary>
     public HashSet<SecurityNotificationType> EnabledTypes { get; } = [];
+    /// <summary>
+    /// Gets or sets the template overrides value.
+    /// </summary>
     public Dictionary<SecurityNotificationType, SecurityNotificationTemplate> TemplateOverrides { get; } = [];
+    /// <summary>
+    /// Executes the create default cooldowns operation.
+    /// </summary>
     public Dictionary<SecurityNotificationType, TimeSpan> Cooldowns { get; } = CreateDefaultCooldowns();
+    /// <summary>
+    /// Gets or sets the include ip address value.
+    /// </summary>
     public bool IncludeIpAddress { get; set; } = true;
+    /// <summary>
+    /// Gets or sets the include user agent value.
+    /// </summary>
     public bool IncludeUserAgent { get; set; } = true;
 
     /// <summary>
-    /// The email address to use as the sender. If null, the default sender configured in <c>IEmailSender</c> will be used.
+    /// The email address to use as the sender. If <see langword="null" />, the default sender configured in <c>IEmailSender</c> will be used.
     /// </summary>
     public string? FromAddress { get; set; }
 
+    /// <summary>
+    /// Executes the new operation.
+    /// </summary>
     public static Dictionary<SecurityNotificationType, SecurityNotificationTemplate> DefaultTemplates { get; } = new()
     {
         [SecurityNotificationType.SignIn] = new SecurityNotificationTemplate

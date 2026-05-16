@@ -2,7 +2,7 @@ using Ashlar.Identity.Models;
 
 namespace Ashlar.Tests.Identity;
 
-public class ProviderTypeTests
+internal sealed class ProviderTypeTests
 {
     [Test]
     public void DefaultProviderTypeShouldThrowWhenRead()

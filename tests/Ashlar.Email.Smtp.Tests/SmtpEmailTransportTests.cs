@@ -9,7 +9,7 @@ using Moq;
 namespace Ashlar.Email.Smtp.Tests;
 
 [TestFixture]
-public class SmtpEmailTransportTests
+internal sealed class SmtpEmailTransportTests
 {
     private Mock<ISmtpClient> _mockSmtpClient;
     private SmtpEmailOptions _options;

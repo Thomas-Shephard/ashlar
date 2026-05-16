@@ -19,6 +19,16 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
     private readonly SecurityEventEmitter _securityEvents;
     private readonly SecurityNotificationEmitter _notifications;
 
+    /// <summary>
+    /// Initializes a configured service instance.
+    /// </summary>
+    /// <param name="repository">The repository value.</param>
+    /// <param name="transactionProvider">The transaction provider value.</param>
+    /// <param name="hasherSelector">The hasher selector value.</param>
+    /// <param name="options">The options value.</param>
+    /// <param name="timeProvider">The time provider value.</param>
+    /// <param name="securityEventSink">The security event sink value.</param>
+    /// <param name="notificationService">The notification service value.</param>
     public RecoveryCodeService(
         IIdentityRepository repository,
         IAshlarTransactionProvider transactionProvider,

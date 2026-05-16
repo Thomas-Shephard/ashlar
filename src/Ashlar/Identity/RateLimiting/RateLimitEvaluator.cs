@@ -5,11 +5,16 @@ namespace Ashlar.Identity.RateLimiting;
 /// <summary>
 /// Evaluates rate limit state transitions for authentication rate limiter implementations.
 /// </summary>
+/// <returns>The operation result.</returns>
 public static class RateLimitEvaluator
 {
     /// <summary>
     /// Applies the rate limit rule to the current state and returns the resulting decision.
     /// </summary>
+    /// <param name="state">The state value.</param>
+    /// <param name="rule">The rule value.</param>
+    /// <param name="now">The now value.</param>
+    /// <returns>The operation result.</returns>
     /// <remarks>
     /// Implementations should load the state, call this method, then persist the mutated state atomically.
     /// </remarks>

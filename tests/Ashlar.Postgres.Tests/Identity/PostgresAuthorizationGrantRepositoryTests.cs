@@ -6,7 +6,7 @@ using Microsoft.Extensions.Time.Testing;
 
 namespace Ashlar.Postgres.Tests.Identity;
 
-public sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBase
+internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBase
 {
     private static readonly Guid UserId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
     private readonly DateTimeOffset _now = new(2026, 5, 8, 12, 0, 0, TimeSpan.Zero);

@@ -2,7 +2,7 @@ using Ashlar.Operational;
 
 namespace Ashlar.Tests.Operational;
 
-public sealed class AshlarCleanupResultTests
+internal sealed class AshlarCleanupResultTests
 {
     [Test]
     public void EmptyHasZeroTotal()

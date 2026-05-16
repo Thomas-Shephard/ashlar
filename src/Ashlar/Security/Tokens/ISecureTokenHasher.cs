@@ -8,7 +8,7 @@ public interface ISecureTokenHasher
     /// <summary>
     /// Hashes a raw token.
     /// </summary>
-    /// <param name="token">The raw token to hash.</param>
-    /// <returns>A deterministic token hash suitable for persistence.</returns>
+    /// <param name="token">The token value.</param>
+    /// <returns>The operation result.</returns>
     string HashToken(string token);
 }

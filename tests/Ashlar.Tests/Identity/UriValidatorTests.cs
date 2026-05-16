@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.Tests.Identity;
 
 [TestFixture]
-public class UriValidatorTests
+internal sealed class UriValidatorTests
 {
     [Test]
     public void ConstructorThrowsWhenConfiguredUriIsNotAbsolute()

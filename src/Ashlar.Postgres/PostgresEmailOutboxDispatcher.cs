@@ -9,7 +9,10 @@ namespace Ashlar.Postgres;
 /// <summary>
 /// A PostgreSQL-backed implementation of <see cref="IEmailOutboxDispatcher"/> that dispatches pending email messages.
 /// </summary>
-/// <typeparam name="TTransport">The type of <see cref="IEmailTransport"/> to use for delivery.</typeparam>
+/// <typeparam name="TTransport">The ttransport type.</typeparam>
+/// <param name="serviceProvider">The service provider value.</param>
+/// <param name="timeProvider">The time provider value.</param>
+/// <param name="options">The options value.</param>
 public sealed class PostgresEmailOutboxDispatcher<TTransport>(
     IServiceProvider serviceProvider,
     TimeProvider timeProvider,
@@ -137,7 +140,7 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
 
         // Exponential backoff: InitialDelay * 2^(attempt - 1), safely capped to prevent overflow
         var backoffMultiplier = Math.Pow(2, attemptCount - 1);
-        var maxDelayTicks = TimeSpan.FromDays(7).Ticks; 
+        var maxDelayTicks = TimeSpan.FromDays(7).Ticks;
         var delayTicks = Math.Min(_options.InitialRetryDelay.Ticks * backoffMultiplier, maxDelayTicks);
         var availableAt = isFinalFailure ? now : now.AddTicks((long)delayTicks);
 
@@ -199,15 +202,45 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
 
     internal sealed class OutboxEntry
     {
+        /// <summary>
+        /// Gets or sets the id value.
+        /// </summary>
         public Guid Id { get; init; }
+        /// <summary>
+        /// Gets or sets the to address value.
+        /// </summary>
         public required string ToAddress { get; init; }
+        /// <summary>
+        /// Gets or sets the from address value.
+        /// </summary>
         public string? FromAddress { get; init; }
+        /// <summary>
+        /// Gets or sets the reply to address value.
+        /// </summary>
         public string? ReplyToAddress { get; init; }
+        /// <summary>
+        /// Gets or sets the subject value.
+        /// </summary>
         public required string Subject { get; init; }
+        /// <summary>
+        /// Gets or sets the text body value.
+        /// </summary>
         public string? TextBody { get; init; }
+        /// <summary>
+        /// Gets or sets the html body value.
+        /// </summary>
         public string? HtmlBody { get; init; }
+        /// <summary>
+        /// Gets or sets the headers value.
+        /// </summary>
         public string? Headers { get; init; }
+        /// <summary>
+        /// Gets or sets the metadata value.
+        /// </summary>
         public string? Metadata { get; init; }
+        /// <summary>
+        /// Gets or sets the attempt count value.
+        /// </summary>
         public int AttemptCount { get; init; }
     }
 }

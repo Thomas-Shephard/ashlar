@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Ashlar.AspNetCore.Tests;
 
-public sealed class AshlarApplicationBuilderExtensionsTests
+internal sealed class AshlarApplicationBuilderExtensionsTests
 {
     [Test]
     public void UseAshlarRequireIpAddressRejectsNullBuilder()
@@ -30,7 +30,8 @@ public sealed class AshlarApplicationBuilderExtensionsTests
         var app = builder.Build();
         var context = new DefaultHttpContext
         {
-            RequestServices = services, Connection = { RemoteIpAddress = IPAddress.Loopback }
+            RequestServices = services,
+            Connection = { RemoteIpAddress = IPAddress.Loopback }
         };
 
         await app(context);

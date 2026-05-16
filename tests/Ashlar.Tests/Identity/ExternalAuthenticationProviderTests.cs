@@ -6,7 +6,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public class ExternalAuthenticationProviderTests
+internal sealed class ExternalAuthenticationProviderTests
 {
     private OidcAuthenticationProvider _provider;
 

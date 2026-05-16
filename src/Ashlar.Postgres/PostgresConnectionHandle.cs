@@ -31,7 +31,10 @@ public sealed class PostgresConnectionHandle : IAsyncDisposable
     /// </summary>
     public NpgsqlTransaction? Transaction { get; }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Disposes the owned PostgreSQL connection when this handle owns it.
+    /// </summary>
+    /// <returns>A value task that represents the asynchronous dispose operation.</returns>
     public async ValueTask DisposeAsync()
     {
         if (_disposed)

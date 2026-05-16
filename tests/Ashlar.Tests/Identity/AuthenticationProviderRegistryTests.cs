@@ -6,7 +6,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public class AuthenticationProviderRegistryTests
+internal sealed class AuthenticationProviderRegistryTests
 {
     [Test]
     public void TryGetProviderWithSupportedAssertionShouldReturnRegisteredProvider()

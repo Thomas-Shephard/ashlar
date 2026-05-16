@@ -8,7 +8,7 @@ using Moq;
 
 namespace Ashlar.Tests.DependencyInjection;
 
-public class AshlarMfaOrchestrationServiceCollectionExtensionsTests
+internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
 {
     [Test]
     public void AddAshlarMfaOrchestrationRegistersServicesWithExpectedLifetimes()

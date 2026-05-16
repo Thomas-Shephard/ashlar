@@ -13,7 +13,7 @@ using Npgsql;
 
 namespace Ashlar.Postgres.Tests.Integration;
 
-public sealed class PostgresAspNetCoreAuthenticationIntegrationTests : PostgresTestBase
+internal sealed class PostgresAspNetCoreAuthenticationIntegrationTests : PostgresTestBase
 {
     private ServiceProvider? _serviceProvider;
     private RecordingEmailSender _emailSender;
@@ -82,7 +82,7 @@ public sealed class PostgresAspNetCoreAuthenticationIntegrationTests : PostgresT
             Assert.That(response.User?.Id, Is.EqualTo(user.Id));
         }
 
-        var signInContext = new DefaultHttpContext{ RequestServices = setupScope.ServiceProvider, Request = { Scheme = "https", Host = new HostString("example.test") }, Connection = { RemoteIpAddress = System.Net.IPAddress.Loopback } };
+        var signInContext = new DefaultHttpContext { RequestServices = setupScope.ServiceProvider, Request = { Scheme = "https", Host = new HostString("example.test") }, Connection = { RemoteIpAddress = System.Net.IPAddress.Loopback } };
         signInContext.Request.Headers.UserAgent = "Ashlar integration test";
 
         var session = await setupScope.ServiceProvider.GetRequiredService<IAshlarSignInManager>().SignInAsync(signInContext, user.Id);

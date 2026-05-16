@@ -11,7 +11,7 @@ public sealed class RateLimitDecision
     public required RateLimitStatus Status { get; init; }
 
     /// <summary>
-    /// True if the attempt is allowed; otherwise, false.
+    /// <see langword="true" /> if the attempt is allowed; otherwise, <see langword="false" />.
     /// </summary>
     public bool IsAllowed => Status == RateLimitStatus.Allowed;
 

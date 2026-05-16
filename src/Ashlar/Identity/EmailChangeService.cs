@@ -8,6 +8,11 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity;
 
+/// <summary>
+/// Provides email change service behavior.
+/// </summary>
+/// <param name="dependencies">The dependencies value.</param>
+/// <param name="options">The options value.</param>
 public sealed class EmailChangeService(
     EmailChangeDependencies dependencies,
     IOptions<EmailChangeOptions>? options = null)
@@ -22,6 +27,12 @@ public sealed class EmailChangeService(
     private readonly IOptions<EmailChangeOptions> _options = options ?? Options.Create(new EmailChangeOptions());
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
 
+    /// <summary>
+    /// Performs the request change <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<Result> RequestChangeAsync(RequestEmailChangeRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -160,6 +171,12 @@ public sealed class EmailChangeService(
         return Result.Success();
     }
 
+    /// <summary>
+    /// Performs the confirm change <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<Result> ConfirmChangeAsync(ConfirmEmailChangeRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -306,12 +323,33 @@ public sealed class EmailChangeService(
 
     private sealed class UpdatedUserWrapper(IUser original, string newEmail, DateTimeOffset? emailVerifiedAt) : ITenantUser, IHasAuditMetadata
     {
+        /// <summary>
+        /// Gets or sets the id value.
+        /// </summary>
         public Guid Id => original.Id;
+        /// <summary>
+        /// Gets or sets the email value.
+        /// </summary>
         public string Email { get; } = newEmail;
+        /// <summary>
+        /// Gets or sets the name value.
+        /// </summary>
         public string? Name => original.Name;
+        /// <summary>
+        /// Gets or sets the is active value.
+        /// </summary>
         public bool IsActive => original.IsActive;
+        /// <summary>
+        /// Gets or sets the tenant id value.
+        /// </summary>
         public Guid? TenantId => (original as ITenantUser)?.TenantId;
+        /// <summary>
+        /// Gets or sets the email verified at value.
+        /// </summary>
         public DateTimeOffset? EmailVerifiedAt { get; } = emailVerifiedAt;
+        /// <summary>
+        /// Gets or sets the created at value.
+        /// </summary>
         public DateTimeOffset CreatedAt => (original as IHasAuditMetadata)?.CreatedAt ?? default;
         public DateTimeOffset? UpdatedAt
         {

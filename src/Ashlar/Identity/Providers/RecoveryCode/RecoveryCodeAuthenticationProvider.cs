@@ -19,6 +19,14 @@ public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
 
+    /// <summary>
+    /// Initializes a configured service instance.
+    /// </summary>
+    /// <param name="hasherSelector">The hasher selector value.</param>
+    /// <param name="rateLimiter">The rate limiter value.</param>
+    /// <param name="options">The options value.</param>
+    /// <param name="timeProvider">The time provider value.</param>
+    /// <param name="securityEventSink">The security event sink value.</param>
     public RecoveryCodeAuthenticationProvider(
         PasswordHasherSelector hasherSelector,
         IAuthenticationRateLimiter rateLimiter,
@@ -38,14 +46,35 @@ public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
         _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
     }
 
+    /// <summary>
+    /// Gets or sets the key value.
+    /// </summary>
     public AuthenticationProviderKey Key => _options.ProviderKey;
 
+    /// <summary>
+    /// Gets or sets the protects credentials value.
+    /// </summary>
     public bool ProtectsCredentials => false;
 
+    /// <summary>
+    /// Gets or sets the typical credential length value.
+    /// </summary>
     public int TypicalCredentialLength => 128; // Hashed password length
 
+    /// <summary>
+    /// Executes the get provider key operation.
+    /// </summary>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="userId">The user id value.</param>
+    /// <returns>The operation result.</returns>
     public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId) => string.Empty;
 
+    /// <summary>
+    /// Performs the prepare credential value operation and returns the result.
+    /// </summary>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="rawValue">The raw value value.</param>
+    /// <returns>The operation result.</returns>
     public string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue)
     {
         if (string.IsNullOrWhiteSpace(rawValue))
@@ -57,6 +86,14 @@ public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
         return hashed;
     }
 
+    /// <summary>
+    /// Performs the find user <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="context">The context value.</param>
+    /// <param name="repository">The repository value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -81,6 +118,14 @@ public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
         return repository.GetUserByEmailAsync(email, context.TenantId, cancellationToken);
     }
 
+    /// <summary>
+    /// Performs the resolve credential <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="userId">The user id value.</param>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="repository">The repository value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<UserCredential?> ResolveCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IIdentityRepository repository, CancellationToken cancellationToken = default)
     {
         if (assertion is not RecoveryCodeAssertion recoveryCodeAssertion)
@@ -140,6 +185,13 @@ public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
         return null;
     }
 
+    /// <summary>
+    /// Performs the authenticate <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="credential">The credential value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default)
     {
         if (assertion is not RecoveryCodeAssertion)

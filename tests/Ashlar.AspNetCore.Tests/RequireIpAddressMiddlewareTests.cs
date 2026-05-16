@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Http;
 
 namespace Ashlar.AspNetCore.Tests;
 
-public sealed class RequireIpAddressMiddlewareTests
+internal sealed class RequireIpAddressMiddlewareTests
 {
     [Test]
     public void ConstructorRejectsNullNextDelegate()

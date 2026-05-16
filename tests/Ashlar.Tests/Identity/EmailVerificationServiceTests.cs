@@ -11,7 +11,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public sealed class EmailVerificationServiceTests
+internal sealed class EmailVerificationServiceTests
 {
     private readonly AshlarUser _user = new() { Id = Guid.NewGuid(), Email = "user@example.com", IsActive = true };
 

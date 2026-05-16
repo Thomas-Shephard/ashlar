@@ -6,7 +6,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public class LocalPasswordProviderTests
+internal sealed class LocalPasswordProviderTests
 {
     private FakePasswordHasher _fakeHasher;
     private PasswordHasherSelector _hasherSelector;

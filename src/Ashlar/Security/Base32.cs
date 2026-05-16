@@ -9,6 +9,11 @@ internal static class Base32
 {
     private const string Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
+    /// <summary>
+    /// Performs the encode operation and returns the result.
+    /// </summary>
+    /// <param name="data">The data value.</param>
+    /// <returns>The operation result.</returns>
     public static string Encode(ReadOnlySpan<byte> data)
     {
         if (data.IsEmpty) return string.Empty;
@@ -65,6 +70,12 @@ internal static class Base32
         }
     }
 
+    /// <summary>
+    /// Performs the try decode operation and returns the result.
+    /// </summary>
+    /// <param name="base32">The base32 value.</param>
+    /// <param name="result">The converted result value.</param>
+    /// <returns>The operation result.</returns>
     public static bool TryDecode(string? base32, [NotNullWhen(true)] out byte[]? result)
     {
         result = null;

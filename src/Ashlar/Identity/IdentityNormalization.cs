@@ -8,9 +8,9 @@ public static class IdentityNormalization
     /// <summary>
     /// Normalizes an email address for consistent storage and lookup.
     /// </summary>
-    /// <param name="email">The email address to normalize.</param>
-    /// <returns>A normalized, upper-case version of the email address.</returns>
-    /// <exception cref="ArgumentException">Thrown if the email is null or whitespace.</exception>
+    /// <param name="email">The email value.</param>
+    /// <returns>The operation result.</returns>
+    /// <exception cref="ArgumentException">Thrown if the email is <see langword="null" /> or whitespace.</exception>
     public static string NormalizeEmail(string email)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
@@ -20,9 +20,9 @@ public static class IdentityNormalization
     /// <summary>
     /// Trims an email address and rejects values that could escape email headers.
     /// </summary>
-    /// <param name="email">The email address to sanitize.</param>
-    /// <returns>The trimmed email address.</returns>
-    /// <exception cref="ArgumentException">Thrown if the email is null, whitespace, or contains line breaks.</exception>
+    /// <param name="email">The email value.</param>
+    /// <returns>The operation result.</returns>
+    /// <exception cref="ArgumentException">Thrown if the email is <see langword="null" />, whitespace, or contains line breaks.</exception>
     public static string SanitizeEmailForDelivery(string email)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);

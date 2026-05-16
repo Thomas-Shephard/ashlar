@@ -10,8 +10,8 @@ public sealed class AshlarRoleRequirement : IAuthorizationRequirement
     /// <summary>
     /// Initializes a new instance of the <see cref="AshlarRoleRequirement"/> class.
     /// </summary>
-    /// <param name="role">The role name.</param>
-    /// <param name="policyName">The name of the policy this requirement belongs to.</param>
+    /// <param name="role">The role value.</param>
+    /// <param name="policyName">The policy name value.</param>
     public AshlarRoleRequirement(string role, string policyName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(role);

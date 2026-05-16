@@ -1,19 +1,52 @@
 namespace Ashlar.Identity.Models;
 
+/// <summary>
+/// Provides email change options behavior.
+/// </summary>
 public sealed class EmailChangeOptions
 {
+    /// <summary>
+    /// Gets or sets the expiration value.
+    /// </summary>
     public TimeSpan Expiration { get; set; } = TimeSpan.FromHours(2);
+    /// <summary>
+    /// Gets or sets the subject value.
+    /// </summary>
     public string Subject { get; set; } = "Confirm your new email address";
+    /// <summary>
+    /// Gets or sets the email text template value.
+    /// </summary>
     public string EmailTextTemplate { get; set; } = "Click the following link to confirm your new email address: {0}";
+    /// <summary>
+    /// Gets or sets the from address value.
+    /// </summary>
     public string? FromAddress { get; set; }
+    /// <summary>
+    /// Gets or sets the revoke sessions value.
+    /// </summary>
     public bool RevokeSessions { get; set; } = true;
+    /// <summary>
+    /// Gets or sets the token parameter name value.
+    /// </summary>
     public string TokenParameterName { get; set; } = "t";
+    /// <summary>
+    /// Gets or sets the user id parameter name value.
+    /// </summary>
     public string UserIdParameterName { get; set; } = "u";
 }
 
+/// <summary>
+/// Provides request email change request behavior.
+/// </summary>
 public sealed class RequestEmailChangeRequest
 {
+    /// <summary>
+    /// Gets or sets the user id value.
+    /// </summary>
     public required Guid UserId { get; init; }
+    /// <summary>
+    /// Gets or sets the new email value.
+    /// </summary>
     public required string NewEmail { get; init; }
 
     /// <summary>
@@ -23,11 +56,23 @@ public sealed class RequestEmailChangeRequest
     /// WARNING: This URI must be validated using <see cref="Ashlar.Identity.Abstractions.IUriValidator"/> before use.
     /// </remarks>
     public required Uri CallbackBaseUri { get; init; }
+    /// <summary>
+    /// Gets or sets the context value.
+    /// </summary>
     public AuthenticationContext? Context { get; init; }
 }
 
+/// <summary>
+/// Provides confirm email change request behavior.
+/// </summary>
 public sealed class ConfirmEmailChangeRequest
 {
+    /// <summary>
+    /// Gets or sets the user id value.
+    /// </summary>
     public required Guid UserId { get; init; }
+    /// <summary>
+    /// Gets or sets the token value.
+    /// </summary>
     public required string Token { get; init; }
 }

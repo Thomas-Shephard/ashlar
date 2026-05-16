@@ -15,9 +15,9 @@ public static class AshlarSmtpServiceCollectionExtensions
     /// <summary>
     /// Registers the Ashlar SMTP email transport.
     /// </summary>
-    /// <param name="services">The <see cref="IServiceCollection"/>.</param>
-    /// <param name="configure">The configuration action.</param>
-    /// <returns>The <see cref="IServiceCollection"/>.</returns>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarSmtpEmailTransport(
         this IServiceCollection services,
         Action<SmtpEmailOptions> configure)
@@ -34,9 +34,9 @@ public static class AshlarSmtpServiceCollectionExtensions
     /// <summary>
     /// Registers the Ashlar SMTP email transport and sets it as the primary <see cref="IEmailSender"/>.
     /// </summary>
-    /// <param name="services">The <see cref="IServiceCollection"/>.</param>
-    /// <param name="configure">The configuration action.</param>
-    /// <returns>The <see cref="IServiceCollection"/>.</returns>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddAshlarSmtpEmailSender(
         this IServiceCollection services,
         Action<SmtpEmailOptions> configure)

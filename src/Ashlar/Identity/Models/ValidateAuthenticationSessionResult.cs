@@ -1,18 +1,21 @@
 namespace Ashlar.Identity.Models;
 
 /// <summary>
-/// Result returned when a presented authentication session token is validated.
+/// Result returned when a presented authentication <paramref name="Session" /> token is validated.
 /// </summary>
-/// <param name="Succeeded">Whether validation succeeded.</param>
-/// <param name="Session">The matching session when one was found.</param>
-/// <param name="UserId">The owning user identifier when validation succeeded.</param>
-/// <param name="Status">The validation status.</param>
+/// <param name="Succeeded">The succeeded value.</param>
+/// <param name="Session">The session value.</param>
+/// <param name="UserId">The user id value.</param>
+/// <param name="Status">The status value.</param>
 public sealed record ValidateAuthenticationSessionResult(
     bool Succeeded,
     AuthenticationSession? Session,
     Guid? UserId,
     AuthenticationSessionValidationStatus Status)
 {
+    /// <summary>
+    /// Gets or sets the failed value.
+    /// </summary>
     public static ValidateAuthenticationSessionResult Failed { get; } =
         new(false, null, null, AuthenticationSessionValidationStatus.Failed);
 }

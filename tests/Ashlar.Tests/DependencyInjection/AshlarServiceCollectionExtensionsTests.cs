@@ -19,7 +19,7 @@ using Moq;
 
 namespace Ashlar.Tests.DependencyInjection;
 
-public class AshlarServiceCollectionExtensionsTests
+internal sealed class AshlarServiceCollectionExtensionsTests
 {
     [Test]
     public void AddAshlarIdentityRegistersCoreServicesWithExpectedLifetimes()

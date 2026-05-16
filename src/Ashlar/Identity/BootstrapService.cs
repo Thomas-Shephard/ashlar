@@ -9,6 +9,15 @@ using System.Text.Json;
 
 namespace Ashlar.Identity;
 
+/// <summary>
+/// Provides bootstrap service behavior.
+/// </summary>
+/// <param name="stateRepository">The state repository value.</param>
+/// <param name="invitationService">The invitation service value.</param>
+/// <param name="invitationDependencies">The invitation dependencies value.</param>
+/// <param name="grantService">The grant service value.</param>
+/// <param name="options">The options value.</param>
+/// <param name="notificationService">The notification service value.</param>
 public sealed class BootstrapService(
     IBootstrapStateRepository stateRepository,
     IInvitationService invitationService,
@@ -28,11 +37,22 @@ public sealed class BootstrapService(
     private readonly SecurityEventEmitter _securityEvents = new(invitationDependencies.SecurityEventSink, invitationDependencies.TimeProvider);
     private readonly SecurityNotificationEmitter _notifications = new(notificationService);
 
+    /// <summary>
+    /// Performs the get status <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public Task<BootstrapStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
         return _stateRepository.GetBootstrapStatusAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Performs the create bootstrap invitation <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<Result<string>> CreateBootstrapInvitationAsync(CreateBootstrapInvitationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -125,6 +145,13 @@ public sealed class BootstrapService(
         return Result.Success(token);
     }
 
+    /// <summary>
+    /// Performs the accept bootstrap invitation <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <param name="context">The context value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<Result<Guid>> AcceptBootstrapInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

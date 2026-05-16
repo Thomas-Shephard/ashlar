@@ -1,8 +1,8 @@
 namespace Ashlar.Identity.Models;
 
 /// <summary>
-/// Result returned when an authentication session is created.
+/// Result returned when an authentication <paramref name="Session" /> is created.
 /// </summary>
-/// <param name="Token">The raw session token. This is only returned at creation time.</param>
-/// <param name="Session">The persisted session metadata containing only the token hash.</param>
+/// <param name="Token">The token value.</param>
+/// <param name="Session">The session value.</param>
 public sealed record CreateAuthenticationSessionResult(string Token, AuthenticationSession Session);

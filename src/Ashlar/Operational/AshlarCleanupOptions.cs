@@ -1,5 +1,8 @@
 namespace Ashlar.Operational;
 
+/// <summary>
+/// Provides ashlar cleanup options behavior.
+/// </summary>
 public sealed class AshlarCleanupOptions
 {
     /// <summary>
@@ -18,85 +21,90 @@ public sealed class AshlarCleanupOptions
     public TimeSpan CleanupInterval { get; set; } = TimeSpan.FromHours(1);
 
     /// <summary>
-    /// Retention period after session expiration. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
+    /// Retention period after session expiration. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveExpiredSessionsAfter { get; set; } = TimeSpan.FromDays(7);
 
     /// <summary>
-    /// Retention period after session revocation. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes revoked rows on the next cleanup run.
+    /// Retention period after session revocation. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes revoked rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveRevokedSessionsAfter { get; set; } = TimeSpan.FromDays(30);
 
     /// <summary>
-    /// Retention period after credential expiration. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
+    /// Retention period after credential expiration. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveExpiredCredentialsAfter { get; set; } = TimeSpan.FromDays(30);
 
     /// <summary>
-    /// Retention period after credential revocation. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes revoked rows on the next cleanup run.
+    /// Retention period after credential revocation. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes revoked rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveRevokedCredentialsAfter { get; set; } = TimeSpan.FromDays(30);
 
     /// <summary>
-    /// Retention period after authorization grant expiration. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
+    /// Retention period after authorization grant expiration. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveExpiredAuthorizationGrantsAfter { get; set; } = TimeSpan.FromDays(30);
 
     /// <summary>
-    /// Retention period after authorization grant revocation. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes revoked rows on the next cleanup run.
+    /// Retention period after authorization grant revocation. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes revoked rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveRevokedAuthorizationGrantsAfter { get; set; } = TimeSpan.FromDays(30);
 
     /// <summary>
-    /// Retention period after invitation expiration. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
+    /// Retention period after invitation expiration. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveExpiredInvitationsAfter { get; set; } = TimeSpan.FromDays(30);
 
     /// <summary>
-    /// Retention period after invitation acceptance. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes accepted rows on the next cleanup run.
+    /// Retention period after invitation acceptance. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes accepted rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveAcceptedInvitationsAfter { get; set; } = TimeSpan.FromDays(30);
 
     /// <summary>
-    /// Retention period after invitation revocation. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes revoked rows on the next cleanup run.
+    /// Retention period after invitation revocation. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes revoked rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveRevokedInvitationsAfter { get; set; } = TimeSpan.FromDays(30);
 
     /// <summary>
-    /// Retention period after MFA handshake expiration. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
+    /// Retention period after MFA handshake expiration. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveExpiredHandshakesAfter { get; set; } = TimeSpan.FromDays(1);
 
     /// <summary>
-    /// Retention period after MFA handshake completion. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes completed rows on the next cleanup run.
+    /// Retention period after MFA handshake completion. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes completed rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveCompletedHandshakesAfter { get; set; } = TimeSpan.FromDays(1);
 
     /// <summary>
-    /// Retention period after MFA handshake revocation. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes revoked rows on the next cleanup run.
+    /// Retention period after MFA handshake revocation. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes revoked rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveRevokedHandshakesAfter { get; set; } = TimeSpan.FromDays(1);
 
     /// <summary>
-    /// Retention period after rate-limit row expiration. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
+    /// Retention period after rate-limit row expiration. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveExpiredRateLimitsAfter { get; set; } = TimeSpan.FromDays(1);
 
     /// <summary>
-    /// Retention period after audit events occur. Null disables audit-event cleanup; <see cref="TimeSpan.Zero"/> deletes all audit events on the next cleanup run.
+    /// Retention period after audit events occur. <see langword="null" /> disables audit-event cleanup; <see cref="TimeSpan.Zero"/> deletes all audit events on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveAuditEventsAfter { get; set; }
 
     /// <summary>
-    /// Retention period after email messages are sent. Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes sent rows on the next cleanup run.
+    /// Retention period after email messages are sent. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes sent rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveSentEmailsAfter { get; set; } = TimeSpan.FromDays(7);
 
     /// <summary>
-    /// Retention period after email messages are marked as failed (all attempts exhausted). Null disables cleanup; <see cref="TimeSpan.Zero"/> deletes failed rows on the next cleanup run.
+    /// Retention period after email messages are marked as failed (all attempts exhausted). <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes failed rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveFailedEmailsAfter { get; set; } = TimeSpan.FromDays(30);
 
+    /// <summary>
+    /// Performs the validate operation and returns the result.
+    /// </summary>
+    /// <param name="options">The options value.</param>
+    /// <returns>The operation result.</returns>
     public static bool Validate(AshlarCleanupOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);

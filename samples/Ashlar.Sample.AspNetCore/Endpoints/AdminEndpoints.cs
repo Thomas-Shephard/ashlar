@@ -74,13 +74,13 @@ internal static partial class AdminEndpoints
                     new { request.Id, request.Name },
                     transaction: connection.Transaction,
                     cancellationToken: cancellationToken));
-                
+
                 if (connection.Transaction != null)
                 {
                     await connection.Transaction.CommitAsync(cancellationToken);
                 }
 
-                return rows > 0 
+                return rows > 0
                     ? Results.Created($"/projects/{request.Id}", new { id = request.Id })
                     : Results.Conflict(new { error = "Project already exists." });
             }

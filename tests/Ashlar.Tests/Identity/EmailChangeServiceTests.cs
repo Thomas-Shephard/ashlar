@@ -14,7 +14,7 @@ using Moq;
 
 namespace Ashlar.Tests.Identity;
 
-public sealed class EmailChangeServiceTests
+internal sealed class EmailChangeServiceTests
 {
     private static AshlarUser CreateUser(string email = "old@example.com") => new() { Id = Guid.NewGuid(), Email = email, IsActive = true };
 

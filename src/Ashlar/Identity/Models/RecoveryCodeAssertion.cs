@@ -11,9 +11,9 @@ public sealed record RecoveryCodeAssertion : IAuthenticationAssertion
     /// <summary>
     /// Initializes a new instance of the <see cref="RecoveryCodeAssertion"/> class.
     /// </summary>
-    /// <param name="code">The recovery code.</param>
-    /// <param name="providerIdentity">The provider identity. Defaults to <see cref="ProviderType.RecoveryCode"/>.</param>
-    /// <param name="ipAddress">Optional IP address for rate limiting.</param>
+    /// <param name="code">The code value.</param>
+    /// <param name="providerIdentity">The provider identity value.</param>
+    /// <param name="ipAddress">The ip address value.</param>
     public RecoveryCodeAssertion(string code, AuthenticationProviderKey? providerIdentity = null, string? ipAddress = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);

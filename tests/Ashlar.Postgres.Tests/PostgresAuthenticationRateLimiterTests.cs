@@ -8,7 +8,7 @@ using Npgsql;
 
 namespace Ashlar.Postgres.Tests;
 
-public sealed class PostgresAuthenticationRateLimiterTests : PostgresTestBase
+internal sealed class PostgresAuthenticationRateLimiterTests : PostgresTestBase
 {
     private IServiceProvider _serviceProvider;
     private FakeTimeProvider _timeProvider;

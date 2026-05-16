@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Ashlar.Tests.DependencyInjection;
 
-public class AshlarMfaHandshakeServiceCollectionExtensionsTests
+internal sealed class AshlarMfaHandshakeServiceCollectionExtensionsTests
 {
     [Test]
     public void AddAshlarMfaHandshakesRegistersServices()

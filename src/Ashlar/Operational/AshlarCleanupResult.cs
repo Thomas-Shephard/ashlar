@@ -1,5 +1,24 @@
 namespace Ashlar.Operational;
 
+/// <summary>
+/// Represents the ashlar cleanup result data model.
+/// </summary>
+/// <param name="ExpiredSessions">The expired sessions value.</param>
+/// <param name="RevokedSessions">The revoked sessions value.</param>
+/// <param name="ExpiredCredentials">The expired credentials value.</param>
+/// <param name="RevokedCredentials">The revoked credentials value.</param>
+/// <param name="ExpiredInvitations">The expired invitations value.</param>
+/// <param name="AcceptedInvitations">The accepted invitations value.</param>
+/// <param name="RevokedInvitations">The revoked invitations value.</param>
+/// <param name="ExpiredHandshakes">The expired handshakes value.</param>
+/// <param name="CompletedHandshakes">The completed handshakes value.</param>
+/// <param name="RevokedHandshakes">The revoked handshakes value.</param>
+/// <param name="ExpiredRateLimits">The expired rate limits value.</param>
+/// <param name="AuditEvents">The audit events value.</param>
+/// <param name="SentEmails">The sent emails value.</param>
+/// <param name="FailedEmails">The failed emails value.</param>
+/// <param name="ExpiredAuthorizationGrants">The expired authorization grants value.</param>
+/// <param name="RevokedAuthorizationGrants">The revoked authorization grants value.</param>
 public sealed record AshlarCleanupResult(
     int ExpiredSessions,
     int RevokedSessions,
@@ -18,8 +37,14 @@ public sealed record AshlarCleanupResult(
     int ExpiredAuthorizationGrants = 0,
     int RevokedAuthorizationGrants = 0)
 {
+    /// <summary>
+    /// Executes the new operation.
+    /// </summary>
     public static AshlarCleanupResult Empty { get; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
+    /// <summary>
+    /// Gets or sets the total value.
+    /// </summary>
     public int Total =>
         ExpiredSessions
         + RevokedSessions
@@ -38,6 +63,11 @@ public sealed record AshlarCleanupResult(
         + SentEmails
         + FailedEmails;
 
+    /// <summary>
+    /// Performs the add operation and returns the result.
+    /// </summary>
+    /// <param name="other">The other value.</param>
+    /// <returns>The operation result.</returns>
     public AshlarCleanupResult Add(AshlarCleanupResult other)
     {
         ArgumentNullException.ThrowIfNull(other);

@@ -2,6 +2,9 @@ using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Abstractions;
 
+/// <summary>
+/// Defines the contract for authentication provider operations.
+/// </summary>
 public interface IAuthenticationProvider
 {
     /// <summary>
@@ -11,7 +14,7 @@ public interface IAuthenticationProvider
 
     /// <summary>
     /// Gets a value indicating whether the credentials managed by this provider should be protected (encrypted) by the identity service.
-    /// Defaults to <c>true</c>.
+    /// Defaults to <c><see langword="true" /></c>.
     /// </summary>
     bool ProtectsCredentials => true;
 
@@ -24,46 +27,46 @@ public interface IAuthenticationProvider
     /// <summary>
     /// Gets the unique key for the user within this provider.
     /// </summary>
-    /// <param name="assertion">The authentication assertion.</param>
-    /// <param name="userId">The user's ID.</param>
-    /// <returns>The provider key, or an empty string if it cannot be derived.</returns>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="userId">The user id value.</param>
+    /// <returns>The operation result.</returns>
     string GetProviderKey(IAuthenticationAssertion assertion, Guid userId);
 
     /// <summary>
     /// Prepares a raw credential value for storage.
     /// </summary>
-    /// <param name="assertion">The authentication assertion.</param>
-    /// <param name="rawValue">The raw credential value.</param>
-    /// <returns>The prepared credential value.</returns>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="rawValue">The raw value value.</param>
+    /// <returns>The operation result.</returns>
     string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue);
 
     /// <summary>
     /// Attempts to resolve the user associated with the given assertion.
     /// </summary>
-    /// <param name="assertion">The authentication assertion.</param>
-    /// <param name="context">The authentication context. Providers may use only the fields they need.</param>
-    /// <param name="repository">The identity repository.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The user if found, otherwise <c>null</c>.</returns>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="context">The context value.</param>
+    /// <param name="repository">The repository value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Performs the authentication against the provided credential.
     /// </summary>
-    /// <param name="assertion">The authentication assertion.</param>
-    /// <param name="credential">The user's credential.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The result of the authentication.</returns>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="credential">The credential value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Resolves the credential associated with the given assertion and user.
     /// </summary>
-    /// <param name="userId">The user's ID.</param>
-    /// <param name="assertion">The authentication assertion.</param>
-    /// <param name="repository">The identity repository.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The credential if found, otherwise <c>null</c>.</returns>
+    /// <param name="userId">The user id value.</param>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="repository">The repository value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     Task<UserCredential?> ResolveCredentialAsync(
         Guid userId,
         IAuthenticationAssertion assertion,
@@ -77,12 +80,12 @@ public interface IAuthenticationProvider
 /// <summary>
 /// Represents the result of an authentication attempt.
 /// </summary>
-/// <param name="Status">The authentication status.</param>
-/// <param name="Claims">Optional claims returned by the provider.</param>
-/// <param name="NewCredentialValue">The new credential value if an update is required.</param>
-/// <param name="NewMetadata">The new metadata to store with the credential.</param>
-/// <param name="IsCredentialConsumed">Indicates whether the credential was consumed (e.g. one-time token) and should be deleted.</param>
-/// <param name="CredentialUpdateRequirement">The requirement for persisting credential updates. Defaults to <see cref="CredentialUpdateRequirement.BestEffort"/>.</param>
+/// <param name="Status">The status value.</param>
+/// <param name="Claims">The claims value.</param>
+/// <param name="NewCredentialValue">The new credential value value.</param>
+/// <param name="NewMetadata">The new metadata value.</param>
+/// <param name="IsCredentialConsumed">The is credential consumed value.</param>
+/// <param name="CredentialUpdateRequirement">The credential update requirement value.</param>
 public sealed record AuthenticationResult(
     AuthenticationResultStatus Status,
     IDictionary<string, string>? Claims = null,
@@ -96,9 +99,21 @@ public sealed record AuthenticationResult(
 /// </summary>
 public enum AuthenticationResultStatus
 {
+    /// <summary>
+    /// Represents the failed value.
+    /// </summary>
     Failed = 0,
+    /// <summary>
+    /// Represents the succeeded value.
+    /// </summary>
     Succeeded = 1,
+    /// <summary>
+    /// Represents the succeeded with credential update value.
+    /// </summary>
     SucceededWithCredentialUpdate = 2,
+    /// <summary>
+    /// Represents the mfa required value.
+    /// </summary>
     MfaRequired = 3
 }
 

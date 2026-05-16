@@ -7,5 +7,8 @@ namespace Ashlar.Identity.Abstractions;
 /// </summary>
 public interface IAuthenticationAssertion
 {
+    /// <summary>
+    /// Gets the provider identity value.
+    /// </summary>
     AuthenticationProviderKey ProviderIdentity { get; }
 }

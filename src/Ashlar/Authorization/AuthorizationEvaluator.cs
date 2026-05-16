@@ -3,6 +3,12 @@ using Ashlar.Authorization.Models;
 
 namespace Ashlar.Authorization;
 
+/// <summary>
+/// Provides authorization evaluator behavior.
+/// </summary>
+/// <param name="repository">The repository value.</param>
+/// <param name="options">The options value.</param>
+/// <param name="timeProvider">The time provider value.</param>
 public sealed class AuthorizationEvaluator(
     IAuthorizationGrantRepository repository,
     AuthorizationGrantOptions? options = null,
@@ -12,6 +18,12 @@ public sealed class AuthorizationEvaluator(
     private readonly AuthorizationGrantOptions _options = ValidateOptions(options ?? new AuthorizationGrantOptions());
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
+    /// <summary>
+    /// Performs the evaluate <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<AuthorizationEvaluationResult> EvaluateAsync(AuthorizationEvaluationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
