@@ -71,7 +71,7 @@ internal static class AccountEndpoints
                 UserId = userId,
                 CallbackBaseUri = callback
             }, cancellationToken);
-            return result.Succeeded ? Results.Accepted() : Results.BadRequest(new { error = result.ErrorMessage });
+            return result.Succeeded ? Results.Accepted() : Results.BadRequest(new { error = result.FailureReason });
         }).RequireAuthorization();
 
         app.MapPost("/api/account/verify-email/confirm", async (
@@ -96,7 +96,7 @@ internal static class AccountEndpoints
             }
 
             var result = await emailVerification.VerifyTokenAsync(userId, request.Token, cancellationToken);
-            return result.Succeeded ? Results.Ok() : Results.BadRequest(new { error = result.ErrorMessage });
+            return result.Succeeded ? Results.Ok() : Results.BadRequest(new { error = result.FailureReason });
         });
 
         app.MapPost("/api/account/change-email/request", async (
@@ -120,7 +120,7 @@ internal static class AccountEndpoints
                 NewEmail = request.NewEmail,
                 CallbackBaseUri = callback
             }, cancellationToken);
-            return result.Succeeded ? Results.Accepted() : Results.BadRequest(new { error = result.ErrorMessage });
+            return result.Succeeded ? Results.Accepted() : Results.BadRequest(new { error = result.FailureReason });
         }).RequireAuthorization();
 
         app.MapGet("/account/change-email", (string? t, string? u) => AppViews.RenderEmailChangeConfirm(t, u));
@@ -147,7 +147,7 @@ internal static class AccountEndpoints
             }
 
             var result = await emailChange.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = userId, Token = request.Token }, cancellationToken);
-            return result.Succeeded ? Results.Ok() : Results.BadRequest(new { error = result.ErrorMessage });
+            return result.Succeeded ? Results.Ok() : Results.BadRequest(new { error = result.FailureReason });
         });
     }
 }

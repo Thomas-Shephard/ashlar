@@ -76,7 +76,8 @@ internal static class SampleSchemaInitializer
 {
     public static async Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
-        var connectionProvider = services.GetRequiredService<IPostgresConnectionProvider>();
+        await using var scope = services.CreateAsyncScope();
+        var connectionProvider = scope.ServiceProvider.GetRequiredService<IPostgresConnectionProvider>();
         var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connection)
         {
