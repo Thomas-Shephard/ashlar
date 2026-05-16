@@ -52,7 +52,7 @@ internal sealed class SecurityEventEmitter(ISecurityEventSink? sink, TimeProvide
                 descriptor.EventType,
                 descriptor.UserId,
                 descriptor.SessionId,
-                GetProviderTypeValue(descriptor.Provider),
+                AuthenticationProviderKey.GetTypeValueOrNull(descriptor.Provider),
                 GetProviderName(descriptor.Provider),
                 null);
         }
@@ -65,20 +65,10 @@ internal sealed class SecurityEventEmitter(ISecurityEventSink? sink, TimeProvide
                 descriptor.EventType,
                 descriptor.UserId,
                 descriptor.SessionId,
-                GetProviderTypeValue(descriptor.Provider),
+                AuthenticationProviderKey.GetTypeValueOrNull(descriptor.Provider),
                 GetProviderName(descriptor.Provider),
                 ex);
         }
-    }
-
-    private static string? GetProviderTypeValue(AuthenticationProviderKey? provider)
-    {
-        if (!provider.HasValue)
-        {
-            return null;
-        }
-
-        return provider.Value.Type == default ? "UNKNOWN" : provider.Value.Type.Value;
     }
 
     private static string? GetProviderName(AuthenticationProviderKey? provider)

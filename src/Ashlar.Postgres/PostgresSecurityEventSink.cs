@@ -64,7 +64,7 @@ public sealed class PostgresSecurityEventSink : ISecurityEventSink, IAsyncDispos
                 securityEvent.EventType,
                 securityEvent.UserId,
                 securityEvent.SessionId,
-                GetProviderTypeValue(securityEvent.Provider),
+                Ashlar.Identity.Models.AuthenticationProviderKey.GetTypeValueOrNull(securityEvent.Provider),
                 GetProviderName(securityEvent.Provider),
                 null);
         }
@@ -96,7 +96,7 @@ public sealed class PostgresSecurityEventSink : ISecurityEventSink, IAsyncDispos
                     securityEvent.OccurredAt,
                     securityEvent.UserId,
                     securityEvent.SessionId,
-                    ProviderType = GetProviderTypeValue(securityEvent.Provider),
+                    ProviderType = Ashlar.Identity.Models.AuthenticationProviderKey.GetTypeValueOrNull(securityEvent.Provider),
                     ProviderName = GetProviderName(securityEvent.Provider),
                     securityEvent.IpAddress,
                     securityEvent.UserAgent,
@@ -117,21 +117,11 @@ public sealed class PostgresSecurityEventSink : ISecurityEventSink, IAsyncDispos
                     securityEvent.EventType,
                     securityEvent.UserId,
                     securityEvent.SessionId,
-                    GetProviderTypeValue(securityEvent.Provider),
+                    Ashlar.Identity.Models.AuthenticationProviderKey.GetTypeValueOrNull(securityEvent.Provider),
                     GetProviderName(securityEvent.Provider),
                     exception);
             }
         }
-    }
-
-    private static string? GetProviderTypeValue(Ashlar.Identity.Models.AuthenticationProviderKey? provider)
-    {
-        if (!provider.HasValue)
-        {
-            return null;
-        }
-
-        return provider.Value.Type == default ? "UNKNOWN" : provider.Value.Type.Value;
     }
 
     private static string? GetProviderName(Ashlar.Identity.Models.AuthenticationProviderKey? provider)

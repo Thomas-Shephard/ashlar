@@ -173,7 +173,7 @@ public sealed class CredentialService(
                 {
                     DummyCredentialUnprotectFailed(
                         _logger,
-                        GetProviderTypeValue(provider.Key.Type),
+                        provider.Key.Type.ValueOrUnknown,
                         provider.Key.Name,
                         provider.TypicalCredentialLength,
                         ex);
@@ -209,7 +209,7 @@ public sealed class CredentialService(
                 _logger,
                 credential.UserId,
                 credential.Id,
-                GetProviderTypeValue(credential.ProviderType),
+                credential.ProviderType.ValueOrUnknown,
                 credential.ProviderName,
                 ex);
             unprotectFailed = true;
@@ -274,7 +274,7 @@ public sealed class CredentialService(
                 _logger,
                 unprotectedCredential.UserId,
                 unprotectedCredential.Id,
-                GetProviderTypeValue(unprotectedCredential.ProviderType),
+                unprotectedCredential.ProviderType.ValueOrUnknown,
                 unprotectedCredential.ProviderName,
                 null);
             transaction.OnCommitted(ct => RecordCredentialUpdateFailedAsync(unprotectedCredential, "protect_failed", ct));
@@ -287,7 +287,7 @@ public sealed class CredentialService(
                 _logger,
                 unprotectedCredential.UserId,
                 unprotectedCredential.Id,
-                GetProviderTypeValue(unprotectedCredential.ProviderType),
+                unprotectedCredential.ProviderType.ValueOrUnknown,
                 unprotectedCredential.ProviderName,
                 null);
             transaction.OnCommitted(ct => RecordCredentialUpdateFailedAsync(unprotectedCredential, "wipe_risk", ct));
@@ -412,7 +412,7 @@ public sealed class CredentialService(
                 _logger,
                 credential.UserId,
                 credential.Id,
-                GetProviderTypeValue(credential.ProviderType),
+                credential.ProviderType.ValueOrUnknown,
                 credential.ProviderName,
                 ex);
             return false;
@@ -458,7 +458,7 @@ public sealed class CredentialService(
                     _logger,
                     credential.UserId,
                     credential.Id,
-                    GetProviderTypeValue(credential.ProviderType),
+                    credential.ProviderType.ValueOrUnknown,
                     credential.ProviderName,
                     null);
                 return (result.CredentialUpdateRequirement != CredentialUpdateRequirement.Required, false);
@@ -472,7 +472,7 @@ public sealed class CredentialService(
                 _logger,
                 credential.UserId,
                 credential.Id,
-                GetProviderTypeValue(credential.ProviderType),
+                credential.ProviderType.ValueOrUnknown,
                 credential.ProviderName,
                 ex);
             return (result.CredentialUpdateRequirement != CredentialUpdateRequirement.Required, false);
@@ -597,10 +597,5 @@ public sealed class CredentialService(
                 ["reason"] = reason
             }
         }, cancellationToken);
-    }
-
-    private static string GetProviderTypeValue(ProviderType providerType)
-    {
-        return providerType == default ? "UNKNOWN" : providerType.Value;
     }
 }

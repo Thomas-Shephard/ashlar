@@ -124,7 +124,7 @@ public sealed class AuthenticationPipeline(
                     _logger,
                     lifecycle.User.Id,
                     lifecycle.Credential.Id,
-                    GetProviderTypeValue(lifecycle.Provider.Key.Type),
+                    lifecycle.Provider.Key.Type.ValueOrUnknown,
                     lifecycle.Provider.Key.Name,
                     ex);
                 return await RecordFailureAsync(lifecycle.Context, lifecycle.Provider.Key, lifecycle.User.Id, SecurityEventFailureReasons.CredentialUpdateFailed, cancellationToken);
@@ -135,7 +135,7 @@ public sealed class AuthenticationPipeline(
                 _logger,
                 lifecycle.User.Id,
                 lifecycle.Credential.Id,
-                GetProviderTypeValue(lifecycle.Provider.Key.Type),
+                lifecycle.Provider.Key.Type.ValueOrUnknown,
                 lifecycle.Provider.Key.Name,
                 ex);
         }
@@ -204,9 +204,4 @@ public sealed class AuthenticationPipeline(
         IAuthenticationProvider Provider,
         AuthenticationContext Context,
         AuthenticationStatus Status);
-
-    private static string GetProviderTypeValue(ProviderType providerType)
-    {
-        return providerType == default ? "UNKNOWN" : providerType.Value;
-    }
 }
