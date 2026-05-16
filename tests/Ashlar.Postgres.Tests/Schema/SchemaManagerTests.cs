@@ -147,4 +147,23 @@ internal sealed class SchemaManagerTests : PostgresTestBase
         Assert.Throws<ArgumentNullException>(() => _ = new SchemaManager.DbUpUpgradeLogger(null!));
     }
 
+    [Test]
+    public void DbUpUpgradeLoggerPreservesStructuredStateAndToleratesMalformedFormat()
+    {
+        var logger = new RecordingLogger();
+        var upgradeLogger = new SchemaManager.DbUpUpgradeLogger(logger);
+
+        upgradeLogger.LogInformation("literal { brace {0}", 42);
+
+        var state = (IReadOnlyList<KeyValuePair<string, object?>>)logger.Entries.Single().State!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.Entries.Single().Message, Is.EqualTo("literal { brace {0}"));
+            Assert.That(state[0], Is.EqualTo(new KeyValuePair<string, object?>("Arg0", 42)));
+            Assert.That(state[1], Is.EqualTo(new KeyValuePair<string, object?>("{OriginalFormat}", "literal { brace {0}")));
+            Assert.Throws<ArgumentOutOfRangeException>(() => _ = state[2]);
+            Assert.That(state.ToArray(), Has.Length.EqualTo(2));
+            Assert.That(((System.Collections.IEnumerable)state).GetEnumerator().MoveNext(), Is.True);
+        }
+    }
 }

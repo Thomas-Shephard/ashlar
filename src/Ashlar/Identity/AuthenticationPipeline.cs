@@ -14,8 +14,12 @@ namespace Ashlar.Identity;
 /// <param name="transactionProvider">The transaction provider value.</param>
 /// <param name="securityEventSink">The security event sink value.</param>
 /// <param name="timeProvider">The time provider value.</param>
-/// <param name="logger">The logger value.</param>
-/// <param name="loggerFactory">The logger factory value.</param>
+/// <param name="logger">The logger used for operational messages emitted directly by this pipeline.</param>
+/// <param name="loggerFactory">The logger factory used only to create the embedded security event emitter logger.</param>
+/// <remarks>
+/// Pass both <paramref name="logger" /> and <paramref name="loggerFactory" /> when constructing this pipeline manually and operational
+/// logging is desired for both authentication lifecycle operations and security event sink failures.
+/// </remarks>
 public sealed class AuthenticationPipeline(
     IAuthenticationProviderRegistry providerRegistry,
     ICredentialService credentialService,

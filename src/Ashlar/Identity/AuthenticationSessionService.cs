@@ -563,8 +563,8 @@ public sealed class AuthenticationSessionService(
 /// <param name="SecurityEventSink">The security event sink value.</param>
 /// <param name="IdentityRepository">The identity repository value.</param>
 /// <param name="NotificationService">The notification service value.</param>
-/// <param name="Logger">The <paramref name="Logger" /> value.</param>
-/// <param name="LoggerFactory">The <paramref name="LoggerFactory" /> value.</param>
+/// <param name="Logger">Receives operational messages emitted directly by the session service.</param>
+/// <param name="LoggerFactory">Creates diagnostics for embedded security event sink failures.</param>
 public sealed record AuthenticationSessionServiceDependencies(
     AuthenticationSessionOptions? Options = null,
     TimeProvider? TimeProvider = null,

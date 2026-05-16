@@ -27,7 +27,7 @@ internal class RecordingLogger : ILogger
         Exception? exception,
         Func<TState, Exception?, string> formatter)
     {
-        Entries.Add(new LogEntry(logLevel, formatter(state, exception), exception));
+        Entries.Add(new LogEntry(logLevel, formatter(state, exception), exception, state));
     }
 
     private sealed class NullScope : IDisposable
@@ -40,4 +40,4 @@ internal class RecordingLogger : ILogger
     }
 }
 
-internal sealed record LogEntry(LogLevel Level, string Message, Exception? Exception = null);
+internal sealed record LogEntry(LogLevel Level, string Message, Exception? Exception = null, object? State = null);

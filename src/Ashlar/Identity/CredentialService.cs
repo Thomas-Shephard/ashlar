@@ -17,11 +17,13 @@ namespace Ashlar.Identity;
 /// <param name="options">The options value.</param>
 /// <param name="timeProvider">The time provider value.</param>
 /// <param name="securityEventSink">The security event sink value.</param>
-/// <param name="logger">The logger value.</param>
-/// <param name="loggerFactory">The logger factory value.</param>
+/// <param name="logger">The logger used for operational messages emitted directly by this service.</param>
+/// <param name="loggerFactory">The logger factory used only to create the embedded security event emitter logger.</param>
 /// <remarks>
 /// This service implements timing attack resistance by ensuring that unprotection operations
 /// are performed even when a user or credential is not found, using provider-specific dummy values.
+/// Pass both <paramref name="logger" /> and <paramref name="loggerFactory" /> when constructing this service manually and operational
+/// logging is desired for both credential operations and security event sink failures.
 /// </remarks>
 public sealed class CredentialService(
     IIdentityRepository repository,

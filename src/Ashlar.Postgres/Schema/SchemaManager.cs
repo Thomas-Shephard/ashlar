@@ -145,6 +145,11 @@ internal class SchemaManager(NpgsqlDataSource dataSource, ILogger<SchemaManager>
 
         private void Log(LogLevel logLevel, Exception? exception, string format, object[] args)
         {
+            if (!_logger.IsEnabled(logLevel))
+            {
+                return;
+            }
+
             _logger.Log(
                 logLevel,
                 new EventId(0, "DbUp"),
@@ -153,13 +158,56 @@ internal class SchemaManager(NpgsqlDataSource dataSource, ILogger<SchemaManager>
                 static (state, _) => state.ToString());
         }
 
-        private readonly record struct DbUpLogState(string Format, object[] Args)
+        private sealed class DbUpLogState(string format, object[] args) : IReadOnlyList<KeyValuePair<string, object?>>
         {
+            public int Count => args.Length + 1;
+
+            public KeyValuePair<string, object?> this[int index]
+            {
+                get
+                {
+                    if (index < args.Length)
+                    {
+                        return new KeyValuePair<string, object?>($"Arg{index}", args[index]);
+                    }
+
+                    if (index == args.Length)
+                    {
+                        return new KeyValuePair<string, object?>("{OriginalFormat}", format);
+                    }
+
+                    throw new ArgumentOutOfRangeException(nameof(index));
+                }
+            }
+
+            public IEnumerator<KeyValuePair<string, object?>> GetEnumerator()
+            {
+                for (var i = 0; i < Count; i++)
+                {
+                    yield return this[i];
+                }
+            }
+
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
+            {
+                return GetEnumerator();
+            }
+
             public override string ToString()
             {
-                return Args.Length == 0
-                    ? Format
-                    : string.Format(CultureInfo.InvariantCulture, Format, Args);
+                if (args.Length == 0)
+                {
+                    return format;
+                }
+
+                try
+                {
+                    return string.Format(CultureInfo.InvariantCulture, format, args);
+                }
+                catch (FormatException)
+                {
+                    return format;
+                }
             }
         }
     }
