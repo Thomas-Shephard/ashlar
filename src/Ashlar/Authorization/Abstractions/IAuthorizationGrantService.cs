@@ -3,31 +3,31 @@ using Ashlar.Authorization.Models;
 namespace Ashlar.Authorization.Abstractions;
 
 /// <summary>
-/// Defines the contract for iauthorization grant service operations.
+/// Creates, revokes, and lists authorization grants.
 /// </summary>
 public interface IAuthorizationGrantService
 {
     /// <summary>
-    /// Performs the create grant <see langword="async" /> operation and returns the result.
+    /// Creates a role or permission grant for a user.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">The grant to create.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>The created grant when validation succeeds.</returns>
     Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Performs the revoke grant <see langword="async" /> operation and returns the result.
+    /// Revokes a grant and returns whether a matching active grant was found.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">The grant revocation criteria.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns><see langword="true" /> when an active grant was revoked; otherwise, <see langword="false" />.</returns>
     Task<bool> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Performs the list grants <see langword="async" /> operation and returns the result.
+    /// Lists grants matching the supplied filter.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">The grant list filter.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>The matching grants.</returns>
     Task<IReadOnlyList<AuthorizationGrant>> ListGrantsAsync(ListAuthorizationGrantsRequest request, CancellationToken cancellationToken = default);
 }

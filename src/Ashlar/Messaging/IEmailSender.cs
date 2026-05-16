@@ -6,10 +6,9 @@ namespace Ashlar.Messaging;
 public interface IEmailSender
 {
     /// <summary>
-    /// Performs the send <see langword="async" /> operation and returns the result.
+    /// Sends or queues an email message.
     /// </summary>
-    /// <param name="message">The message value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="message">The message to send or queue.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
     Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default);
 }

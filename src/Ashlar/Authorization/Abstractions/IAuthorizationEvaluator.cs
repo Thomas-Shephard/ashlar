@@ -3,15 +3,15 @@ using Ashlar.Authorization.Models;
 namespace Ashlar.Authorization.Abstractions;
 
 /// <summary>
-/// Defines the contract for iauthorization evaluator operations.
+/// Evaluates whether a user has a role or permission grant for a requested scope.
 /// </summary>
 public interface IAuthorizationEvaluator
 {
     /// <summary>
-    /// Performs the evaluate <see langword="async" /> operation and returns the result.
+    /// Evaluates one authorization request against stored grants.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">The authorization request to evaluate.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>The authorization decision and any matching grant.</returns>
     Task<AuthorizationEvaluationResult> EvaluateAsync(AuthorizationEvaluationRequest request, CancellationToken cancellationToken = default);
 }

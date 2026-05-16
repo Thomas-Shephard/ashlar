@@ -1,4 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>ASP.NET Core session authentication and authorization integration for Ashlar.</Description>
+    <PackageTags>ashlar;aspnetcore;authentication;authorization;sessions;security</PackageTags>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Ashlar\Ashlar.csproj" />
   </ItemGroup>
@@ -6,4 +12,5 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
+
 </Project>

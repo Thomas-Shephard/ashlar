@@ -1,6 +1,12 @@
 # Ashlar.Postgres
 
-PostgreSQL persistence implementation for Ashlar identity and authentication sessions.
+PostgreSQL persistence for Ashlar identity, credentials, MFA handshakes, sessions/devices, invitations, authorization grants, security audit events, rate limiting, cleanup, and the email outbox.
+
+## Installation
+
+```bash
+dotnet add package Ashlar.Postgres
+```
 
 ## Requirements
 
@@ -8,7 +14,7 @@ PostgreSQL persistence implementation for Ashlar identity and authentication ses
 
 ## Setup
 
-Add the package to your project and register the services in `Program.cs`:
+Register the services in `Program.cs`:
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +27,14 @@ services.AddAshlarPostgres(myDataSource);
 
 // Register PostgreSQL-backed security audit persistence (Optional)
 services.AddAshlarPostgresAuditSink();
+```
+
+For a typical application, combine this package with the core Ashlar services:
+
+```csharp
+services.AddAshlarIdentity();
+services.AddAshlarAuthorization();
+services.AddAshlarPostgres(connectionString);
 ```
 
 ## Schema Management
@@ -118,3 +132,9 @@ services.Configure<AshlarCleanupOptions>(options =>
 
 Session token hashing assumes the application session-issuing code creates high-entropy random tokens.
 Ashlar uses a dedicated fast session token hasher rather than password hashing because session tokens are server-generated secrets that are checked frequently.
+
+## Related Packages
+
+- `Ashlar`: Core identity, authorization, messaging, and security primitives.
+- `Ashlar.AspNetCore`: ASP.NET Core session authentication and authorization integration.
+- `Ashlar.Email.Smtp`: SMTP transport for direct email delivery or the PostgreSQL email outbox dispatcher.

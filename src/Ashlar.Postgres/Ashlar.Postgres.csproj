@@ -1,4 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>PostgreSQL persistence, schema management, audit, cleanup, rate limiting, and email outbox support for Ashlar.</Description>
+    <PackageTags>ashlar;postgresql;identity;authentication;authorization;email-outbox;security</PackageTags>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Ashlar\Ashlar.csproj" />
   </ItemGroup>

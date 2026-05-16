@@ -8,32 +8,32 @@ namespace Ashlar.Identity.Models;
 public enum MfaAuthenticationStatus
 {
     /// <summary>
-    /// Represents the failed value.
+    /// Authentication failed.
     /// </summary>
     Failed = 0,
     /// <summary>
-    /// Represents the succeeded value.
+    /// Authentication completed successfully.
     /// </summary>
     Succeeded = 1,
     /// <summary>
-    /// Represents the mfa required value.
+    /// Additional MFA factors are required.
     /// </summary>
     MfaRequired = 2,
     /// <summary>
-    /// Represents the handshake incomplete value.
+    /// The MFA handshake exists but not all required factors have been verified.
     /// </summary>
     HandshakeIncomplete = 3
 }
 
 /// <summary>
-/// Represents the mfa authentication result data model.
+/// Result returned by MFA-aware authentication flows.
 /// </summary>
-/// <param name="Status">The status value.</param>
-/// <param name="User">The user value.</param>
-/// <param name="HandshakeToken">The handshake token value.</param>
-/// <param name="RequiredFactors">The required factors value.</param>
-/// <param name="Claims">The claims value.</param>
-/// <param name="ErrorMessage">The error message value.</param>
+/// <param name="Status">The authentication outcome.</param>
+/// <param name="User">The authenticated user when authentication succeeds.</param>
+/// <param name="HandshakeToken">The raw handshake token when more MFA factors are required.</param>
+/// <param name="RequiredFactors">The MFA factors still required for the handshake.</param>
+/// <param name="Claims">Additional claims produced by the authentication provider.</param>
+/// <param name="ErrorMessage">A display-safe error message when authentication fails.</param>
 public sealed record MfaAuthenticationResult(
     MfaAuthenticationStatus Status,
     IUser? User = null,
