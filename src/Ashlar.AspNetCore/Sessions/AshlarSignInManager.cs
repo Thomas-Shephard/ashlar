@@ -36,7 +36,7 @@ public sealed class AshlarSignInManager(
         var existingSessionId = await GetExistingSessionIdAsync(httpContext, authenticationOptions, cancellationToken);
         if (existingSessionId.HasValue)
         {
-            await _sessionService.RevokeSessionAsync(existingSessionId.Value, "session-replaced", cancellationToken);
+            await _sessionService.RevokeSessionAsync(existingSessionId.Value, "session-replaced", CreateAuditContextFromHttpContext(httpContext), cancellationToken);
         }
 
         var sessionRequest = request ?? CreateRequestFromHttpContext(httpContext);
@@ -61,7 +61,7 @@ public sealed class AshlarSignInManager(
 
         if (sessionId.HasValue)
         {
-            await _sessionService.RevokeSessionAsync(sessionId.Value, reason ?? "signed-out", cancellationToken);
+            await _sessionService.RevokeSessionAsync(sessionId.Value, reason ?? "signed-out", CreateAuditContextFromHttpContext(httpContext), cancellationToken);
         }
 
         httpContext.Response.Cookies.Delete(authenticationOptions.CookieName, authenticationOptions.Cookie.Build(httpContext));
@@ -99,8 +99,8 @@ public sealed class AshlarSignInManager(
             {
                 SessionId = sessionId,
                 Reason = reason,
-                IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
-                UserAgent = httpContext.Request.Headers.UserAgent.ToString()
+                Tenant = ToTenantContext(httpContext),
+                Audit = CreateAuditContextFromHttpContext(httpContext)
             },
             cancellationToken);
     }
@@ -121,8 +121,8 @@ public sealed class AshlarSignInManager(
             {
                 CurrentSessionId = currentSessionId,
                 Reason = reason,
-                IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
-                UserAgent = httpContext.Request.Headers.UserAgent.ToString()
+                Tenant = ToTenantContext(httpContext),
+                Audit = CreateAuditContextFromHttpContext(httpContext)
             },
             cancellationToken);
     }
@@ -155,6 +155,15 @@ public sealed class AshlarSignInManager(
             CorrelationId: httpContext.TraceIdentifier);
     }
 
+    private static Ashlar.Auditing.AuditContext CreateAuditContextFromHttpContext(HttpContext httpContext)
+    {
+        return new Ashlar.Auditing.AuditContext(
+            ActorUserId: TryGetUserId(httpContext.User),
+            IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent: httpContext.Request.Headers.UserAgent.ToString(),
+            CorrelationId: httpContext.TraceIdentifier);
+    }
+
     private static Guid? TryGetSessionId(System.Security.Claims.ClaimsPrincipal principal)
     {
         var value = principal.FindFirst(AshlarClaimTypes.SessionId)?.Value;
@@ -165,5 +174,17 @@ public sealed class AshlarSignInManager(
     {
         var value = principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         return Guid.TryParse(value, out var userId) ? userId : null;
+    }
+
+    private static TenantContext? ToTenantContext(HttpContext httpContext)
+    {
+        var tenantId = TryGetTenantId(httpContext.User);
+        return tenantId.HasValue ? new TenantContext(tenantId) : null;
+    }
+
+    private static Guid? TryGetTenantId(System.Security.Claims.ClaimsPrincipal principal)
+    {
+        var value = principal.FindFirst(AshlarClaimTypes.TenantId)?.Value;
+        return Guid.TryParse(value, out var tenantId) ? tenantId : null;
     }
 }

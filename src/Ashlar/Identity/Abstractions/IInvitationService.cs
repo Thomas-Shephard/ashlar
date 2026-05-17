@@ -1,3 +1,4 @@
+using Ashlar.Auditing;
 using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Abstractions;
@@ -31,7 +32,8 @@ public interface IInvitationService
     /// </summary>
     /// <param name="email">The invited email address.</param>
     /// <param name="tenantId">The tenant to revoke invitations for, or <see langword="null" /> for global invitations.</param>
+    /// <param name="audit">Optional audit metadata describing who requested revocation.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>A result describing whether pending invitations were revoked.</returns>
-    Task<Result> RevokeInvitationsAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default);
+    Task<Result> RevokeInvitationsAsync(string email, Guid? tenantId = null, AuditContext? audit = null, CancellationToken cancellationToken = default);
 }

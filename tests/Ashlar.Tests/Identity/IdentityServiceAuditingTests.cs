@@ -27,7 +27,9 @@ internal sealed class IdentityServiceAuditingTests
             new NullTransactionProvider(),
             sinkMock.Object);
 
-        var context = new AuthenticationContext("test@example.com");
+        var tenantId = Guid.NewGuid();
+        var actorUserId = Guid.NewGuid();
+        var context = new AuthenticationContext("test@example.com", TenantId: tenantId, UserId: actorUserId);
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -39,7 +41,10 @@ internal sealed class IdentityServiceAuditingTests
         await service.LoginAsync(context, assertion);
 
         sinkMock.Verify(s => s.RecordAsync(
-            It.Is<AshlarSecurityEvent>(e => e.EventType == AshlarSecurityEventTypes.AuthenticationFailed),
+            It.Is<AshlarSecurityEvent>(e =>
+                e.EventType == AshlarSecurityEventTypes.AuthenticationFailed &&
+                e.TenantId == tenantId &&
+                e.ActorUserId == actorUserId),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 }

@@ -76,6 +76,7 @@ internal static class AccountEndpoints
 
     private static async Task<IResult> RequestEmailVerificationAsync(
         IEmailVerificationService emailVerification,
+        HttpContext httpContext,
         ClaimsPrincipal userPrincipal,
         IOptions<SampleAshlarOptions> options,
         CancellationToken cancellationToken)
@@ -85,7 +86,8 @@ internal static class AccountEndpoints
         var result = await emailVerification.RequestVerificationAsync(new EmailVerificationRequest
         {
             UserId = userId,
-            CallbackBaseUri = callback
+            CallbackBaseUri = callback,
+            Audit = httpContext.ToAuditContext()
         }, cancellationToken);
 
         return result.Succeeded ? Results.Accepted() : Results.BadRequest(SampleResultErrors.From(result));
@@ -94,6 +96,7 @@ internal static class AccountEndpoints
     private static async Task<IResult> ConfirmEmailVerificationAsync(
         SampleEmailVerificationConfirmRequest request,
         IEmailVerificationService emailVerification,
+        HttpContext httpContext,
         string? u,
         ClaimsPrincipal userPrincipal,
         CancellationToken cancellationToken)
@@ -103,13 +106,14 @@ internal static class AccountEndpoints
             return Results.BadRequest(new { error = "Missing user context." });
         }
 
-        var result = await emailVerification.VerifyTokenAsync(userId, request.Token, cancellationToken);
+        var result = await emailVerification.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest { UserId = userId, Token = request.Token, Audit = httpContext.ToAuditContext() }, cancellationToken);
         return result.Succeeded ? Results.Ok() : Results.BadRequest(SampleResultErrors.From(result));
     }
 
     private static async Task<IResult> RequestEmailChangeAsync(
         SampleEmailChangeRequest request,
         IEmailChangeService emailChange,
+        HttpContext httpContext,
         ClaimsPrincipal userPrincipal,
         IOptions<SampleAshlarOptions> options,
         CancellationToken cancellationToken)
@@ -126,7 +130,8 @@ internal static class AccountEndpoints
         {
             UserId = userId,
             NewEmail = request.NewEmail,
-            CallbackBaseUri = callback
+            CallbackBaseUri = callback,
+            Audit = httpContext.ToAuditContext()
         }, cancellationToken);
 
         return result.Succeeded ? Results.Accepted() : Results.BadRequest(SampleResultErrors.From(result));
@@ -135,6 +140,7 @@ internal static class AccountEndpoints
     private static async Task<IResult> ConfirmEmailChangeAsync(
         SampleEmailChangeConfirmRequest request,
         IEmailChangeService emailChange,
+        HttpContext httpContext,
         string? u,
         ClaimsPrincipal userPrincipal,
         CancellationToken cancellationToken)
@@ -144,7 +150,7 @@ internal static class AccountEndpoints
             return Results.BadRequest(new { error = "Missing user context." });
         }
 
-        var result = await emailChange.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = userId, Token = request.Token }, cancellationToken);
+        var result = await emailChange.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = userId, Token = request.Token, Audit = httpContext.ToAuditContext() }, cancellationToken);
         return result.Succeeded ? Results.Ok() : Results.BadRequest(SampleResultErrors.From(result));
     }
 

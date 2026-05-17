@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Ashlar.Auditing;
 using Ashlar.Identity.Models;
 
 namespace Ashlar.Sample.AspNetCore.Extensions;
@@ -9,9 +10,45 @@ internal static class HttpContextExtensions
     {
         return new AuthenticationContext(
             Email: email,
+            TenantId: httpContext.GetAshlarTenantId(),
             IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
             UserAgent: httpContext.Request.Headers.UserAgent.ToString(),
             CorrelationId: httpContext.TraceIdentifier);
+    }
+
+    public static AuditContext ToAuditContext(this HttpContext httpContext)
+    {
+        return new AuditContext(
+            ActorUserId: TryGetAshlarUserId(httpContext.User),
+            IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent: httpContext.Request.Headers.UserAgent.ToString(),
+            CorrelationId: httpContext.TraceIdentifier);
+    }
+
+    public static TenantContext ToTenantContext(this HttpContext httpContext)
+    {
+        return new TenantContext(httpContext.GetAshlarTenantId());
+    }
+
+    public static CreateAuthenticationSessionRequest ToSessionRequest(this HttpContext httpContext)
+    {
+        return new CreateAuthenticationSessionRequest(
+            IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent: httpContext.Request.Headers.UserAgent.ToString(),
+            CorrelationId: httpContext.TraceIdentifier,
+            TenantId: httpContext.GetAshlarTenantId());
+    }
+
+    public static Guid? GetAshlarTenantId(this HttpContext httpContext)
+    {
+        var value = httpContext.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+        return Guid.TryParse(value, out var tenantId) ? tenantId : null;
+    }
+
+    private static Guid? TryGetAshlarUserId(ClaimsPrincipal principal)
+    {
+        var value = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        return Guid.TryParse(value, out var userId) ? userId : null;
     }
 }
 

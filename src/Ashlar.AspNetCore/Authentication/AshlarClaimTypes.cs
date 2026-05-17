@@ -9,4 +9,9 @@ public static class AshlarClaimTypes
     /// The durable Ashlar authentication session identifier.
     /// </summary>
     public const string SessionId = "ashlar:session_id";
+
+    /// <summary>
+    /// The Ashlar tenant scope associated with the current authentication session.
+    /// </summary>
+    public const string TenantId = "ashlar:tenant_id";
 }

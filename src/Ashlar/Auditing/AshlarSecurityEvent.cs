@@ -28,6 +28,16 @@ public sealed record AshlarSecurityEvent
     public Guid? UserId { get; init; }
 
     /// <summary>
+    /// Gets or sets the tenant id value.
+    /// </summary>
+    public Guid? TenantId { get; init; }
+
+    /// <summary>
+    /// Gets or sets the actor user id value.
+    /// </summary>
+    public Guid? ActorUserId { get; init; }
+
+    /// <summary>
     /// Gets or sets the session id value.
     /// </summary>
     public Guid? SessionId { get; init; }

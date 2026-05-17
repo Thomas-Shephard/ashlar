@@ -9,7 +9,7 @@ namespace Ashlar.Identity;
 /// <param name="timeProvider">The time provider value.</param>
 /// <param name="securityEventSink">The security event sink value.</param>
 /// <param name="notificationService">The notification service value.</param>
-public sealed class IdentityAuditContext(
+internal sealed class IdentityAuditContext(
     TimeProvider timeProvider,
     ISecurityEventSink securityEventSink,
     ISecurityNotificationService? notificationService = null)

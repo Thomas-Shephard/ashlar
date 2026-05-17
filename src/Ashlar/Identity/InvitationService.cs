@@ -14,7 +14,7 @@ namespace Ashlar.Identity;
 /// </summary>
 /// <param name="dependencies">The dependencies value.</param>
 /// <param name="options">The options value.</param>
-public sealed class InvitationService(
+internal sealed class InvitationService(
     InvitationDependencies dependencies,
     IOptions<InvitationOptions>? options = null) : IInvitationService
 {
@@ -62,6 +62,7 @@ public sealed class InvitationService(
                 EventType = AshlarSecurityEventTypes.InvitationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
                 FailureReason = AshlarFailureCodes.RateLimited.Value,
+                TenantId = request.TenantId,
                 Properties = AddEmailIfEnabled(new Dictionary<string, string> { ["operation"] = "create" }, normalizedEmail),
                 Context = context
             }, cancellationToken);
@@ -76,6 +77,7 @@ public sealed class InvitationService(
                 EventType = AshlarSecurityEventTypes.InvitationCreated,
                 Outcome = SecurityEventOutcomes.Failure,
                 FailureReason = AshlarFailureCodes.UserExists.Value,
+                TenantId = request.TenantId,
                 Properties = AddEmailIfEnabled(new Dictionary<string, string> { ["operation"] = "create" }, normalizedEmail),
                 Context = context
             }, cancellationToken);
@@ -114,6 +116,7 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationCreated,
                 Outcome = SecurityEventOutcomes.Success,
+                TenantId = request.TenantId,
                 Properties = AddEmailIfEnabled(new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() }, normalizedEmail),
                 Context = context
             }, ct);
@@ -152,6 +155,7 @@ public sealed class InvitationService(
                 EventType = AshlarSecurityEventTypes.InvitationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
                 FailureReason = AshlarFailureCodes.RateLimited.Value,
+                TenantId = context?.TenantId,
                 Properties = new Dictionary<string, string> { ["operation"] = "accept" },
                 Context = context
             }, cancellationToken);
@@ -168,6 +172,7 @@ public sealed class InvitationService(
                 EventType = AshlarSecurityEventTypes.InvitationAccepted,
                 Outcome = SecurityEventOutcomes.Failure,
                 FailureReason = AshlarFailureCodes.InvalidInvitation.Value,
+                TenantId = context?.TenantId,
                 Context = context
             }, cancellationToken);
             return Result.Failure<Guid>(AshlarFailureCodes.InvalidInvitation);
@@ -186,6 +191,7 @@ public sealed class InvitationService(
                 EventType = AshlarSecurityEventTypes.InvitationAccepted,
                 Outcome = SecurityEventOutcomes.Failure,
                 FailureReason = AshlarFailureCodes.ConcurrencyConflict.Value,
+                TenantId = invitation.TenantId,
                 Properties = new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() },
                 Context = context
             }, cancellationToken);
@@ -203,6 +209,7 @@ public sealed class InvitationService(
                     EventType = AshlarSecurityEventTypes.UserCreated,
                     Outcome = SecurityEventOutcomes.Success,
                     UserId = acceptedUser.UserId,
+                    TenantId = invitation.TenantId,
                     Context = context
                 }, ct);
             }
@@ -212,6 +219,7 @@ public sealed class InvitationService(
                 EventType = AshlarSecurityEventTypes.InvitationAccepted,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = acceptedUser.UserId,
+                TenantId = invitation.TenantId,
                 Properties = new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() },
                 Context = context
             }, ct);
@@ -270,9 +278,10 @@ public sealed class InvitationService(
     /// </summary>
     /// <param name="email">The email value.</param>
     /// <param name="tenantId">The tenant id value.</param>
+    /// <param name="audit">The audit metadata value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public async Task<Result> RevokeInvitationsAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
+    public async Task<Result> RevokeInvitationsAsync(string email, Guid? tenantId = null, AuditContext? audit = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
 
@@ -286,6 +295,8 @@ public sealed class InvitationService(
             {
                 EventType = AshlarSecurityEventTypes.InvitationRevoked,
                 Outcome = SecurityEventOutcomes.Success,
+                TenantId = tenantId,
+                Audit = audit,
                 Properties = AddEmailIfEnabled(new Dictionary<string, string> { ["count"] = revokedCount.ToString(CultureInfo.InvariantCulture) }, normalizedEmail)
             }, cancellationToken);
         }

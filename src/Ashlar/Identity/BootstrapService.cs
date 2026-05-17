@@ -18,7 +18,7 @@ namespace Ashlar.Identity;
 /// <param name="grantService">The grant service value.</param>
 /// <param name="options">The options value.</param>
 /// <param name="notificationService">The notification service value.</param>
-public sealed class BootstrapService(
+internal sealed class BootstrapService(
     IBootstrapStateRepository stateRepository,
     IInvitationService invitationService,
     InvitationDependencies invitationDependencies,
@@ -62,6 +62,8 @@ public sealed class BootstrapService(
             {
                 EventType = AshlarSecurityEventTypes.BootstrapInvitationCreated,
                 Outcome = SecurityEventOutcomes.Failure,
+                TenantId = request.TenantId,
+                Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.AlreadyInitialized.Value,
                 Properties = new Dictionary<string, string> { ["email"] = request.Email }
             }, cancellationToken);
@@ -91,6 +93,8 @@ public sealed class BootstrapService(
                 {
                     EventType = AshlarSecurityEventTypes.BootstrapInvitationCreated,
                     Outcome = SecurityEventOutcomes.Failure,
+                    TenantId = request.TenantId,
+                    Audit = request.Audit,
                     FailureReason = AshlarFailureCodes.InvalidMetadataFormat.Value,
                     Properties = new Dictionary<string, string> { ["email"] = email }
                 }, cancellationToken);
@@ -131,6 +135,8 @@ public sealed class BootstrapService(
             {
                 EventType = AshlarSecurityEventTypes.BootstrapInvitationCreated,
                 Outcome = SecurityEventOutcomes.Success,
+                TenantId = invitation.TenantId,
+                Audit = request.Audit,
                 Properties = new Dictionary<string, string>
                 {
                     ["invitation_id"] = invitation.Id.ToString(),
@@ -164,6 +170,7 @@ public sealed class BootstrapService(
             {
                 EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
+                TenantId = invitation?.TenantId ?? context?.TenantId,
                 FailureReason = AshlarFailureCodes.InvalidInvitation.Value,
                 Context = context
             }, cancellationToken);
@@ -176,6 +183,7 @@ public sealed class BootstrapService(
             {
                 EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
+                TenantId = invitation.TenantId,
                 FailureReason = AshlarFailureCodes.NotBootstrapInvitation.Value,
                 Context = context
             }, cancellationToken);
@@ -188,6 +196,7 @@ public sealed class BootstrapService(
             {
                 EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
+                TenantId = invitation.TenantId,
                 FailureReason = AshlarFailureCodes.AlreadyInitialized.Value,
                 Context = context
             }, cancellationToken);
@@ -217,7 +226,8 @@ public sealed class BootstrapService(
                 ScopeType: template.ScopeType,
                 ScopeId: template.ScopeId,
                 Role: template.Role,
-                Permission: template.Permission
+                Permission: template.Permission,
+                Audit: new AuditContext(ActorUserId: context?.UserId, IpAddress: context?.IpAddress, UserAgent: context?.UserAgent, CorrelationId: context?.CorrelationId)
             ), cancellationToken);
 
             if (!grantResult.Succeeded)
@@ -229,6 +239,7 @@ public sealed class BootstrapService(
                     Outcome = SecurityEventOutcomes.Failure,
                     FailureReason = grantResult.FailureCode?.Value ?? AshlarFailureCodes.GrantCreationFailed.Value,
                     UserId = userId,
+                    TenantId = invitation.TenantId,
                     Context = context
                 }, cancellationToken);
                 return Result.Failure<Guid>(grantResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.GrantCreationFailed));
@@ -245,6 +256,7 @@ public sealed class BootstrapService(
             {
                 EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
+                TenantId = invitation.TenantId,
                 FailureReason = AshlarFailureCodes.AlreadyInitialized.Value,
                 Context = context
             }, cancellationToken);
@@ -258,6 +270,7 @@ public sealed class BootstrapService(
                 EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = userId,
+                TenantId = invitation.TenantId,
                 Context = context
             }, ct);
 

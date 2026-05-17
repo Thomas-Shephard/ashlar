@@ -76,16 +76,16 @@ public sealed class TotpAuthenticationProvider : IAuthenticationProvider
     }
 
     /// <inheritdoc />
-    public async Task<UserCredential?> ResolveCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IIdentityRepository repository, CancellationToken cancellationToken = default)
+    public async Task<UserCredential?> ResolveCredentialAsync(Guid userId, IAuthenticationAssertion assertion, AuthenticationContext? context, IIdentityRepository repository, CancellationToken cancellationToken = default)
     {
-        if (assertion is not TotpAssertion totpAssertion)
+        if (assertion is not TotpAssertion)
         {
             return null;
         }
 
         var rateLimitKey = userId.ToString("D");
         var rule = new RateLimitRule { PermitLimit = _options.RateLimitPermitLimit, Window = _options.RateLimitWindow };
-        var attempt = new RateLimitAttempt { Key = rateLimitKey, Purpose = "totp-verify", IpAddress = totpAssertion.IpAddress };
+        var attempt = new RateLimitAttempt { Key = rateLimitKey, Purpose = "totp-verify", IpAddress = context?.IpAddress, CorrelationId = context?.CorrelationId };
 
         var decision = await _rateLimiter.CheckAsync(attempt, rule, cancellationToken);
         if (decision.Status == RateLimitStatus.Blocked)
@@ -95,6 +95,7 @@ public sealed class TotpAuthenticationProvider : IAuthenticationProvider
                 EventType = AshlarSecurityEventTypes.TotpVerificationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                Context = context,
                 Provider = Key,
                 FailureReason = AshlarFailureCodes.RateLimited.Value
             }, cancellationToken);

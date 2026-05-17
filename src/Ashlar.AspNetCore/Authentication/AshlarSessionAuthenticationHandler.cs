@@ -43,12 +43,16 @@ public sealed class AshlarSessionAuthenticationHandler(
             return AuthenticateResult.Fail("Ashlar session validation failed.");
         }
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, validation.UserId.Value.ToString("D"), ClaimValueTypes.String, Options.ClaimsIssuer),
             new Claim(AshlarClaimTypes.SessionId, validation.Session.Id.ToString("D"), ClaimValueTypes.String, Options.ClaimsIssuer),
             new Claim(ClaimTypes.AuthenticationMethod, Scheme.Name, ClaimValueTypes.String, Options.ClaimsIssuer)
         };
+        if (validation.Session.TenantId.HasValue)
+        {
+            claims.Add(new Claim(AshlarClaimTypes.TenantId, validation.Session.TenantId.Value.ToString("D"), ClaimValueTypes.String, Options.ClaimsIssuer));
+        }
 
         var identity = new ClaimsIdentity(claims, Scheme.Name, ClaimTypes.NameIdentifier, ClaimTypes.Role);
         var principal = new ClaimsPrincipal(identity);

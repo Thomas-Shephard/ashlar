@@ -10,7 +10,7 @@ namespace Ashlar.Identity;
 /// <param name="emailSender">The email sender value.</param>
 /// <param name="rateLimiter">The rate limiter value.</param>
 /// <param name="uriValidator">The uri validator value.</param>
-public sealed class IdentityInfrastructureContext(
+internal sealed class IdentityInfrastructureContext(
     IEmailSender emailSender,
     IAuthenticationRateLimiter rateLimiter,
     IUriValidator uriValidator)

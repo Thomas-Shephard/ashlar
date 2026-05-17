@@ -75,11 +75,11 @@ public sealed class PostgresSecurityEventSink : ISecurityEventSink, IAsyncDispos
     {
         const string sql = """
             INSERT INTO ashlar_security_events (
-                id, event_type, occurred_at, user_id, session_id,
+                id, event_type, occurred_at, user_id, tenant_id, actor_user_id, session_id,
                 provider_type, provider_name, ip_address, user_agent,
                 correlation_id, outcome, failure_reason, properties
             ) VALUES (
-                @Id, @EventType, @OccurredAt, @UserId, @SessionId,
+                @Id, @EventType, @OccurredAt, @UserId, @TenantId, @ActorUserId, @SessionId,
                 @ProviderType, @ProviderName, @IpAddress, @UserAgent,
                 @CorrelationId, @Outcome, @FailureReason, @Properties::jsonb
             )
@@ -95,6 +95,8 @@ public sealed class PostgresSecurityEventSink : ISecurityEventSink, IAsyncDispos
                     securityEvent.EventType,
                     securityEvent.OccurredAt,
                     securityEvent.UserId,
+                    securityEvent.TenantId,
+                    securityEvent.ActorUserId,
                     securityEvent.SessionId,
                     ProviderType = Ashlar.Identity.Models.AuthenticationProviderKey.GetTypeValueOrNull(securityEvent.Provider),
                     ProviderName = GetProviderName(securityEvent.Provider),

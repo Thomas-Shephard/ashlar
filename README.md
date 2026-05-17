@@ -72,6 +72,26 @@ Allowed entries must be absolute `https` or `http` URIs without query strings or
 
 Use `https` in production. For local development, explicitly allow the loopback HTTP origin you run, such as `http://localhost:5000`, and avoid modeling production with arbitrary callback URLs from user input. Ashlar appends token query parameters after validation; do not include query strings or fragments in callback bases.
 
+## Request Contexts
+Ashlar keeps runtime context split by responsibility. Use `AuthenticationContext` for authentication attempts and authentication-provider lookup metadata: email, tenant scope, IP address, user agent, correlation id, return URL, and non-secret items. Use `AuditContext` for non-authentication operations that still need security audit metadata, such as email verification and email change requests. Tenant-aware apps pass the same tenant id into `AuthenticationContext.TenantId`, invitation/bootstrap request `TenantId`, and authorization grant/evaluation `TenantId`; omitting the tenant means global scope, not a cross-tenant lookup.
+
+```csharp
+var authContext = new AuthenticationContext(
+    Email: email,
+    TenantId: tenantId,
+    IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
+    UserAgent: httpContext.Request.Headers.UserAgent.ToString(),
+    CorrelationId: httpContext.TraceIdentifier);
+
+var auditContext = new AuditContext(
+    ActorUserId: currentUserId,
+    IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
+    UserAgent: httpContext.Request.Headers.UserAgent.ToString(),
+    CorrelationId: httpContext.TraceIdentifier);
+```
+
+Ashlar deliberately does not store or expose raw passwords, password hashes, raw session tokens, magic-link tokens, email verification/change tokens, recovery codes, protected payloads, or other secret credential values in context or audit payloads.
+
 ## Messaging
 Ashlar includes a framework-neutral email abstraction for identity and security flows that need to send or queue email messages, such as passwordless email sign-in, password reset, MFA recovery, and security notifications.
 
@@ -156,14 +176,21 @@ var verificationService = httpContext.RequestServices.GetRequiredService<IEmailV
 
 await verificationService.RequestVerificationAsync(new EmailVerificationRequest 
 { 
-    UserId = userId 
+    UserId = userId,
+    CallbackBaseUri = new Uri("https://app.example.com/account/verify-email"),
+    Audit = auditContext
 });
 ```
 
 Verify the token (e.g., from a link in the email):
 
 ```csharp
-var result = await verificationService.VerifyTokenAsync(userId, tokenFromUrl);
+var result = await verificationService.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest
+{
+    UserId = userId,
+    Token = tokenFromUrl,
+    Audit = auditContext
+});
 
 if (result.Succeeded)
 {
@@ -174,7 +201,12 @@ if (result.Succeeded)
 When a service returns `Result` or `Result<T>`, branch on the stable failure code rather than parsing the display message:
 
 ```csharp
-var result = await verificationService.VerifyTokenAsync(userId, tokenFromUrl);
+var result = await verificationService.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest
+{
+    UserId = userId,
+    Token = tokenFromUrl,
+    Audit = auditContext
+});
 
 if (!result.Succeeded)
 {
@@ -336,7 +368,7 @@ var result = await invitations.AcceptInvitationAsync(
 
 if (result.Succeeded)
 {
-    var userId = result.UserId.Value;
+    var userId = result.Value;
 }
 ```
 
@@ -421,12 +453,13 @@ To verify a recovery code during sign-in, use the standard `AuthenticationPipeli
 ```csharp
 var pipeline = httpContext.RequestServices.GetRequiredService<IAuthenticationPipeline>();
 
-var assertion = new RecoveryCodeAssertion(
-    code: userInputCode,
-    ipAddress: httpContext.Connection.RemoteIpAddress?.ToString());
+var assertion = new RecoveryCodeAssertion(userInputCode);
 
 var authenticationResponse = await pipeline.LoginAsync(
-    new AuthenticationContext(Email: userEmail), 
+    new AuthenticationContext(
+        Email: userEmail,
+        IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
+        UserAgent: httpContext.Request.Headers.UserAgent.ToString()), 
     assertion);
 
 if (authenticationResponse.Succeeded)
@@ -507,7 +540,7 @@ var result = await orchestrator.VerifyFactorAsync(
 if (result.Status == MfaAuthenticationStatus.Succeeded)
 {
     // All factors verified! Now create the session.
-    await signInManager.SignInAsync(httpContext, result.User.Id, result.Claims);
+    await signInManager.SignInAsync(httpContext, result.User.Id);
 }
 ```
 
@@ -532,24 +565,29 @@ When a user's primary authentication succeeds but MFA is required, initiate a ha
 ```csharp
 var handshakeService = httpContext.RequestServices.GetRequiredService<IAuthenticationHandshakeService>();
 
-var (handshake, token) = await handshakeService.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(
+var createResult = await handshakeService.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(
     userId,
     RequiredFactors: ["totp"]));
 
-// Return the 'token' to the client. It will be needed to verify factors.
+if (!createResult.Succeeded || createResult.Value == null)
+{
+    return Results.BadRequest(new { error = createResult.FailureCode?.Value });
+}
+
+// Return createResult.Value.Token to the client. It will be needed to verify factors.
 ```
 
 Verify a factor to continue or complete the handshake:
 
 ```csharp
 var result = await handshakeService.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest(
-    HandshakeToken: tokenFromClient,
-    FactorType: "totp"));
+    tokenFromClient,
+    "totp"));
 
-if (result.Succeeded && result.Handshake.IsCompleted)
+if (result.Succeeded && result.Value is { IsCompleted: true } handshake)
 {
     // All required factors verified! Create the final session.
-    await signInManager.SignInAsync(httpContext, result.Handshake.UserId);
+    await signInManager.SignInAsync(httpContext, handshake.UserId);
 }
 ```
 
@@ -739,7 +777,7 @@ await signInManager.SignInAsync(
     authenticationResult.User.Id);
 ```
 
-`AddAshlarAspNetCoreSessions` registers the `"Ashlar"` authentication scheme by default. The handler reads the configured cookie, validates it with `IAuthenticationSessionService`, and creates an authenticated `ClaimsPrincipal` containing `ClaimTypes.NameIdentifier`, the Ashlar session id claim, and the authentication method claim.
+`AddAshlarAspNetCoreSessions` registers the `"Ashlar"` authentication scheme by default. The handler reads the configured cookie, validates it with `IAuthenticationSessionService`, and creates an authenticated `ClaimsPrincipal` containing `ClaimTypes.NameIdentifier`, the Ashlar session id claim, the authentication method claim, and `AshlarClaimTypes.TenantId` when the session is tenant-scoped.
 
 Cookie defaults are intentionally secure: `HttpOnly = true`, `SecurePolicy = Always`, `SameSite = Lax`, and `Path = "/"`. `SameSite=Lax` is chosen so normal top-level navigation back to an application login flow keeps working while cross-site subresource and background requests do not carry the session cookie. Applications that need stricter same-site behavior can configure the cookie builder.
 
@@ -855,7 +893,7 @@ services.AddSingleton<ISecurityEventSink, MySecurityEventSink>();
 services.AddAshlarIdentity();
 ```
 
-Audit event payloads include stable event types, timestamps, user/session ids when known, provider identity, IP address, user agent, correlation id, outcome, failure reason, and string properties. Audit events must not contain raw session tokens, passwords, one-time codes, credential values, or other secrets.
+Audit event payloads include stable event types, timestamps, target user/session ids when known, tenant id, actor user id, provider identity, IP address, user agent, correlation id, outcome, failure reason, and string properties. Audit events must not contain raw session tokens, passwords, one-time codes, credential values, protected payloads, password hashes, recovery codes, or other secrets.
 
 The **Ashlar.Postgres** package includes a PostgreSQL-backed sink:
 

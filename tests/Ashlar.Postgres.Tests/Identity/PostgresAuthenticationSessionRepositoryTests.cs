@@ -48,7 +48,7 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         var identityRepository = GetIdentityRepository();
         var sessionRepository = GetSessionRepository();
         var user = await CreateTestUser(identityRepository);
-        var session = CreateSession(user.Id);
+        var session = CreateSession(user.Id, tenantId: Guid.NewGuid());
         session.LastSeenAt = new DateTimeOffset(2026, 1, 2, 12, 5, 0, TimeSpan.Zero);
         session.RevokedAt = new DateTimeOffset(2026, 1, 2, 12, 10, 0, TimeSpan.Zero);
         session.RevocationReason = "signed-out";
@@ -65,6 +65,7 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         {
             Assert.That(fetched.Id, Is.EqualTo(session.Id));
             Assert.That(fetched.UserId, Is.EqualTo(session.UserId));
+            Assert.That(fetched.TenantId, Is.EqualTo(session.TenantId));
             Assert.That(fetched.TokenHash, Is.EqualTo(session.TokenHash));
             Assert.That(fetched.CreatedAt, Is.EqualTo(session.CreatedAt));
             Assert.That(fetched.ExpiresAt, Is.EqualTo(session.ExpiresAt));
@@ -460,12 +461,14 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         Guid userId,
         string? tokenHash = null,
         DateTimeOffset? createdAt = null,
-        DateTimeOffset? expiresAt = null)
+        DateTimeOffset? expiresAt = null,
+        Guid? tenantId = null)
     {
         return new AuthenticationSession
         {
             Id = Guid.NewGuid(),
             UserId = userId,
+            TenantId = tenantId,
             TokenHash = tokenHash ?? $"sha256:{Guid.NewGuid():N}",
             CreatedAt = createdAt ?? new DateTimeOffset(2026, 1, 2, 12, 0, 0, TimeSpan.Zero),
             ExpiresAt = expiresAt ?? new DateTimeOffset(2026, 1, 3, 12, 0, 0, TimeSpan.Zero)

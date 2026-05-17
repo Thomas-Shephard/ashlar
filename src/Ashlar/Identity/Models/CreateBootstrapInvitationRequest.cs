@@ -1,3 +1,5 @@
+using Ashlar.Auditing;
+
 namespace Ashlar.Identity.Models;
 
 /// <summary>
@@ -17,6 +19,10 @@ public sealed class CreateBootstrapInvitationRequest
     /// Gets or sets the tenant id value.
     /// </summary>
     public Guid? TenantId { get; init; }
+    /// <summary>
+    /// Gets or sets audit metadata for the request.
+    /// </summary>
+    public AuditContext? Audit { get; init; }
     /// <summary>
     /// Gets or sets the expiry value.
     /// </summary>

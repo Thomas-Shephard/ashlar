@@ -36,8 +36,8 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         ValidateMetadata(session.Metadata);
 
         const string sql = """
-            INSERT INTO ashlar_sessions (id, user_id, token_hash, created_at, expires_at, last_seen_at, revoked_at, revocation_reason, ip_address, user_agent, metadata)
-            VALUES (@Id, @UserId, @TokenHash, @CreatedAt, @ExpiresAt, @LastSeenAt, @RevokedAt, @RevocationReason, @IpAddress, @UserAgent, @Metadata::jsonb)
+            INSERT INTO ashlar_sessions (id, user_id, tenant_id, token_hash, created_at, expires_at, last_seen_at, revoked_at, revocation_reason, ip_address, user_agent, metadata)
+            VALUES (@Id, @UserId, @TenantId, @TokenHash, @CreatedAt, @ExpiresAt, @LastSeenAt, @RevokedAt, @RevocationReason, @IpAddress, @UserAgent, @Metadata::jsonb)
             """;
 
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -59,7 +59,7 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         ArgumentException.ThrowIfNullOrWhiteSpace(tokenHash);
 
         const string sql = """
-            SELECT id AS Id, user_id AS UserId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
+            SELECT id AS Id, user_id AS UserId, tenant_id AS TenantId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
                    last_seen_at AS LastSeenAt, revoked_at AS RevokedAt, revocation_reason AS RevocationReason,
                    ip_address AS IpAddress, user_agent AS UserAgent, metadata AS Metadata
             FROM ashlar_sessions
@@ -83,7 +83,7 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
     public async Task<AuthenticationSession?> GetSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         const string sql = """
-            SELECT id AS Id, user_id AS UserId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
+            SELECT id AS Id, user_id AS UserId, tenant_id AS TenantId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
                    last_seen_at AS LastSeenAt, revoked_at AS RevokedAt, revocation_reason AS RevocationReason,
                    ip_address AS IpAddress, user_agent AS UserAgent, metadata AS Metadata
             FROM ashlar_sessions
@@ -182,7 +182,7 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
     public async Task<IReadOnlyList<AuthenticationSession>> ListSessionsForUserAsync(Guid userId, bool activeOnly, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         var sql = """
-            SELECT id AS Id, user_id AS UserId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
+            SELECT id AS Id, user_id AS UserId, tenant_id AS TenantId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
                    last_seen_at AS LastSeenAt, revoked_at AS RevokedAt, revocation_reason AS RevocationReason,
                    ip_address AS IpAddress, user_agent AS UserAgent, metadata AS Metadata
             FROM ashlar_sessions

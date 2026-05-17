@@ -57,6 +57,8 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
             EventType = "TestEvent",
             OccurredAt = DateTimeOffset.UtcNow,
             UserId = Guid.NewGuid(),
+            TenantId = Guid.NewGuid(),
+            ActorUserId = Guid.NewGuid(),
             SessionId = Guid.NewGuid(),
             Provider = provider,
             IpAddress = "127.0.0.1",
@@ -83,6 +85,8 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
             Assert.That((string)row.event_type, Is.EqualTo(securityEvent.EventType));
             Assert.That((DateTimeOffset)row.occurred_at, Is.EqualTo(securityEvent.OccurredAt).Within(TimeSpan.FromMilliseconds(100)));
             Assert.That((Guid?)row.user_id, Is.EqualTo(securityEvent.UserId));
+            Assert.That((Guid?)row.tenant_id, Is.EqualTo(securityEvent.TenantId));
+            Assert.That((Guid?)row.actor_user_id, Is.EqualTo(securityEvent.ActorUserId));
             Assert.That((Guid?)row.session_id, Is.EqualTo(securityEvent.SessionId));
             Assert.That((string)row.provider_type, Is.EqualTo(provider.Type.Value));
             Assert.That((string)row.provider_name, Is.EqualTo(provider.Name));

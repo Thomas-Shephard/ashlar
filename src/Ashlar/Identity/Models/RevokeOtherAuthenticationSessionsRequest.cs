@@ -1,3 +1,5 @@
+using Ashlar.Auditing;
+
 namespace Ashlar.Identity.Models;
 
 /// <summary>
@@ -16,12 +18,12 @@ public sealed record RevokeOtherAuthenticationSessionsRequest
     public string? Reason { get; init; }
 
     /// <summary>
-    /// The IP address of the client requesting revocation.
+    /// Tenant scope for the revocation event.
     /// </summary>
-    public string? IpAddress { get; init; }
+    public TenantContext? Tenant { get; init; }
 
     /// <summary>
-    /// The user agent of the client requesting revocation.
+    /// Audit metadata describing who requested revocation.
     /// </summary>
-    public string? UserAgent { get; init; }
+    public AuditContext? Audit { get; init; }
 }

@@ -8,9 +8,11 @@ namespace Ashlar.Identity.Models;
 /// <param name="UserAgent">The user agent value.</param>
 /// <param name="Metadata">The metadata value.</param>
 /// <param name="CorrelationId">The correlation id value.</param>
+/// <param name="TenantId">The tenant id value.</param>
 public sealed record CreateAuthenticationSessionRequest(
     TimeSpan? Lifetime = null,
     string? IpAddress = null,
     string? UserAgent = null,
     string? Metadata = null,
-    string? CorrelationId = null);
+    string? CorrelationId = null,
+    Guid? TenantId = null);

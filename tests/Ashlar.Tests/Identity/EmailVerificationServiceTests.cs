@@ -51,6 +51,27 @@ internal sealed class EmailVerificationServiceTests
     }
 
     [Test]
+    public async Task RequestVerificationPropagatesAuditMetadataToSecurityEvent()
+    {
+        var actorUserId = Guid.NewGuid();
+        var fixture = CreateFixture(_user);
+        var audit = new AuditContext(actorUserId, "203.0.113.10", "NUnit", "corr-verify");
+        var request = new EmailVerificationRequest { UserId = _user.Id, CallbackBaseUri = new Uri("https://example.com/callback"), Audit = audit };
+
+        var result = await fixture.Service.RequestVerificationAsync(request);
+        var securityEvent = fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.EmailVerificationRequested);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(securityEvent.ActorUserId, Is.EqualTo(actorUserId));
+            Assert.That(securityEvent.IpAddress, Is.EqualTo(audit.IpAddress));
+            Assert.That(securityEvent.UserAgent, Is.EqualTo(audit.UserAgent));
+            Assert.That(securityEvent.CorrelationId, Is.EqualTo(audit.CorrelationId));
+        }
+    }
+
+    [Test]
     public async Task RequestVerificationSucceedsIfAlreadyVerified()
     {
         var verifiedUser = new AshlarUser { Id = Guid.NewGuid(), Email = "verified@example.com", IsActive = true, EmailVerifiedAt = DateTimeOffset.UtcNow };
@@ -97,13 +118,29 @@ internal sealed class EmailVerificationServiceTests
     }
 
     [Test]
+    public async Task RequestVerificationRateLimitWorksForNonTenantUser()
+    {
+        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "user@example.com", IsActive = true };
+        var fixture = CreateFixture(user, requestAllowed: false);
+        var request = new EmailVerificationRequest { UserId = user.Id, CallbackBaseUri = new Uri("https://example.com/callback") };
+
+        var result = await fixture.Service.RequestVerificationAsync(request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.EmailVerificationRateLimited).TenantId, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task VerifyTokenSucceedsAndUpdatesUser()
     {
         var fixture = CreateFixture(_user);
         await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = _user.Id, CallbackBaseUri = new Uri("https://example.com/callback") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
-        var result = await fixture.Service.VerifyTokenAsync(_user.Id, token);
+        var result = await fixture.Service.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest { UserId = _user.Id, Token = token });
         var updatedUser = await fixture.IdentityRepository.GetUserByIdAsync(_user.Id);
 
         Assert.That(updatedUser, Is.Not.Null);
@@ -117,6 +154,26 @@ internal sealed class EmailVerificationServiceTests
     }
 
     [Test]
+    public async Task VerifyTokenIncludesTenantIdInSecurityEvent()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = _user with { TenantId = tenantId };
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = user.Id, CallbackBaseUri = new Uri("https://example.com/callback") });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+        fixture.Audit.Events.Clear();
+
+        var result = await fixture.Service.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest { UserId = user.Id, Token = token });
+        var securityEvent = fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.EmailVerified);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(securityEvent.TenantId, Is.EqualTo(tenantId));
+        }
+    }
+
+    [Test]
     public async Task VerifyTokenPreservesAuditMetadataForMetadataBackedUser()
     {
         var user = new MetadataUser { Id = Guid.NewGuid(), Email = "user@example.com", IsActive = true, CreatedAt = DateTimeOffset.UtcNow.AddDays(-1) };
@@ -124,7 +181,7 @@ internal sealed class EmailVerificationServiceTests
         await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = user.Id, CallbackBaseUri = new Uri("https://example.com/callback") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
-        var result = await fixture.Service.VerifyTokenAsync(user.Id, token);
+        var result = await fixture.Service.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest { UserId = user.Id, Token = token });
 
         using (Assert.EnterMultipleScope())
         {
@@ -138,7 +195,7 @@ internal sealed class EmailVerificationServiceTests
     public async Task VerifyTokenFailsForInvalidToken()
     {
         var fixture = CreateFixture(_user);
-        var result = await fixture.Service.VerifyTokenAsync(_user.Id, "invalid-token");
+        var result = await fixture.Service.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest { UserId = _user.Id, Token = "invalid-token" });
 
         using (Assert.EnterMultipleScope())
         {
@@ -155,7 +212,7 @@ internal sealed class EmailVerificationServiceTests
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
         fixture.Time.Advance(TimeSpan.FromDays(2));
 
-        var result = await fixture.Service.VerifyTokenAsync(_user.Id, token);
+        var result = await fixture.Service.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest { UserId = _user.Id, Token = token });
 
         Assert.That(result.Succeeded, Is.False);
     }
@@ -167,7 +224,7 @@ internal sealed class EmailVerificationServiceTests
         await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = _user.Id, CallbackBaseUri = new Uri("https://example.com/callback") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
-        var result = await fixture.Service.VerifyTokenAsync(_user.Id, token);
+        var result = await fixture.Service.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest { UserId = _user.Id, Token = token });
 
         using (Assert.EnterMultipleScope())
         {
@@ -184,7 +241,7 @@ internal sealed class EmailVerificationServiceTests
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
         fixture.IdentityRepository.Users.Clear();
 
-        var result = await fixture.Service.VerifyTokenAsync(_user.Id, token);
+        var result = await fixture.Service.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest { UserId = _user.Id, Token = token });
 
         using (Assert.EnterMultipleScope())
         {
@@ -197,7 +254,7 @@ internal sealed class EmailVerificationServiceTests
     public async Task VerifyTokenRateLimits()
     {
         var fixture = CreateFixture(_user, verifyAllowed: false);
-        var result = await fixture.Service.VerifyTokenAsync(_user.Id, "some-token");
+        var result = await fixture.Service.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest { UserId = _user.Id, Token = "some-token" });
 
         using (Assert.EnterMultipleScope())
         {

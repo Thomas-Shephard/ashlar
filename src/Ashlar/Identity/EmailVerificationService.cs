@@ -13,7 +13,7 @@ namespace Ashlar.Identity;
 /// <summary>
 /// Provides email verification service behavior.
 /// </summary>
-public sealed class EmailVerificationService : IEmailVerificationService
+internal sealed class EmailVerificationService : IEmailVerificationService
 {
     private const string RequestPurpose = "email-verification-request";
     private const string VerifyPurpose = "email-verification-verify";
@@ -65,6 +65,7 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
+                Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.InvalidCallbackUri.Value
             }, cancellationToken);
             return Result.Failure(AshlarFailureCodes.InvalidCallbackUri, $"The URI '{request.CallbackBaseUri}' is not allowed.");
@@ -78,6 +79,7 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
+                Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.UserNotFoundOrInactive.Value
             }, cancellationToken);
             return Result.Failure(AshlarFailureCodes.UserNotFoundOrInactive, "User not found or inactive.");
@@ -93,7 +95,9 @@ public sealed class EmailVerificationService : IEmailVerificationService
             Key = $"{RequestPurpose}:{user.Id}",
             Purpose = RequestPurpose,
             Email = user.Email,
-            UserId = user.Id.ToString()
+            UserId = user.Id.ToString(),
+            IpAddress = request.Audit?.IpAddress,
+            CorrelationId = request.Audit?.CorrelationId
         }, new RateLimitRule { PermitLimit = 3, Window = TimeSpan.FromHours(1) }, cancellationToken);
 
         if (!rateLimit.IsAllowed)
@@ -103,6 +107,8 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = user.Id,
+                TenantId = (user as ITenantUser)?.TenantId,
+                Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.RateLimited.Value
             }, cancellationToken);
             return Result.Failure(AshlarFailureCodes.RateLimited, "Too many requests.");
@@ -146,7 +152,9 @@ public sealed class EmailVerificationService : IEmailVerificationService
             {
                 EventType = AshlarSecurityEventTypes.EmailVerificationRequested,
                 Outcome = SecurityEventOutcomes.Success,
-                UserId = user.Id
+                UserId = user.Id,
+                TenantId = (user as ITenantUser)?.TenantId,
+                Audit = request.Audit
             }, ct);
         });
 
@@ -156,14 +164,16 @@ public sealed class EmailVerificationService : IEmailVerificationService
     }
 
     /// <summary>
-    /// Performs the verify token <see langword="async" /> operation and returns the result.
+    /// Performs the confirm verification <see langword="async" /> operation and returns the result.
     /// </summary>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="token">The token value.</param>
+    /// <param name="request">The request value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public async Task<Result> VerifyTokenAsync(Guid userId, string token, CancellationToken cancellationToken = default)
+    public async Task<Result> ConfirmVerificationAsync(ConfirmEmailVerificationRequest request, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        var userId = request.UserId;
+        var token = request.Token;
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
 
         var rateLimit = await _rateLimiter.CheckAsync(new RateLimitAttempt
@@ -180,6 +190,7 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationVerificationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.RateLimited.Value
             }, cancellationToken);
             return Result.Failure(AshlarFailureCodes.RateLimited, "Too many attempts.");
@@ -196,6 +207,7 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.InvalidOrExpiredToken.Value
             }, cancellationToken);
             return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, "Invalid or expired token.");
@@ -211,6 +223,7 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.TokenConsumptionFailed.Value
             }, cancellationToken);
             return Result.Failure(AshlarFailureCodes.TokenConsumptionFailed, "Invalid or expired token.");
@@ -224,6 +237,7 @@ public sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.UserNotFoundOrInactive.Value
             }, cancellationToken);
             return Result.Failure(AshlarFailureCodes.UserNotFoundOrInactive, "Invalid or expired token.");
@@ -238,7 +252,9 @@ public sealed class EmailVerificationService : IEmailVerificationService
             {
                 EventType = AshlarSecurityEventTypes.EmailVerified,
                 Outcome = SecurityEventOutcomes.Success,
-                UserId = userId
+                UserId = userId,
+                TenantId = (updatedUser as ITenantUser)?.TenantId,
+                Audit = request.Audit
             }, ct);
 
             await _notifications.NotifyAsync(SecurityNotificationType.EmailVerificationCompleted, updatedUser, now, cancellationToken: ct);
@@ -299,7 +315,7 @@ public sealed class EmailVerificationService : IEmailVerificationService
 /// <param name="infrastructure">The infrastructure value.</param>
 /// <param name="audit">The audit value.</param>
 /// <param name="options">The options value.</param>
-public sealed class EmailVerificationServiceDependencies(
+internal sealed class EmailVerificationServiceDependencies(
     IdentityContext identityContext,
     SecureTokenContext tokenContext,
     IdentityInfrastructureContext infrastructure,

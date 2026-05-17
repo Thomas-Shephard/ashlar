@@ -64,12 +64,14 @@ public interface IAuthenticationProvider
     /// </summary>
     /// <param name="userId">The user id value.</param>
     /// <param name="assertion">The assertion value.</param>
+    /// <param name="context">The authentication context value.</param>
     /// <param name="repository">The repository value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
     Task<UserCredential?> ResolveCredentialAsync(
         Guid userId,
         IAuthenticationAssertion assertion,
+        AuthenticationContext? context,
         IIdentityRepository repository,
         CancellationToken cancellationToken = default)
     {

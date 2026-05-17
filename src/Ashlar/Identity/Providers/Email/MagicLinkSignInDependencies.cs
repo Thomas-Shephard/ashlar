@@ -14,7 +14,7 @@ namespace Ashlar.Identity.Providers.Email;
 /// <param name="infrastructure">The infrastructure value.</param>
 /// <param name="provider">The provider value.</param>
 /// <param name="audit">The audit value.</param>
-public sealed class MagicLinkSignInDependencies(
+internal sealed class MagicLinkSignInDependencies(
     IdentityContext identityContext,
     SecureTokenContext tokenContext,
     IdentityInfrastructureContext infrastructure,

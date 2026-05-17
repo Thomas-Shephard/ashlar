@@ -1,3 +1,5 @@
+using Ashlar.Auditing;
+
 namespace Ashlar.Authorization.Models;
 
 /// <summary>
@@ -11,6 +13,7 @@ namespace Ashlar.Authorization.Models;
 /// <param name="Permission">The permission value.</param>
 /// <param name="ExpiresAt">The expires at value.</param>
 /// <param name="Metadata">The metadata value.</param>
+/// <param name="Audit">The audit context value.</param>
 public sealed record CreateAuthorizationGrantRequest(
     Guid UserId,
     Guid? TenantId = null,
@@ -19,4 +22,5 @@ public sealed record CreateAuthorizationGrantRequest(
     string? Role = null,
     string? Permission = null,
     DateTimeOffset? ExpiresAt = null,
-    string? Metadata = null);
+    string? Metadata = null,
+    AuditContext? Audit = null);

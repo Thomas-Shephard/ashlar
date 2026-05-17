@@ -59,6 +59,8 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
                 EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
+                TenantId = request.TenantId,
+                Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.InvalidGrantShape.Value
             }, cancellationToken);
             return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.InvalidGrantShape);
@@ -83,6 +85,8 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
                 EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
+                TenantId = request.TenantId,
+                Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.ValidationError.Value
             }, cancellationToken);
             return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.ValidationError);
@@ -95,6 +99,8 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
                 EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
+                TenantId = request.TenantId,
+                Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.InvalidScopeShape.Value
             }, cancellationToken);
             return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.InvalidScopeShape);
@@ -109,6 +115,8 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
                 EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
+                TenantId = request.TenantId,
+                Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.MetadataTooLong.Value
             }, cancellationToken);
             return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.MetadataTooLong);
@@ -127,6 +135,8 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
                     EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
                     Outcome = SecurityEventOutcomes.Failure,
                     UserId = request.UserId,
+                    TenantId = request.TenantId,
+                    Audit = request.Audit,
                     FailureReason = AshlarFailureCodes.InvalidMetadataJson.Value
                 }, cancellationToken);
                 return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.InvalidMetadataJson);
@@ -153,6 +163,8 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
             EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
             Outcome = SecurityEventOutcomes.Success,
             UserId = grant.UserId,
+            TenantId = grant.TenantId,
+            Audit = request.Audit,
             Properties = CreateAuditProperties(grant)
         }, cancellationToken);
 
@@ -175,16 +187,16 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
 
         var grant = await _repository.GetGrantAsync(request.GrantId, cancellationToken);
         var revoked = await _repository.RevokeGrantAsync(request.GrantId, _timeProvider.GetUtcNow(), cancellationToken);
-        if (revoked)
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.AuthorizationGrantRevoked,
-                Outcome = SecurityEventOutcomes.Success,
-                UserId = grant?.UserId,
-                Properties = CreateAuditProperties(request.GrantId, grant)
-            }, cancellationToken);
-        }
+            EventType = AshlarSecurityEventTypes.AuthorizationGrantRevoked,
+            Outcome = revoked ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
+            UserId = grant?.UserId,
+            TenantId = grant?.TenantId,
+            Audit = request.Audit,
+            FailureReason = revoked ? null : "grant_not_revoked",
+            Properties = CreateAuditProperties(request.GrantId, grant)
+        }, cancellationToken);
 
         return revoked;
     }

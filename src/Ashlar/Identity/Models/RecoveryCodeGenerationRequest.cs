@@ -1,3 +1,6 @@
+using Ashlar.Auditing;
+using Ashlar.Identity.Models;
+
 namespace Ashlar.Identity;
 
 /// <summary>
@@ -20,4 +23,14 @@ public sealed record RecoveryCodeGenerationRequest
     /// Gets or sets the duration after which the codes expire. If <see langword="null" />, the configured default in <see cref="RecoveryCodeOptions"/> is used.
     /// </summary>
     public TimeSpan? ExpiresAfter { get; init; }
+
+    /// <summary>
+    /// Gets the tenant context for recovery-code generation.
+    /// </summary>
+    public TenantContext? Tenant { get; init; }
+
+    /// <summary>
+    /// Gets audit metadata describing who requested recovery-code generation.
+    /// </summary>
+    public AuditContext? Audit { get; init; }
 }

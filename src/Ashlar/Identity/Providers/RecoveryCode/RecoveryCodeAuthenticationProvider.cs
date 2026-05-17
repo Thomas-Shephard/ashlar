@@ -123,10 +123,11 @@ public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
     /// </summary>
     /// <param name="userId">The user id value.</param>
     /// <param name="assertion">The assertion value.</param>
+    /// <param name="context">The authentication context value.</param>
     /// <param name="repository">The repository value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public async Task<UserCredential?> ResolveCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IIdentityRepository repository, CancellationToken cancellationToken = default)
+    public async Task<UserCredential?> ResolveCredentialAsync(Guid userId, IAuthenticationAssertion assertion, AuthenticationContext? context, IIdentityRepository repository, CancellationToken cancellationToken = default)
     {
         if (assertion is not RecoveryCodeAssertion recoveryCodeAssertion)
         {
@@ -135,7 +136,7 @@ public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
 
         var rateLimitKey = userId.ToString("D");
         var rule = new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(5) };
-        var attempt = new RateLimitAttempt { Key = rateLimitKey, Purpose = "recovery-code-verify", IpAddress = recoveryCodeAssertion.IpAddress };
+        var attempt = new RateLimitAttempt { Key = rateLimitKey, Purpose = "recovery-code-verify", IpAddress = context?.IpAddress, CorrelationId = context?.CorrelationId };
 
         var decision = await _rateLimiter.CheckAsync(attempt, rule, cancellationToken);
         if (decision.Status == RateLimitStatus.Blocked)
@@ -145,6 +146,7 @@ public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
                 EventType = AshlarSecurityEventTypes.RecoveryCodeVerificationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                Context = context,
                 Provider = Key,
                 FailureReason = AshlarFailureCodes.RateLimited.Value
             }, cancellationToken);

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.Models;
 using Ashlar.Identity.Models.Totp;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Providers.Totp;
@@ -52,11 +53,12 @@ public sealed class TotpService : ITotpService
     }
 
     /// <inheritdoc />
-    public async Task<TotpEnrollment> StartEnrollmentAsync(Guid userId, string issuer, string accountName, CancellationToken cancellationToken = default)
+    public async Task<TotpEnrollment> StartEnrollmentAsync(Guid userId, string issuer, string accountName, TenantContext? tenant = null, AuditContext? audit = null, CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
         ArgumentException.ThrowIfNullOrWhiteSpace(issuer);
         ArgumentException.ThrowIfNullOrWhiteSpace(accountName);
+        tenant ??= TenantContext.Global;
 
         var secretBytes = RandomNumberGenerator.GetBytes(_options.SecretLengthBytes);
         var base32Secret = Base32.Encode(secretBytes);
@@ -68,6 +70,8 @@ public sealed class TotpService : ITotpService
             EventType = AshlarSecurityEventTypes.TotpEnrollmentStarted,
             Outcome = SecurityEventOutcomes.Success,
             UserId = userId,
+            TenantId = tenant.TenantId,
+            Audit = audit,
             Provider = _options.ProviderKey
         }, cancellationToken);
 
@@ -75,9 +79,10 @@ public sealed class TotpService : ITotpService
     }
 
     /// <inheritdoc />
-    public async Task<Result> VerifyAndEnrollAsync(Guid userId, string sharedSecret, string code, CancellationToken cancellationToken = default)
+    public async Task<Result> VerifyAndEnrollAsync(Guid userId, string sharedSecret, string code, TenantContext? tenant = null, AuditContext? audit = null, CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        tenant ??= TenantContext.Global;
 
         if (string.IsNullOrWhiteSpace(code))
         {
@@ -86,6 +91,8 @@ public sealed class TotpService : ITotpService
                 EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenant.TenantId,
+                Audit = audit,
                 Provider = _options.ProviderKey,
                 FailureReason = AshlarFailureCodes.EmptyCode.Value
             }, cancellationToken);
@@ -99,6 +106,8 @@ public sealed class TotpService : ITotpService
                 EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenant.TenantId,
+                Audit = audit,
                 Provider = _options.ProviderKey,
                 FailureReason = AshlarFailureCodes.InvalidSecret.Value
             }, cancellationToken);
@@ -112,6 +121,8 @@ public sealed class TotpService : ITotpService
                 EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenant.TenantId,
+                Audit = audit,
                 Provider = _options.ProviderKey,
                 FailureReason = AshlarFailureCodes.InvalidSecretFormat.Value
             }, cancellationToken);
@@ -129,6 +140,8 @@ public sealed class TotpService : ITotpService
                 EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenant.TenantId,
+                Audit = audit,
                 Provider = _options.ProviderKey,
                 FailureReason = AshlarFailureCodes.InvalidCode.Value
             }, cancellationToken);
@@ -151,6 +164,8 @@ public sealed class TotpService : ITotpService
                 EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenant.TenantId,
+                Audit = audit,
                 Provider = _options.ProviderKey,
                 FailureReason = linkResult.FailureCode?.Value ?? AshlarFailureCodes.LinkFailed.Value
             }, cancellationToken);
@@ -164,13 +179,15 @@ public sealed class TotpService : ITotpService
                 EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = userId,
+                TenantId = tenant.TenantId,
+                Audit = audit,
                 Provider = _options.ProviderKey
             }, ct);
 
             var user = await _repository.GetUserByIdAsync(userId, ct);
             if (user != null)
             {
-                await _notifications.NotifyAsync(SecurityNotificationType.TotpEnrolled, user, now, cancellationToken: ct);
+                await _notifications.NotifyAsync(SecurityNotificationType.TotpEnrolled, user, now, context: ToNotificationContext(audit), cancellationToken: ct);
             }
         });
 
@@ -179,9 +196,10 @@ public sealed class TotpService : ITotpService
     }
 
     /// <inheritdoc />
-    public async Task<bool> DisableTotpAsync(Guid userId, CancellationToken cancellationToken = default)
+    public async Task<bool> DisableTotpAsync(Guid userId, TenantContext? tenant = null, AuditContext? audit = null, CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        tenant ??= TenantContext.Global;
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
@@ -196,18 +214,31 @@ public sealed class TotpService : ITotpService
                 EventType = AshlarSecurityEventTypes.TotpDisabled,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = userId,
+                TenantId = tenant.TenantId,
+                Audit = audit,
                 Provider = _options.ProviderKey
             }, ct);
 
             var user = await _repository.GetUserByIdAsync(userId, ct);
             if (user != null)
             {
-                await _notifications.NotifyAsync(SecurityNotificationType.TotpDisabled, user, now, cancellationToken: ct);
+                await _notifications.NotifyAsync(SecurityNotificationType.TotpDisabled, user, now, context: ToNotificationContext(audit), cancellationToken: ct);
             }
         });
 
         await transaction.CommitAsync(cancellationToken);
         return true;
+    }
+
+    private static AuthenticationContext? ToNotificationContext(AuditContext? audit)
+    {
+        if (audit == null) return new AuthenticationContext();
+
+        return new AuthenticationContext(
+            UserId: audit.ActorUserId,
+            IpAddress: audit.IpAddress,
+            UserAgent: audit.UserAgent,
+            CorrelationId: audit.CorrelationId);
     }
 }
 

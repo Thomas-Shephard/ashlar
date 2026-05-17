@@ -1,3 +1,5 @@
+using Ashlar.Auditing;
+
 namespace Ashlar.Identity.Models;
 
 /// <summary>
@@ -57,9 +59,9 @@ public sealed class RequestEmailChangeRequest
     /// </remarks>
     public required Uri CallbackBaseUri { get; init; }
     /// <summary>
-    /// Gets or sets the context value.
+    /// Gets or sets audit metadata for the request.
     /// </summary>
-    public AuthenticationContext? Context { get; init; }
+    public AuditContext? Audit { get; init; }
 }
 
 /// <summary>
@@ -75,4 +77,8 @@ public sealed class ConfirmEmailChangeRequest
     /// Gets or sets the token value.
     /// </summary>
     public required string Token { get; init; }
+    /// <summary>
+    /// Gets or sets audit metadata for the request.
+    /// </summary>
+    public AuditContext? Audit { get; init; }
 }

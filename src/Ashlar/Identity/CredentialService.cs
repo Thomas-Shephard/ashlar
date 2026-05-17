@@ -121,7 +121,7 @@ public sealed class CredentialService(
 
         var userId = user?.Id ?? Guid.NewGuid();
 
-        var (unprotectedCredential, credential, unprotectFailed) = await ResolveCredentialCoreAsync(userId, assertion, provider, cancellationToken);
+        var (unprotectedCredential, credential, unprotectFailed) = await ResolveCredentialCoreAsync(userId, assertion, provider, context, cancellationToken);
         return (user, unprotectedCredential, credential, unprotectFailed);
     }
     /// <inheritdoc />
@@ -136,7 +136,7 @@ public sealed class CredentialService(
 
         var user = await _repository.GetUserByIdAsync(userId, cancellationToken);
 
-        var (unprotectedCredential, credential, unprotectFailed) = await ResolveCredentialCoreAsync(userId, assertion, provider, cancellationToken);
+        var (unprotectedCredential, credential, unprotectFailed) = await ResolveCredentialCoreAsync(userId, assertion, provider, null, cancellationToken);
         return (user, unprotectedCredential, credential, unprotectFailed);
     }
 
@@ -144,6 +144,7 @@ public sealed class CredentialService(
         Guid userId,
         IAuthenticationAssertion assertion,
         IAuthenticationProvider provider,
+        AuthenticationContext? context,
         CancellationToken cancellationToken)
     {
         var providerKey = provider.GetProviderKey(assertion, userId);
@@ -156,7 +157,7 @@ public sealed class CredentialService(
         else
         {
             // Timing attack resistance: hit the repository even if no credential was resolved by the provider.
-            credential = await provider.ResolveCredentialAsync(userId, assertion, _repository, cancellationToken) ?? await _repository.GetCredentialForUserAsync(userId, provider.Key.Type, provider.Key.Name, Guid.NewGuid().ToString("N"), cancellationToken);
+            credential = await provider.ResolveCredentialAsync(userId, assertion, context, _repository, cancellationToken) ?? await _repository.GetCredentialForUserAsync(userId, provider.Key.Type, provider.Key.Name, Guid.NewGuid().ToString("N"), cancellationToken);
         }
 
         var (unprotectedCredential, unprotectFailed) = UnprotectCredential(credential, provider);
