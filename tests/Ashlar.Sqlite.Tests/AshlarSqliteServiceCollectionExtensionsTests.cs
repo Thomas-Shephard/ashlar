@@ -8,7 +8,7 @@ namespace Ashlar.Sqlite.Tests;
 internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestBase
 {
     [Test]
-    public async Task AddAshlarSqliteRegistersInfrastructureOnly()
+    public async Task AddAshlarSqliteRegistersImplementedRepositoriesOnly()
     {
         var services = new ServiceCollection();
 
@@ -22,12 +22,12 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<SqliteTransactionManager>());
             Assert.That(scope.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>(), Is.TypeOf<SqliteTransactionManager>());
             Assert.That(scope.ServiceProvider.GetRequiredService<SqliteSchemaManager>(), Is.Not.Null);
-            Assert.That(scope.ServiceProvider.GetService<IIdentityRepository>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetRequiredService<IIdentityRepository>(), Is.TypeOf<SqliteIdentityRepository>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IBootstrapStateRepository>(), Is.TypeOf<SqliteBootstrapStateRepository>());
             Assert.That(scope.ServiceProvider.GetService<IAuthenticationSessionRepository>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetService<IAuthenticationHandshakeRepository>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetService<IInvitationRepository>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetService<IPasskeyChallengeRepository>(), Is.Null);
-            Assert.That(scope.ServiceProvider.GetService<IBootstrapStateRepository>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetService<IAuthorizationGrantRepository>(), Is.Null);
         }
     }

@@ -102,9 +102,12 @@ internal sealed partial class SqliteTransactionManager : IAshlarTransactionProvi
         }
     }
 
-    private static async Task<SqliteTransaction> BeginImmediateTransactionAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    // Microsoft.Data.Sqlite does not expose an async BeginTransaction overload with deferred: false.
+    // Use the synchronous overload here so root transactions issue BEGIN IMMEDIATE for write safety.
+    private static Task<SqliteTransaction> BeginImmediateTransactionAsync(SqliteConnection connection, CancellationToken cancellationToken)
     {
-        return (SqliteTransaction)await connection.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(connection.BeginTransaction(IsolationLevel.Serializable, deferred: false));
     }
 
     private void RegisterPostCommitHook(Func<CancellationToken, Task> action)

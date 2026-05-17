@@ -2,7 +2,7 @@
 
 SQLite persistence infrastructure for Ashlar.
 
-This package is the first implementation slice for a future durable SQLite provider. It currently provides package boundaries, dependency injection registration, schema initialization, and scoped connection/transaction infrastructure. It does not yet provide repository implementations for identity, sessions, authorization grants, auditing, cleanup, rate limiting, or email outbox dispatch.
+This package is an early durable SQLite provider for Ashlar. It currently provides dependency injection registration, schema initialization, scoped connection/transaction infrastructure, bootstrap state persistence, identity users, and credentials. It does not yet provide sessions, invitations, MFA handshakes, passkey challenges, authorization grants, auditing, cleanup, rate limiting, or email outbox dispatch.
 
 ## Supported Scenario
 
@@ -45,15 +45,15 @@ Implemented:
 - `BEGIN IMMEDIATE` root transactions
 - nested transaction participants that join the active provider transaction
 - initial SQLite-compatible `ashlar_*` schema
+- `IBootstrapStateRepository`
+- `IIdentityRepository` for users and credentials
 
 Not implemented yet:
 
-- identity repositories
 - invitation repositories
 - authentication session and MFA handshake repositories
 - passkey challenge repository
 - authorization grant repository
-- bootstrap state repository
 - audit sink
 - cleanup service
 - rate limiter
@@ -71,12 +71,11 @@ Tenant email uniqueness is represented with SQLite-compatible partial unique ind
 
 The intended repository implementation order is:
 
-1. Bootstrap state, identity users, and credentials.
-2. Invitations, sessions, MFA handshakes, and passkey challenges.
-3. Authorization grants and audit sink.
-4. Rate limiting and cleanup.
-5. Email outbox sender and single-instance dispatcher.
-6. Reusable provider contract tests shared with PostgreSQL where practical.
+1. Invitations, sessions, MFA handshakes, and passkey challenges.
+2. Authorization grants and audit sink.
+3. Rate limiting and cleanup.
+4. Email outbox sender and single-instance dispatcher.
+5. Reusable provider contract tests shared with PostgreSQL where practical.
 
 ## Related Packages
 
