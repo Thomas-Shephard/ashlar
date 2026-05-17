@@ -591,14 +591,14 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public void ConstructorShouldThrowForNullDependencies()
     {
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(null!, Mock.Of<IAuthenticationSessionService>(), new NullTransactionProvider(), new AllowAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
             Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_identityRepository, null!, new NullTransactionProvider(), new AllowAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
             Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_identityRepository, Mock.Of<IAuthenticationSessionService>(), null!, new AllowAccountSecurityGuard(), new AccountSecurityServiceDependencies()));
             Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_identityRepository, Mock.Of<IAuthenticationSessionService>(), new NullTransactionProvider(), null!, new AccountSecurityServiceDependencies()));
             Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityService(_identityRepository, Mock.Of<IAuthenticationSessionService>(), new NullTransactionProvider(), new AllowAccountSecurityGuard(), null!));
-        });
+        }
     }
 
     [Test]

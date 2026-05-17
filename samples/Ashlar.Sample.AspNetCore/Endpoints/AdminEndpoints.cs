@@ -48,15 +48,7 @@ internal static partial class AdminEndpoints
             CancellationToken cancellationToken) =>
         {
             var result = await accountSecurity.GetUserSecurityPostureAsync(userId, new UserSecurityPostureRequest(ToTenantContext(httpContext), TimeSpan.FromDays(30)), cancellationToken);
-            if (result.Succeeded)
-            {
-                return Results.Ok(result.Value);
-            }
-
-            var error = SampleResultErrors.From(result, "User not found");
-            return result.FailureCode == AshlarFailureCodes.UserNotFound
-                ? Results.NotFound(error)
-                : Results.BadRequest(error);
+            return ToUserSecurityPostureResult(result);
         }).RequireAuthorization(AdminPolicy);
 
         app.MapPost("/api/admin/users/{userId:guid}/disable", async (
@@ -210,6 +202,19 @@ internal static partial class AdminEndpoints
         }
 
         var error = SampleResultErrors.From(result, "Account security operation failed.");
+        return result.FailureCode == AshlarFailureCodes.UserNotFound
+            ? Results.NotFound(error)
+            : Results.BadRequest(error);
+    }
+
+    private static IResult ToUserSecurityPostureResult(Result<UserSecurityPosture> result)
+    {
+        if (result.Succeeded)
+        {
+            return Results.Ok(result.Value);
+        }
+
+        var error = SampleResultErrors.From(result, "User not found");
         return result.FailureCode == AshlarFailureCodes.UserNotFound
             ? Results.NotFound(error)
             : Results.BadRequest(error);
