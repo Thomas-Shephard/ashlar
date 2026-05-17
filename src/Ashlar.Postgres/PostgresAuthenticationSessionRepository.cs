@@ -79,8 +79,8 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         await using (connectionHandle)
         {
             var command = new CommandDefinition(sql, new { TokenHash = tokenHash }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync<AuthenticationSessionRow>(command);
-            return row?.ToSession();
+            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync(command);
+            return row == null ? null : ToSession(row);
         }
     }
 
@@ -107,8 +107,8 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         await using (connectionHandle)
         {
             var command = new CommandDefinition(sql, new { Id = sessionId }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync<AuthenticationSessionRow>(command);
-            return row?.ToSession();
+            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync(command);
+            return row == null ? null : ToSession(row);
         }
     }
 
@@ -220,8 +220,8 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         await using (connectionHandle)
         {
             var command = new CommandDefinition(sql, new { UserId = userId, Now = now }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            var result = await connectionHandle.Connection.QueryAsync<AuthenticationSessionRow>(command);
-            return result.Select(row => row.ToSession()).ToList().AsReadOnly();
+            var result = await connectionHandle.Connection.QueryAsync(command);
+            return result.Select(ToSession).ToList().AsReadOnly();
         }
     }
 
@@ -319,61 +319,76 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         };
     }
 
-    private sealed record AuthenticationSessionRow
+    private static AuthenticationSession ToSession(dynamic row)
     {
-        public required Guid Id { get; init; }
-        public required Guid UserId { get; init; }
-        public Guid? TenantId { get; init; }
-        public required string TokenHash { get; init; }
-        public required DateTimeOffset CreatedAt { get; init; }
-        public DateTimeOffset? AuthenticatedAt { get; init; }
-        public string? PrimaryProviderType { get; init; }
-        public string? PrimaryProviderName { get; init; }
-        public DateTimeOffset? AdditionalVerificationAt { get; init; }
-        public string? AdditionalVerificationProviderType { get; init; }
-        public string? AdditionalVerificationProviderName { get; init; }
-        public string? AdditionalVerificationFactor { get; init; }
-        public required DateTimeOffset ExpiresAt { get; init; }
-        public DateTimeOffset? LastSeenAt { get; init; }
-        public DateTimeOffset? RevokedAt { get; init; }
-        public string? RevocationReason { get; init; }
-        public string? IpAddress { get; init; }
-        public string? UserAgent { get; init; }
-        public string? Metadata { get; init; }
+        var values = (IDictionary<string, object?>)row;
+        string? primaryProviderType = ToNullableString(GetValue(values, "PrimaryProviderType"));
+        string? primaryProviderName = ToNullableString(GetValue(values, "PrimaryProviderName"));
+        string? additionalVerificationProviderType = ToNullableString(GetValue(values, "AdditionalVerificationProviderType"));
+        string? additionalVerificationProviderName = ToNullableString(GetValue(values, "AdditionalVerificationProviderName"));
 
-        public AuthenticationSession ToSession()
+        return new AuthenticationSession
         {
-            return new AuthenticationSession
-            {
-                Id = Id,
-                UserId = UserId,
-                TenantId = TenantId,
-                TokenHash = TokenHash,
-                CreatedAt = CreatedAt,
-                AuthenticatedAt = AuthenticatedAt,
-                PrimaryProvider = CreateProvider(PrimaryProviderType, PrimaryProviderName),
-                AdditionalVerificationAt = AdditionalVerificationAt,
-                AdditionalVerificationProvider = CreateProvider(AdditionalVerificationProviderType, AdditionalVerificationProviderName),
-                AdditionalVerificationFactor = AdditionalVerificationFactor,
-                ExpiresAt = ExpiresAt,
-                LastSeenAt = LastSeenAt,
-                RevokedAt = RevokedAt,
-                RevocationReason = RevocationReason,
-                IpAddress = IpAddress,
-                UserAgent = UserAgent,
-                Metadata = Metadata
-            };
+            Id = (Guid)GetValue(values, "Id")!,
+            UserId = (Guid)GetValue(values, "UserId")!,
+            TenantId = ToNullableGuid(GetValue(values, "TenantId")),
+            TokenHash = (string)GetValue(values, "TokenHash")!,
+            CreatedAt = ToDateTimeOffset(GetValue(values, "CreatedAt")!),
+            AuthenticatedAt = ToNullableDateTimeOffset(GetValue(values, "AuthenticatedAt")),
+            PrimaryProvider = CreateProvider(primaryProviderType, primaryProviderName),
+            AdditionalVerificationAt = ToNullableDateTimeOffset(GetValue(values, "AdditionalVerificationAt")),
+            AdditionalVerificationProvider = CreateProvider(additionalVerificationProviderType, additionalVerificationProviderName),
+            AdditionalVerificationFactor = ToNullableString(GetValue(values, "AdditionalVerificationFactor")),
+            ExpiresAt = ToDateTimeOffset(GetValue(values, "ExpiresAt")!),
+            LastSeenAt = ToNullableDateTimeOffset(GetValue(values, "LastSeenAt")),
+            RevokedAt = ToNullableDateTimeOffset(GetValue(values, "RevokedAt")),
+            RevocationReason = ToNullableString(GetValue(values, "RevocationReason")),
+            IpAddress = ToNullableString(GetValue(values, "IpAddress")),
+            UserAgent = ToNullableString(GetValue(values, "UserAgent")),
+            Metadata = ToNullableString(GetValue(values, "Metadata"))
+        };
+    }
+
+    private static object? GetValue(IDictionary<string, object?> values, string name)
+    {
+        return values.TryGetValue(name, out var value) || values.TryGetValue(name.ToLowerInvariant(), out value)
+            ? value
+            : null;
+    }
+
+    private static DateTimeOffset ToDateTimeOffset(object value)
+    {
+        return value switch
+        {
+            DateTimeOffset timestamp => timestamp,
+            DateTime timestamp => new DateTimeOffset(timestamp),
+            _ => throw new InvalidOperationException("Postgres timestamp value could not be mapped.")
+        };
+    }
+
+    private static DateTimeOffset? ToNullableDateTimeOffset(object? value)
+    {
+        return value == null ? null : ToDateTimeOffset(value);
+    }
+
+    private static Guid? ToNullableGuid(object? value)
+    {
+        return value == null ? null : (Guid)value;
+    }
+
+    private static string? ToNullableString(object? value)
+    {
+        return value as string;
+    }
+
+    private static AuthenticationProviderKey? CreateProvider(string? type, string? name)
+    {
+        if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(name))
+        {
+            return null;
         }
 
-        private static AuthenticationProviderKey? CreateProvider(string? type, string? name)
-        {
-            if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(name))
-            {
-                return null;
-            }
-
-            ProviderType providerType = type;
-            return new AuthenticationProviderKey(providerType, name);
-        }
+        ProviderType providerType = type;
+        return new AuthenticationProviderKey(providerType, name);
     }
 }
