@@ -1,5 +1,6 @@
 using Ashlar.Identity.Models.Totp;
 using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.Models;
 
 namespace Ashlar.Sample.AspNetCore.Extensions;
 
@@ -51,7 +52,7 @@ internal static class ServiceCollectionExtensions
         services.AddAshlarRequireMfaWhenCredentialExists(options =>
         {
             options.CredentialProviderKeys.Add(TotpOptions.DefaultProviderKey);
-            options.RequiredFactors.Add("totp");
+            options.RequiredFactors.Add(AuthenticationFactorTypes.Totp);
         });
         services.AddAshlarTotp();
         services.AddAshlarRecoveryCodes();
@@ -85,6 +86,10 @@ internal static class ServiceCollectionExtensions
 
         services.AddAshlarAspNetCoreAuthorization(options =>
         {
+            options.StepUp.FreshnessWindow = TimeSpan.FromMinutes(10);
+            options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.Totp);
+            options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.Passkey);
+            options.RequireFreshMfa();
             options.AddRolePolicy("admin", "admin");
             options.AddPermissionPolicy("project.manage", "project.manage", scope =>
             {

@@ -57,6 +57,7 @@ public sealed class AshlarSessionAuthenticationHandler(
         }
 
         AddSessionAuthenticationClaims(claims, validation.Session);
+        Context.Items[AshlarHttpContextItems.AuthenticationSession] = validation.Session;
 
         var identity = new ClaimsIdentity(claims, Scheme.Name, ClaimTypes.NameIdentifier, ClaimTypes.Role);
         var principal = new ClaimsPrincipal(identity);
