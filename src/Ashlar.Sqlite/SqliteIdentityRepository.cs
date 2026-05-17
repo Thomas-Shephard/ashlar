@@ -13,6 +13,26 @@ namespace Ashlar.Sqlite;
 /// <param name="timeProvider">The time provider value.</param>
 public sealed class SqliteIdentityRepository(ISqliteConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IIdentityRepository
 {
+    private const string UserIdParameter = "$userId";
+    private const string ProviderTypeParameter = "$providerType";
+    private const string ProviderNameParameter = "$providerName";
+    private const string ProviderKeyParameter = "$providerKey";
+    private const string ActiveStatusParameter = "$activeStatus";
+    private const string IdParameter = "$id";
+    private const string NormalizedEmailParameter = "$normalizedEmail";
+    private const string TenantIdParameter = "$tenantId";
+    private const string CreatedAtParameter = "$createdAt";
+    private const string UpdatedAtParameter = "$updatedAt";
+    private const string ExpectedVersionParameter = "$expectedVersion";
+    private const string NewVersionParameter = "$newVersion";
+    private const string CredentialValueParameter = "$credentialValue";
+    private const string MetadataParameter = "$metadata";
+    private const string LastUsedAtParameter = "$lastUsedAt";
+    private const string ExpiresAtParameter = "$expiresAt";
+    private const string RevokedAtParameter = "$revokedAt";
+    private const string StatusParameter = "$status";
+    private const string PurposeParameter = "$purpose";
+
     private const string InsertCredentialSql = """
         INSERT INTO ashlar_credentials (id, user_id, provider_type, provider_name, provider_key, version, credential_value, metadata, last_used_at, created_at, updated_at, expires_at, revoked_at, status, purpose)
         VALUES ($id, $userId, $providerType, $providerName, $providerKey, $version, $credentialValue, $metadata, $lastUsedAt, $createdAt, $updatedAt, $expiresAt, $revokedAt, $status, $purpose);
@@ -35,8 +55,8 @@ public sealed class SqliteIdentityRepository(ISqliteConnectionProvider connectio
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
         command.CommandText = sql;
-        command.AddParameter("$normalizedEmail", IdentityNormalization.NormalizeEmail(email));
-        command.AddNullableGuidParameter("$tenantId", tenantId);
+        command.AddParameter(NormalizedEmailParameter, IdentityNormalization.NormalizeEmail(email));
+        command.AddNullableGuidParameter(TenantIdParameter, tenantId);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadUser(reader) : null;
@@ -54,7 +74,7 @@ public sealed class SqliteIdentityRepository(ISqliteConnectionProvider connectio
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
         command.CommandText = sql;
-        command.AddGuidParameter("$id", userId);
+        command.AddGuidParameter(IdParameter, userId);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadUser(reader) : null;
@@ -79,11 +99,11 @@ public sealed class SqliteIdentityRepository(ISqliteConnectionProvider connectio
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
         command.CommandText = sql;
-        command.AddGuidParameter("$userId", userId);
-        command.AddParameter("$providerType", type.Value);
-        command.AddParameter("$providerName", providerName);
-        command.AddParameter("$providerKey", providerKey);
-        command.AddParameter("$activeStatus", (int)CredentialStatus.Active);
+        command.AddGuidParameter(UserIdParameter, userId);
+        command.AddParameter(ProviderTypeParameter, type.Value);
+        command.AddParameter(ProviderNameParameter, providerName);
+        command.AddParameter(ProviderKeyParameter, providerKey);
+        command.AddParameter(ActiveStatusParameter, (int)CredentialStatus.Active);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadCredential(reader, includeSecret: true) : null;
@@ -106,10 +126,10 @@ public sealed class SqliteIdentityRepository(ISqliteConnectionProvider connectio
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
         command.CommandText = sql;
-        command.AddParameter("$providerType", type.Value);
-        command.AddParameter("$providerName", providerName);
-        command.AddParameter("$providerKey", providerKey);
-        command.AddParameter("$activeStatus", (int)CredentialStatus.Active);
+        command.AddParameter(ProviderTypeParameter, type.Value);
+        command.AddParameter(ProviderNameParameter, providerName);
+        command.AddParameter(ProviderKeyParameter, providerKey);
+        command.AddParameter(ActiveStatusParameter, (int)CredentialStatus.Active);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadUser(reader) : null;
@@ -135,8 +155,8 @@ public sealed class SqliteIdentityRepository(ISqliteConnectionProvider connectio
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
         command.CommandText = sql;
-        command.AddGuidParameter("$userId", userId);
-        command.AddParameter("$activeStatus", (int)CredentialStatus.Active);
+        command.AddGuidParameter(UserIdParameter, userId);
+        command.AddParameter(ActiveStatusParameter, (int)CredentialStatus.Active);
 
         var credentials = new List<UserCredential>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -259,17 +279,17 @@ public sealed class SqliteIdentityRepository(ISqliteConnectionProvider connectio
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
         command.CommandText = sql;
-        command.AddGuidParameter("$id", credential.Id);
-        command.AddParameter("$expectedVersion", expectedVersion);
-        command.AddParameter("$newVersion", newVersion);
-        command.AddParameter("$credentialValue", credential.CredentialValue);
-        command.AddParameter("$metadata", credential.Metadata);
-        command.AddNullableDateTimeOffsetParameter("$lastUsedAt", credential.LastUsedAt);
-        command.AddDateTimeOffsetParameter("$updatedAt", now);
-        command.AddNullableDateTimeOffsetParameter("$expiresAt", credential.ExpiresAt);
-        command.AddNullableDateTimeOffsetParameter("$revokedAt", credential.RevokedAt);
-        command.AddParameter("$status", (int)credential.Status);
-        command.AddParameter("$purpose", credential.Purpose);
+        command.AddGuidParameter(IdParameter, credential.Id);
+        command.AddParameter(ExpectedVersionParameter, expectedVersion);
+        command.AddParameter(NewVersionParameter, newVersion);
+        command.AddParameter(CredentialValueParameter, credential.CredentialValue);
+        command.AddParameter(MetadataParameter, credential.Metadata);
+        command.AddNullableDateTimeOffsetParameter(LastUsedAtParameter, credential.LastUsedAt);
+        command.AddDateTimeOffsetParameter(UpdatedAtParameter, now);
+        command.AddNullableDateTimeOffsetParameter(ExpiresAtParameter, credential.ExpiresAt);
+        command.AddNullableDateTimeOffsetParameter(RevokedAtParameter, credential.RevokedAt);
+        command.AddParameter(StatusParameter, (int)credential.Status);
+        command.AddParameter(PurposeParameter, credential.Purpose);
 
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
         {
@@ -289,8 +309,8 @@ public sealed class SqliteIdentityRepository(ISqliteConnectionProvider connectio
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
         command.CommandText = "DELETE FROM ashlar_credentials WHERE id = $id AND version = $expectedVersion;";
-        command.AddGuidParameter("$id", credentialId);
-        command.AddParameter("$expectedVersion", expectedVersion);
+        command.AddGuidParameter(IdParameter, credentialId);
+        command.AddParameter(ExpectedVersionParameter, expectedVersion);
 
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
@@ -310,13 +330,13 @@ public sealed class SqliteIdentityRepository(ISqliteConnectionProvider connectio
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
         command.CommandText = sql;
-        command.AddGuidParameter("$userId", userId);
-        command.AddParameter("$providerType", type.Value);
-        command.AddParameter("$providerName", providerName);
+        command.AddGuidParameter(UserIdParameter, userId);
+        command.AddParameter(ProviderTypeParameter, type.Value);
+        command.AddParameter(ProviderNameParameter, providerName);
         command.AddParameter("$revokedStatus", (int)CredentialStatus.Revoked);
-        command.AddParameter("$activeStatus", (int)CredentialStatus.Active);
-        command.AddDateTimeOffsetParameter("$revokedAt", _timeProvider.GetUtcNow());
-        command.AddParameter("$newVersion", Guid.NewGuid().ToString());
+        command.AddParameter(ActiveStatusParameter, (int)CredentialStatus.Active);
+        command.AddDateTimeOffsetParameter(RevokedAtParameter, _timeProvider.GetUtcNow());
+        command.AddParameter(NewVersionParameter, Guid.NewGuid().ToString());
 
         return await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -326,37 +346,37 @@ public sealed class SqliteIdentityRepository(ISqliteConnectionProvider connectio
         var createdAt = user is not IHasAuditMetadata audit || audit.CreatedAt == default ? _timeProvider.GetUtcNow() : audit.CreatedAt;
         var tenantId = (user as ITenantUser)?.TenantId;
 
-        command.AddGuidParameter("$id", user.Id);
+        command.AddGuidParameter(IdParameter, user.Id);
         command.AddParameter("$email", user.Email);
-        command.AddParameter("$normalizedEmail", IdentityNormalization.NormalizeEmail(user.Email));
+        command.AddParameter(NormalizedEmailParameter, IdentityNormalization.NormalizeEmail(user.Email));
         command.AddParameter("$name", user.Name);
         command.AddParameter("$isActive", user.IsActive ? 1 : 0);
-        command.AddNullableGuidParameter("$tenantId", tenantId);
+        command.AddNullableGuidParameter(TenantIdParameter, tenantId);
         command.AddNullableDateTimeOffsetParameter("$emailVerifiedAt", user.EmailVerifiedAt);
-        command.AddDateTimeOffsetParameter("$createdAt", createdAt);
+        command.AddDateTimeOffsetParameter(CreatedAtParameter, createdAt);
         if (includeUpdatedAt)
         {
-            command.AddDateTimeOffsetParameter("$updatedAt", updatedAt.GetValueOrDefault());
+            command.AddDateTimeOffsetParameter(UpdatedAtParameter, updatedAt.GetValueOrDefault());
         }
     }
 
     private static void AddCredentialParameters(SqliteCommand command, UserCredential credential)
     {
-        command.AddGuidParameter("$id", credential.Id);
-        command.AddGuidParameter("$userId", credential.UserId);
-        command.AddParameter("$providerType", credential.ProviderType.Value);
-        command.AddParameter("$providerName", credential.ProviderName);
-        command.AddParameter("$providerKey", credential.ProviderKey);
+        command.AddGuidParameter(IdParameter, credential.Id);
+        command.AddGuidParameter(UserIdParameter, credential.UserId);
+        command.AddParameter(ProviderTypeParameter, credential.ProviderType.Value);
+        command.AddParameter(ProviderNameParameter, credential.ProviderName);
+        command.AddParameter(ProviderKeyParameter, credential.ProviderKey);
         command.AddParameter("$version", credential.Version);
-        command.AddParameter("$credentialValue", credential.CredentialValue);
-        command.AddParameter("$metadata", credential.Metadata);
-        command.AddNullableDateTimeOffsetParameter("$lastUsedAt", credential.LastUsedAt);
-        command.AddDateTimeOffsetParameter("$createdAt", credential.CreatedAt);
-        command.AddNullableDateTimeOffsetParameter("$updatedAt", credential.UpdatedAt);
-        command.AddNullableDateTimeOffsetParameter("$expiresAt", credential.ExpiresAt);
-        command.AddNullableDateTimeOffsetParameter("$revokedAt", credential.RevokedAt);
-        command.AddParameter("$status", (int)credential.Status);
-        command.AddParameter("$purpose", credential.Purpose);
+        command.AddParameter(CredentialValueParameter, credential.CredentialValue);
+        command.AddParameter(MetadataParameter, credential.Metadata);
+        command.AddNullableDateTimeOffsetParameter(LastUsedAtParameter, credential.LastUsedAt);
+        command.AddDateTimeOffsetParameter(CreatedAtParameter, credential.CreatedAt);
+        command.AddNullableDateTimeOffsetParameter(UpdatedAtParameter, credential.UpdatedAt);
+        command.AddNullableDateTimeOffsetParameter(ExpiresAtParameter, credential.ExpiresAt);
+        command.AddNullableDateTimeOffsetParameter(RevokedAtParameter, credential.RevokedAt);
+        command.AddParameter(StatusParameter, (int)credential.Status);
+        command.AddParameter(PurposeParameter, credential.Purpose);
     }
 
     private static AshlarSqliteUser ReadUser(SqliteDataReader reader)

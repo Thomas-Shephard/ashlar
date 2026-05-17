@@ -102,6 +102,8 @@ internal sealed partial class SqliteTransactionManager : IAshlarTransactionProvi
         }
     }
 
+    // Microsoft.Data.Sqlite does not expose an async BeginTransaction overload with deferred: false.
+    // Use the synchronous overload here so root transactions issue BEGIN IMMEDIATE for write safety.
     private static Task<SqliteTransaction> BeginImmediateTransactionAsync(SqliteConnection connection, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
