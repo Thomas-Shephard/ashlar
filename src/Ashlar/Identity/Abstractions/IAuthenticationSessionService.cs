@@ -31,6 +31,18 @@ public interface IAuthenticationSessionService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Marks an existing active session as recently verified by an additional factor.
+    /// </summary>
+    /// <param name="userId">The session owner user id.</param>
+    /// <param name="request">The request value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The updated session result.</returns>
+    Task<Result<AuthenticationSession>> MarkStepUpVerifiedAsync(
+        Guid userId,
+        MarkSessionStepUpVerifiedRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Revokes a single authentication session.
     /// </summary>
     /// <param name="sessionId">The session id value.</param>

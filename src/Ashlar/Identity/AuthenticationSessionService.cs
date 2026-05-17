@@ -58,6 +58,7 @@ public sealed class AuthenticationSessionService(
     private const int MinimumTokenByteLength = 32;
     private const int MaximumTokenByteLength = 192;
     private const int MaxRevocationReasonLength = 512;
+    private const int MaxStepUpFactorLength = 128;
     private const string UserIdCannotBeEmptyMessage = "User ID cannot be empty.";
     private readonly IAuthenticationSessionRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly ISecureTokenHasher _tokenHasher = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
@@ -87,7 +88,7 @@ public sealed class AuthenticationSessionService(
         var token = _tokenGenerator.GenerateToken(_options.TokenByteLength);
         var tokenHash = _tokenHasher.HashToken(token);
         var now = _timeProvider.GetUtcNow();
-        var additionalVerificationFactor = ValidateOptionalLength(request.AdditionalVerificationFactor, 128, $"{nameof(request)}.{nameof(request.AdditionalVerificationFactor)}");
+        var additionalVerificationFactor = ValidateOptionalLength(request.AdditionalVerificationFactor, MaxStepUpFactorLength, $"{nameof(request)}.{nameof(request.AdditionalVerificationFactor)}");
 
         var ipAddress = _options.StoreIpAddress
             ? ValidateOptionalLength(request.IpAddress, _options.MaxIpAddressLength, $"{nameof(request)}.{nameof(request.IpAddress)}")
@@ -232,6 +233,47 @@ public sealed class AuthenticationSessionService(
 
         await transaction.CommitAsync(cancellationToken);
         return new ValidateAuthenticationSessionResult(true, session, session.UserId, AuthenticationSessionValidationStatus.Success);
+    }
+
+    public async Task<Result<AuthenticationSession>> MarkStepUpVerifiedAsync(
+        Guid userId,
+        MarkSessionStepUpVerifiedRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty) throw new ArgumentException(UserIdCannotBeEmptyMessage, nameof(userId));
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.SessionId == Guid.Empty) throw new ArgumentException("Session ID cannot be empty.", $"{nameof(request)}.{nameof(request.SessionId)}");
+        ValidateStepUpProvider(request.VerifiedProvider, $"{nameof(request)}.{nameof(request.VerifiedProvider)}");
+        var verifiedFactor = ValidateRequiredLength(request.VerifiedFactor, MaxStepUpFactorLength, $"{nameof(request)}.{nameof(request.VerifiedFactor)}");
+
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
+
+        var now = _timeProvider.GetUtcNow();
+        var updated = await _repository.MarkStepUpVerifiedAsync(
+            request.SessionId,
+            userId,
+            now,
+            request.VerifiedProvider,
+            verifiedFactor,
+            cancellationToken);
+
+        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.SessionStepUpVerified,
+            Outcome = updated == null ? SecurityEventOutcomes.Failure : SecurityEventOutcomes.Success,
+            UserId = userId,
+            TenantId = updated?.TenantId ?? request.Tenant?.TenantId,
+            SessionId = request.SessionId,
+            Provider = request.VerifiedProvider,
+            Audit = request.Audit,
+            Properties = new Dictionary<string, string> { ["factor"] = verifiedFactor }
+        }, ct));
+
+        await transaction.CommitAsync(cancellationToken);
+
+        return updated == null
+            ? Result.Failure<AuthenticationSession>(AshlarFailureCodes.SessionNotFoundOrInactive, "Session was not found, is inactive, or does not belong to the user.")
+            : Result.Success(updated);
     }
 
     public async Task<bool> RevokeSessionAsync(
@@ -587,6 +629,30 @@ public sealed class AuthenticationSessionService(
         }
 
         return value;
+    }
+
+    private static string ValidateRequiredLength(string? value, int maxLength, string parameterName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException($"{parameterName} cannot be empty.", parameterName);
+        }
+
+        var trimmed = value.Trim();
+        if (trimmed.Length > maxLength)
+        {
+            throw new ArgumentException($"{parameterName} cannot exceed {maxLength} characters.", parameterName);
+        }
+
+        return trimmed;
+    }
+
+    private static void ValidateStepUpProvider(AuthenticationProviderKey provider, string parameterName)
+    {
+        if (provider.Type == default || string.IsNullOrWhiteSpace(provider.Name))
+        {
+            throw new ArgumentException("Verified provider cannot be empty.", parameterName);
+        }
     }
 
     private static void ValidateRevocationReason(string? reason, string parameterName)

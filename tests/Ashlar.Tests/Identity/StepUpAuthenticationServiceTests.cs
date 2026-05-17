@@ -1,6 +1,8 @@
 using Ashlar.Identity;
+using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Microsoft.Extensions.Time.Testing;
+using Moq;
 
 namespace Ashlar.Tests.Identity;
 
@@ -48,6 +50,67 @@ internal sealed class StepUpAuthenticationServiceTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpExpired));
+        }
+    }
+
+    [Test]
+    public async Task MarkVerifiedAsyncShouldDelegateToSessionService()
+    {
+        var userId = Guid.NewGuid();
+        var session = CreateSession();
+        var request = new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = session.Id,
+            VerifiedProvider = TotpProvider(),
+            VerifiedFactor = "totp"
+        };
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        sessionService
+            .Setup(s => s.MarkStepUpVerifiedAsync(userId, request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(session));
+        var service = new StepUpAuthenticationService(sessionService.Object, new FakeTimeProvider(_now));
+
+        var result = await service.MarkVerifiedAsync(userId, request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value, Is.EqualTo(session));
+        }
+    }
+
+    [Test]
+    public void MarkVerifiedAsyncShouldRequireSessionService()
+    {
+        var service = new StepUpAuthenticationService(new FakeTimeProvider(_now));
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.MarkVerifiedAsync(Guid.NewGuid(), new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = Guid.NewGuid(),
+            VerifiedProvider = TotpProvider(),
+            VerifiedFactor = "totp"
+        }));
+    }
+
+    [Test]
+    public void EvaluateShouldPassAfterSessionIsMarkedFreshAndFailAfterWindowExpires()
+    {
+        var timeProvider = new FakeTimeProvider(_now);
+        var service = new StepUpAuthenticationService(timeProvider);
+        var session = CreateSession();
+        session.AdditionalVerificationAt = _now;
+        session.AdditionalVerificationProvider = TotpProvider();
+        session.AdditionalVerificationFactor = "totp";
+
+        var fresh = service.Evaluate(new StepUpEvaluationRequest(session, new StepUpRequirement(TimeSpan.FromMinutes(10))));
+        timeProvider.SetUtcNow(_now.AddMinutes(11));
+        var expired = service.Evaluate(new StepUpEvaluationRequest(session, new StepUpRequirement(TimeSpan.FromMinutes(10))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fresh.Succeeded, Is.True);
+            Assert.That(expired.Succeeded, Is.False);
+            Assert.That(expired.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpExpired));
         }
     }
 

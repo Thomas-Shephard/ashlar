@@ -53,6 +53,24 @@ public interface IAuthenticationSessionRepository
     Task<bool> UpdateSessionLastSeenAsync(Guid sessionId, DateTimeOffset lastSeenAt, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Marks an active session as recently step-up verified if it belongs to the specified user.
+    /// </summary>
+    /// <param name="sessionId">The session id value.</param>
+    /// <param name="userId">The user id value.</param>
+    /// <param name="verifiedAt">The verification timestamp value.</param>
+    /// <param name="verifiedProvider">The verified provider value.</param>
+    /// <param name="verifiedFactor">The verified factor value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The updated session, or <see langword="null" /> when no active owned session was updated.</returns>
+    Task<AuthenticationSession?> MarkStepUpVerifiedAsync(
+        Guid sessionId,
+        Guid userId,
+        DateTimeOffset verifiedAt,
+        AuthenticationProviderKey verifiedProvider,
+        string verifiedFactor,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Revokes a single authentication session.
     /// </summary>
     /// <param name="sessionId">The session id value.</param>

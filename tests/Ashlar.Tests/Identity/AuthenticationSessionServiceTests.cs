@@ -427,6 +427,107 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
+    public async Task MarkStepUpVerifiedAsyncShouldUpdateActiveUserSession()
+    {
+        var userId = Guid.NewGuid();
+        var session = CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1), userId: userId);
+        var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
+        var now = _timeProvider.GetUtcNow();
+        session.AdditionalVerificationAt = now;
+        session.AdditionalVerificationProvider = provider;
+        session.AdditionalVerificationFactor = "totp";
+        _repositoryMock
+            .Setup(r => r.MarkStepUpVerifiedAsync(session.Id, userId, now, provider, "totp", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+
+        var result = await _service.MarkStepUpVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = session.Id,
+            VerifiedProvider = provider,
+            VerifiedFactor = " totp "
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value, Is.EqualTo(session));
+        }
+    }
+
+    [Test]
+    public async Task MarkStepUpVerifiedAsyncShouldFailWhenRepositoryDoesNotUpdate()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
+        _repositoryMock
+            .Setup(r => r.MarkStepUpVerifiedAsync(sessionId, userId, _timeProvider.GetUtcNow(), provider, "totp", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AuthenticationSession?)null);
+
+        var result = await _service.MarkStepUpVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = sessionId,
+            VerifiedProvider = provider,
+            VerifiedFactor = "totp"
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactive));
+        }
+    }
+
+    [Test]
+    public async Task MarkStepUpVerifiedAsyncShouldRecordSecurityEvent()
+    {
+        var securityEvents = new Mock<ISecurityEventSink>();
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: securityEvents.Object));
+        var userId = Guid.NewGuid();
+        var session = CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1), userId: userId);
+        session.AdditionalVerificationAt = _timeProvider.GetUtcNow();
+        session.AdditionalVerificationProvider = AuthenticationProviderKey.Passkey;
+        session.AdditionalVerificationFactor = "passkey";
+        _repositoryMock
+            .Setup(r => r.MarkStepUpVerifiedAsync(session.Id, userId, _timeProvider.GetUtcNow(), AuthenticationProviderKey.Passkey, "passkey", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+
+        await service.MarkStepUpVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = session.Id,
+            VerifiedProvider = AuthenticationProviderKey.Passkey,
+            VerifiedFactor = "passkey",
+            Audit = new AuditContext(ActorUserId: userId, IpAddress: "203.0.113.1")
+        });
+
+        securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.SessionStepUpVerified &&
+            e.Outcome == SecurityEventOutcomes.Success &&
+            e.UserId == userId &&
+            e.SessionId == session.Id &&
+            e.Provider == AuthenticationProviderKey.Passkey &&
+            e.Properties != null &&
+            e.Properties["factor"] == "passkey"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public void MarkStepUpVerifiedAsyncShouldRejectInvalidInput()
+    {
+        var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
+
+        Assert.ThrowsAsync<ArgumentException>(() => _service.MarkStepUpVerifiedAsync(Guid.Empty, new MarkSessionStepUpVerifiedRequest { SessionId = Guid.NewGuid(), VerifiedProvider = provider, VerifiedFactor = "totp" }));
+        Assert.ThrowsAsync<ArgumentException>(() => _service.MarkStepUpVerifiedAsync(Guid.NewGuid(), new MarkSessionStepUpVerifiedRequest { SessionId = Guid.Empty, VerifiedProvider = provider, VerifiedFactor = "totp" }));
+        Assert.ThrowsAsync<ArgumentException>(() => _service.MarkStepUpVerifiedAsync(Guid.NewGuid(), new MarkSessionStepUpVerifiedRequest { SessionId = Guid.NewGuid(), VerifiedProvider = default, VerifiedFactor = "totp" }));
+        Assert.ThrowsAsync<ArgumentException>(() => _service.MarkStepUpVerifiedAsync(Guid.NewGuid(), new MarkSessionStepUpVerifiedRequest { SessionId = Guid.NewGuid(), VerifiedProvider = provider, VerifiedFactor = " " }));
+        Assert.ThrowsAsync<ArgumentException>(() => _service.MarkStepUpVerifiedAsync(Guid.NewGuid(), new MarkSessionStepUpVerifiedRequest { SessionId = Guid.NewGuid(), VerifiedProvider = provider, VerifiedFactor = new string('x', 129) }));
+    }
+
+    [Test]
     public async Task RevokeSessionAsyncShouldPassCurrentTimeAndReason()
     {
         var sessionId = Guid.NewGuid();

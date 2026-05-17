@@ -102,6 +102,10 @@ public static class AshlarSecurityEventTypes
     /// </summary>
     public const string SessionValidated = "ashlar.session.validated";
     /// <summary>
+    /// Defines the session step-up verified value.
+    /// </summary>
+    public const string SessionStepUpVerified = "ashlar.session.step_up_verified";
+    /// <summary>
     /// Defines the session validation failed value.
     /// </summary>
     public const string SessionValidationFailed = "ashlar.session.validation_failed";
