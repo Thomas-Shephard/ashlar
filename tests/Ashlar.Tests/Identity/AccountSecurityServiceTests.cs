@@ -779,6 +779,16 @@ internal sealed class AccountSecurityServiceTests
 
         public Task<bool> UpdateSessionLastSeenAsync(Guid sessionId, DateTimeOffset lastSeenAt, CancellationToken cancellationToken = default) => Task.FromResult(true);
 
+        public Task<AuthenticationSession?> MarkStepUpVerifiedAsync(Guid sessionId, Guid userId, DateTimeOffset verifiedAt, AuthenticationProviderKey verifiedProvider, string verifiedFactor, CancellationToken cancellationToken = default)
+        {
+            var session = Sessions.FirstOrDefault(s => s.Id == sessionId && s.UserId == userId && s.IsActive(verifiedAt));
+            if (session == null) return Task.FromResult<AuthenticationSession?>(null);
+            session.AdditionalVerificationAt = verifiedAt;
+            session.AdditionalVerificationProvider = verifiedProvider;
+            session.AdditionalVerificationFactor = verifiedFactor;
+            return Task.FromResult<AuthenticationSession?>(session);
+        }
+
         public Task<bool> RevokeSessionAsync(Guid sessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(Revoke(s => s.Id == sessionId, revokedAt, reason) == 1);

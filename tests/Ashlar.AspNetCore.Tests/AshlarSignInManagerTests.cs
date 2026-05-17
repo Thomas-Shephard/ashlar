@@ -680,6 +680,19 @@ internal sealed class AshlarSignInManagerTests
             return Task.FromResult(true);
         }
 
+        public Task<AuthenticationSession?> MarkStepUpVerifiedAsync(Guid sessionId, Guid userId, DateTimeOffset verifiedAt, AuthenticationProviderKey verifiedProvider, string verifiedFactor, CancellationToken cancellationToken = default)
+        {
+            if (_session?.Id != sessionId || _session.UserId != userId || !_session.IsActive(verifiedAt))
+            {
+                return Task.FromResult<AuthenticationSession?>(null);
+            }
+
+            _session.AdditionalVerificationAt = verifiedAt;
+            _session.AdditionalVerificationProvider = verifiedProvider;
+            _session.AdditionalVerificationFactor = verifiedFactor;
+            return Task.FromResult<AuthenticationSession?>(_session);
+        }
+
         public Task<bool> RevokeSessionAsync(Guid sessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
         {
             if (_session?.Id != sessionId || _session.RevokedAt != null)

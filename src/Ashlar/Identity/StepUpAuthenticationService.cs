@@ -6,10 +6,21 @@ namespace Ashlar.Identity;
 /// <summary>
 /// Implements framework-neutral step-up authentication freshness evaluation.
 /// </summary>
+/// <param name="sessionService">The session service value.</param>
 /// <param name="timeProvider">The time provider value.</param>
-public sealed class StepUpAuthenticationService(TimeProvider? timeProvider = null) : IStepUpAuthenticationService
+public sealed class StepUpAuthenticationService(IAuthenticationSessionService? sessionService = null, TimeProvider? timeProvider = null) : IStepUpAuthenticationService
 {
+    private readonly IAuthenticationSessionService? _sessionService = sessionService;
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+
+    /// <summary>
+    /// Initializes an evaluator-only service instance.
+    /// </summary>
+    /// <param name="timeProvider">The time provider value.</param>
+    public StepUpAuthenticationService(TimeProvider timeProvider)
+        : this(null, timeProvider)
+    {
+    }
 
     /// <inheritdoc />
     public StepUpEvaluationResult Evaluate(StepUpEvaluationRequest request)
@@ -53,6 +64,20 @@ public sealed class StepUpAuthenticationService(TimeProvider? timeProvider = nul
         }
 
         return StepUpEvaluationResult.Success;
+    }
+
+    /// <inheritdoc />
+    public Task<Result<AuthenticationSession>> MarkVerifiedAsync(
+        Guid userId,
+        MarkSessionStepUpVerifiedRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (_sessionService == null)
+        {
+            throw new InvalidOperationException("A session service is required to mark step-up verification.");
+        }
+
+        return _sessionService.MarkStepUpVerifiedAsync(userId, request, cancellationToken);
     }
 
     private static StepUpEvaluationResult Failure(AshlarFailureCode code, string reason)

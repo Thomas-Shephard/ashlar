@@ -274,6 +274,71 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     }
 
     [Test]
+    public async Task MarkStepUpVerifiedShouldUpdateOnlyActiveOwnedTargetSession()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var owner = await CreateTestUser(identityRepository);
+        var otherUser = await CreateTestUser(identityRepository);
+        var target = CreateSession(owner.Id);
+        var otherOwnerSession = CreateSession(owner.Id);
+        var otherUserSession = CreateSession(otherUser.Id);
+        var verifiedAt = new DateTimeOffset(2026, 1, 2, 13, 0, 0, TimeSpan.Zero);
+        var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
+
+        await sessionRepository.CreateSessionAsync(target);
+        await sessionRepository.CreateSessionAsync(otherOwnerSession);
+        await sessionRepository.CreateSessionAsync(otherUserSession);
+
+        var updated = await sessionRepository.MarkStepUpVerifiedAsync(target.Id, owner.Id, verifiedAt, provider, "totp");
+        var fetchedTarget = await sessionRepository.GetSessionByTokenHashAsync(target.TokenHash);
+        var fetchedOtherOwner = await sessionRepository.GetSessionByTokenHashAsync(otherOwnerSession.TokenHash);
+        var fetchedOtherUser = await sessionRepository.GetSessionByTokenHashAsync(otherUserSession.TokenHash);
+
+        Assert.That(updated, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated?.Id, Is.EqualTo(target.Id));
+            Assert.That(fetchedTarget?.AdditionalVerificationAt, Is.EqualTo(verifiedAt));
+            Assert.That(fetchedTarget?.AdditionalVerificationProvider, Is.EqualTo(provider));
+            Assert.That(fetchedTarget?.AdditionalVerificationFactor, Is.EqualTo("totp"));
+            Assert.That(fetchedOtherOwner?.AdditionalVerificationAt, Is.Null);
+            Assert.That(fetchedOtherUser?.AdditionalVerificationAt, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task MarkStepUpVerifiedShouldRejectWrongUserRevokedAndExpiredSessions()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var owner = await CreateTestUser(identityRepository);
+        var other = await CreateTestUser(identityRepository);
+        var active = CreateSession(owner.Id);
+        var revoked = CreateSession(owner.Id);
+        var expired = CreateSession(owner.Id, expiresAt: new DateTimeOffset(2026, 1, 2, 12, 30, 0, TimeSpan.Zero));
+        var verifiedAt = new DateTimeOffset(2026, 1, 2, 13, 0, 0, TimeSpan.Zero);
+
+        await sessionRepository.CreateSessionAsync(active);
+        await sessionRepository.CreateSessionAsync(revoked);
+        await sessionRepository.CreateSessionAsync(expired);
+        await sessionRepository.RevokeSessionAsync(revoked.Id, verifiedAt.AddMinutes(-1), "test");
+
+        var wrongUser = await sessionRepository.MarkStepUpVerifiedAsync(active.Id, other.Id, verifiedAt, AuthenticationProviderKey.Passkey, "passkey");
+        var revokedUpdate = await sessionRepository.MarkStepUpVerifiedAsync(revoked.Id, owner.Id, verifiedAt, AuthenticationProviderKey.Passkey, "passkey");
+        var expiredUpdate = await sessionRepository.MarkStepUpVerifiedAsync(expired.Id, owner.Id, verifiedAt, AuthenticationProviderKey.Passkey, "passkey");
+        var fetchedActive = await sessionRepository.GetSessionByTokenHashAsync(active.TokenHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrongUser, Is.Null);
+            Assert.That(revokedUpdate, Is.Null);
+            Assert.That(expiredUpdate, Is.Null);
+            Assert.That(fetchedActive?.AdditionalVerificationAt, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task RevokeSessionShouldRevokeOnlyTargetSession()
     {
         var identityRepository = GetIdentityRepository();

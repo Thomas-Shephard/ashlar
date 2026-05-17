@@ -140,6 +140,59 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
     }
 
     /// <summary>
+    /// Performs the mark step up verified <see langword="async" /> operation and returns the updated session.
+    /// </summary>
+    /// <param name="sessionId">The session id value.</param>
+    /// <param name="userId">The user id value.</param>
+    /// <param name="verifiedAt">The verification timestamp value.</param>
+    /// <param name="verifiedProvider">The verified provider value.</param>
+    /// <param name="verifiedFactor">The verified factor value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The updated session, or <see langword="null" /> when no active owned session was updated.</returns>
+    public async Task<AuthenticationSession?> MarkStepUpVerifiedAsync(
+        Guid sessionId,
+        Guid userId,
+        DateTimeOffset verifiedAt,
+        AuthenticationProviderKey verifiedProvider,
+        string verifiedFactor,
+        CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            UPDATE ashlar_sessions
+            SET additional_verification_at = @VerifiedAt,
+                additional_verification_provider_type = @VerifiedProviderType,
+                additional_verification_provider_name = @VerifiedProviderName,
+                additional_verification_factor = @VerifiedFactor
+            WHERE id = @Id
+              AND user_id = @UserId
+              AND revoked_at IS NULL
+              AND expires_at > @VerifiedAt
+            RETURNING id AS Id, user_id AS UserId, tenant_id AS TenantId, token_hash AS TokenHash, created_at AS CreatedAt,
+                      authenticated_at AS AuthenticatedAt, primary_provider_type AS PrimaryProviderType, primary_provider_name AS PrimaryProviderName,
+                      additional_verification_at AS AdditionalVerificationAt, additional_verification_provider_type AS AdditionalVerificationProviderType,
+                      additional_verification_provider_name AS AdditionalVerificationProviderName, additional_verification_factor AS AdditionalVerificationFactor,
+                      expires_at AS ExpiresAt, last_seen_at AS LastSeenAt, revoked_at AS RevokedAt, revocation_reason AS RevocationReason,
+                      ip_address AS IpAddress, user_agent AS UserAgent, metadata AS Metadata
+            """;
+
+        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using (connectionHandle)
+        {
+            var command = new CommandDefinition(sql, new
+            {
+                Id = sessionId,
+                UserId = userId,
+                VerifiedAt = verifiedAt,
+                VerifiedProviderType = AuthenticationProviderKey.GetTypeValueOrNull(verifiedProvider),
+                VerifiedProviderName = verifiedProvider.Name,
+                VerifiedFactor = verifiedFactor
+            }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync(command);
+            return row == null ? null : ToSession(row);
+        }
+    }
+
+    /// <summary>
     /// Performs the revoke session <see langword="async" /> operation and returns the result.
     /// </summary>
     /// <param name="sessionId">The session id value.</param>
