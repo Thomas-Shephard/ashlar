@@ -27,8 +27,13 @@ public interface IPasskeyChallengeRepository
     /// </summary>
     /// <param name="id">The challenge id.</param>
     /// <param name="expectedVersion">The expected version.</param>
-    /// <param name="consumedAt">The advisory consumption timestamp. Repository implementations may use a persistence-layer clock for stronger expiry enforcement.</param>
+    /// <param name="consumedAt">The application-observed consumption timestamp.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns><see langword="true" /> when the challenge was consumed.</returns>
+    /// <remarks>
+    /// Implementations must atomically verify the expected version, unconsumed state, and unexpired state using
+    /// a consistent clock source for the provider. The persisted consumption timestamp may come from either the
+    /// supplied value or the provider clock, but replay prevention must not depend on caller-side checks alone.
+    /// </remarks>
     Task<bool> ConsumeAsync(Guid id, string expectedVersion, DateTimeOffset consumedAt, CancellationToken cancellationToken = default);
 }

@@ -5,6 +5,7 @@
     <Project Path="src/Ashlar.Email.Smtp/Ashlar.Email.Smtp.csproj" />
     <Project Path="src/Ashlar.Passkeys/Ashlar.Passkeys.csproj" />
     <Project Path="src/Ashlar.Postgres/Ashlar.Postgres.csproj" />
+    <Project Path="src/Ashlar.Sqlite/Ashlar.Sqlite.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Ashlar.Testing/Ashlar.Testing.csproj" />
@@ -13,6 +14,7 @@
     <Project Path="tests/Ashlar.Email.Smtp.Tests/Ashlar.Email.Smtp.Tests.csproj" />
     <Project Path="tests/Ashlar.Passkeys.Tests/Ashlar.Passkeys.Tests.csproj" />
     <Project Path="tests/Ashlar.Postgres.Tests/Ashlar.Postgres.Tests.csproj" />
+    <Project Path="tests/Ashlar.Sqlite.Tests/Ashlar.Sqlite.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Ashlar.Sample.AspNetCore/Ashlar.Sample.AspNetCore.csproj" />

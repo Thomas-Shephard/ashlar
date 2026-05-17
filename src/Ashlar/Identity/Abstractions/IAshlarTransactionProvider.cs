@@ -4,8 +4,9 @@ namespace Ashlar.Identity.Abstractions;
 /// Provides a way to start a transaction in the Ashlar identity system.
 /// </summary>
 /// <remarks>
-/// Only one active transaction is supported per provider instance (typically per scope). 
-/// Attempting to start a new transaction while one is already in progress may throw an <see cref="InvalidOperationException"/>.
+/// Providers define transaction scope at the persistence-provider boundary, typically one active durable
+/// transaction per dependency-injection scope. Nested calls may either join the active transaction or reject
+/// the request with an <see cref="InvalidOperationException"/>; callers should not rely on savepoint semantics.
 /// </remarks>
 public interface IAshlarTransactionProvider
 {
