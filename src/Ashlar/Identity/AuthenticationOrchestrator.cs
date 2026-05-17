@@ -25,6 +25,7 @@ public sealed class AuthenticationOrchestrator(
     private const string PrimaryProviderTypeMetadataKey = "primary_provider_type";
     private const string PrimaryProviderNameMetadataKey = "primary_provider_name";
     private const string PrimaryCredentialKeyMetadataKey = "primary_credential_key";
+    private const string FactorVerificationFailedMessage = "Factor verification failed.";
 
     private static readonly Action<ILogger, string, Exception?> MfaFactorVerificationRejected =
         LoggerMessage.Define<string>(
@@ -123,13 +124,13 @@ public sealed class AuthenticationOrchestrator(
         if (!IsAssertionAuthorizedForFactor(assertion, resolvedFactorType))
         {
             MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "assertion_not_authorized_for_factor", null);
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Factor verification failed.");
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: FactorVerificationFailedMessage);
         }
 
         if (IsSameCredentialAsPrimary(handshake, assertion))
         {
             MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "factor_reuses_primary_credential", null);
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Factor verification failed.");
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: FactorVerificationFailedMessage);
         }
 
         var factorContext = context with { UserId = handshake.UserId };
@@ -137,12 +138,12 @@ public sealed class AuthenticationOrchestrator(
         if (!response.Succeeded || response.User?.Id != handshake.UserId)
         {
             MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "factor_authentication_failed", null);
-            var errorMessage = response.Status == AuthenticationStatus.Disabled ? "User is disabled." : "Factor verification failed.";
+            var errorMessage = response.Status == AuthenticationStatus.Disabled ? "User is disabled." : FactorVerificationFailedMessage;
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: errorMessage);
         }
 
         // Capture any new claims from this factor
-        var metadata = new Dictionary<string, string>();
+        Dictionary<string, string> metadata = [];
         if (response.Claims != null)
         {
             foreach (var claim in response.Claims)
@@ -287,7 +288,7 @@ public sealed class AuthenticationOrchestrator(
             AshlarFailureCodes.InvalidFactorTypeValue => "Invalid factor type.",
             AshlarFailureCodes.FactorAlreadyVerifiedValue => "Factor already verified.",
             AshlarFailureCodes.InvalidMetadataValue => "Invalid metadata.",
-            _ => "Factor verification failed."
+            _ => FactorVerificationFailedMessage
         };
     }
 

@@ -631,7 +631,7 @@ internal sealed class AuthenticationOrchestratorTests
         var assertion = new TestCredentialKeyAssertion(new AuthenticationProviderKey(ProviderType.Passkey, "passkey"), "credential-id");
         var metadataValues = new[]
         {
-            new Dictionary<string, string>(),
+            [],
             new Dictionary<string, string> { ["primary_provider_type"] = ProviderType.Passkey.Value },
             new Dictionary<string, string> { ["primary_provider_type"] = ProviderType.Passkey.Value, ["primary_provider_name"] = "passkey" },
             new Dictionary<string, string>
