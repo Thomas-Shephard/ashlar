@@ -25,5 +25,6 @@
     <PackageVersion Include="MailKit" Version="4.16.0" />
     <PackageVersion Include="MimeKit" Version="4.16.0" />
     <PackageVersion Include="CommentSense" Version="1.0.1" />
+    <PackageVersion Include="MinVer" Version="7.0.0" />
   </ItemGroup>
 </Project>
