@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="Ashlar.Tests" />
     <InternalsVisibleTo Include="Ashlar.Postgres.Tests" />
