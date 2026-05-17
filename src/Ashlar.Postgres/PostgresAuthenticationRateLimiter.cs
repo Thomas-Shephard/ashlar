@@ -232,6 +232,7 @@ public sealed class PostgresAuthenticationRateLimiter : IAuthenticationRateLimit
                 SELECT purpose, rate_limit_key
                 FROM ashlar_rate_limits
                 WHERE expires_at < @now
+                ORDER BY expires_at, purpose, rate_limit_key
                 FOR UPDATE SKIP LOCKED
                 LIMIT @limit
             );

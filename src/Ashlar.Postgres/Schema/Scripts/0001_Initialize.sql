@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS ashlar_users (
 -- NOTE: Requires PostgreSQL 15+ for NULLS NOT DISTINCT support in unique indexes
 CREATE UNIQUE INDEX IF NOT EXISTS ak_ashlar_users_email_tenant ON ashlar_users (normalized_email, tenant_id) NULLS NOT DISTINCT;
 
-
 CREATE INDEX IF NOT EXISTS ix_ashlar_users_tenant_id ON ashlar_users (tenant_id);
 
 CREATE TABLE IF NOT EXISTS ashlar_credentials (
@@ -32,10 +31,18 @@ CREATE TABLE IF NOT EXISTS ashlar_credentials (
     revoked_at TIMESTAMPTZ,
     status INTEGER NOT NULL,
     purpose TEXT,
-    CONSTRAINT ak_ashlar_credentials_identity UNIQUE (provider_type, provider_name, provider_key)
+    CONSTRAINT ak_ashlar_credentials_identity UNIQUE (provider_type, provider_name, provider_key),
+    CONSTRAINT ck_ashlar_credentials_status CHECK (status IN (0, 1)),
+    CONSTRAINT ck_ashlar_credentials_revocation_state CHECK (
+        (status = 0 AND revoked_at IS NULL) OR (status = 1 AND revoked_at IS NOT NULL)
+    )
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_user_id ON ashlar_credentials (user_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_active_user_provider_created ON ashlar_credentials (user_id, provider_type, provider_name, created_at DESC, id)
+WHERE revoked_at IS NULL AND status = 0;
+CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_active_provider_key ON ashlar_credentials (provider_type, provider_name, provider_key, user_id)
+WHERE revoked_at IS NULL AND status = 0;
 CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_expires_at ON ashlar_credentials (expires_at) WHERE expires_at IS NOT NULL AND revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_revoked_at ON ashlar_credentials (revoked_at) WHERE revoked_at IS NOT NULL;
 
@@ -54,15 +61,23 @@ CREATE TABLE IF NOT EXISTS ashlar_authorization_grants (
     CONSTRAINT ck_ashlar_authorization_grants_role_or_permission CHECK (
         (role IS NOT NULL AND permission IS NULL) OR (role IS NULL AND permission IS NOT NULL)
     ),
+    CONSTRAINT ck_ashlar_authorization_grants_role_or_permission_not_blank CHECK (
+        (role IS NULL OR length(btrim(role)) > 0) AND (permission IS NULL OR length(btrim(permission)) > 0)
+    ),
     CONSTRAINT ck_ashlar_authorization_grants_scope CHECK (
         (scope_type IS NULL AND scope_id IS NULL) OR (scope_type IS NOT NULL AND scope_id IS NOT NULL)
+    ),
+    CONSTRAINT ck_ashlar_authorization_grants_scope_not_blank CHECK (
+        (scope_type IS NULL OR length(btrim(scope_type)) > 0) AND (scope_id IS NULL OR length(btrim(scope_id)) > 0)
     )
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_user_id ON ashlar_authorization_grants (user_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_user_created ON ashlar_authorization_grants (user_id, created_at DESC, id);
 CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_tenant_id ON ashlar_authorization_grants (tenant_id) WHERE tenant_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_scope ON ashlar_authorization_grants (scope_type, scope_id) WHERE scope_type IS NOT NULL AND scope_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_active_user ON ashlar_authorization_grants (user_id, tenant_id, scope_type, scope_id) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_active_user_scope ON ashlar_authorization_grants (user_id, tenant_id, scope_type, scope_id, created_at DESC, id)
+WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_expires_at ON ashlar_authorization_grants (expires_at) WHERE expires_at IS NOT NULL AND revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_revoked_at ON ashlar_authorization_grants (revoked_at) WHERE revoked_at IS NOT NULL;
 
@@ -78,7 +93,9 @@ CREATE TABLE IF NOT EXISTS ashlar_sessions (
     revocation_reason TEXT,
     ip_address TEXT,
     user_agent TEXT,
-    metadata JSONB
+    metadata JSONB,
+    CONSTRAINT ck_ashlar_sessions_expiry_after_creation CHECK (expires_at >= created_at),
+    CONSTRAINT ck_ashlar_sessions_revocation_reason_requires_revocation CHECK (revocation_reason IS NULL OR revoked_at IS NOT NULL)
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_user_id ON ashlar_sessions (user_id);
@@ -94,7 +111,9 @@ CREATE TABLE IF NOT EXISTS ashlar_rate_limits (
     window_start TIMESTAMPTZ NOT NULL,
     blocked_until TIMESTAMPTZ,
     expires_at TIMESTAMPTZ NOT NULL,
-    PRIMARY KEY (purpose, rate_limit_key)
+    PRIMARY KEY (purpose, rate_limit_key),
+    CONSTRAINT ck_ashlar_rate_limits_count_non_negative CHECK (count >= 0),
+    CONSTRAINT ck_ashlar_rate_limits_expiry_after_window_start CHECK (expires_at >= window_start)
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_rate_limits_expires_at ON ashlar_rate_limits (expires_at);
@@ -111,10 +130,14 @@ CREATE TABLE IF NOT EXISTS ashlar_invitations (
     accepted_at TIMESTAMPTZ,
     revoked_at TIMESTAMPTZ,
     metadata JSONB,
-    version TEXT NOT NULL
+    version TEXT NOT NULL,
+    CONSTRAINT ck_ashlar_invitations_terminal_state CHECK (accepted_at IS NULL OR revoked_at IS NULL),
+    CONSTRAINT ck_ashlar_invitations_expiry_after_creation CHECK (expires_at >= created_at)
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_email_tenant ON ashlar_invitations (normalized_email, tenant_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_active_email_tenant ON ashlar_invitations (normalized_email, tenant_id)
+WHERE accepted_at IS NULL AND revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_expires_at ON ashlar_invitations (expires_at);
 CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_accepted_at ON ashlar_invitations (accepted_at) WHERE accepted_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_revoked_at ON ashlar_invitations (revoked_at) WHERE revoked_at IS NOT NULL;
@@ -139,6 +162,8 @@ CREATE TABLE IF NOT EXISTS ashlar_security_events (
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_events_occurred_at ON ashlar_security_events (occurred_at);
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_events_user_id ON ashlar_security_events (user_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_security_events_user_type_time ON ashlar_security_events (user_id, event_type, occurred_at DESC)
+WHERE user_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_events_tenant_id ON ashlar_security_events (tenant_id) WHERE tenant_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_events_actor_user_id ON ashlar_security_events (actor_user_id) WHERE actor_user_id IS NOT NULL;
 
@@ -154,7 +179,14 @@ CREATE TABLE IF NOT EXISTS ashlar_mfa_handshakes (
     completed_at TIMESTAMPTZ,
     required_factors JSONB NOT NULL,
     verified_factors JSONB NOT NULL,
-    metadata JSONB
+    metadata JSONB,
+    CONSTRAINT ck_ashlar_mfa_handshakes_expiry_after_creation CHECK (expires_at >= created_at),
+    CONSTRAINT ck_ashlar_mfa_handshakes_revoked_state CHECK (
+        (is_revoked = FALSE AND revoked_at IS NULL) OR (is_revoked = TRUE AND revoked_at IS NOT NULL)
+    ),
+    CONSTRAINT ck_ashlar_mfa_handshakes_completed_state CHECK (
+        (is_completed = FALSE AND completed_at IS NULL) OR (is_completed = TRUE AND completed_at IS NOT NULL)
+    )
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_user_id ON ashlar_mfa_handshakes (user_id);
@@ -180,10 +212,15 @@ CREATE TABLE IF NOT EXISTS ashlar_email_outbox (
     last_attempt_at TIMESTAMPTZ,
     sent_at TIMESTAMPTZ,
     failed_at TIMESTAMPTZ,
-    last_error TEXT
+    last_error TEXT,
+    CONSTRAINT ck_ashlar_email_outbox_attempt_count_non_negative CHECK (attempt_count >= 0),
+    CONSTRAINT ck_ashlar_email_outbox_terminal_state CHECK (sent_at IS NULL OR failed_at IS NULL),
+    CONSTRAINT ck_ashlar_email_outbox_lock_state CHECK (
+        (locked_until IS NULL AND locked_by IS NULL) OR (locked_until IS NOT NULL AND locked_by IS NOT NULL)
+    )
 );
 
-CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_pending ON ashlar_email_outbox (available_at)
+CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_pending ON ashlar_email_outbox (available_at, id)
 WHERE sent_at IS NULL AND failed_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_created_at ON ashlar_email_outbox (created_at);

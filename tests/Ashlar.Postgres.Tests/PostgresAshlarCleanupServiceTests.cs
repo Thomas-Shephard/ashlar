@@ -284,10 +284,10 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
             (@s4, @userId, 'recent-revoked-session', @now, @future, @recent);
 
             INSERT INTO ashlar_credentials (id, user_id, provider_type, provider_name, provider_key, version, created_at, expires_at, revoked_at, status) VALUES
-            (@c1, @userId, 'local', 'password', 'expired', 'v1', @old, @old, NULL, 1),
-            (@c2, @userId, 'local', 'password', 'revoked', 'v1', @old, NULL, @old, 2),
-            (@c3, @userId, 'local', 'password', 'active', 'v1', @now, @future, NULL, 1),
-            (@c4, @userId, 'local', 'password', 'recent-revoked', 'v1', @now, NULL, @recent, 2);
+            (@c1, @userId, 'local', 'password', 'expired', 'v1', @old, @old, NULL, 0),
+            (@c2, @userId, 'local', 'password', 'revoked', 'v1', @old, NULL, @old, 1),
+            (@c3, @userId, 'local', 'password', 'active', 'v1', @now, @future, NULL, 0),
+            (@c4, @userId, 'local', 'password', 'recent-revoked', 'v1', @now, NULL, @recent, 1);
 
             INSERT INTO ashlar_authorization_grants (id, user_id, permission, created_at, expires_at, revoked_at) VALUES
             (@g1, @userId, 'expired', @old, @old, NULL),

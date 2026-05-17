@@ -106,7 +106,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
             WHERE user_id = @UserId AND provider_type = @Type AND provider_name = @ProviderName
               AND (@ProviderKey IS NULL OR provider_key = @ProviderKey)
               AND revoked_at IS NULL AND status = @ActiveStatus
-            ORDER BY created_at DESC
+            ORDER BY created_at DESC, id
             LIMIT 1
             """;
 

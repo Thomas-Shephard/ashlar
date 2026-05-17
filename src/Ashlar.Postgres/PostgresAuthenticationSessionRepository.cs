@@ -194,7 +194,7 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
             sql += " AND revoked_at IS NULL AND expires_at > @Now";
         }
 
-        sql += " ORDER BY created_at DESC LIMIT 100";
+        sql += " ORDER BY created_at DESC, id LIMIT 100";
 
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)

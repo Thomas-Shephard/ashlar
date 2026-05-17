@@ -11,6 +11,7 @@ dotnet add package Ashlar.Postgres
 ## Requirements
 
 - **PostgreSQL 15+**: This package utilizes the `NULLS NOT DISTINCT` clause in unique indexes to provide robust multi-tenant email uniqueness.
+- **Single schema per Ashlar installation**: The built-in schema scripts create the `ashlar_*` tables in the current PostgreSQL schema.
 
 ## Setup
 
@@ -47,18 +48,21 @@ await serviceProvider.InitializeAshlarPostgresSchemaAsync();
 
 This will create the following tables:
 - `ashlar_users`: Stores user identity and audit metadata.
-- `ashlar_credentials`: Stores credentials with optimistic concurrency support.
+- `ashlar_credentials`: Stores credentials with optimistic concurrency support. Provider identity is globally unique by provider type, provider name, and provider key, and credential status/revocation state is enforced by the database.
 - `ashlar_sessions`: Stores durable authentication sessions using hashed session tokens only.
 - `ashlar_security_events`: Stores structured security audit events.
 - `ashlar_rate_limits`: Stores distributed rate limit state.
 - `ashlar_bootstrap_state`: Stores the system initialization status.
 - `ashlar_schema_versions`: Internal DbUp table to track applied migrations for this package.
 
+The schema enforces tenant-scoped user email uniqueness, unique token hashes for sessions, invitations, and MFA handshakes, singleton bootstrap state, and mutually exclusive terminal states for invitations and email outbox rows.
+
 ## Features
 
 - **Bootstrap Persistence**: Durable storage for system initialization status using `PostgresBootstrapStateRepository`.
 - **Audit Persistence**: Durable storage for security-sensitive events using `PostgresSecurityEventSink`.
 - **Multi-tenancy**: First-class support for `ITenantUser`.
+- **Tenant Email Isolation**: The same normalized email can exist in different tenants, but not twice in the same tenant or twice without a tenant.
 - **Atomic Operations**: Optimistic concurrency (version checking) for all credential updates and consumption.
 - **Session Persistence**: Stores session expiry, last-seen, revocation, request metadata, and deterministic token hashes. Raw session tokens are never stored.
 - **Case-Insensitive Identity**: Emails are normalized and looked up case-insensitively using optimized indexes.
@@ -67,6 +71,7 @@ This will create the following tables:
 ## Email Outbox
 
 The PostgreSQL-backed email outbox allows you to persist email messages durably within your database transactions and dispatch them asynchronously.
+The dispatcher claims rows with `FOR UPDATE SKIP LOCKED`, so multiple application instances can poll the same outbox table without intentionally sending the same pending row twice.
 
 ### Registration
 
