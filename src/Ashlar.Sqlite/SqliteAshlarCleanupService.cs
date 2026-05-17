@@ -1,118 +1,114 @@
 using Ashlar.Operational;
-using Dapper;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Npgsql;
 
-namespace Ashlar.Postgres;
+namespace Ashlar.Sqlite;
 
 /// <summary>
-/// Provides postgres ashlar cleanup service behavior.
+/// Provides SQLite cleanup for Ashlar operational tables.
 /// </summary>
-public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
+public sealed partial class SqliteAshlarCleanupService : IAshlarCleanupService
 {
-    private static readonly Action<ILogger, string, string, Exception?> CleanupCategoryFailed =
-        LoggerMessage.Define<string, string>(
-            LogLevel.Error,
-            new EventId(1000, nameof(CleanupCategoryFailed)),
-            "PostgreSQL cleanup category failed. Category={Category} TableName={TableName}");
+    private const string CutoffParameter = "$cutoff";
+    private const string LimitParameter = "$limit";
 
-    private readonly NpgsqlDataSource _dataSource;
+    private readonly ISqliteConnectionProvider _connectionProvider;
     private readonly TimeProvider _timeProvider;
     private readonly AshlarCleanupOptions _options;
-    private readonly ILogger<PostgresAshlarCleanupService> _logger;
+    private readonly ILogger<SqliteAshlarCleanupService> _logger;
 
     /// <summary>
-    /// Initializes a configured PostgreSQL cleanup service.
+    /// Initializes a configured SQLite cleanup service.
     /// </summary>
-    /// <param name="dataSource">The PostgreSQL data source.</param>
+    /// <param name="connectionProvider">The SQLite connection provider.</param>
     /// <param name="timeProvider">The time provider.</param>
     /// <param name="options">The cleanup options.</param>
     /// <param name="logger">The logger value.</param>
-    public PostgresAshlarCleanupService(
-        NpgsqlDataSource dataSource,
+    public SqliteAshlarCleanupService(
+        ISqliteConnectionProvider connectionProvider,
         TimeProvider timeProvider,
         IOptions<AshlarCleanupOptions> options,
-        ILogger<PostgresAshlarCleanupService>? logger = null)
+        ILogger<SqliteAshlarCleanupService>? logger = null)
     {
-        ArgumentNullException.ThrowIfNull(dataSource);
+        ArgumentNullException.ThrowIfNull(connectionProvider);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
 
-        _dataSource = dataSource;
+        _connectionProvider = connectionProvider;
         _timeProvider = timeProvider;
         _options = options.Value;
-        _logger = logger ?? NullLogger<PostgresAshlarCleanupService>.Instance;
+        _logger = logger ?? NullLogger<SqliteAshlarCleanupService>.Instance;
         if (!AshlarCleanupOptions.Validate(_options))
         {
             throw new ArgumentException("Cleanup options are invalid.", nameof(options));
         }
     }
 
-    /// <summary>
-    /// Performs the cleanup <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<AshlarCleanupResult> CleanupAsync(CancellationToken cancellationToken = default)
     {
         var now = _timeProvider.GetUtcNow();
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         return await AshlarCleanupPlan.RunAsync(
             _options,
             now,
-            connection,
+            handle,
             DeleteWithLoggingAsync,
             CreateDefinition,
             cancellationToken);
     }
 
     private async Task<int> DeleteWithLoggingAsync(
-        NpgsqlConnection connection,
+        SqliteConnectionHandle handle,
         AshlarCleanupDeleteDefinition definition,
         DateTimeOffset cutoff,
         CancellationToken cancellationToken)
     {
         try
         {
-            return await DeleteAsync(connection, definition, cutoff, cancellationToken);
+            return await DeleteAsync(handle, definition, cutoff, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            CleanupCategoryFailed(_logger, definition.Category, definition.TableName, ex);
+            LogCleanupCategoryFailed(_logger, definition.Category, definition.TableName, ex);
             throw;
         }
     }
 
     private async Task<int> DeleteAsync(
-        NpgsqlConnection connection,
+        SqliteConnectionHandle handle,
         AshlarCleanupDeleteDefinition definition,
         DateTimeOffset cutoff,
         CancellationToken cancellationToken)
     {
         var sql = $"""
             DELETE FROM {definition.TableName}
-            WHERE ctid IN (
-                SELECT ctid
+            WHERE rowid IN (
+                SELECT rowid
                 FROM {definition.TableName}
                 WHERE {definition.Predicate}
-                ORDER BY {definition.OrderColumn}, ctid
-                FOR UPDATE SKIP LOCKED
-                LIMIT @limit
+                ORDER BY {definition.OrderColumn}, rowid
+                LIMIT $limit
             );
             """;
 
-        var command = new CommandDefinition(sql, new { cutoff, limit = _options.BatchSize }, cancellationToken: cancellationToken);
-        return await connection.ExecuteAsync(command);
+        await using var command = handle.Connection.CreateCommand();
+        command.Transaction = handle.Transaction;
+        command.CommandText = sql;
+        command.AddDateTimeOffsetParameter(CutoffParameter, cutoff);
+        command.AddParameter(LimitParameter, _options.BatchSize);
+        return await command.ExecuteNonQueryAsync(cancellationToken);
     }
+
+    [LoggerMessage(EventId = 1000, Level = LogLevel.Error, Message = "SQLite cleanup category failed. Category={Category} TableName={TableName}")]
+    private static partial void LogCleanupCategoryFailed(ILogger logger, string category, string tableName, Exception exception);
 
     private static AshlarCleanupDeleteDefinition CreateDefinition(AshlarCleanupCategoryDefinition category)
     {
         return new AshlarCleanupDeleteDefinition(
             category.Category,
             category.TableName,
-            AshlarCleanupPlan.RenderPredicate(category.PredicateTemplate, "@cutoff", "TRUE", "FALSE"),
+            AshlarCleanupPlan.RenderPredicate(category.PredicateTemplate, CutoffParameter, "1", "0"),
             category.OrderColumn);
     }
 }
