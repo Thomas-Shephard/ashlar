@@ -19,10 +19,6 @@ public static class AshlarSqliteServiceCollectionExtensions
     /// <param name="services">The services value.</param>
     /// <param name="connectionString">The SQLite connection string value.</param>
     /// <returns>The operation result.</returns>
-    /// <remarks>
-    /// This first SQLite slice registers connection, transaction, and schema initialization infrastructure only.
-    /// Repository implementations will be registered by later provider slices after they are implemented and tested.
-    /// </remarks>
     public static IServiceCollection AddAshlarSqlite(
         this IServiceCollection services,
         string connectionString)
@@ -34,6 +30,8 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.TryAddScoped<SqliteTransactionManager>();
         services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<SqliteTransactionManager>()));
         services.TryAddScoped<ISqliteConnectionProvider>(provider => provider.GetRequiredService<SqliteTransactionManager>());
+        services.TryAddScoped<IIdentityRepository, SqliteIdentityRepository>();
+        services.TryAddScoped<IBootstrapStateRepository, SqliteBootstrapStateRepository>();
         services.TryAddTransient<SqliteSchemaManager>();
 
         return services;

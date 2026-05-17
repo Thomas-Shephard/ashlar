@@ -102,9 +102,10 @@ internal sealed partial class SqliteTransactionManager : IAshlarTransactionProvi
         }
     }
 
-    private static async Task<SqliteTransaction> BeginImmediateTransactionAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    private static Task<SqliteTransaction> BeginImmediateTransactionAsync(SqliteConnection connection, CancellationToken cancellationToken)
     {
-        return (SqliteTransaction)await connection.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(connection.BeginTransaction(IsolationLevel.Serializable, deferred: false));
     }
 
     private void RegisterPostCommitHook(Func<CancellationToken, Task> action)
