@@ -82,6 +82,14 @@ public static class AshlarServiceCollectionExtensions
             provider.GetService<global::Microsoft.Extensions.Logging.ILogger<CredentialService>>(),
             provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()));
         services.TryAddScoped<ICredentialService, CredentialService>();
+        services.TryAddScoped(provider => new AccountSecurityServiceDependencies(
+            provider.GetService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>(),
+            provider.GetService<IUserSecurityEventSummaryRepository>(),
+            provider.GetService<IOptions<TotpOptions>>(),
+            provider.GetService<IOptions<RecoveryCodeOptions>>()));
+        services.TryAddScoped<IAccountSecurityGuard, AllowAccountSecurityGuard>();
+        services.TryAddScoped<IAccountSecurityService, AccountSecurityService>();
         services.TryAddScoped(provider => new AuthenticationSessionServiceDependencies(
             provider.GetService<AuthenticationSessionOptions>(),
             provider.GetService<TimeProvider>(),

@@ -13,6 +13,7 @@ internal static class AppViews
             invalid_invitation: 'This invitation is invalid or has expired. Ask an administrator to send a new invitation.',
             invalid_mfa_code: 'That verification code was not accepted. Check the code and try again.',
             invalid_totp: 'That authenticator code was not accepted. Check the code and try again.',
+            last_admin_cannot_be_disabled: 'You cannot disable the last active administrator.',
             rate_limited: 'Too many attempts. Wait a moment, then try again.',
             user_exists: 'A user with this email address already exists.'
         };
@@ -470,6 +471,21 @@ internal static class AppViews
 
                 <hr style="margin: 2rem 0; border: 0; border-top: 1px solid #e5e7eb;" />
 
+                <h2>Account Security</h2>
+                <select id="securityUserId" style="width: 100%; padding: 0.75rem; margin-bottom: 1rem; border: 1px solid #d1d5db; border-radius: 4px;">
+                    <option value="">Loading users...</option>
+                </select>
+                <div id="securityPosture" class="status-box">Select a user to view account security state.</div>
+                <div class="grid" style="margin-top: 1rem;">
+                    <button id="disableUserBtn" class="secondary danger hidden" style="height: 2.5rem;">Disable User</button>
+                    <button id="reactivateUserBtn" class="secondary hidden" style="height: 2.5rem;">Reactivate User</button>
+                    <button id="revokeUserSessionsBtn" class="secondary danger hidden" style="height: 2.5rem;">Revoke Sessions</button>
+                    <button id="resetUserMfaBtn" class="secondary danger hidden" style="height: 2.5rem;">Reset MFA</button>
+                </div>
+                <div id="securityActionResult"></div>
+
+                <hr style="margin: 2rem 0; border: 0; border-top: 1px solid #e5e7eb;" />
+
                 <h2>Project Management</h2>
                 <p>Create new projects to manage scoped access.</p>
                 <form id="projectForm">
@@ -518,17 +534,116 @@ internal static class AppViews
                     (r, div) => { div.innerHTML = '<p class="badge badge-success">Permission granted!</p>'; }
                 );
 
+                let adminUsers = [];
+
+                const renderUserOptionText = u => (u.name || 'No Name') + ' (' + u.email + ')';
+
+                const setSecurityActions = posture => {
+                    document.getElementById('disableUserBtn').classList.toggle('hidden', !posture.isActive);
+                    document.getElementById('reactivateUserBtn').classList.toggle('hidden', posture.isActive);
+                    document.getElementById('revokeUserSessionsBtn').classList.toggle('hidden', posture.activeSessionCount < 1);
+                    document.getElementById('resetUserMfaBtn').classList.toggle('hidden', !posture.isMfaConfigured);
+                };
+
+                const loadSecurityPosture = async () => {
+                    const userId = document.getElementById('securityUserId').value;
+                    const div = document.getElementById('securityPosture');
+                    if (!userId) {
+                        div.innerText = 'Select a user to view account security state.';
+                        setSecurityActions({ isActive: false, activeSessionCount: 0, isMfaConfigured: false });
+                        return;
+                    }
+
+                    div.innerText = 'Loading...';
+                    const response = await fetch('/api/admin/users/' + userId + '/security');
+                    const result = await response.json();
+                    if (!response.ok) {
+                        div.style.color = '#dc2626';
+                        div.innerText = formatSampleError(result.error, 'Unable to load account security state.');
+                        setSecurityActions({ isActive: false, activeSessionCount: 0, isMfaConfigured: false });
+                        return;
+                    }
+
+                    setSecurityActions(result);
+                    div.style.color = '';
+                    const credentials = (result.configuredCredentials || [])
+                        .map(c => (c.type?.value || c.type || 'UNKNOWN') + ':' + c.name)
+                        .join(', ') || 'None';
+                    div.replaceChildren();
+                    [
+                        ['Status', result.isActive ? 'Active' : 'Inactive'],
+                        ['Email', result.isEmailVerified ? 'Verified' : 'Unverified'],
+                        ['Credentials', credentials],
+                        ['MFA', result.isMfaConfigured ? 'Configured' : 'Not configured'],
+                        ['Active sessions', String(result.activeSessionCount)],
+                        ['Recent security events', result.recentSecurityEventCount ?? 'Unavailable']
+                    ].forEach(([label, value], index) => {
+                        const strong = document.createElement('strong');
+                        strong.textContent = label + ':';
+                        div.appendChild(strong);
+                        div.appendChild(document.createTextNode(' ' + value));
+                        if (index < 5) div.appendChild(document.createElement('br'));
+                    });
+                };
+
+                const runSecurityAction = async (path, label) => {
+                    const userId = document.getElementById('securityUserId').value;
+                    const div = document.getElementById('securityActionResult');
+                    if (!userId) {
+                        div.style.color = '#dc2626';
+                        div.innerText = 'Select a user first.';
+                        return;
+                    }
+
+                    div.style.color = '';
+                    div.innerText = 'Processing...';
+                    const response = await fetch('/api/admin/users/' + userId + path, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ reason: 'sample-admin' })
+                    });
+                    const result = response.headers.get('Content-Type')?.includes('application/json') ? await response.json() : {};
+                    if (!response.ok) {
+                        div.style.color = '#dc2626';
+                        div.innerText = formatSampleError(result.error, label + ' failed.');
+                        return;
+                    }
+
+                    div.innerHTML = '<p class="badge badge-success">' + label + ' complete.</p>';
+                    await loadSecurityPosture();
+                };
+
+                document.getElementById('securityUserId').onchange = loadSecurityPosture;
+                document.getElementById('disableUserBtn').onclick = () => runSecurityAction('/disable', 'Disable user');
+                document.getElementById('reactivateUserBtn').onclick = () => runSecurityAction('/reactivate', 'Reactivate user');
+                document.getElementById('revokeUserSessionsBtn').onclick = () => runSecurityAction('/sessions/revoke', 'Revoke sessions');
+                document.getElementById('resetUserMfaBtn').onclick = () => runSecurityAction('/mfa/reset', 'Reset MFA');
+
                 fetch('/api/admin/users')
                     .then(r => r.json())
                     .then(users => {
-                        const select = document.getElementById('grantUserId');
-                        select.innerHTML = '';
+                        adminUsers = users;
+                        const grantSelect = document.getElementById('grantUserId');
+                        const securitySelect = document.getElementById('securityUserId');
+                        grantSelect.innerHTML = '';
+                        securitySelect.innerHTML = '';
                         users.forEach(u => {
-                            const opt = document.createElement('option');
-                            opt.value = u.id;
-                            opt.innerText = (u.name || 'No Name') + ' (' + u.email + ')';
-                            select.appendChild(opt);
+                            const grantOpt = document.createElement('option');
+                            grantOpt.value = u.id;
+                            grantOpt.innerText = renderUserOptionText(u);
+                            grantSelect.appendChild(grantOpt);
+
+                            const securityOpt = document.createElement('option');
+                            securityOpt.value = u.id;
+                            securityOpt.innerText = renderUserOptionText(u);
+                            securitySelect.appendChild(securityOpt);
                         });
+                        if (users.length === 0) {
+                            grantSelect.innerHTML = '<option value="">No users found</option>';
+                            securitySelect.innerHTML = '<option value="">No users found</option>';
+                        } else {
+                            loadSecurityPosture();
+                        }
                     });
 
                 const loadProjects = () => {

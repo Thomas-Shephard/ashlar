@@ -81,7 +81,8 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         Assert.That(status.RootElement.GetProperty("status").GetString(), Is.EqualTo("Uninitialized"));
 
         var adminUserId = await BootstrapFirstAdminAsync();
-        await AssertAuthenticatedPageAsync(AdminClient, "/admin");
+        await AssertAdminPageIncludesAccountSecurityPanelAsync(AdminClient);
+        await AssertLastAdminCannotBeDisabledAsync(AdminClient, adminUserId);
         await AssertSessionListingAndRevocationAsync(AdminClient);
 
         await RequestEmailCodeAsync("admin@example.com");
@@ -266,6 +267,35 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     {
         var response = await client.GetAsync(path);
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+    }
+
+    private static async Task AssertAdminPageIncludesAccountSecurityPanelAsync(HttpClient client)
+    {
+        var response = await client.GetAsync("/admin");
+        var html = await response.Content.ReadAsStringAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(html, Does.Contain("Account Security"));
+            Assert.That(html, Does.Contain("securityUserId"));
+            Assert.That(html, Does.Contain("disableUserBtn"));
+            Assert.That(html, Does.Contain("resetUserMfaBtn"));
+        }
+    }
+
+    private static async Task AssertLastAdminCannotBeDisabledAsync(HttpClient client, Guid adminUserId)
+    {
+        var response = await client.PostAsJsonAsync($"/api/admin/users/{adminUserId}/disable", new { reason = "smoke-test" });
+        var body = await response.Content.ReadAsStringAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound).Or.EqualTo(HttpStatusCode.BadRequest));
+            Assert.That(body, Does.Contain("last_admin_cannot_be_disabled"));
+        }
+
+        await AssertAuthenticatedPageAsync(client, "/admin");
     }
 
     private static async Task AssertForbiddenAsync(HttpClient client, string path)

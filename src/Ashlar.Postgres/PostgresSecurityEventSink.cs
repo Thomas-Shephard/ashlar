@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Threading.Channels;
 using Ashlar.Auditing;
+using Ashlar.Identity.Models;
 using Dapper;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -11,7 +12,7 @@ namespace Ashlar.Postgres;
 /// <summary>
 /// A PostgreSQL-backed security event sink that persists audit events to the ashlar_security_events table.
 /// </summary>
-public sealed class PostgresSecurityEventSink : ISecurityEventSink, IAsyncDisposable
+public sealed class PostgresSecurityEventSink : ISecurityEventSink, IUserSecurityEventSummaryRepository, IAsyncDisposable
 {
     private static readonly Action<ILogger, string, Guid?, Guid?, string?, string?, Exception?> SecurityEventQueueFailed =
         LoggerMessage.Define<string, Guid?, Guid?, string?, string?>(
@@ -69,6 +70,26 @@ public sealed class PostgresSecurityEventSink : ISecurityEventSink, IAsyncDispos
                 null);
         }
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Counts recent security events for a user.
+    /// </summary>
+    /// <param name="userId">The user id value.</param>
+    /// <param name="since">The since value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
+    public async Task<int> CountSecurityEventsForUserAsync(Guid userId, DateTimeOffset since, CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            SELECT COUNT(*)::int
+            FROM ashlar_security_events
+            WHERE user_id = @UserId AND occurred_at >= @Since
+            """;
+
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        var command = new CommandDefinition(sql, new { UserId = userId, Since = since }, cancellationToken: cancellationToken);
+        return await connection.ExecuteScalarAsync<int>(command);
     }
 
     private async Task ProcessChannelAsync()

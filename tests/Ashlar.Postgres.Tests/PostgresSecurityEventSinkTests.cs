@@ -177,6 +177,28 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
     }
 
     [Test]
+    public async Task CountSecurityEventsForUserAsyncCountsOnlyMatchingRecentUserEvents()
+    {
+        var userId = Guid.NewGuid();
+        var otherUserId = Guid.NewGuid();
+        var now = new DateTimeOffset(2026, 5, 17, 12, 0, 0, TimeSpan.Zero);
+
+        await using (var sink = new PostgresSecurityEventSink(GetDataSource()))
+        {
+            await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "Recent1", UserId = userId, OccurredAt = now.AddMinutes(-5) });
+            await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "Recent2", UserId = userId, OccurredAt = now.AddMinutes(-1) });
+            await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "Old", UserId = userId, OccurredAt = now.AddDays(-2) });
+            await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "OtherUser", UserId = otherUserId, OccurredAt = now });
+            await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "NoUser", OccurredAt = now });
+        }
+
+        await using var countingSink = new PostgresSecurityEventSink(GetDataSource());
+        var count = await countingSink.CountSecurityEventsForUserAsync(userId, now.AddHours(-1));
+
+        Assert.That(count, Is.EqualTo(2));
+    }
+
+    [Test]
     public async Task AddAshlarPostgresDoesNotRegisterAuditSinkByDefault()
     {
         var services = new ServiceCollection();

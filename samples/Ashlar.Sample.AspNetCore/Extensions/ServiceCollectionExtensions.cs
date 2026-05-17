@@ -1,4 +1,5 @@
 using Ashlar.Identity.Models.Totp;
+using Ashlar.Identity.Abstractions;
 
 namespace Ashlar.Sample.AspNetCore.Extensions;
 
@@ -55,6 +56,7 @@ internal static class ServiceCollectionExtensions
         services.AddAshlarTotp();
         services.AddAshlarRecoveryCodes();
         services.AddAshlarPostgresAuditSink();
+        services.AddScoped<IAccountSecurityGuard, SampleAccountSecurityGuard>();
         services.AddAshlarPostgresRateLimiting();
         services.AddAshlarPostgresEmailOutboxHostedService<DevelopmentEmailTransport>(options =>
         {
