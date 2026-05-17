@@ -59,7 +59,7 @@ Navigate to `http://localhost:5000` in your browser.
 5. **Passkeys**: Use **Sign In With Passkey** on the dashboard to authenticate with a registered passkey. While signed in, open **Account → Security** to register, list, rename, and revoke passkeys. The sample shows authenticator apps, recovery codes, and passkeys as separate sign-in verification methods. Passkeys require HTTPS or localhost and a browser that supports WebAuthn. Passkeys are wired for primary sign-in and for passkey factor handshakes; passkey step-up can be validated manually through the browser WebAuthn factor endpoints. The automated smoke tests avoid hardware-backed WebAuthn.
 6. **Email Verification**: If your email is unverified, click "Resend Verification Email" and check the console for the link.
 7. **Email Change**: Use "Change Email" in your profile to request a new email address. This requires fresh MFA. Confirm the change via the link in the console.
-8. **Session Management**: Go to Account → Security to view your active sessions. You can revoke specific sessions or all other sessions; revoking all other sessions requires fresh MFA.
+8. **Session Management**: Go to Account → Security to view your active sessions. You can revoke a specific session or all other sessions with conditional fresh MFA when a usable factor exists.
 9. **Invitations**: As an administrator, you can invite new users by entering their email address.
 10. **Accepting Invitations**: Check the application console to find the (simulated) invitation email. Click the link provided to join the application. You will be automatically signed in as the new user.
 11. **Authorization**: Use the administration section to grant "project.manage" permissions to other users for the "alpha" or "beta" projects. The dashboard dynamically updates to show where you have manager access.
@@ -74,9 +74,10 @@ options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.Totp);
 options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.RecoveryCode);
 options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.Passkey);
 options.RequireFreshMfa();
+options.RequireFreshMfaIfAvailable();
 ```
 
-Routes use `.RequireFreshMfa()` for sensitive operations: passkey registration/rename/revoke, TOTP reset, recovery-code generation, email change requests, revoking other sessions, and administrator disable/reactivate/session-revoke/MFA-reset actions. Ordinary sign-in, sign-out, email verification, invitation acceptance, account viewing, and session listing remain available with a normal authenticated session.
+Routes use `.RequireFreshMfa()` for high-risk sensitive operations: passkey registration/rename/revoke, TOTP reset, recovery-code generation, email change requests, and administrator disable/reactivate/session-revoke/MFA-reset actions. User-owned session revocation endpoints use `.RequireFreshMfaIfAvailable()` to demonstrate adaptive protection: users with a usable eligible additional verification factor must complete fresh step-up, while users without one are not locked out of revoking old devices. Ordinary sign-in, sign-out, email verification, invitation acceptance, account viewing, and session listing remain available with a normal authenticated session.
 
 The account and administration pages render Ashlar's account security posture model. They show sign-in methods separately from additional verification, use friendly labels such as "Authenticator app", "Recovery codes", and "Passkeys", and show whether protected actions are available or blocked until setup.
 

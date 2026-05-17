@@ -24,4 +24,17 @@ public static class AshlarEndpointConventionBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         return builder.RequireAuthorization(AshlarStepUpPolicyNames.FreshMfa);
     }
+
+    /// <summary>
+    /// Requires the default Ashlar conditional fresh MFA policy.
+    /// </summary>
+    /// <typeparam name="TBuilder">The endpoint convention builder type.</typeparam>
+    /// <param name="builder">The endpoint convention builder.</param>
+    /// <returns>The endpoint convention builder.</returns>
+    public static TBuilder RequireFreshMfaIfAvailable<TBuilder>(this TBuilder builder)
+        where TBuilder : IEndpointConventionBuilder
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        return builder.RequireAuthorization(AshlarStepUpPolicyNames.FreshMfaIfAvailable);
+    }
 }

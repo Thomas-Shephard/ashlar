@@ -38,11 +38,27 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     {
         var services = new ServiceCollection();
         services.AddSingleton<IStepUpAuthenticationService>(new StepUpAuthenticationService(new FixedTimeProvider(Now)));
+        services.AddSingleton(Mock.Of<IAccountSecurityService>());
         services.AddAshlarAspNetCoreAuthorization(options => options.RequireFreshMfa());
         await using var provider = services.BuildServiceProvider();
         var policyProvider = provider.GetRequiredService<IAuthorizationPolicyProvider>();
 
         var policy = await policyProvider.GetPolicyAsync(AshlarStepUpPolicyNames.FreshMfa);
+
+        Assert.That(policy?.Requirements.OfType<DenyAnonymousAuthorizationRequirement>(), Has.Exactly(1).Items);
+    }
+
+    [Test]
+    public async Task ConditionalAuthorizationPolicyShouldChallengeUnauthenticatedUsersThroughRequireAuthenticatedUser()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IStepUpAuthenticationService>(new StepUpAuthenticationService(new FixedTimeProvider(Now)));
+        services.AddSingleton(Mock.Of<IAccountSecurityService>());
+        services.AddAshlarAspNetCoreAuthorization(options => options.RequireFreshMfaIfAvailable());
+        await using var provider = services.BuildServiceProvider();
+        var policyProvider = provider.GetRequiredService<IAuthorizationPolicyProvider>();
+
+        var policy = await policyProvider.GetPolicyAsync(AshlarStepUpPolicyNames.FreshMfaIfAvailable);
 
         Assert.That(policy?.Requirements.OfType<DenyAnonymousAuthorizationRequirement>(), Has.Exactly(1).Items);
     }
@@ -132,6 +148,244 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         await CreateHandler(session).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldSucceedForConditionalPolicyWhenNoEligibleFactorIsAvailable()
+    {
+        var session = CreateSession();
+        var context = CreateContext(
+            session,
+            new AshlarStepUpRequirement(
+                TimeSpan.FromMinutes(5),
+                allowedFactors: [AuthenticationFactorTypes.Totp],
+                mode: AshlarStepUpMode.IfAvailable));
+
+        await CreateHandler(session, CreateAccountSecurityService(session.UserId)).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.True);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldSucceedForConditionalPolicyWithEligibleFreshTotp()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var context = CreateContext(
+            session,
+            new AshlarStepUpRequirement(
+                TimeSpan.FromMinutes(5),
+                allowedFactors: [AuthenticationFactorTypes.Totp],
+                mode: AshlarStepUpMode.IfAvailable));
+
+        await CreateHandler(
+            session,
+            CreateAccountSecurityService(session.UserId, [CreateFactor(AuthenticationFactorTypes.Totp)])).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.True);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldFailForConditionalPolicyWithEligibleStaleTotp()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-10);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var context = CreateContext(
+            session,
+            new AshlarStepUpRequirement(
+                TimeSpan.FromMinutes(5),
+                allowedFactors: [AuthenticationFactorTypes.Totp],
+                mode: AshlarStepUpMode.IfAvailable));
+
+        await CreateHandler(
+            session,
+            CreateAccountSecurityService(session.UserId, [CreateFactor(AuthenticationFactorTypes.Totp)])).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldFailForConditionalPolicyWithEligibleMissingTotpVerification()
+    {
+        var session = CreateSession();
+        var context = CreateContext(
+            session,
+            new AshlarStepUpRequirement(
+                TimeSpan.FromMinutes(5),
+                allowedFactors: [AuthenticationFactorTypes.Totp],
+                mode: AshlarStepUpMode.IfAvailable));
+
+        await CreateHandler(
+            session,
+            CreateAccountSecurityService(session.UserId, [CreateFactor(AuthenticationFactorTypes.Totp)])).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldTreatDisallowedPasskeyFactorAsUnavailableForConditionalPolicy()
+    {
+        var session = CreateSession();
+        var context = CreateContext(
+            session,
+            new AshlarStepUpRequirement(
+                TimeSpan.FromMinutes(5),
+                allowedFactors: [AuthenticationFactorTypes.Totp],
+                mode: AshlarStepUpMode.IfAvailable));
+
+        await CreateHandler(
+            session,
+            CreateAccountSecurityService(session.UserId, [CreateFactor(AuthenticationFactorTypes.Passkey)])).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.True);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldRequireFreshPasskeyWhenPasskeyIsAllowedForConditionalPolicy()
+    {
+        var session = CreateSession();
+        var context = CreateContext(
+            session,
+            new AshlarStepUpRequirement(
+                TimeSpan.FromMinutes(5),
+                allowedFactors: [AuthenticationFactorTypes.Passkey],
+                mode: AshlarStepUpMode.IfAvailable));
+
+        await CreateHandler(
+            session,
+            CreateAccountSecurityService(session.UserId, [CreateFactor(AuthenticationFactorTypes.Passkey)])).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldDenyConditionalPolicyWhenPostureLookupFails()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var accountSecurity = new Mock<IAccountSecurityService>(MockBehavior.Strict);
+        accountSecurity
+            .Setup(service => service.GetUserSecurityPostureAsync(
+                session.UserId,
+                It.IsAny<UserSecurityPostureRequest?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure<UserSecurityPosture>(AshlarFailureCodes.UserNotFound));
+        var context = CreateContext(
+            session,
+            new AshlarStepUpRequirement(
+                TimeSpan.FromMinutes(5),
+                allowedFactors: [AuthenticationFactorTypes.Totp],
+                mode: AshlarStepUpMode.IfAvailable));
+
+        await CreateHandler(session, accountSecurity.Object).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldDenyConditionalPolicyWhenAccountSecurityServiceIsUnavailable()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var context = CreateContext(
+            session,
+            new AshlarStepUpRequirement(
+                TimeSpan.FromMinutes(5),
+                allowedFactors: [AuthenticationFactorTypes.Totp],
+                mode: AshlarStepUpMode.IfAvailable));
+
+        await CreateHandler(session).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldDenyConditionalPolicyWhenPostureValueIsMissing()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var accountSecurity = new Mock<IAccountSecurityService>(MockBehavior.Strict);
+        accountSecurity
+            .Setup(service => service.GetUserSecurityPostureAsync(
+                session.UserId,
+                It.IsAny<UserSecurityPostureRequest?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<UserSecurityPosture>(true));
+        var context = CreateContext(
+            session,
+            new AshlarStepUpRequirement(
+                TimeSpan.FromMinutes(5),
+                allowedFactors: [AuthenticationFactorTypes.Totp],
+                mode: AshlarStepUpMode.IfAvailable));
+
+        await CreateHandler(session, accountSecurity.Object).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldPassTenantClaimToConditionalPostureLookup()
+    {
+        var session = CreateSession();
+        var tenantId = Guid.NewGuid();
+        var accountSecurity = new Mock<IAccountSecurityService>(MockBehavior.Strict);
+        accountSecurity
+            .Setup(service => service.GetUserSecurityPostureAsync(
+                session.UserId,
+                It.Is<UserSecurityPostureRequest>(request => request.Tenant != null && request.Tenant.TenantId == tenantId),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(new UserSecurityPosture(
+                session.UserId,
+                IsActive: true,
+                IsEmailVerified: true,
+                CanSignIn: true,
+                PrimaryCredentials: [],
+                AdditionalVerificationFactors: [],
+                Policy: new AccountSecurityPolicyPosture(false, [], [], false, true, [], [], false),
+                CredentialInventory: [],
+                ActiveSessionCount: 1,
+                RecentSecurityEventCount: null)));
+        var claims = CreateClaims(session);
+        claims.Add(new Claim(AshlarClaimTypes.TenantId, tenantId.ToString("D")));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
+        var context = new AuthorizationHandlerContext(
+            [new AshlarStepUpRequirement(
+                TimeSpan.FromMinutes(5),
+                allowedFactors: [AuthenticationFactorTypes.Totp],
+                mode: AshlarStepUpMode.IfAvailable)],
+            principal,
+            null);
+
+        await CreateHandler(session, accountSecurity.Object).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.True);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldEvaluateConditionalPolicyWithoutHttpContext()
+    {
+        var session = CreateSession();
+        var context = CreateContext(
+            session,
+            new AshlarStepUpRequirement(
+                TimeSpan.FromMinutes(5),
+                allowedFactors: [AuthenticationFactorTypes.Totp],
+                mode: AshlarStepUpMode.IfAvailable));
+
+        await CreateHandler(
+            accountSecurity: CreateAccountSecurityService(session.UserId)).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.True);
     }
 
     [Test]
@@ -263,6 +517,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     {
         var services = new ServiceCollection();
         services.AddSingleton<IStepUpAuthenticationService>(Mock.Of<IStepUpAuthenticationService>());
+        services.AddSingleton(Mock.Of<IAccountSecurityService>());
         services.AddSingleton(Mock.Of<Ashlar.Authorization.Abstractions.IAuthorizationEvaluator>());
         services.AddAshlarAspNetCoreAuthorization(options => options.RequireFreshMfa());
         using var provider = services.BuildServiceProvider();
@@ -277,6 +532,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     {
         var services = new ServiceCollection();
         services.AddSingleton<IStepUpAuthenticationService>(Mock.Of<IStepUpAuthenticationService>());
+        services.AddSingleton(Mock.Of<IAccountSecurityService>());
         services.AddAshlarAspNetCoreAuthorization(options =>
         {
             options.StepUp.FreshnessWindow = TimeSpan.FromMinutes(20);
@@ -304,6 +560,61 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     }
 
     [Test]
+    public async Task RequireFreshMfaIfAvailableShouldRegisterDefaultConditionalPolicy()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IStepUpAuthenticationService>(Mock.Of<IStepUpAuthenticationService>());
+        services.AddSingleton(Mock.Of<IAccountSecurityService>());
+        services.AddAshlarAspNetCoreAuthorization(options => options.RequireFreshMfaIfAvailable());
+        await using var provider = services.BuildServiceProvider();
+        var policyProvider = provider.GetRequiredService<IAuthorizationPolicyProvider>();
+
+        var policy = await policyProvider.GetPolicyAsync(AshlarStepUpPolicyNames.FreshMfaIfAvailable);
+        var requirement = policy?.Requirements.OfType<AshlarStepUpRequirement>().SingleOrDefault();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requirement, Is.Not.Null);
+            Assert.That(requirement?.Mode, Is.EqualTo(AshlarStepUpMode.IfAvailable));
+            Assert.That(requirement?.AllowedFactors, Is.EquivalentTo(new[]
+            {
+                AuthenticationFactorTypes.Totp,
+                AuthenticationFactorTypes.RecoveryCode,
+                AuthenticationFactorTypes.Passkey
+            }));
+        }
+    }
+
+    [Test]
+    public async Task AddAshlarStepUpIfAvailablePolicyShouldPreserveConfiguredFactorsAndApplyCallback()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IStepUpAuthenticationService>(Mock.Of<IStepUpAuthenticationService>());
+        services.AddSingleton(Mock.Of<IAccountSecurityService>());
+        services.AddAshlarAspNetCoreAuthorization(options =>
+        {
+            options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.Totp);
+            options.AddAshlarStepUpIfAvailablePolicy("Adaptive", stepUp =>
+            {
+                stepUp.FreshnessWindow = TimeSpan.FromMinutes(2);
+                stepUp.AllowedFactors.Add(AuthenticationFactorTypes.Passkey);
+            });
+        });
+        await using var provider = services.BuildServiceProvider();
+        var policyProvider = provider.GetRequiredService<IAuthorizationPolicyProvider>();
+
+        var policy = await policyProvider.GetPolicyAsync("Adaptive");
+        var requirement = policy?.Requirements.OfType<AshlarStepUpRequirement>().SingleOrDefault();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requirement?.FreshnessWindow, Is.EqualTo(TimeSpan.FromMinutes(2)));
+            Assert.That(requirement?.Mode, Is.EqualTo(AshlarStepUpMode.IfAvailable));
+            Assert.That(requirement?.AllowedFactors, Is.EquivalentTo(TotpAndPasskeyFactors));
+        }
+    }
+
+    [Test]
     public void RequireFreshMfaEndpointHelperShouldAddDefaultPolicy()
     {
         var builder = WebApplication.CreateSlimBuilder();
@@ -325,6 +636,27 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     }
 
     [Test]
+    public void RequireFreshMfaIfAvailableEndpointHelperShouldAddDefaultPolicy()
+    {
+        var builder = WebApplication.CreateSlimBuilder();
+        var app = builder.Build();
+        app.MapGet("/sensitive", () => "ok").RequireFreshMfaIfAvailable();
+
+        var dataSource = ((IEndpointRouteBuilder)app).DataSources.Single();
+        var metadata = dataSource.Endpoints.Single().Metadata.GetOrderedMetadata<IAuthorizeData>();
+
+        Assert.That(metadata.Single().Policy, Is.EqualTo(AshlarStepUpPolicyNames.FreshMfaIfAvailable));
+    }
+
+    [Test]
+    public void RequireFreshMfaIfAvailableEndpointHelperShouldRejectNullBuilder()
+    {
+        RouteHandlerBuilder builder = null!;
+
+        Assert.Throws<ArgumentNullException>(() => builder.RequireFreshMfaIfAvailable());
+    }
+
+    [Test]
     public void HandlerConstructorShouldRejectNullDependencies()
     {
         using (Assert.EnterMultipleScope())
@@ -340,7 +672,9 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AshlarStepUpRequirement(TimeSpan.Zero));
     }
 
-    private static AshlarStepUpAuthorizationHandler CreateHandler(AuthenticationSession? session = null)
+    private static AshlarStepUpAuthorizationHandler CreateHandler(
+        AuthenticationSession? session = null,
+        IAccountSecurityService? accountSecurity = null)
     {
         var httpContextAccessor = new HttpContextAccessor();
         if (session != null)
@@ -351,7 +685,8 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
 
         return new AshlarStepUpAuthorizationHandler(
             new StepUpAuthenticationService(new FixedTimeProvider(Now)),
-            httpContextAccessor);
+            httpContextAccessor,
+            accountSecurity);
     }
 
     private static AuthorizationHandlerContext CreateContext(AuthenticationSession session, AshlarStepUpRequirement requirement)
@@ -413,6 +748,48 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
             PrimaryProvider = AuthenticationProviderKey.EmailCode,
             ExpiresAt = Now.AddHours(1)
         };
+    }
+
+    private static IAccountSecurityService CreateAccountSecurityService(
+        Guid userId,
+        IReadOnlyList<AdditionalVerificationFactorPosture>? factors = null)
+    {
+        var accountSecurity = new Mock<IAccountSecurityService>(MockBehavior.Strict);
+        accountSecurity
+            .Setup(service => service.GetUserSecurityPostureAsync(
+                userId,
+                It.IsAny<UserSecurityPostureRequest?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(new UserSecurityPosture(
+                userId,
+                IsActive: true,
+                IsEmailVerified: true,
+                CanSignIn: true,
+                PrimaryCredentials: [],
+                AdditionalVerificationFactors: factors ?? [],
+                Policy: new AccountSecurityPolicyPosture(
+                    IsAdditionalVerificationRequired: false,
+                    RequiredFactorTypes: [],
+                    AllowedFactorTypes: [],
+                    HasUsableAdditionalVerificationFactor: factors?.Any(factor => factor.IsUsable) == true,
+                    IsReadyForAdditionalVerification: true,
+                    MissingRequiredFactorTypes: [],
+                    MissingRequiredFactorDisplayNames: [],
+                    IsLockedOutByPolicy: false),
+                CredentialInventory: [],
+                ActiveSessionCount: 1,
+                RecentSecurityEventCount: null)));
+        return accountSecurity.Object;
+    }
+
+    private static AdditionalVerificationFactorPosture CreateFactor(string factorType)
+    {
+        return new AdditionalVerificationFactorPosture(
+            factorType,
+            factorType,
+            IsConfigured: true,
+            IsUsable: true,
+            Providers: []);
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
