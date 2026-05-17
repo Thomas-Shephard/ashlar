@@ -58,6 +58,7 @@ services.AddAshlarAspNetCoreAuthorization(options =>
 {
     options.StepUp.FreshnessWindow = TimeSpan.FromMinutes(10);
     options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.Totp);
+    options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.RecoveryCode);
     options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.Passkey);
 
     options.RequireFreshMfa();

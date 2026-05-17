@@ -82,6 +82,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
 
         var adminUserId = await BootstrapFirstAdminAsync();
         await AssertAdminPageIncludesAccountSecurityPanelAsync(AdminClient);
+        await EnrollTotpAsync(AdminClient);
         await AssertLastAdminCannotBeDisabledAsync(AdminClient, adminUserId);
         await AssertSessionListingAndRevocationAsync(AdminClient);
 
@@ -95,18 +96,24 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         await SignInWithMagicLinkAsync(memberClient, "member@example.com");
         await AssertForbiddenAsync(memberClient, "/admin");
         await AssertForbiddenAsync(memberClient, "/projects/alpha");
+        await AssertStepUpForbiddenPostAsync(memberClient, "/api/account/change-email/request", new { newEmail = "member.changed@example.com" });
 
         await GrantProjectAccessAsync(invitedUserId, "alpha");
         await AssertAuthenticatedPageAsync(memberClient, "/projects/alpha");
 
+        var sharedSecret = await EnrollTotpAsync(memberClient);
+        var recoveryCodes = await GenerateRecoveryCodesAsync(memberClient);
+
+        await ExpireCurrentStepUpAsync(invitedUserId);
+        await AssertStepUpForbiddenPostAsync(memberClient, "/api/mfa/recovery-codes", null);
+        await StepUpWithRecoveryCodeAsync(memberClient, recoveryCodes[0]);
+        recoveryCodes = await GenerateRecoveryCodesAsync(memberClient);
+
         await ChangeEmailAsync(memberClient, "member@example.com", "member.changed@example.com");
         await SignInWithMagicLinkAsync(memberClient, "member.changed@example.com");
 
-        var sharedSecret = await EnrollTotpAsync(memberClient);
-        var recoveryCode = await GenerateRecoveryCodesAsync(memberClient);
-
         using var challengedClient = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        await CompleteMagicLinkMfaChallengeAsync(challengedClient, "member.changed@example.com", recoveryCode);
+        await CompleteMagicLinkMfaChallengeAsync(challengedClient, "member.changed@example.com", recoveryCodes[0]);
         await AssertAuthenticatedPageAsync(challengedClient, "/account");
 
         using (Assert.EnterMultipleScope())
@@ -234,14 +241,33 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         return sharedSecret;
     }
 
-    private static async Task<string> GenerateRecoveryCodesAsync(HttpClient client)
+    private static async Task<IReadOnlyList<string>> GenerateRecoveryCodesAsync(HttpClient client)
     {
         var response = await client.PostAsync("/api/mfa/recovery-codes", null);
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
         var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
         Assert.That(json.RootElement.GetProperty("codes").GetArrayLength(), Is.GreaterThan(0));
-        return json.RootElement.GetProperty("codes")[0].GetString()!;
+        return json.RootElement.GetProperty("codes").EnumerateArray().Select(code => code.GetString()!).ToArray();
+    }
+
+    private async Task ExpireCurrentStepUpAsync(Guid userId)
+    {
+        await using var connection = new NpgsqlConnection(GetConnectionString());
+        var rows = await connection.ExecuteAsync("""
+            UPDATE ashlar_sessions
+            SET additional_verification_at = now() - interval '1 hour'
+            WHERE user_id = @UserId
+              AND revoked_at IS NULL
+            """, new { UserId = userId });
+
+        Assert.That(rows, Is.GreaterThanOrEqualTo(1));
+    }
+
+    private static async Task StepUpWithRecoveryCodeAsync(HttpClient client, string recoveryCode)
+    {
+        var response = await client.PostAsJsonAsync("/api/account/security/verify", new { code = recoveryCode });
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), await response.Content.ReadAsStringAsync());
     }
 
     private async Task CompleteMagicLinkMfaChallengeAsync(HttpClient client, string email, string recoveryCode)
@@ -302,6 +328,19 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     {
         var response = await client.GetAsync(path);
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+    }
+
+    private static async Task AssertStepUpForbiddenPostAsync(HttpClient client, string path, object? body)
+    {
+        var response = body == null
+            ? await client.PostAsync(path, null)
+            : await client.PostAsJsonAsync(path, body);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden), await response.Content.ReadAsStringAsync());
+            Assert.That(response.Headers.TryGetValues("X-Ashlar-Step-Up", out var values), Is.True);
+            Assert.That(values, Does.Contain("required"));
+        }
     }
 
     private static async Task<JsonDocument> GetJsonAsync(HttpClient client, string path)

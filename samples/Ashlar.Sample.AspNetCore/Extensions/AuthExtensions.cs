@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Ashlar.AspNetCore.Authentication;
 using Ashlar.Auditing;
 using Ashlar.Identity.Models;
 
@@ -28,6 +29,37 @@ internal static class HttpContextExtensions
     public static TenantContext ToTenantContext(this HttpContext httpContext)
     {
         return new TenantContext(httpContext.GetAshlarTenantId());
+    }
+
+    public static bool TryGetAshlarSessionContext(this HttpContext httpContext, out Guid userId, out Guid sessionId, out TenantContext? tenant)
+    {
+        userId = Guid.Empty;
+        sessionId = Guid.Empty;
+        tenant = null;
+
+        if (TryGetAshlarUserId(httpContext.User) is not { } resolvedUserId)
+        {
+            return false;
+        }
+
+        var sessionValue = httpContext.User.FindFirstValue(AshlarClaimTypes.SessionId);
+        if (!Guid.TryParse(sessionValue, out sessionId))
+        {
+            return false;
+        }
+
+        userId = resolvedUserId;
+        var tenantValue = httpContext.User.FindFirstValue(AshlarClaimTypes.TenantId);
+        if (Guid.TryParse(tenantValue, out var tenantId))
+        {
+            tenant = new TenantContext(tenantId);
+        }
+        else if (httpContext.GetAshlarTenantId() is { } headerTenantId)
+        {
+            tenant = new TenantContext(headerTenantId);
+        }
+
+        return true;
     }
 
     public static CreateAuthenticationSessionRequest ToSessionRequest(

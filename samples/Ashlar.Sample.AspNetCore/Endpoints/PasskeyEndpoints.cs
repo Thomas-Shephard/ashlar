@@ -11,15 +11,15 @@ internal static class PasskeyEndpoints
 {
     public static void MapPasskeyEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/api/passkeys/registration/options", StartRegistrationAsync).RequireAuthorization();
-        app.MapPost("/api/passkeys/registration/complete", CompleteRegistrationAsync).RequireAuthorization();
+        app.MapPost("/api/passkeys/registration/options", StartRegistrationAsync).RequireAuthorization().RequireFreshMfa();
+        app.MapPost("/api/passkeys/registration/complete", CompleteRegistrationAsync).RequireAuthorization().RequireFreshMfa();
         app.MapPost("/api/passkeys/authentication/options", StartAuthenticationAsync);
         app.MapPost("/api/passkeys/authentication/complete", CompleteAuthenticationAsync);
         app.MapPost("/api/passkeys/factor/options", StartFactorAsync);
         app.MapPost("/api/passkeys/factor/complete", CompleteFactorAsync);
         app.MapGet("/api/passkeys", ListAsync).RequireAuthorization();
-        app.MapPost("/api/passkeys/{credentialId:guid}/rename", RenameAsync).RequireAuthorization();
-        app.MapDelete("/api/passkeys/{credentialId:guid}", RevokeAsync).RequireAuthorization();
+        app.MapPost("/api/passkeys/{credentialId:guid}/rename", RenameAsync).RequireAuthorization().RequireFreshMfa();
+        app.MapDelete("/api/passkeys/{credentialId:guid}", RevokeAsync).RequireAuthorization().RequireFreshMfa();
     }
 
     private static async Task<IResult> StartRegistrationAsync(PasskeyDisplayNameRequest request, IPasskeyService passkeys, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)

@@ -38,7 +38,7 @@ internal static class AppViews
                 resDiv.innerText = 'Processing...';
                 try {
                     const url = typeof urlOrBuilder === 'function' ? urlOrBuilder(e.target) : urlOrBuilder;
-                    const response = await fetch(url, {
+                    const response = await ashlarFetchWithStepUp(url, {
                         method: method,
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(bodyMapper(e.target))
@@ -62,6 +62,170 @@ internal static class AppViews
                     if (btn) btn.disabled = false;
                 }
             };
+        }
+
+        let ashlarStepUpPromise = null;
+
+        function ensureStepUpModal() {
+            let modal = document.getElementById('stepUpModal');
+            if (modal) return modal;
+
+            const style = document.createElement('style');
+            style.textContent = `
+                body.step-up-modal-open { overflow: hidden; }
+                .step-up-backdrop { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.45); display: none; align-items: center; justify-content: center; padding: 1rem; z-index: 1000; }
+                .step-up-backdrop.active { display: flex; }
+                .step-up-dialog { background: #fff; border-radius: 8px; box-shadow: 0 20px 40px rgba(17, 24, 39, 0.25); width: min(100%, 420px); max-height: calc(100vh - 2rem); overflow: auto; padding: 1.5rem; }
+                .step-up-dialog h2 { margin-top: 0; }
+                .step-up-dialog .actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1rem; }
+                .step-up-dialog .actions button { width: auto; }
+                .step-up-setup { display: none; }
+            `;
+            document.head.appendChild(style);
+
+            modal = document.createElement('div');
+            modal.id = 'stepUpModal';
+            modal.className = 'step-up-backdrop';
+            modal.innerHTML = `
+                <div class="step-up-dialog" role="dialog" aria-modal="true" aria-labelledby="stepUpTitle">
+                    <h2 id="stepUpTitle">Verify Again</h2>
+                    <p id="stepUpPrompt">This action needs recent MFA. Enter an authenticator app code or recovery code.</p>
+                    <form id="stepUpModalForm">
+                        <input type="text" id="stepUpModalCode" placeholder="000000 or recovery code" required />
+                        <div class="actions">
+                            <button type="button" class="secondary" id="stepUpCancel">Cancel</button>
+                            <button type="submit">Verify</button>
+                        </div>
+                    </form>
+                    <div id="stepUpSetup" class="step-up-setup">
+                        <p>Set up an authenticator app before continuing.</p>
+                        <div class="actions">
+                            <button type="button" class="secondary" id="stepUpSetupCancel">Cancel</button>
+                            <button type="button" id="stepUpSetupButton">Set Up Authenticator</button>
+                        </div>
+                    </div>
+                    <div id="stepUpModalResult"></div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            return modal;
+        }
+
+        function promptForStepUp() {
+            if (ashlarStepUpPromise) return ashlarStepUpPromise;
+
+            ashlarStepUpPromise = new Promise((resolve, reject) => {
+                const modal = ensureStepUpModal();
+                const form = document.getElementById('stepUpModalForm');
+                const codeInput = document.getElementById('stepUpModalCode');
+                const result = document.getElementById('stepUpModalResult');
+                const cancel = document.getElementById('stepUpCancel');
+                const prompt = document.getElementById('stepUpPrompt');
+                const setup = document.getElementById('stepUpSetup');
+                const setupCancel = document.getElementById('stepUpSetupCancel');
+                const setupButton = document.getElementById('stepUpSetupButton');
+                const button = form.querySelector('button[type="submit"]');
+
+                const close = () => {
+                    modal.classList.remove('active');
+                    document.body.classList.remove('step-up-modal-open');
+                    form.onsubmit = null;
+                    cancel.onclick = null;
+                    setupCancel.onclick = null;
+                    setupButton.onclick = null;
+                    ashlarStepUpPromise = null;
+                };
+
+                result.innerText = '';
+                result.style.color = '';
+                prompt.innerText = 'This action needs recent MFA. Enter an authenticator app code or recovery code.';
+                form.style.display = '';
+                setup.style.display = 'none';
+                codeInput.value = '';
+                button.disabled = false;
+                modal.classList.add('active');
+                document.body.classList.add('step-up-modal-open');
+
+                cancel.onclick = () => {
+                    close();
+                    reject(new Error('step_up_cancelled'));
+                };
+                setupCancel.onclick = cancel.onclick;
+                setupButton.onclick = () => {
+                    const setupUrl = setupButton.dataset.setupUrl || '/account#security';
+                    if (location.pathname === '/account') {
+                        close();
+                        reject(new Error('step_up_setup_required'));
+                        history.replaceState(null, '', setupUrl);
+                        if (typeof window.switchTab === 'function') {
+                            window.switchTab('security');
+                        }
+                        return;
+                    }
+
+                    location.href = setupUrl;
+                    reject(new Error('step_up_setup_required'));
+                };
+
+                form.onsubmit = async (event) => {
+                    event.preventDefault();
+                    button.disabled = true;
+                    result.style.color = '';
+                    result.innerText = 'Verifying...';
+                    try {
+                        const response = await fetch('/api/account/security/verify', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ code: codeInput.value })
+                        });
+                        const body = response.headers.get('Content-Type')?.includes('application/json') ? await response.json() : {};
+                        if (response.ok) {
+                            close();
+                            resolve();
+                            return;
+                        }
+
+                        result.style.color = '#dc2626';
+                        result.innerText = formatSampleError(body.error, 'Verification failed.');
+                        button.disabled = false;
+                    } catch (err) {
+                        result.style.color = '#dc2626';
+                        result.innerText = 'Connection error.';
+                        button.disabled = false;
+                    }
+                };
+
+                fetch('/api/account/security/step-up-options')
+                    .then(response => response.ok ? response.json() : null)
+                    .then(options => {
+                        if (options && !options.canUseCode) {
+                            prompt.innerText = 'This action needs recent MFA, but this account does not have an authenticator app or recovery codes yet.';
+                            form.style.display = 'none';
+                            setup.style.display = 'block';
+                            setupButton.dataset.setupUrl = options.setupUrl || '/account#security';
+                            setupButton.focus();
+                            return;
+                        }
+
+                        codeInput.focus();
+                    })
+                    .catch(() => codeInput.focus());
+            });
+
+            return ashlarStepUpPromise;
+        }
+
+        async function ashlarFetchWithStepUp(url, options) {
+            const first = await fetch(url, options);
+            if (first.status !== 403 || first.headers.get('X-Ashlar-Step-Up') !== 'required') return first;
+
+            try {
+                await promptForStepUp();
+            } catch (err) {
+                return first;
+            }
+
+            return await fetch(url, options);
         }
 
         function base64UrlToBuffer(value) {
@@ -530,6 +694,10 @@ internal static class AppViews
                     document.getElementById(tabId).classList.add('active');
                 };
 
+                if (location.hash === '#security') {
+                    switchTab('security');
+                }
+
                 setupForm('profileForm', '/api/account/profile', 'POST',
                     f => ({ name: f.querySelector('#newName').value }),
                     (r, div) => { 
@@ -555,7 +723,7 @@ internal static class AppViews
                         btn.disabled = true;
                         resDiv.innerText = 'Generating...';
                         try {
-                            const response = await fetch('/api/mfa/recovery-codes', { method: 'POST' });
+                            const response = await ashlarFetchWithStepUp('/api/mfa/recovery-codes', { method: 'POST' });
                             const result = await response.json();
                             if (response.ok) {
                                 let html = '<p class="badge badge-warning">Write these down! They will not be shown again.</p><div class="grid" style="margin-top: 1rem;">';
@@ -572,7 +740,7 @@ internal static class AppViews
                 if (document.getElementById('resetMfaBtn')) {
                     document.getElementById('resetMfaBtn').onclick = async (e) => {
                         if (!confirm('Are you sure you want to reset your authenticator app? You will need to enroll again.')) return;
-                        const response = await fetch('/api/mfa/totp/reset', { method: 'POST' });
+                        const response = await ashlarFetchWithStepUp('/api/mfa/totp/reset', { method: 'POST' });
                         if (response.ok) { location.reload(); } else { alert('Reset failed.'); }
                     };
                 }
@@ -650,7 +818,7 @@ internal static class AppViews
                 async function renamePasskey(id, currentName) {
                     const displayName = prompt('Passkey name', currentName);
                     if (displayName === null) return;
-                    const response = await fetch('/api/passkeys/' + id + '/rename', {
+                    const response = await ashlarFetchWithStepUp('/api/passkeys/' + id + '/rename', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ displayName })
@@ -666,7 +834,7 @@ internal static class AppViews
 
                 async function revokePasskey(id) {
                     if (!confirm('Revoke this passkey?')) return;
-                    const response = await fetch('/api/passkeys/' + id, { method: 'DELETE' });
+                    const response = await ashlarFetchWithStepUp('/api/passkeys/' + id, { method: 'DELETE' });
                     if (response.ok) {
                         setPasskeyResult('Passkey revoked.', false);
                         await loadPasskeys();
@@ -684,7 +852,7 @@ internal static class AppViews
                         registerPasskeyBtn.disabled = true;
                         setPasskeyResult('Waiting for passkey registration...', false);
                         try {
-                            const optionsResponse = await fetch('/api/passkeys/registration/options', {
+                            const optionsResponse = await ashlarFetchWithStepUp('/api/passkeys/registration/options', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ displayName })
@@ -697,7 +865,7 @@ internal static class AppViews
                             }
 
                             const credential = await navigator.credentials.create(prepareCredentialCreationOptions(optionsResult.options));
-                            const completeResponse = await fetch('/api/passkeys/registration/complete', {
+                            const completeResponse = await ashlarFetchWithStepUp('/api/passkeys/registration/complete', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ challengeId: optionsResult.challengeId, credentialResponse: serializeCreatedCredential(credential), displayName })
@@ -770,13 +938,13 @@ internal static class AppViews
 
                 window.revokeSession = async (id) => {
                     if (!confirm('Revoke this session?')) return;
-                    const response = await fetch('/api/sessions/' + id, { method: 'DELETE' });
+                    const response = await ashlarFetchWithStepUp('/api/sessions/' + id, { method: 'DELETE' });
                     if (response.ok) loadSessions();
                 };
 
                 document.getElementById('revokeOthersBtn').onclick = async (e) => {
                     if (!confirm('Revoke all other sessions?')) return;
-                    const response = await fetch('/api/sessions/others', { method: 'DELETE' });
+                    const response = await ashlarFetchWithStepUp('/api/sessions/others', { method: 'DELETE' });
                     if (response.ok) loadSessions();
                 };
 
@@ -959,7 +1127,7 @@ internal static class AppViews
 
                     div.style.color = '';
                     div.innerText = 'Processing...';
-                    const response = await fetch('/api/admin/users/' + userId + path, {
+                    const response = await ashlarFetchWithStepUp('/api/admin/users/' + userId + path, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ reason: 'sample-admin' })

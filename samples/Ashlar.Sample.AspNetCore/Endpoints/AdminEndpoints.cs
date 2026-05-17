@@ -60,7 +60,7 @@ internal static partial class AdminEndpoints
         {
             var result = await accountSecurity.DisableUserAsync(userId, ToAdminRequest(request, httpContext), cancellationToken);
             return ToAdminSecurityResult(result);
-        }).RequireAuthorization(AdminPolicy);
+        }).RequireAuthorization(AdminPolicy).RequireFreshMfa();
 
         app.MapPost("/api/admin/users/{userId:guid}/reactivate", async (
             Guid userId,
@@ -71,7 +71,7 @@ internal static partial class AdminEndpoints
         {
             var result = await accountSecurity.ReactivateUserAsync(userId, ToAdminRequest(request, httpContext), cancellationToken);
             return ToAdminSecurityResult(result);
-        }).RequireAuthorization(AdminPolicy);
+        }).RequireAuthorization(AdminPolicy).RequireFreshMfa();
 
         app.MapPost("/api/admin/users/{userId:guid}/sessions/revoke", async (
             Guid userId,
@@ -82,7 +82,7 @@ internal static partial class AdminEndpoints
         {
             var result = await accountSecurity.RevokeSessionsAsync(userId, ToAdminRequest(request, httpContext), cancellationToken);
             return ToAdminSecurityResult(result);
-        }).RequireAuthorization(AdminPolicy);
+        }).RequireAuthorization(AdminPolicy).RequireFreshMfa();
 
         app.MapPost("/api/admin/users/{userId:guid}/mfa/reset", async (
             Guid userId,
@@ -93,7 +93,7 @@ internal static partial class AdminEndpoints
         {
             var result = await accountSecurity.ResetMfaAsync(userId, ToAdminRequest(request, httpContext), cancellationToken);
             return ToAdminSecurityResult(result);
-        }).RequireAuthorization(AdminPolicy);
+        }).RequireAuthorization(AdminPolicy).RequireFreshMfa();
 
         app.MapGet("/api/admin/projects", async (
             IPostgresConnectionProvider connectionProvider,
