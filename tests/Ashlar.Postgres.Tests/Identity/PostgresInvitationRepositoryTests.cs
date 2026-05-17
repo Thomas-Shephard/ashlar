@@ -128,6 +128,59 @@ internal sealed class PostgresInvitationRepositoryTests : PostgresTestBase
     }
 
     [Test]
+    public async Task UpdateInvitationShouldFailWhenAlreadyAccepted()
+    {
+        var repo = GetRepository();
+        var invitation = CreateInvitation("already-accepted@example.com", "hash-already-accepted");
+
+        await repo.CreateInvitationAsync(invitation);
+
+        invitation.AcceptedAt = DateTimeOffset.UtcNow;
+        var first = await repo.UpdateInvitationAsync(invitation, invitation.Version);
+        invitation.AcceptedAt = DateTimeOffset.UtcNow.AddMinutes(1);
+        var second = await repo.UpdateInvitationAsync(invitation, invitation.Version);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.True);
+            Assert.That(second, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task UpdateInvitationShouldFailWhenRevoked()
+    {
+        var repo = GetRepository();
+        var invitation = CreateInvitation("revoked-update@example.com", "hash-revoked-update");
+
+        await repo.CreateInvitationAsync(invitation);
+        await repo.RevokeInvitationsByEmailAsync(invitation.Email);
+
+        invitation.AcceptedAt = DateTimeOffset.UtcNow;
+        var result = await repo.UpdateInvitationAsync(invitation, invitation.Version);
+
+        Assert.That(result, Is.False);
+    }
+
+    [Test]
+    public async Task UpdateInvitationShouldFailWhenExpired()
+    {
+        var repo = GetRepository();
+        var invitation = CreateInvitation(
+            "expired-update@example.com",
+            "hash-expired-update",
+            DateTimeOffset.UtcNow.AddHours(-2),
+            DateTimeOffset.UtcNow.AddMinutes(-1));
+
+        await repo.CreateInvitationAsync(invitation);
+
+        invitation.AcceptedAt = DateTimeOffset.UtcNow;
+        var result = await repo.UpdateInvitationAsync(invitation, invitation.Version);
+
+        Assert.That(result, Is.False);
+    }
+
+    [Test]
     public async Task RevokeInvitationsByEmailShouldSucceed()
     {
         var repo = GetRepository();
@@ -158,15 +211,16 @@ internal sealed class PostgresInvitationRepositoryTests : PostgresTestBase
         Assert.Throws<ArgumentNullException>(() => _ = new PostgresInvitationRepository(null!));
     }
 
-    private static UserInvitation CreateInvitation(string email, string hash)
+    private static UserInvitation CreateInvitation(string email, string hash, DateTimeOffset? createdAt = null, DateTimeOffset? expiresAt = null)
     {
+        var created = createdAt ?? DateTimeOffset.UtcNow;
         return new UserInvitation
         {
             Id = Guid.NewGuid(),
             Email = email,
             TokenHash = hash,
-            CreatedAt = DateTimeOffset.UtcNow,
-            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
+            CreatedAt = created,
+            ExpiresAt = expiresAt ?? created.AddDays(7),
             Version = Guid.NewGuid().ToString("N")
         };
     }

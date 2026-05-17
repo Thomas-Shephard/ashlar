@@ -207,6 +207,53 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     }
 
     [Test]
+    public async Task UpdateSessionLastSeenShouldRejectRevokedSession()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var session = CreateSession(user.Id);
+        var revokedAt = new DateTimeOffset(2026, 1, 2, 12, 30, 0, TimeSpan.Zero);
+        var lastSeenAt = new DateTimeOffset(2026, 1, 2, 13, 0, 0, TimeSpan.Zero);
+
+        await sessionRepository.CreateSessionAsync(session);
+        await sessionRepository.RevokeSessionAsync(session.Id, revokedAt, "signed-out");
+
+        var updated = await sessionRepository.UpdateSessionLastSeenAsync(session.Id, lastSeenAt);
+        var fetched = await sessionRepository.GetSessionByTokenHashAsync(session.TokenHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated, Is.False);
+            Assert.That(fetched?.LastSeenAt, Is.Null);
+            Assert.That(fetched?.RevokedAt, Is.EqualTo(revokedAt));
+        }
+    }
+
+    [Test]
+    public async Task UpdateSessionLastSeenShouldRejectExpiredSession()
+    {
+        var identityRepository = GetIdentityRepository();
+        var sessionRepository = GetSessionRepository();
+        var user = await CreateTestUser(identityRepository);
+        var expiresAt = new DateTimeOffset(2026, 1, 2, 12, 30, 0, TimeSpan.Zero);
+        var session = CreateSession(user.Id, expiresAt: expiresAt);
+        var lastSeenAt = new DateTimeOffset(2026, 1, 2, 13, 0, 0, TimeSpan.Zero);
+
+        await sessionRepository.CreateSessionAsync(session);
+
+        var updated = await sessionRepository.UpdateSessionLastSeenAsync(session.Id, lastSeenAt);
+        var fetched = await sessionRepository.GetSessionByTokenHashAsync(session.TokenHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated, Is.False);
+            Assert.That(fetched?.LastSeenAt, Is.Null);
+            Assert.That(fetched?.ExpiresAt, Is.EqualTo(expiresAt));
+        }
+    }
+
+    [Test]
     public async Task RevokeSessionShouldRevokeOnlyTargetSession()
     {
         var identityRepository = GetIdentityRepository();

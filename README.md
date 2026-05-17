@@ -51,7 +51,7 @@ Applications must provide an `IIdentityRepository` implementation (either by usi
 Applications must also provide secret protection. For ASP.NET Core Data Protection, register Data Protection and call `AddAshlarDataProtectionSecretProtector()`. Ashlar does not use an insecure fallback protector.
 
 Ashlar models durable authentication sessions through `AuthenticationSession`, `IAuthenticationSessionRepository`, and `IAuthenticationSessionService`.
-The session service generates high-entropy raw tokens, hashes them before persistence, updates last-seen timestamps, and revokes sessions. Raw tokens are returned only once from `CreateSessionAsync`; `AuthenticationSession` stores only the deterministic token hash. HTTP cookies and ASP.NET authentication middleware are separate integration layers.
+The session service generates high-entropy raw tokens, hashes them before persistence, updates last-seen timestamps, and revokes sessions. Raw tokens are returned only once from `CreateSessionAsync`; `AuthenticationSession` stores only the deterministic token hash. Last-seen updates are advisory and must not make revoked or expired sessions active again. HTTP cookies and ASP.NET authentication middleware are separate integration layers.
 
 Session token generation and hashing use the reusable `Ashlar.Security.Tokens` primitives registered by `AddAshlarIdentity()`: `ISecureTokenGenerator` with `SecureTokenGenerator`, and `ISecureTokenHasher` with `Sha256TokenHasher`. These primitives are intended for high-entropy server-generated tokens such as sessions, magic links, password reset links, and future challenge tokens. They are separate from `IPasswordHasher` and `PasswordHasherV1`, which remain for low-entropy user-chosen passwords.
 
@@ -91,6 +91,8 @@ var auditContext = new AuditContext(
 ```
 
 Ashlar deliberately does not store or expose raw passwords, password hashes, raw session tokens, magic-link tokens, email verification/change tokens, recovery codes, protected payloads, or other secret credential values in context or audit payloads.
+
+Credential provider keys are ownership-bound. Repository implementations must not resolve a provider-key conflict by moving an existing credential to another user; link operations may replace credential material for the same user and provider identity, but cross-user ownership changes must fail closed.
 
 ## Messaging
 Ashlar includes a framework-neutral email abstraction for identity and security flows that need to send or queue email messages, such as passwordless email sign-in, password reset, MFA recovery, and security notifications.
@@ -145,7 +147,7 @@ var authenticationResult = await magicLinks.VerifyLinkAsync(
         UserAgent: httpContext.Request.Headers.UserAgent.ToString()));
 ```
 
-`RequestLinkAsync` does not reveal whether an email address belongs to an active user. Generated links are stored as hashed credentials, expire according to `LinkLifetime`, and the default request and verification rate limits can be changed through `MagicLinkSignInOptions`.
+`RequestLinkAsync` does not reveal whether an email address belongs to an active user. Generated links are stored as hashed credentials, expire according to `LinkLifetime`, and the default request and verification rate limits can be changed through `MagicLinkSignInOptions`. Successful magic-link and email-code assertions consume their backing credential so the same token or code cannot be replayed.
 
 One-time email codes are available through `AddAshlarEmailCodeSignIn()` and `IEmailCodeSignInService`:
 
@@ -238,6 +240,8 @@ services.AddAshlarEmailChange(options =>
     options.RevokeSessions = true; // Optional: revoke all user sessions after change
 });
 ```
+
+Email-change tokens are stored as hashed provider keys and bind to the requesting user. The pending new email is protected at rest until confirmation. When `RevokeSessions` is enabled with the official PostgreSQL persistence package, existing sessions are revoked in the same persistence transaction as the email update before success events and notifications are emitted. Custom persistence implementations should use the same transaction boundary for identity and session repositories to preserve that guarantee.
 
 Step 1: Request an email change:
 
@@ -372,7 +376,7 @@ if (result.Succeeded)
 }
 ```
 
-`CreateInvitationAsync` generates a high-entropy token, stores its hash, and sends an invitation link via `IEmailSender`. When an invitation is accepted, Ashlar automatically creates a new active user if one does not exist, or activates/links an existing inactive user. Acceptance is atomic and single-use.
+`CreateInvitationAsync` generates a high-entropy token, stores its hash, and sends an invitation link via `IEmailSender`. When an invitation is accepted, Ashlar automatically creates a new active user if one does not exist, or activates/links an existing inactive user. Acceptance is atomic and single-use. PostgreSQL acceptance updates require the invitation to still be unaccepted, unrevoked, and unexpired at write time, so stale reads cannot replay or revive an invitation.
 
 ## Bootstrap and First-Admin Setup
 Ashlar includes generic bootstrap primitives that allow a newly self-hosted application to safely create its first administrative user without manual database edits.
@@ -662,7 +666,7 @@ await signInManager.RevokeSessionForCurrentUserAsync(httpContext, targetSessionI
 await signInManager.RevokeOtherSessionsForCurrentUserAsync(httpContext);
 ```
 
-Session listing is ordered by `CreatedAt` descending (newest first). Sensitive fields like IP address and user agent are only populated if they were enabled during session creation. Token hashes are never exposed through these APIs.
+Session listing is ordered by `CreatedAt` descending (newest first). Sensitive fields like IP address and user agent are only populated if they were enabled during session creation. Token hashes are never exposed through these APIs. In the PostgreSQL store, last-seen writes are ignored once a session is revoked or expired, so a concurrent sign-out or expiry cannot be undone by validation telemetry.
 
 ## Authorization Grants
 Ashlar includes framework-neutral authorization primitives for durable grants. Grants are generic: they can assign one normalized role or one normalized permission to a user, optionally within a tenant and explicit scope. Ashlar evaluates these grants, but it does not replace ASP.NET Core Authorization policies or requirements.

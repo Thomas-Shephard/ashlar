@@ -95,10 +95,15 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         const string sql = """
             UPDATE ashlar_invitations
             SET accepted_at = @AcceptedAt, revoked_at = @RevokedAt, metadata = @Metadata::jsonb, version = @NewVersion, updated_at = @UpdatedAt
-            WHERE id = @Id AND version = @ExpectedVersion
+            WHERE id = @Id
+              AND version = @ExpectedVersion
+              AND accepted_at IS NULL
+              AND revoked_at IS NULL
+              AND expires_at > @Now
             """;
 
         var newVersion = Guid.NewGuid().ToString();
+        var now = _timeProvider.GetUtcNow();
         var parameters = new
         {
             invitation.Id,
@@ -107,7 +112,8 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
             invitation.Metadata,
             NewVersion = newVersion,
             ExpectedVersion = expectedVersion,
-            UpdatedAt = _timeProvider.GetUtcNow()
+            UpdatedAt = now,
+            Now = now
         };
 
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);

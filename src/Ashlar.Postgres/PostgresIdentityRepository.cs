@@ -22,7 +22,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         {InsertCredentialSql}
         ON CONFLICT (provider_type, provider_name, provider_key) DO UPDATE
         SET version = EXCLUDED.version,
-            user_id = EXCLUDED.user_id,
+            user_id = ashlar_credentials.user_id,
             credential_value = EXCLUDED.credential_value,
             metadata = EXCLUDED.metadata,
             last_used_at = COALESCE(EXCLUDED.last_used_at, ashlar_credentials.last_used_at),
@@ -32,6 +32,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
             revoked_at = EXCLUDED.revoked_at,
             status = EXCLUDED.status,
             purpose = EXCLUDED.purpose
+        WHERE ashlar_credentials.user_id = EXCLUDED.user_id
         """;
 
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
@@ -265,7 +266,11 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
         await using (connectionHandle)
         {
             var command = new CommandDefinition(UpsertCredentialSql, ToCredentialParameters(credential), transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            await connectionHandle.Connection.ExecuteAsync(command);
+            var rowsAffected = await connectionHandle.Connection.ExecuteAsync(command);
+            if (rowsAffected == 0)
+            {
+                throw new InvalidOperationException("Credential provider key is already linked to another user.");
+            }
         }
     }
 

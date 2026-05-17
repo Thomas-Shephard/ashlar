@@ -110,7 +110,10 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         const string sql = """
             UPDATE ashlar_sessions
             SET last_seen_at = @LastSeenAt
-            WHERE id = @Id AND (last_seen_at IS NULL OR last_seen_at < @LastSeenAt)
+            WHERE id = @Id
+              AND revoked_at IS NULL
+              AND expires_at > @LastSeenAt
+              AND (last_seen_at IS NULL OR last_seen_at < @LastSeenAt)
             """;
 
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);

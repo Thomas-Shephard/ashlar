@@ -524,7 +524,7 @@ internal sealed class PostgresIdentityRepositoryTests : PostgresTestBase
     }
 
     [Test]
-    public async Task CreateOrReplaceCredentialShouldUpdateUserIdOnConflict()
+    public async Task CreateOrReplaceCredentialShouldNotMoveProviderKeyToAnotherUserOnConflict()
     {
         var repo = GetRepository();
         var user1 = await CreateTestUser(repo);
@@ -559,22 +559,24 @@ internal sealed class PostgresIdentityRepositoryTests : PostgresTestBase
         };
 
         await repo.CreateOrReplaceCredentialAsync(original);
-        await repo.CreateOrReplaceCredentialAsync(replacement);
+
+        var exception = Assert.ThrowsAsync<InvalidOperationException>(async () => await repo.CreateOrReplaceCredentialAsync(replacement));
 
         var oldUserCredential = await repo.GetCredentialForUserAsync(user1.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value, providerKey);
         var newUserCredential = await repo.GetCredentialForUserAsync(user2.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value, providerKey);
 
+        Assert.That(exception?.Message, Does.Contain("already linked"));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(oldUserCredential, Is.Null);
-            Assert.That(newUserCredential, Is.Not.Null);
+            Assert.That(oldUserCredential, Is.Not.Null);
+            Assert.That(newUserCredential, Is.Null);
         }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(newUserCredential.Id, Is.EqualTo(original.Id));
-            Assert.That(newUserCredential.UserId, Is.EqualTo(user2.Id));
-            Assert.That(newUserCredential.CredentialValue, Is.EqualTo("second"));
+            Assert.That(oldUserCredential.Id, Is.EqualTo(original.Id));
+            Assert.That(oldUserCredential.UserId, Is.EqualTo(user1.Id));
+            Assert.That(oldUserCredential.CredentialValue, Is.EqualTo("first"));
         }
     }
 
