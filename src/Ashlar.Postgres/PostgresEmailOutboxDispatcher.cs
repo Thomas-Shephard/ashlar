@@ -48,7 +48,7 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
                   AND failed_at IS NULL
                   AND available_at <= @Now
                   AND (locked_until IS NULL OR locked_until < @Now)
-                ORDER BY available_at
+                ORDER BY available_at, id
                 LIMIT @BatchSize
                 FOR UPDATE SKIP LOCKED
             )
