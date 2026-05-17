@@ -30,13 +30,23 @@ internal static class HttpContextExtensions
         return new TenantContext(httpContext.GetAshlarTenantId());
     }
 
-    public static CreateAuthenticationSessionRequest ToSessionRequest(this HttpContext httpContext)
+    public static CreateAuthenticationSessionRequest ToSessionRequest(
+        this HttpContext httpContext,
+        AuthenticationProviderKey? primaryProvider = null,
+        AuthenticationProviderKey? additionalVerificationProvider = null,
+        string? additionalVerificationFactor = null)
     {
         return new CreateAuthenticationSessionRequest(
             IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
             UserAgent: httpContext.Request.Headers.UserAgent.ToString(),
             CorrelationId: httpContext.TraceIdentifier,
-            TenantId: httpContext.GetAshlarTenantId());
+            TenantId: httpContext.GetAshlarTenantId(),
+            PrimaryProvider: primaryProvider,
+            AdditionalVerificationAt: additionalVerificationProvider.HasValue
+                ? httpContext.RequestServices.GetService<TimeProvider>()?.GetUtcNow() ?? DateTimeOffset.UtcNow
+                : null,
+            AdditionalVerificationProvider: additionalVerificationProvider,
+            AdditionalVerificationFactor: additionalVerificationFactor);
     }
 
     public static Guid? GetAshlarTenantId(this HttpContext httpContext)

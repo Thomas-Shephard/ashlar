@@ -124,7 +124,9 @@ internal static class MfaEndpoints
             return Results.BadRequest(new { error = response.ErrorMessage ?? "invalid_totp" });
         }
 
-        await services.SignInManager.SignInAsync(httpContext, response.User.Id, httpContext.ToSessionRequest(), cancellationToken);
+        await services.SignInManager.SignInAsync(httpContext, response.User.Id, httpContext.ToSessionRequest(
+            additionalVerificationProvider: TotpOptions.DefaultProviderKey,
+            additionalVerificationFactor: "totp"), cancellationToken);
         return Results.Ok(new { userId = response.User.Id });
     }
 
@@ -166,7 +168,9 @@ internal static class MfaEndpoints
             });
         }
 
-        await services.SignInManager.SignInAsync(httpContext, recoveryResponse.User.Id, httpContext.ToSessionRequest(), cancellationToken);
+        await services.SignInManager.SignInAsync(httpContext, recoveryResponse.User.Id, httpContext.ToSessionRequest(
+            additionalVerificationProvider: new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode"),
+            additionalVerificationFactor: "recovery_code"), cancellationToken);
         return Results.Ok(new { userId = recoveryResponse.User.Id });
     }
 

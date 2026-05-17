@@ -55,6 +55,11 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         session.IpAddress = "203.0.113.10";
         session.UserAgent = "NUnit";
         session.Metadata = """{"device":"test"}""";
+        session.AuthenticatedAt = new DateTimeOffset(2026, 1, 2, 12, 1, 0, TimeSpan.Zero);
+        session.PrimaryProvider = AuthenticationProviderKey.MagicLink;
+        session.AdditionalVerificationAt = new DateTimeOffset(2026, 1, 2, 12, 2, 0, TimeSpan.Zero);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
+        session.AdditionalVerificationFactor = "totp";
 
         await sessionRepository.CreateSessionAsync(session);
 
@@ -68,6 +73,11 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
             Assert.That(fetched.TenantId, Is.EqualTo(session.TenantId));
             Assert.That(fetched.TokenHash, Is.EqualTo(session.TokenHash));
             Assert.That(fetched.CreatedAt, Is.EqualTo(session.CreatedAt));
+            Assert.That(fetched.AuthenticatedAt, Is.EqualTo(session.AuthenticatedAt));
+            Assert.That(fetched.PrimaryProvider, Is.EqualTo(session.PrimaryProvider));
+            Assert.That(fetched.AdditionalVerificationAt, Is.EqualTo(session.AdditionalVerificationAt));
+            Assert.That(fetched.AdditionalVerificationProvider, Is.EqualTo(session.AdditionalVerificationProvider));
+            Assert.That(fetched.AdditionalVerificationFactor, Is.EqualTo(session.AdditionalVerificationFactor));
             Assert.That(fetched.ExpiresAt, Is.EqualTo(session.ExpiresAt));
             Assert.That(fetched.LastSeenAt, Is.EqualTo(session.LastSeenAt));
             Assert.That(fetched.RevokedAt, Is.EqualTo(session.RevokedAt));
@@ -96,6 +106,16 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
             Assert.That(fetched.Id, Is.EqualTo(session.Id));
             Assert.That(fetched.UserId, Is.EqualTo(user.Id));
         }
+    }
+
+    [Test]
+    public async Task GetSessionAsyncShouldReturnNullWhenSessionIsMissing()
+    {
+        var sessionRepository = GetSessionRepository();
+
+        var fetched = await sessionRepository.GetSessionAsync(Guid.NewGuid());
+
+        Assert.That(fetched, Is.Null);
     }
 
     [Test]

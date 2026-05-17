@@ -1,6 +1,8 @@
 using System.Security.Claims;
+using System.Globalization;
 using System.Text.Encodings.Web;
 using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
@@ -53,6 +55,8 @@ public sealed class AshlarSessionAuthenticationHandler(
         {
             claims.Add(new Claim(AshlarClaimTypes.TenantId, validation.Session.TenantId.Value.ToString("D"), ClaimValueTypes.String, Options.ClaimsIssuer));
         }
+
+        AddSessionAuthenticationClaims(claims, validation.Session);
 
         var identity = new ClaimsIdentity(claims, Scheme.Name, ClaimTypes.NameIdentifier, ClaimTypes.Role);
         var principal = new ClaimsPrincipal(identity);
@@ -118,5 +122,35 @@ public sealed class AshlarSessionAuthenticationHandler(
     {
         return string.Equals(Request.Headers.XRequestedWith, "XMLHttpRequest", StringComparison.OrdinalIgnoreCase)
             || Request.Headers.Accept.ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void AddSessionAuthenticationClaims(List<Claim> claims, AuthenticationSession session)
+    {
+        if (session.AuthenticatedAt.HasValue)
+        {
+            claims.Add(new Claim(AshlarClaimTypes.AuthenticatedAt, session.AuthenticatedAt.Value.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture), ClaimValueTypes.Integer64));
+        }
+
+        if (session.PrimaryProvider.HasValue)
+        {
+            claims.Add(new Claim(AshlarClaimTypes.PrimaryProviderType, session.PrimaryProvider.Value.TypeValueOrUnknown));
+            claims.Add(new Claim(AshlarClaimTypes.PrimaryProviderName, session.PrimaryProvider.Value.Name));
+        }
+
+        if (session.AdditionalVerificationAt.HasValue)
+        {
+            claims.Add(new Claim(AshlarClaimTypes.AdditionalVerificationAt, session.AdditionalVerificationAt.Value.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture), ClaimValueTypes.Integer64));
+        }
+
+        if (session.AdditionalVerificationProvider.HasValue)
+        {
+            claims.Add(new Claim(AshlarClaimTypes.AdditionalVerificationProviderType, session.AdditionalVerificationProvider.Value.TypeValueOrUnknown));
+            claims.Add(new Claim(AshlarClaimTypes.AdditionalVerificationProviderName, session.AdditionalVerificationProvider.Value.Name));
+        }
+
+        if (!string.IsNullOrWhiteSpace(session.AdditionalVerificationFactor))
+        {
+            claims.Add(new Claim(AshlarClaimTypes.AdditionalVerificationFactor, session.AdditionalVerificationFactor));
+        }
     }
 }

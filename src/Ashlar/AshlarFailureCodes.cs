@@ -99,6 +99,16 @@ public static class AshlarFailureCodes
     public const string PasskeyValidationFailedValue = "passkey_validation_failed";
     /// <summary>The passkey credential was not found or is not active.</summary>
     public const string PasskeyCredentialNotFoundValue = "passkey_credential_not_found";
+    /// <summary>The session was not found or is inactive.</summary>
+    public const string SessionNotFoundOrInactiveValue = "session_not_found_or_inactive";
+    /// <summary>Additional verification is required.</summary>
+    public const string StepUpRequiredValue = "step_up_required";
+    /// <summary>Additional verification is no longer fresh.</summary>
+    public const string StepUpExpiredValue = "step_up_expired";
+    /// <summary>The additional verification provider is not allowed.</summary>
+    public const string StepUpProviderNotAllowedValue = "step_up_provider_not_allowed";
+    /// <summary>The additional verification factor is not allowed.</summary>
+    public const string StepUpFactorNotAllowedValue = "step_up_factor_not_allowed";
     /// <summary>Generic validation failure.</summary>
     public static readonly AshlarFailureCode ValidationError = new(ValidationErrorValue);
     /// <summary>Configured metadata is invalid.</summary>
@@ -193,4 +203,14 @@ public static class AshlarFailureCodes
     public static readonly AshlarFailureCode PasskeyValidationFailed = new(PasskeyValidationFailedValue);
     /// <summary>The passkey credential was not found or is not active.</summary>
     public static readonly AshlarFailureCode PasskeyCredentialNotFound = new(PasskeyCredentialNotFoundValue);
+    /// <summary>The session was not found or is inactive.</summary>
+    public static readonly AshlarFailureCode SessionNotFoundOrInactive = new(SessionNotFoundOrInactiveValue);
+    /// <summary>Additional verification is required.</summary>
+    public static readonly AshlarFailureCode StepUpRequired = new(StepUpRequiredValue);
+    /// <summary>Additional verification is no longer fresh.</summary>
+    public static readonly AshlarFailureCode StepUpExpired = new(StepUpExpiredValue);
+    /// <summary>The additional verification provider is not allowed.</summary>
+    public static readonly AshlarFailureCode StepUpProviderNotAllowed = new(StepUpProviderNotAllowedValue);
+    /// <summary>The additional verification factor is not allowed.</summary>
+    public static readonly AshlarFailureCode StepUpFactorNotAllowed = new(StepUpFactorNotAllowedValue);
 }

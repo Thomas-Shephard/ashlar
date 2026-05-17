@@ -58,7 +58,7 @@ internal static class PasskeyEndpoints
             return Results.BadRequest(new { error = result.FailureCode?.Value ?? "passkey_validation_failed" });
         }
 
-        await signIn.SignInAsync(httpContext, result.User.Id, httpContext.ToSessionRequest(), cancellationToken);
+        await signIn.SignInAsync(httpContext, result.User.Id, httpContext.ToSessionRequest(AuthenticationProviderKey.Passkey), cancellationToken);
         return Results.Ok(new { status = "signed_in" });
     }
 
@@ -88,7 +88,9 @@ internal static class PasskeyEndpoints
             return Results.BadRequest(new { error = result.FailureCode?.Value ?? "passkey_validation_failed" });
         }
 
-        await signIn.SignInAsync(httpContext, result.User.Id, httpContext.ToSessionRequest(), cancellationToken);
+        await signIn.SignInAsync(httpContext, result.User.Id, httpContext.ToSessionRequest(
+            additionalVerificationProvider: AuthenticationProviderKey.Passkey,
+            additionalVerificationFactor: request.FactorType ?? "passkey"), cancellationToken);
         return Results.Ok(new { status = "signed_in" });
     }
 

@@ -60,7 +60,7 @@ Applications must provide an `IIdentityRepository` implementation (either by usi
 Applications must also provide secret protection. For ASP.NET Core Data Protection, register Data Protection and call `AddAshlarDataProtectionSecretProtector()`. Ashlar does not use an insecure fallback protector.
 
 Ashlar models durable authentication sessions through `AuthenticationSession`, `IAuthenticationSessionRepository`, and `IAuthenticationSessionService`.
-The session service generates high-entropy raw tokens, hashes them before persistence, updates last-seen timestamps, and revokes sessions. Raw tokens are returned only once from `CreateSessionAsync`; `AuthenticationSession` stores only the deterministic token hash. Last-seen updates are advisory and must not make revoked or expired sessions active again. HTTP cookies and ASP.NET authentication middleware are separate integration layers.
+The session service generates high-entropy raw tokens, hashes them before persistence, updates last-seen timestamps, and revokes sessions. Raw tokens are returned only once from `CreateSessionAsync`; `AuthenticationSession` stores only the deterministic token hash. Sessions can also carry safe authentication metadata such as authentication time, primary provider, and recent additional verification provider/factor. This metadata intentionally excludes raw tokens, one-time codes, passkey ceremony payloads, recovery codes, password hashes, and protected secrets. Last-seen updates are advisory and must not make revoked or expired sessions active again. HTTP cookies and ASP.NET authentication middleware are separate integration layers.
 
 Session token generation and hashing use the reusable `Ashlar.Security.Tokens` primitives registered by `AddAshlarIdentity()`: `ISecureTokenGenerator` with `SecureTokenGenerator`, and `ISecureTokenHasher` with `Sha256TokenHasher`. These primitives are intended for high-entropy server-generated tokens such as sessions, magic links, password reset links, and future challenge tokens. They are separate from `IPasswordHasher` and `PasswordHasherV1`, which remain for low-entropy user-chosen passwords.
 
@@ -606,6 +606,8 @@ if (result.Succeeded && result.Value is { IsCompleted: true } handshake)
 
 Handshakes are time-limited, single-use, and stored as hashed continuation tokens. They track generic "factor types" allowing applications to implement any MFA method (TOTP, Email Code, Passkeys, etc.) and integrate them into a unified handshake flow.
 
+Fresh MFA and step-up support is built from session authentication metadata plus the framework-neutral `IStepUpAuthenticationService`. The evaluator answers whether a session is active and has recent additional verification within a required freshness window, optionally constrained to allowed providers or factor names. Endpoint helpers, ASP.NET Core authorization policies, and challenge/completion UX are intentionally separate integration layers.
+
 When supplied to `CreateSessionAsync`, session IP address, user agent, and metadata are persisted by default. These values can contain personal data, so applications should only pass them when their privacy policy and security requirements allow it. Use `AuthenticationSessionOptions.StoreIpAddress`, `StoreUserAgent`, and `StoreMetadata` to opt out, and tune the max-length options if the defaults do not fit your storage policy.
 
 ```csharp
@@ -806,7 +808,7 @@ await signInManager.SignInAsync(
     authenticationResult.User.Id);
 ```
 
-`AddAshlarAspNetCoreSessions` registers the `"Ashlar"` authentication scheme by default. The handler reads the configured cookie, validates it with `IAuthenticationSessionService`, and creates an authenticated `ClaimsPrincipal` containing `ClaimTypes.NameIdentifier`, the Ashlar session id claim, the authentication method claim, and `AshlarClaimTypes.TenantId` when the session is tenant-scoped.
+`AddAshlarAspNetCoreSessions` registers the `"Ashlar"` authentication scheme by default. The handler reads the configured cookie, validates it with `IAuthenticationSessionService`, and creates an authenticated `ClaimsPrincipal` containing `ClaimTypes.NameIdentifier`, the Ashlar session id claim, the authentication method claim, safe session authentication metadata claims, and `AshlarClaimTypes.TenantId` when the session is tenant-scoped.
 
 Cookie defaults are intentionally secure: `HttpOnly = true`, `SecurePolicy = Always`, `SameSite = Lax`, and `Path = "/"`. `SameSite=Lax` is chosen so normal top-level navigation back to an application login flow keeps working while cross-site subresource and background requests do not carry the session cookie. Applications that need stricter same-site behavior can configure the cookie builder.
 

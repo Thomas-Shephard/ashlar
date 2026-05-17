@@ -36,14 +36,20 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         ValidateMetadata(session.Metadata);
 
         const string sql = """
-            INSERT INTO ashlar_sessions (id, user_id, tenant_id, token_hash, created_at, expires_at, last_seen_at, revoked_at, revocation_reason, ip_address, user_agent, metadata)
-            VALUES (@Id, @UserId, @TenantId, @TokenHash, @CreatedAt, @ExpiresAt, @LastSeenAt, @RevokedAt, @RevocationReason, @IpAddress, @UserAgent, @Metadata::jsonb)
+            INSERT INTO ashlar_sessions (
+                id, user_id, tenant_id, token_hash, created_at, authenticated_at, primary_provider_type, primary_provider_name,
+                additional_verification_at, additional_verification_provider_type, additional_verification_provider_name,
+                additional_verification_factor, expires_at, last_seen_at, revoked_at, revocation_reason, ip_address, user_agent, metadata)
+            VALUES (
+                @Id, @UserId, @TenantId, @TokenHash, @CreatedAt, @AuthenticatedAt, @PrimaryProviderType, @PrimaryProviderName,
+                @AdditionalVerificationAt, @AdditionalVerificationProviderType, @AdditionalVerificationProviderName,
+                @AdditionalVerificationFactor, @ExpiresAt, @LastSeenAt, @RevokedAt, @RevocationReason, @IpAddress, @UserAgent, @Metadata::jsonb)
             """;
 
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, session, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql, ToParameters(session), transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             await connectionHandle.Connection.ExecuteAsync(command);
         }
     }
@@ -59,8 +65,11 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         ArgumentException.ThrowIfNullOrWhiteSpace(tokenHash);
 
         const string sql = """
-            SELECT id AS Id, user_id AS UserId, tenant_id AS TenantId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
-                   last_seen_at AS LastSeenAt, revoked_at AS RevokedAt, revocation_reason AS RevocationReason,
+            SELECT id AS Id, user_id AS UserId, tenant_id AS TenantId, token_hash AS TokenHash, created_at AS CreatedAt,
+                   authenticated_at AS AuthenticatedAt, primary_provider_type AS PrimaryProviderType, primary_provider_name AS PrimaryProviderName,
+                   additional_verification_at AS AdditionalVerificationAt, additional_verification_provider_type AS AdditionalVerificationProviderType,
+                   additional_verification_provider_name AS AdditionalVerificationProviderName, additional_verification_factor AS AdditionalVerificationFactor,
+                   expires_at AS ExpiresAt, last_seen_at AS LastSeenAt, revoked_at AS RevokedAt, revocation_reason AS RevocationReason,
                    ip_address AS IpAddress, user_agent AS UserAgent, metadata AS Metadata
             FROM ashlar_sessions
             WHERE token_hash = @TokenHash
@@ -70,7 +79,8 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         await using (connectionHandle)
         {
             var command = new CommandDefinition(sql, new { TokenHash = tokenHash }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            return await connectionHandle.Connection.QueryFirstOrDefaultAsync<AuthenticationSession>(command);
+            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync(command);
+            return row == null ? null : ToSession(row);
         }
     }
 
@@ -83,8 +93,11 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
     public async Task<AuthenticationSession?> GetSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         const string sql = """
-            SELECT id AS Id, user_id AS UserId, tenant_id AS TenantId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
-                   last_seen_at AS LastSeenAt, revoked_at AS RevokedAt, revocation_reason AS RevocationReason,
+            SELECT id AS Id, user_id AS UserId, tenant_id AS TenantId, token_hash AS TokenHash, created_at AS CreatedAt,
+                   authenticated_at AS AuthenticatedAt, primary_provider_type AS PrimaryProviderType, primary_provider_name AS PrimaryProviderName,
+                   additional_verification_at AS AdditionalVerificationAt, additional_verification_provider_type AS AdditionalVerificationProviderType,
+                   additional_verification_provider_name AS AdditionalVerificationProviderName, additional_verification_factor AS AdditionalVerificationFactor,
+                   expires_at AS ExpiresAt, last_seen_at AS LastSeenAt, revoked_at AS RevokedAt, revocation_reason AS RevocationReason,
                    ip_address AS IpAddress, user_agent AS UserAgent, metadata AS Metadata
             FROM ashlar_sessions
             WHERE id = @Id
@@ -94,7 +107,8 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         await using (connectionHandle)
         {
             var command = new CommandDefinition(sql, new { Id = sessionId }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            return await connectionHandle.Connection.QueryFirstOrDefaultAsync<AuthenticationSession>(command);
+            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync(command);
+            return row == null ? null : ToSession(row);
         }
     }
 
@@ -185,8 +199,11 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
     public async Task<IReadOnlyList<AuthenticationSession>> ListSessionsForUserAsync(Guid userId, bool activeOnly, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         var sql = """
-            SELECT id AS Id, user_id AS UserId, tenant_id AS TenantId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
-                   last_seen_at AS LastSeenAt, revoked_at AS RevokedAt, revocation_reason AS RevocationReason,
+            SELECT id AS Id, user_id AS UserId, tenant_id AS TenantId, token_hash AS TokenHash, created_at AS CreatedAt,
+                   authenticated_at AS AuthenticatedAt, primary_provider_type AS PrimaryProviderType, primary_provider_name AS PrimaryProviderName,
+                   additional_verification_at AS AdditionalVerificationAt, additional_verification_provider_type AS AdditionalVerificationProviderType,
+                   additional_verification_provider_name AS AdditionalVerificationProviderName, additional_verification_factor AS AdditionalVerificationFactor,
+                   expires_at AS ExpiresAt, last_seen_at AS LastSeenAt, revoked_at AS RevokedAt, revocation_reason AS RevocationReason,
                    ip_address AS IpAddress, user_agent AS UserAgent, metadata AS Metadata
             FROM ashlar_sessions
             WHERE user_id = @UserId
@@ -203,8 +220,8 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         await using (connectionHandle)
         {
             var command = new CommandDefinition(sql, new { UserId = userId, Now = now }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            var result = await connectionHandle.Connection.QueryAsync<AuthenticationSession>(command);
-            return result.ToList().AsReadOnly();
+            var result = await connectionHandle.Connection.QueryAsync(command);
+            return result.Select(ToSession).ToList().AsReadOnly();
         }
     }
 
@@ -274,5 +291,92 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         {
             throw new ArgumentException("Session metadata must be a valid JSON document.", nameof(metadata), exception);
         }
+    }
+
+    private static object ToParameters(AuthenticationSession session)
+    {
+        return new
+        {
+            session.Id,
+            session.UserId,
+            session.TenantId,
+            session.TokenHash,
+            session.CreatedAt,
+            session.AuthenticatedAt,
+            PrimaryProviderType = AuthenticationProviderKey.GetTypeValueOrNull(session.PrimaryProvider),
+            PrimaryProviderName = session.PrimaryProvider?.Name,
+            session.AdditionalVerificationAt,
+            AdditionalVerificationProviderType = AuthenticationProviderKey.GetTypeValueOrNull(session.AdditionalVerificationProvider),
+            AdditionalVerificationProviderName = session.AdditionalVerificationProvider?.Name,
+            session.AdditionalVerificationFactor,
+            session.ExpiresAt,
+            session.LastSeenAt,
+            session.RevokedAt,
+            session.RevocationReason,
+            session.IpAddress,
+            session.UserAgent,
+            session.Metadata
+        };
+    }
+
+    private static AuthenticationSession ToSession(dynamic row)
+    {
+        var values = new Dictionary<string, object?>((IDictionary<string, object?>)row, StringComparer.OrdinalIgnoreCase);
+        string? primaryProviderType = ToNullableString(values["PrimaryProviderType"]);
+        string? primaryProviderName = ToNullableString(values["PrimaryProviderName"]);
+        string? additionalVerificationProviderType = ToNullableString(values["AdditionalVerificationProviderType"]);
+        string? additionalVerificationProviderName = ToNullableString(values["AdditionalVerificationProviderName"]);
+
+        return new AuthenticationSession
+        {
+            Id = (Guid)values["Id"]!,
+            UserId = (Guid)values["UserId"]!,
+            TenantId = ToNullableGuid(values["TenantId"]),
+            TokenHash = (string)values["TokenHash"]!,
+            CreatedAt = ToDateTimeOffset(values["CreatedAt"]!),
+            AuthenticatedAt = ToNullableDateTimeOffset(values["AuthenticatedAt"]),
+            PrimaryProvider = CreateProvider(primaryProviderType, primaryProviderName),
+            AdditionalVerificationAt = ToNullableDateTimeOffset(values["AdditionalVerificationAt"]),
+            AdditionalVerificationProvider = CreateProvider(additionalVerificationProviderType, additionalVerificationProviderName),
+            AdditionalVerificationFactor = ToNullableString(values["AdditionalVerificationFactor"]),
+            ExpiresAt = ToDateTimeOffset(values["ExpiresAt"]!),
+            LastSeenAt = ToNullableDateTimeOffset(values["LastSeenAt"]),
+            RevokedAt = ToNullableDateTimeOffset(values["RevokedAt"]),
+            RevocationReason = ToNullableString(values["RevocationReason"]),
+            IpAddress = ToNullableString(values["IpAddress"]),
+            UserAgent = ToNullableString(values["UserAgent"]),
+            Metadata = ToNullableString(values["Metadata"])
+        };
+    }
+
+    private static DateTimeOffset ToDateTimeOffset(object value)
+    {
+        return new DateTimeOffset((DateTime)value);
+    }
+
+    private static DateTimeOffset? ToNullableDateTimeOffset(object? value)
+    {
+        return value == null ? null : ToDateTimeOffset(value);
+    }
+
+    private static Guid? ToNullableGuid(object? value)
+    {
+        return value == null ? null : (Guid)value;
+    }
+
+    private static string? ToNullableString(object? value)
+    {
+        return value as string;
+    }
+
+    private static AuthenticationProviderKey? CreateProvider(string? type, string? name)
+    {
+        if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        ProviderType providerType = type;
+        return new AuthenticationProviderKey(providerType, name);
     }
 }

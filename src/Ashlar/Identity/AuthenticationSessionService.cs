@@ -87,6 +87,7 @@ public sealed class AuthenticationSessionService(
         var token = _tokenGenerator.GenerateToken(_options.TokenByteLength);
         var tokenHash = _tokenHasher.HashToken(token);
         var now = _timeProvider.GetUtcNow();
+        var additionalVerificationFactor = ValidateOptionalLength(request.AdditionalVerificationFactor, 128, $"{nameof(request)}.{nameof(request.AdditionalVerificationFactor)}");
 
         var ipAddress = _options.StoreIpAddress
             ? ValidateOptionalLength(request.IpAddress, _options.MaxIpAddressLength, $"{nameof(request)}.{nameof(request.IpAddress)}")
@@ -105,6 +106,11 @@ public sealed class AuthenticationSessionService(
             TokenHash = tokenHash,
             TenantId = request.TenantId,
             CreatedAt = now,
+            AuthenticatedAt = request.AuthenticatedAt ?? now,
+            PrimaryProvider = request.PrimaryProvider,
+            AdditionalVerificationAt = request.AdditionalVerificationAt,
+            AdditionalVerificationProvider = request.AdditionalVerificationProvider,
+            AdditionalVerificationFactor = additionalVerificationFactor,
             ExpiresAt = now.Add(lifetime),
             LastSeenAt = null,
             RevokedAt = null,

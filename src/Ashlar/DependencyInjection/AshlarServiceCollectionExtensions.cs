@@ -99,6 +99,7 @@ public static class AshlarServiceCollectionExtensions
             provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationSessionService>>(),
             provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()));
         services.TryAddScoped<IAuthenticationSessionService, AuthenticationSessionService>();
+        services.TryAddScoped<IStepUpAuthenticationService, StepUpAuthenticationService>();
         services.TryAddScoped<IdentityContext>();
         services.TryAddScoped(provider => new IdentityInfrastructureContext(
             provider.GetRequiredService<IEmailSender>(),
