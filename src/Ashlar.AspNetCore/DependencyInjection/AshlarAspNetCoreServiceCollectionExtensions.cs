@@ -87,6 +87,7 @@ public static class AshlarAspNetCoreServiceCollectionExtensions
 
         services.AddHttpContextAccessor();
         services.TryAddEnumerable(ServiceDescriptor.Transient<IAuthorizationHandler, AshlarAuthorizationHandler>());
+        services.TryAddEnumerable(ServiceDescriptor.Transient<IAuthorizationHandler, AshlarStepUpAuthorizationHandler>());
 
         return services;
     }

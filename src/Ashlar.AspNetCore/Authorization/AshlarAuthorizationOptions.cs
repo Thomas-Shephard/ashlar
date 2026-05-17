@@ -15,6 +15,11 @@ public sealed class AshlarAuthorizationOptions
     public IReadOnlyDictionary<string, AshlarScopeOptions> PolicyScopes => _policyScopes;
 
     /// <summary>
+    /// Gets the default step-up policy options.
+    /// </summary>
+    public AshlarStepUpOptions StepUp { get; } = new();
+
+    /// <summary>
     /// Adds a policy that requires a specific Ashlar permission.
     /// </summary>
     /// <param name="policyName">The policy name value.</param>
@@ -44,6 +49,35 @@ public sealed class AshlarAuthorizationOptions
         ConfigurePolicy(policyName, requirement, configureScope);
     }
 
+    /// <summary>
+    /// Adds a policy that requires fresh Ashlar additional verification.
+    /// </summary>
+    /// <param name="policyName">The policy name value.</param>
+    /// <param name="configure">The optional step-up options callback.</param>
+    public void AddAshlarStepUpPolicy(string policyName, Action<AshlarStepUpOptions>? configure = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(policyName);
+
+        var stepUpOptions = CopyStepUpOptions(StepUp);
+        configure?.Invoke(stepUpOptions);
+
+        var requirement = new AshlarStepUpRequirement(
+            stepUpOptions.FreshnessWindow,
+            stepUpOptions.AllowedProviders,
+            stepUpOptions.AllowedFactors);
+
+        ConfigurePolicy(policyName, requirement, null);
+    }
+
+    /// <summary>
+    /// Adds the default fresh MFA policy.
+    /// </summary>
+    /// <param name="configure">The optional step-up options callback.</param>
+    public void RequireFreshMfa(Action<AshlarStepUpOptions>? configure = null)
+    {
+        AddAshlarStepUpPolicy(AshlarStepUpPolicyNames.FreshMfa, configure);
+    }
+
     internal List<(string Name, AuthorizationPolicy Policy)> Policies { get; } = [];
 
     private void ConfigurePolicy(string policyName, IAuthorizationRequirement requirement, Action<AshlarScopeOptions>? configureScope)
@@ -65,5 +99,21 @@ public sealed class AshlarAuthorizationOptions
     internal void AddPolicyScope(string policyName, AshlarScopeOptions scopeOptions)
     {
         _policyScopes[policyName] = scopeOptions;
+    }
+
+    private static AshlarStepUpOptions CopyStepUpOptions(AshlarStepUpOptions source)
+    {
+        var copy = new AshlarStepUpOptions { FreshnessWindow = source.FreshnessWindow };
+        foreach (var provider in source.AllowedProviders)
+        {
+            copy.AllowedProviders.Add(provider);
+        }
+
+        foreach (var factor in source.AllowedFactors)
+        {
+            copy.AllowedFactors.Add(factor);
+        }
+
+        return copy;
     }
 }
