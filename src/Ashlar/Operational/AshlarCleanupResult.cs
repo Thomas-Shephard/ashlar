@@ -19,6 +19,8 @@ namespace Ashlar.Operational;
 /// <param name="FailedEmails">The failed emails value.</param>
 /// <param name="ExpiredAuthorizationGrants">The expired authorization grants value.</param>
 /// <param name="RevokedAuthorizationGrants">The revoked authorization grants value.</param>
+/// <param name="ExpiredPasskeyChallenges">The expired passkey challenges value.</param>
+/// <param name="ConsumedPasskeyChallenges">The consumed passkey challenges value.</param>
 public sealed record AshlarCleanupResult(
     int ExpiredSessions,
     int RevokedSessions,
@@ -35,7 +37,9 @@ public sealed record AshlarCleanupResult(
     int SentEmails,
     int FailedEmails,
     int ExpiredAuthorizationGrants = 0,
-    int RevokedAuthorizationGrants = 0)
+    int RevokedAuthorizationGrants = 0,
+    int ExpiredPasskeyChallenges = 0,
+    int ConsumedPasskeyChallenges = 0)
 {
     /// <summary>
     /// Executes the new operation.
@@ -61,7 +65,9 @@ public sealed record AshlarCleanupResult(
         + ExpiredRateLimits
         + AuditEvents
         + SentEmails
-        + FailedEmails;
+        + FailedEmails
+        + ExpiredPasskeyChallenges
+        + ConsumedPasskeyChallenges;
 
     /// <summary>
     /// Performs the add operation and returns the result.
@@ -88,6 +94,8 @@ public sealed record AshlarCleanupResult(
             SentEmails + other.SentEmails,
             FailedEmails + other.FailedEmails,
             ExpiredAuthorizationGrants + other.ExpiredAuthorizationGrants,
-            RevokedAuthorizationGrants + other.RevokedAuthorizationGrants);
+            RevokedAuthorizationGrants + other.RevokedAuthorizationGrants,
+            ExpiredPasskeyChallenges + other.ExpiredPasskeyChallenges,
+            ConsumedPasskeyChallenges + other.ConsumedPasskeyChallenges);
     }
 }

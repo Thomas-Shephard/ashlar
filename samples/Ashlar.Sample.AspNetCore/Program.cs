@@ -21,6 +21,7 @@ app.MapHomeEndpoints();
 app.MapBootstrapEndpoints();
 app.MapAuthEndpoints();
 app.MapAccountEndpoints();
+app.MapPasskeyEndpoints();
 app.MapMfaEndpoints();
 app.MapSessionEndpoints();
 app.MapInvitationEndpoints();

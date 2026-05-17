@@ -14,7 +14,9 @@ internal sealed class PostgresSchemaIntegrityTests : PostgresTestBase
         "ix_ashlar_authorization_grants_user_created",
         "ix_ashlar_authorization_grants_active_user_scope",
         "ix_ashlar_invitations_active_email_tenant",
-        "ix_ashlar_email_outbox_pending"
+        "ix_ashlar_email_outbox_pending",
+        "ix_ashlar_passkey_challenges_active_expires",
+        "ix_ashlar_passkey_challenges_consumed_at"
     ];
 
     private IServiceProvider _serviceProvider = null!;
@@ -45,7 +47,7 @@ internal sealed class PostgresSchemaIntegrityTests : PostgresTestBase
         await using var connection = await GetDataSource().OpenConnectionAsync();
         await connection.ExecuteAsync("""
             TRUNCATE ashlar_email_outbox, ashlar_mfa_handshakes, ashlar_security_events,
-                     ashlar_invitations, ashlar_rate_limits, ashlar_sessions,
+                     ashlar_passkey_challenges, ashlar_invitations, ashlar_rate_limits, ashlar_sessions,
                      ashlar_authorization_grants, ashlar_credentials, ashlar_bootstrap_state,
                      ashlar_users CASCADE;
             """);

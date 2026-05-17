@@ -1,0 +1,103 @@
+using System.Text.Json;
+using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.Models;
+using Microsoft.Extensions.Options;
+
+namespace Ashlar.Passkeys;
+
+/// <summary>
+/// Authenticates verified passkey assertions against stored Ashlar credentials.
+/// </summary>
+/// <param name="options">The passkey options.</param>
+public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> options) : IAuthenticationProvider
+{
+    private readonly PasskeyOptions _options = options.Value;
+
+    /// <summary>
+    /// Gets the provider key.
+    /// </summary>
+    public AuthenticationProviderKey Key => _options.ProviderKey;
+    /// <summary>
+    /// Gets a value indicating whether credentials must be protected before storage.
+    /// </summary>
+    public bool ProtectsCredentials => false;
+    /// <summary>
+    /// Gets the expected credential length when one is known.
+    /// </summary>
+    public int TypicalCredentialLength => 0;
+
+    /// <summary>
+    /// Gets the credential lookup key from a passkey assertion.
+    /// </summary>
+    /// <param name="assertion">The authentication assertion.</param>
+    /// <param name="userId">The user id.</param>
+    /// <returns>The credential lookup key.</returns>
+    public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId)
+    {
+        return assertion is PasskeyAssertion passkey ? passkey.CredentialId : string.Empty;
+    }
+
+    /// <summary>
+    /// Prepares a credential value for storage.
+    /// </summary>
+    /// <param name="assertion">The authentication assertion.</param>
+    /// <param name="rawValue">The raw credential value.</param>
+    /// <returns>The prepared credential value.</returns>
+    public string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue) => rawValue;
+
+    /// <summary>
+    /// Finds the user associated with a passkey assertion.
+    /// </summary>
+    /// <param name="assertion">The authentication assertion.</param>
+    /// <param name="context">The authentication context.</param>
+    /// <param name="repository">The identity repository.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The user when a matching credential exists.</returns>
+    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default)
+    {
+        if (assertion is not PasskeyAssertion passkey)
+        {
+            return null;
+        }
+
+        if (context.UserId.HasValue)
+        {
+            var credential = await repository.GetCredentialForUserAsync(context.UserId.Value, Key.Type, Key.Name, passkey.CredentialId, cancellationToken);
+            return credential == null ? null : await repository.GetUserByIdAsync(context.UserId.Value, cancellationToken);
+        }
+
+        return await repository.GetUserByProviderKeyAsync(Key.Type, Key.Name, passkey.CredentialId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Authenticates a passkey assertion against a stored credential.
+    /// </summary>
+    /// <param name="assertion">The authentication assertion.</param>
+    /// <param name="credential">The stored credential.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The authentication result.</returns>
+    public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default)
+    {
+        if (assertion is not PasskeyAssertion passkey)
+        {
+            throw new ArgumentException($"Unsupported assertion type: {assertion.GetType().Name}", nameof(assertion));
+        }
+
+        if (credential == null || string.IsNullOrWhiteSpace(credential.Metadata))
+        {
+            return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
+        }
+
+        var metadata = JsonSerializer.Deserialize<PasskeyCredentialMetadata>(credential.Metadata, PasskeyJson.Options);
+        if (metadata == null || (metadata.SignCount > 0 && passkey.SignCount <= metadata.SignCount))
+        {
+            return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
+        }
+
+        metadata.SignCount = passkey.SignCount;
+        return Task.FromResult(new AuthenticationResult(
+            AuthenticationResultStatus.SucceededWithCredentialUpdate,
+            NewMetadata: JsonSerializer.Serialize(metadata, PasskeyJson.Options),
+            CredentialUpdateRequirement: CredentialUpdateRequirement.Required));
+    }
+}

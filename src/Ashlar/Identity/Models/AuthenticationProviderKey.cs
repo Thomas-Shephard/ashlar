@@ -59,6 +59,10 @@ public readonly record struct AuthenticationProviderKey
     /// Executes the new operation.
     /// </summary>
     public static AuthenticationProviderKey MagicLink { get; } = new(ProviderType.MagicLink, ProviderType.MagicLink.Value);
+    /// <summary>
+    /// Executes the new operation.
+    /// </summary>
+    public static AuthenticationProviderKey Passkey { get; } = new(ProviderType.Passkey, ProviderType.Passkey.Value);
 
     /// <summary>
     /// Performs the equals operation and returns the result.

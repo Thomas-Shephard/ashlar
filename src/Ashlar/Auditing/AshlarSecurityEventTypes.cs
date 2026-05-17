@@ -186,6 +186,30 @@ public static class AshlarSecurityEventTypes
     /// </summary>
     public const string TotpVerificationRateLimited = "ashlar.totp.verification_rate_limited";
     /// <summary>
+    /// Defines the passkey registration started value.
+    /// </summary>
+    public const string PasskeyRegistrationStarted = "ashlar.passkey.registration_started";
+    /// <summary>
+    /// Defines the passkey registration completed value.
+    /// </summary>
+    public const string PasskeyRegistrationCompleted = "ashlar.passkey.registration_completed";
+    /// <summary>
+    /// Defines the passkey authentication started value.
+    /// </summary>
+    public const string PasskeyAuthenticationStarted = "ashlar.passkey.authentication_started";
+    /// <summary>
+    /// Defines the passkey authentication completed value.
+    /// </summary>
+    public const string PasskeyAuthenticationCompleted = "ashlar.passkey.authentication_completed";
+    /// <summary>
+    /// Defines the passkey renamed value.
+    /// </summary>
+    public const string PasskeyRenamed = "ashlar.passkey.renamed";
+    /// <summary>
+    /// Defines the passkey revoked value.
+    /// </summary>
+    public const string PasskeyRevoked = "ashlar.passkey.revoked";
+    /// <summary>
     /// Defines the bootstrap invitation created value.
     /// </summary>
     public const string BootstrapInvitationCreated = "ashlar.bootstrap.invitation.created";

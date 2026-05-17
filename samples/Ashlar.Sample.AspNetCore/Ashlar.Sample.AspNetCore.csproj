@@ -9,6 +9,7 @@
     <PackageReference Include="Testcontainers.PostgreSql" />
     <ProjectReference Include="..\..\src\Ashlar\Ashlar.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.AspNetCore\Ashlar.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\Ashlar.Passkeys\Ashlar.Passkeys.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.Postgres\Ashlar.Postgres.csproj" />
   </ItemGroup>
 </Project>

@@ -51,6 +51,10 @@ public readonly record struct ProviderType
     /// </summary>
     public static readonly ProviderType RecoveryCode = new(nameof(RecoveryCode));
     /// <summary>
+    /// WebAuthn/FIDO2 passkey credentials.
+    /// </summary>
+    public static readonly ProviderType Passkey = new(nameof(Passkey));
+    /// <summary>
     /// OAuth credentials.
     /// </summary>
     public static readonly ProviderType OAuth = new(nameof(OAuth));

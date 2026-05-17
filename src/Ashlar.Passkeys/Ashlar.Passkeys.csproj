@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Passkey/WebAuthn/FIDO2 authentication support for Ashlar.</Description>
+    <PackageTags>ashlar;passkeys;webauthn;fido2;authentication;security</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ashlar\Ashlar.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Fido2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ashlar.Passkeys.Tests" />
+  </ItemGroup>
+
+</Project>

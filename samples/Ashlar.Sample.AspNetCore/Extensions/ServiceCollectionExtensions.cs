@@ -55,6 +55,13 @@ internal static class ServiceCollectionExtensions
         });
         services.AddAshlarTotp();
         services.AddAshlarRecoveryCodes();
+        services.AddAshlarPasskeys(options =>
+        {
+            var publicAppUri = new Uri(sampleOptions.PublicAppUrl);
+            options.RelyingPartyId = publicAppUri.Host;
+            options.RelyingPartyName = "Ashlar Sample";
+            options.Origin = publicAppUri.GetLeftPart(UriPartial.Authority);
+        });
         services.AddAshlarPostgresAuditSink();
         services.AddScoped<IAccountSecurityGuard, SampleAccountSecurityGuard>();
         services.AddAshlarPostgresRateLimiting();

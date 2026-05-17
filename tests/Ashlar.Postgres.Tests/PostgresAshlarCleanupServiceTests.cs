@@ -48,7 +48,7 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
     {
         await using var connection = await GetDataSource().OpenConnectionAsync();
         await connection.ExecuteAsync("""
-            TRUNCATE ashlar_security_events, ashlar_rate_limits, ashlar_mfa_handshakes, ashlar_invitations, ashlar_sessions, ashlar_credentials, ashlar_authorization_grants, ashlar_users CASCADE;
+            TRUNCATE ashlar_security_events, ashlar_rate_limits, ashlar_passkey_challenges, ashlar_mfa_handshakes, ashlar_invitations, ashlar_sessions, ashlar_credentials, ashlar_authorization_grants, ashlar_users CASCADE;
             """);
     }
 
@@ -84,6 +84,8 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
             Assert.That(result.CompletedHandshakes, Is.EqualTo(1));
             Assert.That(result.RevokedHandshakes, Is.EqualTo(1));
             Assert.That(result.ExpiredRateLimits, Is.EqualTo(1));
+            Assert.That(result.ExpiredPasskeyChallenges, Is.EqualTo(1));
+            Assert.That(result.ConsumedPasskeyChallenges, Is.EqualTo(1));
             Assert.That(result.AuditEvents, Is.EqualTo(1));
         }
 
@@ -96,6 +98,7 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
             Assert.That(await CountAsync(connection, "ashlar_invitations"), Is.EqualTo(3));
             Assert.That(await CountAsync(connection, "ashlar_mfa_handshakes"), Is.EqualTo(3));
             Assert.That(await CountAsync(connection, "ashlar_rate_limits"), Is.EqualTo(1));
+            Assert.That(await CountAsync(connection, "ashlar_passkey_challenges"), Is.EqualTo(2));
             Assert.That(await CountAsync(connection, "ashlar_security_events"), Is.EqualTo(1));
         }
     }
@@ -315,6 +318,12 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
             ('login', 'expired-rate', 1, @old, @old),
             ('login', 'active-rate', 1, @now, @future);
 
+            INSERT INTO ashlar_passkey_challenges (id, version, purpose, user_id, challenge, options_json, relying_party_id, origin, created_at, expires_at, consumed_at) VALUES
+            (@p1, 'v1', 'passkey-authentication', NULL, 'expired-passkey-challenge', '{}'::jsonb, 'example.com', 'https://example.com', @oldCreated, @old, NULL),
+            (@p2, 'v1', 'passkey-authentication', NULL, 'consumed-passkey-challenge', '{}'::jsonb, 'example.com', 'https://example.com', @oldCreated, @future, @old),
+            (@p3, 'v1', 'passkey-authentication', NULL, 'active-passkey-challenge', '{}'::jsonb, 'example.com', 'https://example.com', @now, @future, NULL),
+            (@p4, 'v1', 'passkey-authentication', NULL, 'recent-consumed-passkey-challenge', '{}'::jsonb, 'example.com', 'https://example.com', @now, @future, @recent);
+
             INSERT INTO ashlar_security_events (id, event_type, occurred_at) VALUES
             (@e1, 'old-event', @veryOld),
             (@e2, 'recent-event', @recent);
@@ -324,6 +333,7 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
             now = _now,
             recent = _now.AddHours(-1),
             old = _now.AddDays(-60),
+            oldCreated = _now.AddDays(-61),
             veryOld = _now.AddDays(-120),
             past = _now.AddMinutes(-1),
             future = _now.AddDays(1),
@@ -351,6 +361,10 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
             h4 = Guid.NewGuid(),
             h5 = Guid.NewGuid(),
             h6 = Guid.NewGuid(),
+            p1 = Guid.NewGuid(),
+            p2 = Guid.NewGuid(),
+            p3 = Guid.NewGuid(),
+            p4 = Guid.NewGuid(),
             e1 = Guid.NewGuid(),
             e2 = Guid.NewGuid()
         });

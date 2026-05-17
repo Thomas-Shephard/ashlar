@@ -80,7 +80,9 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
                 await DeleteIfActiveAsync(activeCategories.SentEmails, connection, CleanupDeleteDefinitions.SentEmails, Threshold(now, _options.RemoveSentEmailsAfter), cancellationToken),
                 await DeleteIfActiveAsync(activeCategories.FailedEmails, connection, CleanupDeleteDefinitions.FailedEmails, Threshold(now, _options.RemoveFailedEmailsAfter), cancellationToken),
                 await DeleteIfActiveAsync(activeCategories.ExpiredAuthorizationGrants, connection, CleanupDeleteDefinitions.ExpiredAuthorizationGrants, Threshold(now, _options.RemoveExpiredAuthorizationGrantsAfter), cancellationToken),
-                await DeleteIfActiveAsync(activeCategories.RevokedAuthorizationGrants, connection, CleanupDeleteDefinitions.RevokedAuthorizationGrants, Threshold(now, _options.RemoveRevokedAuthorizationGrantsAfter), cancellationToken));
+                await DeleteIfActiveAsync(activeCategories.RevokedAuthorizationGrants, connection, CleanupDeleteDefinitions.RevokedAuthorizationGrants, Threshold(now, _options.RemoveRevokedAuthorizationGrantsAfter), cancellationToken),
+                await DeleteIfActiveAsync(activeCategories.ExpiredPasskeyChallenges, connection, CleanupDeleteDefinitions.ExpiredPasskeyChallenges, Threshold(now, _options.RemoveExpiredPasskeyChallengesAfter), cancellationToken),
+                await DeleteIfActiveAsync(activeCategories.ConsumedPasskeyChallenges, connection, CleanupDeleteDefinitions.ConsumedPasskeyChallenges, Threshold(now, _options.RemoveConsumedPasskeyChallengesAfter), cancellationToken));
 
             result = result.Add(batchResult);
             activeCategories = AshlarCleanupCategories.FromBatchResult(batchResult, _options.BatchSize);
@@ -151,6 +153,7 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         private const string InvitationsTable = "ashlar_invitations";
         private const string HandshakesTable = "ashlar_mfa_handshakes";
         private const string RateLimitsTable = "ashlar_rate_limits";
+        private const string PasskeyChallengesTable = "ashlar_passkey_challenges";
         private const string SecurityEventsTable = "ashlar_security_events";
         private const string EmailOutboxTable = "ashlar_email_outbox";
         private const string ExpiresAtColumn = "expires_at";
@@ -253,6 +256,8 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         /// <param name="ExpiresAtColumn">The expires at column value.</param>
         /// <returns>The operation result.</returns>
         public static readonly CleanupDeleteDefinition ExpiredRateLimits = new("expired_rate_limits", RateLimitsTable, "expires_at < @cutoff", ExpiresAtColumn);
+        public static readonly CleanupDeleteDefinition ExpiredPasskeyChallenges = new("expired_passkey_challenges", PasskeyChallengesTable, "expires_at < @cutoff AND consumed_at IS NULL", ExpiresAtColumn);
+        public static readonly CleanupDeleteDefinition ConsumedPasskeyChallenges = new("consumed_passkey_challenges", PasskeyChallengesTable, "consumed_at IS NOT NULL AND consumed_at < @cutoff", "consumed_at");
         /// <summary>
         /// Performs the new operation and returns the result.
         /// </summary>
@@ -290,12 +295,14 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         bool ExpiredRateLimits,
         bool AuditEvents,
         bool SentEmails,
-        bool FailedEmails)
+        bool FailedEmails,
+        bool ExpiredPasskeyChallenges,
+        bool ConsumedPasskeyChallenges)
     {
         /// <summary>
         /// Executes the new operation.
         /// </summary>
-        public static AshlarCleanupCategories All { get; } = new(true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true);
+        public static AshlarCleanupCategories All { get; } = new(true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true);
 
         /// <summary>
         /// Gets or sets the has any value.
@@ -316,7 +323,9 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
             || ExpiredRateLimits
             || AuditEvents
             || SentEmails
-            || FailedEmails;
+            || FailedEmails
+            || ExpiredPasskeyChallenges
+            || ConsumedPasskeyChallenges;
 
         /// <summary>
         /// Performs the from batch result operation and returns the result.
@@ -342,7 +351,9 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
                 result.ExpiredRateLimits == batchSize,
                 result.AuditEvents == batchSize,
                 result.SentEmails == batchSize,
-                result.FailedEmails == batchSize);
+                result.FailedEmails == batchSize,
+                result.ExpiredPasskeyChallenges == batchSize,
+                result.ConsumedPasskeyChallenges == batchSize);
         }
     }
 }

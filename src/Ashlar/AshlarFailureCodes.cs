@@ -93,7 +93,12 @@ public static class AshlarFailureCodes
     public const string InvalidFactorTypeValue = "invalid_factor_type";
     /// <summary>The authentication factor is already verified.</summary>
     public const string FactorAlreadyVerifiedValue = "factor_already_verified";
-
+    /// <summary>The passkey challenge was not found, expired, or already consumed.</summary>
+    public const string PasskeyChallengeInvalidValue = "passkey_challenge_invalid";
+    /// <summary>The passkey ceremony response failed WebAuthn validation.</summary>
+    public const string PasskeyValidationFailedValue = "passkey_validation_failed";
+    /// <summary>The passkey credential was not found or is not active.</summary>
+    public const string PasskeyCredentialNotFoundValue = "passkey_credential_not_found";
     /// <summary>Generic validation failure.</summary>
     public static readonly AshlarFailureCode ValidationError = new(ValidationErrorValue);
     /// <summary>Configured metadata is invalid.</summary>
@@ -182,4 +187,10 @@ public static class AshlarFailureCodes
     public static readonly AshlarFailureCode InvalidFactorType = new(InvalidFactorTypeValue);
     /// <summary>The authentication factor is already verified.</summary>
     public static readonly AshlarFailureCode FactorAlreadyVerified = new(FactorAlreadyVerifiedValue);
+    /// <summary>The passkey challenge was not found, expired, or already consumed.</summary>
+    public static readonly AshlarFailureCode PasskeyChallengeInvalid = new(PasskeyChallengeInvalidValue);
+    /// <summary>The passkey ceremony response failed WebAuthn validation.</summary>
+    public static readonly AshlarFailureCode PasskeyValidationFailed = new(PasskeyValidationFailedValue);
+    /// <summary>The passkey credential was not found or is not active.</summary>
+    public static readonly AshlarFailureCode PasskeyCredentialNotFound = new(PasskeyCredentialNotFoundValue);
 }
