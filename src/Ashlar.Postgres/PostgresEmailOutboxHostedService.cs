@@ -1,3 +1,4 @@
+using Ashlar.Messaging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -49,47 +50,13 @@ public sealed class PostgresEmailOutboxHostedService(
     /// <returns>The operation result.</returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
-            {
-                int processedCount;
-                using (var scope = _serviceProvider.CreateScope())
-                {
-                    var dispatcher = scope.ServiceProvider.GetRequiredService<IEmailOutboxDispatcher>();
-                    processedCount = await dispatcher.ProcessBatchAsync(stoppingToken);
-                }
-
-                if (processedCount < _options.BatchSize)
-                {
-                    await Task.Delay(_options.PollingInterval, stoppingToken);
-                }
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception exception)
-            {
-                OutboxBatchFailed(_logger, _options.BatchSize, exception);
-                if (!await DelayUntilNextPollAsync(_options.PollingInterval, stoppingToken))
-                {
-                    break;
-                }
-            }
-        }
-    }
-
-    private static async ValueTask<bool> DelayUntilNextPollAsync(TimeSpan delay, CancellationToken stoppingToken)
-    {
-        try
-        {
-            await Task.Delay(delay, stoppingToken);
-            return true;
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            return false;
-        }
+        await EmailOutboxDispatch.RunHostedLoopAsync(
+            _serviceProvider,
+            _options.BatchSize,
+            _options.PollingInterval,
+            _logger,
+            static (provider, token) => provider.GetRequiredService<IEmailOutboxDispatcher>().ProcessBatchAsync(token),
+            OutboxBatchFailed,
+            stoppingToken);
     }
 }

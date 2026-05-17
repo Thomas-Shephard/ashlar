@@ -270,7 +270,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     [Test]
     public void MapToEmailMessageHandlesOptionalFields()
     {
-        var message = SqliteEmailOutboxDispatcher<TestTransport>.MapToEmailMessage(new SqliteEmailOutboxDispatcher<TestTransport>.OutboxEntry
+        var message = EmailOutboxDispatch.MapToEmailMessage(new EmailOutboxEntry
         {
             Id = Guid.NewGuid(),
             ToAddress = "to@example.com",

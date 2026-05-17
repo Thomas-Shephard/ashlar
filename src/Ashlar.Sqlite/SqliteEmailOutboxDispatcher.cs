@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using System.Text.Json;
 
 namespace Ashlar.Sqlite;
 
@@ -22,6 +21,10 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
     ILogger<SqliteEmailOutboxDispatcher<TTransport>>? logger = null)
     where TTransport : IEmailTransport
 {
+    private const string IdParameter = "$id";
+    private const string LockedByParameter = "$lockedBy";
+    private const string NowParameter = "$now";
+    private const string AttemptCountParameter = "$attemptCount";
     private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     private readonly SqliteEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
@@ -65,8 +68,8 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
                 )
                 """;
             command.AddDateTimeOffsetParameter("$lockedUntil", lockedUntil);
-            command.AddParameter("$lockedBy", _lockId);
-            command.AddDateTimeOffsetParameter("$now", now);
+            command.AddParameter(LockedByParameter, _lockId);
+            command.AddDateTimeOffsetParameter(NowParameter, now);
             command.AddParameter("$batchSize", _options.BatchSize);
 
             await command.ExecuteNonQueryAsync(cancellationToken);
@@ -87,7 +90,7 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
         return entries.Count;
     }
 
-    private static async Task<List<OutboxEntry>> LoadClaimedEntriesAsync(
+    private static async Task<List<EmailOutboxEntry>> LoadClaimedEntriesAsync(
         IServiceProvider provider,
         string lockId,
         CancellationToken cancellationToken)
@@ -105,13 +108,13 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
               AND failed_at IS NULL
             ORDER BY available_at, id
             """;
-        command.AddParameter("$lockedBy", lockId);
+        command.AddParameter(LockedByParameter, lockId);
 
-        var entries = new List<OutboxEntry>();
+        var entries = new List<EmailOutboxEntry>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            entries.Add(new OutboxEntry
+            entries.Add(new EmailOutboxEntry
             {
                 Id = reader.GetGuidFromText("id"),
                 ToAddress = reader.GetString(reader.GetOrdinal("to_address")),
@@ -129,13 +132,13 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
         return entries;
     }
 
-    private async Task ProcessEntryAsync(OutboxEntry entry, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task ProcessEntryAsync(EmailOutboxEntry entry, IServiceProvider provider, CancellationToken cancellationToken)
     {
         var transport = provider.GetRequiredService<TTransport>();
 
         try
         {
-            var message = MapToEmailMessage(entry);
+            var message = EmailOutboxDispatch.MapToEmailMessage(entry);
             await transport.DeliverAsync(message, cancellationToken);
             await MarkAsSentAsync(entry.Id, provider, CancellationToken.None);
         }
@@ -167,27 +170,22 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
                 attempt_count = attempt_count + 1
             WHERE id = $id AND locked_by = $lockedBy
             """;
-        command.AddDateTimeOffsetParameter("$now", now);
-        command.AddGuidParameter("$id", id);
-        command.AddParameter("$lockedBy", _lockId);
+        command.AddDateTimeOffsetParameter(NowParameter, now);
+        command.AddGuidParameter(IdParameter, id);
+        command.AddParameter(LockedByParameter, _lockId);
 
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private async Task MarkAsFailedAsync(OutboxEntry entry, Exception exception, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task MarkAsFailedAsync(EmailOutboxEntry entry, Exception exception, IServiceProvider provider, CancellationToken cancellationToken)
     {
-        var attemptCount = entry.AttemptCount + 1;
-        var isFinalFailure = attemptCount >= _options.MaxAttempts;
         var now = _timeProvider.GetUtcNow();
-        var backoffMultiplier = Math.Pow(2, attemptCount - 1);
-        var maxDelayTicks = TimeSpan.FromDays(7).Ticks;
-        var delayTicks = Math.Min(_options.InitialRetryDelay.Ticks * backoffMultiplier, maxDelayTicks);
-        var availableAt = isFinalFailure ? now : now.AddTicks((long)delayTicks);
-        var lastError = exception.ToString();
-        if (lastError.Length > 1000)
-        {
-            lastError = lastError[..1000];
-        }
+        var failure = EmailOutboxDispatch.CreateFailureUpdate(
+            entry.AttemptCount,
+            _options.MaxAttempts,
+            _options.InitialRetryDelay,
+            now,
+            exception);
 
         var connectionProvider = provider.GetRequiredService<ISqliteConnectionProvider>();
         await using var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken);
@@ -204,48 +202,15 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
                 attempt_count = $attemptCount
             WHERE id = $id AND locked_by = $lockedBy
             """;
-        command.AddNullableDateTimeOffsetParameter("$failedAt", isFinalFailure ? now : null);
-        command.AddParameter("$lastError", lastError);
-        command.AddDateTimeOffsetParameter("$availableAt", availableAt);
-        command.AddDateTimeOffsetParameter("$now", now);
-        command.AddParameter("$attemptCount", attemptCount);
-        command.AddGuidParameter("$id", entry.Id);
-        command.AddParameter("$lockedBy", _lockId);
+        command.AddNullableDateTimeOffsetParameter("$failedAt", failure.FailedAt);
+        command.AddParameter("$lastError", failure.LastError);
+        command.AddDateTimeOffsetParameter("$availableAt", failure.AvailableAt);
+        command.AddDateTimeOffsetParameter(NowParameter, now);
+        command.AddParameter(AttemptCountParameter, failure.AttemptCount);
+        command.AddGuidParameter(IdParameter, entry.Id);
+        command.AddParameter(LockedByParameter, _lockId);
 
         await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    internal static EmailMessage MapToEmailMessage(OutboxEntry entry)
-    {
-        var headers = entry.Headers != null ? JsonSerializer.Deserialize<Dictionary<string, string>>(entry.Headers) : null;
-        var metadata = entry.Metadata != null ? JsonSerializer.Deserialize<Dictionary<string, string>>(entry.Metadata) : null;
-
-        return new EmailMessage(
-            entry.ToAddress,
-            entry.Subject,
-            entry.TextBody,
-            entry.HtmlBody,
-            new EmailMessageOptions
-            {
-                From = entry.FromAddress,
-                ReplyTo = entry.ReplyToAddress,
-                Headers = headers,
-                Metadata = metadata
-            });
-    }
-
-    internal sealed class OutboxEntry
-    {
-        public Guid Id { get; init; }
-        public required string ToAddress { get; init; }
-        public string? FromAddress { get; init; }
-        public string? ReplyToAddress { get; init; }
-        public required string Subject { get; init; }
-        public string? TextBody { get; init; }
-        public string? HtmlBody { get; init; }
-        public string? Headers { get; init; }
-        public string? Metadata { get; init; }
-        public int AttemptCount { get; init; }
     }
 }
 

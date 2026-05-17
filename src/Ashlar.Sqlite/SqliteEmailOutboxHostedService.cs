@@ -20,12 +20,6 @@ public sealed class SqliteEmailOutboxHostedService<TTransport>(
     ILogger<SqliteEmailOutboxHostedService<TTransport>>? logger = null) : BackgroundService
     where TTransport : IEmailTransport
 {
-    private static readonly Action<ILogger, int, Exception?> OutboxBatchFailed =
-        LoggerMessage.Define<int>(
-            LogLevel.Error,
-            new EventId(1000, nameof(OutboxBatchFailed)),
-            "SQLite email outbox hosted service batch failed. BatchSize={BatchSize}");
-
     private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
     private readonly SqliteEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
     private readonly ILogger<SqliteEmailOutboxHostedService<TTransport>> _logger = logger ?? NullLogger<SqliteEmailOutboxHostedService<TTransport>>.Instance;
@@ -52,47 +46,22 @@ public sealed class SqliteEmailOutboxHostedService<TTransport>(
     /// <returns>The operation result.</returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
-            {
-                int processedCount;
-                using (var scope = _serviceProvider.CreateScope())
-                {
-                    var dispatcher = scope.ServiceProvider.GetRequiredService<SqliteEmailOutboxDispatcher<TTransport>>();
-                    processedCount = await dispatcher.ProcessBatchAsync(stoppingToken);
-                }
-
-                if (processedCount < _options.BatchSize)
-                {
-                    await Task.Delay(_options.PollingInterval, stoppingToken);
-                }
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception exception)
-            {
-                OutboxBatchFailed(_logger, _options.BatchSize, exception);
-                if (!await DelayUntilNextPollAsync(_options.PollingInterval, stoppingToken))
-                {
-                    break;
-                }
-            }
-        }
+        await EmailOutboxDispatch.RunHostedLoopAsync(
+            _serviceProvider,
+            _options.BatchSize,
+            _options.PollingInterval,
+            _logger,
+            static (provider, token) => provider.GetRequiredService<SqliteEmailOutboxDispatcher<TTransport>>().ProcessBatchAsync(token),
+            SqliteEmailOutboxHostedServiceLog.OutboxBatchFailed,
+            stoppingToken);
     }
+}
 
-    private static async ValueTask<bool> DelayUntilNextPollAsync(TimeSpan delay, CancellationToken stoppingToken)
-    {
-        try
-        {
-            await Task.Delay(delay, stoppingToken);
-            return true;
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            return false;
-        }
-    }
+internal static class SqliteEmailOutboxHostedServiceLog
+{
+    public static readonly Action<ILogger, int, Exception?> OutboxBatchFailed =
+        LoggerMessage.Define<int>(
+            LogLevel.Error,
+            new EventId(1000, nameof(OutboxBatchFailed)),
+            "SQLite email outbox hosted service batch failed. BatchSize={BatchSize}");
 }

@@ -453,7 +453,7 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
     [Test]
     public void MapToEmailMessageHandlesNullHeadersAndMetadata()
     {
-        var entry = new PostgresEmailOutboxDispatcher<TestTransport>.OutboxEntry
+        var entry = new EmailOutboxEntry
         {
             Id = Guid.NewGuid(),
             ToAddress = "to@example.com",
@@ -463,7 +463,7 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
             Metadata = null
         };
 
-        var message = PostgresEmailOutboxDispatcher<TestTransport>.MapToEmailMessage(entry);
+        var message = EmailOutboxDispatch.MapToEmailMessage(entry);
 
         using (Assert.EnterMultipleScope())
         {
@@ -476,7 +476,7 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
     [Test]
     public void MapToEmailMessageHandlesValidHeadersAndMetadata()
     {
-        var entry = new PostgresEmailOutboxDispatcher<TestTransport>.OutboxEntry
+        var entry = new EmailOutboxEntry
         {
             Id = Guid.NewGuid(),
             ToAddress = "to@example.com",
@@ -486,7 +486,7 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
             Metadata = "{\"Test\": \"Metadata\"}"
         };
 
-        var message = PostgresEmailOutboxDispatcher<TestTransport>.MapToEmailMessage(entry);
+        var message = EmailOutboxDispatch.MapToEmailMessage(entry);
 
         using (Assert.EnterMultipleScope())
         {
