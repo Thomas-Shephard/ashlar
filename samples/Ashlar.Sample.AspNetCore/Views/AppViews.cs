@@ -544,13 +544,13 @@ internal static class AppViews
         """;
     }
 
-    public static IResult RenderAccountSettings(string userEmail, string? userName, bool isEmailVerified, bool hasTotp, bool hasRecoveryCodes, bool hasPasskeys, bool isAdmin)
+    public static IResult RenderAccountSettings(string userEmail, string? userName, UserSecurityPosture posture, bool isAdmin)
     {
-        var verifiedBadge = isEmailVerified
+        var verifiedBadge = posture.IsEmailVerified
             ? "<span class=\"badge badge-success\">Verified</span>"
             : "<span class=\"badge badge-warning\">Unverified</span>";
 
-        var verifyForm = isEmailVerified ? "" : """
+        var verifyForm = posture.IsEmailVerified ? "" : """
             <hr style="margin: 2rem 0; border: 0; border-top: 1px solid #e5e7eb;" />
             <h3>Verify Email</h3>
             <p>Your email address is not yet verified.</p>
@@ -560,9 +560,25 @@ internal static class AppViews
             <div id="verifyEmailFormResult"></div>
         """;
 
-        var verificationStatus = hasTotp || hasPasskeys
-            ? "<span class=\"badge badge-success\">Configured</span>"
-            : "<span class=\"badge badge-warning\">Not configured</span>";
+        var hasTotp = posture.AdditionalVerificationFactors.Any(f => string.Equals(f.FactorType, AuthenticationFactorTypes.Totp, StringComparison.OrdinalIgnoreCase) && f.IsConfigured);
+        var hasRecoveryCodes = posture.AdditionalVerificationFactors.Any(f => string.Equals(f.FactorType, AuthenticationFactorTypes.RecoveryCode, StringComparison.OrdinalIgnoreCase) && f.IsConfigured);
+        var hasPasskeys = posture.CredentialInventory.Any(c => c.Provider.Type == ProviderType.Passkey);
+        var signInMethods = string.Join(", ", posture.PrimaryCredentials.Select(c => c.DisplayName).Distinct(StringComparer.Ordinal)) is { Length: > 0 } methods
+            ? methods
+            : "None";
+        var hasAdditionalVerification = posture.AdditionalVerificationFactors.Any(f => f.IsConfigured);
+        var protectedActionStatus = hasAdditionalVerification ? "Available" : "Blocked until setup";
+        var missingVerification = hasAdditionalVerification ? "None" : "Authenticator app or passkey";
+
+        var verificationStatus = "<span class=\"badge\">Not configured</span>";
+        if (hasAdditionalVerification)
+        {
+            verificationStatus = "<span class=\"badge badge-success\">Configured</span>";
+        }
+        else if (posture.Policy.IsAdditionalVerificationRequired)
+        {
+            verificationStatus = "<span class=\"badge badge-warning\">Setup required</span>";
+        }
 
         var totpStatus = hasTotp
             ? "<span class=\"badge badge-success\">Enabled</span>"
@@ -647,6 +663,11 @@ internal static class AppViews
 
                 <div id="security" class="tab-pane">
                     <h3>Sign-In Verification</h3>
+                    <div class="status-box" style="margin-top: 1rem;">
+                        <strong>Sign-in methods:</strong> {{System.Net.WebUtility.HtmlEncode(signInMethods)}}<br/>
+                        <strong>Protected actions:</strong> {{protectedActionStatus}}<br/>
+                        <strong>Missing setup:</strong> {{System.Net.WebUtility.HtmlEncode(missingVerification)}}
+                    </div>
                     <div class="status-box" style="margin-top: 1rem;">
                         <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
                             <strong>Additional verification</strong>
@@ -1052,24 +1073,7 @@ internal static class AppViews
                     document.getElementById('resetUserMfaBtn').classList.toggle('hidden', !posture.isMfaConfigured);
                 };
 
-                const normalizeProviderValue = value => String(value || '').toLowerCase();
-
-                const credentialLabel = credential => {
-                    const type = normalizeProviderValue(credential.type?.value || credential.type);
-                    const name = normalizeProviderValue(credential.name);
-                    if (type === 'passkey' || name === 'passkey') return 'Passkey';
-                    if (type === 'mfa' && name === 'totp') return 'Authenticator app';
-                    if (type === 'recoverycode' || name === 'recoverycode') return 'Recovery codes';
-                    if (type === 'emaillogin' || name === 'magiclink') return 'Email sign-in';
-                    if (type === 'emaillogin' || name === 'emailcode') return 'Email code';
-                    return credential.name || credential.type?.value || credential.type || 'Credential';
-                };
-
-                const hasCredential = (credentials, matcher) => credentials.some(c => {
-                    const type = normalizeProviderValue(c.type?.value || c.type);
-                    const name = normalizeProviderValue(c.name);
-                    return matcher(type, name);
-                });
+                const postureNames = items => [...new Set((items || []).map(item => item.displayName).filter(Boolean))].join(', ') || 'None';
 
                 const loadSecurityPosture = async () => {
                     const userId = document.getElementById('securityUserId').value;
@@ -1092,19 +1096,19 @@ internal static class AppViews
 
                     setSecurityActions(result);
                     div.style.color = '';
-                    const configuredCredentials = result.configuredCredentials || [];
-                    const credentials = [...new Set(configuredCredentials.map(credentialLabel))].join(', ') || 'None';
-                    const hasPasskey = hasCredential(configuredCredentials, (type, name) => type === 'passkey' || name === 'passkey');
-                    const hasTotp = hasCredential(configuredCredentials, (type, name) => type === 'mfa' && name === 'totp');
-                    const verification = hasTotp || hasPasskey
-                        ? (hasTotp && hasPasskey ? 'Authenticator app and passkey available' : hasTotp ? 'Authenticator app available' : 'Passkey available')
-                        : 'Not configured';
+                    const credentials = postureNames(result.primaryCredentials);
+                    const verification = postureNames(result.additionalVerificationFactors?.filter(f => f.isConfigured));
+                    const hasAdditionalVerification = (result.additionalVerificationFactors || []).some(f => f.isConfigured);
+                    const protectedActions = hasAdditionalVerification ? 'Available' : 'Blocked until setup';
+                    const missing = hasAdditionalVerification ? 'None' : 'Authenticator app or passkey';
                     div.replaceChildren();
                     [
                         ['Status', result.isActive ? 'Active' : 'Inactive'],
                         ['Email', result.isEmailVerified ? 'Verified' : 'Unverified'],
-                        ['Credentials', credentials],
+                        ['Sign-in methods', credentials],
                         ['Additional verification', verification],
+                        ['Protected actions', protectedActions],
+                        ['Missing setup', missing],
                         ['Active sessions', String(result.activeSessionCount)],
                         ['Recent security events', result.recentSecurityEventCount ?? 'Unavailable']
                     ].forEach(([label, value], index) => {
@@ -1112,7 +1116,7 @@ internal static class AppViews
                         strong.textContent = label + ':';
                         div.appendChild(strong);
                         div.appendChild(document.createTextNode(' ' + value));
-                        if (index < 5) div.appendChild(document.createElement('br'));
+                        if (index < 7) div.appendChild(document.createElement('br'));
                     });
                 };
 

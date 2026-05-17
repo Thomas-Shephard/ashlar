@@ -3,7 +3,6 @@ using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
-using Ashlar.Passkeys;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
 using Microsoft.Extensions.Options;
@@ -34,7 +33,7 @@ internal static class AccountEndpoints
     private static async Task<IResult> RenderAccountSettingsAsync(
         IIdentityRepository users,
         IAuthorizationEvaluator auth,
-        IPasskeyService passkeys,
+        IAccountSecurityService accountSecurity,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
@@ -42,18 +41,14 @@ internal static class AccountEndpoints
         var ashlarUser = await users.GetUserByIdAsync(userId, cancellationToken);
         if (ashlarUser == null) return Results.NotFound();
 
-        var totpCredential = await users.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, cancellationToken);
-        var recoveryCredential = await users.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", null, cancellationToken);
-        var hasPasskeys = (await passkeys.ListAsync(userId, cancellationToken)).Count > 0;
+        var posture = await accountSecurity.GetUserSecurityPostureAsync(userId, cancellationToken: cancellationToken);
+        if (!posture.Succeeded || posture.Value == null) return Results.NotFound();
         var isAdmin = (await auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), cancellationToken)).Succeeded;
 
         return AppViews.RenderAccountSettings(
             ashlarUser.Email,
             ashlarUser.Name,
-            ashlarUser.EmailVerifiedAt.HasValue,
-            totpCredential != null,
-            recoveryCredential != null,
-            hasPasskeys,
+            posture.Value,
             isAdmin);
     }
 
