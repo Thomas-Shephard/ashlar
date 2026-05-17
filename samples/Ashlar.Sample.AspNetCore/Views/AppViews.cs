@@ -64,8 +64,72 @@ internal static class AppViews
             };
         }
 
-        function handleMfaRequired(handshakeToken) {
-            document.querySelector('.card').innerHTML = '<h1>MFA Required</h1><p>Please enter your TOTP code or a recovery code below.</p><form id="mfaForm"><input type="text" id="mfaCode" placeholder="000000 or XXXX-XXXX-XXXX" required /><button type="submit">Verify MFA</button></form><div id="mfaResult"></div>';
+        function base64UrlToBuffer(value) {
+            const base64 = String(value).replace(/-/g, '+').replace(/_/g, '/');
+            const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+            const binary = atob(padded);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return bytes.buffer;
+        }
+
+        function bufferToBase64Url(buffer) {
+            const bytes = new Uint8Array(buffer || new ArrayBuffer(0));
+            let binary = '';
+            bytes.forEach(b => binary += String.fromCharCode(b));
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+        }
+
+        function prepareCredentialCreationOptions(options) {
+            const publicKey = structuredClone(options);
+            publicKey.challenge = base64UrlToBuffer(publicKey.challenge);
+            publicKey.user.id = base64UrlToBuffer(publicKey.user.id);
+            publicKey.excludeCredentials = (publicKey.excludeCredentials || []).map(c => ({ ...c, id: base64UrlToBuffer(c.id) }));
+            return { publicKey };
+        }
+
+        function prepareCredentialRequestOptions(options) {
+            const publicKey = structuredClone(options);
+            publicKey.challenge = base64UrlToBuffer(publicKey.challenge);
+            publicKey.allowCredentials = (publicKey.allowCredentials || []).map(c => ({ ...c, id: base64UrlToBuffer(c.id) }));
+            return { publicKey };
+        }
+
+        function serializeCreatedCredential(credential) {
+            return {
+                id: credential.id,
+                rawId: bufferToBase64Url(credential.rawId),
+                type: credential.type,
+                response: {
+                    clientDataJSON: bufferToBase64Url(credential.response.clientDataJSON),
+                    attestationObject: bufferToBase64Url(credential.response.attestationObject),
+                    transports: typeof credential.response.getTransports === 'function' ? credential.response.getTransports() : []
+                }
+            };
+        }
+
+        function serializeAssertionCredential(credential) {
+            return {
+                id: credential.id,
+                rawId: bufferToBase64Url(credential.rawId),
+                type: credential.type,
+                response: {
+                    clientDataJSON: bufferToBase64Url(credential.response.clientDataJSON),
+                    authenticatorData: bufferToBase64Url(credential.response.authenticatorData),
+                    signature: bufferToBase64Url(credential.response.signature),
+                    userHandle: credential.response.userHandle ? bufferToBase64Url(credential.response.userHandle) : null
+                }
+            };
+        }
+
+        function passkeysAvailable() {
+            return window.PublicKeyCredential && navigator.credentials && window.isSecureContext;
+        }
+
+        function handleMfaRequired(handshakeToken, requiredFactors) {
+            const factors = (requiredFactors || []).map(f => String(f).toLowerCase());
+            const canUsePasskey = factors.includes('passkey');
+            document.querySelector('.card').innerHTML = '<h1>Additional Verification Required</h1><p>Please enter an authenticator app code or recovery code below.</p><form id="mfaForm"><input type="text" id="mfaCode" placeholder="000000 or XXXX-XXXX-XXXX" required /><button type="submit">Verify</button></form>' + (canUsePasskey ? '<button id="passkeyMfaButton" class="secondary" style="margin-top: 1rem;">Use Passkey</button>' : '') + '<div id="mfaResult"></div>';
             document.getElementById('mfaForm').onsubmit = async (mfaE) => {
                 mfaE.preventDefault();
                 const mfaBtn = mfaE.target.querySelector('button');
@@ -87,6 +151,57 @@ internal static class AppViews
                     }
                 } catch (err) { mfaRes.innerText = 'Error connecting.'; mfaBtn.disabled = false; }
             };
+            const passkeyMfaButton = document.getElementById('passkeyMfaButton');
+            if (!passkeyMfaButton) return;
+
+            passkeyMfaButton.onclick = async (e) => {
+                const btn = e.target;
+                const mfaRes = document.getElementById('mfaResult');
+                if (!passkeysAvailable()) {
+                    mfaRes.style.color = '#dc2626';
+                    mfaRes.innerText = 'Passkeys require a secure browser context.';
+                    return;
+                }
+
+                btn.disabled = true;
+                mfaRes.style.color = '';
+                mfaRes.innerText = 'Waiting for passkey...';
+                try {
+                    const optionsResponse = await fetch('/api/passkeys/factor/options', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ handshakeToken: handshakeToken, factorType: 'passkey' })
+                    });
+                    const optionsResult = await optionsResponse.json();
+                    if (!optionsResponse.ok) {
+                        mfaRes.style.color = '#dc2626';
+                        mfaRes.innerText = formatSampleError(optionsResult.error, 'Passkey challenge failed.');
+                        btn.disabled = false;
+                        return;
+                    }
+
+                    const credential = await navigator.credentials.get(prepareCredentialRequestOptions(optionsResult.options));
+                    const completeResponse = await fetch('/api/passkeys/factor/complete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ challengeId: optionsResult.challengeId, assertionResponse: serializeAssertionCredential(credential), handshakeToken: handshakeToken, factorType: 'passkey' })
+                    });
+                    const completeResult = await completeResponse.json();
+                    if (completeResponse.ok && completeResult.status === 'signed_in') {
+                        location.href = '/';
+                    } else if (completeResponse.ok && completeResult.status === 'mfa_required') {
+                        handleMfaRequired(completeResult.handshakeToken, completeResult.requiredFactors);
+                    } else {
+                        mfaRes.style.color = '#dc2626';
+                        mfaRes.innerText = formatSampleError(completeResult.error, 'Passkey verification failed.');
+                        btn.disabled = false;
+                    }
+                } catch (err) {
+                    mfaRes.style.color = '#dc2626';
+                    mfaRes.innerText = 'Passkey verification was cancelled or failed.';
+                    btn.disabled = false;
+                }
+            };
         }
     """;
 
@@ -105,6 +220,50 @@ internal static class AppViews
                 f => ({ email: f.querySelector('#signInEmail').value }),
                 (r, div) => { div.innerHTML = '<p class="badge badge-success">Magic link sent!</p>'; }
             );
+
+            const passkeySignInButton = document.getElementById('passkeySignInButton');
+            if (passkeySignInButton) {
+                passkeySignInButton.disabled = !passkeysAvailable();
+                document.getElementById('passkeyUnavailable').classList.toggle('hidden', passkeysAvailable());
+                passkeySignInButton.onclick = async (e) => {
+                    const btn = e.target;
+                    const resDiv = document.getElementById('passkeySignInResult');
+                    btn.disabled = true;
+                    resDiv.style.color = '';
+                    resDiv.innerText = 'Waiting for passkey...';
+                    try {
+                        const optionsResponse = await fetch('/api/passkeys/authentication/options', { method: 'POST' });
+                        const optionsResult = await optionsResponse.json();
+                        if (!optionsResponse.ok) {
+                            resDiv.style.color = '#dc2626';
+                            resDiv.innerText = formatSampleError(optionsResult.error, 'Passkey challenge failed.');
+                            btn.disabled = false;
+                            return;
+                        }
+
+                        const credential = await navigator.credentials.get(prepareCredentialRequestOptions(optionsResult.options));
+                        const completeResponse = await fetch('/api/passkeys/authentication/complete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ challengeId: optionsResult.challengeId, assertionResponse: serializeAssertionCredential(credential) })
+                        });
+                        const completeResult = await completeResponse.json();
+                        if (completeResponse.ok && completeResult.status === 'signed_in') {
+                            location.href = '/';
+                        } else if (completeResponse.ok && completeResult.status === 'mfa_required') {
+                            handleMfaRequired(completeResult.handshakeToken, completeResult.requiredFactors);
+                        } else {
+                            resDiv.style.color = '#dc2626';
+                            resDiv.innerText = formatSampleError(completeResult.error, 'Passkey sign-in failed.');
+                            btn.disabled = false;
+                        }
+                    } catch (err) {
+                        resDiv.style.color = '#dc2626';
+                        resDiv.innerText = 'Passkey sign-in was cancelled or failed.';
+                        btn.disabled = false;
+                    }
+                };
+            }
         </script>
     """;
 
@@ -185,6 +344,10 @@ internal static class AppViews
                     <button type="submit">Send Magic Link</button>
                 </form>
                 <div id="signInFormResult"></div>
+                <hr style="margin: 2rem 0; border: 0; border-top: 1px solid #e5e7eb;" />
+                <button id="passkeySignInButton" class="secondary" type="button">Sign In With Passkey</button>
+                <p id="passkeyUnavailable" class="hidden" style="color: #6b7280; margin-bottom: 0;">Passkeys require HTTPS or localhost in a browser that supports WebAuthn.</p>
+                <div id="passkeySignInResult"></div>
             </div>
         """;
     }
@@ -217,7 +380,7 @@ internal static class AppViews
         """;
     }
 
-    public static IResult RenderAccountSettings(string userEmail, string? userName, bool isEmailVerified, bool hasTotp, bool hasRecoveryCodes, bool isAdmin)
+    public static IResult RenderAccountSettings(string userEmail, string? userName, bool isEmailVerified, bool hasTotp, bool hasRecoveryCodes, bool hasPasskeys, bool isAdmin)
     {
         var verifiedBadge = isEmailVerified
             ? "<span class=\"badge badge-success\">Verified</span>"
@@ -233,16 +396,28 @@ internal static class AppViews
             <div id="verifyEmailFormResult"></div>
         """;
 
-        var mfaStatus = hasTotp
-            ? "<span class=\"badge badge-success\">Enabled</span> Authenticator App (TOTP) is active."
-            : "<span class=\"badge badge-warning\">Disabled</span> Two-Factor Authentication is not configured.";
+        var verificationStatus = hasTotp || hasPasskeys
+            ? "<span class=\"badge badge-success\">Configured</span>"
+            : "<span class=\"badge badge-warning\">Not configured</span>";
+
+        var totpStatus = hasTotp
+            ? "<span class=\"badge badge-success\">Enabled</span>"
+            : "<span class=\"badge\">Not set</span>";
+
+        var passkeyStatus = hasPasskeys
+            ? "<span class=\"badge badge-success\">Registered</span>"
+            : "<span class=\"badge\">None</span>";
+
+        var recoveryStatus = hasRecoveryCodes
+            ? "<span class=\"badge badge-success\">Generated</span>"
+            : "<span class=\"badge\">None</span>";
 
         var recoveryCodesButtonText = hasRecoveryCodes ? "Regenerate Recovery Codes" : "Generate Recovery Codes";
         var mfaActions = hasTotp
             ? $"""
                 <div class="grid" style="margin-top: 1rem;">
                     <button id="generateBtn" class="secondary" style="height: 2.5rem;">{recoveryCodesButtonText}</button>
-                    <button id="resetMfaBtn" class="secondary danger" style="height: 2.5rem;">Reset MFA</button>
+                    <button id="resetMfaBtn" class="secondary danger" style="height: 2.5rem;">Reset Authenticator App</button>
                 </div>
                 <div id="codesResult" style="margin-top: 1.5rem;"></div>
               """
@@ -307,11 +482,33 @@ internal static class AppViews
                 </div>
 
                 <div id="security" class="tab-pane">
-                    <h3>Two-Factor Authentication</h3>
+                    <h3>Sign-In Verification</h3>
                     <div class="status-box" style="margin-top: 1rem;">
-                        {{mfaStatus}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
+                            <strong>Additional verification</strong>
+                            {{verificationStatus}}
+                        </div>
+                        <div style="display: grid; gap: 0.5rem; margin-top: 1rem;">
+                            <div style="display: flex; justify-content: space-between; gap: 1rem;"><span>Authenticator app</span>{{totpStatus}}</div>
+                            <div style="display: flex; justify-content: space-between; gap: 1rem;"><span>Passkeys</span>{{passkeyStatus}}</div>
+                            <div style="display: flex; justify-content: space-between; gap: 1rem;"><span>Recovery codes</span>{{recoveryStatus}}</div>
+                        </div>
                     </div>
                     {{mfaActions}}
+
+                    <hr style="margin: 2.5rem 0; border: 0; border-top: 1px solid #e5e7eb;" />
+
+                    <h3>Passkeys</h3>
+                    <p>Register and manage passkeys for this account.</p>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="passkeyDisplayName" placeholder="Laptop, phone, or security key" style="margin: 0; flex: 1;" />
+                        <button id="registerPasskeyBtn" type="button" style="width: auto; height: 3rem;">Add Passkey</button>
+                    </div>
+                    <p id="passkeySettingsUnavailable" class="hidden" style="color: #6b7280;">Passkeys require HTTPS or localhost in a browser that supports WebAuthn.</p>
+                    <div id="passkeyResult"></div>
+                    <div id="passkeyList" style="margin-top: 1rem;">
+                        <div class="status-box">Loading passkeys...</div>
+                    </div>
 
                     <hr style="margin: 2.5rem 0; border: 0; border-top: 1px solid #e5e7eb;" />
 
@@ -380,6 +577,147 @@ internal static class AppViews
                     };
                 }
 
+                const passkeyResult = document.getElementById('passkeyResult');
+                const passkeyList = document.getElementById('passkeyList');
+                const registerPasskeyBtn = document.getElementById('registerPasskeyBtn');
+                const passkeyNameInput = document.getElementById('passkeyDisplayName');
+
+                function setPasskeyResult(message, isError) {
+                    passkeyResult.style.color = isError ? '#dc2626' : '';
+                    passkeyResult.innerText = message;
+                }
+
+                async function loadPasskeys() {
+                    const response = await fetch('/api/passkeys');
+                    if (!response.ok || !response.headers.get('Content-Type')?.includes('application/json')) {
+                        passkeyList.innerHTML = '<div class="status-box">Unable to load passkeys.</div>';
+                        return;
+                    }
+
+                    const passkeys = await response.json();
+                    passkeyList.innerHTML = '';
+                    if (passkeys.length === 0) {
+                        passkeyList.innerHTML = '<div class="status-box">No passkeys registered.</div>';
+                        return;
+                    }
+
+                    passkeys.forEach(p => {
+                        const item = document.createElement('div');
+                        item.className = 'status-box';
+                        item.style.display = 'grid';
+                        item.style.gridTemplateColumns = '1fr auto';
+                        item.style.gap = '1rem';
+                        item.style.alignItems = 'center';
+
+                        const info = document.createElement('div');
+                        const title = document.createElement('strong');
+                        title.innerText = p.displayName || 'Passkey';
+                        const details = document.createElement('small');
+                        const parts = [];
+                        if (p.authenticatorAttachment) parts.push(p.authenticatorAttachment);
+                        if (p.discoverable) parts.push('discoverable');
+                        if (p.lastUsedAt) parts.push('Last used: ' + new Date(p.lastUsedAt).toLocaleString());
+                        parts.push('Created: ' + new Date(p.createdAt).toLocaleString());
+                        details.innerText = parts.join(' | ');
+                        info.appendChild(title);
+                        info.appendChild(document.createElement('br'));
+                        info.appendChild(details);
+
+                        const actions = document.createElement('div');
+                        actions.style.display = 'flex';
+                        actions.style.gap = '0.5rem';
+                        const rename = document.createElement('button');
+                        rename.className = 'secondary';
+                        rename.type = 'button';
+                        rename.style.cssText = 'width: auto; height: auto; padding: 0.25rem 0.75rem; font-size: 0.75rem; margin: 0;';
+                        rename.innerText = 'Rename';
+                        rename.onclick = () => renamePasskey(p.id, p.displayName || 'Passkey');
+                        const revoke = document.createElement('button');
+                        revoke.className = 'secondary danger';
+                        revoke.type = 'button';
+                        revoke.style.cssText = 'width: auto; height: auto; padding: 0.25rem 0.75rem; font-size: 0.75rem; margin: 0;';
+                        revoke.innerText = 'Revoke';
+                        revoke.onclick = () => revokePasskey(p.id);
+                        actions.appendChild(rename);
+                        actions.appendChild(revoke);
+
+                        item.appendChild(info);
+                        item.appendChild(actions);
+                        passkeyList.appendChild(item);
+                    });
+                }
+
+                async function renamePasskey(id, currentName) {
+                    const displayName = prompt('Passkey name', currentName);
+                    if (displayName === null) return;
+                    const response = await fetch('/api/passkeys/' + id + '/rename', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ displayName })
+                    });
+                    if (response.ok) {
+                        setPasskeyResult('Passkey renamed.', false);
+                        await loadPasskeys();
+                    } else {
+                        const result = response.headers.get('Content-Type')?.includes('application/json') ? await response.json() : {};
+                        setPasskeyResult(formatSampleError(result.error, 'Passkey rename failed.'), true);
+                    }
+                }
+
+                async function revokePasskey(id) {
+                    if (!confirm('Revoke this passkey?')) return;
+                    const response = await fetch('/api/passkeys/' + id, { method: 'DELETE' });
+                    if (response.ok) {
+                        setPasskeyResult('Passkey revoked.', false);
+                        await loadPasskeys();
+                    } else {
+                        const result = response.headers.get('Content-Type')?.includes('application/json') ? await response.json() : {};
+                        setPasskeyResult(formatSampleError(result.error, 'Passkey revocation failed.'), true);
+                    }
+                }
+
+                if (registerPasskeyBtn) {
+                    registerPasskeyBtn.disabled = !passkeysAvailable();
+                    document.getElementById('passkeySettingsUnavailable').classList.toggle('hidden', passkeysAvailable());
+                    registerPasskeyBtn.onclick = async () => {
+                        const displayName = passkeyNameInput.value || 'Passkey';
+                        registerPasskeyBtn.disabled = true;
+                        setPasskeyResult('Waiting for passkey registration...', false);
+                        try {
+                            const optionsResponse = await fetch('/api/passkeys/registration/options', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ displayName })
+                            });
+                            const optionsResult = await optionsResponse.json();
+                            if (!optionsResponse.ok) {
+                                setPasskeyResult(formatSampleError(optionsResult.error, 'Passkey challenge failed.'), true);
+                                registerPasskeyBtn.disabled = false;
+                                return;
+                            }
+
+                            const credential = await navigator.credentials.create(prepareCredentialCreationOptions(optionsResult.options));
+                            const completeResponse = await fetch('/api/passkeys/registration/complete', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ challengeId: optionsResult.challengeId, credentialResponse: serializeCreatedCredential(credential), displayName })
+                            });
+                            const completeResult = completeResponse.headers.get('Content-Type')?.includes('application/json') ? await completeResponse.json() : {};
+                            if (completeResponse.ok) {
+                                passkeyNameInput.value = '';
+                                setPasskeyResult('Passkey registered.', false);
+                                await loadPasskeys();
+                            } else {
+                                setPasskeyResult(formatSampleError(completeResult.error, 'Passkey registration failed.'), true);
+                            }
+                        } catch (err) {
+                            setPasskeyResult('Passkey registration was cancelled or failed.', true);
+                        } finally {
+                            registerPasskeyBtn.disabled = !passkeysAvailable();
+                        }
+                    };
+                }
+
                 function formatUA(ua) {
                     if (!ua) return 'Unknown Device';
                     const browser = /Edg\//.test(ua) ? 'Edge' : /Chrome/.test(ua) ? 'Chrome' : /Firefox/.test(ua) ? 'Firefox' : /Safari/.test(ua) && !/Chrome/.test(ua) ? 'Safari' : 'Browser';
@@ -421,7 +759,7 @@ internal static class AppViews
                         item.style.alignItems = 'center';
                         const displayIp = (s.ipAddress === '::1' || s.ipAddress === '127.0.0.1') ? 'Local Loopback' : (s.ipAddress || 'Unknown IP');
                         const sanitizedIp = displayIp.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                        let info = '<div><strong>' + formatUA(s.userAgent) + '</strong><br/><small>' + sanitizedIp + ' &bull; Created: ' + new Date(s.createdAt).toLocaleString() + '</small></div>';
+                        let info = '<div><strong>' + formatUA(s.userAgent) + '</strong><br/><small>' + sanitizedIp + ' | Created: ' + new Date(s.createdAt).toLocaleString() + '</small></div>';
                         let action = '';
                         if (s.isCurrent) { action = '<span class="badge badge-success">Current Session</span>'; } else { otherSessionsCount++; action = '<button class="secondary danger" style="width: auto; height: auto; padding: 0.25rem 0.75rem; font-size: 0.75rem; margin: 0;" onclick="revokeSession(\'' + s.id + '\')">Revoke</button>'; }
                         item.innerHTML = info + action;
@@ -442,6 +780,7 @@ internal static class AppViews
                     if (response.ok) loadSessions();
                 };
 
+                loadPasskeys();
                 loadSessions();
             </script>
         """, navLinks);
@@ -480,7 +819,7 @@ internal static class AppViews
                     <button id="disableUserBtn" class="secondary danger hidden" style="height: 2.5rem;">Disable User</button>
                     <button id="reactivateUserBtn" class="secondary hidden" style="height: 2.5rem;">Reactivate User</button>
                     <button id="revokeUserSessionsBtn" class="secondary danger hidden" style="height: 2.5rem;">Revoke Sessions</button>
-                    <button id="resetUserMfaBtn" class="secondary danger hidden" style="height: 2.5rem;">Reset MFA</button>
+                    <button id="resetUserMfaBtn" class="secondary danger hidden" style="height: 2.5rem;">Reset Authenticator Factors</button>
                 </div>
                 <div id="securityActionResult"></div>
 
@@ -545,6 +884,25 @@ internal static class AppViews
                     document.getElementById('resetUserMfaBtn').classList.toggle('hidden', !posture.isMfaConfigured);
                 };
 
+                const normalizeProviderValue = value => String(value || '').toLowerCase();
+
+                const credentialLabel = credential => {
+                    const type = normalizeProviderValue(credential.type?.value || credential.type);
+                    const name = normalizeProviderValue(credential.name);
+                    if (type === 'passkey' || name === 'passkey') return 'Passkey';
+                    if (type === 'mfa' && name === 'totp') return 'Authenticator app';
+                    if (type === 'recoverycode' || name === 'recoverycode') return 'Recovery codes';
+                    if (type === 'emaillogin' || name === 'magiclink') return 'Email sign-in';
+                    if (type === 'emaillogin' || name === 'emailcode') return 'Email code';
+                    return credential.name || credential.type?.value || credential.type || 'Credential';
+                };
+
+                const hasCredential = (credentials, matcher) => credentials.some(c => {
+                    const type = normalizeProviderValue(c.type?.value || c.type);
+                    const name = normalizeProviderValue(c.name);
+                    return matcher(type, name);
+                });
+
                 const loadSecurityPosture = async () => {
                     const userId = document.getElementById('securityUserId').value;
                     const div = document.getElementById('securityPosture');
@@ -566,15 +924,19 @@ internal static class AppViews
 
                     setSecurityActions(result);
                     div.style.color = '';
-                    const credentials = (result.configuredCredentials || [])
-                        .map(c => (c.type?.value || c.type || 'UNKNOWN') + ':' + c.name)
-                        .join(', ') || 'None';
+                    const configuredCredentials = result.configuredCredentials || [];
+                    const credentials = [...new Set(configuredCredentials.map(credentialLabel))].join(', ') || 'None';
+                    const hasPasskey = hasCredential(configuredCredentials, (type, name) => type === 'passkey' || name === 'passkey');
+                    const hasTotp = hasCredential(configuredCredentials, (type, name) => type === 'mfa' && name === 'totp');
+                    const verification = hasTotp || hasPasskey
+                        ? (hasTotp && hasPasskey ? 'Authenticator app and passkey available' : hasTotp ? 'Authenticator app available' : 'Passkey available')
+                        : 'Not configured';
                     div.replaceChildren();
                     [
                         ['Status', result.isActive ? 'Active' : 'Inactive'],
                         ['Email', result.isEmailVerified ? 'Verified' : 'Unverified'],
                         ['Credentials', credentials],
-                        ['MFA', result.isMfaConfigured ? 'Configured' : 'Not configured'],
+                        ['Additional verification', verification],
                         ['Active sessions', String(result.activeSessionCount)],
                         ['Recent security events', result.recentSecurityEventCount ?? 'Unavailable']
                     ].forEach(([label, value], index) => {
@@ -617,7 +979,7 @@ internal static class AppViews
                 document.getElementById('disableUserBtn').onclick = () => runSecurityAction('/disable', 'Disable user');
                 document.getElementById('reactivateUserBtn').onclick = () => runSecurityAction('/reactivate', 'Reactivate user');
                 document.getElementById('revokeUserSessionsBtn').onclick = () => runSecurityAction('/sessions/revoke', 'Revoke sessions');
-                document.getElementById('resetUserMfaBtn').onclick = () => runSecurityAction('/mfa/reset', 'Reset MFA');
+                document.getElementById('resetUserMfaBtn').onclick = () => runSecurityAction('/mfa/reset', 'Reset authenticator factors');
 
                 fetch('/api/admin/users')
                     .then(r => r.json())
@@ -691,7 +1053,7 @@ internal static class AppViews
                         const result = await response.json();
                         if (response.ok) {
                             if (result.status === 'mfa_required') {
-                                handleMfaRequired(result.handshakeToken);
+                                handleMfaRequired(result.handshakeToken, result.requiredFactors);
                             } else {
                                 location.href = '/';
                             }
@@ -867,10 +1229,10 @@ internal static class AppViews
             <form action="/api/auth/logout" method="POST" style="display: inline;"><button type="submit" class="link-btn">Sign Out</button></form>
         """;
 
-        return LandingPages.Layout("MFA Setup", $$"""
+        return LandingPages.Layout("Authenticator App Setup", $$"""
             <div class="card">
-                <h1>Setup MFA</h1>
-                <p>Scan the QR code with your authenticator app to enable Two-Factor Authentication.</p>
+                <h1>Setup Authenticator App</h1>
+                <p>Scan the QR code with your authenticator app to enable code-based sign-in verification.</p>
                 <div class="status-box" style="text-align: center;">
                     <div style="margin-bottom: 1rem; display: flex; justify-content: center;">
                         <canvas id="qr-code"></canvas>
@@ -880,7 +1242,7 @@ internal static class AppViews
                 <form id="verifyForm">
                     <input type="hidden" id="secret" value="{{sharedSecret}}" />
                     <input type="text" id="code" placeholder="000000" required maxlength="6" />
-                    <button type="submit">Verify & Enable MFA</button>
+                    <button type="submit">Verify & Enable Authenticator App</button>
                 </form>
                 <div id="result"></div>
             </div>

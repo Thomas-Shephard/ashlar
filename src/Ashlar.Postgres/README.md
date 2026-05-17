@@ -50,6 +50,7 @@ This will create the following tables:
 - `ashlar_users`: Stores user identity and audit metadata.
 - `ashlar_credentials`: Stores credentials with optimistic concurrency support. Provider identity is globally unique by provider type, provider name, and provider key, and credential status/revocation state is enforced by the database.
 - `ashlar_sessions`: Stores durable authentication sessions using hashed session tokens only.
+- `ashlar_passkey_challenges`: Stores short-lived WebAuthn registration, authentication, and MFA factor challenges.
 - `ashlar_security_events`: Stores structured security audit events.
 - `ashlar_rate_limits`: Stores distributed rate limit state.
 - `ashlar_bootstrap_state`: Stores the system initialization status.
@@ -125,13 +126,15 @@ await using (var tx = await transactionProvider.BeginTransactionAsync())
 
 ### Cleanup and Retention
 
-The email outbox integrates with the Ashlar cleanup service. You can configure retention periods via `AshlarCleanupOptions`:
+The email outbox and short-lived passkey challenges integrate with the Ashlar cleanup service. You can configure retention periods via `AshlarCleanupOptions`:
 
 ```csharp
 services.Configure<AshlarCleanupOptions>(options =>
 {
     options.RemoveSentEmailsAfter = TimeSpan.FromDays(7);
     options.RemoveFailedEmailsAfter = TimeSpan.FromDays(30);
+    options.RemoveExpiredPasskeyChallengesAfter = TimeSpan.FromDays(1);
+    options.RemoveConsumedPasskeyChallengesAfter = TimeSpan.FromDays(1);
 });
 ```
 

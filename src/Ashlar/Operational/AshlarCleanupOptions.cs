@@ -86,6 +86,16 @@ public sealed class AshlarCleanupOptions
     public TimeSpan? RemoveExpiredRateLimitsAfter { get; set; } = TimeSpan.FromDays(1);
 
     /// <summary>
+    /// Retention period after passkey challenge expiration. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
+    /// </summary>
+    public TimeSpan? RemoveExpiredPasskeyChallengesAfter { get; set; } = TimeSpan.FromDays(1);
+
+    /// <summary>
+    /// Retention period after passkey challenge consumption. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes consumed rows on the next cleanup run.
+    /// </summary>
+    public TimeSpan? RemoveConsumedPasskeyChallengesAfter { get; set; } = TimeSpan.FromDays(1);
+
+    /// <summary>
     /// Retention period after audit events occur. <see langword="null" /> disables audit-event cleanup; <see cref="TimeSpan.Zero"/> deletes all audit events on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveAuditEventsAfter { get; set; }
@@ -127,6 +137,8 @@ public sealed class AshlarCleanupOptions
             && IsValid(options.RemoveCompletedHandshakesAfter)
             && IsValid(options.RemoveRevokedHandshakesAfter)
             && IsValid(options.RemoveExpiredRateLimitsAfter)
+            && IsValid(options.RemoveExpiredPasskeyChallengesAfter)
+            && IsValid(options.RemoveConsumedPasskeyChallengesAfter)
             && IsValid(options.RemoveAuditEventsAfter)
             && IsValid(options.RemoveSentEmailsAfter)
             && IsValid(options.RemoveFailedEmailsAfter);

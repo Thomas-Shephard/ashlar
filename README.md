@@ -9,6 +9,15 @@ A small ASP.NET Core reference app is available at [samples/Ashlar.Sample.AspNet
 Ashlar does not register persistence by default. The following official packages are available:
 
 - **[Ashlar.Postgres](src/Ashlar.Postgres/README.md)**: PostgreSQL 15+ identity and session persistence using Dapper and DbUp.
+- **[Ashlar.Passkeys](src/Ashlar.Passkeys/README.md)**: Optional WebAuthn/FIDO2 passkey provider and ceremony services. The package includes the default Fido2-backed ceremony validator and can be replaced with a custom `IPasskeyCeremonyValidator`.
+
+## Passkeys / WebAuthn
+
+Passkey/WebAuthn support is provided by the optional `Ashlar.Passkeys` package. It registers a passkey authentication provider and `IPasskeyService` while keeping WebAuthn/FIDO2 dependencies out of core Ashlar.
+
+Configure the relying party id, relying party name, and HTTPS production origin before enabling browser flows. Loopback and `localhost` HTTP origins are allowed for local development where browsers treat them as secure contexts. Registered passkeys are stored as normal Ashlar credentials with `ProviderType.Passkey`; ceremony challenges are short-lived, purpose-scoped, origin/RP-scoped, and single-use. Public sign-in should use discoverable credentials without an email allow-list. Trusted reauthentication or step-up flows can start challenges scoped to a known `UserId`.
+
+Passkeys participate in Ashlar's MFA-aware authentication orchestration for primary sign-in, so configured MFA policies still apply before an ASP.NET Core session is issued.
 
 ## Identity DI Setup
 Ashlar provides `IServiceCollection` extensions for registering its core identity services:
@@ -176,8 +185,8 @@ Request verification for a user:
 ```csharp
 var verificationService = httpContext.RequestServices.GetRequiredService<IEmailVerificationService>();
 
-await verificationService.RequestVerificationAsync(new EmailVerificationRequest 
-{ 
+await verificationService.RequestVerificationAsync(new EmailVerificationRequest
+{
     UserId = userId,
     CallbackBaseUri = new Uri("https://app.example.com/account/verify-email"),
     Audit = auditContext
@@ -248,20 +257,20 @@ Step 1: Request an email change:
 ```csharp
 var emailChangeService = httpContext.RequestServices.GetRequiredService<IEmailChangeService>();
 
-var result = await emailChangeService.RequestChangeAsync(new RequestEmailChangeRequest 
-{ 
-    UserId = userId, 
-    NewEmail = "new-email@example.com" 
+var result = await emailChangeService.RequestChangeAsync(new RequestEmailChangeRequest
+{
+    UserId = userId,
+    NewEmail = "new-email@example.com"
 });
 ```
 
 Step 2: Confirm the change using the token sent to the NEW email:
 
 ```csharp
-var result = await emailChangeService.ConfirmChangeAsync(new ConfirmEmailChangeRequest 
-{ 
-    UserId = userId, 
-    Token = tokenFromNewEmail 
+var result = await emailChangeService.ConfirmChangeAsync(new ConfirmEmailChangeRequest
+{
+    UserId = userId,
+    Token = tokenFromNewEmail
 });
 
 if (result.Succeeded)
@@ -352,8 +361,8 @@ Create an invitation:
 var invitations = httpContext.RequestServices.GetRequiredService<IInvitationService>();
 
 await invitations.CreateInvitationAsync(
-    new CreateInvitationRequest 
-    { 
+    new CreateInvitationRequest
+    {
         Email = "invitee@example.com",
         Metadata = "{\"role\": \"editor\"}"
     },
@@ -364,8 +373,8 @@ Accept an invitation:
 
 ```csharp
 var result = await invitations.AcceptInvitationAsync(
-    new AcceptInvitationRequest 
-    { 
+    new AcceptInvitationRequest
+    {
         Token = tokenFromUrl,
         UserName = "Jane Doe"
     });
@@ -386,9 +395,9 @@ Register bootstrap services:
 ```csharp
 services.AddAshlarBootstrap(options =>
 {
-    options.Grants.Add(new BootstrapGrantTemplate 
-    { 
-        Role = "admin" 
+    options.Grants.Add(new BootstrapGrantTemplate
+    {
+        Role = "admin"
     });
 });
 ```
@@ -463,7 +472,7 @@ var authenticationResponse = await pipeline.LoginAsync(
     new AuthenticationContext(
         Email: userEmail,
         IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
-        UserAgent: httpContext.Request.Headers.UserAgent.ToString()), 
+        UserAgent: httpContext.Request.Headers.UserAgent.ToString()),
     assertion);
 
 if (authenticationResponse.Succeeded)
@@ -525,9 +534,9 @@ if (result.Status == MfaAuthenticationStatus.MfaRequired)
 {
     // Primary auth succeeded, but MFA is required.
     // Send the raw continuation token and required factors to the client.
-    return Results.Ok(new { 
-        token = result.HandshakeToken, 
-        factors = result.RequiredFactors 
+    return Results.Ok(new {
+        token = result.HandshakeToken,
+        factors = result.RequiredFactors
     });
 }
 ```
@@ -625,10 +634,10 @@ Use `IAuthenticationSessionService` for low-level session management:
 
 ```csharp
 // 1. List active sessions for a user
-var request = new ListAuthenticationSessionsRequest 
-{ 
-    ActiveOnly = true, 
-    CurrentSessionId = currentSessionId 
+var request = new ListAuthenticationSessionsRequest
+{
+    ActiveOnly = true,
+    CurrentSessionId = currentSessionId
 };
 var sessions = await sessionService.ListSessionsForUserAsync(userId, request);
 
@@ -638,17 +647,17 @@ foreach (var summary in sessions)
 }
 
 // 2. Revoke a specific session (ownership is enforced)
-await sessionService.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest 
-{ 
-    SessionId = targetSessionId, 
-    Reason = "user-initiated" 
+await sessionService.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest
+{
+    SessionId = targetSessionId,
+    Reason = "user-initiated"
 });
 
 // 3. Revoke all other sessions for a user
-await sessionService.RevokeOtherSessionsAsync(userId, new RevokeOtherAuthenticationSessionsRequest 
-{ 
-    CurrentSessionId = currentSessionId, 
-    Reason = "security-sweep" 
+await sessionService.RevokeOtherSessionsAsync(userId, new RevokeOtherAuthenticationSessionsRequest
+{
+    CurrentSessionId = currentSessionId,
+    Reason = "security-sweep"
 });
 ```
 
@@ -802,7 +811,7 @@ await signInManager.SignInAsync(
 Cookie defaults are intentionally secure: `HttpOnly = true`, `SecurePolicy = Always`, `SameSite = Lax`, and `Path = "/"`. `SameSite=Lax` is chosen so normal top-level navigation back to an application login flow keeps working while cross-site subresource and background requests do not carry the session cookie. Applications that need stricter same-site behavior can configure the cookie builder.
 
 ## Rate Limiting
-Ashlar includes framework-neutral rate limiting primitives to protect sensitive authentication flows. `AddAshlarIdentity` registers a thread-safe `InMemoryAuthenticationRateLimiter` by default. 
+Ashlar includes framework-neutral rate limiting primitives to protect sensitive authentication flows. `AddAshlarIdentity` registers a thread-safe `InMemoryAuthenticationRateLimiter` by default.
 
 **Note**: The default in-memory rate limiter is suitable for development and single-instance deployments. Distributed production applications should implement and register a persistent/distributed `IAuthenticationRateLimiter`.
 
@@ -829,7 +838,7 @@ The PostgreSQL implementation uses the same schema initialized by `InitializeAsh
 Callers should choose rate limit keys carefully (e.g., per-email, per-IP, or composite keys) to isolate flows correctly.
 
 ## Cleanup and Retention
-Ashlar can explicitly remove expired or retained operational data from PostgreSQL: expired/revoked sessions and credentials, expired/accepted/revoked invitations, expired/completed/revoked MFA handshakes, expired rate-limit rows, and old audit events. Audit-event retention is disabled by default and must be configured intentionally.
+Ashlar can explicitly remove expired or retained operational data from PostgreSQL: expired/revoked sessions and credentials, expired/accepted/revoked invitations, expired/completed/revoked MFA handshakes, expired/consumed passkey challenges, expired rate-limit rows, and old audit events. Audit-event retention is disabled by default and must be configured intentionally.
 
 Register the cleanup service and call it from an administrative job or maintenance endpoint:
 
@@ -839,6 +848,8 @@ services.AddAshlarPostgresCleanup(options =>
 {
     options.BatchSize = 500;
     options.MaxBatchesPerRun = 10;
+    options.RemoveExpiredPasskeyChallengesAfter = TimeSpan.FromDays(1);
+    options.RemoveConsumedPasskeyChallengesAfter = TimeSpan.FromDays(1);
     options.RemoveAuditEventsAfter = TimeSpan.FromDays(365);
 });
 ```
@@ -874,19 +885,19 @@ Ashlar supports scoped database transactions through the `IAshlarTransactionProv
 
 ```csharp
 public class MyIdentityService(
-    IIdentityService identityService, 
+    IIdentityService identityService,
     IAshlarTransactionProvider transactionProvider)
 {
     public async Task RegisterAndInviteAsync(User user)
     {
         // Start a transaction for the current scope
         await using var transaction = await transactionProvider.BeginTransactionAsync();
-        
+
         try
         {
             await identityService.CreateUserAsync(user);
             await identityService.SetPasswordAsync(user.Id, "...");
-            
+
             // All operations in this scope now share the same transaction
             await transaction.CommitAsync();
         }

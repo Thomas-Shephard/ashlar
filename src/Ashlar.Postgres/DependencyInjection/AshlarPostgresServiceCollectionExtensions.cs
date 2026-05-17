@@ -64,6 +64,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.TryAddScoped<IInvitationRepository, PostgresInvitationRepository>();
         services.TryAddScoped<IAuthenticationSessionRepository, PostgresAuthenticationSessionRepository>();
         services.TryAddScoped<IAuthenticationHandshakeRepository, PostgresAuthenticationHandshakeRepository>();
+        services.TryAddScoped<IPasskeyChallengeRepository, PostgresPasskeyChallengeRepository>();
         services.TryAddScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
         services.TryAddScoped<IBootstrapStateRepository, PostgresBootstrapStateRepository>();
         services.TryAddTransient<SchemaManager>();

@@ -131,6 +131,30 @@ internal sealed class AuthenticationOrchestratorTests
     }
 
     [Test]
+    public async Task AuthenticateAsyncStoresPrimaryCredentialKeyInHandshakeMetadata()
+    {
+        var providerKey = new AuthenticationProviderKey(ProviderType.Passkey, "passkey");
+        var assertion = new TestCredentialKeyAssertion(providerKey, "credential-id");
+        _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), assertion, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+        _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["passkey"])));
+        var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "passkey" }, new HashSet<string>());
+        _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
+
+        await _orchestrator.AuthenticateAsync(_context, assertion);
+
+        _handshakeServiceMock.Verify(h => h.CreateHandshakeAsync(
+            It.Is<CreateAuthenticationHandshakeRequest>(r =>
+                r.Metadata != null
+                && r.Metadata["primary_provider_type"] == providerKey.Type.Value
+                && r.Metadata["primary_provider_name"] == providerKey.Name
+                && r.Metadata["primary_credential_key"] == "credential-id"),
+            It.IsAny<CancellationToken>()));
+    }
+
+    [Test]
     public async Task AuthenticateAsyncReturnsMfaRequiredWhenProviderRequiresMfa()
     {
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -558,6 +582,97 @@ internal sealed class AuthenticationOrchestratorTests
     }
 
     [Test]
+    public async Task VerifyFactorAsyncFailsBeforeAuthenticationWhenFactorReusesPrimaryCredential()
+    {
+        var logger = new RecordingLogger<AuthenticationOrchestrator>();
+        var orchestrator = CreateOrchestrator(logger);
+        var providerKey = new AuthenticationProviderKey(ProviderType.Passkey, "passkey");
+        var assertion = new TestCredentialKeyAssertion(providerKey, "credential-id");
+        var metadata = new Dictionary<string, string>
+        {
+            ["primary_provider_type"] = providerKey.Type.Value,
+            ["primary_provider_name"] = providerKey.Name,
+            ["primary_credential_key"] = "credential-id"
+        };
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            _userMock.Object.Id,
+            "hash",
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow.AddMinutes(5),
+            false,
+            false,
+            new HashSet<string> { "passkey" },
+            new HashSet<string>(),
+            metadata);
+        _handshakeServiceMock.Setup(h => h.GetHandshakeAsync("token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await orchestrator.VerifyFactorAsync("token", "passkey", _context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
+            Assert.That(result.ErrorMessage, Is.EqualTo("Factor verification failed."));
+            Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
+                entry.Level == LogLevel.Debug
+                && entry.Message.Contains("MFA factor verification rejected for handshake", StringComparison.Ordinal)
+                && entry.Message.Contains("Reason=factor_reuses_primary_credential", StringComparison.Ordinal)
+                && entry.Message.Contains($"UserId={handshake.UserId}", StringComparison.Ordinal)));
+        }
+
+        _pipelineMock.Verify(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
+        _handshakeServiceMock.Verify(h => h.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task VerifyFactorAsyncAllowsCredentialAssertionWhenPrimaryMetadataIsIncomplete()
+    {
+        var assertion = new TestCredentialKeyAssertion(new AuthenticationProviderKey(ProviderType.Passkey, "passkey"), "credential-id");
+        var metadataValues = new[]
+        {
+            [],
+            new Dictionary<string, string> { ["primary_provider_type"] = ProviderType.Passkey.Value },
+            new Dictionary<string, string> { ["primary_provider_type"] = ProviderType.Passkey.Value, ["primary_provider_name"] = "passkey" },
+            new Dictionary<string, string>
+            {
+                ["primary_provider_type"] = ProviderType.Local.Value,
+                ["primary_provider_name"] = "passkey",
+                ["primary_credential_key"] = "credential-id"
+            },
+            new Dictionary<string, string>
+            {
+                ["primary_provider_type"] = ProviderType.Passkey.Value,
+                ["primary_provider_name"] = "other",
+                ["primary_credential_key"] = "credential-id"
+            },
+            new Dictionary<string, string>
+            {
+                ["primary_provider_type"] = ProviderType.Passkey.Value,
+                ["primary_provider_name"] = "passkey",
+                ["primary_credential_key"] = "other"
+            }
+        };
+
+        foreach (var metadata in metadataValues)
+        {
+            var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "passkey" }, new HashSet<string>(), metadata);
+            _handshakeServiceMock.Reset();
+            _pipelineMock.Reset();
+            _handshakeServiceMock.Setup(h => h.GetHandshakeAsync("token", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(handshake);
+            _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), assertion, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            _handshakeServiceMock.Setup(h => h.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(Result.Success(handshake with { IsCompleted = true, VerifiedFactors = new HashSet<string> { "passkey" } }));
+
+            var result = await _orchestrator.VerifyFactorAsync("token", "passkey", _context, assertion);
+
+            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
+        }
+    }
+
+    [Test]
     public async Task VerifyFactorAsyncFailsBeforeAuthenticationWhenFactorIsNotRequired()
     {
         var logger = new RecordingLogger<AuthenticationOrchestrator>();
@@ -942,4 +1057,6 @@ internal sealed class AuthenticationOrchestratorTests
             _policyEvaluatorMock.Object,
             logger: logger);
     }
+
+    private sealed record TestCredentialKeyAssertion(AuthenticationProviderKey ProviderIdentity, string CredentialKey) : ICredentialKeyAuthenticationAssertion;
 }

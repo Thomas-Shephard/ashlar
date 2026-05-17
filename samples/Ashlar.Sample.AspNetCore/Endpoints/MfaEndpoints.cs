@@ -156,6 +156,16 @@ internal static class MfaEndpoints
             return Results.BadRequest(new { error = "invalid_mfa_code" });
         }
 
+        if (!result.Value.IsCompleted)
+        {
+            return Results.Ok(new
+            {
+                status = "mfa_required",
+                handshakeToken,
+                requiredFactors = result.Value.RequiredFactors.Except(result.Value.VerifiedFactors)
+            });
+        }
+
         await services.SignInManager.SignInAsync(httpContext, recoveryResponse.User.Id, httpContext.ToSessionRequest(), cancellationToken);
         return Results.Ok(new { userId = recoveryResponse.User.Id });
     }

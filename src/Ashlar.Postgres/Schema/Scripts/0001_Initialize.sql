@@ -194,6 +194,36 @@ CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_expires_at ON ashlar_mfa_han
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_completed_at ON ashlar_mfa_handshakes (completed_at) WHERE completed_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_revoked_at ON ashlar_mfa_handshakes (revoked_at) WHERE revoked_at IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS ashlar_passkey_challenges (
+    id UUID PRIMARY KEY,
+    version TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    user_id UUID REFERENCES ashlar_users (id) ON DELETE CASCADE,
+    handshake_token_hash TEXT,
+    factor_type TEXT,
+    display_name TEXT,
+    challenge TEXT NOT NULL UNIQUE,
+    options_json JSONB NOT NULL,
+    relying_party_id TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    consumed_at TIMESTAMPTZ,
+    CONSTRAINT ck_ashlar_passkey_challenges_purpose CHECK (purpose IN ('passkey-registration', 'passkey-authentication')),
+    CONSTRAINT ck_ashlar_passkey_challenges_expiry_after_creation CHECK (expires_at >= created_at),
+    CONSTRAINT ck_ashlar_passkey_challenges_registration_user CHECK (purpose <> 'passkey-registration' OR user_id IS NOT NULL),
+    CONSTRAINT ck_ashlar_passkey_challenges_factor_binding CHECK ((handshake_token_hash IS NULL AND factor_type IS NULL) OR (handshake_token_hash IS NOT NULL AND factor_type IS NOT NULL)),
+    CONSTRAINT ck_ashlar_passkey_challenges_factor_shape CHECK (handshake_token_hash IS NULL OR (purpose = 'passkey-authentication' AND user_id IS NOT NULL)),
+    CONSTRAINT ck_ashlar_passkey_challenges_nonblank_fields CHECK (btrim(version) <> '' AND btrim(purpose) <> '' AND btrim(challenge) <> '' AND btrim(relying_party_id) <> '' AND btrim(origin) <> '' AND (handshake_token_hash IS NULL OR btrim(handshake_token_hash) <> '') AND (factor_type IS NULL OR btrim(factor_type) <> '') AND (display_name IS NULL OR (btrim(display_name) <> '' AND char_length(display_name) <= 100)))
+);
+
+CREATE INDEX IF NOT EXISTS ix_ashlar_passkey_challenges_active_expires ON ashlar_passkey_challenges (expires_at, id)
+WHERE consumed_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_passkey_challenges_consumed_at ON ashlar_passkey_challenges (consumed_at, id)
+WHERE consumed_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_passkey_challenges_user_id ON ashlar_passkey_challenges (user_id)
+WHERE user_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS ashlar_email_outbox (
     id UUID PRIMARY KEY,
     to_address TEXT NOT NULL,

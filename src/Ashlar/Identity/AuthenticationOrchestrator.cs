@@ -22,6 +22,11 @@ public sealed class AuthenticationOrchestrator(
     ILogger<AuthenticationOrchestrator>? logger = null)
     : IAuthenticationOrchestrator
 {
+    private const string PrimaryProviderTypeMetadataKey = "primary_provider_type";
+    private const string PrimaryProviderNameMetadataKey = "primary_provider_name";
+    private const string PrimaryCredentialKeyMetadataKey = "primary_credential_key";
+    private const string FactorVerificationFailedMessage = "Factor verification failed.";
+
     private static readonly Action<ILogger, string, Exception?> MfaFactorVerificationRejected =
         LoggerMessage.Define<string>(
             LogLevel.Debug,
@@ -76,7 +81,7 @@ public sealed class AuthenticationOrchestrator(
 
         if (response.Status == AuthenticationStatus.MfaRequired || policyEvaluation.IsMfaRequired)
         {
-            return await CreateMfaRequiredResultAsync(response.User, response, policyEvaluation, options, context, cancellationToken);
+            return await CreateMfaRequiredResultAsync(response.User, response, policyEvaluation, options, context, primaryAssertion, cancellationToken);
         }
 
         return new MfaAuthenticationResult(
@@ -119,7 +124,13 @@ public sealed class AuthenticationOrchestrator(
         if (!IsAssertionAuthorizedForFactor(assertion, resolvedFactorType))
         {
             MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "assertion_not_authorized_for_factor", null);
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Factor verification failed.");
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: FactorVerificationFailedMessage);
+        }
+
+        if (IsSameCredentialAsPrimary(handshake, assertion))
+        {
+            MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "factor_reuses_primary_credential", null);
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: FactorVerificationFailedMessage);
         }
 
         var factorContext = context with { UserId = handshake.UserId };
@@ -127,12 +138,12 @@ public sealed class AuthenticationOrchestrator(
         if (!response.Succeeded || response.User?.Id != handshake.UserId)
         {
             MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "factor_authentication_failed", null);
-            var errorMessage = response.Status == AuthenticationStatus.Disabled ? "User is disabled." : "Factor verification failed.";
+            var errorMessage = response.Status == AuthenticationStatus.Disabled ? "User is disabled." : FactorVerificationFailedMessage;
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: errorMessage);
         }
 
         // Capture any new claims from this factor
-        var metadata = new Dictionary<string, string>();
+        Dictionary<string, string> metadata = [];
         if (response.Claims != null)
         {
             foreach (var claim in response.Claims)
@@ -181,6 +192,7 @@ public sealed class AuthenticationOrchestrator(
         MfaPolicyEvaluation policyEvaluation,
         MfaOrchestrationOptions options,
         AuthenticationContext context,
+        IAuthenticationAssertion primaryAssertion,
         CancellationToken cancellationToken)
     {
         var requiredFactors = ResolveRequiredFactors(policyEvaluation, response.Claims, options.ProviderFactorsClaimName);
@@ -191,7 +203,7 @@ public sealed class AuthenticationOrchestrator(
         }
 
         var result = await _handshakeService.CreateHandshakeAsync(
-            new CreateAuthenticationHandshakeRequest(user.Id, requiredFactors, BuildClaimMetadata(response.Claims), context with { UserId = user.Id }),
+            new CreateAuthenticationHandshakeRequest(user.Id, requiredFactors, BuildClaimMetadata(response.Claims, primaryAssertion), context with { UserId = user.Id }),
             cancellationToken);
 
         if (!result.Succeeded)
@@ -228,9 +240,32 @@ public sealed class AuthenticationOrchestrator(
         return requiredFactors;
     }
 
-    private static Dictionary<string, string> BuildClaimMetadata(IDictionary<string, string>? claims)
+    private static bool IsSameCredentialAsPrimary(AuthenticationHandshake handshake, IAuthenticationAssertion assertion)
     {
-        return claims?.ToDictionary(claim => $"claim:{claim.Key}", claim => claim.Value) ?? [];
+        if (handshake.Metadata == null || assertion is not ICredentialKeyAuthenticationAssertion credentialAssertion)
+        {
+            return false;
+        }
+
+        return handshake.Metadata.TryGetValue(PrimaryProviderTypeMetadataKey, out var providerType)
+            && handshake.Metadata.TryGetValue(PrimaryProviderNameMetadataKey, out var providerName)
+            && handshake.Metadata.TryGetValue(PrimaryCredentialKeyMetadataKey, out var credentialKey)
+            && string.Equals(providerType, assertion.ProviderIdentity.Type.Value, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(providerName, assertion.ProviderIdentity.Name, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(credentialKey, credentialAssertion.CredentialKey, StringComparison.Ordinal);
+    }
+
+    private static Dictionary<string, string> BuildClaimMetadata(IDictionary<string, string>? claims, IAuthenticationAssertion primaryAssertion)
+    {
+        var metadata = claims?.ToDictionary(claim => $"claim:{claim.Key}", claim => claim.Value) ?? [];
+        metadata[PrimaryProviderTypeMetadataKey] = primaryAssertion.ProviderIdentity.TypeValueOrUnknown;
+        metadata[PrimaryProviderNameMetadataKey] = primaryAssertion.ProviderIdentity.Name;
+        if (primaryAssertion is ICredentialKeyAuthenticationAssertion credentialAssertion)
+        {
+            metadata[PrimaryCredentialKeyMetadataKey] = credentialAssertion.CredentialKey;
+        }
+
+        return metadata;
     }
 
     private static Dictionary<string, string> ExtractClaims(IDictionary<string, string>? metadata)
@@ -253,7 +288,7 @@ public sealed class AuthenticationOrchestrator(
             AshlarFailureCodes.InvalidFactorTypeValue => "Invalid factor type.",
             AshlarFailureCodes.FactorAlreadyVerifiedValue => "Factor already verified.",
             AshlarFailureCodes.InvalidMetadataValue => "Invalid metadata.",
-            _ => "Factor verification failed."
+            _ => FactorVerificationFailedMessage
         };
     }
 
