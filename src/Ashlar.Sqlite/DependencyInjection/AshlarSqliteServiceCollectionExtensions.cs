@@ -1,4 +1,7 @@
+using Ashlar.Auditing;
+using Ashlar.Authorization.Abstractions;
 using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.Models;
 using Ashlar.Sqlite;
 using Ashlar.Sqlite.Schema;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -36,6 +39,10 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.TryAddScoped<IAuthenticationSessionRepository, SqliteAuthenticationSessionRepository>();
         services.TryAddScoped<IAuthenticationHandshakeRepository, SqliteAuthenticationHandshakeRepository>();
         services.TryAddScoped<IPasskeyChallengeRepository, SqlitePasskeyChallengeRepository>();
+        services.TryAddScoped<IAuthorizationGrantRepository, SqliteAuthorizationGrantRepository>();
+        services.TryAddSingleton<SqliteSecurityEventSink>();
+        services.Replace(ServiceDescriptor.Singleton<ISecurityEventSink>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
+        services.Replace(ServiceDescriptor.Singleton<IUserSecurityEventSummaryRepository>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
         services.TryAddTransient<SqliteSchemaManager>();
 
         return services;
