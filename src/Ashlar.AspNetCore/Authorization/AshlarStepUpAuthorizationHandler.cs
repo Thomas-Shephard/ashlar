@@ -60,8 +60,7 @@ public sealed class AshlarStepUpAuthorizationHandler(
             return null;
         }
 
-        var currentSession = _httpContextAccessor.HttpContext?.Items[AshlarHttpContextItems.AuthenticationSession] as AuthenticationSession;
-        if (currentSession == null)
+        if (_httpContextAccessor.HttpContext?.Items[AshlarHttpContextItems.AuthenticationSession] is not AuthenticationSession currentSession)
         {
             return claimedSession;
         }
