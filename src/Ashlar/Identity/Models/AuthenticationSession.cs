@@ -26,6 +26,26 @@ public sealed class AuthenticationSession
     /// </summary>
     public required DateTimeOffset CreatedAt { get; init; }
     /// <summary>
+    /// Gets or sets when the user authenticated for this session.
+    /// </summary>
+    public DateTimeOffset? AuthenticatedAt { get; set; }
+    /// <summary>
+    /// Gets or sets the primary provider used to create this session.
+    /// </summary>
+    public AuthenticationProviderKey? PrimaryProvider { get; set; }
+    /// <summary>
+    /// Gets or sets when additional verification was completed for this session.
+    /// </summary>
+    public DateTimeOffset? AdditionalVerificationAt { get; set; }
+    /// <summary>
+    /// Gets or sets the provider used for additional verification.
+    /// </summary>
+    public AuthenticationProviderKey? AdditionalVerificationProvider { get; set; }
+    /// <summary>
+    /// Gets or sets the verified factor family used for additional verification.
+    /// </summary>
+    public string? AdditionalVerificationFactor { get; set; }
+    /// <summary>
     /// Gets or sets the expires at value.
     /// </summary>
     public required DateTimeOffset ExpiresAt { get; init; }

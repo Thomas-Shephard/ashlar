@@ -1,4 +1,5 @@
 using System.Net;
+using System.Globalization;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Ashlar.AspNetCore.Authentication;
@@ -33,6 +34,11 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
         var sessionId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
         var session = CreateSession(sessionId, userId, DateTimeOffset.UtcNow.AddHours(1), tenantId);
+        session.AuthenticatedAt = new DateTimeOffset(2026, 5, 17, 12, 0, 0, TimeSpan.Zero);
+        session.PrimaryProvider = AuthenticationProviderKey.EmailCode;
+        session.AdditionalVerificationAt = new DateTimeOffset(2026, 5, 17, 12, 5, 0, TimeSpan.Zero);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
+        session.AdditionalVerificationFactor = "totp";
         var sessionService = new Mock<IAuthenticationSessionService>();
         sessionService
             .Setup(s => s.ValidateSessionAsync("raw-token", It.IsAny<CancellationToken>()))
@@ -50,6 +56,13 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
             Assert.That(result.Principal?.FindFirstValue(AshlarClaimTypes.SessionId), Is.EqualTo(sessionId.ToString("D")));
             Assert.That(result.Principal?.FindFirstValue(AshlarClaimTypes.TenantId), Is.EqualTo(tenantId.ToString("D")));
             Assert.That(result.Principal?.FindFirstValue(ClaimTypes.AuthenticationMethod), Is.EqualTo(AshlarSessionAuthenticationDefaults.AuthenticationScheme));
+            Assert.That(result.Principal?.FindFirstValue(AshlarClaimTypes.AuthenticatedAt), Is.EqualTo(session.AuthenticatedAt.Value.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)));
+            Assert.That(result.Principal?.FindFirstValue(AshlarClaimTypes.PrimaryProviderType), Is.EqualTo(ProviderType.EmailCode.Value));
+            Assert.That(result.Principal?.FindFirstValue(AshlarClaimTypes.PrimaryProviderName), Is.EqualTo(AuthenticationProviderKey.EmailCode.Name));
+            Assert.That(result.Principal?.FindFirstValue(AshlarClaimTypes.AdditionalVerificationAt), Is.EqualTo(session.AdditionalVerificationAt.Value.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)));
+            Assert.That(result.Principal?.FindFirstValue(AshlarClaimTypes.AdditionalVerificationProviderType), Is.EqualTo(ProviderType.Mfa.Value));
+            Assert.That(result.Principal?.FindFirstValue(AshlarClaimTypes.AdditionalVerificationProviderName), Is.EqualTo("totp"));
+            Assert.That(result.Principal?.FindFirstValue(AshlarClaimTypes.AdditionalVerificationFactor), Is.EqualTo("totp"));
         }
     }
 

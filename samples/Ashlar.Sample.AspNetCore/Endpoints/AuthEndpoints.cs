@@ -44,7 +44,7 @@ internal static class AuthEndpoints
                 new MagicLinkAssertion(request.T),
                 cancellationToken: cancellationToken);
 
-            return await HandleAuthResponse(response, signInManager, httpContext, cancellationToken);
+            return await HandleAuthResponse(response, signInManager, httpContext, AuthenticationProviderKey.MagicLink, cancellationToken);
         });
 
         app.MapPost("/api/auth/email-code/request", async (
@@ -74,7 +74,7 @@ internal static class AuthEndpoints
                 new EmailCodeAssertion(request.Code),
                 cancellationToken: cancellationToken);
 
-            return await HandleAuthResponse(response, signInManager, httpContext, cancellationToken);
+            return await HandleAuthResponse(response, signInManager, httpContext, AuthenticationProviderKey.EmailCode, cancellationToken);
         });
 
         app.MapPost("/api/auth/logout", async (IAshlarSignInManager signInManager, HttpContext httpContext, CancellationToken cancellationToken) =>
@@ -84,7 +84,7 @@ internal static class AuthEndpoints
         });
     }
 
-    private static async Task<IResult> HandleAuthResponse(MfaAuthenticationResult response, IAshlarSignInManager signInManager, HttpContext httpContext, CancellationToken cancellationToken)
+    private static async Task<IResult> HandleAuthResponse(MfaAuthenticationResult response, IAshlarSignInManager signInManager, HttpContext httpContext, AuthenticationProviderKey primaryProvider, CancellationToken cancellationToken)
     {
         if (response.Status == MfaAuthenticationStatus.Failed || response.User == null)
         {
@@ -101,7 +101,7 @@ internal static class AuthEndpoints
             });
         }
 
-        await signInManager.SignInAsync(httpContext, response.User.Id, httpContext.ToSessionRequest(), cancellationToken);
+        await signInManager.SignInAsync(httpContext, response.User.Id, httpContext.ToSessionRequest(primaryProvider), cancellationToken);
         return Results.Ok(new { userId = response.User.Id });
     }
 }

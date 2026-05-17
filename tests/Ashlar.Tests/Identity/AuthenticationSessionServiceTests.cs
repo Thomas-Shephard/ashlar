@@ -114,6 +114,38 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
+    public async Task CreateSessionAsyncShouldStoreAuthenticationMetadata()
+    {
+        AuthenticationSession? storedSession = null;
+        _repositoryMock
+            .Setup(r => r.CreateSessionAsync(It.IsAny<AuthenticationSession>(), It.IsAny<CancellationToken>()))
+            .Callback<AuthenticationSession, CancellationToken>((session, _) => storedSession = session)
+            .Returns(Task.CompletedTask);
+        var authenticatedAt = _timeProvider.GetUtcNow().AddMinutes(-1);
+        var additionalVerificationAt = _timeProvider.GetUtcNow();
+        var primaryProvider = AuthenticationProviderKey.EmailCode;
+        var additionalProvider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
+
+        await _service.CreateSessionAsync(
+            Guid.NewGuid(),
+            new CreateAuthenticationSessionRequest(
+                AuthenticatedAt: authenticatedAt,
+                PrimaryProvider: primaryProvider,
+                AdditionalVerificationAt: additionalVerificationAt,
+                AdditionalVerificationProvider: additionalProvider,
+                AdditionalVerificationFactor: "totp"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storedSession?.AuthenticatedAt, Is.EqualTo(authenticatedAt));
+            Assert.That(storedSession?.PrimaryProvider, Is.EqualTo(primaryProvider));
+            Assert.That(storedSession?.AdditionalVerificationAt, Is.EqualTo(additionalVerificationAt));
+            Assert.That(storedSession?.AdditionalVerificationProvider, Is.EqualTo(additionalProvider));
+            Assert.That(storedSession?.AdditionalVerificationFactor, Is.EqualTo("totp"));
+        }
+    }
+
+    [Test]
     public async Task CreateSessionAsyncShouldOmitOptionalSessionContextWhenDisabled()
     {
         var service = new AuthenticationSessionService(

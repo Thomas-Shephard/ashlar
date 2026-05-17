@@ -49,7 +49,7 @@ await serviceProvider.InitializeAshlarPostgresSchemaAsync();
 This will create the following tables:
 - `ashlar_users`: Stores user identity and audit metadata.
 - `ashlar_credentials`: Stores credentials with optimistic concurrency support. Provider identity is globally unique by provider type, provider name, and provider key, and credential status/revocation state is enforced by the database.
-- `ashlar_sessions`: Stores durable authentication sessions using hashed session tokens only.
+- `ashlar_sessions`: Stores durable authentication sessions using hashed session tokens only, plus safe authentication metadata for primary sign-in and recent additional verification.
 - `ashlar_passkey_challenges`: Stores short-lived WebAuthn registration, authentication, and MFA factor challenges.
 - `ashlar_security_events`: Stores structured security audit events.
 - `ashlar_rate_limits`: Stores distributed rate limit state.
@@ -65,7 +65,7 @@ The schema enforces tenant-scoped user email uniqueness, unique token hashes for
 - **Multi-tenancy**: First-class support for `ITenantUser`.
 - **Tenant Email Isolation**: The same normalized email can exist in different tenants, but not twice in the same tenant or twice without a tenant.
 - **Atomic Operations**: Optimistic concurrency (version checking) for all credential updates and consumption.
-- **Session Persistence**: Stores session expiry, last-seen, revocation, request metadata, and deterministic token hashes. Raw session tokens are never stored.
+- **Session Persistence**: Stores session expiry, last-seen, revocation, request metadata, safe authentication metadata, and deterministic token hashes. Raw session tokens are never stored.
 - **Case-Insensitive Identity**: Emails are normalized and looked up case-insensitively using optimized indexes.
 - **Modern Npgsql**: Built for `NpgsqlDataSource` and .NET 8+.
 
