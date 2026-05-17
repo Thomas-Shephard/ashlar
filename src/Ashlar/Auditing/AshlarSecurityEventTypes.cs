@@ -18,6 +18,22 @@ public static class AshlarSecurityEventTypes
     /// </summary>
     public const string UserCreated = "ashlar.user.created";
     /// <summary>
+    /// Defines the user disabled value.
+    /// </summary>
+    public const string UserDisabled = "ashlar.user.disabled";
+    /// <summary>
+    /// Defines the user reactivated value.
+    /// </summary>
+    public const string UserReactivated = "ashlar.user.reactivated";
+    /// <summary>
+    /// Defines the user credentials revoked value.
+    /// </summary>
+    public const string UserCredentialsRevoked = "ashlar.user.credentials_revoked";
+    /// <summary>
+    /// Defines the user mfa reset value.
+    /// </summary>
+    public const string UserMfaReset = "ashlar.user.mfa_reset";
+    /// <summary>
     /// Defines the credential linked value.
     /// </summary>
     public const string CredentialLinked = "ashlar.credential.linked";

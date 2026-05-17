@@ -49,6 +49,15 @@ public interface IIdentityRepository
     Task<IUser?> GetUserByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lists credentials for a user.
+    /// </summary>
+    /// <param name="userId">The user id value.</param>
+    /// <param name="activeOnly">The active only value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
+    Task<IReadOnlyList<UserCredential>> ListCredentialsForUserAsync(Guid userId, bool activeOnly = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Performs the create user <see langword="async" /> operation and returns the result.
     /// </summary>
     /// <param name="user">The user value.</param>

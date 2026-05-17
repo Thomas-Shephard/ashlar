@@ -151,6 +151,40 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
     }
 
     /// <summary>
+    /// Performs the list credentials for user <see langword="async" /> operation and returns the result.
+    /// </summary>
+    /// <param name="userId">The user id value.</param>
+    /// <param name="activeOnly">The active only value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
+    public async Task<IReadOnlyList<UserCredential>> ListCredentialsForUserAsync(Guid userId, bool activeOnly = true, CancellationToken cancellationToken = default)
+    {
+        var sql = """
+            SELECT id, user_id AS UserId, provider_type AS ProviderType, provider_name AS ProviderName, provider_key AS ProviderKey,
+                   version, NULL AS CredentialValue, metadata, last_used_at AS LastUsedAt, created_at AS CreatedAt,
+                   updated_at AS UpdatedAt, expires_at AS ExpiresAt, revoked_at AS RevokedAt, status, purpose
+            FROM ashlar_credentials
+            WHERE user_id = @UserId
+            """;
+
+        if (activeOnly)
+        {
+            sql += " AND revoked_at IS NULL AND status = @ActiveStatus";
+        }
+
+        sql += " ORDER BY provider_type, provider_name, created_at DESC, id LIMIT 100";
+
+        var parameters = new { UserId = userId, ActiveStatus = (int)CredentialStatus.Active };
+        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using (connectionHandle)
+        {
+            var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            var result = await connectionHandle.Connection.QueryAsync<UserCredential>(command);
+            return result.ToList().AsReadOnly();
+        }
+    }
+
+    /// <summary>
     /// Performs the create user <see langword="async" /> operation and returns the result.
     /// </summary>
     /// <param name="user">The user value.</param>
@@ -370,7 +404,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
             """;
 
         var revokedAt = _timeProvider.GetUtcNow();
-        var parameters = new { UserId = userId, Type = type.Value, Name = providerName, RevokedAt = revokedAt, NewVersion = Guid.NewGuid().ToString("N"), RevokedStatus = (int)CredentialStatus.Revoked, ActiveStatus = (int)CredentialStatus.Active };
+        var parameters = new { UserId = userId, Type = type.Value, Name = providerName, RevokedAt = revokedAt, NewVersion = Guid.NewGuid().ToString(), RevokedStatus = (int)CredentialStatus.Revoked, ActiveStatus = (int)CredentialStatus.Active };
 
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)

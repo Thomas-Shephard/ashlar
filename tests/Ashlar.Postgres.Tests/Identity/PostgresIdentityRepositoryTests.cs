@@ -417,6 +417,31 @@ internal sealed class PostgresIdentityRepositoryTests : PostgresTestBase
     }
 
     [Test]
+    public async Task ListCredentialsForUserShouldReturnActiveCredentialSummariesWithoutValues()
+    {
+        var repo = GetRepository();
+        var user = await CreateTestUser(repo);
+        var activeCredential = CreateCredential(user.Id, ProviderType.Local, ProviderType.Local.Value);
+        activeCredential.CredentialValue = "secret-value";
+        var revokedCredential = CreateCredential(user.Id, ProviderType.MagicLink, ProviderType.MagicLink.Value);
+
+        await repo.CreateCredentialAsync(activeCredential);
+        await repo.CreateCredentialAsync(revokedCredential);
+        await repo.RevokeCredentialsAsync(user.Id, ProviderType.MagicLink, ProviderType.MagicLink.Value);
+
+        var active = await repo.ListCredentialsForUserAsync(user.Id);
+        var all = await repo.ListCredentialsForUserAsync(user.Id, activeOnly: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(active, Has.Count.EqualTo(1));
+            Assert.That(active[0].Id, Is.EqualTo(activeCredential.Id));
+            Assert.That(active[0].CredentialValue, Is.Null);
+            Assert.That(all, Has.Count.EqualTo(2));
+        }
+    }
+
+    [Test]
     public void RevokeCredentialsInvalidProviderNameShouldThrow()
     {
         var repo = GetRepository();

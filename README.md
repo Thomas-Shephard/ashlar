@@ -668,6 +668,22 @@ await signInManager.RevokeOtherSessionsForCurrentUserAsync(httpContext);
 
 Session listing is ordered by `CreatedAt` descending (newest first). Sensitive fields like IP address and user agent are only populated if they were enabled during session creation. Token hashes are never exposed through these APIs. In the PostgreSQL store, last-seen writes are ignored once a session is revoked or expired, so a concurrent sign-out or expiry cannot be undone by validation telemetry.
 
+### Admin Account Recovery
+Ashlar exposes framework-neutral administrator primitives through `IAccountSecurityService`. The service is intentionally small and composes existing identity, credential, MFA, recovery-code, session, and audit infrastructure.
+
+Available operations:
+
+- `DisableUserAsync`: marks the user inactive and revokes active sessions.
+- `ReactivateUserAsync`: marks a disabled user active without changing credentials.
+- `RevokeSessionsAsync`: revokes all active sessions for a user.
+- `RevokeCredentialsAsync`: revokes active credentials for a specific provider key.
+- `ResetMfaAsync`: revokes configured TOTP and recovery-code credentials.
+- `GetUserSecurityPostureAsync`: returns a non-secret summary containing active state, email verification state, configured provider types, MFA state, active session count, and recent security event count when the persistence provider supports it.
+
+Sensitive admin operations require `AccountSecurityOperationRequest` with an `AuditContext`. Applications are responsible for authorizing access before calling these methods, typically with an application admin role or scoped permission enforced by ASP.NET Core authorization. Ashlar records audit events with actor metadata, target user id, tenant id, reason, and affected counts; it does not return or log raw secrets, tokens, password hashes, recovery codes, protected payloads, or session tokens.
+
+These primitives do not implement a full helpdesk workflow, admin UI, passkeys, OAuth, or OIDC. Applications can layer approval workflows, break-glass controls, and support tooling on top of the service.
+
 ## Authorization Grants
 Ashlar includes framework-neutral authorization primitives for durable grants. Grants are generic: they can assign one normalized role or one normalized permission to a user, optionally within a tenant and explicit scope. Ashlar evaluates these grants, but it does not replace ASP.NET Core Authorization policies or requirements.
 
