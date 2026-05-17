@@ -2,7 +2,7 @@
 
 SQLite persistence infrastructure for Ashlar.
 
-This package is an early durable SQLite provider for Ashlar. It currently provides dependency injection registration, schema initialization, scoped connection/transaction infrastructure, bootstrap state persistence, identity users and credentials, invitations, authentication sessions, MFA handshakes, passkey challenges, authorization grants, audit persistence, durable authentication rate limiting, and best-effort cleanup. It does not yet provide email outbox dispatch.
+This package is an early durable SQLite provider for Ashlar. It currently provides dependency injection registration, schema initialization, scoped connection/transaction infrastructure, bootstrap state persistence, identity users and credentials, invitations, authentication sessions, MFA handshakes, passkey challenges, authorization grants, audit persistence, durable authentication rate limiting, SQLite-backed email outbox enqueue/dispatch, and best-effort cleanup.
 
 ## Supported Scenario
 
@@ -34,6 +34,30 @@ await serviceProvider.InitializeAshlarSqliteSchemaAsync();
 
 The initializer applies embedded SQLite scripts idempotently and records applied scripts in `ashlar_schema_versions`.
 
+Register SQLite email outbox enqueue support when application code should persist email messages instead of delivering them inline:
+
+```csharp
+services.AddAshlarSqliteEmailOutboxSender();
+```
+
+Register a dispatcher for a transport implementation:
+
+```csharp
+services.AddAshlarSqliteEmailOutboxDispatcher<SmtpEmailTransport>(options =>
+{
+    options.BatchSize = 25;
+    options.PollingInterval = TimeSpan.FromSeconds(5);
+});
+```
+
+Register the hosted dispatcher loop:
+
+```csharp
+services.AddAshlarSqliteEmailOutboxHostedService<SmtpEmailTransport>();
+```
+
+The sender participates in Ashlar SQLite transactions through `ISqliteConnectionProvider`, so queued emails commit or roll back with the surrounding Ashlar transaction.
+
 ## Current Status
 
 Implemented:
@@ -55,11 +79,14 @@ Implemented:
 - `ISecurityEventSink`
 - `IUserSecurityEventSummaryRepository`
 - `IAuthenticationRateLimiter`
+- `IEmailSender` via `AddAshlarSqliteEmailOutboxSender(...)`
+- `SqliteEmailOutboxDispatcher<TTransport>` via `AddAshlarSqliteEmailOutboxDispatcher<TTransport>(...)`
+- `SqliteEmailOutboxHostedService<TTransport>` via `AddAshlarSqliteEmailOutboxHostedService<TTransport>(...)`
 - `IAshlarCleanupService`
 
 Not implemented yet:
 
-- email outbox sender and dispatcher
+- provider contract tests shared with PostgreSQL
 
 ## SQLite Limitations
 
@@ -69,6 +96,8 @@ SQLite does not provide PostgreSQL equivalents for `FOR UPDATE SKIP LOCKED`, adv
 
 SQLite rate limiting persists fixed-window state in `ashlar_rate_limits` and uses Ashlar's scoped transaction infrastructure so standalone checks run through SQLite's `BEGIN IMMEDIATE` write path. This is intended for single-process deployments, not distributed rate limiting across application instances.
 
+SQLite email outbox dispatch is single-instance best effort. It claims pending rows with SQLite-compatible compare-and-set updates on `locked_until` and `locked_by`, then loads rows claimed by the dispatcher instance. It does not emulate PostgreSQL `FOR UPDATE SKIP LOCKED` and should not be used as a distributed multi-worker outbox coordinator.
+
 SQLite cleanup deletes bounded batches with SQLite-compatible `rowid` subqueries. It is single-instance best effort and does not provide PostgreSQL-style multi-worker coordination with `SKIP LOCKED`.
 
 Tenant email uniqueness is represented with SQLite-compatible partial unique indexes: one index for tenant-scoped users and one index for users without a tenant.
@@ -77,8 +106,7 @@ Tenant email uniqueness is represented with SQLite-compatible partial unique ind
 
 The intended repository implementation order is:
 
-1. Email outbox sender and single-instance dispatcher.
-2. Reusable provider contract tests shared with PostgreSQL where practical.
+1. Reusable provider contract tests shared with PostgreSQL where practical.
 
 ## Related Packages
 

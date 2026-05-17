@@ -3,10 +3,12 @@ using Ashlar.Authorization.Abstractions;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.RateLimiting.Abstractions;
+using Ashlar.Messaging;
 using Ashlar.Operational;
 using Ashlar.Sqlite;
 using Ashlar.Sqlite.Schema;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 
 // ReSharper disable CheckNamespace
 #pragma warning disable IDE0130
@@ -67,5 +69,76 @@ public static class AshlarSqliteServiceCollectionExtensions
         using var scope = serviceProvider.CreateScope();
         var schemaManager = scope.ServiceProvider.GetRequiredService<SqliteSchemaManager>();
         await schemaManager.InitializeAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Registers the Ashlar SQLite-backed email outbox enqueue sender.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
+    public static IServiceCollection AddAshlarSqliteEmailOutboxSender(
+        this IServiceCollection services,
+        Action<SqliteEmailOutboxOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddOptions<SqliteEmailOutboxOptions>()
+            .Validate(SqliteEmailOutboxOptions.Validate, "Email outbox options are invalid.");
+
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.Replace(ServiceDescriptor.Scoped<IEmailSender, SqliteEmailOutboxSender>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar SQLite-backed email outbox sender and dispatcher.
+    /// </summary>
+    /// <typeparam name="TTransport">The transport type.</typeparam>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
+    public static IServiceCollection AddAshlarSqliteEmailOutboxDispatcher<TTransport>(
+        this IServiceCollection services,
+        Action<SqliteEmailOutboxOptions>? configure = null)
+        where TTransport : class, IEmailTransport
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarSqliteEmailOutboxSender(configure);
+        if (!typeof(TTransport).IsInterface && !typeof(TTransport).IsAbstract)
+        {
+            services.TryAddScoped<TTransport>();
+        }
+
+        services.TryAddScoped<SqliteEmailOutboxDispatcher<TTransport>>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar SQLite-backed email outbox dispatcher as a hosted service.
+    /// </summary>
+    /// <typeparam name="TTransport">The transport type.</typeparam>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
+    public static IServiceCollection AddAshlarSqliteEmailOutboxHostedService<TTransport>(
+        this IServiceCollection services,
+        Action<SqliteEmailOutboxOptions>? configure = null)
+        where TTransport : class, IEmailTransport
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarSqliteEmailOutboxDispatcher<TTransport>(configure);
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, SqliteEmailOutboxHostedService<TTransport>>());
+
+        return services;
     }
 }
