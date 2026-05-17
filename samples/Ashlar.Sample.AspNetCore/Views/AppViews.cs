@@ -544,13 +544,92 @@ internal static class AppViews
         """;
     }
 
-    public static IResult RenderAccountSettings(string userEmail, string? userName, UserSecurityPosture posture, bool isAdmin)
+    private static AccountSecurityDisplayState CreateSecurityDisplay(UserSecurityPosture posture)
     {
-        var verifiedBadge = posture.IsEmailVerified
-            ? "<span class=\"badge badge-success\">Verified</span>"
-            : "<span class=\"badge badge-warning\">Unverified</span>";
+        var hasAdditionalVerification = posture.AdditionalVerificationFactors.Any(f => f.IsConfigured);
+        var isReadyForAdditionalVerification = posture.Policy.IsReadyForAdditionalVerification;
+        var protectedActionStatus = GetProtectedActionStatus(hasAdditionalVerification, isReadyForAdditionalVerification);
 
-        var verifyForm = posture.IsEmailVerified ? "" : """
+        return new AccountSecurityDisplayState(
+            HasTotp: HasConfiguredFactor(posture, AuthenticationFactorTypes.Totp),
+            HasRecoveryCodes: HasConfiguredFactor(posture, AuthenticationFactorTypes.RecoveryCode),
+            HasPasskeys: posture.CredentialInventory.Any(c => c.Provider.Type == ProviderType.Passkey),
+            SignInMethods: FormatSignInMethods(posture),
+            ProtectedActionStatus: protectedActionStatus,
+            MissingVerification: FormatMissingVerification(posture, hasAdditionalVerification),
+            VerificationStatus: FormatVerificationStatus(posture, hasAdditionalVerification));
+    }
+
+    private static string GetProtectedActionStatus(bool hasAdditionalVerification, bool isReadyForAdditionalVerification)
+    {
+        if (hasAdditionalVerification && isReadyForAdditionalVerification)
+        {
+            return "Available";
+        }
+
+        return "Blocked until setup";
+    }
+
+    private static bool HasConfiguredFactor(UserSecurityPosture posture, string factorType)
+    {
+        return posture.AdditionalVerificationFactors.Any(factor =>
+            string.Equals(factor.FactorType, factorType, StringComparison.OrdinalIgnoreCase) && factor.IsConfigured);
+    }
+
+    private static string FormatSignInMethods(UserSecurityPosture posture)
+    {
+        var methods = string.Join(", ", posture.PrimaryCredentials.Select(c => c.DisplayName).Distinct(StringComparer.Ordinal));
+        return methods.Length > 0 ? methods : "None";
+    }
+
+    private static string FormatMissingVerification(UserSecurityPosture posture, bool hasAdditionalVerification)
+    {
+        if (hasAdditionalVerification && posture.Policy.IsReadyForAdditionalVerification)
+        {
+            return "None";
+        }
+
+        if (posture.Policy.MissingRequiredFactorDisplayNames.Count > 0)
+        {
+            return string.Join(" or ", posture.Policy.MissingRequiredFactorDisplayNames);
+        }
+
+        return "Authenticator app or passkey";
+    }
+
+    private static string FormatVerificationStatus(UserSecurityPosture posture, bool hasAdditionalVerification)
+    {
+        if (hasAdditionalVerification)
+        {
+            return "<span class=\"badge badge-success\">Configured</span>";
+        }
+
+        if (posture.Policy.IsAdditionalVerificationRequired)
+        {
+            return "<span class=\"badge badge-warning\">Setup required</span>";
+        }
+
+        return "<span class=\"badge\">Not configured</span>";
+    }
+
+    private static string FormatEmailVerificationBadge(UserSecurityPosture posture)
+    {
+        if (posture.IsEmailVerified)
+        {
+            return "<span class=\"badge badge-success\">Verified</span>";
+        }
+
+        return "<span class=\"badge badge-warning\">Unverified</span>";
+    }
+
+    private static string RenderVerifyEmailForm(UserSecurityPosture posture)
+    {
+        if (posture.IsEmailVerified)
+        {
+            return "";
+        }
+
+        return """
             <hr style="margin: 2rem 0; border: 0; border-top: 1px solid #e5e7eb;" />
             <h3>Verify Email</h3>
             <p>Your email address is not yet verified.</p>
@@ -559,61 +638,78 @@ internal static class AppViews
             </form>
             <div id="verifyEmailFormResult"></div>
         """;
+    }
 
-        var hasTotp = posture.AdditionalVerificationFactors.Any(f => string.Equals(f.FactorType, AuthenticationFactorTypes.Totp, StringComparison.OrdinalIgnoreCase) && f.IsConfigured);
-        var hasRecoveryCodes = posture.AdditionalVerificationFactors.Any(f => string.Equals(f.FactorType, AuthenticationFactorTypes.RecoveryCode, StringComparison.OrdinalIgnoreCase) && f.IsConfigured);
-        var hasPasskeys = posture.CredentialInventory.Any(c => c.Provider.Type == ProviderType.Passkey);
-        var signInMethods = string.Join(", ", posture.PrimaryCredentials.Select(c => c.DisplayName).Distinct(StringComparer.Ordinal)) is { Length: > 0 } methods
-            ? methods
-            : "None";
-        var hasAdditionalVerification = posture.AdditionalVerificationFactors.Any(f => f.IsConfigured);
-        var protectedActionStatus = hasAdditionalVerification && posture.Policy.IsReadyForAdditionalVerification ? "Available" : "Blocked until setup";
-        var missingVerification = "Authenticator app or passkey";
-        if (hasAdditionalVerification && posture.Policy.IsReadyForAdditionalVerification)
+    private static string FormatEnabledBadge(bool isEnabled)
+    {
+        if (isEnabled)
         {
-            missingVerification = "None";
-        }
-        else if (!posture.Policy.IsReadyForAdditionalVerification && posture.Policy.MissingRequiredFactorDisplayNames.Count > 0)
-        {
-            missingVerification = string.Join(" or ", posture.Policy.MissingRequiredFactorDisplayNames);
+            return "<span class=\"badge badge-success\">Enabled</span>";
         }
 
-        var verificationStatus = "<span class=\"badge\">Not configured</span>";
-        if (hasAdditionalVerification)
+        return "<span class=\"badge\">Not set</span>";
+    }
+
+    private static string FormatRegisteredBadge(bool isRegistered)
+    {
+        if (isRegistered)
         {
-            verificationStatus = "<span class=\"badge badge-success\">Configured</span>";
+            return "<span class=\"badge badge-success\">Registered</span>";
         }
-        else if (posture.Policy.IsAdditionalVerificationRequired)
+
+        return "<span class=\"badge\">None</span>";
+    }
+
+    private static string FormatGeneratedBadge(bool isGenerated)
+    {
+        if (isGenerated)
         {
-            verificationStatus = "<span class=\"badge badge-warning\">Setup required</span>";
+            return "<span class=\"badge badge-success\">Generated</span>";
         }
 
-        var totpStatus = hasTotp
-            ? "<span class=\"badge badge-success\">Enabled</span>"
-            : "<span class=\"badge\">Not set</span>";
+        return "<span class=\"badge\">None</span>";
+    }
 
-        var passkeyStatus = hasPasskeys
-            ? "<span class=\"badge badge-success\">Registered</span>"
-            : "<span class=\"badge\">None</span>";
-
-        var recoveryStatus = hasRecoveryCodes
-            ? "<span class=\"badge badge-success\">Generated</span>"
-            : "<span class=\"badge\">None</span>";
-
-        var recoveryCodesButtonText = hasRecoveryCodes ? "Regenerate Recovery Codes" : "Generate Recovery Codes";
-        var mfaActions = hasTotp
-            ? $"""
-                <div class="grid" style="margin-top: 1rem;">
-                    <button id="generateBtn" class="secondary" style="height: 2.5rem;">{recoveryCodesButtonText}</button>
-                    <button id="resetMfaBtn" class="secondary danger" style="height: 2.5rem;">Reset Authenticator App</button>
-                </div>
-                <div id="codesResult" style="margin-top: 1.5rem;"></div>
-              """
-            : """
+    private static string RenderMfaActions(AccountSecurityDisplayState securityDisplay)
+    {
+        if (!securityDisplay.HasTotp)
+        {
+            return """
                 <div style="margin-top: 1rem;">
                     <button onclick="location.href='/account/mfa/enroll'" style="height: 2.5rem;">Enable Authenticator App</button>
                 </div>
               """;
+        }
+
+        var recoveryCodesButtonText = securityDisplay.HasRecoveryCodes ? "Regenerate Recovery Codes" : "Generate Recovery Codes";
+
+        return $"""
+            <div class="grid" style="margin-top: 1rem;">
+                <button id="generateBtn" class="secondary" style="height: 2.5rem;">{recoveryCodesButtonText}</button>
+                <button id="resetMfaBtn" class="secondary danger" style="height: 2.5rem;">Reset Authenticator App</button>
+            </div>
+            <div id="codesResult" style="margin-top: 1.5rem;"></div>
+          """;
+    }
+
+    private sealed record AccountSecurityDisplayState(
+        bool HasTotp,
+        bool HasRecoveryCodes,
+        bool HasPasskeys,
+        string SignInMethods,
+        string ProtectedActionStatus,
+        string MissingVerification,
+        string VerificationStatus);
+
+    public static IResult RenderAccountSettings(string userEmail, string? userName, UserSecurityPosture posture, bool isAdmin)
+    {
+        var verifiedBadge = FormatEmailVerificationBadge(posture);
+        var verifyForm = RenderVerifyEmailForm(posture);
+        var securityDisplay = CreateSecurityDisplay(posture);
+        var totpStatus = FormatEnabledBadge(securityDisplay.HasTotp);
+        var passkeyStatus = FormatRegisteredBadge(securityDisplay.HasPasskeys);
+        var recoveryStatus = FormatGeneratedBadge(securityDisplay.HasRecoveryCodes);
+        var mfaActions = RenderMfaActions(securityDisplay);
 
         var navLinks = $"""
             <a href="/">Dashboard</a>
@@ -672,14 +768,14 @@ internal static class AppViews
                 <div id="security" class="tab-pane">
                     <h3>Sign-In Verification</h3>
                     <div class="status-box" style="margin-top: 1rem;">
-                        <strong>Sign-in methods:</strong> {{System.Net.WebUtility.HtmlEncode(signInMethods)}}<br/>
-                        <strong>Protected actions:</strong> {{protectedActionStatus}}<br/>
-                        <strong>Missing setup:</strong> {{System.Net.WebUtility.HtmlEncode(missingVerification)}}
+                        <strong>Sign-in methods:</strong> {{System.Net.WebUtility.HtmlEncode(securityDisplay.SignInMethods)}}<br/>
+                        <strong>Protected actions:</strong> {{securityDisplay.ProtectedActionStatus}}<br/>
+                        <strong>Missing setup:</strong> {{System.Net.WebUtility.HtmlEncode(securityDisplay.MissingVerification)}}
                     </div>
                     <div class="status-box" style="margin-top: 1rem;">
                         <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
                             <strong>Additional verification</strong>
-                            {{verificationStatus}}
+                            {{securityDisplay.VerificationStatus}}
                         </div>
                         <div style="display: grid; gap: 0.5rem; margin-top: 1rem;">
                             <div style="display: flex; justify-content: space-between; gap: 1rem;"><span>Authenticator app</span>{{totpStatus}}</div>
