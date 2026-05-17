@@ -40,5 +40,11 @@ To ensure that changes work as expected, follow these steps:
 - **Strict Coverage:** 100% line and branch coverage is enforced for all application code. Pull requests that lower coverage will be rejected.
 - Ensure all tests pass and coverage requirements are met before submitting a pull request.
 
+## Release Process
+This project uses [MinVer](https://github.com/adamralph/minver) for versioning.
+
+Versions are automatically determined by Git tags in the format `vMAJOR.MINOR.PATCH`.
+To create a new release, use the GitHub UI to create a new "Release", which will automatically create the required Git tag and trigger the deployment workflow.
+
 ## License
 By contributing to Ashlar, you agree that your contributions will be licensed under the MIT License.

@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <PackageReference Include="CommentSense" PrivateAssets="all" />
+    <PackageReference Include="MinVer" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
