@@ -65,3 +65,9 @@ Navigate to `http://localhost:5000` in your browser.
 Normal invitation, magic-link, and account tokens are sent through the PostgreSQL email outbox. `DevelopmentEmailTransport` logs full email bodies to the console so local callback links are easy to click or copy.
 
 The cleanup hosted service and email outbox dispatcher start with the application. The sample intentionally uses a development email transport that exposes token-bearing email bodies; replace `DevelopmentEmailTransport` before using this composition outside local development.
+
+## Smoke Tests
+
+`tests/Ashlar.Postgres.Tests` includes a net10-only ASP.NET Core smoke test for this sample. It hosts the real sample app with `WebApplicationFactory<Program>`, supplies an isolated PostgreSQL database from the existing Testcontainers fixture, disables background hosted loops, and inspects `ashlar_email_outbox` directly instead of using SMTP.
+
+The smoke test is intentionally thin: it proves the composed routing, DI, session cookie authentication, Postgres persistence, outbox-backed email flows, bootstrap, invitations, scoped authorization grants, email verification/change, MFA enrollment, recovery-code challenge, and session endpoints work together. It does not replace the lower-level unit and integration tests that cover branch-level behavior.
