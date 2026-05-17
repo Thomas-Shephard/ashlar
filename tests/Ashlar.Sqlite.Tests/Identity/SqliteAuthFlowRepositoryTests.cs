@@ -115,6 +115,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         await repository.RevokeSessionAsync(revoked.Id, DateTimeOffset.UtcNow, "manual");
 
         var fetched = await repository.GetSessionByTokenHashAsync(active.TokenHash);
+        var fetchedById = await repository.GetSessionAsync(active.Id);
         var listedActive = await repository.ListSessionsForUserAsync(user.Id, activeOnly: true, DateTimeOffset.UtcNow);
         var newest = DateTimeOffset.UtcNow.AddMinutes(1);
         var older = newest.AddMinutes(-1);
@@ -129,6 +130,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         {
             Assert.That(fetched, Is.Not.Null);
             Assert.That(fetched!.PrimaryProvider, Is.EqualTo(AuthenticationProviderKey.MagicLink));
+            Assert.That(fetchedById!.Id, Is.EqualTo(active.Id));
             Assert.That(listedActive.Select(s => s.Id), Is.EquivalentTo(new[] { active.Id }));
             Assert.That(firstSeen, Is.True);
             Assert.That(secondSeen, Is.False);
