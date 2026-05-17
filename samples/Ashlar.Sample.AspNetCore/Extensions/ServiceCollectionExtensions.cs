@@ -92,6 +92,7 @@ internal static class ServiceCollectionExtensions
             options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.RecoveryCode);
             options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.Passkey);
             options.RequireFreshMfa();
+            options.RequireFreshMfaIfAvailable();
             options.AddRolePolicy("admin", "admin");
             options.AddPermissionPolicy("project.manage", "project.manage", scope =>
             {

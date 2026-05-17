@@ -9,4 +9,9 @@ public static class AshlarStepUpPolicyNames
     /// Requires a fresh additional verification using the configured defaults.
     /// </summary>
     public const string FreshMfa = "Ashlar.FreshMfa";
+
+    /// <summary>
+    /// Requires fresh additional verification when the account has a usable eligible factor.
+    /// </summary>
+    public const string FreshMfaIfAvailable = "Ashlar.FreshMfaIfAvailable";
 }

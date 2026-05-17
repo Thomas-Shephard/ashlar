@@ -610,6 +610,31 @@ Fresh MFA and step-up support is built from session authentication metadata plus
 
 This step-up update is different from primary login and from login-time MFA handshakes that run before a session is issued. It is for refreshing an existing session before a sensitive action. Endpoint helpers, ASP.NET Core authorization policies, and challenge/completion UX are intentionally separate integration layers and are not required to use the core service.
 
+ASP.NET Core apps can choose strict or conditional fresh MFA:
+
+```csharp
+services.AddAshlarAspNetCoreAuthorization(options =>
+{
+    options.StepUp.FreshnessWindow = TimeSpan.FromMinutes(10);
+    options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.Totp);
+    options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.RecoveryCode);
+    options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.Passkey);
+
+    options.RequireFreshMfa();
+    options.RequireFreshMfaIfAvailable();
+});
+
+app.MapPost("/account/change-email", ChangeEmailAsync)
+    .RequireFreshMfa();
+
+app.MapDelete("/api/sessions/{id:guid}", RevokeSessionAsync)
+    .RequireFreshMfaIfAvailable();
+```
+
+Use `.RequireFreshMfa()` for high-risk operations that must not proceed without recent additional verification. Use `.RequireFreshMfaIfAvailable()` for lower-risk sensitive operations where users with no usable eligible factor should not be locked out. Conditional mode loads `IAccountSecurityService.GetUserSecurityPostureAsync`, matches usable `AdditionalVerificationFactors` against the configured eligible factors, and requires the same fresh session verification only when at least one eligible factor is available. If posture cannot be loaded safely, authorization is denied. The default conditional policy treats `totp`, `recovery_code`, and `passkey` as eligible; applications can configure custom factor strings through `AshlarStepUpOptions.AllowedFactors`.
+
+Conditional fresh MFA is weaker than strict fresh MFA because a user with no usable eligible factor is allowed through. It is an adaptive policy for lower-risk scenarios, not a replacement for strict step-up on administrator, recovery, credential reset, or other dangerous operations.
+
 When supplied to `CreateSessionAsync`, session IP address, user agent, and metadata are persisted by default. These values can contain personal data, so applications should only pass them when their privacy policy and security requirements allow it. Use `AuthenticationSessionOptions.StoreIpAddress`, `StoreUserAgent`, and `StoreMetadata` to opt out, and tune the max-length options if the defaults do not fit your storage policy.
 
 ```csharp

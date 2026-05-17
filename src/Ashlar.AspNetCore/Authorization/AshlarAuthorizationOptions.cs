@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Ashlar.Identity.Models;
 
 namespace Ashlar.AspNetCore.Authorization;
 
@@ -70,12 +71,49 @@ public sealed class AshlarAuthorizationOptions
     }
 
     /// <summary>
+    /// Adds a policy that requires fresh Ashlar additional verification when an eligible factor is available.
+    /// </summary>
+    /// <param name="policyName">The policy name value.</param>
+    /// <param name="configure">The optional step-up options callback.</param>
+    public void AddAshlarStepUpIfAvailablePolicy(string policyName, Action<AshlarStepUpOptions>? configure = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(policyName);
+
+        var stepUpOptions = CopyStepUpOptions(StepUp);
+        if (stepUpOptions.AllowedFactors.Count == 0)
+        {
+            stepUpOptions.AllowedFactors.Add(AuthenticationFactorTypes.Totp);
+            stepUpOptions.AllowedFactors.Add(AuthenticationFactorTypes.RecoveryCode);
+            stepUpOptions.AllowedFactors.Add(AuthenticationFactorTypes.Passkey);
+        }
+
+        configure?.Invoke(stepUpOptions);
+
+        var requirement = new AshlarStepUpRequirement(
+            stepUpOptions.FreshnessWindow,
+            stepUpOptions.AllowedProviders,
+            stepUpOptions.AllowedFactors,
+            AshlarStepUpMode.IfAvailable);
+
+        ConfigurePolicy(policyName, requirement, null);
+    }
+
+    /// <summary>
     /// Adds the default fresh MFA policy.
     /// </summary>
     /// <param name="configure">The optional step-up options callback.</param>
     public void RequireFreshMfa(Action<AshlarStepUpOptions>? configure = null)
     {
         AddAshlarStepUpPolicy(AshlarStepUpPolicyNames.FreshMfa, configure);
+    }
+
+    /// <summary>
+    /// Adds the default conditional fresh MFA policy.
+    /// </summary>
+    /// <param name="configure">The optional step-up options callback.</param>
+    public void RequireFreshMfaIfAvailable(Action<AshlarStepUpOptions>? configure = null)
+    {
+        AddAshlarStepUpIfAvailablePolicy(AshlarStepUpPolicyNames.FreshMfaIfAvailable, configure);
     }
 
     internal List<(string Name, AuthorizationPolicy Policy)> Policies { get; } = [];
