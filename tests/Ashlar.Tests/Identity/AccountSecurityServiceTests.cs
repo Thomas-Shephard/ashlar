@@ -536,7 +536,7 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(result.Value?.IsMfaConfigured, Is.True);
             Assert.That(result.Value?.ActiveSessionCount, Is.EqualTo(1));
             Assert.That(result.Value?.RecentSecurityEventCount, Is.EqualTo(1));
-            Assert.That(result.Value?.ConfiguredCredentials, Has.Count.EqualTo(2));
+            Assert.That(result.Value?.GetConfiguredCredentials(), Has.Count.EqualTo(2));
         }
     }
 
@@ -662,6 +662,58 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(result.Value?.Policy.MissingRequiredFactorTypes, Is.Empty);
             Assert.That(result.Value?.CanSignIn, Is.True);
         }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldRequireAnyUsableFactorWhenPolicyHasNoSpecificFactors()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        var service = CreateService(new StaticMfaPolicyEvaluator(true, []));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.Policy.IsAdditionalVerificationRequired, Is.True);
+            Assert.That(result.Value?.Policy.RequiredFactorTypes, Is.Empty);
+            Assert.That(result.Value?.Policy.AllowedFactorTypes, Is.Empty);
+            Assert.That(result.Value?.Policy.HasUsableAdditionalVerificationFactor, Is.False);
+            Assert.That(result.Value?.Policy.IsReadyForAdditionalVerification, Is.False);
+            Assert.That(result.Value?.Policy.MissingRequiredFactorTypes, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldAllowAnyUsableFactorWhenPolicyHasNoSpecificFactors()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        _identityRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
+        var service = CreateService(new StaticMfaPolicyEvaluator(true, []));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.Policy.IsAdditionalVerificationRequired, Is.True);
+            Assert.That(result.Value?.Policy.HasUsableAdditionalVerificationFactor, Is.True);
+            Assert.That(result.Value?.Policy.IsReadyForAdditionalVerification, Is.True);
+            Assert.That(result.Value?.Policy.MissingRequiredFactorTypes, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldExposeEmptyAllowedFactorsWhenPolicyDoesNotProvideAllowedFactors()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        _identityRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
+        var service = CreateService(new StaticMfaPolicyEvaluator(true, [AuthenticationFactorTypes.Totp]));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+
+        Assert.That(result.Value?.Policy.AllowedFactorTypes, Is.Empty);
     }
 
     [Test]

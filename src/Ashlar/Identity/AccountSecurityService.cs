@@ -342,12 +342,12 @@ public sealed class AccountSecurityService : IAccountSecurityService
             ? required.Where(factor => !configured.Contains(factor)).ToList()
             : [];
         var hasUsableFactor = configured.Count > 0;
-        var isReady = !evaluation.IsMfaRequired || missing.Count == 0;
+        var isReady = !evaluation.IsMfaRequired || (missing.Count == 0 && hasUsableFactor);
 
         return new AccountSecurityPolicyPosture(
             evaluation.IsMfaRequired,
             required.AsReadOnly(),
-            required.AsReadOnly(),
+            [],
             hasUsableFactor,
             isReady,
             missing.AsReadOnly(),

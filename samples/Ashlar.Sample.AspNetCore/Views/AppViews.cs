@@ -567,8 +567,16 @@ internal static class AppViews
             ? methods
             : "None";
         var hasAdditionalVerification = posture.AdditionalVerificationFactors.Any(f => f.IsConfigured);
-        var protectedActionStatus = hasAdditionalVerification ? "Available" : "Blocked until setup";
-        var missingVerification = hasAdditionalVerification ? "None" : "Authenticator app or passkey";
+        var protectedActionStatus = hasAdditionalVerification && posture.Policy.IsReadyForAdditionalVerification ? "Available" : "Blocked until setup";
+        var missingVerification = "Authenticator app or passkey";
+        if (hasAdditionalVerification && posture.Policy.IsReadyForAdditionalVerification)
+        {
+            missingVerification = "None";
+        }
+        else if (!posture.Policy.IsReadyForAdditionalVerification && posture.Policy.MissingRequiredFactorDisplayNames.Count > 0)
+        {
+            missingVerification = string.Join(" or ", posture.Policy.MissingRequiredFactorDisplayNames);
+        }
 
         var verificationStatus = "<span class=\"badge\">Not configured</span>";
         if (hasAdditionalVerification)
@@ -1099,8 +1107,14 @@ internal static class AppViews
                     const credentials = postureNames(result.primaryCredentials);
                     const verification = postureNames(result.additionalVerificationFactors?.filter(f => f.isConfigured));
                     const hasAdditionalVerification = (result.additionalVerificationFactors || []).some(f => f.isConfigured);
-                    const protectedActions = hasAdditionalVerification ? 'Available' : 'Blocked until setup';
-                    const missing = hasAdditionalVerification ? 'None' : 'Authenticator app or passkey';
+                    const policy = result.policy || {};
+                    const protectedActions = hasAdditionalVerification && policy.isReadyForAdditionalVerification ? 'Available' : 'Blocked until setup';
+                    let missing = 'Authenticator app or passkey';
+                    if (hasAdditionalVerification && policy.isReadyForAdditionalVerification) {
+                        missing = 'None';
+                    } else if (!policy.isReadyForAdditionalVerification && policy.missingRequiredFactorDisplayNames?.length) {
+                        missing = policy.missingRequiredFactorDisplayNames.join(' or ');
+                    }
                     div.replaceChildren();
                     [
                         ['Status', result.isActive ? 'Active' : 'Inactive'],

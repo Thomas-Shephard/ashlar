@@ -167,12 +167,16 @@ public record AccountSecurityPosture(
     /// <summary>
     /// Gets the configured credential providers for older consumers that only need provider identity.
     /// </summary>
-    public IReadOnlyList<AuthenticationProviderKey> ConfiguredCredentials => CredentialInventory
-        .Select(item => item.Provider)
-        .Distinct()
-        .OrderBy(provider => provider.Type.Value, StringComparer.Ordinal)
-        .ThenBy(provider => provider.Name, StringComparer.Ordinal)
-        .ToArray();
+    /// <returns>The configured credential provider keys.</returns>
+    public IReadOnlyList<AuthenticationProviderKey> GetConfiguredCredentials()
+    {
+        return CredentialInventory
+            .Select(item => item.Provider)
+            .Distinct()
+            .OrderBy(provider => provider.Type.Value, StringComparer.Ordinal)
+            .ThenBy(provider => provider.Name, StringComparer.Ordinal)
+            .ToArray();
+    }
 }
 
 /// <summary>
