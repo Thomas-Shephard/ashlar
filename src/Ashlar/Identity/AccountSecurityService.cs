@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Collections.ObjectModel;
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
@@ -25,6 +26,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
     private readonly IUserSecurityEventSummaryRepository? _securityEventSummaryRepository;
+    private readonly IMfaPolicyEvaluator _mfaPolicyEvaluator;
     private readonly AuthenticationProviderKey _totpProvider;
     private readonly AuthenticationProviderKey _recoveryCodeProvider;
 
@@ -52,6 +54,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
         _securityEvents = new SecurityEventEmitter(dependencies.SecurityEventSink, _timeProvider);
         _securityEventSummaryRepository = dependencies.SecurityEventSummaryRepository;
+        _mfaPolicyEvaluator = dependencies.MfaPolicyEvaluator ?? new MfaPolicyEvaluator();
         _totpProvider = dependencies.TotpOptions?.Value.ProviderKey ?? TotpOptions.DefaultProviderKey;
         _recoveryCodeProvider = dependencies.RecoveryCodeOptions?.Value.ProviderKey ?? new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode");
     }
@@ -192,7 +195,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
             return Result.Failure<UserSecurityPosture>(AshlarFailureCodes.UserNotFound);
         }
 
-        var credentials = await _identityRepository.ListCredentialsForUserAsync(userId, activeOnly: true, cancellationToken);
+        var credentials = await _identityRepository.ListCredentialsForUserAsync(userId, activeOnly: false, cancellationToken);
         var sessions = await _sessionService.ListSessionsForUserAsync(userId, new ListAuthenticationSessionsRequest { ActiveOnly = true }, cancellationToken);
         int? eventCount = null;
         if (_securityEventSummaryRepository != null && request.RecentSecurityEventWindow is { } window)
@@ -200,20 +203,33 @@ public sealed class AccountSecurityService : IAccountSecurityService
             eventCount = await _securityEventSummaryRepository.CountSecurityEventsForUserAsync(userId, _timeProvider.GetUtcNow().Subtract(window), cancellationToken);
         }
 
-        var providerKeys = credentials
-            .Select(c => new AuthenticationProviderKey(c.ProviderType, c.ProviderName))
-            .Distinct()
-            .OrderBy(k => k.Type.Value, StringComparer.Ordinal)
-            .ThenBy(k => k.Name, StringComparer.Ordinal)
+        var now = _timeProvider.GetUtcNow();
+        var inventory = credentials
+            .Select(ClassifyCredential)
+            .OrderBy(item => item.DisplayName, StringComparer.Ordinal)
+            .ThenBy(item => item.CreatedAt)
             .ToList()
             .AsReadOnly();
+
+        var primaryCredentialItems = inventory
+            .Where(item => item.IsPrimaryCredential && item.IsAvailable)
+            .ToList();
+        AddEmailSignInIfAvailable(primaryCredentialItems, user, now);
+        var primaryCredentials = primaryCredentialItems
+            .AsReadOnly();
+        var factors = CreateAdditionalVerificationFactors(inventory);
+        var policyEvaluation = await _mfaPolicyEvaluator.EvaluateAsync(user, new AuthenticationContext(UserId: user.Id, TenantId: request.Tenant?.TenantId), cancellationToken);
+        var policy = CreatePolicyPosture(policyEvaluation, factors);
 
         var posture = new UserSecurityPosture(
             userId,
             user.IsActive,
             user.EmailVerifiedAt.HasValue,
-            providerKeys,
-            providerKeys.Any(IsMfaProvider),
+            user.IsActive && primaryCredentials.Count > 0 && !policy.IsLockedOutByPolicy,
+            primaryCredentials,
+            factors,
+            policy,
+            inventory,
             sessions.Count,
             eventCount);
 
@@ -261,12 +277,205 @@ public sealed class AccountSecurityService : IAccountSecurityService
         return tenantUser.TenantId == tenant.TenantId;
     }
 
-    private bool IsMfaProvider(AuthenticationProviderKey provider)
+    private CredentialPostureItem ClassifyCredential(UserCredential credential)
     {
-        return provider.Type == ProviderType.Mfa
-               || provider.Type == ProviderType.RecoveryCode
-               || provider == _totpProvider
-               || provider == _recoveryCodeProvider;
+        var provider = new AuthenticationProviderKey(credential.ProviderType, credential.ProviderName);
+        var factorType = GetFactorType(provider);
+        var isTotp = IsTotpProvider(provider);
+        var isRecoveryCode = IsRecoveryCodeProvider(provider);
+        var isPasskey = provider.Type == ProviderType.Passkey;
+        var isPrimary = IsPrimaryProvider(provider);
+        var isAdditionalVerification = isTotp || isRecoveryCode || isPasskey;
+        var purpose = CredentialPosturePurpose.Unknown;
+        if (isPrimary)
+        {
+            purpose = CredentialPosturePurpose.Primary;
+        }
+        else if (isAdditionalVerification)
+        {
+            purpose = CredentialPosturePurpose.AdditionalVerification;
+        }
+
+        return new CredentialPostureItem(
+            credential.Id,
+            provider,
+            GetDisplayName(provider, factorType),
+            purpose,
+            factorType,
+            isPrimary,
+            isAdditionalVerification,
+            credential.IsAvailable(_timeProvider.GetUtcNow()),
+            IsRevocable(provider),
+            IsResettable(provider),
+            credential.CreatedAt,
+            credential.LastUsedAt,
+            credential.ExpiresAt,
+            credential.Status);
+    }
+
+    private static ReadOnlyCollection<AdditionalVerificationFactorPosture> CreateAdditionalVerificationFactors(IReadOnlyList<CredentialPostureItem> inventory)
+    {
+        return inventory
+            .Where(item => item.IsAdditionalVerificationFactor && item.FactorType != null)
+            .GroupBy(item => item.FactorType!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new AdditionalVerificationFactorPosture(
+                NormalizeFactorType(group.Key),
+                GetFactorDisplayName(group.Key),
+                group.Any(),
+                group.Any(item => item.IsAvailable),
+                group.Select(item => item.Provider).Distinct().ToList().AsReadOnly()))
+            .OrderBy(factor => factor.DisplayName, StringComparer.Ordinal)
+            .ToList()
+            .AsReadOnly();
+    }
+
+    private static AccountSecurityPolicyPosture CreatePolicyPosture(
+        MfaPolicyEvaluation evaluation,
+        IReadOnlyList<AdditionalVerificationFactorPosture> configuredFactors)
+    {
+        var required = NormalizeFactors(evaluation.Requirement?.RequiredFactors);
+        var configured = configuredFactors
+            .Where(factor => factor.IsUsable)
+            .Select(factor => NormalizeFactorType(factor.FactorType))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var missing = evaluation.IsMfaRequired
+            ? required.Where(factor => !configured.Contains(factor)).ToList()
+            : [];
+        var hasUsableFactor = configured.Count > 0;
+        var isReady = !evaluation.IsMfaRequired || (missing.Count == 0 && hasUsableFactor);
+
+        return new AccountSecurityPolicyPosture(
+            evaluation.IsMfaRequired,
+            required.AsReadOnly(),
+            [],
+            hasUsableFactor,
+            isReady,
+            missing.AsReadOnly(),
+            missing.Select(GetFactorDisplayName).ToList().AsReadOnly(),
+            evaluation.IsMfaRequired && !isReady);
+    }
+
+    private static bool IsPrimaryProvider(AuthenticationProviderKey provider)
+    {
+        return provider.Type == ProviderType.Local
+            || provider.Type == ProviderType.OAuth
+            || provider.Type == ProviderType.Oidc
+            || provider.Type == ProviderType.Saml2
+            || provider.Type == ProviderType.Passkey
+            || provider.Type == ProviderType.EmailCode
+            || provider.Type == ProviderType.MagicLink;
+    }
+
+    private static void AddEmailSignInIfAvailable(List<CredentialPostureItem> primaryCredentials, IUser user, DateTimeOffset now)
+    {
+        if (!string.IsNullOrWhiteSpace(user.Email)
+            && !primaryCredentials.Any(item => item.Provider.Type == ProviderType.EmailCode || item.Provider.Type == ProviderType.MagicLink))
+        {
+            primaryCredentials.Add(new CredentialPostureItem(
+                Guid.Empty,
+                AuthenticationProviderKey.MagicLink,
+                "Email sign-in",
+                CredentialPosturePurpose.Primary,
+                null,
+                true,
+                false,
+                user.IsActive,
+                false,
+                false,
+                now,
+                null,
+                null,
+                user.IsActive ? CredentialStatus.Active : CredentialStatus.Revoked));
+        }
+    }
+
+    private bool IsTotpProvider(AuthenticationProviderKey provider)
+    {
+        return provider == _totpProvider
+            || (provider.Type == ProviderType.Mfa && string.Equals(provider.Name, "totp", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private bool IsRecoveryCodeProvider(AuthenticationProviderKey provider)
+    {
+        return provider == _recoveryCodeProvider || provider.Type == ProviderType.RecoveryCode;
+    }
+
+    private string? GetFactorType(AuthenticationProviderKey provider)
+    {
+        if (IsTotpProvider(provider))
+        {
+            return AuthenticationFactorTypes.Totp;
+        }
+
+        if (IsRecoveryCodeProvider(provider))
+        {
+            return AuthenticationFactorTypes.RecoveryCode;
+        }
+
+        return provider.Type == ProviderType.Passkey ? AuthenticationFactorTypes.Passkey : null;
+    }
+
+    private static string GetDisplayName(AuthenticationProviderKey provider, string? factorType)
+    {
+        if (factorType != null)
+        {
+            return GetFactorDisplayName(factorType);
+        }
+
+        if (provider.Type == ProviderType.Local)
+        {
+            return "Password";
+        }
+
+        if (provider.Type == ProviderType.EmailCode || provider.Type == ProviderType.MagicLink)
+        {
+            return "Email sign-in";
+        }
+
+        if (provider.Type == ProviderType.OAuth || provider.Type == ProviderType.Oidc || provider.Type == ProviderType.Saml2)
+        {
+            return string.Equals(provider.Name, provider.Type.Value, StringComparison.OrdinalIgnoreCase)
+                ? "External sign-in"
+                : provider.Name;
+        }
+
+        return provider.Name;
+    }
+
+    private static string GetFactorDisplayName(string factorType)
+    {
+        return NormalizeFactorType(factorType) switch
+        {
+            AuthenticationFactorTypes.Totp => "Authenticator app",
+            AuthenticationFactorTypes.RecoveryCode => "Recovery codes",
+            AuthenticationFactorTypes.Passkey => "Passkeys",
+            var value => value
+        };
+    }
+
+    private static List<string> NormalizeFactors(IEnumerable<string>? factors)
+    {
+        return factors?
+            .Where(factor => !string.IsNullOrWhiteSpace(factor))
+            .Select(NormalizeFactorType)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(factor => factor, StringComparer.Ordinal)
+            .ToList() ?? [];
+    }
+
+    private static string NormalizeFactorType(string factorType)
+    {
+        return factorType.Trim().Replace('-', '_').ToLowerInvariant();
+    }
+
+    private static bool IsRevocable(AuthenticationProviderKey provider)
+    {
+        return provider.Type != ProviderType.Internal;
+    }
+
+    private bool IsResettable(AuthenticationProviderKey provider)
+    {
+        return IsTotpProvider(provider) || IsRecoveryCodeProvider(provider);
     }
 
     private static AshlarUser CloneUser(IUser user, bool isActive)
@@ -330,9 +539,11 @@ public sealed class AccountSecurityService : IAccountSecurityService
 /// <param name="SecurityEventSummaryRepository">The security event summary repository value.</param>
 /// <param name="TotpOptions">The TOTP options value.</param>
 /// <param name="RecoveryCodeOptions">The recovery code options value.</param>
+/// <param name="MfaPolicyEvaluator">The MFA policy evaluator value.</param>
 public sealed record AccountSecurityServiceDependencies(
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,
     IUserSecurityEventSummaryRepository? SecurityEventSummaryRepository = null,
     IOptions<TotpOptions>? TotpOptions = null,
-    IOptions<RecoveryCodeOptions>? RecoveryCodeOptions = null);
+    IOptions<RecoveryCodeOptions>? RecoveryCodeOptions = null,
+    IMfaPolicyEvaluator? MfaPolicyEvaluator = null);

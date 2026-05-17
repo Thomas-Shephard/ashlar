@@ -12,6 +12,10 @@ namespace Ashlar.Tests.Identity;
 
 internal sealed class AccountSecurityServiceTests
 {
+    private static readonly string[] ExpectedAppAndRecoveryFactors = ["Authenticator app", "Recovery codes"];
+    private static readonly string[] ExpectedAuthenticatorAppFactor = ["Authenticator app"];
+    private static readonly string[] ExpectedEmailSignIn = ["Email sign-in"];
+    private static readonly string[] ExpectedCustomFactor = ["custom_factor"];
     private readonly Guid _userId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private FakeTimeProvider _timeProvider;
     private InMemoryIdentityRepository _identityRepository;
@@ -532,7 +536,327 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(result.Value?.IsMfaConfigured, Is.True);
             Assert.That(result.Value?.ActiveSessionCount, Is.EqualTo(1));
             Assert.That(result.Value?.RecentSecurityEventCount, Is.EqualTo(1));
-            Assert.That(result.Value?.ConfiguredCredentials, Has.Count.EqualTo(2));
+            Assert.That(result.Value?.GetConfiguredCredentials(), Has.Count.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldClassifyEmailSignInOnly()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+
+        var result = await _service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.CanSignIn, Is.True);
+            Assert.That(result.Value?.PrimaryCredentials.Single().DisplayName, Is.EqualTo("Email sign-in"));
+            Assert.That(result.Value?.AdditionalVerificationFactors, Is.Empty);
+            Assert.That(result.Value?.Policy.IsAdditionalVerificationRequired, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldPreferDurableEmailCredentialWhenPresent()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.EmailCode));
+
+        var result = await _service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.PrimaryCredentials, Has.Count.EqualTo(1));
+            Assert.That(result.Value?.PrimaryCredentials.Single().Provider, Is.EqualTo(AuthenticationProviderKey.EmailCode));
+            Assert.That(result.Value?.PrimaryCredentials.Single().DisplayName, Is.EqualTo("Email sign-in"));
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldClassifyTotpAndRecoveryCodesAsAdditionalVerification()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        _identityRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
+        _identityRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode")));
+
+        var result = await _service.GetUserSecurityPostureAsync(_userId);
+        var factors = result.Value!.AdditionalVerificationFactors;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factors.Select(f => f.DisplayName), Is.EquivalentTo(ExpectedAppAndRecoveryFactors));
+            Assert.That(result.Value.IsMfaConfigured, Is.True);
+            Assert.That(result.Value.PrimaryCredentials.Select(item => item.DisplayName), Does.Contain("Password"));
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldTreatPasskeyAsPrimaryAndNotImplicitTwoFactorPolicy()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Passkey));
+
+        var result = await _service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.CanSignIn, Is.True);
+            Assert.That(result.Value?.PrimaryCredentials.Select(item => item.DisplayName), Does.Contain("Passkeys"));
+            Assert.That(result.Value?.AdditionalVerificationFactors.Single().DisplayName, Is.EqualTo("Passkeys"));
+            Assert.That(result.Value?.Policy.IsAdditionalVerificationRequired, Is.False);
+            Assert.That(result.Value?.Policy.IsReadyForAdditionalVerification, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldShowPasskeyAndTotpWithoutRawProviderNames()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Passkey));
+        _identityRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
+
+        var result = await _service.GetUserSecurityPostureAsync(_userId);
+        var names = result.Value!.CredentialInventory.Select(item => item.DisplayName).ToList();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(names, Does.Contain("Passkeys"));
+            Assert.That(names, Does.Contain("Authenticator app"));
+            Assert.That(names, Does.Not.Contain("PASSKEY:PASSKEY"));
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldReportMissingRequiredTotp()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        var service = CreateService(new StaticMfaPolicyEvaluator(true, [AuthenticationFactorTypes.Totp]));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.Policy.IsAdditionalVerificationRequired, Is.True);
+            Assert.That(result.Value?.Policy.IsReadyForAdditionalVerification, Is.False);
+            Assert.That(result.Value?.Policy.IsLockedOutByPolicy, Is.True);
+            Assert.That(result.Value?.Policy.MissingRequiredFactorDisplayNames, Is.EqualTo(ExpectedAuthenticatorAppFactor));
+            Assert.That(result.Value?.CanSignIn, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldAllowPasskeyAsAdditionalVerificationWhenPolicyRequiresIt()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Passkey));
+        var service = CreateService(new StaticMfaPolicyEvaluator(true, [AuthenticationFactorTypes.Passkey]));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.Policy.IsAdditionalVerificationRequired, Is.True);
+            Assert.That(result.Value?.Policy.IsReadyForAdditionalVerification, Is.True);
+            Assert.That(result.Value?.Policy.MissingRequiredFactorTypes, Is.Empty);
+            Assert.That(result.Value?.CanSignIn, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldRequireAnyUsableFactorWhenPolicyHasNoSpecificFactors()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        var service = CreateService(new StaticMfaPolicyEvaluator(true, []));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.Policy.IsAdditionalVerificationRequired, Is.True);
+            Assert.That(result.Value?.Policy.RequiredFactorTypes, Is.Empty);
+            Assert.That(result.Value?.Policy.AllowedFactorTypes, Is.Empty);
+            Assert.That(result.Value?.Policy.HasUsableAdditionalVerificationFactor, Is.False);
+            Assert.That(result.Value?.Policy.IsReadyForAdditionalVerification, Is.False);
+            Assert.That(result.Value?.Policy.MissingRequiredFactorTypes, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldAllowAnyUsableFactorWhenPolicyHasNoSpecificFactors()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        _identityRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
+        var service = CreateService(new StaticMfaPolicyEvaluator(true, []));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.Policy.IsAdditionalVerificationRequired, Is.True);
+            Assert.That(result.Value?.Policy.HasUsableAdditionalVerificationFactor, Is.True);
+            Assert.That(result.Value?.Policy.IsReadyForAdditionalVerification, Is.True);
+            Assert.That(result.Value?.Policy.MissingRequiredFactorTypes, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldExposeEmptyAllowedFactorsWhenPolicyDoesNotProvideAllowedFactors()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        _identityRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
+        var service = CreateService(new StaticMfaPolicyEvaluator(true, [AuthenticationFactorTypes.Totp]));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+
+        Assert.That(result.Value?.Policy.AllowedFactorTypes, Is.Empty);
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldReportInactiveUserCannotSignIn()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = false };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+
+        var result = await _service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.IsActive, Is.False);
+            Assert.That(result.Value?.CanSignIn, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldClassifyUnknownProviderSafely()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey("Custom", "HardwareThing")));
+
+        var result = await _service.GetUserSecurityPostureAsync(_userId);
+        var item = result.Value!.CredentialInventory.Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(item.Purpose, Is.EqualTo(CredentialPosturePurpose.Unknown));
+            Assert.That(item.IsPrimaryCredential, Is.False);
+            Assert.That(item.IsAdditionalVerificationFactor, Is.False);
+            Assert.That(item.DisplayName, Is.EqualTo("HardwareThing"));
+            Assert.That(result.Value.CanSignIn, Is.True);
+            Assert.That(result.Value.PrimaryCredentials.Select(credential => credential.DisplayName), Does.Contain("Email sign-in"));
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldUseExternalProviderFriendlyNames()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.OAuth, "github")));
+        _identityRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Oidc, "OIDC")));
+        _identityRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Saml2, "enterprise-sso")));
+
+        var result = await _service.GetUserSecurityPostureAsync(_userId);
+        var names = result.Value!.PrimaryCredentials.Select(item => item.DisplayName).ToList();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(names, Does.Contain("github"));
+            Assert.That(names, Does.Contain("External sign-in"));
+            Assert.That(names, Does.Contain("enterprise-sso"));
+            Assert.That(result.Value.CanSignIn, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldNormalizeCustomPolicyFactors()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        var service = CreateService(new StaticMfaPolicyEvaluator(true, [" custom-factor ", "custom_factor"]));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.Policy.RequiredFactorTypes, Is.EqualTo(ExpectedCustomFactor));
+            Assert.That(result.Value?.Policy.MissingRequiredFactorDisplayNames, Is.EqualTo(ExpectedCustomFactor));
+            Assert.That(result.Value?.Policy.IsLockedOutByPolicy, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldPassTenantContextIntoPolicyEvaluation()
+    {
+        var tenantId = Guid.NewGuid();
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = tenantId };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        var evaluator = new CapturingMfaPolicyEvaluator();
+        var service = CreateService(evaluator);
+
+        var result = await service.GetUserSecurityPostureAsync(_userId, new UserSecurityPostureRequest(new TenantContext(tenantId)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(evaluator.Context?.TenantId, Is.EqualTo(tenantId));
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldClassifyConfiguredTotpProviderAndFallbackTotpName()
+    {
+        var configuredTotp = new AuthenticationProviderKey(ProviderType.Mfa, "authenticator");
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _identityRepository.Credentials.Add(CreateCredential(_userId, configuredTotp));
+        _identityRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
+        var service = new AccountSecurityService(
+            _identityRepository,
+            Mock.Of<IAuthenticationSessionService>(s => s.ListSessionsForUserAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<ListAuthenticationSessionsRequest>(),
+                It.IsAny<CancellationToken>()) == Task.FromResult<IReadOnlyList<AuthenticationSessionSummary>>(Array.Empty<AuthenticationSessionSummary>())),
+            new NullTransactionProvider(),
+            new AllowAccountSecurityGuard(),
+            new AccountSecurityServiceDependencies(
+                _timeProvider,
+                _events,
+                _events,
+                Options.Create(new TotpOptions { ProviderKey = configuredTotp })));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+
+        Assert.That(result.Value?.AdditionalVerificationFactors.Single().DisplayName, Is.EqualTo("Authenticator app"));
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldKeepUnavailableCredentialsInInventoryOnly()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        var revokedPasskey = CreateCredential(_userId, AuthenticationProviderKey.Passkey);
+        revokedPasskey.Status = CredentialStatus.Revoked;
+        revokedPasskey.RevokedAt = _timeProvider.GetUtcNow();
+        var expiredTotp = CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp"));
+        expiredTotp.ExpiresAt = _timeProvider.GetUtcNow().AddMinutes(-1);
+        _identityRepository.Credentials.Add(revokedPasskey);
+        _identityRepository.Credentials.Add(expiredTotp);
+        var service = CreateService(new StaticMfaPolicyEvaluator(true, [AuthenticationFactorTypes.Totp]));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+        var totpFactor = result.Value?.AdditionalVerificationFactors.Single(factor => factor.FactorType == AuthenticationFactorTypes.Totp);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.CredentialInventory, Has.Count.EqualTo(2));
+            Assert.That(result.Value?.CredentialInventory.All(item => !item.IsAvailable), Is.True);
+            Assert.That(result.Value?.PrimaryCredentials.Select(item => item.DisplayName), Is.EqualTo(ExpectedEmailSignIn));
+            Assert.That(totpFactor?.IsConfigured, Is.True);
+            Assert.That(totpFactor?.IsUsable, Is.False);
+            Assert.That(result.Value?.Policy.IsReadyForAdditionalVerification, Is.False);
+            Assert.That(result.Value?.Policy.MissingRequiredFactorDisplayNames, Is.EqualTo(ExpectedAuthenticatorAppFactor));
         }
     }
 
@@ -635,6 +959,19 @@ internal sealed class AccountSecurityServiceTests
         };
     }
 
+    private AccountSecurityService CreateService(IMfaPolicyEvaluator? mfaPolicyEvaluator = null)
+    {
+        return new AccountSecurityService(
+            _identityRepository,
+            Mock.Of<IAuthenticationSessionService>(s => s.ListSessionsForUserAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<ListAuthenticationSessionsRequest>(),
+                It.IsAny<CancellationToken>()) == Task.FromResult<IReadOnlyList<AuthenticationSessionSummary>>(Array.Empty<AuthenticationSessionSummary>())),
+            new NullTransactionProvider(),
+            new AllowAccountSecurityGuard(),
+            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, MfaPolicyEvaluator: mfaPolicyEvaluator));
+    }
+
     private UserCredential CreateCredential(Guid userId, AuthenticationProviderKey provider)
     {
         return new UserCredential
@@ -679,6 +1016,27 @@ internal sealed class AccountSecurityServiceTests
         public Task<Result> CanDisableUserAsync(IUser user, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new Result(false));
+        }
+    }
+
+    private sealed class StaticMfaPolicyEvaluator(bool isRequired, IReadOnlyList<string> requiredFactors) : IMfaPolicyEvaluator
+    {
+        public Task<MfaPolicyEvaluation> EvaluateAsync(IUser user, AuthenticationContext context, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(isRequired
+                ? new MfaPolicyEvaluation(true, new MfaRequirement(requiredFactors))
+                : new MfaPolicyEvaluation(false));
+        }
+    }
+
+    private sealed class CapturingMfaPolicyEvaluator : IMfaPolicyEvaluator
+    {
+        public AuthenticationContext? Context { get; private set; }
+
+        public Task<MfaPolicyEvaluation> EvaluateAsync(IUser user, AuthenticationContext context, CancellationToken cancellationToken = default)
+        {
+            Context = context;
+            return Task.FromResult(new MfaPolicyEvaluation(false));
         }
     }
 

@@ -78,6 +78,8 @@ options.RequireFreshMfa();
 
 Routes use `.RequireFreshMfa()` for sensitive operations: passkey registration/rename/revoke, TOTP reset, recovery-code generation, email change requests, revoking other sessions, and administrator disable/reactivate/session-revoke/MFA-reset actions. Ordinary sign-in, sign-out, email verification, invitation acceptance, account viewing, and session listing remain available with a normal authenticated session.
 
+The account and administration pages render Ashlar's account security posture model. They show sign-in methods separately from additional verification, use friendly labels such as "Authenticator app", "Recovery codes", and "Passkeys", and show whether protected actions are available or blocked until setup.
+
 Normal invitation, magic-link, and account tokens are sent through the PostgreSQL email outbox. `DevelopmentEmailTransport` logs full email bodies to the console so local callback links are easy to click or copy.
 
 The cleanup hosted service and email outbox dispatcher start with the application. The sample intentionally uses a development email transport that exposes token-bearing email bodies; replace `DevelopmentEmailTransport` before using this composition outside local development.

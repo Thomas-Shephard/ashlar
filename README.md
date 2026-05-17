@@ -17,7 +17,7 @@ Passkey/WebAuthn support is provided by the optional `Ashlar.Passkeys` package. 
 
 Configure the relying party id, relying party name, and HTTPS production origin before enabling browser flows. Loopback and `localhost` HTTP origins are allowed for local development where browsers treat them as secure contexts. Registered passkeys are stored as normal Ashlar credentials with `ProviderType.Passkey`; ceremony challenges are short-lived, purpose-scoped, origin/RP-scoped, and single-use. Public sign-in should use discoverable credentials without an email allow-list. Trusted reauthentication or step-up flows can start challenges scoped to a known `UserId`.
 
-Passkeys participate in Ashlar's MFA-aware authentication orchestration for primary sign-in, so configured MFA policies still apply before an ASP.NET Core session is issued.
+Passkeys participate in Ashlar's MFA-aware authentication orchestration for primary sign-in, so configured MFA policies still apply before an ASP.NET Core session is issued. A passkey is always listed as a passkey in account posture; applications should only describe it as satisfying additional verification when the active policy allows the `passkey` factor.
 
 ## Identity DI Setup
 Ashlar provides `IServiceCollection` extensions for registering its core identity services:
@@ -691,7 +691,11 @@ Available operations:
 - `RevokeSessionsAsync`: revokes all active sessions for a user.
 - `RevokeCredentialsAsync`: revokes active credentials for a specific provider key.
 - `ResetMfaAsync`: revokes configured TOTP and recovery-code credentials.
-- `GetUserSecurityPostureAsync`: returns a non-secret summary containing active state, email verification state, configured provider types, MFA state, active session count, and recent security event count when the persistence provider supports it.
+- `GetUserSecurityPostureAsync`: returns a non-secret `AccountSecurityPosture` read model containing active state, email verification state, primary sign-in methods, additional verification factors, policy readiness, missing required factors, readable credential inventory, active session count, and recent security event count when the persistence provider supports it.
+
+Account posture separates durable primary credentials from additional verification factors. Local passwords, external providers, email-code or magic-link sign-in credentials, and passkeys are primary sign-in methods. Authenticator apps are additional verification factors, recovery codes are backup additional verification factors, and passkeys can also be additional verification factors when policy or step-up requirements allow the `passkey` factor. One-time email sign-in credentials are not treated as durable MFA factors.
+
+Applications should render `PrimaryCredentials`, `AdditionalVerificationFactors`, and `Policy` instead of formatting raw provider keys. Use the supplied display names such as "Password", "Email sign-in", "Authenticator app", "Recovery codes", and "Passkeys"; use `Policy.IsReadyForAdditionalVerification` and `Policy.MissingRequiredFactorDisplayNames` to explain whether the user can satisfy the current MFA or step-up policy. The posture inventory intentionally omits credential values, token hashes, public keys, passkey ceremony JSON, recovery codes, password hashes, and protected secrets.
 
 Sensitive admin operations require `AccountSecurityOperationRequest` with an `AuditContext`. Applications are responsible for authorizing access before calling these methods, typically with an application admin role or scoped permission enforced by ASP.NET Core authorization. Ashlar records audit events with actor metadata, target user id, tenant id, reason, and affected counts; it does not return or log raw secrets, tokens, password hashes, recovery codes, protected payloads, or session tokens.
 

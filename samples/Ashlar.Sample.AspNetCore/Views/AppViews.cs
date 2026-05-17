@@ -544,13 +544,92 @@ internal static class AppViews
         """;
     }
 
-    public static IResult RenderAccountSettings(string userEmail, string? userName, bool isEmailVerified, bool hasTotp, bool hasRecoveryCodes, bool hasPasskeys, bool isAdmin)
+    private static AccountSecurityDisplayState CreateSecurityDisplay(UserSecurityPosture posture)
     {
-        var verifiedBadge = isEmailVerified
-            ? "<span class=\"badge badge-success\">Verified</span>"
-            : "<span class=\"badge badge-warning\">Unverified</span>";
+        var hasAdditionalVerification = posture.AdditionalVerificationFactors.Any(f => f.IsConfigured);
+        var isReadyForAdditionalVerification = posture.Policy.IsReadyForAdditionalVerification;
+        var protectedActionStatus = GetProtectedActionStatus(hasAdditionalVerification, isReadyForAdditionalVerification);
 
-        var verifyForm = isEmailVerified ? "" : """
+        return new AccountSecurityDisplayState(
+            HasTotp: HasConfiguredFactor(posture, AuthenticationFactorTypes.Totp),
+            HasRecoveryCodes: HasConfiguredFactor(posture, AuthenticationFactorTypes.RecoveryCode),
+            HasPasskeys: posture.CredentialInventory.Any(c => c.Provider.Type == ProviderType.Passkey),
+            SignInMethods: FormatSignInMethods(posture),
+            ProtectedActionStatus: protectedActionStatus,
+            MissingVerification: FormatMissingVerification(posture, hasAdditionalVerification),
+            VerificationStatus: FormatVerificationStatus(posture, hasAdditionalVerification));
+    }
+
+    private static string GetProtectedActionStatus(bool hasAdditionalVerification, bool isReadyForAdditionalVerification)
+    {
+        if (hasAdditionalVerification && isReadyForAdditionalVerification)
+        {
+            return "Available";
+        }
+
+        return "Blocked until setup";
+    }
+
+    private static bool HasConfiguredFactor(UserSecurityPosture posture, string factorType)
+    {
+        return posture.AdditionalVerificationFactors.Any(factor =>
+            string.Equals(factor.FactorType, factorType, StringComparison.OrdinalIgnoreCase) && factor.IsConfigured);
+    }
+
+    private static string FormatSignInMethods(UserSecurityPosture posture)
+    {
+        var methods = string.Join(", ", posture.PrimaryCredentials.Select(c => c.DisplayName).Distinct(StringComparer.Ordinal));
+        return methods.Length > 0 ? methods : "None";
+    }
+
+    private static string FormatMissingVerification(UserSecurityPosture posture, bool hasAdditionalVerification)
+    {
+        if (hasAdditionalVerification && posture.Policy.IsReadyForAdditionalVerification)
+        {
+            return "None";
+        }
+
+        if (posture.Policy.MissingRequiredFactorDisplayNames.Count > 0)
+        {
+            return string.Join(" or ", posture.Policy.MissingRequiredFactorDisplayNames);
+        }
+
+        return "Authenticator app or passkey";
+    }
+
+    private static string FormatVerificationStatus(UserSecurityPosture posture, bool hasAdditionalVerification)
+    {
+        if (hasAdditionalVerification)
+        {
+            return "<span class=\"badge badge-success\">Configured</span>";
+        }
+
+        if (posture.Policy.IsAdditionalVerificationRequired)
+        {
+            return "<span class=\"badge badge-warning\">Setup required</span>";
+        }
+
+        return "<span class=\"badge\">Not configured</span>";
+    }
+
+    private static string FormatEmailVerificationBadge(UserSecurityPosture posture)
+    {
+        if (posture.IsEmailVerified)
+        {
+            return "<span class=\"badge badge-success\">Verified</span>";
+        }
+
+        return "<span class=\"badge badge-warning\">Unverified</span>";
+    }
+
+    private static string RenderVerifyEmailForm(UserSecurityPosture posture)
+    {
+        if (posture.IsEmailVerified)
+        {
+            return "";
+        }
+
+        return """
             <hr style="margin: 2rem 0; border: 0; border-top: 1px solid #e5e7eb;" />
             <h3>Verify Email</h3>
             <p>Your email address is not yet verified.</p>
@@ -559,37 +638,78 @@ internal static class AppViews
             </form>
             <div id="verifyEmailFormResult"></div>
         """;
+    }
 
-        var verificationStatus = hasTotp || hasPasskeys
-            ? "<span class=\"badge badge-success\">Configured</span>"
-            : "<span class=\"badge badge-warning\">Not configured</span>";
+    private static string FormatEnabledBadge(bool isEnabled)
+    {
+        if (isEnabled)
+        {
+            return "<span class=\"badge badge-success\">Enabled</span>";
+        }
 
-        var totpStatus = hasTotp
-            ? "<span class=\"badge badge-success\">Enabled</span>"
-            : "<span class=\"badge\">Not set</span>";
+        return "<span class=\"badge\">Not set</span>";
+    }
 
-        var passkeyStatus = hasPasskeys
-            ? "<span class=\"badge badge-success\">Registered</span>"
-            : "<span class=\"badge\">None</span>";
+    private static string FormatRegisteredBadge(bool isRegistered)
+    {
+        if (isRegistered)
+        {
+            return "<span class=\"badge badge-success\">Registered</span>";
+        }
 
-        var recoveryStatus = hasRecoveryCodes
-            ? "<span class=\"badge badge-success\">Generated</span>"
-            : "<span class=\"badge\">None</span>";
+        return "<span class=\"badge\">None</span>";
+    }
 
-        var recoveryCodesButtonText = hasRecoveryCodes ? "Regenerate Recovery Codes" : "Generate Recovery Codes";
-        var mfaActions = hasTotp
-            ? $"""
-                <div class="grid" style="margin-top: 1rem;">
-                    <button id="generateBtn" class="secondary" style="height: 2.5rem;">{recoveryCodesButtonText}</button>
-                    <button id="resetMfaBtn" class="secondary danger" style="height: 2.5rem;">Reset Authenticator App</button>
-                </div>
-                <div id="codesResult" style="margin-top: 1.5rem;"></div>
-              """
-            : """
+    private static string FormatGeneratedBadge(bool isGenerated)
+    {
+        if (isGenerated)
+        {
+            return "<span class=\"badge badge-success\">Generated</span>";
+        }
+
+        return "<span class=\"badge\">None</span>";
+    }
+
+    private static string RenderMfaActions(AccountSecurityDisplayState securityDisplay)
+    {
+        if (!securityDisplay.HasTotp)
+        {
+            return """
                 <div style="margin-top: 1rem;">
                     <button onclick="location.href='/account/mfa/enroll'" style="height: 2.5rem;">Enable Authenticator App</button>
                 </div>
               """;
+        }
+
+        var recoveryCodesButtonText = securityDisplay.HasRecoveryCodes ? "Regenerate Recovery Codes" : "Generate Recovery Codes";
+
+        return $"""
+            <div class="grid" style="margin-top: 1rem;">
+                <button id="generateBtn" class="secondary" style="height: 2.5rem;">{recoveryCodesButtonText}</button>
+                <button id="resetMfaBtn" class="secondary danger" style="height: 2.5rem;">Reset Authenticator App</button>
+            </div>
+            <div id="codesResult" style="margin-top: 1.5rem;"></div>
+          """;
+    }
+
+    private sealed record AccountSecurityDisplayState(
+        bool HasTotp,
+        bool HasRecoveryCodes,
+        bool HasPasskeys,
+        string SignInMethods,
+        string ProtectedActionStatus,
+        string MissingVerification,
+        string VerificationStatus);
+
+    public static IResult RenderAccountSettings(string userEmail, string? userName, UserSecurityPosture posture, bool isAdmin)
+    {
+        var verifiedBadge = FormatEmailVerificationBadge(posture);
+        var verifyForm = RenderVerifyEmailForm(posture);
+        var securityDisplay = CreateSecurityDisplay(posture);
+        var totpStatus = FormatEnabledBadge(securityDisplay.HasTotp);
+        var passkeyStatus = FormatRegisteredBadge(securityDisplay.HasPasskeys);
+        var recoveryStatus = FormatGeneratedBadge(securityDisplay.HasRecoveryCodes);
+        var mfaActions = RenderMfaActions(securityDisplay);
 
         var navLinks = $"""
             <a href="/">Dashboard</a>
@@ -648,9 +768,14 @@ internal static class AppViews
                 <div id="security" class="tab-pane">
                     <h3>Sign-In Verification</h3>
                     <div class="status-box" style="margin-top: 1rem;">
+                        <strong>Sign-in methods:</strong> {{System.Net.WebUtility.HtmlEncode(securityDisplay.SignInMethods)}}<br/>
+                        <strong>Protected actions:</strong> {{securityDisplay.ProtectedActionStatus}}<br/>
+                        <strong>Missing setup:</strong> {{System.Net.WebUtility.HtmlEncode(securityDisplay.MissingVerification)}}
+                    </div>
+                    <div class="status-box" style="margin-top: 1rem;">
                         <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
                             <strong>Additional verification</strong>
-                            {{verificationStatus}}
+                            {{securityDisplay.VerificationStatus}}
                         </div>
                         <div style="display: grid; gap: 0.5rem; margin-top: 1rem;">
                             <div style="display: flex; justify-content: space-between; gap: 1rem;"><span>Authenticator app</span>{{totpStatus}}</div>
@@ -1052,24 +1177,7 @@ internal static class AppViews
                     document.getElementById('resetUserMfaBtn').classList.toggle('hidden', !posture.isMfaConfigured);
                 };
 
-                const normalizeProviderValue = value => String(value || '').toLowerCase();
-
-                const credentialLabel = credential => {
-                    const type = normalizeProviderValue(credential.type?.value || credential.type);
-                    const name = normalizeProviderValue(credential.name);
-                    if (type === 'passkey' || name === 'passkey') return 'Passkey';
-                    if (type === 'mfa' && name === 'totp') return 'Authenticator app';
-                    if (type === 'recoverycode' || name === 'recoverycode') return 'Recovery codes';
-                    if (type === 'emaillogin' || name === 'magiclink') return 'Email sign-in';
-                    if (type === 'emaillogin' || name === 'emailcode') return 'Email code';
-                    return credential.name || credential.type?.value || credential.type || 'Credential';
-                };
-
-                const hasCredential = (credentials, matcher) => credentials.some(c => {
-                    const type = normalizeProviderValue(c.type?.value || c.type);
-                    const name = normalizeProviderValue(c.name);
-                    return matcher(type, name);
-                });
+                const postureNames = items => [...new Set((items || []).map(item => item.displayName).filter(Boolean))].join(', ') || 'None';
 
                 const loadSecurityPosture = async () => {
                     const userId = document.getElementById('securityUserId').value;
@@ -1092,19 +1200,25 @@ internal static class AppViews
 
                     setSecurityActions(result);
                     div.style.color = '';
-                    const configuredCredentials = result.configuredCredentials || [];
-                    const credentials = [...new Set(configuredCredentials.map(credentialLabel))].join(', ') || 'None';
-                    const hasPasskey = hasCredential(configuredCredentials, (type, name) => type === 'passkey' || name === 'passkey');
-                    const hasTotp = hasCredential(configuredCredentials, (type, name) => type === 'mfa' && name === 'totp');
-                    const verification = hasTotp || hasPasskey
-                        ? (hasTotp && hasPasskey ? 'Authenticator app and passkey available' : hasTotp ? 'Authenticator app available' : 'Passkey available')
-                        : 'Not configured';
+                    const credentials = postureNames(result.primaryCredentials);
+                    const verification = postureNames(result.additionalVerificationFactors?.filter(f => f.isConfigured));
+                    const hasAdditionalVerification = (result.additionalVerificationFactors || []).some(f => f.isConfigured);
+                    const policy = result.policy || {};
+                    const protectedActions = hasAdditionalVerification && policy.isReadyForAdditionalVerification ? 'Available' : 'Blocked until setup';
+                    let missing = 'Authenticator app or passkey';
+                    if (hasAdditionalVerification && policy.isReadyForAdditionalVerification) {
+                        missing = 'None';
+                    } else if (!policy.isReadyForAdditionalVerification && policy.missingRequiredFactorDisplayNames?.length) {
+                        missing = policy.missingRequiredFactorDisplayNames.join(' or ');
+                    }
                     div.replaceChildren();
                     [
                         ['Status', result.isActive ? 'Active' : 'Inactive'],
                         ['Email', result.isEmailVerified ? 'Verified' : 'Unverified'],
-                        ['Credentials', credentials],
+                        ['Sign-in methods', credentials],
                         ['Additional verification', verification],
+                        ['Protected actions', protectedActions],
+                        ['Missing setup', missing],
                         ['Active sessions', String(result.activeSessionCount)],
                         ['Recent security events', result.recentSecurityEventCount ?? 'Unavailable']
                     ].forEach(([label, value], index) => {
@@ -1112,7 +1226,7 @@ internal static class AppViews
                         strong.textContent = label + ':';
                         div.appendChild(strong);
                         div.appendChild(document.createTextNode(' ' + value));
-                        if (index < 5) div.appendChild(document.createElement('br'));
+                        if (index < 7) div.appendChild(document.createElement('br'));
                     });
                 };
 

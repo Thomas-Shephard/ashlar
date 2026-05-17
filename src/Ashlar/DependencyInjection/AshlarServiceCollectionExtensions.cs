@@ -87,7 +87,8 @@ public static class AshlarServiceCollectionExtensions
             provider.GetService<ISecurityEventSink>(),
             provider.GetService<IUserSecurityEventSummaryRepository>(),
             provider.GetService<IOptions<TotpOptions>>(),
-            provider.GetService<IOptions<RecoveryCodeOptions>>()));
+            provider.GetService<IOptions<RecoveryCodeOptions>>(),
+            provider.GetService<IMfaPolicyEvaluator>()));
         services.TryAddScoped<IAccountSecurityGuard, AllowAccountSecurityGuard>();
         services.TryAddScoped<IAccountSecurityService, AccountSecurityService>();
         services.TryAddScoped(provider => new AuthenticationSessionServiceDependencies(
