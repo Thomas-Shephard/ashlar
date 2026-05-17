@@ -135,6 +135,36 @@ public sealed class SqliteAuthenticationRateLimiter : IAuthenticationRateLimiter
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    private static async Task UpsertStateAsync(
+        SqliteConnectionHandle handle,
+        string purpose,
+        string key,
+        RateLimitState state,
+        DateTimeOffset expiresAt,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            INSERT INTO ashlar_rate_limits (purpose, rate_limit_key, count, window_start, blocked_until, expires_at)
+            VALUES ($purpose, $key, $count, $windowStart, $blockedUntil, $expiresAt)
+            ON CONFLICT (purpose, rate_limit_key) DO UPDATE SET
+                count = excluded.count,
+                window_start = excluded.window_start,
+                blocked_until = excluded.blocked_until,
+                expires_at = excluded.expires_at;
+            """;
+
+        await using var command = handle.Connection.CreateCommand();
+        command.Transaction = handle.Transaction;
+        command.CommandText = sql;
+        command.AddParameter(PurposeParameter, purpose);
+        command.AddParameter(KeyParameter, key);
+        command.AddParameter(CountParameter, state.Count);
+        command.AddDateTimeOffsetParameter(WindowStartParameter, state.WindowStart);
+        command.AddNullableDateTimeOffsetParameter(BlockedUntilParameter, state.BlockedUntil);
+        command.AddDateTimeOffsetParameter(ExpiresAtParameter, expiresAt);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private static async Task<RateLimitState> ReadStateAsync(
         SqliteConnectionHandle handle,
         string purpose,
@@ -194,7 +224,10 @@ public sealed class SqliteAuthenticationRateLimiter : IAuthenticationRateLimiter
         command.AddDateTimeOffsetParameter(WindowStartParameter, state.WindowStart);
         command.AddNullableDateTimeOffsetParameter(BlockedUntilParameter, state.BlockedUntil);
         command.AddDateTimeOffsetParameter(ExpiresAtParameter, expiresAt);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            await UpsertStateAsync(handle, purpose, key, state, expiresAt, cancellationToken);
+        }
     }
 
     private static void ValidateRule(RateLimitRule rule)

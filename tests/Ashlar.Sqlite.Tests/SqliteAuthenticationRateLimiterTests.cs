@@ -195,7 +195,11 @@ internal sealed class SqliteAuthenticationRateLimiterTests : SqliteTestBase
         {
             var decision = await limiter.CheckAsync(new RateLimitAttempt { Key = "missing-after-insert" }, rule);
 
-            Assert.That(decision.IsAllowed, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decision.IsAllowed, Is.True);
+                Assert.That(await CountRateLimitsAsync(), Is.EqualTo(1));
+            }
         }
         finally
         {
