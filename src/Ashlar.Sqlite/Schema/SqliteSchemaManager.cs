@@ -3,36 +3,17 @@ using System.Data;
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Sqlite.Schema;
 
-internal sealed class SqliteSchemaManager(SqliteConnectionFactory connectionFactory, ILogger<SqliteSchemaManager>? logger = null)
+internal sealed partial class SqliteSchemaManager(SqliteConnectionFactory connectionFactory, ILogger<SqliteSchemaManager>? logger = null)
 {
-    private static readonly Action<ILogger, Exception?> SchemaInitializationStarted =
-        LoggerMessage.Define(
-            LogLevel.Information,
-            new EventId(1000, nameof(SchemaInitializationStarted)),
-            "Initializing Ashlar SQLite schema.");
-
-    private static readonly Action<ILogger, Exception?> SchemaInitializationCompleted =
-        LoggerMessage.Define(
-            LogLevel.Information,
-            new EventId(1001, nameof(SchemaInitializationCompleted)),
-            "Ashlar SQLite schema initialization completed.");
-
-    private static readonly Action<ILogger, Exception?> SchemaInitializationFailed =
-        LoggerMessage.Define(
-            LogLevel.Error,
-            new EventId(1002, nameof(SchemaInitializationFailed)),
-            "Ashlar SQLite schema initialization failed.");
-
     private readonly SqliteConnectionFactory _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
-    private readonly ILogger<SqliteSchemaManager> _logger = logger ?? NullLogger<SqliteSchemaManager>.Instance;
+    private readonly ILogger<SqliteSchemaManager> _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SqliteSchemaManager>.Instance;
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        SchemaInitializationStarted(_logger, null);
+        LogSchemaInitializationStarted(_logger);
 
         try
         {
@@ -48,14 +29,23 @@ internal sealed class SqliteSchemaManager(SqliteConnectionFactory connectionFact
                 await ApplyScriptAsync(connection, script, cancellationToken);
             }
 
-            SchemaInitializationCompleted(_logger, null);
+            LogSchemaInitializationCompleted(_logger);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            SchemaInitializationFailed(_logger, ex);
+            LogSchemaInitializationFailed(_logger, ex);
             throw new InvalidOperationException("Failed to initialize Ashlar SQLite schema.", ex);
         }
     }
+
+    [LoggerMessage(EventId = 1000, Level = LogLevel.Information, Message = "Initializing Ashlar SQLite schema.")]
+    private static partial void LogSchemaInitializationStarted(ILogger logger);
+
+    [LoggerMessage(EventId = 1001, Level = LogLevel.Information, Message = "Ashlar SQLite schema initialization completed.")]
+    private static partial void LogSchemaInitializationCompleted(ILogger logger);
+
+    [LoggerMessage(EventId = 1002, Level = LogLevel.Error, Message = "Ashlar SQLite schema initialization failed.")]
+    private static partial void LogSchemaInitializationFailed(ILogger logger, Exception exception);
 
     private static async Task EnsureJournalAsync(SqliteConnection connection, CancellationToken cancellationToken)
     {

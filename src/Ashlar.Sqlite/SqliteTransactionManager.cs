@@ -2,21 +2,14 @@ using Ashlar.Identity.Abstractions;
 using System.Data;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Sqlite;
 
 /// <summary>
 /// Manages the SQLite connection and transaction lifecycle for a scoped database interaction.
 /// </summary>
-internal sealed class SqliteTransactionManager : IAshlarTransactionProvider, ISqliteConnectionProvider, IAsyncDisposable
+internal sealed partial class SqliteTransactionManager : IAshlarTransactionProvider, ISqliteConnectionProvider, IAsyncDisposable
 {
-    private static readonly Action<ILogger, int, int, Exception?> PostCommitHookFailed =
-        LoggerMessage.Define<int, int>(
-            LogLevel.Warning,
-            new EventId(1000, nameof(PostCommitHookFailed)),
-            "Post-commit hook failed. HookIndex={HookIndex} HookCount={HookCount}");
-
     private readonly Func<CancellationToken, ValueTask<SqliteConnection>> _openConnectionAsync;
     private readonly ILogger<SqliteTransactionManager> _logger;
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
@@ -36,7 +29,7 @@ internal sealed class SqliteTransactionManager : IAshlarTransactionProvider, ISq
         ILogger<SqliteTransactionManager>? logger = null)
     {
         _openConnectionAsync = openConnectionAsync ?? throw new ArgumentNullException(nameof(openConnectionAsync));
-        _logger = logger ?? NullLogger<SqliteTransactionManager>.Instance;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SqliteTransactionManager>.Instance;
     }
 
     public async ValueTask<SqliteConnectionHandle> GetConnectionAsync(CancellationToken cancellationToken)
@@ -65,13 +58,13 @@ internal sealed class SqliteTransactionManager : IAshlarTransactionProvider, ISq
         {
             if (_transaction != null)
             {
-                return new JointTransaction(this);
+                return new TransactionParticipant(this, transaction: null);
             }
 
             _connection ??= await _openConnectionAsync(cancellationToken);
             _transaction = await BeginImmediateTransactionAsync(_connection, cancellationToken);
             _mustRollback = false;
-            return new SqliteAshlarTransaction(_transaction, this);
+            return new TransactionParticipant(this, _transaction);
         }
         catch
         {
@@ -151,96 +144,80 @@ internal sealed class SqliteTransactionManager : IAshlarTransactionProvider, ISq
         }
     }
 
-    private sealed class JointTransaction(SqliteTransactionManager manager) : IAshlarTransaction
+    private async Task CompleteRootAsync(SqliteTransaction transaction, CancellationToken cancellationToken)
     {
-        private bool _committed;
-        private bool _disposed;
-
-        public Task CommitAsync(CancellationToken cancellationToken = default)
+        if (_mustRollback)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            _committed = true;
-            return Task.CompletedTask;
+            throw new InvalidOperationException("The transaction cannot be committed because it has been marked for rollback by a nested participant.");
         }
 
-        public Task RollbackAsync(CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            manager._mustRollback = true;
-            return Task.CompletedTask;
-        }
+        await transaction.CommitAsync(cancellationToken);
+        var hooks = _postCommitHooks.ToArray();
+        await ClearTransactionAsync();
+        await RunPostCommitHooksAsync(hooks);
+    }
 
-        public void OnCommitted(Func<CancellationToken, Task> action)
+    private async Task RunPostCommitHooksAsync(Func<CancellationToken, Task>[] hooks)
+    {
+        List<Exception>? hookExceptions = null;
+        for (var i = 0; i < hooks.Length; i++)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            manager.RegisterPostCommitHook(action);
-        }
-
-        public ValueTask DisposeAsync()
-        {
-            if (_disposed)
+            try
             {
-                return ValueTask.CompletedTask;
+                await hooks[i](CancellationToken.None);
             }
-
-            _disposed = true;
-
-            if (!_committed)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                manager._mustRollback = true;
+                LogPostCommitHookFailed(_logger, i, hooks.Length, ex);
+                (hookExceptions ??= []).Add(ex);
             }
+        }
 
-            return ValueTask.CompletedTask;
+        if (hookExceptions != null)
+        {
+            throw new AggregateException("One or more post-commit hooks failed.", hookExceptions);
         }
     }
 
-    private sealed class SqliteAshlarTransaction(SqliteTransaction transaction, SqliteTransactionManager manager) : IAshlarTransaction
+    [LoggerMessage(EventId = 1000, Level = LogLevel.Warning, Message = "Post-commit hook failed. HookIndex={HookIndex} HookCount={HookCount}")]
+    private static partial void LogPostCommitHookFailed(ILogger logger, int hookIndex, int hookCount, Exception exception);
+
+    private sealed class TransactionParticipant(SqliteTransactionManager manager, SqliteTransaction? transaction) : IAshlarTransaction
     {
+        private bool _committed;
         private bool _disposed;
+        private bool IsRoot => transaction != null;
 
         public async Task CommitAsync(CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            if (manager._mustRollback)
+            if (IsRoot)
             {
-                throw new InvalidOperationException("The transaction cannot be committed because it has been marked for rollback by a nested participant.");
+                await manager.CompleteRootAsync(transaction!, cancellationToken);
+                _disposed = true;
+                return;
             }
 
-            await transaction.CommitAsync(cancellationToken);
-            var hooks = manager._postCommitHooks.ToArray();
-
-            await manager.ClearTransactionAsync();
-            _disposed = true;
-
-            List<Exception>? hookExceptions = null;
-            for (var i = 0; i < hooks.Length; i++)
-            {
-                try
-                {
-                    await hooks[i](CancellationToken.None);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    PostCommitHookFailed(manager._logger, i, hooks.Length, ex);
-                    (hookExceptions ??= []).Add(ex);
-                }
-            }
-
-            if (hookExceptions != null)
-            {
-                throw new AggregateException("One or more post-commit hooks failed.", hookExceptions);
-            }
+            _committed = true;
         }
 
         public async Task RollbackAsync(CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            await transaction.RollbackAsync(cancellationToken);
-            await manager.ClearTransactionAsync();
+            if (IsRoot)
+            {
+                await transaction!.RollbackAsync(cancellationToken);
+                await manager.ClearTransactionAsync();
+            }
+            else
+            {
+                manager._mustRollback = true;
+            }
+
             _disposed = true;
         }
 
@@ -258,7 +235,17 @@ internal sealed class SqliteTransactionManager : IAshlarTransactionProvider, ISq
             }
 
             _disposed = true;
-            await manager.ClearTransactionAsync();
+
+            if (IsRoot)
+            {
+                await manager.ClearTransactionAsync();
+                return;
+            }
+
+            if (!_committed)
+            {
+                manager._mustRollback = true;
+            }
         }
     }
 }
