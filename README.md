@@ -9,6 +9,7 @@ A small ASP.NET Core reference app is available at [samples/Ashlar.Sample.AspNet
 Ashlar does not register persistence by default. The following official packages are available:
 
 - **[Ashlar.Postgres](src/Ashlar.Postgres/README.md)**: PostgreSQL 15+ identity and session persistence using Dapper and DbUp.
+- **[Ashlar.Sqlite](src/Ashlar.Sqlite/README.md)**: In-progress SQLite provider infrastructure for single-instance self-hosted deployments. Repository implementations are not available yet.
 - **[Ashlar.Passkeys](src/Ashlar.Passkeys/README.md)**: Optional WebAuthn/FIDO2 passkey provider and ceremony services. The package includes the default Fido2-backed ceremony validator and can be replaced with a custom `IPasskeyCeremonyValidator`.
 
 ## Passkeys / WebAuthn
