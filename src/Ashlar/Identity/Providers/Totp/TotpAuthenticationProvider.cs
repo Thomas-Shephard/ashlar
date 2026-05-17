@@ -78,7 +78,7 @@ public sealed class TotpAuthenticationProvider : IAuthenticationProvider
     /// <inheritdoc />
     public async Task<UserCredential?> ResolveCredentialAsync(Guid userId, IAuthenticationAssertion assertion, AuthenticationContext? context, IIdentityRepository repository, CancellationToken cancellationToken = default)
     {
-        if (assertion is not TotpAssertion totpAssertion)
+        if (assertion is not TotpAssertion)
         {
             return null;
         }

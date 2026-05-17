@@ -103,7 +103,7 @@ internal sealed record SecurityEventDescriptor
     /// </summary>
     public Guid? TenantId { get; init; }
     /// <summary>
-    /// Gets or sets the actor user id value.
+    /// Gets or sets the audit metadata value.
     /// </summary>
     public AuditContext? Audit { get; init; }
     /// <summary>
