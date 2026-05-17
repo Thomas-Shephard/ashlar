@@ -24,18 +24,6 @@ public sealed class AshlarStepUpAuthorizationHandler(
     private readonly IAccountSecurityService? _accountSecurity = accountSecurity;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="AshlarStepUpAuthorizationHandler"/> class.
-    /// </summary>
-    /// <param name="stepUpAuthentication">The step-up authentication service.</param>
-    /// <param name="httpContextAccessor">The HTTP context accessor.</param>
-    public AshlarStepUpAuthorizationHandler(
-        IStepUpAuthenticationService stepUpAuthentication,
-        IHttpContextAccessor httpContextAccessor)
-        : this(stepUpAuthentication, httpContextAccessor, null)
-    {
-    }
-
-    /// <summary>
     /// Handles the step-up authorization requirement.
     /// </summary>
     /// <param name="context">The authorization handler context.</param>
@@ -105,13 +93,13 @@ public sealed class AshlarStepUpAuthorizationHandler(
         AshlarStepUpRequirement requirement)
     {
         var requestServices = _httpContextAccessor.HttpContext?.RequestServices;
-        var accountSecurity = _accountSecurity ?? requestServices?.GetService<IAccountSecurityService>();
-        if (accountSecurity == null)
+        var accountSecurityService = _accountSecurity ?? requestServices?.GetService<IAccountSecurityService>();
+        if (accountSecurityService == null)
         {
             return null;
         }
 
-        var posture = await accountSecurity.GetUserSecurityPostureAsync(
+        var posture = await accountSecurityService.GetUserSecurityPostureAsync(
             session.UserId,
             new UserSecurityPostureRequest(GetTenant(user)),
             _httpContextAccessor.HttpContext?.RequestAborted ?? default);
