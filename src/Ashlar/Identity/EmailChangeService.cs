@@ -319,13 +319,13 @@ internal sealed class EmailChangeService(
 
         await _dependencies.IdentityContext.Repository.UpdateUserAsync(updatedUser, cancellationToken);
 
+        if (_options.Value.RevokeSessions)
+        {
+            await _dependencies.SessionRepository.RevokeSessionsForUserAsync(user.Id, now, "Email changed", cancellationToken);
+        }
+
         transaction.OnCommitted(async ct =>
         {
-            if (_options.Value.RevokeSessions)
-            {
-                await _dependencies.SessionRepository.RevokeSessionsForUserAsync(user.Id, now, "Email changed", ct);
-            }
-
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.EmailChanged,
