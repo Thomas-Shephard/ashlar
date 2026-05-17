@@ -24,10 +24,10 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.That(scope.ServiceProvider.GetRequiredService<SqliteSchemaManager>(), Is.Not.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<IIdentityRepository>(), Is.TypeOf<SqliteIdentityRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IBootstrapStateRepository>(), Is.TypeOf<SqliteBootstrapStateRepository>());
-            Assert.That(scope.ServiceProvider.GetService<IAuthenticationSessionRepository>(), Is.Null);
-            Assert.That(scope.ServiceProvider.GetService<IAuthenticationHandshakeRepository>(), Is.Null);
-            Assert.That(scope.ServiceProvider.GetService<IInvitationRepository>(), Is.Null);
-            Assert.That(scope.ServiceProvider.GetService<IPasskeyChallengeRepository>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationSessionRepository>(), Is.TypeOf<SqliteAuthenticationSessionRepository>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationHandshakeRepository>(), Is.TypeOf<SqliteAuthenticationHandshakeRepository>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IInvitationRepository>(), Is.TypeOf<SqliteInvitationRepository>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IPasskeyChallengeRepository>(), Is.TypeOf<SqlitePasskeyChallengeRepository>());
             Assert.That(scope.ServiceProvider.GetService<IAuthorizationGrantRepository>(), Is.Null);
         }
     }
