@@ -321,49 +321,37 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
 
     private static AuthenticationSession ToSession(dynamic row)
     {
-        var values = (IDictionary<string, object?>)row;
-        string? primaryProviderType = ToNullableString(GetValue(values, "PrimaryProviderType"));
-        string? primaryProviderName = ToNullableString(GetValue(values, "PrimaryProviderName"));
-        string? additionalVerificationProviderType = ToNullableString(GetValue(values, "AdditionalVerificationProviderType"));
-        string? additionalVerificationProviderName = ToNullableString(GetValue(values, "AdditionalVerificationProviderName"));
+        var values = new Dictionary<string, object?>((IDictionary<string, object?>)row, StringComparer.OrdinalIgnoreCase);
+        string? primaryProviderType = ToNullableString(values["PrimaryProviderType"]);
+        string? primaryProviderName = ToNullableString(values["PrimaryProviderName"]);
+        string? additionalVerificationProviderType = ToNullableString(values["AdditionalVerificationProviderType"]);
+        string? additionalVerificationProviderName = ToNullableString(values["AdditionalVerificationProviderName"]);
 
         return new AuthenticationSession
         {
-            Id = (Guid)GetValue(values, "Id")!,
-            UserId = (Guid)GetValue(values, "UserId")!,
-            TenantId = ToNullableGuid(GetValue(values, "TenantId")),
-            TokenHash = (string)GetValue(values, "TokenHash")!,
-            CreatedAt = ToDateTimeOffset(GetValue(values, "CreatedAt")!),
-            AuthenticatedAt = ToNullableDateTimeOffset(GetValue(values, "AuthenticatedAt")),
+            Id = (Guid)values["Id"]!,
+            UserId = (Guid)values["UserId"]!,
+            TenantId = ToNullableGuid(values["TenantId"]),
+            TokenHash = (string)values["TokenHash"]!,
+            CreatedAt = ToDateTimeOffset(values["CreatedAt"]!),
+            AuthenticatedAt = ToNullableDateTimeOffset(values["AuthenticatedAt"]),
             PrimaryProvider = CreateProvider(primaryProviderType, primaryProviderName),
-            AdditionalVerificationAt = ToNullableDateTimeOffset(GetValue(values, "AdditionalVerificationAt")),
+            AdditionalVerificationAt = ToNullableDateTimeOffset(values["AdditionalVerificationAt"]),
             AdditionalVerificationProvider = CreateProvider(additionalVerificationProviderType, additionalVerificationProviderName),
-            AdditionalVerificationFactor = ToNullableString(GetValue(values, "AdditionalVerificationFactor")),
-            ExpiresAt = ToDateTimeOffset(GetValue(values, "ExpiresAt")!),
-            LastSeenAt = ToNullableDateTimeOffset(GetValue(values, "LastSeenAt")),
-            RevokedAt = ToNullableDateTimeOffset(GetValue(values, "RevokedAt")),
-            RevocationReason = ToNullableString(GetValue(values, "RevocationReason")),
-            IpAddress = ToNullableString(GetValue(values, "IpAddress")),
-            UserAgent = ToNullableString(GetValue(values, "UserAgent")),
-            Metadata = ToNullableString(GetValue(values, "Metadata"))
+            AdditionalVerificationFactor = ToNullableString(values["AdditionalVerificationFactor"]),
+            ExpiresAt = ToDateTimeOffset(values["ExpiresAt"]!),
+            LastSeenAt = ToNullableDateTimeOffset(values["LastSeenAt"]),
+            RevokedAt = ToNullableDateTimeOffset(values["RevokedAt"]),
+            RevocationReason = ToNullableString(values["RevocationReason"]),
+            IpAddress = ToNullableString(values["IpAddress"]),
+            UserAgent = ToNullableString(values["UserAgent"]),
+            Metadata = ToNullableString(values["Metadata"])
         };
-    }
-
-    private static object? GetValue(IDictionary<string, object?> values, string name)
-    {
-        return values.TryGetValue(name, out var value) || values.TryGetValue(name.ToLowerInvariant(), out value)
-            ? value
-            : null;
     }
 
     private static DateTimeOffset ToDateTimeOffset(object value)
     {
-        return value switch
-        {
-            DateTimeOffset timestamp => timestamp,
-            DateTime timestamp => new DateTimeOffset(timestamp),
-            _ => throw new InvalidOperationException("Postgres timestamp value could not be mapped.")
-        };
+        return new DateTimeOffset((DateTime)value);
     }
 
     private static DateTimeOffset? ToNullableDateTimeOffset(object? value)
