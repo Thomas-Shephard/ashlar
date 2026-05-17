@@ -31,7 +31,7 @@ internal static class SessionEndpoints
         {
             var revoked = await signInManager.RevokeSessionForCurrentUserAsync(httpContext, sessionId, reason: "user-revoked", cancellationToken);
             return revoked ? Results.NoContent() : Results.NotFound();
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireFreshMfa();
 
         app.MapDelete("/api/sessions/others", async (
             IAshlarSignInManager signInManager,
@@ -40,6 +40,6 @@ internal static class SessionEndpoints
         {
             await signInManager.RevokeOtherSessionsForCurrentUserAsync(httpContext, reason: "user-revoked-others", cancellationToken);
             return Results.NoContent();
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireFreshMfa();
     }
 }

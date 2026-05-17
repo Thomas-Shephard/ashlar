@@ -1,6 +1,7 @@
 using Ashlar.Identity.Models.Totp;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Microsoft.AspNetCore.Authorization;
 
 namespace Ashlar.Sample.AspNetCore.Extensions;
 
@@ -88,6 +89,7 @@ internal static class ServiceCollectionExtensions
         {
             options.StepUp.FreshnessWindow = TimeSpan.FromMinutes(10);
             options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.Totp);
+            options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.RecoveryCode);
             options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.Passkey);
             options.RequireFreshMfa();
             options.AddRolePolicy("admin", "admin");
@@ -97,6 +99,7 @@ internal static class ServiceCollectionExtensions
                 scope.ScopeIdRouteValueName = "projectId";
             });
         });
+        services.AddSingleton<IAuthorizationMiddlewareResultHandler, SampleStepUpAuthorizationResultHandler>();
 
         services.AddScoped<DevelopmentEmailTransport>();
 

@@ -24,7 +24,7 @@ internal static class AccountEndpoints
 
         app.MapPost("/api/account/verify-email/confirm", ConfirmEmailVerificationAsync);
 
-        app.MapPost("/api/account/change-email/request", RequestEmailChangeAsync).RequireAuthorization();
+        app.MapPost("/api/account/change-email/request", RequestEmailChangeAsync).RequireAuthorization().RequireFreshMfa();
 
         app.MapGet("/account/change-email", (string? t, string? u) => AppViews.RenderEmailChangeConfirm(t, u));
 

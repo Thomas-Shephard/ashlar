@@ -6,6 +6,7 @@ using Ashlar.Identity;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Models.Totp;
+using Ashlar.Passkeys;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
 using Microsoft.AspNetCore.Mvc;
@@ -18,6 +19,8 @@ internal static class MfaEndpoints
     public static void MapMfaEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/mfa/verify", VerifyMfaAsync);
+        app.MapGet("/api/account/security/step-up-options", GetStepUpOptionsAsync).RequireAuthorization();
+        app.MapPost("/api/account/security/verify", VerifyCurrentSessionAsync).RequireAuthorization();
 
         app.MapGet("/account/mfa/enroll", async (
             ITotpService totp,
@@ -48,12 +51,30 @@ internal static class MfaEndpoints
         app.MapPost("/api/mfa/totp/verify", async Task<IResult> (
             TotpVerifyRequest request,
             ITotpService totp,
+            IStepUpAuthenticationService stepUp,
             HttpContext httpContext,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
             var result = await totp.VerifyAndEnrollAsync(user.GetAshlarUserId(), request.SharedSecret, request.Code, httpContext.ToTenantContext(), httpContext.ToAuditContext(), cancellationToken);
-            return result.Succeeded ? Results.Ok() : Results.BadRequest(new { error = "invalid_totp" });
+            if (!result.Succeeded)
+            {
+                return Results.BadRequest(new { error = "invalid_totp" });
+            }
+
+            if (httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out var tenant))
+            {
+                await stepUp.MarkVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
+                {
+                    SessionId = sessionId,
+                    VerifiedProvider = TotpOptions.DefaultProviderKey,
+                    VerifiedFactor = AuthenticationFactorTypes.Totp,
+                    Tenant = tenant,
+                    Audit = httpContext.ToAuditContext()
+                }, cancellationToken);
+            }
+
+            return Results.Ok();
         }).RequireAuthorization();
 
         app.MapPost("/api/mfa/totp/reset", async (
@@ -64,7 +85,7 @@ internal static class MfaEndpoints
         {
             await totp.DisableTotpAsync(user.GetAshlarUserId(), httpContext.ToTenantContext(), httpContext.ToAuditContext(), cancellationToken);
             return Results.Ok();
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireFreshMfa();
 
         app.MapPost("/api/mfa/recovery-codes", async (
             IRecoveryCodeService recoveryCodes,
@@ -77,7 +98,7 @@ internal static class MfaEndpoints
                 new RecoveryCodeGenerationRequest { Tenant = httpContext.ToTenantContext(), Audit = httpContext.ToAuditContext() },
                 cancellationToken);
             return result.Succeeded ? Results.Ok(new { codes = result.Value }) : Results.BadRequest(SampleResultErrors.From(result));
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireFreshMfa();
     }
 
     private static async Task<IResult> VerifyMfaAsync(
@@ -100,6 +121,71 @@ internal static class MfaEndpoints
         }
 
         return await VerifyRecoveryCodeAsync(request.HandshakeToken, code, handshake, authContext, services, httpContext, cancellationToken);
+    }
+
+    private static async Task<IResult> VerifyCurrentSessionAsync(
+        StepUpVerifyRequest request,
+        IAuthenticationPipeline pipeline,
+        IStepUpAuthenticationService stepUp,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        if (!httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out var tenant))
+        {
+            return Results.Forbid();
+        }
+
+        var code = request.Code.Trim();
+        var isTotp = IsTotpCode(code);
+        var provider = isTotp
+            ? TotpOptions.DefaultProviderKey
+            : new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode");
+        var factor = isTotp ? AuthenticationFactorTypes.Totp : AuthenticationFactorTypes.RecoveryCode;
+        IAuthenticationAssertion assertion = isTotp
+            ? new TotpAssertion(code)
+            : new RecoveryCodeAssertion(code);
+
+        var authContext = httpContext.ToAuthenticationContext() with { UserId = userId };
+        var response = await pipeline.LoginAsync(authContext, assertion, cancellationToken);
+        if (!response.Succeeded || response.User?.Id != userId)
+        {
+            return Results.BadRequest(new { error = isTotp ? "invalid_totp" : "invalid_mfa_code" });
+        }
+
+        var result = await stepUp.MarkVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = sessionId,
+            VerifiedProvider = provider,
+            VerifiedFactor = factor,
+            Tenant = tenant,
+            Audit = httpContext.ToAuditContext()
+        }, cancellationToken);
+
+        return result.Succeeded
+            ? Results.Ok(new { status = "verified" })
+            : Results.BadRequest(SampleResultErrors.From(result));
+    }
+
+    private static async Task<IResult> GetStepUpOptionsAsync(
+        IIdentityRepository users,
+        IPasskeyService passkeys,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        var userId = user.GetAshlarUserId();
+        var totpCredential = await users.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, cancellationToken);
+        var recoveryCredential = await users.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", null, cancellationToken);
+        var hasPasskeys = (await passkeys.ListAsync(userId, cancellationToken)).Count > 0;
+        var canUseCode = totpCredential != null || recoveryCredential != null;
+
+        return Results.Ok(new
+        {
+            hasTotp = totpCredential != null,
+            hasRecoveryCodes = recoveryCredential != null,
+            hasPasskeys,
+            canUseCode,
+            setupUrl = "/account#security"
+        });
     }
 
     private static bool IsTotpCode(string code) => code.Length == 6 && code.All(char.IsDigit);
@@ -180,4 +266,6 @@ internal static class MfaEndpoints
         [FromServices] IAuthenticationPipeline Pipeline,
         [FromServices] IIdentityRepository Users,
         [FromServices] IAshlarSignInManager SignInManager);
+
+    private sealed record StepUpVerifyRequest(string Code);
 }
