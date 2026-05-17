@@ -43,10 +43,10 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
         var now = _timeProvider.GetUtcNow();
         var lockedUntil = now.Add(_options.LockDuration);
 
-        await using (var scope = _serviceProvider.CreateAsyncScope())
+        await using var scope = _serviceProvider.CreateAsyncScope();
+        var connectionProvider = scope.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>();
+        await using (var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken))
         {
-            var connectionProvider = scope.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>();
-            await using var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken);
             await using var command = connectionHandle.Connection.CreateCommand();
             command.Transaction = connectionHandle.Transaction;
             command.CommandText = """
@@ -72,7 +72,7 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        var entries = await LoadClaimedEntriesAsync(cancellationToken);
+        var entries = await LoadClaimedEntriesAsync(scope.ServiceProvider, _lockId, cancellationToken);
         if (entries.Count == 0)
         {
             return 0;
@@ -80,17 +80,19 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
 
         foreach (var entry in entries)
         {
-            await using var scope = _serviceProvider.CreateAsyncScope();
-            await ProcessEntryAsync(entry, scope.ServiceProvider, cancellationToken);
+            await using var entryScope = _serviceProvider.CreateAsyncScope();
+            await ProcessEntryAsync(entry, entryScope.ServiceProvider, cancellationToken);
         }
 
         return entries.Count;
     }
 
-    private async Task<List<OutboxEntry>> LoadClaimedEntriesAsync(CancellationToken cancellationToken)
+    private static async Task<List<OutboxEntry>> LoadClaimedEntriesAsync(
+        IServiceProvider provider,
+        string lockId,
+        CancellationToken cancellationToken)
     {
-        await using var scope = _serviceProvider.CreateAsyncScope();
-        var connectionProvider = scope.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>();
+        var connectionProvider = provider.GetRequiredService<ISqliteConnectionProvider>();
         await using var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken);
         await using var command = connectionHandle.Connection.CreateCommand();
         command.Transaction = connectionHandle.Transaction;
@@ -103,7 +105,7 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
               AND failed_at IS NULL
             ORDER BY available_at, id
             """;
-        command.AddParameter("$lockedBy", _lockId);
+        command.AddParameter("$lockedBy", lockId);
 
         var entries = new List<OutboxEntry>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
