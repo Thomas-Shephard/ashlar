@@ -4,7 +4,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using System.Text.Json;
 
 namespace Ashlar.Postgres;
 
@@ -62,7 +61,7 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
         var now = _timeProvider.GetUtcNow();
         var lockedUntil = now.Add(_options.LockDuration);
 
-        List<OutboxEntry> entries;
+        List<EmailOutboxEntry> entries;
         await using (var scope = _serviceProvider.CreateAsyncScope())
         {
             var connectionProvider = scope.ServiceProvider.GetRequiredService<IPostgresConnectionProvider>();
@@ -77,7 +76,7 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
                     _options.BatchSize
                 }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
 
-                entries = (await connectionHandle.Connection.QueryAsync<OutboxEntry>(command)).ToList();
+                entries = (await connectionHandle.Connection.QueryAsync<EmailOutboxEntry>(command)).ToList();
             }
         }
 
@@ -95,13 +94,13 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
         return entries.Count;
     }
 
-    private async Task ProcessEntryAsync(OutboxEntry entry, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task ProcessEntryAsync(EmailOutboxEntry entry, IServiceProvider provider, CancellationToken cancellationToken)
     {
         var transport = provider.GetRequiredService<TTransport>();
 
         try
         {
-            var message = MapToEmailMessage(entry);
+            var message = EmailOutboxDispatch.MapToEmailMessage(entry);
             await transport.DeliverAsync(message, cancellationToken);
             await MarkAsSentAsync(entry.Id, provider, CancellationToken.None);
         }
@@ -139,17 +138,15 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
         }
     }
 
-    private async Task MarkAsFailedAsync(OutboxEntry entry, Exception exception, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task MarkAsFailedAsync(EmailOutboxEntry entry, Exception exception, IServiceProvider provider, CancellationToken cancellationToken)
     {
-        var attemptCount = entry.AttemptCount + 1;
-        var isFinalFailure = attemptCount >= _options.MaxAttempts;
         var now = _timeProvider.GetUtcNow();
-
-        // Exponential backoff: InitialDelay * 2^(attempt - 1), safely capped to prevent overflow
-        var backoffMultiplier = Math.Pow(2, attemptCount - 1);
-        var maxDelayTicks = TimeSpan.FromDays(7).Ticks;
-        var delayTicks = Math.Min(_options.InitialRetryDelay.Ticks * backoffMultiplier, maxDelayTicks);
-        var availableAt = isFinalFailure ? now : now.AddTicks((long)delayTicks);
+        var failure = EmailOutboxDispatch.CreateFailureUpdate(
+            entry.AttemptCount,
+            _options.MaxAttempts,
+            _options.InitialRetryDelay,
+            now,
+            exception);
 
         const string sql = """
             UPDATE ashlar_email_outbox
@@ -163,12 +160,6 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
             WHERE id = @Id AND locked_by = @LockedBy
             """;
 
-        var lastError = exception.ToString();
-        if (lastError.Length > 1000)
-        {
-            lastError = lastError[..1000];
-        }
-
         var connectionProvider = provider.GetRequiredService<IPostgresConnectionProvider>();
         var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
@@ -177,79 +168,17 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
             {
                 entry.Id,
                 LockedBy = _lockId,
-                FailedAt = isFinalFailure ? now : (DateTimeOffset?)null,
-                LastError = lastError,
-                AvailableAt = availableAt,
+                failure.FailedAt,
+                failure.LastError,
+                failure.AvailableAt,
                 Now = now,
-                AttemptCount = attemptCount
+                failure.AttemptCount
             }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
 
             await connectionHandle.Connection.ExecuteAsync(command);
         }
     }
 
-    internal static EmailMessage MapToEmailMessage(OutboxEntry entry)
-    {
-        var headers = entry.Headers != null ? JsonSerializer.Deserialize<Dictionary<string, string>>(entry.Headers) : null;
-        var metadata = entry.Metadata != null ? JsonSerializer.Deserialize<Dictionary<string, string>>(entry.Metadata) : null;
-
-        return new EmailMessage(
-            entry.ToAddress,
-            entry.Subject,
-            entry.TextBody,
-            entry.HtmlBody,
-            new EmailMessageOptions
-            {
-                From = entry.FromAddress,
-                ReplyTo = entry.ReplyToAddress,
-                Headers = headers,
-                Metadata = metadata
-            });
-    }
-
-    internal sealed class OutboxEntry
-    {
-        /// <summary>
-        /// Gets or sets the id value.
-        /// </summary>
-        public Guid Id { get; init; }
-        /// <summary>
-        /// Gets or sets the to address value.
-        /// </summary>
-        public required string ToAddress { get; init; }
-        /// <summary>
-        /// Gets or sets the from address value.
-        /// </summary>
-        public string? FromAddress { get; init; }
-        /// <summary>
-        /// Gets or sets the reply to address value.
-        /// </summary>
-        public string? ReplyToAddress { get; init; }
-        /// <summary>
-        /// Gets or sets the subject value.
-        /// </summary>
-        public required string Subject { get; init; }
-        /// <summary>
-        /// Gets or sets the text body value.
-        /// </summary>
-        public string? TextBody { get; init; }
-        /// <summary>
-        /// Gets or sets the html body value.
-        /// </summary>
-        public string? HtmlBody { get; init; }
-        /// <summary>
-        /// Gets or sets the headers value.
-        /// </summary>
-        public string? Headers { get; init; }
-        /// <summary>
-        /// Gets or sets the metadata value.
-        /// </summary>
-        public string? Metadata { get; init; }
-        /// <summary>
-        /// Gets or sets the attempt count value.
-        /// </summary>
-        public int AttemptCount { get; init; }
-    }
 }
 
 internal static class PostgresEmailOutboxDispatcherLog

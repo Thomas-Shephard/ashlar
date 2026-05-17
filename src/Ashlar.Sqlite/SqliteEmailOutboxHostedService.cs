@@ -5,28 +5,24 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-namespace Ashlar.Postgres;
+namespace Ashlar.Sqlite;
 
 /// <summary>
-/// A background service that periodically triggers the <see cref="IEmailOutboxDispatcher"/>.
+/// A background service that periodically triggers the SQLite email outbox dispatcher.
 /// </summary>
+/// <typeparam name="TTransport">The transport type.</typeparam>
 /// <param name="serviceProvider">The service provider value.</param>
 /// <param name="options">The options value.</param>
 /// <param name="logger">The logger value.</param>
-public sealed class PostgresEmailOutboxHostedService(
+public sealed class SqliteEmailOutboxHostedService<TTransport>(
     IServiceProvider serviceProvider,
-    IOptions<PostgresEmailOutboxOptions> options,
-    ILogger<PostgresEmailOutboxHostedService>? logger = null) : BackgroundService
+    IOptions<SqliteEmailOutboxOptions> options,
+    ILogger<SqliteEmailOutboxHostedService<TTransport>>? logger = null) : BackgroundService
+    where TTransport : IEmailTransport
 {
-    private static readonly Action<ILogger, int, Exception?> OutboxBatchFailed =
-        LoggerMessage.Define<int>(
-            LogLevel.Error,
-            new EventId(1000, nameof(OutboxBatchFailed)),
-            "PostgreSQL email outbox hosted service batch failed. BatchSize={BatchSize}");
-
     private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
-    private readonly PostgresEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
-    private readonly ILogger<PostgresEmailOutboxHostedService> _logger = logger ?? NullLogger<PostgresEmailOutboxHostedService>.Instance;
+    private readonly SqliteEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
+    private readonly ILogger<SqliteEmailOutboxHostedService<TTransport>> _logger = logger ?? NullLogger<SqliteEmailOutboxHostedService<TTransport>>.Instance;
 
     /// <summary>
     /// Validates options and starts the background email outbox dispatcher.
@@ -35,7 +31,7 @@ public sealed class PostgresEmailOutboxHostedService(
     /// <returns>A task that represents the asynchronous start operation.</returns>
     public override Task StartAsync(CancellationToken cancellationToken)
     {
-        if (!PostgresEmailOutboxOptions.Validate(_options))
+        if (!SqliteEmailOutboxOptions.Validate(_options))
         {
             throw new InvalidOperationException("Email outbox options are invalid.");
         }
@@ -55,8 +51,17 @@ public sealed class PostgresEmailOutboxHostedService(
             _options.BatchSize,
             _options.PollingInterval,
             _logger,
-            static (provider, token) => provider.GetRequiredService<IEmailOutboxDispatcher>().ProcessBatchAsync(token),
-            OutboxBatchFailed,
+            static (provider, token) => provider.GetRequiredService<SqliteEmailOutboxDispatcher<TTransport>>().ProcessBatchAsync(token),
+            SqliteEmailOutboxHostedServiceLog.OutboxBatchFailed,
             stoppingToken);
     }
+}
+
+internal static class SqliteEmailOutboxHostedServiceLog
+{
+    public static readonly Action<ILogger, int, Exception?> OutboxBatchFailed =
+        LoggerMessage.Define<int>(
+            LogLevel.Error,
+            new EventId(1000, nameof(OutboxBatchFailed)),
+            "SQLite email outbox hosted service batch failed. BatchSize={BatchSize}");
 }
