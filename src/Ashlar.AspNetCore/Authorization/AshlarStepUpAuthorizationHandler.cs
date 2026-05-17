@@ -3,6 +3,7 @@ using Ashlar.Identity.Models;
 using Ashlar.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Ashlar.AspNetCore.Authorization;
 
@@ -21,6 +22,18 @@ public sealed class AshlarStepUpAuthorizationHandler(
     private readonly IStepUpAuthenticationService _stepUpAuthentication = stepUpAuthentication ?? throw new ArgumentNullException(nameof(stepUpAuthentication));
     private readonly IHttpContextAccessor _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
     private readonly IAccountSecurityService? _accountSecurity = accountSecurity;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AshlarStepUpAuthorizationHandler"/> class.
+    /// </summary>
+    /// <param name="stepUpAuthentication">The step-up authentication service.</param>
+    /// <param name="httpContextAccessor">The HTTP context accessor.</param>
+    public AshlarStepUpAuthorizationHandler(
+        IStepUpAuthenticationService stepUpAuthentication,
+        IHttpContextAccessor httpContextAccessor)
+        : this(stepUpAuthentication, httpContextAccessor, null)
+    {
+    }
 
     /// <summary>
     /// Handles the step-up authorization requirement.
@@ -91,12 +104,14 @@ public sealed class AshlarStepUpAuthorizationHandler(
         AuthenticationSession session,
         AshlarStepUpRequirement requirement)
     {
-        if (_accountSecurity == null)
+        var requestServices = _httpContextAccessor.HttpContext?.RequestServices;
+        var accountSecurity = _accountSecurity ?? requestServices?.GetService<IAccountSecurityService>();
+        if (accountSecurity == null)
         {
             return null;
         }
 
-        var posture = await _accountSecurity.GetUserSecurityPostureAsync(
+        var posture = await accountSecurity.GetUserSecurityPostureAsync(
             session.UserId,
             new UserSecurityPostureRequest(GetTenant(user)),
             _httpContextAccessor.HttpContext?.RequestAborted ?? default);
