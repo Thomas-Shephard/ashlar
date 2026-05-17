@@ -1,5 +1,7 @@
+using Ashlar.Auditing;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Identity.Abstractions;
+using Ashlar.Identity.Models;
 using Ashlar.Sqlite.Schema;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -28,7 +30,9 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationHandshakeRepository>(), Is.TypeOf<SqliteAuthenticationHandshakeRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IInvitationRepository>(), Is.TypeOf<SqliteInvitationRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IPasskeyChallengeRepository>(), Is.TypeOf<SqlitePasskeyChallengeRepository>());
-            Assert.That(scope.ServiceProvider.GetService<IAuthorizationGrantRepository>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantRepository>(), Is.TypeOf<SqliteAuthorizationGrantRepository>());
+            Assert.That(provider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SqliteSecurityEventSink>());
+            Assert.That(provider.GetRequiredService<IUserSecurityEventSummaryRepository>(), Is.SameAs(provider.GetRequiredService<ISecurityEventSink>()));
         }
     }
 

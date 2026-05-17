@@ -2,7 +2,7 @@
 
 SQLite persistence infrastructure for Ashlar.
 
-This package is an early durable SQLite provider for Ashlar. It currently provides dependency injection registration, schema initialization, scoped connection/transaction infrastructure, bootstrap state persistence, identity users and credentials, invitations, authentication sessions, MFA handshakes, and passkey challenges. It does not yet provide authorization grants, auditing, cleanup, rate limiting, or email outbox dispatch.
+This package is an early durable SQLite provider for Ashlar. It currently provides dependency injection registration, schema initialization, scoped connection/transaction infrastructure, bootstrap state persistence, identity users and credentials, invitations, authentication sessions, MFA handshakes, passkey challenges, authorization grants, and audit persistence. It does not yet provide cleanup, rate limiting, or email outbox dispatch.
 
 ## Supported Scenario
 
@@ -51,18 +51,19 @@ Implemented:
 - `IAuthenticationSessionRepository`
 - `IAuthenticationHandshakeRepository`
 - `IPasskeyChallengeRepository`
+- `IAuthorizationGrantRepository`
+- `ISecurityEventSink`
+- `IUserSecurityEventSummaryRepository`
 
 Not implemented yet:
 
-- authorization grant repository
-- audit sink
 - cleanup service
 - rate limiter
 - email outbox sender and dispatcher
 
 ## SQLite Limitations
 
-SQLite stores GUIDs, timestamps, provider values, version tokens, and JSON payloads as `TEXT` in this schema. JSON payloads are serialized text, not `JSONB`, and provider code should not rely on database JSON operators.
+SQLite stores GUIDs, timestamps, provider values, version tokens, and JSON payloads as `TEXT` in this schema. Authorization grant metadata and security event properties are serialized text, not `JSONB`, and provider code should not rely on database JSON operators.
 
 SQLite does not provide PostgreSQL equivalents for `FOR UPDATE SKIP LOCKED`, advisory locks, `ctid`, or PostgreSQL row-level locking behavior. Authentication handshake `forUpdate` requests are treated as provider-neutral update intent and rely on SQLite's active transaction/write-safe path plus atomic updates rather than row-level `FOR UPDATE`. Future cleanup and outbox implementations will use SQLite-compatible single-instance strategies and will not provide PostgreSQL-equivalent multi-instance coordination.
 
@@ -72,10 +73,9 @@ Tenant email uniqueness is represented with SQLite-compatible partial unique ind
 
 The intended repository implementation order is:
 
-1. Authorization grants and audit sink.
-2. Rate limiting and cleanup.
-3. Email outbox sender and single-instance dispatcher.
-4. Reusable provider contract tests shared with PostgreSQL where practical.
+1. Rate limiting and cleanup.
+2. Email outbox sender and single-instance dispatcher.
+3. Reusable provider contract tests shared with PostgreSQL where practical.
 
 ## Related Packages
 
