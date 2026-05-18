@@ -54,6 +54,16 @@ internal abstract class ProviderContractFixture
         return serviceProvider.GetRequiredService<IBootstrapStateRepository>();
     }
 
+    protected static IInvitationRepository GetInvitationRepository(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IInvitationRepository>();
+    }
+
+    protected static IAuthenticationSessionRepository GetAuthenticationSessionRepository(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IAuthenticationSessionRepository>();
+    }
+
     protected static IAshlarTransactionProvider? GetTransactionProvider(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetService<IAshlarTransactionProvider>();
