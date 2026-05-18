@@ -14,6 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Ashlar.ProviderContractTests\Ashlar.ProviderContractTests.csproj" />
     <ProjectReference Include="..\Ashlar.Testing\Ashlar.Testing.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.AspNetCore\Ashlar.AspNetCore.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.Postgres\Ashlar.Postgres.csproj" />
