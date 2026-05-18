@@ -5,7 +5,7 @@ namespace Ashlar.ProviderContractTests.Identity;
 
 internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContractFixture
 {
-    private static readonly DateTimeOffset CreatedAt = new(2026, 6, 4, 12, 0, 0, TimeSpan.Zero);
+    private static readonly TimeSpan ChallengeLifetime = TimeSpan.FromMinutes(5);
 
     [Test]
     public async Task CreateAndFetchChallengeByIdMapsCoreFields()
@@ -94,8 +94,9 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         var challenge = CreateAuthenticationChallenge(user.Id);
         await repository.CreateAsync(challenge);
 
-        var consumed = await repository.ConsumeAsync(challenge.Id, challenge.Version, CreatedAt.AddMinutes(1));
-        var replayed = await repository.ConsumeAsync(challenge.Id, challenge.Version, CreatedAt.AddMinutes(2));
+        var consumedAt = DateTimeOffset.UtcNow;
+        var consumed = await repository.ConsumeAsync(challenge.Id, challenge.Version, consumedAt);
+        var replayed = await repository.ConsumeAsync(challenge.Id, challenge.Version, consumedAt.AddMinutes(1));
 
         using (Assert.EnterMultipleScope())
         {
@@ -114,7 +115,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         var challenge = CreateAuthenticationChallenge(user.Id);
         await repository.CreateAsync(challenge);
 
-        var consumed = await repository.ConsumeAsync(challenge.Id, "wrong-version", CreatedAt.AddMinutes(1));
+        var consumed = await repository.ConsumeAsync(challenge.Id, "wrong-version", DateTimeOffset.UtcNow);
 
         Assert.That(consumed, Is.False);
     }
@@ -128,10 +129,10 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         var user = await CreateUserAsync(identityRepository);
         var challenge = CreateAuthenticationChallenge(user.Id);
         await repository.CreateAsync(challenge);
-        await repository.ConsumeAsync(challenge.Id, challenge.Version, CreatedAt.AddMinutes(1));
+        await repository.ConsumeAsync(challenge.Id, challenge.Version, DateTimeOffset.UtcNow);
         var consumedChallenge = await repository.GetAsync(challenge.Id);
 
-        var consumedAgain = await repository.ConsumeAsync(challenge.Id, consumedChallenge!.Version, CreatedAt.AddMinutes(2));
+        var consumedAgain = await repository.ConsumeAsync(challenge.Id, consumedChallenge!.Version, DateTimeOffset.UtcNow.AddMinutes(1));
 
         Assert.That(consumedAgain, Is.False);
     }
@@ -160,7 +161,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         var repository = GetPasskeyChallengeRepository(scope.ServiceProvider);
         var user = await CreateUserAsync(identityRepository);
         var challenge = CreateAuthenticationChallenge(user.Id);
-        var consumedAt = CreatedAt.AddMinutes(1);
+        var consumedAt = DateTimeOffset.UtcNow;
         await repository.CreateAsync(challenge);
 
         await repository.ConsumeAsync(challenge.Id, challenge.Version, consumedAt);
@@ -239,7 +240,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         DateTimeOffset? expiresAt = null,
         string? challengeValue = null)
     {
-        var now = createdAt ?? CreatedAt;
+        var now = createdAt ?? DateTimeOffset.UtcNow;
         return new PasskeyChallenge
         {
             Id = Guid.NewGuid(),
@@ -254,7 +255,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
             RelyingPartyId = "example.com",
             Origin = "https://example.com",
             CreatedAt = now,
-            ExpiresAt = expiresAt ?? now.AddMinutes(5)
+            ExpiresAt = expiresAt ?? now.Add(ChallengeLifetime)
         };
     }
 
@@ -273,8 +274,8 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
             Assert.That(JsonNode.DeepEquals(JsonNode.Parse(actual.OptionsJson), JsonNode.Parse(expected.OptionsJson)), Is.True);
             Assert.That(actual.RelyingPartyId, Is.EqualTo(expected.RelyingPartyId));
             Assert.That(actual.Origin, Is.EqualTo(expected.Origin));
-            Assert.That(actual.CreatedAt, Is.EqualTo(expected.CreatedAt));
-            Assert.That(actual.ExpiresAt, Is.EqualTo(expected.ExpiresAt));
+            Assert.That(actual.CreatedAt, Is.EqualTo(expected.CreatedAt).Within(TimeSpan.FromMilliseconds(1)));
+            Assert.That(actual.ExpiresAt, Is.EqualTo(expected.ExpiresAt).Within(TimeSpan.FromMilliseconds(1)));
             Assert.That(actual.ConsumedAt, Is.EqualTo(expected.ConsumedAt));
         }
     }
