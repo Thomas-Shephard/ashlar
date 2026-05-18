@@ -54,8 +54,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         Assert.That(fetched, Is.Not.Null);
 
         var expectedVersion = fetched!.Version;
-        fetched.AcceptedAt = CreatedAt.AddHours(1);
-        fetched.Metadata = """{"accepted":true}""";
+        fetched.Metadata = """{"updated":true}""";
 
         var updated = await repository.UpdateInvitationAsync(fetched, expectedVersion);
         var stale = await repository.UpdateInvitationAsync(fetched, expectedVersion);
@@ -65,7 +64,8 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         {
             Assert.That(updated, Is.True);
             Assert.That(stale, Is.False);
-            Assert.That(afterUpdate!.AcceptedAt, Is.EqualTo(fetched.AcceptedAt));
+            Assert.That(afterUpdate!.AcceptedAt, Is.Null);
+            Assert.That(afterUpdate.RevokedAt, Is.Null);
             Assert.That(JsonEquals(afterUpdate.Metadata, fetched.Metadata), Is.True);
             Assert.That(afterUpdate.Version, Is.Not.EqualTo(expectedVersion));
         }
@@ -82,7 +82,9 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
 
         fetched.AcceptedAt = CreatedAt.AddHours(1);
         var first = await repository.UpdateInvitationAsync(fetched, fetched.Version);
-        var second = await repository.UpdateInvitationAsync(fetched, fetched.Version);
+        var accepted = await repository.GetInvitationByTokenHashAsync(invitation.TokenHash);
+        accepted!.AcceptedAt = CreatedAt.AddHours(2);
+        var second = await repository.UpdateInvitationAsync(accepted, accepted.Version);
 
         using (Assert.EnterMultipleScope())
         {
@@ -100,8 +102,9 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         await repository.CreateInvitationAsync(invitation);
         Assert.That(await repository.RevokeInvitationsByEmailAsync(invitation.Email), Is.EqualTo(1));
 
-        invitation.AcceptedAt = CreatedAt.AddHours(1);
-        var accepted = await repository.UpdateInvitationAsync(invitation, invitation.Version);
+        var revoked = await repository.GetInvitationByTokenHashAsync(invitation.TokenHash);
+        revoked!.AcceptedAt = CreatedAt.AddHours(1);
+        var accepted = await repository.UpdateInvitationAsync(revoked, revoked.Version);
 
         Assert.That(accepted, Is.False);
     }
@@ -197,6 +200,11 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
 
     private static bool JsonEquals(string? left, string? right)
     {
-        return JsonNode.DeepEquals(JsonNode.Parse(left!), JsonNode.Parse(right!));
+        if (left == null || right == null)
+        {
+            return left == right;
+        }
+
+        return JsonNode.DeepEquals(JsonNode.Parse(left), JsonNode.Parse(right));
     }
 }

@@ -336,6 +336,11 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
 
     private static bool JsonEquals(string? left, string? right)
     {
-        return JsonNode.DeepEquals(JsonNode.Parse(left!), JsonNode.Parse(right!));
+        if (left == null || right == null)
+        {
+            return left == right;
+        }
+
+        return JsonNode.DeepEquals(JsonNode.Parse(left), JsonNode.Parse(right));
     }
 }
