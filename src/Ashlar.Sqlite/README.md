@@ -80,7 +80,7 @@ Implemented:
 - `IUserSecurityEventSummaryRepository`
 - `IAuthenticationRateLimiter`
 - `IEmailSender` via `AddAshlarSqliteEmailOutboxSender(...)`
-- `SqliteEmailOutboxDispatcher<TTransport>` via `AddAshlarSqliteEmailOutboxDispatcher<TTransport>(...)`
+- `IEmailOutboxDispatcher` via `AddAshlarSqliteEmailOutboxDispatcher<TTransport>(...)`
 - `SqliteEmailOutboxHostedService<TTransport>` via `AddAshlarSqliteEmailOutboxHostedService<TTransport>(...)`
 - `IAshlarCleanupService`
 

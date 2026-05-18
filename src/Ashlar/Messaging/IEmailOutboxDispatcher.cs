@@ -1,7 +1,7 @@
-namespace Ashlar.Postgres;
+namespace Ashlar.Messaging;
 
 /// <summary>
-/// Defines a service for dispatching pending email messages from the PostgreSQL outbox.
+/// Defines a service for dispatching pending email messages from an email outbox.
 /// </summary>
 public interface IEmailOutboxDispatcher
 {

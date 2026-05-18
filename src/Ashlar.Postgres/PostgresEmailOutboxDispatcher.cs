@@ -28,7 +28,11 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
     private readonly ILogger<PostgresEmailOutboxDispatcher<TTransport>> _logger = logger ?? NullLogger<PostgresEmailOutboxDispatcher<TTransport>>.Instance;
     private readonly string _lockId = Guid.NewGuid().ToString();
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Processes a single batch of pending email messages.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<int> ProcessBatchAsync(CancellationToken cancellationToken = default)
     {
         if (!PostgresEmailOutboxOptions.Validate(_options))

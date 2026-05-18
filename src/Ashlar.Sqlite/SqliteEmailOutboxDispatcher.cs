@@ -19,6 +19,7 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
     TimeProvider timeProvider,
     IOptions<SqliteEmailOutboxOptions> options,
     ILogger<SqliteEmailOutboxDispatcher<TTransport>>? logger = null)
+    : IEmailOutboxDispatcher
     where TTransport : IEmailTransport
 {
     private const string IdParameter = "$id";

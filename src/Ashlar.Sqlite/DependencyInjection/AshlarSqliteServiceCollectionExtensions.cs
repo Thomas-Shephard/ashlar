@@ -117,7 +117,7 @@ public static class AshlarSqliteServiceCollectionExtensions
             services.TryAddScoped<TTransport>();
         }
 
-        services.TryAddScoped<SqliteEmailOutboxDispatcher<TTransport>>();
+        services.TryAddScoped<IEmailOutboxDispatcher, SqliteEmailOutboxDispatcher<TTransport>>();
 
         return services;
     }
