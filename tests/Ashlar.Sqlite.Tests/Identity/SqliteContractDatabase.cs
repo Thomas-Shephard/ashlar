@@ -1,0 +1,41 @@
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Ashlar.Sqlite.Tests.Identity;
+
+internal sealed class SqliteContractDatabase
+{
+    private SqliteContractDatabase(string databasePath, IServiceProvider serviceProvider)
+    {
+        DatabasePath = databasePath;
+        ServiceProvider = serviceProvider;
+    }
+
+    public IServiceProvider ServiceProvider { get; }
+
+    private string DatabasePath { get; }
+
+    public static async Task<SqliteContractDatabase> CreateAsync()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), $"ashlar_sqlite_contract_{Guid.NewGuid():N}.db");
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+            Pooling = false
+        }.ConnectionString;
+
+        var services = new ServiceCollection();
+        services.AddAshlarSqlite(connectionString);
+        var provider = services.BuildServiceProvider();
+        await provider.InitializeAshlarSqliteSchemaAsync();
+        return new SqliteContractDatabase(databasePath, provider);
+    }
+
+    public void Delete()
+    {
+        if (File.Exists(DatabasePath))
+        {
+            File.Delete(DatabasePath);
+        }
+    }
+}
