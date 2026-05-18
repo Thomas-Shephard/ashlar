@@ -6,6 +6,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Ashlar.ProviderContractTests\Ashlar.ProviderContractTests.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.Sqlite\Ashlar.Sqlite.csproj" />
   </ItemGroup>
 

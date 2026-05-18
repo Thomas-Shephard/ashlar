@@ -9,6 +9,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Ashlar.Testing/Ashlar.Testing.csproj" />
+    <Project Path="tests/Ashlar.ProviderContractTests/Ashlar.ProviderContractTests.csproj" />
     <Project Path="tests/Ashlar.Tests/Ashlar.Tests.csproj" />
     <Project Path="tests/Ashlar.AspNetCore.Tests/Ashlar.AspNetCore.Tests.csproj" />
     <Project Path="tests/Ashlar.Email.Smtp.Tests/Ashlar.Email.Smtp.Tests.csproj" />
