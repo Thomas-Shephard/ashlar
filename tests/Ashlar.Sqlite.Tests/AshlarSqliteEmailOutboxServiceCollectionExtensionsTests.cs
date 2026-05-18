@@ -36,6 +36,7 @@ internal sealed class AshlarSqliteEmailOutboxServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.GetService<IEmailOutboxDispatcher>(), Is.InstanceOf<SqliteEmailOutboxDispatcher<TestTransport>>());
+            Assert.That(provider.GetService<SqliteEmailOutboxDispatcher<TestTransport>>(), Is.Not.Null);
             Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(TestTransport)), Is.True);
         }
     }
@@ -68,6 +69,7 @@ internal sealed class AshlarSqliteEmailOutboxServiceCollectionExtensionsTests
         {
             Assert.That(hostedServices.Any(service => service is SqliteEmailOutboxHostedService<TestTransport>), Is.True);
             Assert.That(provider.GetService<IEmailOutboxDispatcher>(), Is.InstanceOf<SqliteEmailOutboxDispatcher<TestTransport>>());
+            Assert.That(provider.GetService<SqliteEmailOutboxDispatcher<TestTransport>>(), Is.Not.Null);
             Assert.That(provider.GetService<IEmailSender>(), Is.InstanceOf<SqliteEmailOutboxSender>());
         }
     }

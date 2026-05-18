@@ -51,7 +51,7 @@ public sealed class SqliteEmailOutboxHostedService<TTransport>(
             _options.BatchSize,
             _options.PollingInterval,
             _logger,
-            static (provider, token) => provider.GetRequiredService<IEmailOutboxDispatcher>().ProcessBatchAsync(token),
+            static (provider, token) => provider.GetRequiredService<SqliteEmailOutboxDispatcher<TTransport>>().ProcessBatchAsync(token),
             SqliteEmailOutboxHostedServiceLog.OutboxBatchFailed,
             stoppingToken);
     }
