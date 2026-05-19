@@ -15,6 +15,7 @@ internal static class PostgresContractDatabase
         var databaseName = await CreateDatabaseAsync();
         var services = new ServiceCollection();
         services.AddAshlarPostgres(GetConnectionString(databaseName));
+        services.AddAshlarPostgresAuditSink();
         var provider = services.BuildServiceProvider();
         await provider.InitializeAshlarPostgresSchemaAsync();
         return new PostgresContractDatabaseLease(databaseName, provider);
@@ -113,6 +114,8 @@ internal static class PostgresContractDatabase
 internal sealed class PostgresContractDatabaseLease(string databaseName, IServiceProvider serviceProvider)
 {
     public IServiceProvider ServiceProvider { get; } = serviceProvider;
+
+    public string ConnectionString => PostgresContractDatabase.GetConnectionString(databaseName);
 
     public Task DropDatabaseAsync()
     {
