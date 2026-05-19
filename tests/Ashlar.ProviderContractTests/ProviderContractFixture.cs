@@ -3,6 +3,8 @@ using Ashlar.Identity.Models;
 using Ashlar.Auditing;
 using Ashlar.Authorization.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using Ashlar.Identity.RateLimiting.Abstractions;
+using Ashlar.Operational;
 
 namespace Ashlar.ProviderContractTests;
 
@@ -89,6 +91,16 @@ internal abstract class ProviderContractFixture
     protected static IPasskeyChallengeRepository GetPasskeyChallengeRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IPasskeyChallengeRepository>();
+    }
+
+    protected static IAuthenticationRateLimiter GetAuthenticationRateLimiter(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IAuthenticationRateLimiter>();
+    }
+
+    protected static IAshlarCleanupService GetCleanupService(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IAshlarCleanupService>();
     }
 
     protected static IAshlarTransactionProvider? GetTransactionProvider(IServiceProvider serviceProvider)

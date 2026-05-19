@@ -17,7 +17,12 @@ internal sealed class SqliteContractDatabase
 
     private string DatabasePath { get; }
 
-    public static async Task<SqliteContractDatabase> CreateAsync()
+    public static Task<SqliteContractDatabase> CreateAsync()
+    {
+        return CreateAsync(_ => { });
+    }
+
+    public static async Task<SqliteContractDatabase> CreateAsync(Action<IServiceCollection> configureServices)
     {
         var databasePath = Path.Combine(Path.GetTempPath(), $"ashlar_sqlite_contract_{Guid.NewGuid():N}.db");
         var connectionString = new SqliteConnectionStringBuilder
@@ -28,6 +33,7 @@ internal sealed class SqliteContractDatabase
 
         var services = new ServiceCollection();
         services.AddAshlarSqlite(connectionString);
+        configureServices(services);
         var provider = services.BuildServiceProvider();
         await provider.InitializeAshlarSqliteSchemaAsync();
         return new SqliteContractDatabase(databasePath, provider)
