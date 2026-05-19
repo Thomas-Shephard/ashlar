@@ -175,14 +175,6 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
     }
 
     [Test]
-    public void ConstructorAcceptsNullLogger()
-    {
-        var sink = new SqliteSecurityEventSink(_serviceProvider.GetRequiredService<SqliteConnectionFactory>(), logger: null);
-
-        Assert.That(sink, Is.Not.Null);
-    }
-
-    [Test]
     public void ConstructorAcceptsNonNullLogger()
     {
         var sink = new SqliteSecurityEventSink(

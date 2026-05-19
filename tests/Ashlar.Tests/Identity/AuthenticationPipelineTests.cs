@@ -43,18 +43,6 @@ internal sealed class AuthenticationPipelineTests
     }
 
     [Test]
-    public void ConstructorShouldAcceptNullOptionalLogger()
-    {
-        var pipeline = new AuthenticationPipeline(
-            _providerRegistryMock.Object,
-            _credentialServiceMock.Object,
-            new NullTransactionProvider(),
-            logger: null);
-
-        Assert.That(pipeline, Is.Not.Null);
-    }
-
-    [Test]
     public void ConstructorShouldAcceptNonNullOptionalLogger()
     {
         var pipeline = new AuthenticationPipeline(

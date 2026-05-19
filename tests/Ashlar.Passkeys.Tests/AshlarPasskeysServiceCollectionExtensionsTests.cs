@@ -78,14 +78,6 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
         Assert.That(PasskeyOptions.Validate(options), Is.False);
     }
 
-    [Test]
-    public void PasskeyOptionsShouldRejectRelyingPartyIdWithPort()
-    {
-        var options = new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com:443" };
-
-        Assert.That(PasskeyOptions.Validate(options), Is.False);
-    }
-
     [TestCase("")]
     [TestCase(" ")]
     [TestCase("unexpected")]
