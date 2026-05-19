@@ -141,19 +141,6 @@ internal abstract class SecurityEventPersistenceContractTests : ProviderContract
         Assert.That(count, Is.EqualTo(3));
     }
 
-    [Test]
-    public async Task RecordingEventInsideProviderTransactionDoesNotShareRollbackContract()
-    {
-        await using var scope = CreateAsyncScope();
-        var transactionProvider = GetTransactionProvider(scope.ServiceProvider);
-        if (transactionProvider == null)
-        {
-            Assert.Ignore("Provider does not register IAshlarTransactionProvider.");
-        }
-
-        Assert.Ignore("Security event sinks persist through their own background channel and connection rather than the scoped IAshlarTransactionProvider.");
-    }
-
     private static AshlarSecurityEvent CreateEvent(
         string eventType,
         Guid userId,
