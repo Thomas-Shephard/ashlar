@@ -4,7 +4,9 @@ using Ashlar.Auditing;
 using Ashlar.Authorization.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Ashlar.Identity.RateLimiting.Abstractions;
+using Ashlar.Messaging;
 using Ashlar.Operational;
+using Ashlar.ProviderContractTests.Messaging;
 
 namespace Ashlar.ProviderContractTests;
 
@@ -106,6 +108,26 @@ internal abstract class ProviderContractFixture
     protected static IAshlarTransactionProvider? GetTransactionProvider(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetService<IAshlarTransactionProvider>();
+    }
+
+    protected static IEmailSender GetEmailSender(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IEmailSender>();
+    }
+
+    protected static IEmailOutboxDispatcher GetEmailOutboxDispatcher(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IEmailOutboxDispatcher>();
+    }
+
+    protected static RecordingEmailTransport GetRecordingEmailTransport(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<RecordingEmailTransport>();
+    }
+
+    protected virtual Task AdvanceEmailOutboxTimeAsync(TimeSpan offset)
+    {
+        return Task.CompletedTask;
     }
 
     protected static async Task<AshlarUser> CreateUserAsync(
