@@ -1,7 +1,7 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Models;
 
-namespace Ashlar.Identity;
+namespace Ashlar.Identity.Providers.RecoveryCode;
 
 /// <summary>
 /// Represents a request to generate new recovery codes.

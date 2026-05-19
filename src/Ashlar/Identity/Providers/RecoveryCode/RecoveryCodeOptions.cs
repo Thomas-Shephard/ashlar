@@ -1,6 +1,6 @@
 using Ashlar.Identity.Models;
 
-namespace Ashlar.Identity;
+namespace Ashlar.Identity.Providers.RecoveryCode;
 
 /// <summary>
 /// Options for recovery code generation and authentication.

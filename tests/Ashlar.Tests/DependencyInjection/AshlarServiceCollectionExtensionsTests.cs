@@ -8,6 +8,7 @@ using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Providers.Email;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.Providers.Local;
+using Ashlar.Identity.Providers.RecoveryCode;
 using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;

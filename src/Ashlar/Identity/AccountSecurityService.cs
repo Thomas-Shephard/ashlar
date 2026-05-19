@@ -4,6 +4,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Models.Totp;
+using Ashlar.Identity.Providers.RecoveryCode;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity;

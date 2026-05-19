@@ -4,6 +4,7 @@ using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Models.Totp;
 using Ashlar.Identity.Notifications;
+using Ashlar.Identity.Providers.RecoveryCode;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
