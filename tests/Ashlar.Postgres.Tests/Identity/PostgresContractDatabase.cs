@@ -10,12 +10,18 @@ internal static class PostgresContractDatabase
     private static readonly Lazy<PostgreSqlContainer> PostgresContainer = new(() => new PostgreSqlBuilder("postgres:15-alpine").Build());
     private static bool _containerStarted;
 
-    public static async Task<PostgresContractDatabaseLease> CreateInitializedServiceProviderAsync()
+    public static Task<PostgresContractDatabaseLease> CreateInitializedServiceProviderAsync()
+    {
+        return CreateInitializedServiceProviderAsync(_ => { });
+    }
+
+    public static async Task<PostgresContractDatabaseLease> CreateInitializedServiceProviderAsync(Action<IServiceCollection> configureServices)
     {
         var databaseName = await CreateDatabaseAsync();
         var services = new ServiceCollection();
         services.AddAshlarPostgres(GetConnectionString(databaseName));
         services.AddAshlarPostgresAuditSink();
+        configureServices(services);
         var provider = services.BuildServiceProvider();
         await provider.InitializeAshlarPostgresSchemaAsync();
         return new PostgresContractDatabaseLease(databaseName, provider);
