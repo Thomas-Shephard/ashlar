@@ -861,6 +861,21 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
+    public async Task GetUserSecurityPostureAsyncShouldNotAddEmailSignInForBlankEmail()
+    {
+        _identityRepository.Users[_userId] = new User { Id = _userId, Email = " ", IsActive = true };
+        var service = CreateService();
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value?.PrimaryCredentials, Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task GetUserSecurityPostureAsyncShouldReturnUserNotFoundForMissingUser()
     {
         var result = await _service.GetUserSecurityPostureAsync(_userId);

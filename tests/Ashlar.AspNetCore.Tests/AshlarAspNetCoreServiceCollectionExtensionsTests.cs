@@ -56,6 +56,17 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarAspNetCoreAuthorizationShouldAcceptNullConfiguration()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarAspNetCoreAuthorization();
+
+        using var provider = services.BuildServiceProvider();
+        Assert.That(provider.GetRequiredService<IOptions<AshlarAuthorizationOptions>>().Value, Is.Not.Null);
+    }
+
+    [Test]
     public void AddAshlarAspNetCoreSessionsShouldRejectHostPrefixedCookieWithDomain()
     {
         var services = new ServiceCollection();

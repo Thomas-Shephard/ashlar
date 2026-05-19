@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Sqlite.Tests;
 
@@ -9,6 +10,16 @@ internal sealed class SqliteTransactionManagerTests : SqliteTestBase
     {
         Assert.Throws<ArgumentNullException>(() => _ = new SqliteTransactionManager((SqliteConnectionFactory)null!));
         Assert.Throws<ArgumentNullException>(() => _ = new SqliteTransactionManager((Func<CancellationToken, ValueTask<SqliteConnection>>)null!));
+    }
+
+    [Test]
+    public void ConstructorAcceptsNonNullLogger()
+    {
+        var manager = new SqliteTransactionManager(
+            new SqliteConnectionFactory(GetConnectionString()),
+            NullLogger<SqliteTransactionManager>.Instance);
+
+        Assert.That(manager, Is.Not.Null);
     }
 
     [Test]

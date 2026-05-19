@@ -1056,6 +1056,22 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
+    public void ConstructorShouldPreferDependencyLoggerWhenLoggerArgumentIsNull()
+    {
+        var logger = new RecordingLogger<AuthenticationSessionService>();
+
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(Logger: logger),
+            logger: null);
+
+        Assert.That(service, Is.Not.Null);
+    }
+
+    [Test]
     public void ConstructorShouldRejectNonPositiveDefaultLifetime()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AuthenticationSessionService(

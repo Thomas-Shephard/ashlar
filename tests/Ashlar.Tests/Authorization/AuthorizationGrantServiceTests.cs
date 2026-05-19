@@ -40,6 +40,22 @@ internal sealed class AuthorizationGrantServiceTests
     }
 
     [Test]
+    public async Task CreateGrantAsyncShouldAuditPermissionGrantProperties()
+    {
+        var auditSink = new RecordingSecurityEventSink();
+        var service = new AuthorizationGrantService(_repository, timeProvider: _timeProvider, securityEventSink: auditSink);
+
+        await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), Permission: "posts.edit"));
+
+        var createdEvent = auditSink.Events.Single(securityEvent => securityEvent.EventType == AshlarSecurityEventTypes.AuthorizationGrantCreated);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(createdEvent.Properties?["grant_type"], Is.EqualTo("permission"));
+            Assert.That(createdEvent.Properties?["grant_value"], Is.EqualTo("posts.edit"));
+        }
+    }
+
+    [Test]
     public async Task CreateGrantAsyncShouldNormalizeBlankMetadataToNull()
     {
         var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), Permission: "read", Metadata: " "));
@@ -215,6 +231,30 @@ internal sealed class AuthorizationGrantServiceTests
             Assert.That(revoked, Is.True);
             Assert.That(revokedEvent.UserId, Is.Null);
             Assert.That(revokedEvent.Properties?["grant_id"], Is.EqualTo(grantId.ToString("D")));
+        }
+    }
+
+    [Test]
+    public async Task RevokeGrantAsyncShouldAuditGrantIdWhenGrantHasNoRoleOrPermission()
+    {
+        var auditSink = new RecordingSecurityEventSink();
+        var service = new AuthorizationGrantService(_repository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var grant = new AuthorizationGrant
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            CreatedAt = _timeProvider.GetUtcNow()
+        };
+        _repository.Grants.Add(grant);
+
+        await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id));
+
+        var revokedEvent = auditSink.Events.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revokedEvent.Properties?["grant_id"], Is.EqualTo(grant.Id.ToString("D")));
+            Assert.That(revokedEvent.Properties?.ContainsKey("grant_type"), Is.False);
+            Assert.That(revokedEvent.Properties?.ContainsKey("grant_value"), Is.False);
         }
     }
 

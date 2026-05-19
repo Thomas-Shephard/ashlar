@@ -101,8 +101,18 @@ public sealed partial class SecurityNotificationService(
 
         if (notification.Metadata != null)
         {
-            foreach (var kvp in notification.Metadata.Where(kvp => !string.IsNullOrWhiteSpace(kvp.Key) && !values.ContainsKey(kvp.Key)))
+            foreach (var kvp in notification.Metadata)
             {
+                if (string.IsNullOrWhiteSpace(kvp.Key))
+                {
+                    continue;
+                }
+
+                if (values.ContainsKey(kvp.Key))
+                {
+                    continue;
+                }
+
                 values[kvp.Key] = NormalizePlaceholderValue(kvp.Value);
             }
         }

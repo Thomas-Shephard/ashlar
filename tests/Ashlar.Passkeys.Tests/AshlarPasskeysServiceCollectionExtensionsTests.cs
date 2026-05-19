@@ -71,9 +71,11 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
     [TestCase("https://evil.com", "example.com")]
     [TestCase("ftp://example.com", "example.com")]
     [TestCase("http://example.com", "example.com")]
-    public void PasskeyOptionsShouldRejectInvalidOriginOrRelyingPartyConfiguration(string origin, string relyingPartyId)
+    [TestCase("https://example.com", null)]
+    [TestCase("https://example.com", " ")]
+    public void PasskeyOptionsShouldRejectInvalidOriginOrRelyingPartyConfiguration(string origin, string? relyingPartyId)
     {
-        var options = new PasskeyOptions { Origin = origin, RelyingPartyId = relyingPartyId };
+        var options = new PasskeyOptions { Origin = origin, RelyingPartyId = relyingPartyId! };
 
         Assert.That(PasskeyOptions.Validate(options), Is.False);
     }

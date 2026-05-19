@@ -1,6 +1,7 @@
 using Ashlar.Identity.Abstractions;
 using Ashlar.Messaging;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using System.Globalization;
@@ -74,6 +75,19 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxDispatcher<TestTransport>(services, _timeProvider, null!));
             Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxHostedService<TestTransport>(null!, options));
             Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxHostedService<TestTransport>(services, null!));
+        }
+    }
+
+    [Test]
+    public void ConstructorsAcceptNonNullOptionalLogger()
+    {
+        var options = Options.Create(new SqliteEmailOutboxOptions());
+        using var services = new ServiceCollection().BuildServiceProvider();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.DoesNotThrow(() => _ = new SqliteEmailOutboxDispatcher<TestTransport>(services, _timeProvider, options, NullLogger<SqliteEmailOutboxDispatcher<TestTransport>>.Instance));
+            Assert.DoesNotThrow(() => _ = new SqliteEmailOutboxHostedService<TestTransport>(services, options, NullLogger<SqliteEmailOutboxHostedService<TestTransport>>.Instance));
         }
     }
 
