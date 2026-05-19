@@ -20,8 +20,13 @@ indent_size = 2
 
 # Diagnostic Severities
 
+# formatting
 dotnet_diagnostic.IDE0055.severity = warning
+# unnecessary usings
 dotnet_diagnostic.IDE0005.severity = warning
+# namespace matches folder
+dotnet_diagnostic.IDE0130.severity = warning
+# prefer Assert.EnterMultipleScope
 dotnet_diagnostic.NUnit2045.severity = warning
 
 # Naming rules

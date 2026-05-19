@@ -456,6 +456,8 @@ services.AddAshlarRecoveryCodes(options =>
 To generate and retrieve the raw recovery codes for a user:
 
 ```csharp
+using Ashlar.Identity.Providers.RecoveryCode;
+
 var recoveryCodes = httpContext.RequestServices.GetRequiredService<IRecoveryCodeService>();
 
 // Generates new codes. Any existing codes are revoked.
@@ -465,6 +467,8 @@ var rawCodes = await recoveryCodes.GenerateRecoveryCodesAsync(userId);
 To verify a recovery code during sign-in, use the standard `AuthenticationPipeline` with a `RecoveryCodeAssertion`:
 
 ```csharp
+using Ashlar.Identity.Providers.RecoveryCode;
+
 var pipeline = httpContext.RequestServices.GetRequiredService<IAuthenticationPipeline>();
 
 var assertion = new RecoveryCodeAssertion(userInputCode);
