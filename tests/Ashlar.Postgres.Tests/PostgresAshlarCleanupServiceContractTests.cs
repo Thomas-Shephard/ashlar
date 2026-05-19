@@ -1,4 +1,5 @@
 using Ashlar.Operational;
+using Ashlar.Postgres.Tests.Identity;
 using Ashlar.ProviderContractTests.Operational;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
@@ -6,7 +7,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Npgsql;
 
-namespace Ashlar.Postgres.Tests.Identity;
+namespace Ashlar.Postgres.Tests;
 
 internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupServiceContractTests
 {

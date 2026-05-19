@@ -1,8 +1,9 @@
 using Ashlar.ProviderContractTests.Identity.RateLimiting;
+using Ashlar.Postgres.Tests.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 
-namespace Ashlar.Postgres.Tests.Identity;
+namespace Ashlar.Postgres.Tests;
 
 internal sealed class PostgresAuthenticationRateLimiterContractTests : AuthenticationRateLimiterContractTests
 {

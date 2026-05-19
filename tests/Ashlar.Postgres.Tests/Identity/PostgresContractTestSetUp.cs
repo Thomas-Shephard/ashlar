@@ -1,4 +1,6 @@
-namespace Ashlar.Postgres.Tests.Identity;
+namespace Ashlar.Postgres.Tests;
+
+using Identity;
 
 [SetUpFixture]
 internal sealed class PostgresContractTestSetUp
