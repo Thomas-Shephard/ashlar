@@ -313,6 +313,21 @@ internal sealed class EmailCodeSignInTests
         }
     }
 
+    [Test]
+    public void AddAshlarEmailCodeSignInAcceptsNullConfiguration()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IIdentityRepository>());
+        services.AddSingleton(Mock.Of<ISecretProtector>());
+
+        services.AddAshlarEmailCodeSignIn();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        Assert.That(scope.ServiceProvider.GetRequiredService<IEmailCodeSignInService>(), Is.TypeOf<EmailCodeSignInService>());
+    }
+
     private static Fixture CreateFixture(User? user = null, bool requestAllowed = true, bool verifyAllowed = true, EmailCodeSignInOptions? options = null)
     {
         var repository = new InMemoryIdentityRepository(user);

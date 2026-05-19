@@ -54,6 +54,17 @@ internal sealed class StepUpAuthenticationServiceTests
     }
 
     [Test]
+    public void EvaluateShouldFailForFutureAdditionalVerification()
+    {
+        var service = CreateService();
+        var session = CreateSession(additionalVerificationAt: _now.AddMinutes(1));
+
+        var result = service.Evaluate(new StepUpEvaluationRequest(session, new StepUpRequirement(TimeSpan.FromMinutes(10))));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpExpired));
+    }
+
+    [Test]
     public async Task MarkVerifiedAsyncShouldDelegateToSessionService()
     {
         var userId = Guid.NewGuid();
@@ -128,6 +139,19 @@ internal sealed class StepUpAuthenticationServiceTests
     }
 
     [Test]
+    public void EvaluateShouldFailWhenAllowedProviderRequiresMissingVerificationProvider()
+    {
+        var service = CreateService();
+        var session = CreateSession(additionalVerificationAt: _now.AddMinutes(-1), additionalVerificationFactor: "totp");
+
+        var result = service.Evaluate(new StepUpEvaluationRequest(
+            session,
+            new StepUpRequirement(TimeSpan.FromMinutes(10), [AuthenticationProviderKey.Passkey])));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpProviderNotAllowed));
+    }
+
+    [Test]
     public void EvaluateShouldFailForDisallowedFactor()
     {
         var service = CreateService();
@@ -136,6 +160,19 @@ internal sealed class StepUpAuthenticationServiceTests
         var result = service.Evaluate(new StepUpEvaluationRequest(
             session,
             new StepUpRequirement(TimeSpan.FromMinutes(10), AllowedFactors: ["passkey"])));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpFactorNotAllowed));
+    }
+
+    [Test]
+    public void EvaluateShouldFailWhenAllowedFactorRequiresMissingVerificationFactor()
+    {
+        var service = CreateService();
+        var session = CreateSession(additionalVerificationAt: _now.AddMinutes(-1), additionalVerificationProvider: TotpProvider());
+
+        var result = service.Evaluate(new StepUpEvaluationRequest(
+            session,
+            new StepUpRequirement(TimeSpan.FromMinutes(10), AllowedFactors: ["totp"])));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpFactorNotAllowed));
     }

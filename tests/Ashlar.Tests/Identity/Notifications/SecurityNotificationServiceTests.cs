@@ -562,6 +562,23 @@ internal sealed class SecurityNotificationServiceTests
     }
 
     [Test]
+    public async Task NotifyAsyncSendsWhenCooldownHasNoSuppressionStore()
+    {
+        var service = new SecurityNotificationService(_emailSender.Object, Options.Create(_options), null, _timeProvider);
+        var notification = new SecurityNotification
+        {
+            Type = SecurityNotificationType.SignIn,
+            RecipientEmail = "user@example.com",
+            OccurredAt = _timeProvider.GetUtcNow()
+        };
+
+        var result = await service.NotifyAsync(notification);
+
+        Assert.That(result.Suppressed, Is.False);
+        _emailSender.Verify(x => x.SendAsync(It.IsAny<EmailMessage>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
     public async Task NotifyAsyncDoesNotSuppressDifferentRecipients()
     {
         await _service.NotifyAsync(new SecurityNotification

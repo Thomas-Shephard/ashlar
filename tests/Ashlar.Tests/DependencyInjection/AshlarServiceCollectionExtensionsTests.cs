@@ -5,6 +5,7 @@ using Ashlar.Authorization.Models;
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
 using Ashlar.Identity.Notifications;
+using Ashlar.Identity.Providers.Email;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.Providers.Local;
 using Ashlar.Messaging;
@@ -71,6 +72,20 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<AuthenticationSessionOptions>().DefaultLifetime, Is.EqualTo(lifetime));
+    }
+
+    [Test]
+    public void OptionalProviderRegistrationsAcceptNullConfiguration()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarEmailCodeSignIn();
+        services.AddAshlarRecoveryCodes();
+
+        Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
+            descriptor.ServiceType == typeof(IEmailCodeSignInService)));
+        Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
+            descriptor.ServiceType == typeof(IRecoveryCodeService)));
     }
 
     [Test]

@@ -22,6 +22,24 @@ internal sealed class IdentityUrlHelperTests
     }
 
     [Test]
+    public void ConstructCallbackUrlOmitsUserIdWhenParameterNameIsBlank()
+    {
+        var result = IdentityUrlHelper.ConstructCallbackUrl(
+            new Uri("https://example.com/callback?existing=1"),
+            "token",
+            "token123",
+            Guid.NewGuid(),
+            " ");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Does.Contain("existing=1"));
+            Assert.That(result, Does.Contain("token=token123"));
+            Assert.That(result, Does.Not.Contain("userId="));
+        }
+    }
+
+    [Test]
     public void FormatEmailBodyReturnsEmptyStringWhenTemplateIsNull()
     {
         var result = IdentityUrlHelper.FormatEmailBody(null, "https://example.com");
