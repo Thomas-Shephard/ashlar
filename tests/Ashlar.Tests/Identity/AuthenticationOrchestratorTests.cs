@@ -303,6 +303,21 @@ internal sealed class AuthenticationOrchestratorTests
     }
 
     [Test]
+    public async Task AuthenticateAsyncFailsWhenProviderMfaFactorsClaimIsMissing()
+    {
+        var claims = new Dictionary<string, string>();
+        _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired, claims));
+        _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaPolicyEvaluation(false));
+
+        var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
+
+        Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
+        _handshakeServiceMock.Verify(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public async Task AuthenticateAsyncDeduplicatesMfaFactorsIgnoringCase()
     {
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))

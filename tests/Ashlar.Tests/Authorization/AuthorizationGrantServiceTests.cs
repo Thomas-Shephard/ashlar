@@ -235,6 +235,30 @@ internal sealed class AuthorizationGrantServiceTests
     }
 
     [Test]
+    public async Task RevokeGrantAsyncShouldAuditGrantIdWhenGrantHasNoRoleOrPermission()
+    {
+        var auditSink = new RecordingSecurityEventSink();
+        var service = new AuthorizationGrantService(_repository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var grant = new AuthorizationGrant
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            CreatedAt = _timeProvider.GetUtcNow()
+        };
+        _repository.Grants.Add(grant);
+
+        await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id));
+
+        var revokedEvent = auditSink.Events.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revokedEvent.Properties?["grant_id"], Is.EqualTo(grant.Id.ToString("D")));
+            Assert.That(revokedEvent.Properties?.ContainsKey("grant_type"), Is.False);
+            Assert.That(revokedEvent.Properties?.ContainsKey("grant_value"), Is.False);
+        }
+    }
+
+    [Test]
     public async Task ListGrantsAsyncShouldValidateAndDelegate()
     {
         var userId = Guid.NewGuid();
