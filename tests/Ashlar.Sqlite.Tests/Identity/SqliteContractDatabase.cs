@@ -13,6 +13,8 @@ internal sealed class SqliteContractDatabase
 
     public IServiceProvider ServiceProvider { get; }
 
+    public string ConnectionString { get; private init; } = string.Empty;
+
     private string DatabasePath { get; }
 
     public static async Task<SqliteContractDatabase> CreateAsync()
@@ -28,7 +30,10 @@ internal sealed class SqliteContractDatabase
         services.AddAshlarSqlite(connectionString);
         var provider = services.BuildServiceProvider();
         await provider.InitializeAshlarSqliteSchemaAsync();
-        return new SqliteContractDatabase(databasePath, provider);
+        return new SqliteContractDatabase(databasePath, provider)
+        {
+            ConnectionString = connectionString
+        };
     }
 
     public void Delete()

@@ -1,5 +1,7 @@
 using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Models;
+using Ashlar.Auditing;
+using Ashlar.Authorization.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Ashlar.ProviderContractTests;
@@ -69,6 +71,21 @@ internal abstract class ProviderContractFixture
         return serviceProvider.GetRequiredService<IAuthenticationHandshakeRepository>();
     }
 
+    protected static IAuthorizationGrantRepository GetAuthorizationGrantRepository(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IAuthorizationGrantRepository>();
+    }
+
+    protected static ISecurityEventSink GetSecurityEventSink(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<ISecurityEventSink>();
+    }
+
+    protected static IUserSecurityEventSummaryRepository GetUserSecurityEventSummaryRepository(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IUserSecurityEventSummaryRepository>();
+    }
+
     protected static IPasskeyChallengeRepository GetPasskeyChallengeRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IPasskeyChallengeRepository>();
@@ -115,6 +132,11 @@ internal abstract class ProviderContractFixture
             CreatedAt = DateTimeOffset.UtcNow,
             Status = CredentialStatus.Active
         };
+    }
+
+    protected virtual Task<IReadOnlyList<SecurityEventStorageRecord>> ReadSecurityEventStorageRecordsAsync()
+    {
+        throw new NotSupportedException("This provider contract fixture does not expose security event storage records.");
     }
 
     private IServiceProvider Services => _serviceProvider ?? throw new InvalidOperationException("Provider contract fixture has not been initialized.");
