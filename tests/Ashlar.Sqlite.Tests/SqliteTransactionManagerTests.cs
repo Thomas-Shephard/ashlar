@@ -12,6 +12,14 @@ internal sealed class SqliteTransactionManagerTests : SqliteTestBase
     }
 
     [Test]
+    public void ConstructorAcceptsNullLogger()
+    {
+        var manager = new SqliteTransactionManager(new SqliteConnectionFactory(GetConnectionString()), logger: null);
+
+        Assert.That(manager, Is.Not.Null);
+    }
+
+    [Test]
     public async Task GetConnectionAsyncDuringTransactionReturnsTransactionalConnection()
     {
         await using var manager = CreateManager();

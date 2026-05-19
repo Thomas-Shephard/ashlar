@@ -271,6 +271,14 @@ internal sealed class EmailCodeSignInTests
     }
 
     [Test]
+    public void RequestCodeRejectsTooLongCodeLength()
+    {
+        var fixture = CreateFixture(_user, options: new EmailCodeSignInOptions { CodeLength = 10 });
+
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => fixture.Service.RequestCodeAsync(_user.Email));
+    }
+
+    [Test]
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void ServiceConstructorRequiresDependenciesAndDependencyBundleValidatesRequiredServices()
     {

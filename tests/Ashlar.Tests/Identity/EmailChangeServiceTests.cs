@@ -34,7 +34,7 @@ internal sealed class EmailChangeServiceTests
         var audit = new IdentityAuditContext(new FakeTimeProvider(), new RecordingSecurityEventSink());
 
         var dependencies = new EmailChangeDependencies(identityContext, tokenContext, infrastructure, Mock.Of<IAuthenticationSessionRepository>(), Mock.Of<ISecretProtector>(), audit);
-        var service = new EmailChangeService(dependencies, options: null);
+        var service = new EmailChangeService(dependencies, options: null, logger: null);
 
         Assert.That(service, Is.Not.Null);
     }

@@ -992,6 +992,20 @@ internal sealed class CredentialServiceTests
     }
 
     [Test]
+    public async Task UpdateCredentialUsageAsyncWithUnchangedMetadataShouldNotCallRepository()
+    {
+        var credential = CreateCredential(Guid.NewGuid());
+        credential.Metadata = "unchanged";
+        credential.LastUsedAt = _timeProvider.GetUtcNow();
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, NewMetadata: "unchanged");
+        var providerMock = new Mock<IAuthenticationProvider>();
+
+        await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+
+        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public void LinkCredentialAsyncWithEmptyUserIdShouldThrow()
     {
         Assert.ThrowsAsync<ArgumentException>(() => _service.LinkCredentialAsync(Guid.Empty, new Mock<IAuthenticationAssertion>().Object, new Mock<IAuthenticationProvider>().Object));

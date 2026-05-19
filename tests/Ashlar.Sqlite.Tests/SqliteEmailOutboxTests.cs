@@ -78,6 +78,19 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     }
 
     [Test]
+    public void ConstructorsAcceptNullOptionalLogger()
+    {
+        var options = Options.Create(new SqliteEmailOutboxOptions());
+        using var services = new ServiceCollection().BuildServiceProvider();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.DoesNotThrow(() => _ = new SqliteEmailOutboxDispatcher<TestTransport>(services, _timeProvider, options, logger: null));
+            Assert.DoesNotThrow(() => _ = new SqliteEmailOutboxHostedService<TestTransport>(services, options, logger: null));
+        }
+    }
+
+    [Test]
     public async Task SenderEnqueuesMessageOutsideTransaction()
     {
         var sender = _serviceProvider.GetRequiredService<IEmailSender>();

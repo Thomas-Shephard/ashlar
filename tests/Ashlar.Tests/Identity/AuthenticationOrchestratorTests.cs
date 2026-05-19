@@ -316,6 +316,23 @@ internal sealed class AuthenticationOrchestratorTests
     }
 
     [Test]
+    public async Task AuthenticateAsyncPrefersPolicyFactorsOverProviderFactorsClaim()
+    {
+        var claims = new Dictionary<string, string> { ["mfa_factors"] = "email_code" };
+        _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success, claims));
+        _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
+        var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
+        _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
+
+        var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
+
+        Assert.That(result.RequiredFactors, Is.EquivalentTo(handshake.RequiredFactors));
+    }
+
+    [Test]
     public async Task AuthenticateAsyncTrimsAndDropsBlankPolicyFactors()
     {
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))

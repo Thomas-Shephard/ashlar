@@ -71,6 +71,7 @@ internal sealed class SecurityNotificationServiceTests
     {
         Assert.Throws<ArgumentNullException>(() => _ = new SecurityNotificationService(null!, Options.Create(_options)));
         Assert.Throws<ArgumentNullException>(() => _ = new SecurityNotificationService(_emailSender.Object, null!));
+        Assert.DoesNotThrow(() => _ = new SecurityNotificationService(_emailSender.Object, Options.Create(_options), logger: null));
     }
 
     [Test]
@@ -294,6 +295,29 @@ internal sealed class SecurityNotificationServiceTests
         _emailSender.Verify(x => x.SendAsync(It.Is<EmailMessage>(m =>
             m.TextBody != null && m.TextBody.Contains("Metadata: CustomValue")
         ), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task NotifyAsyncIgnoresBlankMetadataKeys()
+    {
+        _options.Cooldowns.Clear();
+        var notification = new SecurityNotification
+        {
+            Type = SecurityNotificationType.SignIn,
+            RecipientEmail = "user@example.com",
+            OccurredAt = DateTimeOffset.UtcNow,
+            Metadata = new Dictionary<string, string> { [" "] = "ignored" }
+        };
+        _options.TemplateOverrides[SecurityNotificationType.SignIn] = new SecurityNotificationTemplate
+        {
+            Subject = "Test",
+            Body = "Blank: { }"
+        };
+
+        var result = await _service.NotifyAsync(notification);
+
+        Assert.That(result.Succeeded, Is.True);
+        _emailSender.Verify(x => x.SendAsync(It.Is<EmailMessage>(m => m.TextBody == "Blank: { }"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -725,5 +749,29 @@ internal sealed class SecurityNotificationServiceTests
             Assert.That(_suppressionStore.ShouldSend(active, TimeSpan.FromHours(1), later), Is.False);
             Assert.That(_suppressionStore.ShouldSend(expired, TimeSpan.FromMinutes(1), later), Is.True);
         }
+    }
+
+    [Test]
+    public void SuppressionStoreShouldHandleConcurrentFirstSendForSameNotification()
+    {
+        var store = new InMemorySecurityNotificationSuppressionStore();
+        var notification = new SecurityNotification
+        {
+            Type = SecurityNotificationType.SignIn,
+            RecipientEmail = "race@example.com",
+            OccurredAt = _timeProvider.GetUtcNow()
+        };
+        var start = new ManualResetEventSlim();
+        var results = new bool[32];
+
+        var tasks = Enumerable.Range(0, results.Length).Select(index => Task.Run(() =>
+        {
+            start.Wait();
+            results[index] = store.ShouldSend(notification, TimeSpan.FromMinutes(1), _timeProvider.GetUtcNow());
+        })).ToArray();
+        start.Set();
+        Task.WaitAll(tasks);
+
+        Assert.That(results.Count(result => result), Is.EqualTo(1));
     }
 }

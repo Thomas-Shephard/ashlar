@@ -539,6 +539,31 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     }
 
     [Test]
+    public async Task HandleAsyncShouldFailWhenCurrentSessionUserDoesNotMatchClaims()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var currentSession = new AuthenticationSession
+        {
+            Id = session.Id,
+            UserId = Guid.NewGuid(),
+            TokenHash = "hash",
+            CreatedAt = session.CreatedAt,
+            ExpiresAt = session.ExpiresAt,
+            AdditionalVerificationAt = session.AdditionalVerificationAt,
+            AdditionalVerificationProvider = session.AdditionalVerificationProvider,
+            AdditionalVerificationFactor = session.AdditionalVerificationFactor
+        };
+        var context = CreateContext(session, new AshlarStepUpRequirement(TimeSpan.FromMinutes(5)));
+
+        await CreateHandler(currentSession).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
     public async Task HandleAsyncShouldFailSafelyForMalformedPrimaryProviderClaims()
     {
         var session = CreateSession();
@@ -582,6 +607,22 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var claims = CreateClaims(session);
         claims.Add(new Claim(AshlarClaimTypes.AdditionalVerificationProviderType, ProviderType.Mfa.Value));
         claims.Add(new Claim(AshlarClaimTypes.AdditionalVerificationProviderName, " "));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
+        var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
+
+        await CreateHandler().HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldFailSafelyForMissingAdditionalProviderTypeClaim()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var claims = CreateClaims(session);
+        claims.Add(new Claim(AshlarClaimTypes.AdditionalVerificationProviderName, AuthenticationFactorTypes.Totp));
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 

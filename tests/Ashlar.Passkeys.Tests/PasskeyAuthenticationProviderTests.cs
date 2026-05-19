@@ -144,6 +144,18 @@ internal sealed class PasskeyAuthenticationProviderTests
     }
 
     [Test]
+    public async Task AuthenticateAsyncShouldRejectNullJsonMetadata()
+    {
+        var provider = new PasskeyAuthenticationProvider(Options.Create(new PasskeyOptions()));
+        var credential = CreateCredential(signCount: 0);
+        credential.Metadata = "null";
+
+        var result = await provider.AuthenticateAsync(new PasskeyAssertion("cred", 1), credential);
+
+        Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
+    }
+
+    [Test]
     public void AuthenticateAsyncShouldRejectUnsupportedAssertions()
     {
         var provider = new PasskeyAuthenticationProvider(Options.Create(new PasskeyOptions()));
