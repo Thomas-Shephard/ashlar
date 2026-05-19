@@ -55,6 +55,18 @@ internal sealed class AuthenticationPipelineTests
     }
 
     [Test]
+    public void ConstructorShouldAcceptNonNullOptionalLogger()
+    {
+        var pipeline = new AuthenticationPipeline(
+            _providerRegistryMock.Object,
+            _credentialServiceMock.Object,
+            new NullTransactionProvider(),
+            logger: Mock.Of<Microsoft.Extensions.Logging.ILogger<AuthenticationPipeline>>());
+
+        Assert.That(pipeline, Is.Not.Null);
+    }
+
+    [Test]
     public async Task LoginAsyncWithUnsupportedProviderShouldReturnFailed()
     {
         var context = new AuthenticationContext("test@example.com");

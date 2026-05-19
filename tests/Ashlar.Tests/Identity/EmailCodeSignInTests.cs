@@ -200,14 +200,17 @@ internal sealed class EmailCodeSignInTests
         var assertion = new EmailCodeAssertion("123456");
         var malformed = CreateCredential("not-base64", "email-sign-in");
         var wrongPurpose = CreateCredential(Convert.ToBase64String([0x7f, 1]), "other");
+        var missingValue = CreateCredential(null, "email-sign-in");
 
         var malformedResult = await provider.AuthenticateAsync(assertion, malformed);
         var wrongPurposeResult = await provider.AuthenticateAsync(assertion, wrongPurpose);
+        var missingValueResult = await provider.AuthenticateAsync(assertion, missingValue);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(malformedResult.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
             Assert.That(wrongPurposeResult.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
+            Assert.That(missingValueResult.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
         }
     }
 
@@ -363,7 +366,7 @@ internal sealed class EmailCodeSignInTests
         return new EmailCodeAuthenticationProvider(new PasswordHasherSelector([new TestPasswordHasher()]));
     }
 
-    private static UserCredential CreateCredential(string credentialValue, string purpose)
+    private static UserCredential CreateCredential(string? credentialValue, string purpose)
     {
         return new UserCredential
         {

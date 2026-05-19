@@ -34,6 +34,18 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     }
 
     [Test]
+    public async Task HandleAsyncShouldFailForPrincipalWithoutIdentity()
+    {
+        var requirement = new AshlarStepUpRequirement(TimeSpan.FromMinutes(5));
+        var context = new AuthorizationHandlerContext([requirement], new ClaimsPrincipal(), null);
+        var handler = CreateHandler();
+
+        await handler.HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
     public async Task AuthorizationPolicyShouldChallengeUnauthenticatedUsersThroughRequireAuthenticatedUser()
     {
         var services = new ServiceCollection();

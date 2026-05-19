@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Models;
 using Ashlar.Messaging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
@@ -72,6 +73,7 @@ internal sealed class SecurityNotificationServiceTests
         Assert.Throws<ArgumentNullException>(() => _ = new SecurityNotificationService(null!, Options.Create(_options)));
         Assert.Throws<ArgumentNullException>(() => _ = new SecurityNotificationService(_emailSender.Object, null!));
         Assert.DoesNotThrow(() => _ = new SecurityNotificationService(_emailSender.Object, Options.Create(_options), logger: null));
+        Assert.DoesNotThrow(() => _ = new SecurityNotificationService(_emailSender.Object, Options.Create(_options), logger: Mock.Of<ILogger<SecurityNotificationService>>()));
     }
 
     [Test]
@@ -318,6 +320,29 @@ internal sealed class SecurityNotificationServiceTests
 
         Assert.That(result.Succeeded, Is.True);
         _emailSender.Verify(x => x.SendAsync(It.Is<EmailMessage>(m => m.TextBody == "Blank: { }"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task NotifyAsyncDoesNotAllowMetadataToOverrideBuiltInPlaceholders()
+    {
+        _options.Cooldowns.Clear();
+        var notification = new SecurityNotification
+        {
+            Type = SecurityNotificationType.SignIn,
+            RecipientEmail = "user@example.com",
+            OccurredAt = DateTimeOffset.UtcNow,
+            Metadata = new Dictionary<string, string> { ["Type"] = "Injected" }
+        };
+        _options.TemplateOverrides[SecurityNotificationType.SignIn] = new SecurityNotificationTemplate
+        {
+            Subject = "Test",
+            Body = "Type: {Type}"
+        };
+
+        var result = await _service.NotifyAsync(notification);
+
+        Assert.That(result.Succeeded, Is.True);
+        _emailSender.Verify(x => x.SendAsync(It.Is<EmailMessage>(m => m.TextBody == "Type: SignIn"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -773,5 +798,77 @@ internal sealed class SecurityNotificationServiceTests
         Task.WaitAll(tasks);
 
         Assert.That(results.Count(result => result), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void SuppressionStoreShouldHandleConcurrentSendAfterCooldown()
+    {
+        var store = new InMemorySecurityNotificationSuppressionStore();
+        var notification = new SecurityNotification
+        {
+            Type = SecurityNotificationType.SignIn,
+            RecipientEmail = "expired-race@example.com",
+            OccurredAt = _timeProvider.GetUtcNow()
+        };
+        Assert.That(store.ShouldSend(notification, TimeSpan.FromTicks(1), _timeProvider.GetUtcNow()), Is.True);
+
+        var later = _timeProvider.GetUtcNow().AddSeconds(1);
+        var start = new ManualResetEventSlim();
+        var results = new bool[64];
+        var tasks = Enumerable.Range(0, results.Length).Select(index => Task.Run(() =>
+        {
+            start.Wait();
+            results[index] = store.ShouldSend(notification, TimeSpan.FromMinutes(1), later);
+        })).ToArray();
+
+        start.Set();
+        Task.WaitAll(tasks);
+
+        Assert.That(results.Count(result => result), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void SuppressionStoreShouldExerciseConcurrentAddAndUpdateContention()
+    {
+        for (var attempt = 0; attempt < 250; attempt++)
+        {
+            var store = new InMemorySecurityNotificationSuppressionStore();
+            var now = _timeProvider.GetUtcNow().AddTicks(attempt * 10);
+            var notification = new SecurityNotification
+            {
+                Type = SecurityNotificationType.SignIn,
+                RecipientEmail = $"contention-{attempt}@example.com",
+                OccurredAt = now
+            };
+
+            var firstWave = RunSuppressionRace(store, notification, TimeSpan.FromTicks(1), now, 128);
+            var secondWave = RunSuppressionRace(store, notification, TimeSpan.FromMinutes(1), now.AddSeconds(1), 128);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstWave.Count(result => result), Is.EqualTo(1));
+                Assert.That(secondWave.Count(result => result), Is.EqualTo(1));
+            }
+        }
+    }
+
+    private static bool[] RunSuppressionRace(
+        InMemorySecurityNotificationSuppressionStore store,
+        SecurityNotification notification,
+        TimeSpan cooldown,
+        DateTimeOffset now,
+        int concurrency)
+    {
+        var start = new ManualResetEventSlim();
+        var results = new bool[concurrency];
+        var tasks = Enumerable.Range(0, concurrency).Select(index => Task.Run(() =>
+        {
+            start.Wait();
+            results[index] = store.ShouldSend(notification, cooldown, now);
+        })).ToArray();
+
+        start.Set();
+        Task.WaitAll(tasks);
+        return results;
     }
 }

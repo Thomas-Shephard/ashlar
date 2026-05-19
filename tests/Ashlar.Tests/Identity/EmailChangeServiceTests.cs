@@ -9,6 +9,7 @@ using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Tokens;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
 
@@ -35,6 +36,20 @@ internal sealed class EmailChangeServiceTests
 
         var dependencies = new EmailChangeDependencies(identityContext, tokenContext, infrastructure, Mock.Of<IAuthenticationSessionRepository>(), Mock.Of<ISecretProtector>(), audit);
         var service = new EmailChangeService(dependencies, options: null, logger: null);
+
+        Assert.That(service, Is.Not.Null);
+    }
+
+    [Test]
+    public void ConstructorAcceptsNonNullLogger()
+    {
+        var identityContext = new IdentityContext(new InMemoryIdentityRepository(), Mock.Of<IIdentityService>(), new NullTransactionProvider());
+        var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), new Sha256TokenHasher());
+        var infrastructure = new IdentityInfrastructureContext(Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), Mock.Of<IUriValidator>());
+        var audit = new IdentityAuditContext(new FakeTimeProvider(), new RecordingSecurityEventSink());
+        var dependencies = new EmailChangeDependencies(identityContext, tokenContext, infrastructure, Mock.Of<IAuthenticationSessionRepository>(), Mock.Of<ISecretProtector>(), audit);
+
+        var service = new EmailChangeService(dependencies, logger: NullLogger<EmailChangeService>.Instance);
 
         Assert.That(service, Is.Not.Null);
     }

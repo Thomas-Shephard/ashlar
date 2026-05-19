@@ -8,6 +8,7 @@ namespace Ashlar.Identity.Notifications;
 public sealed class InMemorySecurityNotificationSuppressionStore : ISecurityNotificationSuppressionStore
 {
     private const int CleanupInterval = 256;
+    private static readonly object[] KeyLocks = Enumerable.Range(0, 64).Select(_ => new object()).ToArray();
     private readonly ConcurrentDictionary<string, DateTimeOffset> _suppressedUntil = new(StringComparer.Ordinal);
     private int _attemptsSinceCleanup;
 
@@ -29,28 +30,22 @@ public sealed class InMemorySecurityNotificationSuppressionStore : ISecurityNoti
         TryCleanupExpiredEntries(now);
         var key = CreateKey(notification);
         var suppressedUntil = now + cooldown;
-        while (true)
+        lock (GetKeyLock(key))
         {
-            if (!_suppressedUntil.TryGetValue(key, out var existingSuppressedUntil))
-            {
-                if (_suppressedUntil.TryAdd(key, suppressedUntil))
-                {
-                    return true;
-                }
-
-                continue;
-            }
-
-            if (now < existingSuppressedUntil)
+            if (_suppressedUntil.TryGetValue(key, out var existingSuppressedUntil)
+                && now < existingSuppressedUntil)
             {
                 return false;
             }
 
-            if (_suppressedUntil.TryUpdate(key, suppressedUntil, existingSuppressedUntil))
-            {
-                return true;
-            }
+            _suppressedUntil[key] = suppressedUntil;
+            return true;
         }
+    }
+
+    private static object GetKeyLock(string key)
+    {
+        return KeyLocks[StringComparer.Ordinal.GetHashCode(key) & (KeyLocks.Length - 1)];
     }
 
     private static string CreateKey(SecurityNotification notification)

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Ashlar.Auditing;
 using Ashlar.Identity.Models;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Ashlar.Sqlite.Tests;
@@ -177,6 +178,16 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
     public void ConstructorAcceptsNullLogger()
     {
         var sink = new SqliteSecurityEventSink(_serviceProvider.GetRequiredService<SqliteConnectionFactory>(), logger: null);
+
+        Assert.That(sink, Is.Not.Null);
+    }
+
+    [Test]
+    public void ConstructorAcceptsNonNullLogger()
+    {
+        var sink = new SqliteSecurityEventSink(
+            _serviceProvider.GetRequiredService<SqliteConnectionFactory>(),
+            NullLogger<SqliteSecurityEventSink>.Instance);
 
         Assert.That(sink, Is.Not.Null);
     }

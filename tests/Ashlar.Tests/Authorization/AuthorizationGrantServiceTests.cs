@@ -40,6 +40,22 @@ internal sealed class AuthorizationGrantServiceTests
     }
 
     [Test]
+    public async Task CreateGrantAsyncShouldAuditPermissionGrantProperties()
+    {
+        var auditSink = new RecordingSecurityEventSink();
+        var service = new AuthorizationGrantService(_repository, timeProvider: _timeProvider, securityEventSink: auditSink);
+
+        await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), Permission: "posts.edit"));
+
+        var createdEvent = auditSink.Events.Single(securityEvent => securityEvent.EventType == AshlarSecurityEventTypes.AuthorizationGrantCreated);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(createdEvent.Properties?["grant_type"], Is.EqualTo("permission"));
+            Assert.That(createdEvent.Properties?["grant_value"], Is.EqualTo("posts.edit"));
+        }
+    }
+
+    [Test]
     public async Task CreateGrantAsyncShouldNormalizeBlankMetadataToNull()
     {
         var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), Permission: "read", Metadata: " "));
