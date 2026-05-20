@@ -65,5 +65,3 @@ public static class SecretRedactor
         return result;
     }
 }
-
-

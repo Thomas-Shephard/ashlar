@@ -38,5 +38,3 @@ public static class SecurityEventFailureReasons
     /// </summary>
     public const string SessionRevoked = "session_revoked";
 }
-
-

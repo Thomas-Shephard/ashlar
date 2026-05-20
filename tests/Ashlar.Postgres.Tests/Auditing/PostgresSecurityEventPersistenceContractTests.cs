@@ -57,13 +57,3 @@ internal sealed class PostgresSecurityEventPersistenceContractTests : SecurityEv
             (string?)row.properties_json)).ToArray();
     }
 }
-
-
-
-
-
-
-
-
-
-

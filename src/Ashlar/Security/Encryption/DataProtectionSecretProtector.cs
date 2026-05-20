@@ -46,5 +46,3 @@ public sealed class DataProtectionSecretProtector : ISecretProtector
         return _protector.Unprotect(data);
     }
 }
-
-

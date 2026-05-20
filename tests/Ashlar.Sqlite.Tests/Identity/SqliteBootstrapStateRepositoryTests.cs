@@ -71,5 +71,3 @@ internal sealed class SqliteBootstrapStateRepositoryTests : SqliteTestBase
         Assert.That(await verificationRepository.GetBootstrapStatusAsync(), Is.EqualTo(BootstrapStatus.Uninitialized));
     }
 }
-
-

@@ -44,9 +44,3 @@ public sealed class SqliteBootstrapStateRepository(ISqliteConnectionProvider con
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 }
-
-
-
-
-
-

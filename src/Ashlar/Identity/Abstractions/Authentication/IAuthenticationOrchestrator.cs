@@ -36,8 +36,3 @@ public interface IAuthenticationOrchestrator
         IAuthenticationAssertion assertion,
         CancellationToken cancellationToken = default);
 }
-
-
-
-
-

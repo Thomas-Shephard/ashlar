@@ -33,8 +33,3 @@ public interface IAuthenticationHandshakeRepository
     /// <returns>The operation result.</returns>
     Task UpdateAsync(AuthenticationHandshake handshake, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

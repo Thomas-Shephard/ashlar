@@ -826,5 +826,3 @@ internal sealed class SecurityNotificationServiceTests
     }
 
 }
-
-

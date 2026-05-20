@@ -18,11 +18,3 @@ internal sealed class SqliteAuthorizationGrantRepositoryContractTests : Authoriz
         return Task.CompletedTask;
     }
 }
-
-
-
-
-
-
-
-

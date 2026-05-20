@@ -27,5 +27,3 @@ public interface IPasswordHasher
     /// <returns>The operation result.</returns>
     bool VerifyPassword(ReadOnlySpan<char> password, ReadOnlySpan<byte> encodedHash);
 }
-
-

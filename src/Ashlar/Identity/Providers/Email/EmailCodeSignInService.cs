@@ -161,5 +161,3 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
         return RandomNumberGenerator.GetInt32(0, max).ToString(new string('0', length), CultureInfo.InvariantCulture);
     }
 }
-
-

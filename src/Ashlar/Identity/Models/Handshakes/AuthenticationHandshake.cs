@@ -28,8 +28,3 @@ public sealed record AuthenticationHandshake(
     IDictionary<string, string>? Metadata = null,
     DateTimeOffset? RevokedAt = null,
     DateTimeOffset? CompletedAt = null);
-
-
-
-
-

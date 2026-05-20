@@ -270,12 +270,3 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
         Assert.DoesNotThrowAsync(async () => await sink.RecordAsync(securityEvent));
     }
 }
-
-
-
-
-
-
-
-
-

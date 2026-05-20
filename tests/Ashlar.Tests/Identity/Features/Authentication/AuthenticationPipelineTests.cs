@@ -521,6 +521,3 @@ internal sealed class AuthenticationPipelineTests
         }
     }
 }
-
-
-

@@ -11,8 +11,3 @@ public sealed class IdentityServiceOptions
     /// </summary>
     public TimeSpan LastUsedAtUpdateThreshold { get; set; } = TimeSpan.FromMinutes(1);
 }
-
-
-
-
-

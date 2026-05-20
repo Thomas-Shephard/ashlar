@@ -567,6 +567,3 @@ internal sealed class MagicLinkSignInTests
         }
     }
 }
-
-
-

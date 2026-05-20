@@ -52,5 +52,3 @@ public sealed class Sha256TokenHasher : ISecureTokenHasher
         });
     }
 }
-
-

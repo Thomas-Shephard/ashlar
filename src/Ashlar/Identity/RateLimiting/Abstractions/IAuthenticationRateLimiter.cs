@@ -17,5 +17,3 @@ public interface IAuthenticationRateLimiter
     /// <returns>The operation result.</returns>
     Task<RateLimitDecision> CheckAsync(RateLimitAttempt attempt, RateLimitRule rule, CancellationToken cancellationToken = default);
 }
-
-

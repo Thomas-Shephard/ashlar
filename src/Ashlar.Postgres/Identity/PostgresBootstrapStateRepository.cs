@@ -58,9 +58,3 @@ public sealed class PostgresBootstrapStateRepository(IPostgresConnectionProvider
         }
     }
 }
-
-
-
-
-
-

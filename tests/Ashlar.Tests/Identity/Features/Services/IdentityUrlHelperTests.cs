@@ -83,6 +83,3 @@ internal sealed class IdentityUrlHelperTests
         Assert.That(result, Is.EqualTo("Template"));
     }
 }
-
-
-

@@ -49,5 +49,3 @@ internal static class InvitationEndpoints
         app.MapGet("/invitations/accept", (string t) => AppViews.RenderInvitationAccept(t));
     }
 }
-
-

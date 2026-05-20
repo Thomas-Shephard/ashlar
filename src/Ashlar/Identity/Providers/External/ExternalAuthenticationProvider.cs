@@ -167,5 +167,3 @@ public sealed class Saml2AuthenticationProvider(string providerName) : ExternalA
     /// </summary>
     public override int TypicalCredentialLength => 3072;
 }
-
-

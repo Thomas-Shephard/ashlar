@@ -12,8 +12,3 @@ public sealed record VerifyAuthenticationHandshakeRequest(
     string FactorType,
     IDictionary<string, string>? Metadata = null,
     AuthenticationContext? Context = null);
-
-
-
-
-

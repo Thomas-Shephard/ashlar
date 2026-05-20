@@ -680,6 +680,3 @@ public sealed record AuthenticationSessionServiceDependencies(
     ISecurityNotificationService? NotificationService = null,
     ILogger<AuthenticationSessionService>? Logger = null,
     ILoggerFactory? LoggerFactory = null);
-
-
-

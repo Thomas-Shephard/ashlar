@@ -70,5 +70,3 @@ public interface IAshlarSignInManager
         string? reason = null,
         CancellationToken cancellationToken = default);
 }
-
-

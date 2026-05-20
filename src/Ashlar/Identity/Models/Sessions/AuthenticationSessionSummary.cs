@@ -60,8 +60,3 @@ public sealed record AuthenticationSessionSummary
     /// </summary>
     public bool IsActive { get; init; }
 }
-
-
-
-
-

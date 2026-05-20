@@ -110,6 +110,3 @@ public sealed class UriValidator : IUriValidator
             string.IsNullOrEmpty(uri.Fragment);
     }
 }
-
-
-

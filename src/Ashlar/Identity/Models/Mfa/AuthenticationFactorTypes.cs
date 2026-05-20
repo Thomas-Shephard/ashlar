@@ -20,8 +20,3 @@ public static class AuthenticationFactorTypes
     /// </summary>
     public const string Passkey = "passkey";
 }
-
-
-
-
-

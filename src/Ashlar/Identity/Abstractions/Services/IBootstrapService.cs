@@ -30,8 +30,3 @@ public interface IBootstrapService
     /// <returns>The created user ID when bootstrap succeeds.</returns>
     Task<Result<Guid>> AcceptBootstrapInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

@@ -11,12 +11,3 @@ internal sealed class PostgresContractTestSetUp
         await PostgresContractDatabase.DisposeContainerAsync();
     }
 }
-
-
-
-
-
-
-
-
-

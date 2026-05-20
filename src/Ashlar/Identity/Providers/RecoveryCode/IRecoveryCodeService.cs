@@ -27,5 +27,3 @@ public interface IRecoveryCodeService
     /// <returns>The operation result.</returns>
     Task<int> RevokeRecoveryCodesAsync(Guid userId, string? reason = null, TenantContext? tenant = null, AuditContext? audit = null, CancellationToken cancellationToken = default);
 }
-
-

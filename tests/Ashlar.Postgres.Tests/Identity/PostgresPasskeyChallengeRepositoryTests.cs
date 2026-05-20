@@ -185,5 +185,3 @@ internal sealed class PostgresPasskeyChallengeRepositoryTests : PostgresTestBase
         };
     }
 }
-
-

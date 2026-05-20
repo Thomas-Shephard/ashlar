@@ -243,9 +243,3 @@ public sealed class PostgresAuthenticationRateLimiter : IAuthenticationRateLimit
         return await connection.ExecuteAsync(command);
     }
 }
-
-
-
-
-
-

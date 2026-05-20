@@ -78,5 +78,3 @@ internal sealed class AshlarPostgresBootstrapServiceCollectionExtensionsTests
         Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<PostgresTransactionManager>());
     }
 }
-
-

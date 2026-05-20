@@ -371,5 +371,3 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
         };
     }
 }
-
-

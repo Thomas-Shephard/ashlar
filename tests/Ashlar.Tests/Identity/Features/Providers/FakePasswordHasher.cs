@@ -17,6 +17,3 @@ internal sealed class FakePasswordHasher : IPasswordHasher
         return ShouldVerify;
     }
 }
-
-
-

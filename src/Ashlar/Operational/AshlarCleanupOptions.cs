@@ -146,5 +146,3 @@ public sealed class AshlarCleanupOptions
 
     private static bool IsValid(TimeSpan? value) => value == null || value.Value >= TimeSpan.Zero;
 }
-
-

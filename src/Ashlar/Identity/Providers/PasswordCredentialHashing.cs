@@ -37,5 +37,3 @@ internal static class PasswordCredentialHashing
         }
     }
 }
-
-

@@ -133,8 +133,3 @@ public enum CredentialUpdateRequirement
     /// </summary>
     Required = 1
 }
-
-
-
-
-

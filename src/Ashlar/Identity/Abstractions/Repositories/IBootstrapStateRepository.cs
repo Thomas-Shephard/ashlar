@@ -21,8 +21,3 @@ public interface IBootstrapStateRepository
     /// <returns>The operation result.</returns>
     Task<bool> MarkAsInitializedAsync(Guid userId, DateTimeOffset initializedAt, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

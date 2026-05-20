@@ -358,10 +358,3 @@ internal sealed class SqliteTransactionManagerTests : SqliteTestBase
         return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture);
     }
 }
-
-
-
-
-
-
-

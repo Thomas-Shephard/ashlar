@@ -193,6 +193,3 @@ internal sealed class ModelTests
         };
     }
 }
-
-
-

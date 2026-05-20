@@ -25,5 +25,3 @@ internal sealed class NullEmailSenderTests
         Assert.That(exception.ParamName, Is.EqualTo("message"));
     }
 }
-
-

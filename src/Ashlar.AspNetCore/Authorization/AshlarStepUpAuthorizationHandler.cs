@@ -118,5 +118,3 @@ public sealed class AshlarStepUpAuthorizationHandler(
         return Guid.TryParse(tenantClaim, out var tenantId) ? new TenantContext(tenantId) : null;
     }
 }
-
-

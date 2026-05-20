@@ -138,5 +138,3 @@ internal sealed class PostgresAspNetCoreAuthenticationIntegrationTests : Postgre
         }
     }
 }
-
-

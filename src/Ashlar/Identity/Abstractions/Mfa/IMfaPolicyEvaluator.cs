@@ -15,8 +15,3 @@ public interface IMfaPolicyEvaluator
     /// <returns>The operation result.</returns>
     Task<MfaPolicyEvaluation> EvaluateAsync(IUser user, AuthenticationContext context, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

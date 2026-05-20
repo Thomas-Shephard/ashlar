@@ -185,5 +185,3 @@ public sealed record EmailMessageOptions
     /// </summary>
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
 }
-
-

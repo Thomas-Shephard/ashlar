@@ -444,12 +444,3 @@ internal sealed class PostgresTransactionManagerTests : PostgresTestBase
         return (int)result;
     }
 }
-
-
-
-
-
-
-
-
-

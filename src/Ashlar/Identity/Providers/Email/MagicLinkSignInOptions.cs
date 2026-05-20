@@ -34,5 +34,3 @@ public sealed class MagicLinkSignInOptions
     /// </summary>
     public string LinkTokenParameterName { get; set; } = "token";
 }
-
-

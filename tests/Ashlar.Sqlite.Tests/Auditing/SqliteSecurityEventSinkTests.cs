@@ -259,10 +259,3 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
         string? FailureReason,
         string? Properties);
 }
-
-
-
-
-
-
-

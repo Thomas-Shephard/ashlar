@@ -22,8 +22,3 @@ public sealed class CreateInvitationRequest
     /// </summary>
     public string? Metadata { get; init; }
 }
-
-
-
-
-

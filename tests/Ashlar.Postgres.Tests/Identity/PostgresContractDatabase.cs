@@ -128,5 +128,3 @@ internal sealed class PostgresContractDatabaseLease(string databaseName, IServic
         return PostgresContractDatabase.DropDatabaseAsync(databaseName);
     }
 }
-
-

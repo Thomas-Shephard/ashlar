@@ -368,5 +368,3 @@ internal sealed class AuthorizationGrantServiceTests
         }
     }
 }
-
-

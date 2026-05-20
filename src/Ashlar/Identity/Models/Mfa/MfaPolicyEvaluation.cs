@@ -6,8 +6,3 @@ namespace Ashlar.Identity.Models.Mfa;
 /// <param name="IsMfaRequired">The is mfa required value.</param>
 /// <param name="Requirement">The requirement value.</param>
 public sealed record MfaPolicyEvaluation(bool IsMfaRequired, MfaRequirement? Requirement = null);
-
-
-
-
-

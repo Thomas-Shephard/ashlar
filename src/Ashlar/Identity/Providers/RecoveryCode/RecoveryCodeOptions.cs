@@ -31,5 +31,3 @@ public sealed record RecoveryCodeOptions
     /// </summary>
     public AuthenticationProviderKey ProviderKey { get; set; } = new(ProviderType.RecoveryCode, "RecoveryCode");
 }
-
-

@@ -234,5 +234,3 @@ internal sealed class PasskeyAuthenticationProviderTests
         };
     }
 }
-
-

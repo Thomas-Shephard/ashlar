@@ -90,5 +90,3 @@ internal static class AshlarStepUpClaims
         return true;
     }
 }
-
-

@@ -302,5 +302,3 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         }
     }
 }
-
-

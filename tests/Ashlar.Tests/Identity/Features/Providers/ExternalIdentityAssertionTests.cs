@@ -42,6 +42,3 @@ internal sealed class ExternalIdentityAssertionTests
         Assert.Throws<NotSupportedException>(() => assertion.Claims.Add("new", "val"));
     }
 }
-
-
-

@@ -18,5 +18,3 @@ internal sealed class SqliteBootstrapStateRepositoryContractTests : BootstrapSta
         return Task.CompletedTask;
     }
 }
-
-

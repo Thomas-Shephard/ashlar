@@ -51,8 +51,3 @@ public sealed class AuthenticationSessionOptions
     /// </summary>
     public int MaxMetadataLength { get; set; } = 8192;
 }
-
-
-
-
-

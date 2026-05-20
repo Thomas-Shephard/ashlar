@@ -46,5 +46,3 @@ public static class AshlarPasskeysServiceCollectionExtensions
         return services;
     }
 }
-
-

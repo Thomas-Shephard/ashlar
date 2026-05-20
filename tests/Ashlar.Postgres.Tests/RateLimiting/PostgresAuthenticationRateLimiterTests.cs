@@ -479,12 +479,3 @@ internal sealed class PostgresAuthenticationRateLimiterTests : PostgresTestBase
         return count;
     }
 }
-
-
-
-
-
-
-
-
-

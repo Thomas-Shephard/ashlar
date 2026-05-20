@@ -46,5 +46,3 @@ internal sealed class AshlarMfaHandshakeServiceCollectionExtensionsTests
             && descriptor.Lifetime == lifetime));
     }
 }
-
-

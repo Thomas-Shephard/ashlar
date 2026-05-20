@@ -81,6 +81,3 @@ public sealed class MfaPolicyEvaluatorComponent<T>(T evaluator) : IMfaPolicyEval
         return _evaluator.EvaluateAsync(user, context, cancellationToken);
     }
 }
-
-
-

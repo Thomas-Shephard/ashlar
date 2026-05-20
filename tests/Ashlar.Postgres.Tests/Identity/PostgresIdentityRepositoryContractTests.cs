@@ -20,5 +20,3 @@ internal sealed class PostgresIdentityRepositoryContractTests : IdentityReposito
         }
     }
 }
-
-

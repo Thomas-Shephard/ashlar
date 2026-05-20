@@ -5,8 +5,3 @@ namespace Ashlar.Identity.Models.Mfa;
 /// </summary>
 /// <param name="RequiredFactors">The required factors value.</param>
 public sealed record MfaRequirement(IEnumerable<string> RequiredFactors);
-
-
-
-
-

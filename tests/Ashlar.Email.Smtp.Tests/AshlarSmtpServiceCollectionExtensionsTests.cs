@@ -45,5 +45,3 @@ internal sealed class AshlarSmtpServiceCollectionExtensionsTests
         Assert.That(transport, Is.Not.Null);
     }
 }
-
-

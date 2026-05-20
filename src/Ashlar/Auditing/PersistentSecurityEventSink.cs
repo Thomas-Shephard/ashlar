@@ -120,5 +120,3 @@ public abstract class PersistentSecurityEventSink : ISecurityEventSink, IAsyncDi
             exception);
     }
 }
-
-

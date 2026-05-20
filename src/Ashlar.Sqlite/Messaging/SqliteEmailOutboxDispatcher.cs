@@ -223,9 +223,3 @@ internal static class SqliteEmailOutboxDispatcherLog
             new EventId(1000, nameof(EmailOutboxDeliveryFailed)),
             "SQLite email outbox delivery failed. MessageId={MessageId} AttemptCount={AttemptCount} FinalFailure={FinalFailure}");
 }
-
-
-
-
-
-

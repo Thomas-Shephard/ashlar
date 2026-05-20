@@ -128,5 +128,3 @@ internal sealed class SecretProtectorTests
         Assert.That(ex.InnerException, Is.InstanceOf<FormatException>());
     }
 }
-
-

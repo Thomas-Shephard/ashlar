@@ -314,6 +314,3 @@ internal sealed class InvitationService(
 
     private sealed record AcceptedInvitationUser(Guid UserId, bool IsNewUser);
 }
-
-
-

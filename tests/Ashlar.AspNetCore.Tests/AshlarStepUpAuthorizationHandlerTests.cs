@@ -928,5 +928,3 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         }
     }
 }
-
-

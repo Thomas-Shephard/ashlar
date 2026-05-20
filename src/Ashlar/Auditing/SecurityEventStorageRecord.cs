@@ -63,5 +63,3 @@ public sealed record SecurityEventStorageRecord(
             securityEvent.Properties != null ? JsonSerializer.Serialize(securityEvent.Properties) : null);
     }
 }
-
-

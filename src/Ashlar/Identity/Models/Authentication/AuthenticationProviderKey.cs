@@ -94,8 +94,3 @@ public readonly record struct AuthenticationProviderKey
             : $"{Type.Value}:{Name}";
     }
 }
-
-
-
-
-

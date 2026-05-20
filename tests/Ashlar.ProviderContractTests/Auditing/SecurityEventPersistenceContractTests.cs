@@ -180,5 +180,3 @@ internal abstract class SecurityEventPersistenceContractTests : ProviderContract
         }
     }
 }
-
-

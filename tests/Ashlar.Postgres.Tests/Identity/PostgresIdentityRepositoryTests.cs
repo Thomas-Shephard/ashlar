@@ -745,5 +745,3 @@ internal sealed class PostgresIdentityRepositoryTests : PostgresTestBase
         public DateTimeOffset? EmailVerifiedAt { get; init; }
     }
 }
-
-

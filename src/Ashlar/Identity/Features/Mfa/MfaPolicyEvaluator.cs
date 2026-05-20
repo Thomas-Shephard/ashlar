@@ -21,6 +21,3 @@ public sealed class MfaPolicyEvaluator : IMfaPolicyEvaluator
         return Task.FromResult(new MfaPolicyEvaluation(false));
     }
 }
-
-
-

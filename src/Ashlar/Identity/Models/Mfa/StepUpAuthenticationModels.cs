@@ -31,8 +31,3 @@ public sealed record StepUpEvaluationResult(bool Succeeded, AshlarFailureCode? F
     /// </summary>
     public static StepUpEvaluationResult Success { get; } = new(true);
 }
-
-
-
-
-

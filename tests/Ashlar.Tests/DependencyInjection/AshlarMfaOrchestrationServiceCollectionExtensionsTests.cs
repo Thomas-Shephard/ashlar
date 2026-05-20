@@ -129,5 +129,3 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
         }
     }
 }
-
-

@@ -69,6 +69,3 @@ internal sealed class InvitationDependencies(
     /// </summary>
     public ISecurityNotificationService? NotificationService => _audit.NotificationService;
 }
-
-
-

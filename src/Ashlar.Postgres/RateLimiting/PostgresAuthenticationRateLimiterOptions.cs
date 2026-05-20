@@ -17,9 +17,3 @@ public sealed class PostgresAuthenticationRateLimiterOptions
     /// </summary>
     public int MaxCleanupRows { get; set; } = 1000;
 }
-
-
-
-
-
-

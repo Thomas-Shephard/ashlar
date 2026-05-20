@@ -30,5 +30,3 @@ global using Ashlar.Identity.Features.Sessions;
 global using Ashlar.Identity.Features.Transactions;
 global using Ashlar.Tests.Identity.Features.Providers;
 global using Ashlar.Tests.Identity.Features.TestDoubles;
-
-

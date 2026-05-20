@@ -121,5 +121,3 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
         Assert.That(await CountRowsAsync("ashlar_sessions"), Is.EqualTo(1));
     }
 }
-
-

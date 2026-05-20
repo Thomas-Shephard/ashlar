@@ -51,5 +51,3 @@ public sealed class AshlarStepUpRequirement : IAuthorizationRequirement
     /// </summary>
     public AshlarStepUpMode Mode { get; }
 }
-
-

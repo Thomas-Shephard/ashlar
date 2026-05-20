@@ -39,5 +39,3 @@ public sealed class AshlarPostgresUser : ITenantUser, IHasAuditMetadata
     /// </summary>
     public DateTimeOffset? UpdatedAt { get; set; }
 }
-
-

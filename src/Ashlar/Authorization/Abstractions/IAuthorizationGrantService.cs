@@ -31,5 +31,3 @@ public interface IAuthorizationGrantService
     /// <returns>The matching grants.</returns>
     Task<IReadOnlyList<AuthorizationGrant>> ListGrantsAsync(ListAuthorizationGrantsRequest request, CancellationToken cancellationToken = default);
 }
-
-

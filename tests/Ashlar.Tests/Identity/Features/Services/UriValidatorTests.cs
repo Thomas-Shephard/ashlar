@@ -238,6 +238,3 @@ internal sealed class UriValidatorTests
         Assert.Throws<ArgumentException>(() => validator.ValidateOrThrow(new Uri("https://evil.com")));
     }
 }
-
-
-

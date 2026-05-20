@@ -228,6 +228,3 @@ internal sealed class StepUpAuthenticationServiceTests
         return new AuthenticationProviderKey(ProviderType.Mfa, "totp");
     }
 }
-
-
-

@@ -10,6 +10,3 @@ internal sealed class User : ITenantUser
     public Guid? TenantId { get; set; }
     public DateTimeOffset? EmailVerifiedAt { get; set; }
 }
-
-
-

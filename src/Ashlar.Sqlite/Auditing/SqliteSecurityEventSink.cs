@@ -89,9 +89,3 @@ internal sealed class SqliteSecurityEventSink : PersistentSecurityEventSink, IUs
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }
-
-
-
-
-
-

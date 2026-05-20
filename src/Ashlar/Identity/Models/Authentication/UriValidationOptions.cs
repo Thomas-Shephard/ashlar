@@ -25,8 +25,3 @@ public sealed class UriValidationOptions
     /// </summary>
     public bool AllowNull { get; set; }
 }
-
-
-
-
-

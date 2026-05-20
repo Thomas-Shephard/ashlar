@@ -62,11 +62,3 @@ internal sealed class SqliteSecurityEventPersistenceContractTests : SecurityEven
         return records;
     }
 }
-
-
-
-
-
-
-
-

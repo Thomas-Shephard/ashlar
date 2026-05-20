@@ -6,8 +6,3 @@ namespace Ashlar.Identity.Models.Handshakes;
 /// <param name="Handshake">The handshake value.</param>
 /// <param name="Token">The token value.</param>
 public record AuthenticationHandshakeCreated(AuthenticationHandshake Handshake, string Token);
-
-
-
-
-

@@ -29,8 +29,3 @@ public sealed class CredentialBackedMfaPolicyOptions
             && options.CredentialProviderKeys.All(key => key.Type != default && !string.IsNullOrWhiteSpace(key.Name));
     }
 }
-
-
-
-
-

@@ -73,5 +73,3 @@ public sealed class InMemorySecurityNotificationSuppressionStore : ISecurityNoti
         }
     }
 }
-
-

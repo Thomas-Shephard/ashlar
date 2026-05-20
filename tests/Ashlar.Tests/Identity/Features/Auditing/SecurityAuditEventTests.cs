@@ -617,6 +617,3 @@ internal sealed class SecurityAuditEventTests
         }
     }
 }
-
-
-

@@ -27,6 +27,3 @@ internal sealed class IdentityAuditContext(
     /// </summary>
     public ISecurityNotificationService? NotificationService { get; } = notificationService;
 }
-
-
-

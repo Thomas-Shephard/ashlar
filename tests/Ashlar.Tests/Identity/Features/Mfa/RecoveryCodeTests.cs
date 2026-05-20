@@ -888,6 +888,3 @@ internal sealed class RecoveryCodeTests
         public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default) => Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
     }
 }
-
-
-

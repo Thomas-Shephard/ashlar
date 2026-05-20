@@ -71,5 +71,3 @@ public sealed class AuthorizationEvaluator(
         return options;
     }
 }
-
-

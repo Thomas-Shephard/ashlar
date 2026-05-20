@@ -27,6 +27,3 @@ internal sealed class AuthenticationProviderTests
     }
 
 }
-
-
-

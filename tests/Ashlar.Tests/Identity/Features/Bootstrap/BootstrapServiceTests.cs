@@ -631,6 +631,3 @@ internal sealed class BootstrapServiceTests
         transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }
-
-
-

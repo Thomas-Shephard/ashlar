@@ -31,8 +31,3 @@ public sealed record AshlarUser : ITenantUser
     /// </summary>
     public DateTimeOffset? EmailVerifiedAt { get; init; }
 }
-
-
-
-
-

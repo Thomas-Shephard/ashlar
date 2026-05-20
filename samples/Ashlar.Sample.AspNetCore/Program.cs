@@ -28,5 +28,3 @@ app.MapInvitationEndpoints();
 app.MapAdminEndpoints();
 
 await app.RunAsync();
-
-

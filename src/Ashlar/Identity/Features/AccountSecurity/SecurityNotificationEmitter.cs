@@ -76,6 +76,3 @@ public sealed class SecurityNotificationEmitter(ISecurityNotificationService? no
         }, cancellationToken);
     }
 }
-
-
-

@@ -223,5 +223,3 @@ internal sealed class PostgresInvitationRepositoryTests : PostgresTestBase
         };
     }
 }
-
-

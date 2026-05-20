@@ -280,5 +280,3 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         }
     }
 }
-
-

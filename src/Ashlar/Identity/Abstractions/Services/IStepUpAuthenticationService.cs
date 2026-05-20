@@ -25,8 +25,3 @@ public interface IStepUpAuthenticationService
         MarkSessionStepUpVerifiedRequest request,
         CancellationToken cancellationToken = default);
 }
-
-
-
-
-

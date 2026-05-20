@@ -39,5 +39,3 @@ internal sealed class AshlarApplicationBuilderExtensionsTests
         Assert.That(context.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
     }
 }
-
-

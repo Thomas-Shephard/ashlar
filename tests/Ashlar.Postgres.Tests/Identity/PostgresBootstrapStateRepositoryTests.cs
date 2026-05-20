@@ -86,5 +86,3 @@ internal sealed class PostgresBootstrapStateRepositoryTests : PostgresTestBase
         Assert.That(results.Count(r => r), Is.EqualTo(1));
     }
 }
-
-

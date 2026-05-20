@@ -1166,6 +1166,3 @@ internal sealed class AuthenticationSessionServiceTests
         }
     }
 }
-
-
-

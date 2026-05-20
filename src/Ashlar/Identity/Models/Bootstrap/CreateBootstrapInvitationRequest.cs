@@ -32,8 +32,3 @@ public sealed class CreateBootstrapInvitationRequest
     /// </summary>
     public string? Metadata { get; init; }
 }
-
-
-
-
-

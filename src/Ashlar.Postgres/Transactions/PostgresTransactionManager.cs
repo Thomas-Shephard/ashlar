@@ -307,9 +307,3 @@ internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, I
         }
     }
 }
-
-
-
-
-
-

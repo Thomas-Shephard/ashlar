@@ -10,5 +10,3 @@ public sealed class AshlarSessionRegistration
     /// </summary>
     public required string SchemeName { get; init; }
 }
-
-

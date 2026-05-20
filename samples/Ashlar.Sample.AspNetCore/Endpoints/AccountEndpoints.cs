@@ -167,5 +167,3 @@ internal static class AccountEndpoints
         return true;
     }
 }
-
-

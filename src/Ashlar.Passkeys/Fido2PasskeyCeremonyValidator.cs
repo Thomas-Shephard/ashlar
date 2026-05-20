@@ -166,5 +166,3 @@ public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
         return Enum.TryParse<AuthenticatorTransport>(value, ignoreCase: true, out var transport) ? transport : null;
     }
 }
-
-

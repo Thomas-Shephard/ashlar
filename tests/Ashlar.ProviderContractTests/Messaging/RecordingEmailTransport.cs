@@ -24,5 +24,3 @@ internal sealed class RecordingEmailTransport : IEmailTransport
         await OnDeliver(message, cancellationToken);
     }
 }
-
-

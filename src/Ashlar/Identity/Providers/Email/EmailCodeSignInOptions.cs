@@ -34,5 +34,3 @@ public sealed class EmailCodeSignInOptions
     /// </summary>
     public string EmailTextTemplate { get; set; } = "Your sign-in code is {0}. It expires in {1} minutes.";
 }
-
-

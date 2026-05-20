@@ -234,5 +234,3 @@ internal static class LandingPages
             """, "text/html");
     }
 }
-
-

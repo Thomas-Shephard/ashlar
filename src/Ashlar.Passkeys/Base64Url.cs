@@ -14,5 +14,3 @@ internal static class Base64Url
         return Convert.FromBase64String(padded);
     }
 }
-
-

@@ -56,5 +56,3 @@ internal sealed class RequireIpAddressMiddlewareTests
         }
     }
 }
-
-

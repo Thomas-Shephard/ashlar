@@ -22,8 +22,3 @@ public interface ICredentialKeyAuthenticationAssertion : IAuthenticationAssertio
     /// </summary>
     string CredentialKey { get; }
 }
-
-
-
-
-

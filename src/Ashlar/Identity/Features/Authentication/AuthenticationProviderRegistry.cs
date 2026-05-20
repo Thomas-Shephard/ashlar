@@ -59,6 +59,3 @@ public sealed class AuthenticationProviderRegistry : IAuthenticationProviderRegi
         return key;
     }
 }
-
-
-

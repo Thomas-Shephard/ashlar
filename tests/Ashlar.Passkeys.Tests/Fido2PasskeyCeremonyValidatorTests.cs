@@ -447,5 +447,3 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         };
     }
 }
-
-

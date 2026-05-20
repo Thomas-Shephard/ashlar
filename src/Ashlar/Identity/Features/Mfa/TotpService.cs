@@ -270,6 +270,3 @@ public sealed class TotpServiceDependencies(
     /// </summary>
     public ISecurityNotificationService? NotificationService { get; } = notificationService;
 }
-
-
-

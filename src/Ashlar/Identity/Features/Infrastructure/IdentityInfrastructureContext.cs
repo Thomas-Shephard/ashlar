@@ -27,6 +27,3 @@ internal sealed class IdentityInfrastructureContext(
     /// </summary>
     public IUriValidator UriValidator { get; } = uriValidator ?? throw new ArgumentNullException(nameof(uriValidator));
 }
-
-
-

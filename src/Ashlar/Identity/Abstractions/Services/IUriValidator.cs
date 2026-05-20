@@ -19,8 +19,3 @@ public interface IUriValidator
     /// <returns>The operation result.</returns>
     bool IsValid(Uri? uri);
 }
-
-
-
-
-

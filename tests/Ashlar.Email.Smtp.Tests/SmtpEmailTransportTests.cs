@@ -340,5 +340,3 @@ internal sealed class SmtpEmailTransportTests
         }
     }
 }
-
-

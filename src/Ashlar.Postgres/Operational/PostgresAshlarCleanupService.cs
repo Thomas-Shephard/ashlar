@@ -116,9 +116,3 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
             category.OrderColumn);
     }
 }
-
-
-
-
-
-

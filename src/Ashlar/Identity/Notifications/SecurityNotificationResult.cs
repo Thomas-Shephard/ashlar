@@ -35,5 +35,3 @@ public sealed class SecurityNotificationResult
     /// <returns>The operation result.</returns>
     public static SecurityNotificationResult Failure(string reason) => new() { Succeeded = false, FailureReason = reason };
 }
-
-

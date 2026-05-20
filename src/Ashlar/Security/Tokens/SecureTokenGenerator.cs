@@ -29,5 +29,3 @@ public sealed class SecureTokenGenerator : ISecureTokenGenerator
             .Replace('/', '_');
     }
 }
-
-

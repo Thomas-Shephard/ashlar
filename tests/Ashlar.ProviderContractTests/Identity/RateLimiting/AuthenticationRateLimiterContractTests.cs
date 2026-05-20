@@ -209,5 +209,3 @@ internal abstract class AuthenticationRateLimiterContractTests : ProviderContrac
 
     private static string UniqueKey() => $"contract-{Guid.NewGuid():N}";
 }
-
-

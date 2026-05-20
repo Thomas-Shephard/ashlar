@@ -16,5 +16,3 @@ public sealed record AuthorizationEvaluationRequest(
     Guid? TenantId = null,
     string? ScopeType = null,
     string? ScopeId = null);
-
-

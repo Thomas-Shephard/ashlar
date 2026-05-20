@@ -1088,5 +1088,3 @@ internal sealed class RecordingSecurityEventSink : ISecurityEventSink
         return Task.CompletedTask;
     }
 }
-
-

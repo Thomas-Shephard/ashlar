@@ -12,5 +12,3 @@ public interface ISecureTokenHasher
     /// <returns>The operation result.</returns>
     string HashToken(string token);
 }
-
-

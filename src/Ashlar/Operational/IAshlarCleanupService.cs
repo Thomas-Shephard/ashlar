@@ -12,5 +12,3 @@ public interface IAshlarCleanupService
     /// <returns>The operation result.</returns>
     Task<AshlarCleanupResult> CleanupAsync(CancellationToken cancellationToken = default);
 }
-
-

@@ -11,8 +11,3 @@ public sealed record TenantContext(Guid? TenantId = null)
     /// </summary>
     public static TenantContext Global { get; } = new();
 }
-
-
-
-
-

@@ -135,5 +135,3 @@ public sealed partial class SecurityNotificationService(
     [GeneratedRegex(@"\{(?<key>[^}]+)\}", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex TemplatePlaceholderRegex();
 }
-
-

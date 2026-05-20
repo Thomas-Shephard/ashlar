@@ -18,9 +18,3 @@ public interface IPostgresConnectionProvider
     /// </remarks>
     ValueTask<PostgresConnectionHandle> GetConnectionAsync(CancellationToken cancellationToken);
 }
-
-
-
-
-
-

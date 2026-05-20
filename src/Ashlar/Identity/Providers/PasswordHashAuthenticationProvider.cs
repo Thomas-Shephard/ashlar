@@ -82,5 +82,3 @@ public abstract class PasswordHashAuthenticationProvider(PasswordHasherSelector 
     /// <returns>The operation result.</returns>
     public abstract Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default);
 }
-
-

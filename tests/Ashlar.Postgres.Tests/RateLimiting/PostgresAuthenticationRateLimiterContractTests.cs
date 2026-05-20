@@ -36,13 +36,3 @@ internal sealed class PostgresAuthenticationRateLimiterContractTests : Authentic
         _timeProvider.Advance(duration);
     }
 }
-
-
-
-
-
-
-
-
-
-

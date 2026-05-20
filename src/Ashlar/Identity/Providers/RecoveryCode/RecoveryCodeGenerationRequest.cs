@@ -33,5 +33,3 @@ public sealed record RecoveryCodeGenerationRequest
     /// </summary>
     public AuditContext? Audit { get; init; }
 }
-
-

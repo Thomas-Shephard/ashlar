@@ -26,8 +26,3 @@ public interface IUser
     /// </summary>
     DateTimeOffset? EmailVerifiedAt { get; }
 }
-
-
-
-
-

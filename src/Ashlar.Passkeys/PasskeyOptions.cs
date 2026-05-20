@@ -110,5 +110,3 @@ public sealed class PasskeyOptions
             || host.EndsWith($".{rpId}", StringComparison.OrdinalIgnoreCase);
     }
 }
-
-

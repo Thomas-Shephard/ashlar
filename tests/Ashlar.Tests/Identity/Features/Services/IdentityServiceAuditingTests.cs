@@ -45,6 +45,3 @@ internal sealed class IdentityServiceAuditingTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 }
-
-
-

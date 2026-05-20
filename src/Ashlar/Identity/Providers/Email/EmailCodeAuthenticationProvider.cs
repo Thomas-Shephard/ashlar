@@ -53,5 +53,3 @@ public sealed class EmailCodeAuthenticationProvider(PasswordHasherSelector hashe
         return Task.FromResult(new AuthenticationResult(status, IsCredentialConsumed: status == AuthenticationResultStatus.Succeeded));
     }
 }
-
-

@@ -136,5 +136,3 @@ public static class AshlarAspNetCoreServiceCollectionExtensions
         }
     }
 }
-
-

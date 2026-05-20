@@ -26,5 +26,3 @@ public sealed record RecoveryCodeAssertion : IAuthenticationAssertion
     /// <inheritdoc />
     public AuthenticationProviderKey ProviderIdentity { get; }
 }
-
-

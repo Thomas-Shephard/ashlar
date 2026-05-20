@@ -21,8 +21,3 @@ public sealed class AuthenticationHandshakeOptions
         Window = TimeSpan.FromMinutes(1)
     };
 }
-
-
-
-
-

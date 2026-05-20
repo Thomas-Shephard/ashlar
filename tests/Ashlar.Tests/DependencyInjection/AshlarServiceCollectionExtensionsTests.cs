@@ -539,5 +539,3 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         Assert.That(provider.GetRequiredService<IOptions<SecurityNotificationOptions>>().Value.Enabled, Is.True);
     }
 }
-
-

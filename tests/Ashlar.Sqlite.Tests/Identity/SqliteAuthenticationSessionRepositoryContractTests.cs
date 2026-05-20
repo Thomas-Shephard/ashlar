@@ -18,5 +18,3 @@ internal sealed class SqliteAuthenticationSessionRepositoryContractTests : Authe
         return Task.CompletedTask;
     }
 }
-
-

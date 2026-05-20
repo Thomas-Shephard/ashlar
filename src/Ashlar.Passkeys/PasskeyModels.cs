@@ -177,5 +177,3 @@ public sealed record PasskeyAuthenticationVerificationResult(
     string CredentialId,
     long SignCount,
     bool UserVerified = false);
-
-

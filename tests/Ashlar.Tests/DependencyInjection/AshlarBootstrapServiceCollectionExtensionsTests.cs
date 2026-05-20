@@ -33,5 +33,3 @@ internal sealed class AshlarBootstrapServiceCollectionExtensionsTests
         Assert.That(options.Grants[0].Role, Is.EqualTo("admin"));
     }
 }
-
-

@@ -72,5 +72,3 @@ public sealed class PasswordHasherV1 : IPasswordHasher
         return matches & isValidFormat;
     }
 }
-
-

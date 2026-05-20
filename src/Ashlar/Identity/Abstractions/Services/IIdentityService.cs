@@ -96,8 +96,3 @@ public sealed record AuthenticationResponse(
     IUser? User = null,
     AuthenticationStatus Status = AuthenticationStatus.Failed,
     IDictionary<string, string>? Claims = null);
-
-
-
-
-

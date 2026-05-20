@@ -207,6 +207,3 @@ public sealed class AuthenticationPipeline(
         AuthenticationContext Context,
         AuthenticationStatus Status);
 }
-
-
-

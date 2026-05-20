@@ -14,5 +14,3 @@ public interface ISecurityNotificationSuppressionStore
     /// <returns>The operation result.</returns>
     bool ShouldSend(SecurityNotification notification, TimeSpan cooldown, DateTimeOffset now);
 }
-
-

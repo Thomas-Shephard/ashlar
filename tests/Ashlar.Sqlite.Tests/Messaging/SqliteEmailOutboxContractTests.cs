@@ -38,11 +38,3 @@ internal sealed class SqliteEmailOutboxContractTests : EmailOutboxContractTests
         return Task.CompletedTask;
     }
 }
-
-
-
-
-
-
-
-

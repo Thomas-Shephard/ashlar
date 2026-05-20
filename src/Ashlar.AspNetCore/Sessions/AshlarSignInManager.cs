@@ -186,5 +186,3 @@ public sealed class AshlarSignInManager(
         return Guid.TryParse(value, out var tenantId) ? tenantId : null;
     }
 }
-
-

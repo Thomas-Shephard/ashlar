@@ -35,9 +35,3 @@ internal sealed class SqliteConnectionFactory
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }
-
-
-
-
-
-

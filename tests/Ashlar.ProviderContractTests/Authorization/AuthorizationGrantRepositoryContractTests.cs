@@ -237,5 +237,3 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         return JsonNode.DeepEquals(JsonNode.Parse(left), JsonNode.Parse(right));
     }
 }
-
-

@@ -458,6 +458,3 @@ public sealed record AuthenticationHandshakeServiceDependencies(
     IAuthenticationRateLimiter? RateLimiter = null,
     IIdentityRepository? IdentityRepository = null,
     ISecurityNotificationService? NotificationService = null);
-
-
-

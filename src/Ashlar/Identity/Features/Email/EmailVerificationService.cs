@@ -365,6 +365,3 @@ internal sealed class EmailVerificationServiceDependencies(
     /// </summary>
     public ISecurityNotificationService? NotificationService => Audit.NotificationService;
 }
-
-
-

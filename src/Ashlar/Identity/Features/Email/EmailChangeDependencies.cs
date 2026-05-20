@@ -73,6 +73,3 @@ internal sealed class EmailChangeDependencies(
     /// </summary>
     public IUriValidator UriValidator => Infrastructure.UriValidator;
 }
-
-
-

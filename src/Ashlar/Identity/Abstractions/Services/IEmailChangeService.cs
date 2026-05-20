@@ -21,8 +21,3 @@ public interface IEmailChangeService
     /// <returns>The operation result.</returns>
     Task<Result> ConfirmChangeAsync(ConfirmEmailChangeRequest request, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

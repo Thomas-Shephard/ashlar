@@ -14,8 +14,3 @@ public interface IHasAuditMetadata
     /// </summary>
     DateTimeOffset? UpdatedAt { get; set; }
 }
-
-
-
-
-

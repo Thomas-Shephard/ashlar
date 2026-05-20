@@ -18,5 +18,3 @@ internal sealed class SqliteInvitationRepositoryContractTests : InvitationReposi
         return Task.CompletedTask;
     }
 }
-
-

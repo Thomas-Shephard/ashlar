@@ -90,5 +90,3 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
         Assert.Throws<ArgumentNullException>(() => AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresCleanupHostedService(null!));
     }
 }
-
-

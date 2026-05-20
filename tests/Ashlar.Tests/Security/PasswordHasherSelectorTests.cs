@@ -105,5 +105,3 @@ internal sealed class PasswordHasherSelectorTests
         Assert.That(result, Is.EqualTo(PasswordVerificationResult.SuccessWithCredentialUpdate));
     }
 }
-
-

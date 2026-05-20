@@ -64,5 +64,3 @@ public sealed class SmtpEmailOptions
         }
     }
 }
-
-

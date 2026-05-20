@@ -171,5 +171,3 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
         return $"token:{_dependencies.TokenHasher.HashToken(token)}";
     }
 }
-
-

@@ -893,6 +893,3 @@ internal sealed class AuthenticationHandshakeServiceTests
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }
-
-
-

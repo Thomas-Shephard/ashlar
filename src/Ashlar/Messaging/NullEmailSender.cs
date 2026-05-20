@@ -17,5 +17,3 @@ public sealed class NullEmailSender : IEmailSender
         return Task.CompletedTask;
     }
 }
-
-

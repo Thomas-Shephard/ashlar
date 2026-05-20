@@ -50,5 +50,3 @@ public static class AshlarSmtpServiceCollectionExtensions
         return services;
     }
 }
-
-

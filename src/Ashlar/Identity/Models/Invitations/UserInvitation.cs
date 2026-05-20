@@ -62,8 +62,3 @@ public sealed class UserInvitation
         return AcceptedAt == null && RevokedAt == null && ExpiresAt > now;
     }
 }
-
-
-
-
-

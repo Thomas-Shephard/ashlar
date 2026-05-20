@@ -22,8 +22,3 @@ public sealed class Tenant
     /// </summary>
     public bool IsActive { get; set; } = true;
 }
-
-
-
-
-

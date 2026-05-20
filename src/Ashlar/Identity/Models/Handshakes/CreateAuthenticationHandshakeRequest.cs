@@ -12,8 +12,3 @@ public sealed record CreateAuthenticationHandshakeRequest(
     IEnumerable<string> RequiredFactors,
     IDictionary<string, string>? Metadata = null,
     AuthenticationContext? Context = null);
-
-
-
-
-

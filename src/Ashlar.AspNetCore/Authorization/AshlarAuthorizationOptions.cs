@@ -154,5 +154,3 @@ public sealed class AshlarAuthorizationOptions
         return copy;
     }
 }
-
-

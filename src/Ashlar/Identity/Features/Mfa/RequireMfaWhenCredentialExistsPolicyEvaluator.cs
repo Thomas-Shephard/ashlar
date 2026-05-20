@@ -67,6 +67,3 @@ public sealed class RequireMfaWhenCredentialExistsPolicyEvaluator : IMfaPolicyEv
         return new MfaPolicyEvaluation(false);
     }
 }
-
-
-

@@ -14,8 +14,3 @@ public enum CredentialStatus
     /// </summary>
     Revoked = 1
 }
-
-
-
-
-

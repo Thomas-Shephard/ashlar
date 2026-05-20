@@ -60,9 +60,3 @@ public sealed class PostgresEmailOutboxHostedService(
             stoppingToken);
     }
 }
-
-
-
-
-
-

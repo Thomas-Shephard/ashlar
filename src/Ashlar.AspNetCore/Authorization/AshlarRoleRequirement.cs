@@ -30,5 +30,3 @@ public sealed class AshlarRoleRequirement : IAuthorizationRequirement
     /// </summary>
     public string PolicyName { get; }
 }
-
-

@@ -25,5 +25,3 @@ public sealed record MagicLinkAssertion : IAuthenticationAssertion
         Token = token;
     }
 }
-
-

@@ -108,12 +108,3 @@ internal abstract class PostgresTestBase
         return "\"" + identifier.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
     }
 }
-
-
-
-
-
-
-
-
-

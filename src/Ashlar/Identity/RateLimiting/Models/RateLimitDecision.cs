@@ -30,5 +30,3 @@ public sealed class RateLimitDecision
     /// </summary>
     public required DateTimeOffset WindowResetAt { get; init; }
 }
-
-

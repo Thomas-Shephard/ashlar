@@ -50,9 +50,3 @@ public sealed class PostgresConnectionHandle : IAsyncDisposable
         }
     }
 }
-
-
-
-
-
-

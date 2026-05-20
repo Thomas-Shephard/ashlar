@@ -26,8 +26,3 @@ public sealed record CreateAuthenticationSessionRequest(
     DateTimeOffset? AdditionalVerificationAt = null,
     AuthenticationProviderKey? AdditionalVerificationProvider = null,
     string? AdditionalVerificationFactor = null);
-
-
-
-
-

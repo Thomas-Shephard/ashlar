@@ -20,13 +20,3 @@ internal sealed class PostgresAuthorizationGrantRepositoryContractTests : Author
         }
     }
 }
-
-
-
-
-
-
-
-
-
-

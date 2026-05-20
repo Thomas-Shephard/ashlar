@@ -69,5 +69,3 @@ internal static class HomeEndpoints
         [FromServices] IIdentityRepository Users,
         [FromServices] IPostgresConnectionProvider ConnectionProvider);
 }
-
-

@@ -39,10 +39,3 @@ internal abstract class SqliteTestBase
         return connection;
     }
 }
-
-
-
-
-
-
-

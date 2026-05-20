@@ -310,5 +310,3 @@ internal sealed class SqliteIdentityRepositoryTests : SqliteTestBase
         public DateTimeOffset? EmailVerifiedAt { get; init; }
     }
 }
-
-

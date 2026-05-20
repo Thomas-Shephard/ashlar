@@ -18,5 +18,3 @@ internal sealed class SqlitePasskeyChallengeRepositoryContractTests : PasskeyCha
         return Task.CompletedTask;
     }
 }
-
-

@@ -25,6 +25,3 @@ public sealed class InvitationStoreContext(
     /// </summary>
     public IAshlarTransactionProvider TransactionProvider { get; } = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
 }
-
-
-

@@ -42,6 +42,3 @@ global using Ashlar.ProviderContractTests.Authorization;
 global using Ashlar.ProviderContractTests.Identity;
 
 global using Ashlar.Auditing;
-
-
-

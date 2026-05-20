@@ -18,5 +18,3 @@ public sealed class SecureTokenContext(
     /// </summary>
     public ISecureTokenHasher Hasher { get; } = hasher ?? throw new ArgumentNullException(nameof(hasher));
 }
-
-

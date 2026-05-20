@@ -236,10 +236,3 @@ internal sealed class SqliteAuthenticationRateLimiterTests : SqliteTestBase
         return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
     }
 }
-
-
-
-
-
-
-

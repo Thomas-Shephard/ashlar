@@ -112,9 +112,3 @@ public sealed partial class SqliteAshlarCleanupService : IAshlarCleanupService
             category.OrderColumn);
     }
 }
-
-
-
-
-
-

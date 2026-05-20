@@ -40,8 +40,3 @@ public sealed record MfaAuthenticationResult(
     IEnumerable<string>? RequiredFactors = null,
     IDictionary<string, string>? Claims = null,
     string? ErrorMessage = null);
-
-
-
-
-

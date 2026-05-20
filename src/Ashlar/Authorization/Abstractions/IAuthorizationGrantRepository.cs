@@ -40,5 +40,3 @@ public interface IAuthorizationGrantRepository
     /// <returns>The operation result.</returns>
     Task<bool> RevokeGrantAsync(Guid grantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default);
 }
-
-

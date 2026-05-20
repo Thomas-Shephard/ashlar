@@ -39,8 +39,3 @@ public interface IAshlarTransaction : IAsyncDisposable
     /// </remarks>
     void OnCommitted(Func<CancellationToken, Task> action);
 }
-
-
-
-
-

@@ -43,6 +43,3 @@ internal sealed class AuthenticationSessionTests
         };
     }
 }
-
-
-

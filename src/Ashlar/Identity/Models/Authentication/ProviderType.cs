@@ -86,8 +86,3 @@ public readonly record struct ProviderType
     /// <returns>The provider type.</returns>
     public static implicit operator ProviderType(string value) => new(value);
 }
-
-
-
-
-

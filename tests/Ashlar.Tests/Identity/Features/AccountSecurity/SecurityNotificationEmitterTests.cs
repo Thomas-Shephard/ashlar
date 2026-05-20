@@ -77,6 +77,3 @@ internal sealed class SecurityNotificationEmitterTests
             n.Metadata == metadata), It.IsAny<CancellationToken>()), Times.Once);
     }
 }
-
-
-

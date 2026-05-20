@@ -103,5 +103,3 @@ internal static class AuthEndpoints
         return Results.Ok(new { userId = response.User.Id });
     }
 }
-
-

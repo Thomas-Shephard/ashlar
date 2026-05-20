@@ -20,5 +20,3 @@ public sealed record PasskeyAssertion(string CredentialId, long SignCount, bool 
     /// </summary>
     public string CredentialKey => CredentialId;
 }
-
-

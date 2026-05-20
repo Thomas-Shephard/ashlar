@@ -37,6 +37,3 @@ public static class IdentityNormalization
         return sanitized;
     }
 }
-
-
-

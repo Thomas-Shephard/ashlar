@@ -37,8 +37,3 @@ public sealed class BootstrapGrantTemplate
     /// </summary>
     public Guid? TenantId { get; set; }
 }
-
-
-
-
-

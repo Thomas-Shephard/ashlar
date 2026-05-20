@@ -74,5 +74,3 @@ internal sealed class PersistentSecurityEventSinkTests
         }
     }
 }
-
-

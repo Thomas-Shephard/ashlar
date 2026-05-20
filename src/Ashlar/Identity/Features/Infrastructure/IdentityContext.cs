@@ -25,6 +25,3 @@ internal sealed class IdentityContext(
     /// </summary>
     public IAshlarTransactionProvider TransactionProvider { get; } = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
 }
-
-
-

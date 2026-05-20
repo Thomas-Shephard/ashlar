@@ -316,5 +316,3 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
         return user;
     }
 }
-
-

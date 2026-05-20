@@ -14,5 +14,3 @@ public sealed record AuditContext(
     string? UserAgent = null,
     string? CorrelationId = null,
     IReadOnlyDictionary<string, string>? Items = null);
-
-

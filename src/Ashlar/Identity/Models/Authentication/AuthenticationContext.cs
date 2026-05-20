@@ -20,8 +20,3 @@ public sealed record AuthenticationContext(
     string? ReturnUrl = null,
     IReadOnlyDictionary<string, string>? Items = null,
     Guid? UserId = null);
-
-
-
-
-

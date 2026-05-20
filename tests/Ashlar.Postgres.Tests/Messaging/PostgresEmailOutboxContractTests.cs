@@ -40,13 +40,3 @@ internal sealed class PostgresEmailOutboxContractTests : EmailOutboxContractTest
         return Task.CompletedTask;
     }
 }
-
-
-
-
-
-
-
-
-
-

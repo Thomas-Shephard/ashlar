@@ -65,9 +65,3 @@ internal static class SqliteEmailOutboxHostedServiceLog
             new EventId(1000, nameof(OutboxBatchFailed)),
             "SQLite email outbox hosted service batch failed. BatchSize={BatchSize}");
 }
-
-
-
-
-
-

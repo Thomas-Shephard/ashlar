@@ -207,5 +207,3 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         return JsonNode.DeepEquals(JsonNode.Parse(left), JsonNode.Parse(right));
     }
 }
-
-

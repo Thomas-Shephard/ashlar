@@ -229,8 +229,3 @@ public interface IUserSecurityEventSummaryRepository
     /// <returns>The operation result.</returns>
     Task<int> CountSecurityEventsForUserAsync(Guid userId, DateTimeOffset since, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

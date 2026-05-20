@@ -140,5 +140,3 @@ public static class AshlarSqliteServiceCollectionExtensions
         return services;
     }
 }
-
-

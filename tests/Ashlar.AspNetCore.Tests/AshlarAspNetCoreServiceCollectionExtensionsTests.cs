@@ -113,5 +113,3 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
         }));
     }
 }
-
-

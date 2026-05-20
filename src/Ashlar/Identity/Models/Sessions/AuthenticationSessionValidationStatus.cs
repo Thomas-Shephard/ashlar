@@ -22,8 +22,3 @@ public enum AuthenticationSessionValidationStatus
     /// </summary>
     Revoked = 3
 }
-
-
-
-
-

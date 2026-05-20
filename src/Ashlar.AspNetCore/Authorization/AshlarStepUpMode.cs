@@ -15,5 +15,3 @@ public enum AshlarStepUpMode
     /// </summary>
     IfAvailable = 1
 }
-
-

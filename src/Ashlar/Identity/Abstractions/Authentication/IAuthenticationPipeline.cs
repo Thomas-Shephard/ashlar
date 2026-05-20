@@ -15,8 +15,3 @@ public interface IAuthenticationPipeline
     /// <returns>The operation result.</returns>
     Task<AuthenticationResponse> LoginAsync(AuthenticationContext context, IAuthenticationAssertion assertion, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

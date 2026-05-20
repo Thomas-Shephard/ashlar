@@ -47,9 +47,3 @@ public sealed record PostgresEmailOutboxOptions
             && options.PollingInterval > TimeSpan.Zero;
     }
 }
-
-
-
-
-
-

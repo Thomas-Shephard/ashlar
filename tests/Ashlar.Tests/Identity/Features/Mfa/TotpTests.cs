@@ -1004,6 +1004,3 @@ internal sealed class TotpTests
         pipeline.Verify(x => x.LoginAsync(It.Is<AuthenticationContext>(c => c.UserId == userId), assertion, It.IsAny<CancellationToken>()), Times.Once);
     }
 }
-
-
-

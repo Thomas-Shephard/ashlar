@@ -50,5 +50,3 @@ internal sealed class SqliteContractDatabase
         }
     }
 }
-
-

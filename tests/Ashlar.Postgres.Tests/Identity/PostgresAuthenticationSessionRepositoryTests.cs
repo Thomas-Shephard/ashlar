@@ -605,5 +605,3 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         };
     }
 }
-
-

@@ -61,5 +61,3 @@ public sealed class LocalPasswordProvider(PasswordHasherSelector hasherSelector)
         return Task.FromResult(new AuthenticationResult(status, NewCredentialValue: newCredentialValue));
     }
 }
-
-

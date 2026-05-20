@@ -19,8 +19,3 @@ public sealed record ValidateAuthenticationSessionResult(
     public static ValidateAuthenticationSessionResult Failed { get; } =
         new(false, null, null, AuthenticationSessionValidationStatus.Failed);
 }
-
-
-
-
-

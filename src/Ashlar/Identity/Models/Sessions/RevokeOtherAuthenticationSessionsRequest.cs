@@ -27,8 +27,3 @@ public sealed record RevokeOtherAuthenticationSessionsRequest
     /// </summary>
     public AuditContext? Audit { get; init; }
 }
-
-
-
-
-

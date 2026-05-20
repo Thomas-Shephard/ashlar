@@ -37,8 +37,3 @@ public interface IInvitationRepository
     /// <returns>The operation result.</returns>
     Task<int> RevokeInvitationsByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

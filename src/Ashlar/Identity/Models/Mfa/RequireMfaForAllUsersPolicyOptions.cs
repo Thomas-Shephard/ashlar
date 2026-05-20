@@ -22,8 +22,3 @@ public sealed class RequireMfaForAllUsersPolicyOptions
             && options.RequiredFactors.All(factor => !string.IsNullOrWhiteSpace(factor));
     }
 }
-
-
-
-
-

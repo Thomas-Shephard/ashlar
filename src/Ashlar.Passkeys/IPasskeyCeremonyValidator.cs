@@ -45,5 +45,3 @@ public interface IPasskeyCeremonyValidator
     /// <returns>The verified authentication result.</returns>
     Task<PasskeyAuthenticationVerificationResult> VerifyAuthenticationAsync(PasskeyOptions options, PasskeyChallenge challenge, UserCredential credential, JsonElement assertionResponse, CancellationToken cancellationToken = default);
 }
-
-

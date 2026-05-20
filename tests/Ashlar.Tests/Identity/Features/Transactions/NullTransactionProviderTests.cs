@@ -280,6 +280,3 @@ internal sealed class NullTransactionProviderTests
         Assert.Fail("Expected ArgumentNullException.");
     }
 }
-
-
-

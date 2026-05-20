@@ -231,5 +231,3 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
             CorrelationId: audit.CorrelationId);
     }
 }
-
-

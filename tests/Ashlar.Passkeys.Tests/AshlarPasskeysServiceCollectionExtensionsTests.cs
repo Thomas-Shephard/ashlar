@@ -130,5 +130,3 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
         }
     }
 }
-
-

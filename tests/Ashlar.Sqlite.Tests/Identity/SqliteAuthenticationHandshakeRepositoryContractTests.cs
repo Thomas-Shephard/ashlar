@@ -18,5 +18,3 @@ internal sealed class SqliteAuthenticationHandshakeRepositoryContractTests : Aut
         return Task.CompletedTask;
     }
 }
-
-

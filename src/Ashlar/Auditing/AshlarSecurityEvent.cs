@@ -76,5 +76,3 @@ public sealed record AshlarSecurityEvent
     /// </summary>
     public IReadOnlyDictionary<string, string>? Properties { get; init; }
 }
-
-

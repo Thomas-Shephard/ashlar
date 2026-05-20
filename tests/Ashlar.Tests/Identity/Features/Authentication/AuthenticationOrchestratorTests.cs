@@ -1104,6 +1104,3 @@ internal sealed class AuthenticationOrchestratorTests
 
     private sealed record TestCredentialKeyAssertion(AuthenticationProviderKey ProviderIdentity, string CredentialKey) : ICredentialKeyAuthenticationAssertion;
 }
-
-
-

@@ -173,5 +173,3 @@ internal abstract class ProviderContractFixture
 
     private IServiceProvider Services => _serviceProvider ?? throw new InvalidOperationException("Provider contract fixture has not been initialized.");
 }
-
-

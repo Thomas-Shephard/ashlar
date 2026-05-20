@@ -32,11 +32,3 @@ internal sealed class SqliteAuthenticationRateLimiterContractTests : Authenticat
         _timeProvider.Advance(duration);
     }
 }
-
-
-
-
-
-
-
-

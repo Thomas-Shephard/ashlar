@@ -47,6 +47,3 @@ public sealed class RequireMfaForAllUsersPolicyEvaluator : IMfaPolicyEvaluator
         return Task.FromResult(new MfaPolicyEvaluation(true, new MfaRequirement(_options.RequiredFactors)));
     }
 }
-
-
-

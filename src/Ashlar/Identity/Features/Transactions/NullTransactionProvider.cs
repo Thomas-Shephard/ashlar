@@ -94,6 +94,3 @@ internal sealed class NullTransactionProvider : IAshlarTransactionProvider
         }
     }
 }
-
-
-

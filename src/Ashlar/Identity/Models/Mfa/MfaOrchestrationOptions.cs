@@ -10,8 +10,3 @@ public sealed record MfaOrchestrationOptions
     /// </summary>
     public string ProviderFactorsClaimName { get; init; } = "mfa_factors";
 }
-
-
-
-
-

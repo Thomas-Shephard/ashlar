@@ -266,5 +266,3 @@ public static class AshlarSecurityEventTypes
     /// </summary>
     public const string EmailChangeVerificationRateLimited = "ashlar.email_change.verification_rate_limited";
 }
-
-

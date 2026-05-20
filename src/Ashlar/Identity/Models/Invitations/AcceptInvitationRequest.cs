@@ -14,8 +14,3 @@ public sealed class AcceptInvitationRequest
     /// </summary>
     public string? UserName { get; init; }
 }
-
-
-
-
-

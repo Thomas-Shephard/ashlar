@@ -383,12 +383,3 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
         return connection.ExecuteScalarAsync<int>($"SELECT count(*) FROM {tableName}");
     }
 }
-
-
-
-
-
-
-
-
-

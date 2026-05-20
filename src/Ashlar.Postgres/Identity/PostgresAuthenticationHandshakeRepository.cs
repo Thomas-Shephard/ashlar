@@ -161,9 +161,3 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
             : await reader.GetFieldValueAsync<DateTimeOffset>(ordinal, cancellationToken);
     }
 }
-
-
-
-
-
-

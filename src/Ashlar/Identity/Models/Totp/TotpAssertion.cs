@@ -31,5 +31,3 @@ public sealed record TotpAssertion : IAuthenticationAssertion
     /// <inheritdoc />
     public AuthenticationProviderKey ProviderIdentity => ProviderKey ?? TotpOptions.DefaultProviderKey;
 }
-
-

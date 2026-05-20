@@ -138,5 +138,3 @@ internal sealed record SecurityEventDescriptor
     /// </summary>
     public IReadOnlyDictionary<string, string>? Properties { get; init; }
 }
-
-

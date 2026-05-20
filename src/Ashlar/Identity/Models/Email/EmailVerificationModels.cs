@@ -74,8 +74,3 @@ public sealed class ConfirmEmailVerificationRequest
     /// </summary>
     public AuditContext? Audit { get; init; }
 }
-
-
-
-
-

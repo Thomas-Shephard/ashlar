@@ -37,8 +37,3 @@ public interface IPasskeyChallengeRepository
     /// </remarks>
     Task<bool> ConsumeAsync(Guid id, string expectedVersion, DateTimeOffset consumedAt, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

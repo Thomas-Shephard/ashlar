@@ -193,9 +193,3 @@ internal static class PostgresEmailOutboxDispatcherLog
             new EventId(1000, nameof(EmailOutboxDeliveryFailed)),
             "Email outbox delivery failed. MessageId={MessageId} AttemptCount={AttemptCount} FinalFailure={FinalFailure}");
 }
-
-
-
-
-
-

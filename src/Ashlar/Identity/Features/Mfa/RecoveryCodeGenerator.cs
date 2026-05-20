@@ -37,6 +37,3 @@ internal static class RecoveryCodeGenerator
         return sb.ToString();
     }
 }
-
-
-

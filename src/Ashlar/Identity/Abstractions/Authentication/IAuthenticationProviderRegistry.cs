@@ -20,8 +20,3 @@ public interface IAuthenticationProviderRegistry
     /// <returns>The operation result.</returns>
     bool TryGetProvider(IAuthenticationAssertion assertion, [NotNullWhen(true)] out IAuthenticationProvider? provider);
 }
-
-
-
-
-

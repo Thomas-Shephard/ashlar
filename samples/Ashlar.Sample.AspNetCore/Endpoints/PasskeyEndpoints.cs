@@ -117,5 +117,3 @@ internal static class PasskeyEndpoints
     private sealed record PasskeyCompleteAuthenticationSampleRequest(Guid ChallengeId, JsonElement AssertionResponse);
     private sealed record PasskeyCompleteFactorSampleRequest(Guid ChallengeId, JsonElement AssertionResponse, string HandshakeToken, string? FactorType);
 }
-
-

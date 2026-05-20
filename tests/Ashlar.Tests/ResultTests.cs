@@ -71,5 +71,3 @@ internal sealed class ResultTests
         }
     }
 }
-
-

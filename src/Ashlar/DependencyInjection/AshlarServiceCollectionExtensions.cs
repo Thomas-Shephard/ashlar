@@ -686,5 +686,3 @@ public static class AshlarServiceCollectionExtensions
         return services;
     }
 }
-
-

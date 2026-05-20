@@ -6,8 +6,3 @@ namespace Ashlar.Identity.Models.Sessions;
 /// <param name="Token">The token value.</param>
 /// <param name="Session">The session value.</param>
 public sealed record CreateAuthenticationSessionResult(string Token, AuthenticationSession Session);
-
-
-
-
-

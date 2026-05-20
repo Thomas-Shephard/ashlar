@@ -55,6 +55,3 @@ internal sealed class ProviderTypeTests
         Assert.That(ProviderType.Oidc.ValueOrUnknown, Is.EqualTo("OIDC"));
     }
 }
-
-
-

@@ -36,8 +36,3 @@ public interface IInvitationService
     /// <returns>A result describing whether pending invitations were revoked.</returns>
     Task<Result> RevokeInvitationsAsync(string email, Guid? tenantId = null, AuditContext? audit = null, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

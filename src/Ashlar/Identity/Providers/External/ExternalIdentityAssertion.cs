@@ -38,5 +38,3 @@ public sealed record ExternalIdentityAssertion : IAuthenticationAssertion
     /// </summary>
     public AuthenticationProviderKey ProviderIdentity { get; }
 }
-
-

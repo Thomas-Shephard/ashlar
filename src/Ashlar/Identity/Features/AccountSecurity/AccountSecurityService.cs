@@ -546,6 +546,3 @@ public sealed record AccountSecurityServiceDependencies(
     IOptions<TotpOptions>? TotpOptions = null,
     IOptions<RecoveryCodeOptions>? RecoveryCodeOptions = null,
     IMfaPolicyEvaluator? MfaPolicyEvaluator = null);
-
-
-

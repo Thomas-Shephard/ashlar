@@ -15,8 +15,3 @@ public sealed record ListAuthenticationSessionsRequest
     /// </summary>
     public Guid? CurrentSessionId { get; init; }
 }
-
-
-
-
-

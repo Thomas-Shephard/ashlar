@@ -208,5 +208,3 @@ public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
         return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true));
     }
 }
-
-

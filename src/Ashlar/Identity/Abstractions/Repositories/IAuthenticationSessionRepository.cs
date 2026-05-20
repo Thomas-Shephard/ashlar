@@ -127,8 +127,3 @@ public interface IAuthenticationSessionRepository
     /// <returns>The operation result.</returns>
     Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

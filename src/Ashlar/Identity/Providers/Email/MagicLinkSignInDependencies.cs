@@ -70,5 +70,3 @@ internal sealed class MagicLinkSignInDependencies(
     /// </summary>
     public ISecurityEventSink SecurityEventSink => _audit.SecurityEventSink;
 }
-
-

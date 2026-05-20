@@ -61,5 +61,3 @@ internal sealed class SampleAccountSecurityGuard(IPostgresConnectionProvider con
         }
     }
 }
-
-

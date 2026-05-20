@@ -270,6 +270,3 @@ internal sealed class ExternalAuthenticationProviderTests
         public DateTimeOffset? EmailVerifiedAt => null;
     }
 }
-
-
-

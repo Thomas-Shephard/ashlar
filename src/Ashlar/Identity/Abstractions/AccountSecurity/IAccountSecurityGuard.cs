@@ -29,8 +29,3 @@ public sealed class AllowAccountSecurityGuard : IAccountSecurityGuard
         return Task.FromResult(Result.Success());
     }
 }
-
-
-
-
-

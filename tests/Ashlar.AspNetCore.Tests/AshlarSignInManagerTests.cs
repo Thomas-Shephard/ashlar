@@ -736,5 +736,3 @@ internal sealed class AshlarSignInManagerTests
         }
     }
 }
-
-

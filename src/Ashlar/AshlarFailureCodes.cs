@@ -214,5 +214,3 @@ public static class AshlarFailureCodes
     /// <summary>The additional verification factor is not allowed.</summary>
     public static readonly AshlarFailureCode StepUpFactorNotAllowed = new(StepUpFactorNotAllowedValue);
 }
-
-

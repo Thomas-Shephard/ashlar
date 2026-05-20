@@ -42,9 +42,3 @@ internal static class SqliteDataReaderExtensions
         return reader.GetInt32ByName(name) != 0;
     }
 }
-
-
-
-
-
-

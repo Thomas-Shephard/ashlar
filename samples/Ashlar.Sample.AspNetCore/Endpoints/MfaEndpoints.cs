@@ -267,5 +267,3 @@ internal static class MfaEndpoints
 
     private sealed record StepUpVerifyRequest(string Code);
 }
-
-

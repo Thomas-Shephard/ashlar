@@ -1583,5 +1583,3 @@ internal static class AppViews
         """, navLinks);
     }
 }
-
-

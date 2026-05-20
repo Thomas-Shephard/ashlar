@@ -10,8 +10,3 @@ public interface ITenantUser : IUser
     /// </summary>
     Guid? TenantId { get; }
 }
-
-
-
-
-

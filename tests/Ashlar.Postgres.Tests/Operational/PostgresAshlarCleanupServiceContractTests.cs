@@ -196,13 +196,3 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
         e2 = Guid.NewGuid()
     };
 }
-
-
-
-
-
-
-
-
-
-

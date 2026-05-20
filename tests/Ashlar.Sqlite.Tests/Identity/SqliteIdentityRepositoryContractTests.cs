@@ -18,5 +18,3 @@ internal sealed class SqliteIdentityRepositoryContractTests : IdentityRepository
         return Task.CompletedTask;
     }
 }
-
-

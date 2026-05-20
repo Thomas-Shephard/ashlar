@@ -57,8 +57,3 @@ public interface ICredentialService
     /// <returns>The operation result.</returns>
     Task<bool> UpdateCredentialUsageAsync(UserCredential unprotectedCredential, UserCredential? originalCredential, AuthenticationResult result, IAuthenticationProvider provider, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

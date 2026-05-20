@@ -142,5 +142,3 @@ public static class AshlarCleanupPlan
             .Replace(FalseToken, falseLiteral, StringComparison.Ordinal);
     }
 }
-
-

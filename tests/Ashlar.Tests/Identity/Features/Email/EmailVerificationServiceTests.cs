@@ -426,6 +426,3 @@ internal sealed class EmailVerificationServiceTests
         public DateTimeOffset? UpdatedAt { get; set; }
     }
 }
-
-
-

@@ -54,5 +54,3 @@ public enum SecurityNotificationType
     /// </summary>
     SuspiciousAuthenticationAttempt
 }
-
-

@@ -51,5 +51,3 @@ internal sealed class AshlarCleanupOptionsTests
         Assert.Throws<ArgumentNullException>(() => AshlarCleanupOptions.Validate(null!));
     }
 }
-
-

@@ -107,8 +107,3 @@ public interface IAuthenticationSessionService
         RevokeOtherAuthenticationSessionsRequest request,
         CancellationToken cancellationToken = default);
 }
-
-
-
-
-

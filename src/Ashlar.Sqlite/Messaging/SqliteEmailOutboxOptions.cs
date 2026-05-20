@@ -47,9 +47,3 @@ public sealed record SqliteEmailOutboxOptions
             && options.PollingInterval > TimeSpan.Zero;
     }
 }
-
-
-
-
-
-

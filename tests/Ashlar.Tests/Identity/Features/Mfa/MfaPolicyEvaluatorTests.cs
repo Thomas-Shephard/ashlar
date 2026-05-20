@@ -368,6 +368,3 @@ internal sealed class MfaPolicyEvaluatorTests
         public override DateTimeOffset GetUtcNow() => now;
     }
 }
-
-
-

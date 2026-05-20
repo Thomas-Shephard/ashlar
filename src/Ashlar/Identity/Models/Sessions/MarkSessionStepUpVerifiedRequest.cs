@@ -28,8 +28,3 @@ public sealed record MarkSessionStepUpVerifiedRequest
     /// </summary>
     public AuditContext? Audit { get; init; }
 }
-
-
-
-
-

@@ -59,5 +59,3 @@ internal abstract class BootstrapStateRepositoryContractTests : ProviderContract
         Assert.That(await verificationRepository.GetBootstrapStatusAsync(), Is.EqualTo(BootstrapStatus.Uninitialized));
     }
 }
-
-

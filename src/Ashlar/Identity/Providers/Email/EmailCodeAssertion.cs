@@ -37,5 +37,3 @@ public sealed record EmailCodeAssertion : IAuthenticationAssertion
     /// </summary>
     public AuthenticationProviderKey ProviderIdentity { get; }
 }
-
-

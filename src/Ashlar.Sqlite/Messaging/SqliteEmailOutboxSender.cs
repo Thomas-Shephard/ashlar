@@ -53,9 +53,3 @@ public sealed class SqliteEmailOutboxSender(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }
-
-
-
-
-
-

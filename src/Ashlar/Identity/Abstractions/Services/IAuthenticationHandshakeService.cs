@@ -39,8 +39,3 @@ public interface IAuthenticationHandshakeService
     /// <returns>A result describing whether the handshake was revoked.</returns>
     Task<Result> RevokeHandshakeAsync(string handshakeToken, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

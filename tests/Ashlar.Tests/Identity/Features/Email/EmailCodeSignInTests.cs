@@ -472,6 +472,3 @@ internal sealed class EmailCodeSignInTests
         }
     }
 }
-
-
-

@@ -99,5 +99,3 @@ public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> optio
             CredentialUpdateRequirement: CredentialUpdateRequirement.Required));
     }
 }
-
-

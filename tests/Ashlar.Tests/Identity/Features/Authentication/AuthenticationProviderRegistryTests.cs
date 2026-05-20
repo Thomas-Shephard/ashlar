@@ -123,6 +123,3 @@ internal sealed class AuthenticationProviderRegistryTests
 
     private sealed record TestAssertion(AuthenticationProviderKey ProviderIdentity) : IAuthenticationAssertion;
 }
-
-
-

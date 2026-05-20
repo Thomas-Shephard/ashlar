@@ -106,5 +106,3 @@ internal static class ClaimsPrincipalExtensions
         return userId;
     }
 }
-
-

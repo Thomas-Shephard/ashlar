@@ -84,8 +84,3 @@ public sealed class AuthenticationSession
         return RevokedAt == null && ExpiresAt > now;
     }
 }
-
-
-
-
-

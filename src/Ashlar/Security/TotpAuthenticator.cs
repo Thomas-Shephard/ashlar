@@ -110,5 +110,3 @@ internal static class TotpAuthenticator
         return $"otpauth://{type.ToLowerInvariant()}/{label}?secret={Uri.EscapeDataString(secret)}&issuer={Uri.EscapeDataString(issuer)}&digits={digits.ToString(CultureInfo.InvariantCulture)}&period={period.ToString(CultureInfo.InvariantCulture)}";
     }
 }
-
-

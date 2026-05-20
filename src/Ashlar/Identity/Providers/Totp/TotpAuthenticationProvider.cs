@@ -164,5 +164,3 @@ public sealed class TotpAuthenticationProvider : IAuthenticationProvider
         public long LastUsedStep { get; init; }
     }
 }
-
-

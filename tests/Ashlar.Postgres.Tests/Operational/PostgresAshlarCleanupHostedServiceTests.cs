@@ -152,12 +152,3 @@ internal sealed class PostgresAshlarCleanupHostedServiceTests
         }
     }
 }
-
-
-
-
-
-
-
-
-

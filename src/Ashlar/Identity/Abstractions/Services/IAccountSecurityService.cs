@@ -61,8 +61,3 @@ public interface IAccountSecurityService
     /// <returns>The operation result.</returns>
     Task<Result<UserSecurityPosture>> GetUserSecurityPostureAsync(Guid userId, UserSecurityPostureRequest? request = null, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

@@ -343,5 +343,3 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         return JsonNode.DeepEquals(JsonNode.Parse(left), JsonNode.Parse(right));
     }
 }
-
-

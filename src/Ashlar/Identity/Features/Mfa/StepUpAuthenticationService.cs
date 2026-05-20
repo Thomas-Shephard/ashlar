@@ -83,6 +83,3 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
         return new StepUpEvaluationResult(false, code, reason);
     }
 }
-
-
-

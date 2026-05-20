@@ -618,6 +618,3 @@ internal sealed class EmailChangeServiceTests
         public DateTimeOffset? UpdatedAt { get; set; }
     }
 }
-
-
-

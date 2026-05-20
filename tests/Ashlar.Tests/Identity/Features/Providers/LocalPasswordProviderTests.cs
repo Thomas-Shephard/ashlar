@@ -285,6 +285,3 @@ internal sealed class LocalPasswordProviderTests
         Assert.That(result, Is.EqualTo(user));
     }
 }
-
-
-

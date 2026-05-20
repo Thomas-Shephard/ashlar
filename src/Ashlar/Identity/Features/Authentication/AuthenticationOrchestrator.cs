@@ -340,6 +340,3 @@ public sealed class AuthenticationOrchestrator(
         return string.IsNullOrEmpty(normalized) ? value.ToUpperInvariant() : normalized;
     }
 }
-
-
-

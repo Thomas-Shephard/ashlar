@@ -21,8 +21,3 @@ public interface IEmailVerificationService
     /// <returns>The operation result.</returns>
     Task<Result> ConfirmVerificationAsync(ConfirmEmailVerificationRequest request, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

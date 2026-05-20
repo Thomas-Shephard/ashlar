@@ -88,6 +88,3 @@ internal sealed class AuthenticationProviderKeyTests
         Assert.That(key.ToString(), Is.EqualTo("OIDC:Google"));
     }
 }
-
-
-

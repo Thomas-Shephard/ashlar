@@ -175,12 +175,3 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
         };
     }
 }
-
-
-
-
-
-
-
-
-

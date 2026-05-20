@@ -217,5 +217,3 @@ internal static partial class AdminEndpoints
             : Results.BadRequest(error);
     }
 }
-
-

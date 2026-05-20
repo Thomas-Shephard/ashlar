@@ -48,8 +48,3 @@ public sealed class InvitationOptions
     /// </summary>
     public bool VerifyEmailOnAcceptance { get; set; } = true;
 }
-
-
-
-
-

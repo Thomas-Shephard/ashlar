@@ -18,8 +18,3 @@ public interface IAshlarTransactionProvider
     /// <exception cref="InvalidOperationException">Thrown if a transaction is already in progress.</exception>
     Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
 }
-
-
-
-
-

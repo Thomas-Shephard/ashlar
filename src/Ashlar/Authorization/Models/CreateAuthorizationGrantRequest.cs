@@ -24,5 +24,3 @@ public sealed record CreateAuthorizationGrantRequest(
     DateTimeOffset? ExpiresAt = null,
     string? Metadata = null,
     AuditContext? Audit = null);
-
-

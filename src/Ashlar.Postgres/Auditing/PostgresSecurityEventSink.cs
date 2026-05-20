@@ -83,9 +83,3 @@ public sealed class PostgresSecurityEventSink : PersistentSecurityEventSink, IUs
         await connection.ExecuteAsync(command);
     }
 }
-
-
-
-
-
-

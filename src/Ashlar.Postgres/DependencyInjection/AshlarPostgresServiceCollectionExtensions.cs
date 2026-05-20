@@ -335,5 +335,3 @@ public static class AshlarPostgresServiceCollectionExtensions
         return services;
     }
 }
-
-

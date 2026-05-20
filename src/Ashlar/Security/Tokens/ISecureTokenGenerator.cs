@@ -25,5 +25,3 @@ public interface ISecureTokenGenerator
     /// <returns>The operation result.</returns>
     string GenerateToken(int byteLength = DefaultByteLength);
 }
-
-

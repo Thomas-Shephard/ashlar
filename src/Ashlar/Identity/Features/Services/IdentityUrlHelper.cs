@@ -58,6 +58,3 @@ internal static class IdentityUrlHelper
         return template;
     }
 }
-
-
-

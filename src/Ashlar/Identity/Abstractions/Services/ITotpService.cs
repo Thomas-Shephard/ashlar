@@ -46,8 +46,3 @@ public interface ITotpService
     /// <returns>The operation result.</returns>
     Task<bool> DisableTotpAsync(Guid userId, TenantContext? tenant = null, AuditContext? audit = null, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

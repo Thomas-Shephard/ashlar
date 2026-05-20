@@ -13,5 +13,3 @@ public interface ISecurityEventSink
     /// <returns>The operation result.</returns>
     Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default);
 }
-
-

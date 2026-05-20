@@ -46,5 +46,3 @@ internal sealed class RecordingLoggerTests
         Assert.That(logger.Entries.Single().Message, Is.EqualTo("message:generic"));
     }
 }
-
-

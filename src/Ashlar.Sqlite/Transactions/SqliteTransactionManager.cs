@@ -251,9 +251,3 @@ internal sealed partial class SqliteTransactionManager : IAshlarTransactionProvi
         }
     }
 }
-
-
-
-
-
-

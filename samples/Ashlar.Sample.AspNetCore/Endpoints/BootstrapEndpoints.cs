@@ -53,5 +53,3 @@ internal static class BootstrapEndpoints
         });
     }
 }
-
-

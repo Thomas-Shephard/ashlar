@@ -18,5 +18,3 @@ public static class AshlarSessionAuthenticationDefaults
     /// </summary>
     public const string ClaimsIssuer = "Ashlar";
 }
-
-

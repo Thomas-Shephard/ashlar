@@ -137,5 +137,3 @@ public class SmtpEmailTransport : IEmailTransport
         name.Equals("Bcc", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("Date", StringComparison.OrdinalIgnoreCase);
 }
-
-

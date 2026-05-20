@@ -55,5 +55,3 @@ internal sealed class EmailCodeSignInDependencies(
     /// </summary>
     public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
 }
-
-

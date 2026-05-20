@@ -120,8 +120,3 @@ public interface IIdentityRepository
     /// <returns>The operation result.</returns>
     Task<int> RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default);
 }
-
-
-
-
-

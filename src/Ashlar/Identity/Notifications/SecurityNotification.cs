@@ -65,5 +65,3 @@ public sealed record SecurityNotification
         };
     }
 }
-
-

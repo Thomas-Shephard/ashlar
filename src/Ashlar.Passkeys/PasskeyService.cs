@@ -533,5 +533,3 @@ public sealed class PasskeyServiceDependencies(
     /// </summary>
     public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
 }
-
-

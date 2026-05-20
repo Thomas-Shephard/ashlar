@@ -29,9 +29,3 @@ internal static class SqliteCommandExtensions
         return command.AddParameter(name, value?.ToUniversalTime().ToString("O", System.Globalization.CultureInfo.InvariantCulture));
     }
 }
-
-
-
-
-
-

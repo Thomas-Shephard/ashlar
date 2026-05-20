@@ -12,5 +12,3 @@ public sealed record AuthorizationEvaluationResult(bool Succeeded, Authorization
     /// </summary>
     public static AuthorizationEvaluationResult Failed { get; } = new(false, null);
 }
-
-

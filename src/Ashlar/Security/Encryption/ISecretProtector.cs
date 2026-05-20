@@ -63,5 +63,3 @@ public interface ISecretProtector
         return Encoding.UTF8.GetString(unprotectedBytes);
     }
 }
-
-

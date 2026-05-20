@@ -12,5 +12,3 @@ public sealed record LocalPasswordAssertion(string Password) : IAuthenticationAs
     /// </summary>
     public AuthenticationProviderKey ProviderIdentity => AuthenticationProviderKey.Local;
 }
-
-

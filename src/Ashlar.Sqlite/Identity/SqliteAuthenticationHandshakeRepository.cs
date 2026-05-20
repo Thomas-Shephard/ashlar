@@ -132,9 +132,3 @@ public sealed class SqliteAuthenticationHandshakeRepository(ISqliteConnectionPro
         return metadata == null ? null : JsonSerializer.Serialize(metadata);
     }
 }
-
-
-
-
-
-

@@ -8,5 +8,3 @@ namespace Ashlar.Authorization.Models;
 /// <param name="GrantId">The grant id value.</param>
 /// <param name="Audit">The audit metadata value.</param>
 public sealed record RevokeAuthorizationGrantRequest(Guid GrantId, AuditContext? Audit = null);
-
-
