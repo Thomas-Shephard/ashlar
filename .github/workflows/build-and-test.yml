@@ -63,6 +63,9 @@ jobs:
         run: dotnet coveragechecker --format Cobertura --glob-patterns 'coverage/**/coverage.cobertura.xml' --line-threshold 100 --branch-threshold 100
       - name: Pack
         run: dotnet pack Ashlar.slnx --configuration Release --no-build --no-restore --output ./nupkg
+      - name: Package Consumption Smoke Test
+        shell: pwsh
+        run: ./eng/package-consumption-smoke.ps1 -Configuration Release -PackageOutputPath ./nupkg -SkipPack
       - name: Upload NuGet Packages
         uses: actions/upload-artifact@v7
         with:
