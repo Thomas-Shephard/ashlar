@@ -13,7 +13,7 @@ namespace Ashlar.Operational.Diagnostics;
 /// <param name="ExpiredRowCount">The expired row count value.</param>
 /// <param name="ActiveKeyCount">The active key count value.</param>
 /// <param name="BlockedKeyCount">The blocked key count value.</param>
-/// <param name="CleanupConfigured">The <paramref name="CleanupConfigured" /> value.</param>
+/// <param name="CleanupConfigured">Whether rate limiter cleanup scheduling is enabled.</param>
 /// <param name="CleanupInterval">The cleanup interval value.</param>
 /// <param name="MaxCleanupRows">The max cleanup rows value.</param>
 public sealed record AuthenticationRateLimiterDiagnosticResult(

@@ -7,7 +7,7 @@ namespace Ashlar.Operational.Diagnostics;
 /// <param name="ProviderName">The provider name value.</param>
 /// <param name="Reason">The reason value.</param>
 /// <param name="CheckedAt">The checked at value.</param>
-/// <param name="SchemaStatus">The <paramref name="SchemaStatus" /> value.</param>
+/// <param name="SchemaStatus">The provider-neutral schema state value.</param>
 /// <param name="AppliedMigrationCount">The applied migration count value.</param>
 /// <param name="ExpectedMigrationCount">The expected migration count value.</param>
 /// <param name="MissingMigrationCount">The missing migration count value.</param>
