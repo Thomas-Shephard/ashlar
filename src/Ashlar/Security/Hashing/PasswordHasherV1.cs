@@ -68,7 +68,8 @@ public sealed class PasswordHasherV1 : IPasswordHasher
         bool matches = CryptographicOperations.FixedTimeEquals(actualHash, expectedHash);
         CryptographicOperations.ZeroMemory(actualHash);
 
-        // Do not use short-circuiting to avoid timing attacks
+#pragma warning disable S2178 // Avoid short-circuiting due to timing attacks.
         return matches & isValidFormat;
+#pragma warning restore S2178
     }
 }
