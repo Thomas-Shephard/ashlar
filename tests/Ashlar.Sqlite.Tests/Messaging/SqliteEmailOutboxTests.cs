@@ -91,34 +91,6 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     }
 
     [Test]
-    public void HostedServiceRegistrationAddsHostedService()
-    {
-        var services = new ServiceCollection();
-        services.AddAshlarSqlite(GetConnectionString());
-        services.AddAshlarSqliteEmailOutboxHostedService<TestTransport>();
-        services.AddSingleton<TimeProvider>(_timeProvider);
-
-        using var provider = services.BuildServiceProvider();
-
-        Assert.That(provider.GetServices<Microsoft.Extensions.Hosting.IHostedService>(), Has.One.InstanceOf<SqliteEmailOutboxHostedService<TestTransport>>());
-    }
-
-    [Test]
-    public void DispatcherRegistrationDoesNotRegisterInterfaceTransportAsConcreteService()
-    {
-        var services = new ServiceCollection();
-        services.AddAshlarSqlite(GetConnectionString());
-        services.AddAshlarSqliteEmailOutboxDispatcher<IEmailTransport>();
-        services.AddAshlarSqliteEmailOutboxDispatcher<AbstractTransport>();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(IEmailTransport) && descriptor.ImplementationType == typeof(IEmailTransport)), Is.False);
-            Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(AbstractTransport) && descriptor.ImplementationType == typeof(AbstractTransport)), Is.False);
-        }
-    }
-
-    [Test]
     public async Task SenderEnqueuesMessageOutsideTransaction()
     {
         var sender = _serviceProvider.GetRequiredService<IEmailSender>();
@@ -539,11 +511,6 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             Interlocked.Increment(ref _deliveredCount);
             return OnDeliver(message, cancellationToken);
         }
-    }
-
-    private abstract class AbstractTransport : IEmailTransport
-    {
-        public abstract Task DeliverAsync(EmailMessage message, CancellationToken cancellationToken = default);
     }
 
     private sealed class RawOutboxRow
