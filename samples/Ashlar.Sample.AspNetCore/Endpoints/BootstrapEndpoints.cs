@@ -1,6 +1,4 @@
 using Ashlar.AspNetCore.Sessions;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Sample.AspNetCore.Extensions;
 
 namespace Ashlar.Sample.AspNetCore.Endpoints;

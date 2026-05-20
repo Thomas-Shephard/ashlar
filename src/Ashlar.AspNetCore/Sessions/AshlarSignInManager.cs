@@ -1,6 +1,4 @@
 using Ashlar.AspNetCore.Authentication;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 

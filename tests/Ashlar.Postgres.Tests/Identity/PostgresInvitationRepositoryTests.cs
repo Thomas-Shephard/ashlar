@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Ashlar.Postgres.Tests.Identity;

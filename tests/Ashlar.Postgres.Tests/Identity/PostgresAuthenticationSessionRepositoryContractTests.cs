@@ -1,5 +1,3 @@
-using Ashlar.ProviderContractTests.Identity;
-
 namespace Ashlar.Postgres.Tests.Identity;
 
 internal sealed class PostgresAuthenticationSessionRepositoryContractTests : AuthenticationSessionRepositoryContractTests

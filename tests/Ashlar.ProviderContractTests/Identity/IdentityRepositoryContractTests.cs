@@ -1,5 +1,3 @@
-using Ashlar.Identity.Models;
-
 namespace Ashlar.ProviderContractTests.Identity;
 
 internal abstract class IdentityRepositoryContractTests : ProviderContractFixture

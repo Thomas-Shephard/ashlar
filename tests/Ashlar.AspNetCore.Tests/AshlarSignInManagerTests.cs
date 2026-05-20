@@ -3,8 +3,6 @@ using System.Security.Claims;
 using Ashlar.Auditing;
 using Ashlar.AspNetCore.Authentication;
 using Ashlar.AspNetCore.Sessions;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Security.Tokens;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;

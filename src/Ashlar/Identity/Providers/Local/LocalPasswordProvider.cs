@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Security.Hashing;
 
 namespace Ashlar.Identity.Providers.Local;

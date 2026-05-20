@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 using Ashlar.Postgres.Schema;
 using Npgsql;
 

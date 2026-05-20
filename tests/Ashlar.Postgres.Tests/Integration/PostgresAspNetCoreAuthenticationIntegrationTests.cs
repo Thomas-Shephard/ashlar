@@ -1,7 +1,6 @@
 using System.Text.RegularExpressions;
 using Ashlar.AspNetCore.Authentication;
 using Ashlar.AspNetCore.Sessions;
-using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.Providers.Email;
 using Ashlar.Messaging;
 using Ashlar.Postgres.Models;
@@ -33,7 +32,7 @@ internal sealed class PostgresAspNetCoreAuthenticationIntegrationTests : Postgre
         services.AddAshlarDataProtectionSecretProtector();
         services.AddAshlarMagicLinkSignIn();
         services.AddAshlarAspNetCoreSessions();
-        services.Configure<Ashlar.Identity.Models.UriValidationOptions>(o => o.AllowedCallbackUris.Add("https://example.test/sign-in"));
+        services.Configure<Ashlar.Identity.Models.Authentication.UriValidationOptions>(o => o.AllowedCallbackUris.Add("https://example.test/sign-in"));
 
         _serviceProvider = services.BuildServiceProvider();
         await ServiceProvider.InitializeAshlarPostgresSchemaAsync();

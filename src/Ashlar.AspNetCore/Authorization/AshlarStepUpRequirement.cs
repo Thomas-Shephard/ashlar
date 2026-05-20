@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 using Microsoft.AspNetCore.Authorization;
 
 namespace Ashlar.AspNetCore.Authorization;

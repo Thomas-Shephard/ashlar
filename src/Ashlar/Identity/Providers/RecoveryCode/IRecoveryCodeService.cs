@@ -1,5 +1,4 @@
 using Ashlar.Auditing;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Providers.RecoveryCode;
 

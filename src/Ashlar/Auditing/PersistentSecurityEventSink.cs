@@ -1,5 +1,4 @@
 using System.Threading.Channels;
-using Ashlar.Identity.Models;
 using Microsoft.Extensions.Logging;
 
 namespace Ashlar.Auditing;

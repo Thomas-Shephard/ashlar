@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 using Microsoft.AspNetCore.Http;
 
 namespace Ashlar.AspNetCore.Sessions;

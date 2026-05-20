@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
 using Ashlar.AspNetCore.Sessions;
-using Ashlar.Identity.Models;
 using Ashlar.Passkeys;
 using Ashlar.Sample.AspNetCore.Extensions;
 

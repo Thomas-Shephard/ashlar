@@ -1,7 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Ashlar.Messaging;
-using Ashlar.Postgres;
 using Dapper;
 using Testcontainers.PostgreSql;
 

@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Postgres.Models;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;

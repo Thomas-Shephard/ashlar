@@ -1,6 +1,4 @@
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Identity.Notifications;
 using Microsoft.Extensions.Options;
 

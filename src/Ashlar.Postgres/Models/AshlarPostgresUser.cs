@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-
 namespace Ashlar.Postgres.Models;
 
 /// <summary>

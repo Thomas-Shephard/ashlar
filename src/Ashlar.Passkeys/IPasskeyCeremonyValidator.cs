@@ -1,7 +1,4 @@
 using System.Text.Json;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
-using Ashlar.Identity.Models.Passkeys;
 
 namespace Ashlar.Passkeys;
 

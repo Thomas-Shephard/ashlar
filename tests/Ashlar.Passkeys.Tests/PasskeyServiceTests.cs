@@ -1,8 +1,5 @@
 using System.Text.Json;
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
-using Ashlar.Identity.Models.Passkeys;
 using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
@@ -1091,4 +1088,3 @@ internal sealed class RecordingSecurityEventSink : ISecurityEventSink
         return Task.CompletedTask;
     }
 }
-

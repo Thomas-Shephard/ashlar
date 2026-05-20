@@ -1,6 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
-
 namespace Ashlar.Passkeys;
 
 /// <summary>

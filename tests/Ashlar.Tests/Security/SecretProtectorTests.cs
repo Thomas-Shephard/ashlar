@@ -12,7 +12,7 @@ internal sealed class SecretProtectorTests
         var providerMock = new Mock<IDataProtectionProvider>();
         var protectorMock = new Mock<IDataProtector>();
 
-        providerMock.Setup(p => p.CreateProtector("Ashlar.Identity.Credentials"))
+        providerMock.Setup(p => p.CreateProtector("Ashlar.Identity.Features.Credentials"))
             .Returns(protectorMock.Object);
 
         protectorMock.Setup(p => p.Protect(It.IsAny<byte[]>()))
@@ -31,7 +31,7 @@ internal sealed class SecretProtectorTests
         var providerMock = new Mock<IDataProtectionProvider>();
         var protectorMock = new Mock<IDataProtector>();
 
-        providerMock.Setup(p => p.CreateProtector("Ashlar.Identity.Credentials"))
+        providerMock.Setup(p => p.CreateProtector("Ashlar.Identity.Features.Credentials"))
             .Returns(protectorMock.Object);
 
         protectorMock.Setup(p => p.Unprotect(It.IsAny<byte[]>()))
@@ -53,7 +53,7 @@ internal sealed class SecretProtectorTests
         var providerMock = new Mock<IDataProtectionProvider>();
         var protectorMock = new Mock<IDataProtector>();
 
-        providerMock.Setup(p => p.CreateProtector("Ashlar.Identity.Credentials"))
+        providerMock.Setup(p => p.CreateProtector("Ashlar.Identity.Features.Credentials"))
             .Returns(protectorMock.Object);
 
         var secretProtector = new DataProtectionSecretProtector(providerMock.Object);

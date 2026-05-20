@@ -1,6 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
-using Ashlar.Identity.Models.Passkeys;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;

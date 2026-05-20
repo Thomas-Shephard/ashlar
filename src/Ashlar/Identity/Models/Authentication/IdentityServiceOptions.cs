@@ -1,0 +1,13 @@
+namespace Ashlar.Identity.Models.Authentication;
+
+/// <summary>
+/// Configuration options for the <see cref="Ashlar.Identity.Features.Services.IdentityService"/>.
+/// </summary>
+public sealed class IdentityServiceOptions
+{
+    /// <summary>
+    /// Gets or sets the minimum time that must elapse between updates to the <c>LastUsedAt</c> timestamp for a credential.
+    /// Defaults to 1 minute.
+    /// </summary>
+    public TimeSpan LastUsedAtUpdateThreshold { get; set; } = TimeSpan.FromMinutes(1);
+}

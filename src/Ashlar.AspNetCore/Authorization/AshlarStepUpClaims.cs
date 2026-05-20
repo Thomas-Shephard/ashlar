@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Security.Claims;
 using Ashlar.AspNetCore.Authentication;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.AspNetCore.Authorization;
 

@@ -1,5 +1,3 @@
-using Ashlar.ProviderContractTests.Identity;
-
 namespace Ashlar.Sqlite.Tests.Identity;
 
 internal sealed class SqliteIdentityRepositoryContractTests : IdentityRepositoryContractTests

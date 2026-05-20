@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Security.Tokens;
 
 namespace Ashlar.Identity.Providers.Email;

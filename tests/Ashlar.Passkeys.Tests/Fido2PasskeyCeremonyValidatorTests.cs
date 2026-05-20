@@ -1,8 +1,5 @@
 using System.Security.Cryptography;
 using System.Text.Json;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
-using Ashlar.Identity.Models.Passkeys;
 using Fido2NetLib;
 using Fido2NetLib.Objects;
 using Moq;

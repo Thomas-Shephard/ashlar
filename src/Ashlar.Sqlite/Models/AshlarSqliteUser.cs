@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-
 namespace Ashlar.Sqlite.Models;
 
 /// <summary>

@@ -1,6 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
 using Ashlar.Authorization.Abstractions;
-using Ashlar.Identity.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Npgsql;

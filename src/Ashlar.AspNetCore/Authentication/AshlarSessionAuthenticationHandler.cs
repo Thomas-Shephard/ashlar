@@ -1,8 +1,6 @@
 using System.Security.Claims;
 using System.Globalization;
 using System.Text.Encodings.Web;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;

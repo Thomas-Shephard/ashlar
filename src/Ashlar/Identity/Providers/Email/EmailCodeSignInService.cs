@@ -1,8 +1,6 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
 using Microsoft.Extensions.Options;

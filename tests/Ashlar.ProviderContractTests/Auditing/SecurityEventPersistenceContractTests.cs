@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Ashlar.Auditing;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.ProviderContractTests.Auditing;
 

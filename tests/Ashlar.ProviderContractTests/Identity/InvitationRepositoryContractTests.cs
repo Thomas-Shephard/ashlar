@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 using System.Text.Json.Nodes;
 
 namespace Ashlar.ProviderContractTests.Identity;
