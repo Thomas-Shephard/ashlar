@@ -205,8 +205,12 @@ internal sealed class PostgresInvitationRepositoryTests : PostgresTestBase
     [Test]
     public void ConstructorValidatesArguments()
     {
-        // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new PostgresInvitationRepository(null!));
+        using (Assert.EnterMultipleScope())
+        {
+            // ReSharper disable once NullableWarningSuppressionIsUsed
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresInvitationRepository(null!));
+            Assert.DoesNotThrow(() => _ = new PostgresInvitationRepository(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>(), null));
+        }
     }
 
     private static UserInvitation CreateInvitation(string email, string hash, DateTimeOffset? createdAt = null, DateTimeOffset? expiresAt = null)

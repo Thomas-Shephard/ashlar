@@ -169,8 +169,12 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
     [Test]
     public void ConstructorNullConnectionProviderShouldThrow()
     {
-        // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new PostgresAuthenticationHandshakeRepository(null!));
+        using (Assert.EnterMultipleScope())
+        {
+            // ReSharper disable once NullableWarningSuppressionIsUsed
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresAuthenticationHandshakeRepository(null!));
+            Assert.DoesNotThrow(() => _ = new PostgresAuthenticationHandshakeRepository(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>(), null));
+        }
     }
 
     [Test]
