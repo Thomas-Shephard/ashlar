@@ -1,4 +1,3 @@
-#pragma warning disable IDE0005
 global using Ashlar.Identity.Features.AccountSecurity;
 global using Ashlar.Identity.Abstractions.AccountSecurity;
 global using Ashlar.Identity.Abstractions.Authentication;
