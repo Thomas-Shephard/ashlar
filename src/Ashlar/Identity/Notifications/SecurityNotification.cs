@@ -1,4 +1,3 @@
-
 namespace Ashlar.Identity.Notifications;
 
 /// <summary>

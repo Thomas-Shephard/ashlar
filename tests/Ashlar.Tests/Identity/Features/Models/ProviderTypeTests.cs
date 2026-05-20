@@ -1,4 +1,3 @@
-
 namespace Ashlar.Tests.Identity.Features.Models;
 
 internal sealed class ProviderTypeTests

@@ -1,4 +1,3 @@
-
 namespace Ashlar.Tests.Identity.Features.Transactions;
 
 internal sealed class NullTransactionProviderTests

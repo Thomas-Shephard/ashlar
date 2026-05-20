@@ -1,4 +1,3 @@
-
 namespace Ashlar.Tests.Identity.Features.Authentication;
 
 internal sealed class AuthenticationProviderTests

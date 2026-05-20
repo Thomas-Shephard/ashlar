@@ -1,4 +1,3 @@
-
 namespace Ashlar.Sqlite.Identity;
 
 /// <summary>

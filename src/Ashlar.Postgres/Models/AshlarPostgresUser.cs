@@ -1,4 +1,3 @@
-
 namespace Ashlar.Postgres.Models;
 
 /// <summary>

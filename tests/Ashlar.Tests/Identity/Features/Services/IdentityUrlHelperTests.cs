@@ -1,4 +1,3 @@
-
 namespace Ashlar.Tests.Identity.Features.Services;
 
 internal sealed class IdentityUrlHelperTests

@@ -1,4 +1,3 @@
-
 namespace Ashlar.Sqlite.Models;
 
 /// <summary>

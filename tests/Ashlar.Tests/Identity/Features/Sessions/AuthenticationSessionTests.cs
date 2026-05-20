@@ -1,4 +1,3 @@
-
 namespace Ashlar.Tests.Identity.Features.Sessions;
 
 internal sealed class AuthenticationSessionTests

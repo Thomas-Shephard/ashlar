@@ -1,4 +1,3 @@
-
 namespace Ashlar.Postgres.Tests.Identity;
 
 internal sealed class PostgresInvitationRepositoryContractTests : InvitationRepositoryContractTests

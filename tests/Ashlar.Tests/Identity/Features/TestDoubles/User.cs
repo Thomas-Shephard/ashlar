@@ -1,4 +1,3 @@
-
 namespace Ashlar.Tests.Identity.Features.TestDoubles;
 
 internal sealed class User : ITenantUser

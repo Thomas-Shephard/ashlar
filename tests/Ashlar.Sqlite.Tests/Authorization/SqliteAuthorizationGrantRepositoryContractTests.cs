@@ -1,4 +1,3 @@
-
 namespace Ashlar.Sqlite.Tests.Authorization;
 
 internal sealed class SqliteAuthorizationGrantRepositoryContractTests : AuthorizationGrantRepositoryContractTests

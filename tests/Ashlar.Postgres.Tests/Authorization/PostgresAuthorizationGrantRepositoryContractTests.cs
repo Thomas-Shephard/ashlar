@@ -1,4 +1,3 @@
-
 namespace Ashlar.Postgres.Tests.Authorization;
 
 internal sealed class PostgresAuthorizationGrantRepositoryContractTests : AuthorizationGrantRepositoryContractTests

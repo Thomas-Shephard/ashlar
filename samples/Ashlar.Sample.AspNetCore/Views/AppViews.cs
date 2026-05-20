@@ -1,4 +1,3 @@
-
 namespace Ashlar.Sample.AspNetCore.Views;
 
 internal static class AppViews

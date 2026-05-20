@@ -1,4 +1,3 @@
-
 namespace Ashlar.Sqlite.Tests.Identity;
 
 internal sealed class SqlitePasskeyChallengeRepositoryContractTests : PasskeyChallengeRepositoryContractTests

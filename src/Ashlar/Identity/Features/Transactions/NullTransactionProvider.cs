@@ -1,4 +1,3 @@
-
 namespace Ashlar.Identity.Features.Transactions;
 
 internal sealed class NullTransactionProvider : IAshlarTransactionProvider

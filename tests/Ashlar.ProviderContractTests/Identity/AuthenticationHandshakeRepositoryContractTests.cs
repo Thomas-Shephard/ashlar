@@ -1,4 +1,3 @@
-
 namespace Ashlar.ProviderContractTests.Identity;
 
 internal abstract class AuthenticationHandshakeRepositoryContractTests : ProviderContractFixture

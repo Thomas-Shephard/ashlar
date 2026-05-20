@@ -1,4 +1,3 @@
-
 namespace Ashlar.Identity.Features.Invitations;
 
 /// <summary>
