@@ -1,4 +1,3 @@
-using Ashlar.Identity.Abstractions;
 
 namespace Ashlar.Identity.Models.Totp;
 
@@ -32,3 +31,5 @@ public sealed record TotpAssertion : IAuthenticationAssertion
     /// <inheritdoc />
     public AuthenticationProviderKey ProviderIdentity => ProviderKey ?? TotpOptions.DefaultProviderKey;
 }
+
+

@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Passkeys;
 
@@ -111,3 +110,5 @@ public sealed class PasskeyOptions
             || host.EndsWith($".{rpId}", StringComparison.OrdinalIgnoreCase);
     }
 }
+
+

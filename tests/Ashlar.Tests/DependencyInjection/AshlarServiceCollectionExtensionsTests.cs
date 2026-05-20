@@ -1,9 +1,6 @@
-using Ashlar.Identity;
 using Ashlar.Authorization;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Providers.Email;
 using Ashlar.Identity.Providers.External;
@@ -13,7 +10,6 @@ using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 using Ashlar.Security.Tokens;
-using Ashlar.Tests.Identity;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -393,7 +389,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         var dataProtectionProvider = new Mock<IDataProtectionProvider>();
         var dataProtector = new Mock<IDataProtector>();
         dataProtectionProvider
-            .Setup(provider => provider.CreateProtector("Ashlar.Identity.Credentials"))
+            .Setup(provider => provider.CreateProtector("Ashlar.Identity.Features.Credentials"))
             .Returns(dataProtector.Object);
 
         var services = new ServiceCollection();
@@ -543,3 +539,5 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         Assert.That(provider.GetRequiredService<IOptions<SecurityNotificationOptions>>().Value.Enabled, Is.True);
     }
 }
+
+

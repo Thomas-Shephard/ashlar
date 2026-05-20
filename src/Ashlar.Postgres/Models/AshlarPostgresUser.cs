@@ -1,4 +1,3 @@
-using Ashlar.Identity.Abstractions;
 
 namespace Ashlar.Postgres.Models;
 
@@ -40,3 +39,5 @@ public sealed class AshlarPostgresUser : ITenantUser, IHasAuditMetadata
     /// </summary>
     public DateTimeOffset? UpdatedAt { get; set; }
 }
+
+

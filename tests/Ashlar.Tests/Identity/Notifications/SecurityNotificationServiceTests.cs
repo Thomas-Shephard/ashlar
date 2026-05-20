@@ -1,6 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
 using Ashlar.Identity.Notifications;
-using Ashlar.Identity.Models;
 using Ashlar.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -827,3 +826,5 @@ internal sealed class SecurityNotificationServiceTests
     }
 
 }
+
+

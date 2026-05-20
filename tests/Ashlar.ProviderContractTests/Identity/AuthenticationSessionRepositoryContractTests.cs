@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 using System.Text.Json.Nodes;
 
 namespace Ashlar.ProviderContractTests.Identity;
@@ -344,3 +343,5 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         return JsonNode.DeepEquals(JsonNode.Parse(left), JsonNode.Parse(right));
     }
 }
+
+

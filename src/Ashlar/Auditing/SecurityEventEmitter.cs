@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -139,3 +138,5 @@ internal sealed record SecurityEventDescriptor
     /// </summary>
     public IReadOnlyDictionary<string, string>? Properties { get; init; }
 }
+
+

@@ -1,8 +1,6 @@
 using System.Security.Claims;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Postgres;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
 using Dapper;
@@ -71,3 +69,5 @@ internal static class HomeEndpoints
         [FromServices] IIdentityRepository Users,
         [FromServices] IPostgresConnectionProvider ConnectionProvider);
 }
+
+

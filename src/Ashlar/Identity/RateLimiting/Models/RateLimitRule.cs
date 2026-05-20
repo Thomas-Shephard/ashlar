@@ -21,3 +21,5 @@ public sealed class RateLimitRule
     /// </summary>
     public TimeSpan? BlockDuration { get; init; }
 }
+
+

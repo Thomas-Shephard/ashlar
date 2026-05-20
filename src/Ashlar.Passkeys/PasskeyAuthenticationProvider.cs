@@ -1,6 +1,4 @@
 using System.Text.Json;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.Passkeys;
@@ -101,3 +99,5 @@ public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> optio
             CredentialUpdateRequirement: CredentialUpdateRequirement.Required));
     }
 }
+
+

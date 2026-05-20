@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 using Microsoft.AspNetCore.Http;
 
 namespace Ashlar.AspNetCore.Sessions;
@@ -71,3 +70,5 @@ public interface IAshlarSignInManager
         string? reason = null,
         CancellationToken cancellationToken = default);
 }
+
+

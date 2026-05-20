@@ -127,3 +127,5 @@ internal sealed class AshlarPostgresEmailOutboxServiceCollectionExtensionsTests
         public Task DeliverAsync(EmailMessage message, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }
+
+

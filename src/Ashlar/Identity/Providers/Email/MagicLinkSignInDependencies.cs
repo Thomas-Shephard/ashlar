@@ -1,5 +1,4 @@
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
 using Ashlar.Security.Tokens;
@@ -71,3 +70,5 @@ internal sealed class MagicLinkSignInDependencies(
     /// </summary>
     public ISecurityEventSink SecurityEventSink => _audit.SecurityEventSink;
 }
+
+

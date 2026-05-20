@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 
 namespace Ashlar.ProviderContractTests.Identity;
 
@@ -60,3 +59,5 @@ internal abstract class BootstrapStateRepositoryContractTests : ProviderContract
         Assert.That(await verificationRepository.GetBootstrapStatusAsync(), Is.EqualTo(BootstrapStatus.Uninitialized));
     }
 }
+
+

@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Security.Hashing;
 
 namespace Ashlar.Identity.Providers.Email;
@@ -55,3 +53,5 @@ public sealed class EmailCodeAuthenticationProvider(PasswordHasherSelector hashe
         return Task.FromResult(new AuthenticationResult(status, IsCredentialConsumed: status == AuthenticationResultStatus.Succeeded));
     }
 }
+
+

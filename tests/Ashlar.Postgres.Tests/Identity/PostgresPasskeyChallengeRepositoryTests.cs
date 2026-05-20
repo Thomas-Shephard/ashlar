@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models.Passkeys;
 using Ashlar.Postgres.Models;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
@@ -187,3 +185,5 @@ internal sealed class PostgresPasskeyChallengeRepositoryTests : PostgresTestBase
         };
     }
 }
+
+

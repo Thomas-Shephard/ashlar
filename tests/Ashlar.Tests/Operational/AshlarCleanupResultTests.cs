@@ -34,3 +34,5 @@ internal sealed class AshlarCleanupResultTests
         Assert.Throws<ArgumentNullException>(() => AshlarCleanupResult.Empty.Add(null!));
     }
 }
+
+

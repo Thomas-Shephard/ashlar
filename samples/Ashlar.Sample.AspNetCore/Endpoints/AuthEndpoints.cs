@@ -1,6 +1,4 @@
 using Ashlar.AspNetCore.Sessions;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Identity.Providers.Email;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
@@ -105,3 +103,5 @@ internal static class AuthEndpoints
         return Results.Ok(new { userId = response.User.Id });
     }
 }
+
+

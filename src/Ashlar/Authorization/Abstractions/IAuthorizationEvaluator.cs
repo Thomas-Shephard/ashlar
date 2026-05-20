@@ -15,3 +15,5 @@ public interface IAuthorizationEvaluator
     /// <returns>The authorization decision and any matching grant.</returns>
     Task<AuthorizationEvaluationResult> EvaluateAsync(AuthorizationEvaluationRequest request, CancellationToken cancellationToken = default);
 }
+
+

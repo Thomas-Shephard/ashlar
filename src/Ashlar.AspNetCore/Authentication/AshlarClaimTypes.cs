@@ -50,3 +50,5 @@ public static class AshlarClaimTypes
     /// </summary>
     public const string AdditionalVerificationFactor = "ashlar:additional_verification_factor";
 }
+
+

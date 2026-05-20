@@ -8,3 +8,5 @@ namespace Ashlar.Identity.Models.Totp;
 public sealed record TotpEnrollment(
     string SharedSecret,
     string AuthenticatorUri);
+
+

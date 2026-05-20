@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Security.Hashing;
 
 namespace Ashlar.Identity.Providers.Local;
@@ -63,3 +61,5 @@ public sealed class LocalPasswordProvider(PasswordHasherSelector hasherSelector)
         return Task.FromResult(new AuthenticationResult(status, NewCredentialValue: newCredentialValue));
     }
 }
+
+

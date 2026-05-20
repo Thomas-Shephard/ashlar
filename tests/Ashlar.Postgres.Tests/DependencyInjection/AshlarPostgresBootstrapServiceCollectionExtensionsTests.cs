@@ -1,6 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
 using Ashlar.Authorization.Abstractions;
-using Ashlar.Identity.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Npgsql;
@@ -79,3 +78,5 @@ internal sealed class AshlarPostgresBootstrapServiceCollectionExtensionsTests
         Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<PostgresTransactionManager>());
     }
 }
+
+

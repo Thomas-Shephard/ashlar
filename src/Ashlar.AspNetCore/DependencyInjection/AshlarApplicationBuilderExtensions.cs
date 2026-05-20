@@ -22,3 +22,5 @@ public static class AshlarApplicationBuilderExtensions
         return builder.UseMiddleware<RequireIpAddressMiddleware>();
     }
 }
+
+

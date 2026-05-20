@@ -12,3 +12,5 @@ public interface IEmailTransport
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     Task DeliverAsync(EmailMessage message, CancellationToken cancellationToken = default);
 }
+
+

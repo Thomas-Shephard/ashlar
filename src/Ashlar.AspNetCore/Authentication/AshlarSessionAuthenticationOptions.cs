@@ -53,3 +53,5 @@ public sealed class AshlarSessionAuthenticationOptions : AuthenticationSchemeOpt
         Path = "/"
     };
 }
+
+

@@ -3,8 +3,6 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Ashlar.AspNetCore.Authentication;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -373,3 +371,5 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
         };
     }
 }
+
+

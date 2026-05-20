@@ -1,7 +1,4 @@
 using System.Text.Json;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
-using Ashlar.Identity.Models.Passkeys;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -133,3 +130,5 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
         }
     }
 }
+
+

@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 
 namespace Ashlar.AspNetCore.Authorization;
 
@@ -22,3 +21,5 @@ public sealed class AshlarStepUpOptions
     /// </summary>
     public HashSet<string> AllowedFactors { get; } = new(StringComparer.OrdinalIgnoreCase);
 }
+
+

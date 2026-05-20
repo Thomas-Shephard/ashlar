@@ -35,3 +35,5 @@ internal sealed class SampleStepUpAuthorizationResultHandler : IAuthorizationMid
             failedRequirements.All(requirement => requirement is AshlarStepUpRequirement);
     }
 }
+
+

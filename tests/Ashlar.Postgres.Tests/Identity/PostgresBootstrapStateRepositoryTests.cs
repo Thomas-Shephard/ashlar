@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 using Ashlar.Postgres.Schema;
 using Npgsql;
 
@@ -87,3 +86,5 @@ internal sealed class PostgresBootstrapStateRepositoryTests : PostgresTestBase
         Assert.That(results.Count(r => r), Is.EqualTo(1));
     }
 }
+
+

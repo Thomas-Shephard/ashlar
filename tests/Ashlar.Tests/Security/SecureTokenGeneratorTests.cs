@@ -62,3 +62,5 @@ internal sealed partial class SecureTokenGeneratorTests
     [GeneratedRegex("^[A-Za-z0-9_-]+$", RegexOptions.Compiled)]
     private static partial Regex UrlSafeTokenPatternRegex();
 }
+
+

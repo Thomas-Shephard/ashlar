@@ -1,5 +1,4 @@
 using Ashlar.Auditing;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Providers.RecoveryCode;
 
@@ -34,3 +33,5 @@ public sealed record RecoveryCodeGenerationRequest
     /// </summary>
     public AuditContext? Audit { get; init; }
 }
+
+

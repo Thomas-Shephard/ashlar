@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
 using Ashlar.AspNetCore.Sessions;
-using Ashlar.Identity.Models;
 using Ashlar.Passkeys;
 using Ashlar.Sample.AspNetCore.Extensions;
 
@@ -118,3 +117,5 @@ internal static class PasskeyEndpoints
     private sealed record PasskeyCompleteAuthenticationSampleRequest(Guid ChallengeId, JsonElement AssertionResponse);
     private sealed record PasskeyCompleteFactorSampleRequest(Guid ChallengeId, JsonElement AssertionResponse, string HandshakeToken, string? FactorType);
 }
+
+

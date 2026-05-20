@@ -1,5 +1,4 @@
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
 
@@ -56,3 +55,5 @@ internal sealed class EmailCodeSignInDependencies(
     /// </summary>
     public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
 }
+
+

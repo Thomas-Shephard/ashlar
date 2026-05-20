@@ -1,5 +1,4 @@
 using Ashlar.Auditing;
-using Ashlar.Identity.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Tests.Auditing;
@@ -75,3 +74,5 @@ internal sealed class PersistentSecurityEventSinkTests
         }
     }
 }
+
+

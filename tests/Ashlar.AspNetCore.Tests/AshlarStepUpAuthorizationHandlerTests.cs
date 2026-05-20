@@ -2,9 +2,6 @@ using System.Globalization;
 using System.Security.Claims;
 using Ashlar.AspNetCore.Authentication;
 using Ashlar.AspNetCore.Authorization;
-using Ashlar.Identity;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.AspNetCore.Builder;
@@ -931,3 +928,5 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         }
     }
 }
+
+

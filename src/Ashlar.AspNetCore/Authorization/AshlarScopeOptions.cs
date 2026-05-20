@@ -30,3 +30,5 @@ public sealed class AshlarScopeOptions
     /// </summary>
     public bool UseClaimForTenantId { get; set; }
 }
+
+

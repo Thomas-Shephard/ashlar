@@ -1,7 +1,5 @@
 using System.Text.Json;
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Passkeys;
 
@@ -179,3 +177,5 @@ public sealed record PasskeyAuthenticationVerificationResult(
     string CredentialId,
     long SignCount,
     bool UserVerified = false);
+
+

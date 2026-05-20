@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Security.Tokens;
 
 namespace Ashlar.Identity.Providers.Email;
@@ -101,3 +99,5 @@ public sealed class MagicLinkAuthenticationProvider(ISecureTokenHasher tokenHash
         return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true));
     }
 }
+
+

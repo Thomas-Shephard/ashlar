@@ -7,7 +7,7 @@ namespace Ashlar.Security.Encryption;
 /// to encrypt and decrypt sensitive values.
 /// </summary>
 /// <remarks>
-/// This protector is created with the purpose string <c>"Ashlar.Identity.Credentials"</c> to scope
+/// This protector is created with the purpose string <c>"Ashlar.Identity.Features.Credentials"</c> to scope
 /// the data protection keys used for credential encryption.
 /// </remarks>
 public sealed class DataProtectionSecretProtector : ISecretProtector
@@ -21,7 +21,7 @@ public sealed class DataProtectionSecretProtector : ISecretProtector
     public DataProtectionSecretProtector(IDataProtectionProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
-        _protector = provider.CreateProtector("Ashlar.Identity.Credentials");
+        _protector = provider.CreateProtector("Ashlar.Identity.Features.Credentials");
     }
 
     /// <summary>
@@ -46,3 +46,5 @@ public sealed class DataProtectionSecretProtector : ISecretProtector
         return _protector.Unprotect(data);
     }
 }
+
+

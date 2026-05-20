@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Providers.Email;
 
@@ -27,3 +25,5 @@ public sealed record MagicLinkAssertion : IAuthenticationAssertion
         Token = token;
     }
 }
+
+

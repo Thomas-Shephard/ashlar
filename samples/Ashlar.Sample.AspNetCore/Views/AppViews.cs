@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Sample.AspNetCore.Views;
 
@@ -1584,3 +1583,5 @@ internal static class AppViews
         """, navLinks);
     }
 }
+
+

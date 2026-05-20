@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Providers.RecoveryCode;
 
@@ -32,3 +31,5 @@ public sealed record RecoveryCodeOptions
     /// </summary>
     public AuthenticationProviderKey ProviderKey { get; set; } = new(ProviderType.RecoveryCode, "RecoveryCode");
 }
+
+

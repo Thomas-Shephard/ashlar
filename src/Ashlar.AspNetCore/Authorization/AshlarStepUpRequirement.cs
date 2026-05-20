@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 using Microsoft.AspNetCore.Authorization;
 
 namespace Ashlar.AspNetCore.Authorization;
@@ -52,3 +51,5 @@ public sealed class AshlarStepUpRequirement : IAuthorizationRequirement
     /// </summary>
     public AshlarStepUpMode Mode { get; }
 }
+
+

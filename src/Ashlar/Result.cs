@@ -122,3 +122,5 @@ public record Result(bool Succeeded, AshlarFailure? FailureDetails = null)
 /// <param name="FailureDetails">The failure information.</param>
 public record Result<T>(bool Succeeded, T? Value = default, AshlarFailure? FailureDetails = null)
     : Result(Succeeded, FailureDetails);
+
+

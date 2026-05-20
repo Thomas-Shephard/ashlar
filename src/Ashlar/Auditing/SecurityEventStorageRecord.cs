@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Auditing;
 
@@ -64,3 +63,5 @@ public sealed record SecurityEventStorageRecord(
             securityEvent.Properties != null ? JsonSerializer.Serialize(securityEvent.Properties) : null);
     }
 }
+
+

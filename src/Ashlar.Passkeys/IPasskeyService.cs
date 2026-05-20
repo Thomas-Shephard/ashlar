@@ -73,3 +73,5 @@ public interface IPasskeyService
     /// <returns>The operation result.</returns>
     Task<Result> RevokeAsync(RevokePasskeyRequest request, CancellationToken cancellationToken = default);
 }
+
+

@@ -1,4 +1,3 @@
-using Ashlar.Identity.Abstractions;
 
 namespace Ashlar.Sqlite.Models;
 
@@ -16,3 +15,5 @@ public sealed class AshlarSqliteUser : ITenantUser, IHasAuditMetadata
     public required DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? UpdatedAt { get; set; }
 }
+
+

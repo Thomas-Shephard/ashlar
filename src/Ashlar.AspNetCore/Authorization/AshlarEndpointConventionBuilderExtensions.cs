@@ -38,3 +38,5 @@ public static class AshlarEndpointConventionBuilderExtensions
         return builder.RequireAuthorization(AshlarStepUpPolicyNames.FreshMfaIfAvailable);
     }
 }
+
+

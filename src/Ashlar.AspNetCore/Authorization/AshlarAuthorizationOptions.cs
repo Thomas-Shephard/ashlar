@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Authorization;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.AspNetCore.Authorization;
 
@@ -155,3 +154,5 @@ public sealed class AshlarAuthorizationOptions
         return copy;
     }
 }
+
+

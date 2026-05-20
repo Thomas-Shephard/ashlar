@@ -18,3 +18,5 @@ public enum PasswordVerificationResult
     /// </summary>
     SuccessWithCredentialUpdate = 2
 }
+
+

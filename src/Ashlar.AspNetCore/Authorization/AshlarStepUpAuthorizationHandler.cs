@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -120,3 +118,5 @@ public sealed class AshlarStepUpAuthorizationHandler(
         return Guid.TryParse(tenantClaim, out var tenantId) ? new TenantContext(tenantId) : null;
     }
 }
+
+

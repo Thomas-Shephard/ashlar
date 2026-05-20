@@ -1,5 +1,4 @@
 using System.Threading.Channels;
-using Ashlar.Identity.Models;
 using Microsoft.Extensions.Logging;
 
 namespace Ashlar.Auditing;
@@ -121,3 +120,5 @@ public abstract class PersistentSecurityEventSink : ISecurityEventSink, IAsyncDi
             exception);
     }
 }
+
+

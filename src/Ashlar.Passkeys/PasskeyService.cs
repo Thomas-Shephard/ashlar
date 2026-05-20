@@ -1,9 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
-using Ashlar.Identity.Models.Passkeys;
 using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Options;
 
@@ -536,3 +533,5 @@ public sealed class PasskeyServiceDependencies(
     /// </summary>
     public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
 }
+
+

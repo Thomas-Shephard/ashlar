@@ -17,3 +17,5 @@ public sealed class NullSecurityEventSink : ISecurityEventSink
         return Task.CompletedTask;
     }
 }
+
+

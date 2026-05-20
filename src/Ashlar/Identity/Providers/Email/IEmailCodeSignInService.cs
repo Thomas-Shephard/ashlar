@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Providers.Email;
 
@@ -26,3 +24,5 @@ public interface IEmailCodeSignInService
     /// <returns>The authentication response.</returns>
     Task<AuthenticationResponse> VerifyCodeAsync(string email, string code, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 }
+
+

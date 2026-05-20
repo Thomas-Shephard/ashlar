@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Auditing;
 
@@ -77,3 +76,5 @@ public sealed record AshlarSecurityEvent
     /// </summary>
     public IReadOnlyDictionary<string, string>? Properties { get; init; }
 }
+
+

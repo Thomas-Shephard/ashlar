@@ -1,6 +1,4 @@
 using Ashlar.Identity.Models.Totp;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Microsoft.AspNetCore.Authorization;
 
 namespace Ashlar.Sample.AspNetCore.Extensions;
@@ -28,7 +26,7 @@ internal static class ServiceCollectionExtensions
         services.AddDataProtection();
 
         services.AddAshlarIdentity();
-        services.Configure<Identity.Models.UriValidationOptions>(options =>
+        services.Configure<UriValidationOptions>(options =>
         {
             var publicAppUri = new Uri(sampleOptions.PublicAppUrl);
             options.AllowedCallbackUris.Add(new Uri(publicAppUri, "/auth/magic-link").AbsoluteUri);
@@ -46,7 +44,7 @@ internal static class ServiceCollectionExtensions
         services.AddAshlarInvitations();
         services.AddAshlarBootstrap(options =>
         {
-            options.Grants.Add(new Identity.Models.BootstrapGrantTemplate { Role = "admin" });
+            options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
         });
         services.AddAshlarAuthorization();
         services.AddAshlarMfaOrchestration();
@@ -112,3 +110,5 @@ internal static class ServiceCollectionExtensions
         return services;
     }
 }
+
+

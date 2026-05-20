@@ -43,3 +43,5 @@ internal static class SessionEndpoints
         }).RequireAuthorization().RequireFreshMfaIfAvailable();
     }
 }
+
+

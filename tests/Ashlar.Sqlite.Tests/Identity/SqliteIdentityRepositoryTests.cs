@@ -1,8 +1,7 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Sqlite.Models;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Ashlar.Sqlite.Tests.Identity;
 
@@ -29,6 +28,18 @@ internal sealed class SqliteIdentityRepositoryTests : SqliteTestBase
     public void ConstructorThrowsOnNullConnectionProvider()
     {
         Assert.Throws<ArgumentNullException>(() => _ = new SqliteIdentityRepository(null!));
+    }
+
+    [Test]
+    public void ConstructorAcceptsExplicitTimeProvider()
+    {
+        var provider = _serviceProvider.GetRequiredService<ISqliteConnectionProvider>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.DoesNotThrow(() => _ = new SqliteIdentityRepository(provider, new FakeTimeProvider()));
+            Assert.DoesNotThrow(() => _ = new SqliteIdentityRepository(provider, null));
+        }
     }
 
     [Test]
@@ -299,3 +310,5 @@ internal sealed class SqliteIdentityRepositoryTests : SqliteTestBase
         public DateTimeOffset? EmailVerifiedAt { get; init; }
     }
 }
+
+

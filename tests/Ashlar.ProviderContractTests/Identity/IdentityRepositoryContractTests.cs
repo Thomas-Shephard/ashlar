@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 
 namespace Ashlar.ProviderContractTests.Identity;
 
@@ -269,3 +268,5 @@ internal abstract class IdentityRepositoryContractTests : ProviderContractFixtur
         Assert.That(await verificationRepo.GetUserByIdAsync(userId), Is.Null);
     }
 }
+
+

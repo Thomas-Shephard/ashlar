@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Postgres.Models;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
@@ -747,3 +745,5 @@ internal sealed class PostgresIdentityRepositoryTests : PostgresTestBase
         public DateTimeOffset? EmailVerifiedAt { get; init; }
     }
 }
+
+

@@ -1,5 +1,4 @@
 using Ashlar.Auditing;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Providers.RecoveryCode;
 
@@ -28,3 +27,5 @@ public interface IRecoveryCodeService
     /// <returns>The operation result.</returns>
     Task<int> RevokeRecoveryCodesAsync(Guid userId, string? reason = null, TenantContext? tenant = null, AuditContext? audit = null, CancellationToken cancellationToken = default);
 }
+
+

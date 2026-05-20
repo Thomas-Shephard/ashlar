@@ -1,6 +1,3 @@
-using Ashlar.Identity;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Ashlar.Tests.DependencyInjection;
@@ -49,3 +46,5 @@ internal sealed class AshlarMfaHandshakeServiceCollectionExtensionsTests
             && descriptor.Lifetime == lifetime));
     }
 }
+
+

@@ -118,3 +118,5 @@ public sealed class SecurityNotificationOptions
         [SecurityNotificationType.SuspiciousAuthenticationAttempt] = TimeSpan.FromHours(1)
     };
 }
+
+

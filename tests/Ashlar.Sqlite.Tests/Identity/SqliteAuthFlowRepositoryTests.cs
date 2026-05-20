@@ -1,8 +1,6 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
-using Ashlar.Identity.Models.Passkeys;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using System.Text.Json;
 
 namespace Ashlar.Sqlite.Tests.Identity;
@@ -90,6 +88,18 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         invalid.Metadata = "not-json";
         Assert.ThrowsAsync<ArgumentException>(async () => await GetInvitationRepository().CreateInvitationAsync(invalid));
         Assert.ThrowsAsync<ArgumentException>(async () => await GetInvitationRepository().UpdateInvitationAsync(invalid, invalid.Version));
+    }
+
+    [Test]
+    public void InvitationRepositoryAcceptsExplicitTimeProvider()
+    {
+        var provider = _serviceProvider.GetRequiredService<ISqliteConnectionProvider>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.DoesNotThrow(() => _ = new SqliteInvitationRepository(provider, new FakeTimeProvider()));
+            Assert.DoesNotThrow(() => _ = new SqliteInvitationRepository(provider, null));
+        }
     }
 
     [Test]
@@ -292,6 +302,18 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
     }
 
     [Test]
+    public void AuthenticationHandshakeRepositoryAcceptsExplicitTimeProvider()
+    {
+        var provider = _serviceProvider.GetRequiredService<ISqliteConnectionProvider>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.DoesNotThrow(() => _ = new SqliteAuthenticationHandshakeRepository(provider, new FakeTimeProvider()));
+            Assert.DoesNotThrow(() => _ = new SqliteAuthenticationHandshakeRepository(provider, null));
+        }
+    }
+
+    [Test]
     public async Task PasskeyChallengesCreateFetchConsumeAtomicallyAndEnforcePurposeShape()
     {
         var user = await CreateUserAsync();
@@ -444,3 +466,5 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         await command.ExecuteNonQueryAsync();
     }
 }
+
+

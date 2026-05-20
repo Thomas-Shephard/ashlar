@@ -19,3 +19,5 @@ public sealed class SmtpEmailSender(IEmailTransport transport) : IEmailSender
         return transport.DeliverAsync(message, cancellationToken);
     }
 }
+
+

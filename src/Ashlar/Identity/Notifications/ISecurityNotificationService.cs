@@ -15,3 +15,5 @@ public interface ISecurityNotificationService
         SecurityNotification notification,
         CancellationToken cancellationToken = default);
 }
+
+

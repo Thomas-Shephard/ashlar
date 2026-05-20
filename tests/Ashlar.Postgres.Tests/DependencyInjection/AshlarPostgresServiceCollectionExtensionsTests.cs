@@ -21,9 +21,9 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.GetService<NpgsqlDataSource>(), Is.Not.Null);
-            Assert.That(provider.GetService<Ashlar.Identity.Abstractions.IIdentityRepository>(), Is.TypeOf<PostgresIdentityRepository>());
-            Assert.That(provider.GetService<Ashlar.Identity.Abstractions.IAuthenticationSessionRepository>(), Is.TypeOf<PostgresAuthenticationSessionRepository>());
-            Assert.That(provider.GetService<Ashlar.Identity.Abstractions.IAuthenticationHandshakeRepository>(), Is.TypeOf<PostgresAuthenticationHandshakeRepository>());
+            Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IIdentityRepository>(), Is.TypeOf<PostgresIdentityRepository>());
+            Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IAuthenticationSessionRepository>(), Is.TypeOf<PostgresAuthenticationSessionRepository>());
+            Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IAuthenticationHandshakeRepository>(), Is.TypeOf<PostgresAuthenticationHandshakeRepository>());
             Assert.That(provider.GetService<SchemaManager>(), Is.Not.Null);
         }
     }
@@ -90,3 +90,5 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
         Assert.Throws<ArgumentNullException>(() => AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresCleanupHostedService(null!));
     }
 }
+
+

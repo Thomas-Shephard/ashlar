@@ -66,3 +66,5 @@ internal sealed class Sha256TokenHasherTests
         Assert.Throws<ArgumentException>(() => hasher.HashToken(token));
     }
 }
+
+

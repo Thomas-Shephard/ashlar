@@ -1,6 +1,4 @@
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
 using Microsoft.Extensions.Options;
@@ -173,3 +171,5 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
         return $"token:{_dependencies.TokenHasher.HashToken(token)}";
     }
 }
+
+

@@ -41,3 +41,5 @@ internal class RecordingLogger : ILogger
 }
 
 internal sealed record LogEntry(LogLevel Level, string Message, Exception? Exception = null, object? State = null);
+
+

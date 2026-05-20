@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Providers.Email;
 
@@ -26,3 +24,5 @@ public interface IMagicLinkSignInService
     /// <returns>The authentication response.</returns>
     Task<AuthenticationResponse> VerifyLinkAsync(string token, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 }
+
+

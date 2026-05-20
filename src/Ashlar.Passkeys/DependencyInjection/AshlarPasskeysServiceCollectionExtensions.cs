@@ -1,5 +1,4 @@
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions;
 using Ashlar.Passkeys;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -47,3 +46,5 @@ public static class AshlarPasskeysServiceCollectionExtensions
         return services;
     }
 }
+
+

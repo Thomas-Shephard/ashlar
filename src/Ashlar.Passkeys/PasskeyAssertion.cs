@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Passkeys;
 
@@ -22,3 +20,5 @@ public sealed record PasskeyAssertion(string CredentialId, long SignCount, bool 
     /// </summary>
     public string CredentialKey => CredentialId;
 }
+
+

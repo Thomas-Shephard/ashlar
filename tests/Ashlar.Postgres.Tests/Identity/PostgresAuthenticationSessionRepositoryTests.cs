@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Postgres.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -607,3 +605,5 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         };
     }
 }
+
+

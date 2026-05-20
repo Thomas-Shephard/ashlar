@@ -62,3 +62,5 @@ public sealed class PasskeyChallenge
     /// </summary>
     public DateTimeOffset? ConsumedAt { get; set; }
 }
+
+

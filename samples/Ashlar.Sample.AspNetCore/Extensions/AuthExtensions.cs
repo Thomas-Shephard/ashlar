@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using Ashlar.AspNetCore.Authentication;
 using Ashlar.Auditing;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Sample.AspNetCore.Extensions;
 
@@ -107,3 +106,5 @@ internal static class ClaimsPrincipalExtensions
         return userId;
     }
 }
+
+

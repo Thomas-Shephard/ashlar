@@ -15,3 +15,5 @@ public static class AshlarStepUpPolicyNames
     /// </summary>
     public const string FreshMfaIfAvailable = "Ashlar.FreshMfaIfAvailable";
 }
+
+

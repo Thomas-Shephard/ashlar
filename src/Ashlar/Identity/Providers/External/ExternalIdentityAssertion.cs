@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Providers.External;
 
@@ -40,3 +38,5 @@ public sealed record ExternalIdentityAssertion : IAuthenticationAssertion
     /// </summary>
     public AuthenticationProviderKey ProviderIdentity { get; }
 }
+
+

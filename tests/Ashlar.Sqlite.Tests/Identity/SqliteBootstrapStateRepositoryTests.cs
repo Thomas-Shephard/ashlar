@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Ashlar.Sqlite.Tests.Identity;
@@ -73,3 +71,5 @@ internal sealed class SqliteBootstrapStateRepositoryTests : SqliteTestBase
         Assert.That(await verificationRepository.GetBootstrapStatusAsync(), Is.EqualTo(BootstrapStatus.Uninitialized));
     }
 }
+
+

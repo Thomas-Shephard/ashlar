@@ -1,6 +1,4 @@
 using Ashlar.AspNetCore.Sessions;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
 using Microsoft.Extensions.Options;
@@ -51,3 +49,5 @@ internal static class InvitationEndpoints
         app.MapGet("/invitations/accept", (string t) => AppViews.RenderInvitationAccept(t));
     }
 }
+
+

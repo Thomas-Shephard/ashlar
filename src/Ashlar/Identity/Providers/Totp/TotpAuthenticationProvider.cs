@@ -1,7 +1,5 @@
 using System.Text.Json;
 using Ashlar.Auditing;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Identity.Models.Totp;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
@@ -166,3 +164,5 @@ public sealed class TotpAuthenticationProvider : IAuthenticationProvider
         public long LastUsedStep { get; init; }
     }
 }
+
+

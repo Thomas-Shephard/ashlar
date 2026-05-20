@@ -206,3 +206,5 @@ internal sealed class PostgresSchemaIntegrityTests : PostgresTestBase
             """, new { id = Guid.NewGuid(), userId, providerKey = Guid.NewGuid().ToString("N"), now = DateTimeOffset.UtcNow, revokedAt, status });
     }
 }
+
+

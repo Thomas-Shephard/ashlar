@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Postgres.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Dapper;
@@ -318,3 +316,5 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
         return user;
     }
 }
+
+

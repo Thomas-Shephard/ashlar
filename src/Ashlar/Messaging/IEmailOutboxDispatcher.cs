@@ -12,3 +12,5 @@ public interface IEmailOutboxDispatcher
     /// <returns>The operation result.</returns>
     Task<int> ProcessBatchAsync(CancellationToken cancellationToken = default);
 }
+
+

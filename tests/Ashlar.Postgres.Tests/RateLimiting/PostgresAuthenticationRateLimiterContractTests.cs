@@ -1,0 +1,48 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
+
+namespace Ashlar.Postgres.Tests.RateLimiting;
+
+internal sealed class PostgresAuthenticationRateLimiterContractTests : AuthenticationRateLimiterContractTests
+{
+    private static readonly DateTimeOffset Start = new(2026, 5, 8, 12, 0, 0, TimeSpan.Zero);
+    private PostgresContractDatabaseLease? _database;
+    private FakeTimeProvider _timeProvider = null!;
+
+    protected override DateTimeOffset Now => _timeProvider.GetUtcNow();
+
+    protected override async Task<IServiceProvider> CreateInitializedServiceProviderAsync()
+    {
+        _timeProvider = new FakeTimeProvider(Start);
+        _database = await PostgresContractDatabase.CreateInitializedServiceProviderAsync(services =>
+        {
+            services.AddAshlarPostgresRateLimiting();
+            services.AddSingleton<TimeProvider>(_timeProvider);
+        });
+        return _database.ServiceProvider;
+    }
+
+    protected override async Task CleanupInitializedServiceProviderAsync()
+    {
+        if (_database != null)
+        {
+            await _database.DropDatabaseAsync();
+            _database = null;
+        }
+    }
+
+    protected override void AdvanceTime(TimeSpan duration)
+    {
+        _timeProvider.Advance(duration);
+    }
+}
+
+
+
+
+
+
+
+
+
+

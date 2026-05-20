@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Providers.External;
 
@@ -169,3 +167,5 @@ public sealed class Saml2AuthenticationProvider(string providerName) : ExternalA
     /// </summary>
     public override int TypicalCredentialLength => 3072;
 }
+
+

@@ -14,3 +14,5 @@ public sealed record SecurityNotificationTemplate
     /// </summary>
     public required string Body { get; init; }
 }
+
+

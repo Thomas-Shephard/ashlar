@@ -111,3 +111,5 @@ internal sealed partial class SqliteSchemaManager(SqliteConnectionFactory connec
 
     private sealed record SchemaScript(string Name, string Sql);
 }
+
+

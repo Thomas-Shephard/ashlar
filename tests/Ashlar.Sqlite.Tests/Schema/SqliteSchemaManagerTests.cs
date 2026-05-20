@@ -125,3 +125,5 @@ internal sealed class SqliteSchemaManagerTests : SqliteTestBase
         await command.ExecuteNonQueryAsync();
     }
 }
+
+

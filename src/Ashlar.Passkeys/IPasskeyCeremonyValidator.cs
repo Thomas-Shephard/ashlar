@@ -1,7 +1,4 @@
 using System.Text.Json;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
-using Ashlar.Identity.Models.Passkeys;
 
 namespace Ashlar.Passkeys;
 
@@ -48,3 +45,5 @@ public interface IPasskeyCeremonyValidator
     /// <returns>The verified authentication result.</returns>
     Task<PasskeyAuthenticationVerificationResult> VerifyAuthenticationAsync(PasskeyOptions options, PasskeyChallenge challenge, UserCredential credential, JsonElement assertionResponse, CancellationToken cancellationToken = default);
 }
+
+

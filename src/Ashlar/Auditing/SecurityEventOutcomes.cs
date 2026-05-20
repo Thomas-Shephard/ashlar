@@ -14,3 +14,5 @@ public static class SecurityEventOutcomes
     /// </summary>
     public const string Failure = "failure";
 }
+
+

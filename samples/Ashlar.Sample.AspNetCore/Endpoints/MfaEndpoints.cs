@@ -2,8 +2,6 @@ using System.Security.Claims;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 using Ashlar.Identity.Models.Totp;
 using Ashlar.Identity.Providers.RecoveryCode;
 using Ashlar.Passkeys;
@@ -269,3 +267,5 @@ internal static class MfaEndpoints
 
     private sealed record StepUpVerifyRequest(string Code);
 }
+
+

@@ -38,3 +38,5 @@ public sealed class AuthorizationGrantOptions
         return options is { MaxRoleLength: > 0, MaxPermissionLength: > 0, MaxScopeTypeLength: > 0, MaxScopeIdLength: > 0, MaxMetadataLength: > 0 };
     }
 }
+
+

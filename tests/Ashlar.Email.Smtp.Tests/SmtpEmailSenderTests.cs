@@ -18,3 +18,5 @@ internal sealed class SmtpEmailSenderTests
         mockTransport.Verify(x => x.DeliverAsync(message, It.IsAny<CancellationToken>()), Times.Once);
     }
 }
+
+

@@ -1,4 +1,3 @@
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Notifications;
 
@@ -66,3 +65,5 @@ public sealed record SecurityNotification
         };
     }
 }
+
+

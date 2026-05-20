@@ -1,5 +1,3 @@
-using Ashlar.Identity.Abstractions;
-using Ashlar.Identity.Models;
 
 namespace Ashlar.Identity.Providers.RecoveryCode;
 
@@ -28,3 +26,5 @@ public sealed record RecoveryCodeAssertion : IAuthenticationAssertion
     /// <inheritdoc />
     public AuthenticationProviderKey ProviderIdentity { get; }
 }
+
+
