@@ -1,6 +1,6 @@
 param(
     [string] $Configuration = "Release",
-    [string] $PackageOutputPath = (Join-Path $PSScriptRoot "..\nupkg"),
+    [string] $PackageOutputPath = (Join-Path (Join-Path $PSScriptRoot "..") "nupkg"),
     [string] $SmokeRoot = (Join-Path ([System.IO.Path]::GetTempPath()) "ashlar-package-consumption-smoke"),
     [switch] $SkipPack
 )
@@ -33,7 +33,7 @@ $packageIds = @(
 function Invoke-DotNet {
     param([Parameter(ValueFromRemainingArguments = $true)] [string[]] $Arguments)
 
-    Write-Host "dotnet $($Arguments -join ' ')"
+    Write-Output "dotnet $($Arguments -join ' ')"
     & dotnet @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet command failed with exit code $LASTEXITCODE."
@@ -44,9 +44,9 @@ function Get-PackageVersion {
     param([string] $PackageId)
 
     $packageNamePattern = "^$([regex]::Escape($PackageId))\.(?<version>\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\.nupkg$"
-    $packages = Get-ChildItem -Path $packageOutputFullPath -Filter "*.nupkg" |
+    $packages = @(Get-ChildItem -Path $packageOutputFullPath -Filter "*.nupkg" |
         Where-Object { $_.Name -match $packageNamePattern } |
-        Sort-Object LastWriteTimeUtc -Descending
+        Sort-Object LastWriteTimeUtc -Descending)
 
     if ($packages.Count -eq 0) {
         throw "Expected package '$PackageId' in '$packageOutputFullPath', but no .nupkg was found."
