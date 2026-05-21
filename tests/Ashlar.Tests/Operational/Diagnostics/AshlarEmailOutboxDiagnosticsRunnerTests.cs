@@ -16,22 +16,21 @@ internal sealed class AshlarEmailOutboxDiagnosticsRunnerTests
 
         var result = await runner.CheckAsync(
             new FakeTimeProvider(CheckedAt),
-            _ => new ValueTask<TestConnection>(new TestConnection()),
-            (_, _) => Task.FromResult(true),
-            (_, now, _) => Task.FromResult(new EmailOutboxDiagnosticSnapshot
-            {
-                PendingCount = 1,
-                ScheduledCount = 2,
-                LockedCount = 3,
-                ExpiredLockCount = 4,
-                FailedCount = 5,
-                OldestPendingAt = oldestPendingAt,
-                OldestFailedAt = oldestFailedAt
-            }),
-            6,
-            TimeSpan.FromSeconds(7),
-            8,
-            _ => Assert.Fail("No exception should be logged."));
+            new EmailOutboxDiagnosticsContext<TestConnection>(
+                _ => new ValueTask<TestConnection>(new TestConnection()),
+                (_, _) => Task.FromResult(true),
+                (_, _, _) => Task.FromResult(new EmailOutboxDiagnosticSnapshot
+                {
+                    PendingCount = 1,
+                    ScheduledCount = 2,
+                    LockedCount = 3,
+                    ExpiredLockCount = 4,
+                    FailedCount = 5,
+                    OldestPendingAt = oldestPendingAt,
+                    OldestFailedAt = oldestFailedAt
+                }),
+                _ => Assert.Fail("No exception should be logged.")),
+            new EmailOutboxDiagnosticOptions(6, TimeSpan.FromSeconds(7), 8));
 
         using (Assert.EnterMultipleScope())
         {
@@ -59,13 +58,12 @@ internal sealed class AshlarEmailOutboxDiagnosticsRunnerTests
 
         var result = await runner.CheckAsync(
             new FakeTimeProvider(CheckedAt),
-            _ => new ValueTask<TestConnection>(new TestConnection()),
-            (_, _) => Task.FromResult(false),
-            (_, _, _) => throw new InvalidOperationException("Should not query missing table."),
-            6,
-            TimeSpan.FromSeconds(7),
-            8,
-            _ => Assert.Fail("No exception should be logged."));
+            new EmailOutboxDiagnosticsContext<TestConnection>(
+                _ => new ValueTask<TestConnection>(new TestConnection()),
+                (_, _) => Task.FromResult(false),
+                (_, _, _) => throw new InvalidOperationException("Should not query missing table."),
+                _ => Assert.Fail("No exception should be logged.")),
+            new EmailOutboxDiagnosticOptions(6, TimeSpan.FromSeconds(7), 8));
 
         using (Assert.EnterMultipleScope())
         {
@@ -87,13 +85,12 @@ internal sealed class AshlarEmailOutboxDiagnosticsRunnerTests
 
         var result = await runner.CheckAsync(
             new FakeTimeProvider(CheckedAt),
-            _ => new ValueTask<TestConnection>(new TestConnection()),
-            (_, _) => throw exception,
-            (_, _, _) => Task.FromResult(new EmailOutboxDiagnosticSnapshot()),
-            6,
-            TimeSpan.FromSeconds(7),
-            8,
-            ex => loggedException = ex);
+            new EmailOutboxDiagnosticsContext<TestConnection>(
+                _ => new ValueTask<TestConnection>(new TestConnection()),
+                (_, _) => throw exception,
+                (_, _, _) => Task.FromResult(new EmailOutboxDiagnosticSnapshot()),
+                ex => loggedException = ex),
+            new EmailOutboxDiagnosticOptions(6, TimeSpan.FromSeconds(7), 8));
 
         using (Assert.EnterMultipleScope())
         {
@@ -115,17 +112,16 @@ internal sealed class AshlarEmailOutboxDiagnosticsRunnerTests
 
         Assert.ThrowsAsync<OperationCanceledException>(async () => await runner.CheckAsync(
             new FakeTimeProvider(CheckedAt),
-            token =>
-            {
-                token.ThrowIfCancellationRequested();
-                return new ValueTask<TestConnection>(new TestConnection());
-            },
-            (_, _) => Task.FromResult(true),
-            (_, _, _) => Task.FromResult(new EmailOutboxDiagnosticSnapshot()),
-            6,
-            TimeSpan.FromSeconds(7),
-            8,
-            _ => Assert.Fail("No exception should be logged."),
+            new EmailOutboxDiagnosticsContext<TestConnection>(
+                token =>
+                {
+                    token.ThrowIfCancellationRequested();
+                    return new ValueTask<TestConnection>(new TestConnection());
+                },
+                (_, _) => Task.FromResult(true),
+                (_, _, _) => Task.FromResult(new EmailOutboxDiagnosticSnapshot()),
+                _ => Assert.Fail("No exception should be logged.")),
+            new EmailOutboxDiagnosticOptions(6, TimeSpan.FromSeconds(7), 8),
             cancellationTokenSource.Token));
     }
 
@@ -139,14 +135,18 @@ internal sealed class AshlarEmailOutboxDiagnosticsRunnerTests
         Func<TestConnection, DateTimeOffset, CancellationToken, Task<EmailOutboxDiagnosticSnapshot>> querySnapshot =
             (_, _, _) => Task.FromResult(new EmailOutboxDiagnosticSnapshot());
         Action<Exception> logException = _ => { };
+        var context = new EmailOutboxDiagnosticsContext<TestConnection>(openConnection, tableExists, querySnapshot, logException);
+        var options = new EmailOutboxDiagnosticOptions(1, TimeSpan.FromSeconds(1), 1);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.ThrowsAsync<ArgumentNullException>(async () => await runner.CheckAsync<TestConnection>(null!, openConnection, tableExists, querySnapshot, 1, TimeSpan.FromSeconds(1), 1, logException));
-            Assert.ThrowsAsync<ArgumentNullException>(async () => await runner.CheckAsync(timeProvider, null!, tableExists, querySnapshot, 1, TimeSpan.FromSeconds(1), 1, logException));
-            Assert.ThrowsAsync<ArgumentNullException>(async () => await runner.CheckAsync(timeProvider, openConnection, null!, querySnapshot, 1, TimeSpan.FromSeconds(1), 1, logException));
-            Assert.ThrowsAsync<ArgumentNullException>(async () => await runner.CheckAsync(timeProvider, openConnection, tableExists, null!, 1, TimeSpan.FromSeconds(1), 1, logException));
-            Assert.ThrowsAsync<ArgumentNullException>(async () => await runner.CheckAsync(timeProvider, openConnection, tableExists, querySnapshot, 1, TimeSpan.FromSeconds(1), 1, null!));
+            Assert.ThrowsAsync<ArgumentNullException>(async () => await runner.CheckAsync<TestConnection>(null!, context, options));
+            Assert.ThrowsAsync<ArgumentNullException>(async () => await runner.CheckAsync<TestConnection>(timeProvider, null!, options));
+            Assert.ThrowsAsync<ArgumentNullException>(async () => await runner.CheckAsync(timeProvider, context, null!));
+            Assert.ThrowsAsync<ArgumentNullException>(async () => await runner.CheckAsync(timeProvider, new EmailOutboxDiagnosticsContext<TestConnection>(null!, tableExists, querySnapshot, logException), options));
+            Assert.ThrowsAsync<ArgumentNullException>(async () => await runner.CheckAsync(timeProvider, new EmailOutboxDiagnosticsContext<TestConnection>(openConnection, null!, querySnapshot, logException), options));
+            Assert.ThrowsAsync<ArgumentNullException>(async () => await runner.CheckAsync(timeProvider, new EmailOutboxDiagnosticsContext<TestConnection>(openConnection, tableExists, null!, logException), options));
+            Assert.ThrowsAsync<ArgumentNullException>(async () => await runner.CheckAsync(timeProvider, new EmailOutboxDiagnosticsContext<TestConnection>(openConnection, tableExists, querySnapshot, null!), options));
         }
     }
 

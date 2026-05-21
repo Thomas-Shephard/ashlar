@@ -30,13 +30,12 @@ internal sealed class PostgresEmailOutboxDiagnostics(
     {
         return await DiagnosticsRunner.CheckAsync(
             _timeProvider,
-            _connectionProvider.GetConnectionAsync,
-            TableExistsAsync,
-            QuerySnapshotAsync,
-            _options.MaxAttempts,
-            _options.PollingInterval,
-            _options.BatchSize,
-            LogEmailOutboxDiagnosticsFailed,
+            new EmailOutboxDiagnosticsContext<PostgresConnectionHandle>(
+                _connectionProvider.GetConnectionAsync,
+                TableExistsAsync,
+                QuerySnapshotAsync,
+                LogEmailOutboxDiagnosticsFailed),
+            new EmailOutboxDiagnosticOptions(_options.MaxAttempts, _options.PollingInterval, _options.BatchSize),
             cancellationToken);
     }
 
