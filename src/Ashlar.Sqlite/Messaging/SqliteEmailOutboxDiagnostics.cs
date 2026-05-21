@@ -13,8 +13,7 @@ internal sealed class SqliteEmailOutboxDiagnostics(
     ILogger<SqliteEmailOutboxDiagnostics>? logger = null) : IEmailOutboxDiagnostics
 {
     private const string ProviderName = "Sqlite";
-    private const string MissingTableReason = "Email outbox table has not been initialized.";
-    private const string QueryFailedReason = "Email outbox diagnostics could not query provider state.";
+    private static readonly AshlarEmailOutboxDiagnosticsRunner DiagnosticsRunner = new(ProviderName);
 
     private static readonly Action<ILogger, Exception?> EmailOutboxDiagnosticsFailed =
         LoggerMessage.Define(
@@ -29,36 +28,16 @@ internal sealed class SqliteEmailOutboxDiagnostics(
 
     public async Task<EmailOutboxDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default)
     {
-        var checkedAt = _timeProvider.GetUtcNow();
-
-        try
-        {
-            EmailOutboxDiagnosticResult result;
-            await using (var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken))
-            {
-                var tableExists = await TableExistsAsync(connectionHandle, cancellationToken);
-                if (!tableExists)
-                {
-                    result = CreateResult(AshlarDiagnosticStatus.NotSupported, MissingTableReason, checkedAt);
-                }
-                else
-                {
-                    var snapshot = await QuerySnapshotAsync(connectionHandle, checkedAt, cancellationToken);
-                    result = CreateResult(AshlarDiagnosticStatus.Healthy, null, checkedAt, snapshot);
-                }
-            }
-
-            return result;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            EmailOutboxDiagnosticsFailed(_logger, ex);
-            return CreateResult(AshlarDiagnosticStatus.Unknown, QueryFailedReason, checkedAt);
-        }
+        return await DiagnosticsRunner.CheckAsync(
+            _timeProvider,
+            _connectionProvider.GetConnectionAsync,
+            TableExistsAsync,
+            QuerySnapshotAsync,
+            _options.MaxAttempts,
+            _options.PollingInterval,
+            _options.BatchSize,
+            LogEmailOutboxDiagnosticsFailed,
+            cancellationToken);
     }
 
     private static async Task<bool> TableExistsAsync(SqliteConnectionHandle connectionHandle, CancellationToken cancellationToken)
@@ -75,7 +54,7 @@ internal sealed class SqliteEmailOutboxDiagnostics(
         return Convert.ToInt32(result, CultureInfo.InvariantCulture) > 0;
     }
 
-    private static async Task<EmailOutboxSnapshot> QuerySnapshotAsync(
+    private static async Task<EmailOutboxDiagnosticSnapshot> QuerySnapshotAsync(
         SqliteConnectionHandle connectionHandle,
         DateTimeOffset now,
         CancellationToken cancellationToken)
@@ -97,45 +76,20 @@ internal sealed class SqliteEmailOutboxDiagnostics(
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         await reader.ReadAsync(cancellationToken);
-        return new EmailOutboxSnapshot(
-            reader.GetInt64(reader.GetOrdinal("pending_count")),
-            reader.GetInt64(reader.GetOrdinal("scheduled_count")),
-            reader.GetInt64(reader.GetOrdinal("locked_count")),
-            reader.GetInt64(reader.GetOrdinal("expired_lock_count")),
-            reader.GetInt64(reader.GetOrdinal("failed_count")),
-            reader.GetNullableDateTimeOffsetFromText("oldest_pending_at"),
-            reader.GetNullableDateTimeOffsetFromText("oldest_failed_at"));
+        return new EmailOutboxDiagnosticSnapshot
+        {
+            PendingCount = reader.GetInt64(reader.GetOrdinal("pending_count")),
+            ScheduledCount = reader.GetInt64(reader.GetOrdinal("scheduled_count")),
+            LockedCount = reader.GetInt64(reader.GetOrdinal("locked_count")),
+            ExpiredLockCount = reader.GetInt64(reader.GetOrdinal("expired_lock_count")),
+            FailedCount = reader.GetInt64(reader.GetOrdinal("failed_count")),
+            OldestPendingAt = reader.GetNullableDateTimeOffsetFromText("oldest_pending_at"),
+            OldestFailedAt = reader.GetNullableDateTimeOffsetFromText("oldest_failed_at")
+        };
     }
 
-    private EmailOutboxDiagnosticResult CreateResult(
-        AshlarDiagnosticStatus status,
-        string? reason,
-        DateTimeOffset checkedAt,
-        EmailOutboxSnapshot? snapshot = null)
+    private void LogEmailOutboxDiagnosticsFailed(Exception exception)
     {
-        return new EmailOutboxDiagnosticResult(
-            status,
-            ProviderName,
-            reason,
-            checkedAt,
-            snapshot?.PendingCount,
-            snapshot?.ScheduledCount,
-            snapshot?.LockedCount,
-            snapshot?.ExpiredLockCount,
-            snapshot?.FailedCount,
-            snapshot?.OldestPendingAt,
-            snapshot?.OldestFailedAt,
-            _options.MaxAttempts,
-            _options.PollingInterval,
-            _options.BatchSize);
+        EmailOutboxDiagnosticsFailed(_logger, exception);
     }
-
-    private sealed record EmailOutboxSnapshot(
-        long PendingCount,
-        long ScheduledCount,
-        long LockedCount,
-        long ExpiredLockCount,
-        long FailedCount,
-        DateTimeOffset? OldestPendingAt,
-        DateTimeOffset? OldestFailedAt);
 }

@@ -149,8 +149,14 @@ internal sealed class SqliteEmailOutboxDiagnosticsTests : SqliteTestBase
     [Test]
     public async Task UnexpectedProviderFailureReturnsUnknownSafelyAndLogs()
     {
-        var databasePath = Path.Combine(GetConnectionString(), "invalid.db");
-        var connectionString = new SqliteConnectionStringBuilder { DataSource = databasePath, Pooling = false }.ConnectionString;
+        var baseConnectionString = new SqliteConnectionStringBuilder(GetConnectionString());
+        var databasePath = Path.Combine(Path.GetDirectoryName(baseConnectionString.DataSource)!, $"missing-{Guid.NewGuid():N}.db");
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false
+        }.ConnectionString;
         var services = new ServiceCollection();
         services.AddAshlarSqlite(connectionString);
         services.AddAshlarSqliteEmailOutboxSender();

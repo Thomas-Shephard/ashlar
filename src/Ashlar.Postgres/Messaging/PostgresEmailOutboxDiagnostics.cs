@@ -13,8 +13,7 @@ internal sealed class PostgresEmailOutboxDiagnostics(
     ILogger<PostgresEmailOutboxDiagnostics>? logger = null) : IEmailOutboxDiagnostics
 {
     private const string ProviderName = "Postgres";
-    private const string MissingTableReason = "Email outbox table has not been initialized.";
-    private const string QueryFailedReason = "Email outbox diagnostics could not query provider state.";
+    private static readonly AshlarEmailOutboxDiagnosticsRunner DiagnosticsRunner = new(ProviderName);
 
     private static readonly Action<ILogger, Exception?> EmailOutboxDiagnosticsFailed =
         LoggerMessage.Define(
@@ -29,36 +28,16 @@ internal sealed class PostgresEmailOutboxDiagnostics(
 
     public async Task<EmailOutboxDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default)
     {
-        var checkedAt = _timeProvider.GetUtcNow();
-
-        try
-        {
-            EmailOutboxDiagnosticResult result;
-            await using (var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken))
-            {
-                var tableExists = await TableExistsAsync(connectionHandle, cancellationToken);
-                if (!tableExists)
-                {
-                    result = CreateResult(AshlarDiagnosticStatus.NotSupported, MissingTableReason, checkedAt);
-                }
-                else
-                {
-                    var snapshot = await QuerySnapshotAsync(connectionHandle, checkedAt, cancellationToken);
-                    result = CreateResult(AshlarDiagnosticStatus.Healthy, null, checkedAt, snapshot);
-                }
-            }
-
-            return result;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            EmailOutboxDiagnosticsFailed(_logger, ex);
-            return CreateResult(AshlarDiagnosticStatus.Unknown, QueryFailedReason, checkedAt);
-        }
+        return await DiagnosticsRunner.CheckAsync(
+            _timeProvider,
+            _connectionProvider.GetConnectionAsync,
+            TableExistsAsync,
+            QuerySnapshotAsync,
+            _options.MaxAttempts,
+            _options.PollingInterval,
+            _options.BatchSize,
+            LogEmailOutboxDiagnosticsFailed,
+            cancellationToken);
     }
 
     private static async Task<bool> TableExistsAsync(PostgresConnectionHandle connectionHandle, CancellationToken cancellationToken)
@@ -74,7 +53,7 @@ internal sealed class PostgresEmailOutboxDiagnostics(
         return count > 0;
     }
 
-    private static async Task<EmailOutboxSnapshot> QuerySnapshotAsync(
+    private static async Task<EmailOutboxDiagnosticSnapshot> QuerySnapshotAsync(
         PostgresConnectionHandle connectionHandle,
         DateTimeOffset now,
         CancellationToken cancellationToken)
@@ -116,42 +95,13 @@ internal sealed class PostgresEmailOutboxDiagnostics(
                     WHERE failed_at IS NOT NULL
                 ) AS OldestFailedAt
             FROM ashlar_email_outbox;
-            """;
+        """;
         var command = new CommandDefinition(sql, new { Now = now }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-        return await connectionHandle.Connection.QuerySingleAsync<EmailOutboxSnapshot>(command);
+        return await connectionHandle.Connection.QuerySingleAsync<EmailOutboxDiagnosticSnapshot>(command);
     }
 
-    private EmailOutboxDiagnosticResult CreateResult(
-        AshlarDiagnosticStatus status,
-        string? reason,
-        DateTimeOffset checkedAt,
-        EmailOutboxSnapshot? snapshot = null)
+    private void LogEmailOutboxDiagnosticsFailed(Exception exception)
     {
-        return new EmailOutboxDiagnosticResult(
-            status,
-            ProviderName,
-            reason,
-            checkedAt,
-            snapshot?.PendingCount,
-            snapshot?.ScheduledCount,
-            snapshot?.LockedCount,
-            snapshot?.ExpiredLockCount,
-            snapshot?.FailedCount,
-            snapshot?.OldestPendingAt,
-            snapshot?.OldestFailedAt,
-            _options.MaxAttempts,
-            _options.PollingInterval,
-            _options.BatchSize);
-    }
-
-    private sealed class EmailOutboxSnapshot
-    {
-        public long PendingCount { get; init; }
-        public long ScheduledCount { get; init; }
-        public long LockedCount { get; init; }
-        public long ExpiredLockCount { get; init; }
-        public long FailedCount { get; init; }
-        public DateTimeOffset? OldestPendingAt { get; init; }
-        public DateTimeOffset? OldestFailedAt { get; init; }
+        EmailOutboxDiagnosticsFailed(_logger, exception);
     }
 }
