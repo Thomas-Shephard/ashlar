@@ -2,16 +2,27 @@ using System.Globalization;
 using System.Reflection;
 using Ashlar.Operational.Diagnostics;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Sqlite.Schema;
 
-internal sealed class SqliteSchemaDiagnostics(SqliteConnectionFactory connectionFactory, TimeProvider timeProvider) : IAshlarSchemaDiagnostics
+internal sealed class SqliteSchemaDiagnostics(
+    SqliteConnectionFactory connectionFactory,
+    TimeProvider timeProvider,
+    ILogger<SqliteSchemaDiagnostics>? logger = null) : IAshlarSchemaDiagnostics
 {
     private const string ProviderName = "Sqlite";
     private static readonly string[] ExpectedMigrationNames = GetExpectedMigrationNames();
+    private static readonly Action<ILogger, Exception?> SchemaDiagnosticsFailed =
+        LoggerMessage.Define(
+            LogLevel.Error,
+            new EventId(1003, nameof(SchemaDiagnosticsFailed)),
+            "SQLite schema diagnostics failed.");
 
     private readonly SqliteConnectionFactory _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+    private readonly ILogger<SqliteSchemaDiagnostics> _logger = logger ?? NullLogger<SqliteSchemaDiagnostics>.Instance;
 
     public async Task<AshlarSchemaDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default)
     {
@@ -37,8 +48,9 @@ internal sealed class SqliteSchemaDiagnostics(SqliteConnectionFactory connection
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
+            SchemaDiagnosticsFailed(_logger, ex);
             return CreateUnknownResult(checkedAt);
         }
 

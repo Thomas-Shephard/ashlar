@@ -1,7 +1,9 @@
 using Ashlar.Operational.Diagnostics;
 using Ashlar.Postgres.Schema;
+using Ashlar.Testing;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Npgsql;
 
@@ -108,7 +110,8 @@ internal sealed class PostgresSchemaDiagnosticsTests : PostgresTestBase
     {
         await using var dataSource = new NpgsqlDataSourceBuilder(GetConnectionString()).Build();
         await dataSource.DisposeAsync();
-        var diagnostics = new PostgresSchemaDiagnostics(dataSource, new FakeTimeProvider(CheckedAt));
+        var logger = new RecordingLogger<PostgresSchemaDiagnostics>();
+        var diagnostics = new PostgresSchemaDiagnostics(dataSource, new FakeTimeProvider(CheckedAt), logger);
 
         var result = await diagnostics.CheckAsync();
 
@@ -122,6 +125,10 @@ internal sealed class PostgresSchemaDiagnosticsTests : PostgresTestBase
             Assert.That(result.CheckedAt, Is.EqualTo(CheckedAt));
             Assert.That(result.ExpectedMigrationCount, Is.EqualTo(1));
             Assert.That(result.ProviderVersion, Is.Null);
+            Assert.That(logger.Entries, Has.Count.EqualTo(1));
+            Assert.That(logger.Entries[0].Level, Is.EqualTo(LogLevel.Error));
+            Assert.That(logger.Entries[0].Message, Is.EqualTo("PostgreSQL schema diagnostics failed."));
+            Assert.That(logger.Entries[0].Exception, Is.Not.Null);
         }
     }
 

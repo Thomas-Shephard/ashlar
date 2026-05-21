@@ -1,18 +1,29 @@
 using System.Globalization;
 using System.Reflection;
 using Ashlar.Operational.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 
 namespace Ashlar.Postgres.Schema;
 
-internal sealed class PostgresSchemaDiagnostics(NpgsqlDataSource dataSource, TimeProvider timeProvider) : IAshlarSchemaDiagnostics
+internal sealed class PostgresSchemaDiagnostics(
+    NpgsqlDataSource dataSource,
+    TimeProvider timeProvider,
+    ILogger<PostgresSchemaDiagnostics>? logger = null) : IAshlarSchemaDiagnostics
 {
     private const string ProviderName = "Postgres";
     private const string MinimumProviderVersion = "150000";
     private static readonly string[] ExpectedMigrationNames = GetExpectedMigrationNames();
+    private static readonly Action<ILogger, Exception?> SchemaDiagnosticsFailed =
+        LoggerMessage.Define(
+            LogLevel.Error,
+            new EventId(1005, nameof(SchemaDiagnosticsFailed)),
+            "PostgreSQL schema diagnostics failed.");
 
     private readonly NpgsqlDataSource _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+    private readonly ILogger<PostgresSchemaDiagnostics> _logger = logger ?? NullLogger<PostgresSchemaDiagnostics>.Instance;
 
     public async Task<AshlarSchemaDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default)
     {
@@ -38,8 +49,9 @@ internal sealed class PostgresSchemaDiagnostics(NpgsqlDataSource dataSource, Tim
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
+            SchemaDiagnosticsFailed(_logger, ex);
             return CreateUnknownResult(checkedAt);
         }
 

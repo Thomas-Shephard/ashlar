@@ -2,6 +2,7 @@ using Ashlar.Operational.Diagnostics;
 using Ashlar.Sqlite.Schema;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Ashlar.Sqlite.Tests.Schema;
@@ -104,7 +105,8 @@ internal sealed class SqliteSchemaDiagnosticsTests : SqliteTestBase
     {
         var databasePath = Path.Combine(GetConnectionString(), "invalid.db");
         var connectionString = new SqliteConnectionStringBuilder { DataSource = databasePath, Pooling = false }.ConnectionString;
-        var diagnostics = new SqliteSchemaDiagnostics(new SqliteConnectionFactory(connectionString), new FakeTimeProvider(CheckedAt));
+        var logger = new RecordingLogger<SqliteSchemaDiagnostics>();
+        var diagnostics = new SqliteSchemaDiagnostics(new SqliteConnectionFactory(connectionString), new FakeTimeProvider(CheckedAt), logger);
 
         var result = await diagnostics.CheckAsync();
 
@@ -118,6 +120,10 @@ internal sealed class SqliteSchemaDiagnosticsTests : SqliteTestBase
             Assert.That(result.CheckedAt, Is.EqualTo(CheckedAt));
             Assert.That(result.ExpectedMigrationCount, Is.EqualTo(1));
             Assert.That(result.ProviderVersion, Is.Null);
+            Assert.That(logger.Entries, Has.Count.EqualTo(1));
+            Assert.That(logger.Entries[0].Level, Is.EqualTo(LogLevel.Error));
+            Assert.That(logger.Entries[0].Message, Is.EqualTo("SQLite schema diagnostics failed."));
+            Assert.That(logger.Entries[0].Exception, Is.Not.Null);
         }
     }
 
@@ -138,4 +144,40 @@ internal sealed class SqliteSchemaDiagnosticsTests : SqliteTestBase
         services.AddAshlarSqlite(GetConnectionString());
         return services.BuildServiceProvider();
     }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public List<LogEntry> Entries { get; } = [];
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull
+        {
+            return NullScope.Instance;
+        }
+
+        public bool IsEnabled(LogLevel logLevel)
+        {
+            return true;
+        }
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Entries.Add(new LogEntry(logLevel, formatter(state, exception), exception));
+        }
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+
+            public void Dispose()
+            {
+            }
+        }
+    }
+
+    private sealed record LogEntry(LogLevel Level, string Message, Exception? Exception);
 }
