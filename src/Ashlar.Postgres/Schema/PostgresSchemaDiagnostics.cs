@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Reflection;
 using Ashlar.Operational.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -14,7 +13,11 @@ internal sealed class PostgresSchemaDiagnostics(
 {
     private const string ProviderName = "Postgres";
     private const string MinimumProviderVersion = "150000";
-    private static readonly string[] ExpectedMigrationNames = GetExpectedMigrationNames();
+    private static readonly AshlarSchemaDiagnosticsRunner DiagnosticsRunner = new(
+        ProviderName,
+        AshlarSchemaDiagnosticsRunner.GetExpectedMigrationNames(typeof(PostgresSchemaDiagnostics).Assembly),
+        MinimumProviderVersion);
+
     private static readonly Action<ILogger, Exception?> SchemaDiagnosticsFailed =
         LoggerMessage.Define(
             LogLevel.Error,
@@ -27,94 +30,14 @@ internal sealed class PostgresSchemaDiagnostics(
 
     public async Task<AshlarSchemaDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default)
     {
-        var checkedAt = _timeProvider.GetUtcNow();
-        AshlarSchemaDiagnosticResult result;
-
-        try
-        {
-            await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-            var providerVersion = await GetProviderVersionAsync(connection, cancellationToken);
-
-            if (await GetSchemaJournalCountAsync(connection, cancellationToken) == 0)
-            {
-                result = CreateNotInitializedResult(checkedAt, providerVersion);
-            }
-            else
-            {
-                var appliedMigrationNames = await GetAppliedMigrationNamesAsync(connection, cancellationToken);
-                result = CreateAppliedResult(checkedAt, providerVersion, appliedMigrationNames);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            SchemaDiagnosticsFailed(_logger, ex);
-            return CreateUnknownResult(checkedAt);
-        }
-
-        return result;
-    }
-
-    private static AshlarSchemaDiagnosticResult CreateNotInitializedResult(DateTimeOffset checkedAt, string? providerVersion)
-    {
-        return new AshlarSchemaDiagnosticResult(
-            AshlarDiagnosticStatus.Unhealthy,
-            ProviderName,
-            "Schema has not been initialized.",
-            checkedAt,
-            AshlarSchemaStatus.NotInitialized,
-            0,
-            ExpectedMigrationNames.Length,
-            ExpectedMigrationNames.Length,
-            null,
-            LatestExpectedMigrationName,
-            MinimumProviderVersion,
-            providerVersion);
-    }
-
-    private static AshlarSchemaDiagnosticResult CreateAppliedResult(
-        DateTimeOffset checkedAt,
-        string? providerVersion,
-        IReadOnlyCollection<string> appliedMigrationNames)
-    {
-        var appliedMigrationNameSet = appliedMigrationNames.ToHashSet(StringComparer.Ordinal);
-        var missingMigrationCount = ExpectedMigrationNames.Count(name => !appliedMigrationNameSet.Contains(name));
-        var schemaStatus = missingMigrationCount == 0 ? AshlarSchemaStatus.Current : AshlarSchemaStatus.PendingMigrations;
-        var status = schemaStatus == AshlarSchemaStatus.Current ? AshlarDiagnosticStatus.Healthy : AshlarDiagnosticStatus.Unhealthy;
-
-        return new AshlarSchemaDiagnosticResult(
-            status,
-            ProviderName,
-            schemaStatus == AshlarSchemaStatus.Current ? null : "Schema has pending migrations.",
-            checkedAt,
-            schemaStatus,
-            appliedMigrationNames.Count,
-            ExpectedMigrationNames.Length,
-            missingMigrationCount,
-            appliedMigrationNames.LastOrDefault(),
-            LatestExpectedMigrationName,
-            MinimumProviderVersion,
-            providerVersion);
-    }
-
-    private static AshlarSchemaDiagnosticResult CreateUnknownResult(DateTimeOffset checkedAt)
-    {
-        return new AshlarSchemaDiagnosticResult(
-            AshlarDiagnosticStatus.Unknown,
-            ProviderName,
-            "Schema diagnostics could not query provider state.",
-            checkedAt,
-            AshlarSchemaStatus.Unknown,
-            null,
-            ExpectedMigrationNames.Length,
-            null,
-            null,
-            LatestExpectedMigrationName,
-            MinimumProviderVersion,
-            null);
+        return await DiagnosticsRunner.CheckAsync(
+            _timeProvider,
+            _dataSource.OpenConnectionAsync,
+            GetProviderVersionAsync,
+            GetSchemaJournalCountAsync,
+            GetAppliedMigrationNamesAsync,
+            LogSchemaDiagnosticsFailed,
+            cancellationToken);
     }
 
     private static async Task<string?> GetProviderVersionAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
@@ -159,14 +82,8 @@ internal sealed class PostgresSchemaDiagnostics(
         return migrationNames;
     }
 
-    private static string? LatestExpectedMigrationName => ExpectedMigrationNames.LastOrDefault();
-
-    private static string[] GetExpectedMigrationNames()
+    private void LogSchemaDiagnosticsFailed(Exception exception)
     {
-        var assembly = Assembly.GetExecutingAssembly();
-        return assembly.GetManifestResourceNames()
-            .Where(name => name.Contains(".Schema.Scripts.", StringComparison.Ordinal) && name.EndsWith(".sql", StringComparison.Ordinal))
-            .Order(StringComparer.Ordinal)
-            .ToArray();
+        SchemaDiagnosticsFailed(_logger, exception);
     }
 }

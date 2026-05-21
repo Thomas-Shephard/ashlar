@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Reflection;
 using Ashlar.Operational.Diagnostics;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
@@ -13,7 +12,11 @@ internal sealed class SqliteSchemaDiagnostics(
     ILogger<SqliteSchemaDiagnostics>? logger = null) : IAshlarSchemaDiagnostics
 {
     private const string ProviderName = "Sqlite";
-    private static readonly string[] ExpectedMigrationNames = GetExpectedMigrationNames();
+    private static readonly AshlarSchemaDiagnosticsRunner DiagnosticsRunner = new(
+        ProviderName,
+        AshlarSchemaDiagnosticsRunner.GetExpectedMigrationNames(typeof(SqliteSchemaDiagnostics).Assembly),
+        null);
+
     private static readonly Action<ILogger, Exception?> SchemaDiagnosticsFailed =
         LoggerMessage.Define(
             LogLevel.Error,
@@ -26,94 +29,14 @@ internal sealed class SqliteSchemaDiagnostics(
 
     public async Task<AshlarSchemaDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default)
     {
-        var checkedAt = _timeProvider.GetUtcNow();
-        AshlarSchemaDiagnosticResult result;
-
-        try
-        {
-            await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
-            var providerVersion = await GetProviderVersionAsync(connection, cancellationToken);
-
-            if (await GetSchemaJournalCountAsync(connection, cancellationToken) == 0)
-            {
-                result = CreateNotInitializedResult(checkedAt, providerVersion);
-            }
-            else
-            {
-                var appliedMigrationNames = await GetAppliedMigrationNamesAsync(connection, cancellationToken);
-                result = CreateAppliedResult(checkedAt, providerVersion, appliedMigrationNames);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            SchemaDiagnosticsFailed(_logger, ex);
-            return CreateUnknownResult(checkedAt);
-        }
-
-        return result;
-    }
-
-    private static AshlarSchemaDiagnosticResult CreateNotInitializedResult(DateTimeOffset checkedAt, string? providerVersion)
-    {
-        return new AshlarSchemaDiagnosticResult(
-            AshlarDiagnosticStatus.Unhealthy,
-            ProviderName,
-            "Schema has not been initialized.",
-            checkedAt,
-            AshlarSchemaStatus.NotInitialized,
-            0,
-            ExpectedMigrationNames.Length,
-            ExpectedMigrationNames.Length,
-            null,
-            LatestExpectedMigrationName,
-            null,
-            providerVersion);
-    }
-
-    private static AshlarSchemaDiagnosticResult CreateAppliedResult(
-        DateTimeOffset checkedAt,
-        string? providerVersion,
-        IReadOnlyCollection<string> appliedMigrationNames)
-    {
-        var appliedMigrationNameSet = appliedMigrationNames.ToHashSet(StringComparer.Ordinal);
-        var missingMigrationCount = ExpectedMigrationNames.Count(name => !appliedMigrationNameSet.Contains(name));
-        var schemaStatus = missingMigrationCount == 0 ? AshlarSchemaStatus.Current : AshlarSchemaStatus.PendingMigrations;
-        var status = schemaStatus == AshlarSchemaStatus.Current ? AshlarDiagnosticStatus.Healthy : AshlarDiagnosticStatus.Unhealthy;
-
-        return new AshlarSchemaDiagnosticResult(
-            status,
-            ProviderName,
-            schemaStatus == AshlarSchemaStatus.Current ? null : "Schema has pending migrations.",
-            checkedAt,
-            schemaStatus,
-            appliedMigrationNames.Count,
-            ExpectedMigrationNames.Length,
-            missingMigrationCount,
-            appliedMigrationNames.LastOrDefault(),
-            LatestExpectedMigrationName,
-            null,
-            providerVersion);
-    }
-
-    private static AshlarSchemaDiagnosticResult CreateUnknownResult(DateTimeOffset checkedAt)
-    {
-        return new AshlarSchemaDiagnosticResult(
-            AshlarDiagnosticStatus.Unknown,
-            ProviderName,
-            "Schema diagnostics could not query provider state.",
-            checkedAt,
-            AshlarSchemaStatus.Unknown,
-            null,
-            ExpectedMigrationNames.Length,
-            null,
-            null,
-            LatestExpectedMigrationName,
-            null,
-            null);
+        return await DiagnosticsRunner.CheckAsync(
+            _timeProvider,
+            _connectionFactory.OpenConnectionAsync,
+            GetProviderVersionAsync,
+            GetSchemaJournalCountAsync,
+            GetAppliedMigrationNamesAsync,
+            LogSchemaDiagnosticsFailed,
+            cancellationToken);
     }
 
     private static async Task<string?> GetProviderVersionAsync(SqliteConnection connection, CancellationToken cancellationToken)
@@ -157,14 +80,8 @@ internal sealed class SqliteSchemaDiagnostics(
         return migrationNames;
     }
 
-    private static string? LatestExpectedMigrationName => ExpectedMigrationNames.LastOrDefault();
-
-    private static string[] GetExpectedMigrationNames()
+    private void LogSchemaDiagnosticsFailed(Exception exception)
     {
-        var assembly = Assembly.GetExecutingAssembly();
-        return assembly.GetManifestResourceNames()
-            .Where(name => name.Contains(".Schema.Scripts.", StringComparison.Ordinal) && name.EndsWith(".sql", StringComparison.Ordinal))
-            .Order(StringComparer.Ordinal)
-            .ToArray();
+        SchemaDiagnosticsFailed(_logger, exception);
     }
 }
