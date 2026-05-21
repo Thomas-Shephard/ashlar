@@ -4,6 +4,7 @@ using Ashlar.Operational;
 using Ashlar.Operational.Diagnostics;
 using Ashlar.Sqlite.Schema;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Ashlar.Sqlite.Tests.DependencyInjection;
 
@@ -34,8 +35,46 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantRepository>(), Is.TypeOf<SqliteAuthorizationGrantRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiter>(), Is.TypeOf<SqliteAuthenticationRateLimiter>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarCleanupService>(), Is.TypeOf<SqliteAshlarCleanupService>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarCleanupDiagnostics>(), Is.TypeOf<SqliteAshlarCleanupDiagnostics>());
             Assert.That(provider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SqliteSecurityEventSink>());
             Assert.That(provider.GetRequiredService<IUserSecurityEventSummaryRepository>(), Is.SameAs(provider.GetRequiredService<ISecurityEventSink>()));
+        }
+    }
+
+    [Test]
+    public async Task AddAshlarSqliteRegistersCleanupDiagnostics()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarSqlite(GetConnectionString());
+
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var result = await scope.ServiceProvider.GetRequiredService<IAshlarCleanupDiagnostics>().CheckAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Healthy));
+            Assert.That(result.ProviderName, Is.EqualTo("Sqlite"));
+            Assert.That(result.Configured, Is.True);
+            Assert.That(result.OptionsValid, Is.True);
+            Assert.That(result.CleanupInterval, Is.EqualTo(TimeSpan.FromHours(1)));
+            Assert.That(result.BatchSize, Is.EqualTo(500));
+            Assert.That(result.MaxBatchesPerRun, Is.EqualTo(10));
+            Assert.That(result.EnabledCategoryCount, Is.EqualTo(17));
+            Assert.That(result.DisabledCategoryCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void SqliteAshlarCleanupDiagnosticsRejectsNullArguments()
+    {
+        var options = Options.Create(new AshlarCleanupOptions());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentNullException>(() => _ = new SqliteAshlarCleanupDiagnostics(null!, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => _ = new SqliteAshlarCleanupDiagnostics(options, null!));
         }
     }
 

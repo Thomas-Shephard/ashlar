@@ -228,6 +228,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         }
 
         services.TryAddSingleton(TimeProvider.System);
+        services.TryAddScoped<IAshlarCleanupDiagnostics, PostgresAshlarCleanupDiagnostics>();
         services.TryAddScoped<IAshlarCleanupService, PostgresAshlarCleanupService>();
 
         return services;
