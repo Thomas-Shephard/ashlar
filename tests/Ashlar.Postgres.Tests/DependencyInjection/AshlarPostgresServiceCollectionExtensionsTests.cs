@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Ashlar.Operational;
+using Ashlar.Operational.Diagnostics;
 using Ashlar.Postgres.Schema;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -21,6 +22,8 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.GetService<NpgsqlDataSource>(), Is.Not.Null);
+            Assert.That(provider.GetService<TimeProvider>(), Is.Not.Null);
+            Assert.That(provider.GetService<IAshlarSchemaDiagnostics>(), Is.TypeOf<PostgresSchemaDiagnostics>());
             Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IIdentityRepository>(), Is.TypeOf<PostgresIdentityRepository>());
             Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IAuthenticationSessionRepository>(), Is.TypeOf<PostgresAuthenticationSessionRepository>());
             Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IAuthenticationHandshakeRepository>(), Is.TypeOf<PostgresAuthenticationHandshakeRepository>());

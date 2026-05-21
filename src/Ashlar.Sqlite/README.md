@@ -34,6 +34,27 @@ await serviceProvider.InitializeAshlarSqliteSchemaAsync();
 
 The initializer applies embedded SQLite scripts idempotently and records applied scripts in `ashlar_schema_versions`.
 
+## Schema Diagnostics
+
+`AddAshlarSqlite(...)` registers `IAshlarSchemaDiagnostics` for operational monitoring. Resolve it from DI and call `CheckAsync()` to inspect whether the embedded Ashlar schema scripts have been applied:
+
+```csharp
+using Ashlar.Operational.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+
+var diagnostics = serviceProvider.GetRequiredService<IAshlarSchemaDiagnostics>();
+var result = await diagnostics.CheckAsync();
+```
+
+The result reports provider name, SQLite library version, expected/applied/missing migration counts, latest expected/applied migration names, and `CheckedAt`.
+
+Schema diagnostics return:
+
+- `Healthy` with `SchemaStatus.Current` when all embedded scripts are applied.
+- `Unhealthy` with `SchemaStatus.NotInitialized` when the schema journal table is missing.
+- `Unhealthy` with `SchemaStatus.PendingMigrations` when the journal exists but not all embedded scripts are recorded.
+- `Unknown` with `SchemaStatus.Unknown` when provider state cannot be queried. The reason string is intentionally generic and safe for logs or health responses.
+
 Register SQLite email outbox enqueue support when application code should persist email messages instead of delivering them inline:
 
 ```csharp
@@ -83,6 +104,7 @@ Implemented:
 - `IEmailOutboxDispatcher` via `AddAshlarSqliteEmailOutboxDispatcher<TTransport>(...)`
 - `SqliteEmailOutboxHostedService<TTransport>` via `AddAshlarSqliteEmailOutboxHostedService<TTransport>(...)`
 - `IAshlarCleanupService`
+- `IAshlarSchemaDiagnostics`
 
 Not implemented yet:
 

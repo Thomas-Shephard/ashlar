@@ -58,6 +58,27 @@ This will create the following tables:
 
 The schema enforces tenant-scoped user email uniqueness, unique token hashes for sessions, invitations, and MFA handshakes, singleton bootstrap state, and mutually exclusive terminal states for invitations and email outbox rows.
 
+## Schema Diagnostics
+
+`AddAshlarPostgres(...)` registers `IAshlarSchemaDiagnostics` for operational monitoring. Resolve it from DI and call `CheckAsync()` to inspect whether the embedded Ashlar schema scripts have been applied:
+
+```csharp
+using Ashlar.Operational.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+
+var diagnostics = serviceProvider.GetRequiredService<IAshlarSchemaDiagnostics>();
+var result = await diagnostics.CheckAsync();
+```
+
+The result reports provider name, PostgreSQL server version, required provider version, expected/applied/missing migration counts, latest expected/applied migration names, and `CheckedAt`.
+
+Schema diagnostics return:
+
+- `Healthy` with `SchemaStatus.Current` when all embedded scripts are applied.
+- `Unhealthy` with `SchemaStatus.NotInitialized` when the schema journal table is missing.
+- `Unhealthy` with `SchemaStatus.PendingMigrations` when the journal exists but not all embedded scripts are recorded.
+- `Unknown` with `SchemaStatus.Unknown` when provider state cannot be queried. The reason string is intentionally generic and safe for logs or health responses.
+
 ## Features
 
 - **Bootstrap Persistence**: Durable storage for system initialization status using `PostgresBootstrapStateRepository`.

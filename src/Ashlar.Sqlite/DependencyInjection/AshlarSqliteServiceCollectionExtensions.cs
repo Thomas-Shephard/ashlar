@@ -3,6 +3,7 @@ using Ashlar.Authorization.Abstractions;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
 using Ashlar.Operational;
+using Ashlar.Operational.Diagnostics;
 using Ashlar.Sqlite.Schema;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -48,6 +49,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.TryAddSingleton<SqliteSecurityEventSink>();
         services.Replace(ServiceDescriptor.Singleton<ISecurityEventSink>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
         services.Replace(ServiceDescriptor.Singleton<IUserSecurityEventSummaryRepository>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
+        services.TryAddScoped<IAshlarSchemaDiagnostics, SqliteSchemaDiagnostics>();
         services.TryAddTransient<SqliteSchemaManager>();
 
         return services;

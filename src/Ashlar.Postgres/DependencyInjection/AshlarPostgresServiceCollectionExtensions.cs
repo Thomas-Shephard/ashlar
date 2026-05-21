@@ -3,6 +3,7 @@ using Ashlar.Authorization.Abstractions;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
 using Ashlar.Operational;
+using Ashlar.Operational.Diagnostics;
 using Ashlar.Postgres.Schema;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -64,6 +65,8 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.TryAddScoped<IPasskeyChallengeRepository, PostgresPasskeyChallengeRepository>();
         services.TryAddScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
         services.TryAddScoped<IBootstrapStateRepository, PostgresBootstrapStateRepository>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddScoped<IAshlarSchemaDiagnostics, PostgresSchemaDiagnostics>();
         services.TryAddTransient<SchemaManager>();
 
         return services;
