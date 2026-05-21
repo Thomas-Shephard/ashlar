@@ -55,6 +55,28 @@ Schema diagnostics return:
 - `Unhealthy` with `SchemaStatus.PendingMigrations` when the journal exists but not all embedded scripts are recorded.
 - `Unknown` with `SchemaStatus.Unknown` when provider state cannot be queried. The reason string is intentionally generic and safe for logs or health responses.
 
+## Cleanup Diagnostics
+
+`AddAshlarSqlite(...)` registers `IAshlarCleanupDiagnostics`. Resolve it from DI and call `CheckAsync()` to inspect safe cleanup configuration facts:
+
+```csharp
+using Ashlar.Operational.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+
+var diagnostics = serviceProvider.GetRequiredService<IAshlarCleanupDiagnostics>();
+var result = await diagnostics.CheckAsync();
+```
+
+The result reports provider name, `CheckedAt`, whether cleanup is configured, whether `AshlarCleanupOptions` are valid, cleanup interval, batch size, max batches per run, and enabled/disabled cleanup category counts.
+
+Cleanup diagnostics return:
+
+- `Healthy` when cleanup is configured and cleanup options are valid.
+- `Unhealthy` when cleanup is configured but cleanup options are invalid.
+- `NotSupported` when cleanup services/options are not configured.
+
+Cleanup diagnostics do not query provider tables, track last run state, or expose SQL predicates, table names, or sensitive data.
+
 Register SQLite email outbox enqueue support when application code should persist email messages instead of delivering them inline:
 
 ```csharp
@@ -105,6 +127,7 @@ Implemented:
 - `SqliteEmailOutboxHostedService<TTransport>` via `AddAshlarSqliteEmailOutboxHostedService<TTransport>(...)`
 - `IAshlarCleanupService`
 - `IAshlarSchemaDiagnostics`
+- `IAshlarCleanupDiagnostics`
 
 Not implemented yet:
 

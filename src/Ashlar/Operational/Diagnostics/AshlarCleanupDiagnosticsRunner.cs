@@ -41,7 +41,7 @@ public sealed class AshlarCleanupDiagnosticsRunner(string providerName)
         }
 
         var optionsValid = AshlarCleanupOptions.Validate(options);
-        var counts = AshlarCleanupPlan.CountCategories(options);
+        var (enabledCategoryCount, disabledCategoryCount) = AshlarCleanupPlan.CountCategories(options);
 
         return new AshlarCleanupDiagnosticResult(
             optionsValid ? AshlarDiagnosticStatus.Healthy : AshlarDiagnosticStatus.Unhealthy,
@@ -53,7 +53,7 @@ public sealed class AshlarCleanupDiagnosticsRunner(string providerName)
             options.CleanupInterval,
             options.BatchSize,
             options.MaxBatchesPerRun,
-            counts.DisabledCategoryCount,
-            counts.EnabledCategoryCount);
+            disabledCategoryCount,
+            enabledCategoryCount);
     }
 }
