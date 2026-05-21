@@ -91,6 +91,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         }
 
         services.TryAddSingleton(TimeProvider.System);
+        services.Replace(ServiceDescriptor.Scoped<IEmailOutboxDiagnostics, SqliteEmailOutboxDiagnostics>());
         services.Replace(ServiceDescriptor.Scoped<IEmailSender, SqliteEmailOutboxSender>());
 
         return services;

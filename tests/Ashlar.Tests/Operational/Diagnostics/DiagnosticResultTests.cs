@@ -83,6 +83,48 @@ internal sealed class DiagnosticResultTests
     }
 
     [Test]
+    public void EmailOutboxDiagnosticSnapshotCanBeConstructedWithExpectedValues()
+    {
+        var oldestPendingAt = new DateTimeOffset(2026, 5, 20, 11, 50, 0, TimeSpan.Zero);
+        var oldestFailedAt = new DateTimeOffset(2026, 5, 20, 11, 0, 0, TimeSpan.Zero);
+
+        var snapshot = new EmailOutboxDiagnosticSnapshot
+        {
+            PendingCount = 10,
+            ScheduledCount = 3,
+            LockedCount = 2,
+            ExpiredLockCount = 1,
+            FailedCount = 5,
+            OldestPendingAt = oldestPendingAt,
+            OldestFailedAt = oldestFailedAt
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.PendingCount, Is.EqualTo(10));
+            Assert.That(snapshot.ScheduledCount, Is.EqualTo(3));
+            Assert.That(snapshot.LockedCount, Is.EqualTo(2));
+            Assert.That(snapshot.ExpiredLockCount, Is.EqualTo(1));
+            Assert.That(snapshot.FailedCount, Is.EqualTo(5));
+            Assert.That(snapshot.OldestPendingAt, Is.EqualTo(oldestPendingAt));
+            Assert.That(snapshot.OldestFailedAt, Is.EqualTo(oldestFailedAt));
+        }
+    }
+
+    [Test]
+    public void EmailOutboxDiagnosticOptionsCanBeConstructedWithExpectedValues()
+    {
+        var options = new EmailOutboxDiagnosticOptions(8, TimeSpan.FromSeconds(15), 25);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.MaxAttempts, Is.EqualTo(8));
+            Assert.That(options.PollingInterval, Is.EqualTo(TimeSpan.FromSeconds(15)));
+            Assert.That(options.BatchSize, Is.EqualTo(25));
+        }
+    }
+
+    [Test]
     public void AshlarCleanupDiagnosticResultCanBeConstructedWithExpectedValues()
     {
         var checkedAt = new DateTimeOffset(2026, 5, 20, 12, 0, 0, TimeSpan.Zero);

@@ -289,6 +289,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         }
 
         services.TryAddSingleton(TimeProvider.System);
+        services.Replace(ServiceDescriptor.Scoped<IEmailOutboxDiagnostics, PostgresEmailOutboxDiagnostics>());
         services.Replace(ServiceDescriptor.Scoped<IEmailSender, PostgresEmailOutboxSender>());
 
         return services;
