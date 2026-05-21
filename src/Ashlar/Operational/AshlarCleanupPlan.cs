@@ -127,6 +127,19 @@ public static class AshlarCleanupPlan
     }
 
     /// <summary>
+    /// Counts enabled and disabled cleanup categories for the provided options.
+    /// </summary>
+    /// <param name="options">The cleanup options.</param>
+    /// <returns>The enabled and disabled cleanup category counts.</returns>
+    public static (int EnabledCategoryCount, int DisabledCategoryCount) CountCategories(AshlarCleanupOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var enabled = CategoryDefinitions.Count(category => category.Retention(options) != null);
+        return (enabled, CategoryDefinitions.Length - enabled);
+    }
+
+    /// <summary>
     /// Renders a provider-neutral predicate template for a database provider.
     /// </summary>
     /// <param name="template">The predicate template.</param>

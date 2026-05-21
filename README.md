@@ -918,6 +918,18 @@ services.AddAshlarPostgresCleanupHostedService(options =>
 
 Cleanup uses bounded batches and the application's `TimeProvider`, so repeated or concurrent runs are safe and deterministic in tests. `MaxBatchesPerRun` lets one cleanup run catch up on backlog without making the run unbounded.
 
+Cleanup diagnostics are available through `IAshlarCleanupDiagnostics` when provider cleanup is registered:
+
+```csharp
+using Ashlar.Operational.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+
+var diagnostics = serviceProvider.GetRequiredService<IAshlarCleanupDiagnostics>();
+var result = await diagnostics.CheckAsync(cancellationToken);
+```
+
+The result reports provider name, `CheckedAt`, whether cleanup is configured, whether `AshlarCleanupOptions` are valid, cleanup interval, batch size, max batches per run, and enabled/disabled cleanup category counts. It returns `Healthy` when configured options are valid, `Unhealthy` when configured options are invalid, and `NotSupported` when cleanup diagnostics cannot read configured cleanup options. The result does not query cleanup tables or expose provider internals.
+
 ## Transactions
 Ashlar supports scoped database transactions through the `IAshlarTransactionProvider` abstraction. This allows multiple repository operations within a single service scope to participate in a shared unit of work.
 

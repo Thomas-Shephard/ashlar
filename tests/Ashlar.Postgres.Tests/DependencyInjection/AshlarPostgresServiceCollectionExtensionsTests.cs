@@ -4,6 +4,7 @@ using Ashlar.Operational.Diagnostics;
 using Ashlar.Postgres.Schema;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Npgsql;
 
 namespace Ashlar.Postgres.Tests.DependencyInjection;
@@ -69,7 +70,53 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarCleanupService>(), Is.TypeOf<PostgresAshlarCleanupService>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarCleanupDiagnostics>(), Is.TypeOf<PostgresAshlarCleanupDiagnostics>());
             Assert.That(provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AshlarCleanupOptions>>().Value.BatchSize, Is.EqualTo(42));
+        }
+    }
+
+    [Test]
+    public async Task AddAshlarPostgresCleanupRegistersCleanupDiagnostics()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarPostgres(GetDataSource());
+        services.AddAshlarPostgresCleanup(options =>
+        {
+            options.CleanupInterval = TimeSpan.FromMinutes(30);
+            options.BatchSize = 42;
+            options.MaxBatchesPerRun = 2;
+            options.RemoveAuditEventsAfter = TimeSpan.FromDays(1);
+            options.RemoveFailedEmailsAfter = null;
+        });
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var result = await scope.ServiceProvider.GetRequiredService<IAshlarCleanupDiagnostics>().CheckAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Healthy));
+            Assert.That(result.ProviderName, Is.EqualTo("Postgres"));
+            Assert.That(result.Configured, Is.True);
+            Assert.That(result.OptionsValid, Is.True);
+            Assert.That(result.CleanupInterval, Is.EqualTo(TimeSpan.FromMinutes(30)));
+            Assert.That(result.BatchSize, Is.EqualTo(42));
+            Assert.That(result.MaxBatchesPerRun, Is.EqualTo(2));
+            Assert.That(result.EnabledCategoryCount, Is.EqualTo(17));
+            Assert.That(result.DisabledCategoryCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void PostgresAshlarCleanupDiagnosticsRejectsNullArguments()
+    {
+        var options = Options.Create(new AshlarCleanupOptions());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresAshlarCleanupDiagnostics(null!, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresAshlarCleanupDiagnostics(options, null!));
         }
     }
 

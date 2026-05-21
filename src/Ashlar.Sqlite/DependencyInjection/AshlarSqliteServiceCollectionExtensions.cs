@@ -45,6 +45,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiter, SqliteAuthenticationRateLimiter>());
         services.AddOptions<AshlarCleanupOptions>().Validate(AshlarCleanupOptions.Validate);
         services.TryAddSingleton(TimeProvider.System);
+        services.TryAddScoped<IAshlarCleanupDiagnostics, SqliteAshlarCleanupDiagnostics>();
         services.TryAddScoped<IAshlarCleanupService, SqliteAshlarCleanupService>();
         services.TryAddSingleton<SqliteSecurityEventSink>();
         services.Replace(ServiceDescriptor.Singleton<ISecurityEventSink>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
