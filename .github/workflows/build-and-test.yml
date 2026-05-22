@@ -7,6 +7,7 @@ on:
     branches: [ main ]
 
 env:
+  BUILD_MAX_CPU_COUNT: 1
   CONFIGURATION: Release
   COVERAGE_DIR: ./coverage
   PACKAGE_OUTPUT_PATH: ./nupkg
@@ -63,7 +64,7 @@ jobs:
           dotnet sonarscanner "${args[@]}"
       - name: Build
         run: |
-          args=("$SOLUTION_PATH" --configuration "$CONFIGURATION" --no-restore)
+          args=("$SOLUTION_PATH" --configuration "$CONFIGURATION" --no-restore "-maxCpuCount:$BUILD_MAX_CPU_COUNT")
 
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             args+=(--framework "$PR_TARGET_FRAMEWORK")
