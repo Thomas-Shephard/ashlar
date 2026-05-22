@@ -6,9 +6,16 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  CONFIGURATION: Release
+  COVERAGE_DIR: ./coverage
+  PACKAGE_OUTPUT_PATH: ./nupkg
+  PR_TARGET_FRAMEWORK: net10.0
+  SOLUTION_PATH: Ashlar.slnx
+
 jobs:
   build-and-test:
-    name: Build and Test
+    name: ${{ github.event_name == 'pull_request' && 'Build and Test (Fast Validation)' || 'Build and Test (Full Validation)' }}
     runs-on: ubuntu-latest
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -37,38 +44,70 @@ jobs:
       - name: Restore Tools
         run: dotnet tool restore
       - name: Restore Dependencies
-        run: dotnet restore Ashlar.slnx
+        run: dotnet restore "$SOLUTION_PATH"
       - name: Run SonarScanner Begin
         if: env.SONAR_TOKEN != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >
-          dotnet sonarscanner begin
-          /k:"${{ vars.SONAR_PROJECT_KEY }}"
-          /o:"${{ vars.SONAR_ORGANIZATION }}"
-          /d:sonar.host.url="${{ vars.SONAR_HOST_URL }}"
-          /d:sonar.cs.opencover.reportsPaths="coverage/**/coverage.opencover.xml"
-          /d:sonar.plsql.file.suffixes=".pls,.plb,.pks,.pkb,.pck"
-          /d:sonar.qualitygate.wait=true
+        run: |
+          args=(
+            begin
+            "/k:${{ vars.SONAR_PROJECT_KEY }}"
+            "/o:${{ vars.SONAR_ORGANIZATION }}"
+            "/d:sonar.host.url=${{ vars.SONAR_HOST_URL }}"
+            "/d:sonar.cs.opencover.reportsPaths=${COVERAGE_DIR}/**/coverage.opencover.xml"
+            "/d:sonar.plsql.file.suffixes=.pls,.plb,.pks,.pkb,.pck"
+            "/d:sonar.qualitygate.wait=true"
+          )
+
+          dotnet sonarscanner "${args[@]}"
       - name: Build
-        run: dotnet build Ashlar.slnx --configuration Release --no-restore
+        run: |
+          args=("$SOLUTION_PATH" --configuration "$CONFIGURATION" --no-restore)
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            args+=(--framework "$PR_TARGET_FRAMEWORK")
+          fi
+
+          dotnet build "${args[@]}"
       - name: Test
-        run: dotnet test Ashlar.slnx --configuration Release --no-build --no-restore --settings .runsettings --results-directory ./coverage
+        run: |
+          args=(
+            "$SOLUTION_PATH"
+            --configuration "$CONFIGURATION"
+            --no-build
+            --no-restore
+            --settings .runsettings
+            --results-directory "$COVERAGE_DIR"
+          )
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            args+=(--framework "$PR_TARGET_FRAMEWORK")
+          fi
+
+          dotnet test "${args[@]}"
       - name: Run SonarScanner End
         if: env.SONAR_TOKEN != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: dotnet sonarscanner end
       - name: Check Coverage
-        run: dotnet coveragechecker --format Cobertura --glob-patterns 'coverage/**/coverage.cobertura.xml' --line-threshold 100 --branch-threshold 100
+        run: dotnet coveragechecker --format Cobertura --glob-patterns "${COVERAGE_DIR}/**/coverage.cobertura.xml" --line-threshold 100 --branch-threshold 100
       - name: Pack
-        run: dotnet pack Ashlar.slnx --configuration Release --no-build --no-restore --output ./nupkg
+        run: |
+          args=("$SOLUTION_PATH" --configuration "$CONFIGURATION" --no-restore --output "$PACKAGE_OUTPUT_PATH")
+
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            args+=(--no-build)
+          fi
+
+          dotnet pack "${args[@]}"
       - name: Package Consumption Smoke Test
         shell: pwsh
-        run: ./eng/package-consumption-smoke.ps1 -Configuration Release -PackageOutputPath ./nupkg -SkipPack
+        run: ./eng/package-consumption-smoke.ps1 -Configuration $env:CONFIGURATION -PackageOutputPath $env:PACKAGE_OUTPUT_PATH -SkipPack
       - name: Upload NuGet Packages
         uses: actions/upload-artifact@v7
         with:
           name: nuget-packages
-          path: ./nupkg/*.nupkg
+          path: ${{ env.PACKAGE_OUTPUT_PATH }}/*.nupkg
           compression-level: 0
