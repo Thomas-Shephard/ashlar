@@ -43,6 +43,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.TryAddScoped<IPasskeyChallengeRepository, SqlitePasskeyChallengeRepository>();
         services.TryAddScoped<IAuthorizationGrantRepository, SqliteAuthorizationGrantRepository>();
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiter, SqliteAuthenticationRateLimiter>());
+        services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiterDiagnostics, SqliteAuthenticationRateLimiterDiagnostics>());
         services.AddOptions<AshlarCleanupOptions>().Validate(AshlarCleanupOptions.Validate);
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarCleanupDiagnostics, SqliteAshlarCleanupDiagnostics>();
