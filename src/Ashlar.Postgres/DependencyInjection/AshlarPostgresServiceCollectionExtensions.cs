@@ -203,6 +203,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         }
 
         services.Replace(ServiceDescriptor.Singleton<IAuthenticationRateLimiter, PostgresAuthenticationRateLimiter>());
+        services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiterDiagnostics, PostgresAuthenticationRateLimiterDiagnostics>());
 
         return services;
     }

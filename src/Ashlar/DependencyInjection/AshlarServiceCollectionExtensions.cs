@@ -12,6 +12,7 @@ using Ashlar.Identity.Providers.Totp;
 using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
+using Ashlar.Operational.Diagnostics;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 using Ashlar.Security.Tokens;
@@ -112,7 +113,19 @@ public static class AshlarServiceCollectionExtensions
         services.TryAddSingleton<ISecureTokenHasher, Sha256TokenHasher>();
         services.TryAddSingleton<SecureTokenContext>();
         services.TryAddSingleton<ISecurityEventSink, NullSecurityEventSink>();
-        services.TryAddSingleton<IAuthenticationRateLimiter, InMemoryAuthenticationRateLimiter>();
+        services.TryAddSingleton<InMemoryAuthenticationRateLimiter>();
+        services.TryAddSingleton<IAuthenticationRateLimiter>(provider => provider.GetRequiredService<InMemoryAuthenticationRateLimiter>());
+        services.TryAddScoped<IAuthenticationRateLimiterDiagnostics>(provider =>
+        {
+            var rateLimiter = provider.GetRequiredService<IAuthenticationRateLimiter>();
+            var timeProvider = provider.GetRequiredService<TimeProvider>();
+            if (rateLimiter is InMemoryAuthenticationRateLimiter inMemoryRateLimiter)
+            {
+                return new InMemoryAuthenticationRateLimiterDiagnostics(inMemoryRateLimiter, timeProvider);
+            }
+
+            return new NotSupportedAuthenticationRateLimiterDiagnostics(rateLimiter.GetType().Name, timeProvider);
+        });
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<IdentityServiceOptions>>().Value);
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<AuthenticationSessionOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
