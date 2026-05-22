@@ -7,7 +7,6 @@ on:
     branches: [ main ]
 
 env:
-  BUILD_MAX_CPU_COUNT: 1
   CONFIGURATION: Release
   COVERAGE_DIR: ./coverage
   PACKAGE_OUTPUT_PATH: ./nupkg
@@ -64,7 +63,7 @@ jobs:
           dotnet sonarscanner "${args[@]}"
       - name: Build
         run: |
-          args=("$SOLUTION_PATH" --configuration "$CONFIGURATION" --no-restore "-maxCpuCount:$BUILD_MAX_CPU_COUNT")
+          args=("$SOLUTION_PATH" --configuration "$CONFIGURATION" --no-restore)
 
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             args+=(--framework "$PR_TARGET_FRAMEWORK")
@@ -95,7 +94,14 @@ jobs:
       - name: Check Coverage
         run: dotnet coveragechecker --format Cobertura --glob-patterns "${COVERAGE_DIR}/**/coverage.cobertura.xml" --line-threshold 100 --branch-threshold 100
       - name: Pack
-        run: dotnet pack "$SOLUTION_PATH" --configuration "$CONFIGURATION" --no-build --no-restore --output "$PACKAGE_OUTPUT_PATH"
+        run: |
+          args=("$SOLUTION_PATH" --configuration "$CONFIGURATION" --no-restore --output "$PACKAGE_OUTPUT_PATH")
+
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            args+=(--no-build)
+          fi
+
+          dotnet pack "${args[@]}"
       - name: Package Consumption Smoke Test
         shell: pwsh
         run: ./eng/package-consumption-smoke.ps1 -Configuration $env:CONFIGURATION -PackageOutputPath $env:PACKAGE_OUTPUT_PATH -SkipPack
