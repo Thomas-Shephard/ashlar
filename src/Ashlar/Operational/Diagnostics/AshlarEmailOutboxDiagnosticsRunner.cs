@@ -33,33 +33,16 @@ public sealed class AshlarEmailOutboxDiagnosticsRunner(string providerName)
         ArgumentNullException.ThrowIfNull(context.LogException);
         ArgumentNullException.ThrowIfNull(options);
 
-        var checkedAt = timeProvider.GetUtcNow();
-        EmailOutboxDiagnosticResult result;
-
-        try
-        {
-            await using var connection = await context.OpenConnectionAsync(cancellationToken);
-            if (!await context.TableExistsAsync(connection, cancellationToken))
-            {
-                result = CreateResult(AshlarDiagnosticStatus.NotSupported, MissingTableReason, checkedAt, options);
-            }
-            else
-            {
-                var snapshot = await context.QuerySnapshotAsync(connection, checkedAt, cancellationToken);
-                result = CreateResult(AshlarDiagnosticStatus.Healthy, null, checkedAt, options, snapshot);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            context.LogException(ex);
-            return CreateResult(AshlarDiagnosticStatus.Unknown, UnknownReason, checkedAt, options);
-        }
-
-        return result;
+        return await DiagnosticsQueryRunner.CheckAsync(
+            timeProvider,
+            context.OpenConnectionAsync,
+            context.TableExistsAsync,
+            context.QuerySnapshotAsync,
+            context.LogException,
+            (status, reason, checkedAt, snapshot) => CreateResult(status, reason, checkedAt, options, snapshot),
+            MissingTableReason,
+            UnknownReason,
+            cancellationToken);
     }
 
     private EmailOutboxDiagnosticResult CreateResult(
