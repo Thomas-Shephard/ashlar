@@ -35,16 +35,16 @@ public sealed class AshlarEmailOutboxDiagnosticsRunner(string providerName)
 
         return await DiagnosticsQueryRunner.CheckAsync(
             timeProvider,
-            new DiagnosticsQueryContext<TConnection, EmailOutboxDiagnosticSnapshot, EmailOutboxDiagnosticResult>
+            new DiagnosticsQueryContext<TConnection, EmailOutboxDiagnosticSnapshot>
             {
                 OpenConnectionAsync = context.OpenConnectionAsync,
                 TableExistsAsync = context.TableExistsAsync,
                 QuerySnapshotAsync = context.QuerySnapshotAsync,
                 LogException = context.LogException,
-                CreateResult = (status, reason, checkedAt, snapshot) => CreateResult(status, reason, checkedAt, options, snapshot),
                 MissingTableReason = MissingTableReason,
                 UnknownReason = UnknownReason
             },
+            (status, reason, checkedAt, snapshot) => CreateResult(status, reason, checkedAt, options, snapshot),
             cancellationToken);
     }
 

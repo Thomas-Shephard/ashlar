@@ -4,12 +4,14 @@ internal static class DiagnosticsQueryRunner
 {
     public static async Task<TResult> CheckAsync<TConnection, TSnapshot, TResult>(
         TimeProvider timeProvider,
-        DiagnosticsQueryContext<TConnection, TSnapshot, TResult> context,
+        DiagnosticsQueryContext<TConnection, TSnapshot> context,
+        Func<AshlarDiagnosticStatus, string?, DateTimeOffset, TSnapshot?, TResult> createResult,
         CancellationToken cancellationToken)
         where TConnection : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(createResult);
 
         var checkedAt = timeProvider.GetUtcNow();
         TResult result;
@@ -19,12 +21,12 @@ internal static class DiagnosticsQueryRunner
             await using var connection = await context.OpenConnectionAsync(cancellationToken);
             if (!await context.TableExistsAsync(connection, cancellationToken))
             {
-                result = context.CreateResult(AshlarDiagnosticStatus.NotSupported, context.MissingTableReason, checkedAt, default);
+                result = createResult(AshlarDiagnosticStatus.NotSupported, context.MissingTableReason, checkedAt, default);
             }
             else
             {
                 var snapshot = await context.QuerySnapshotAsync(connection, checkedAt, cancellationToken);
-                result = context.CreateResult(AshlarDiagnosticStatus.Healthy, null, checkedAt, snapshot);
+                result = createResult(AshlarDiagnosticStatus.Healthy, null, checkedAt, snapshot);
             }
         }
         catch (OperationCanceledException)
@@ -34,7 +36,7 @@ internal static class DiagnosticsQueryRunner
         catch (Exception ex)
         {
             context.LogException(ex);
-            return context.CreateResult(AshlarDiagnosticStatus.Unknown, context.UnknownReason, checkedAt, default);
+            return createResult(AshlarDiagnosticStatus.Unknown, context.UnknownReason, checkedAt, default);
         }
 
         return result;
