@@ -15,17 +15,20 @@ internal static class DiagnosticsQueryRunner
         where TConnection : IAsyncDisposable
     {
         var checkedAt = timeProvider.GetUtcNow();
+        TResult result;
 
         try
         {
             await using var connection = await openConnectionAsync(cancellationToken);
             if (!await tableExistsAsync(connection, cancellationToken))
             {
-                return createResult(AshlarDiagnosticStatus.NotSupported, missingTableReason, checkedAt, default);
+                result = createResult(AshlarDiagnosticStatus.NotSupported, missingTableReason, checkedAt, default);
             }
-
-            var snapshot = await querySnapshotAsync(connection, checkedAt, cancellationToken);
-            return createResult(AshlarDiagnosticStatus.Healthy, null, checkedAt, snapshot);
+            else
+            {
+                var snapshot = await querySnapshotAsync(connection, checkedAt, cancellationToken);
+                result = createResult(AshlarDiagnosticStatus.Healthy, null, checkedAt, snapshot);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -36,5 +39,7 @@ internal static class DiagnosticsQueryRunner
             logException(ex);
             return createResult(AshlarDiagnosticStatus.Unknown, unknownReason, checkedAt, default);
         }
+
+        return result;
     }
 }
