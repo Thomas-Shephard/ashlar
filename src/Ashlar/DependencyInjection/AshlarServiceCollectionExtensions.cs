@@ -115,7 +115,7 @@ public static class AshlarServiceCollectionExtensions
         services.TryAddSingleton<ISecurityEventSink, NullSecurityEventSink>();
         services.TryAddSingleton<InMemoryAuthenticationRateLimiter>();
         services.TryAddSingleton<IAuthenticationRateLimiter>(provider => provider.GetRequiredService<InMemoryAuthenticationRateLimiter>());
-        services.TryAddSingleton<IAuthenticationRateLimiterDiagnostics>(provider =>
+        services.TryAddScoped<IAuthenticationRateLimiterDiagnostics>(provider =>
         {
             var rateLimiter = provider.GetRequiredService<IAuthenticationRateLimiter>();
             var timeProvider = provider.GetRequiredService<TimeProvider>();

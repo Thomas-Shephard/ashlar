@@ -10,10 +10,10 @@ internal sealed class PostgresAuthenticationRateLimiterDiagnostics(
     IPostgresConnectionProvider connectionProvider,
     IOptions<PostgresAuthenticationRateLimiterOptions> options,
     TimeProvider timeProvider,
-    ILogger<PostgresAuthenticationRateLimiterDiagnostics>? logger = null) : IAuthenticationRateLimiterDiagnostics
+    ILogger<PostgresAuthenticationRateLimiterDiagnostics>? logger = null)
+    : AuthenticationRateLimiterDiagnostics<PostgresConnectionHandle>(ProviderName, timeProvider)
 {
     private const string ProviderName = "Postgres";
-    private static readonly AuthenticationRateLimiterDiagnosticsRunner DiagnosticsRunner = new(ProviderName);
 
     private static readonly Action<ILogger, Exception?> RateLimiterDiagnosticsFailed =
         LoggerMessage.Define(
@@ -23,29 +23,14 @@ internal sealed class PostgresAuthenticationRateLimiterDiagnostics(
 
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly PostgresAuthenticationRateLimiterOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
-    private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     private readonly ILogger<PostgresAuthenticationRateLimiterDiagnostics> _logger = logger ?? NullLogger<PostgresAuthenticationRateLimiterDiagnostics>.Instance;
 
-    public async Task<AuthenticationRateLimiterDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default)
+    protected override ValueTask<PostgresConnectionHandle> OpenConnectionAsync(CancellationToken cancellationToken)
     {
-        return await DiagnosticsRunner.CheckAsync(
-            _timeProvider,
-            new AuthenticationRateLimiterDiagnosticsContext<PostgresConnectionHandle>(
-                _connectionProvider.GetConnectionAsync,
-                TableExistsAsync,
-                QuerySnapshotAsync,
-                LogRateLimiterDiagnosticsFailed),
-            new AuthenticationRateLimiterDiagnosticOptions(
-                true,
-                true,
-                true,
-                true,
-                _options.CleanupInterval,
-                _options.MaxCleanupRows),
-            cancellationToken);
+        return _connectionProvider.GetConnectionAsync(cancellationToken);
     }
 
-    private static async Task<bool> TableExistsAsync(PostgresConnectionHandle connectionHandle, CancellationToken cancellationToken)
+    protected override async Task<bool> TableExistsAsync(PostgresConnectionHandle connectionHandle, CancellationToken cancellationToken)
     {
         const string sql = """
             SELECT COUNT(*)
@@ -58,7 +43,7 @@ internal sealed class PostgresAuthenticationRateLimiterDiagnostics(
         return count > 0;
     }
 
-    private static async Task<AuthenticationRateLimiterDiagnosticSnapshot> QuerySnapshotAsync(
+    protected override async Task<AuthenticationRateLimiterDiagnosticSnapshot> QuerySnapshotAsync(
         PostgresConnectionHandle connectionHandle,
         DateTimeOffset now,
         CancellationToken cancellationToken)
@@ -74,7 +59,18 @@ internal sealed class PostgresAuthenticationRateLimiterDiagnostics(
         return await connectionHandle.Connection.QuerySingleAsync<AuthenticationRateLimiterDiagnosticSnapshot>(command);
     }
 
-    private void LogRateLimiterDiagnosticsFailed(Exception exception)
+    protected override AuthenticationRateLimiterDiagnosticOptions CreateOptions()
+    {
+        return new AuthenticationRateLimiterDiagnosticOptions(
+            true,
+            true,
+            true,
+            true,
+            _options.CleanupInterval,
+            _options.MaxCleanupRows);
+    }
+
+    protected override void LogException(Exception exception)
     {
         RateLimiterDiagnosticsFailed(_logger, exception);
     }

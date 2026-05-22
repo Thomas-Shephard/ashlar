@@ -8,10 +8,10 @@ namespace Ashlar.Sqlite.RateLimiting;
 internal sealed class SqliteAuthenticationRateLimiterDiagnostics(
     ISqliteConnectionProvider connectionProvider,
     TimeProvider timeProvider,
-    ILogger<SqliteAuthenticationRateLimiterDiagnostics>? logger = null) : IAuthenticationRateLimiterDiagnostics
+    ILogger<SqliteAuthenticationRateLimiterDiagnostics>? logger = null)
+    : AuthenticationRateLimiterDiagnostics<SqliteConnectionHandle>(ProviderName, timeProvider)
 {
     private const string ProviderName = "Sqlite";
-    private static readonly AuthenticationRateLimiterDiagnosticsRunner DiagnosticsRunner = new(ProviderName);
     private static readonly AuthenticationRateLimiterDiagnosticOptions Options = new(
         true,
         false,
@@ -27,23 +27,14 @@ internal sealed class SqliteAuthenticationRateLimiterDiagnostics(
             "SQLite authentication rate limiter diagnostics failed.");
 
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
-    private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     private readonly ILogger<SqliteAuthenticationRateLimiterDiagnostics> _logger = logger ?? NullLogger<SqliteAuthenticationRateLimiterDiagnostics>.Instance;
 
-    public async Task<AuthenticationRateLimiterDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default)
+    protected override ValueTask<SqliteConnectionHandle> OpenConnectionAsync(CancellationToken cancellationToken)
     {
-        return await DiagnosticsRunner.CheckAsync(
-            _timeProvider,
-            new AuthenticationRateLimiterDiagnosticsContext<SqliteConnectionHandle>(
-                _connectionProvider.GetConnectionAsync,
-                TableExistsAsync,
-                QuerySnapshotAsync,
-                LogRateLimiterDiagnosticsFailed),
-            Options,
-            cancellationToken);
+        return _connectionProvider.GetConnectionAsync(cancellationToken);
     }
 
-    private static async Task<bool> TableExistsAsync(SqliteConnectionHandle connectionHandle, CancellationToken cancellationToken)
+    protected override async Task<bool> TableExistsAsync(SqliteConnectionHandle connectionHandle, CancellationToken cancellationToken)
     {
         await using var command = connectionHandle.Connection.CreateCommand();
         command.Transaction = connectionHandle.Transaction;
@@ -57,7 +48,7 @@ internal sealed class SqliteAuthenticationRateLimiterDiagnostics(
         return Convert.ToInt32(result, CultureInfo.InvariantCulture) > 0;
     }
 
-    private static async Task<AuthenticationRateLimiterDiagnosticSnapshot> QuerySnapshotAsync(
+    protected override async Task<AuthenticationRateLimiterDiagnosticSnapshot> QuerySnapshotAsync(
         SqliteConnectionHandle connectionHandle,
         DateTimeOffset now,
         CancellationToken cancellationToken)
@@ -83,7 +74,12 @@ internal sealed class SqliteAuthenticationRateLimiterDiagnostics(
         };
     }
 
-    private void LogRateLimiterDiagnosticsFailed(Exception exception)
+    protected override AuthenticationRateLimiterDiagnosticOptions CreateOptions()
+    {
+        return Options;
+    }
+
+    protected override void LogException(Exception exception)
     {
         RateLimiterDiagnosticsFailed(_logger, exception);
     }

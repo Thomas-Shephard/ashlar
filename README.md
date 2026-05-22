@@ -875,6 +875,18 @@ The PostgreSQL implementation uses the same schema initialized by `InitializeAsh
 
 Callers should choose rate limit keys carefully (e.g., per-email, per-IP, or composite keys) to isolate flows correctly.
 
+Rate limiter diagnostics are available through `IAuthenticationRateLimiterDiagnostics` when Ashlar identity or a provider rate limiter is registered:
+
+```csharp
+using Ashlar.Operational.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+
+var diagnostics = serviceProvider.GetRequiredService<IAuthenticationRateLimiterDiagnostics>();
+var result = await diagnostics.CheckAsync(cancellationToken);
+```
+
+The result reports `Status`, provider name, `CheckedAt`, whether the limiter is configured, distributed, and persistent, safe aggregate counts for expired rows, active keys, and blocked keys when the provider can query them, and cleanup scheduling settings when the provider exposes them. It returns `Healthy` when provider state can be queried, `NotSupported` when a provider table is missing or diagnostics are not available for a custom limiter, and `Unknown` when an unexpected provider query failure occurs. Diagnostics never expose rate-limit keys, purposes, IP addresses, subject identifiers, counters, or raw provider internals.
+
 ## Cleanup and Retention
 Ashlar can explicitly remove expired or retained operational data from PostgreSQL: expired/revoked sessions and credentials, expired/accepted/revoked invitations, expired/completed/revoked MFA handshakes, expired/consumed passkey challenges, expired rate-limit rows, and old audit events. Audit-event retention is disabled by default and must be configured intentionally.
 

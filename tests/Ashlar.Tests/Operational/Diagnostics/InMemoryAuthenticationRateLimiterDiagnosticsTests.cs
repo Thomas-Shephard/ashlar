@@ -97,6 +97,31 @@ internal sealed class InMemoryAuthenticationRateLimiterDiagnosticsTests
     }
 
     [Test]
+    public async Task AddAshlarIdentityDiagnosticsDoesNotCaptureScopedCustomRateLimiter()
+    {
+        var timeProvider = new FakeTimeProvider(CheckedAt);
+        var services = new ServiceCollection();
+        services.AddScoped<IAuthenticationRateLimiter, CustomAuthenticationRateLimiter>();
+        services.AddAshlarIdentity();
+        services.AddSingleton<TimeProvider>(timeProvider);
+        await using var provider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateScopes = true
+        });
+
+        await using var scope = provider.CreateAsyncScope();
+        var diagnostics = scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiterDiagnostics>();
+        var result = await diagnostics.CheckAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diagnostics, Is.TypeOf<NotSupportedAuthenticationRateLimiterDiagnostics>());
+            Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.NotSupported));
+            Assert.That(result.ProviderName, Is.EqualTo(nameof(CustomAuthenticationRateLimiter)));
+        }
+    }
+
+    [Test]
     public void ConstructorRejectsNullArguments()
     {
         var timeProvider = new FakeTimeProvider(CheckedAt);
