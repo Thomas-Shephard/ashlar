@@ -4,30 +4,27 @@ internal static class DiagnosticsQueryRunner
 {
     public static async Task<TResult> CheckAsync<TConnection, TSnapshot, TResult>(
         TimeProvider timeProvider,
-        Func<CancellationToken, ValueTask<TConnection>> openConnectionAsync,
-        Func<TConnection, CancellationToken, Task<bool>> tableExistsAsync,
-        Func<TConnection, DateTimeOffset, CancellationToken, Task<TSnapshot>> querySnapshotAsync,
-        Action<Exception> logException,
-        Func<AshlarDiagnosticStatus, string?, DateTimeOffset, TSnapshot?, TResult> createResult,
-        string missingTableReason,
-        string unknownReason,
+        DiagnosticsQueryContext<TConnection, TSnapshot, TResult> context,
         CancellationToken cancellationToken)
         where TConnection : IAsyncDisposable
     {
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(context);
+
         var checkedAt = timeProvider.GetUtcNow();
         TResult result;
 
         try
         {
-            await using var connection = await openConnectionAsync(cancellationToken);
-            if (!await tableExistsAsync(connection, cancellationToken))
+            await using var connection = await context.OpenConnectionAsync(cancellationToken);
+            if (!await context.TableExistsAsync(connection, cancellationToken))
             {
-                result = createResult(AshlarDiagnosticStatus.NotSupported, missingTableReason, checkedAt, default);
+                result = context.CreateResult(AshlarDiagnosticStatus.NotSupported, context.MissingTableReason, checkedAt, default);
             }
             else
             {
-                var snapshot = await querySnapshotAsync(connection, checkedAt, cancellationToken);
-                result = createResult(AshlarDiagnosticStatus.Healthy, null, checkedAt, snapshot);
+                var snapshot = await context.QuerySnapshotAsync(connection, checkedAt, cancellationToken);
+                result = context.CreateResult(AshlarDiagnosticStatus.Healthy, null, checkedAt, snapshot);
             }
         }
         catch (OperationCanceledException)
@@ -36,8 +33,8 @@ internal static class DiagnosticsQueryRunner
         }
         catch (Exception ex)
         {
-            logException(ex);
-            return createResult(AshlarDiagnosticStatus.Unknown, unknownReason, checkedAt, default);
+            context.LogException(ex);
+            return context.CreateResult(AshlarDiagnosticStatus.Unknown, context.UnknownReason, checkedAt, default);
         }
 
         return result;
