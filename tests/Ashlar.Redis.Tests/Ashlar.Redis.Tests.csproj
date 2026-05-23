@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="StackExchange.Redis" />
+    <PackageReference Include="Testcontainers.Redis" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ashlar.ProviderContractTests\Ashlar.ProviderContractTests.csproj" />
+    <ProjectReference Include="..\..\src\Ashlar.Redis\Ashlar.Redis.csproj" />
+  </ItemGroup>
+
+</Project>
