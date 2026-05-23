@@ -92,6 +92,46 @@ Conditional mode is weaker than strict mode because users with no usable eligibl
 
 Apps should handle a step-up authorization failure by redirecting the user to, or returning API metadata for, an application-owned step-up flow. The complete step-up UX and broader sample endpoint protection are intentionally separate from this package integration.
 
+## Health Checks
+
+Ashlar.AspNetCore can expose Ashlar operational diagnostics through ASP.NET Core health checks:
+
+```csharp
+services.AddAshlarIdentity();
+services.AddAshlarPostgres(connectionString);
+
+services.AddHealthChecks()
+    .AddAshlarHealthChecks();
+```
+
+The convenience registration adds four checks with stable names:
+
+- `ashlar_schema`
+- `ashlar_email_outbox`
+- `ashlar_cleanup`
+- `ashlar_rate_limiter`
+
+Missing optional diagnostics services are reported with the check's not-supported status, which defaults to `Degraded`. Register individual checks when you want custom tags, names, or options:
+
+```csharp
+services.AddHealthChecks()
+    .AddAshlarSchema(tags: ["ashlar", "storage"])
+    .AddAshlarEmailOutbox(options =>
+    {
+        options.PendingCountThreshold = 1_000;
+        options.FailedCountThreshold = 10;
+        options.ExpiredLockCountThreshold = 5;
+        options.OldestPendingAgeThreshold = TimeSpan.FromMinutes(15);
+    }, tags: ["ashlar", "messaging"])
+    .AddAshlarCleanup(options =>
+    {
+        options.NotSupportedStatus = HealthStatus.Healthy;
+    })
+    .AddAshlarRateLimiter();
+```
+
+Health check data contains only safe aggregate diagnostic values such as provider name, diagnostic status, counts, timestamps, and configured batch or interval values. Provider packages do not depend on ASP.NET Core health checks; the adapters depend only on Ashlar diagnostic interfaces.
+
 ## Related Packages
 
 - `Ashlar`: Core identity, authorization, messaging, and security primitives.
