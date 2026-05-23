@@ -3,7 +3,7 @@ Building blocks for modern ASP.NET applications. Includes generic auth, security
 
 ## Reference Sample
 
-A small ASP.NET Core reference app is available at [samples/Ashlar.Sample.AspNetCore](samples/Ashlar.Sample.AspNetCore/README.md). It shows the recommended composition for PostgreSQL persistence, Data Protection secret protection, Ashlar session cookies, magic-link sign-in, bootstrap setup, invitations, authorization grants, scoped ASP.NET Core policies, TOTP MFA, recovery codes, the PostgreSQL email outbox, cleanup, audit sink, and rate limiting.
+A small ASP.NET Core reference app is available at [samples/Ashlar.Sample.AspNetCore](samples/Ashlar.Sample.AspNetCore/README.md). It shows the recommended composition for PostgreSQL persistence, Data Protection secret protection, Ashlar session cookies, magic-link and email-code sign-in, passkeys, invitation registration, optional Google OIDC sign-in/linking/unlinking, authorization grants, scoped ASP.NET Core policies, TOTP MFA, recovery codes, the PostgreSQL email outbox, cleanup, audit sink, and rate limiting.
 
 ## Persistence
 Ashlar does not register persistence by default. The following official packages are available:

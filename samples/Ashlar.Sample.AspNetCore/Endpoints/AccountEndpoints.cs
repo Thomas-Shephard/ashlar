@@ -32,6 +32,7 @@ internal static class AccountEndpoints
         IIdentityRepository users,
         IAuthorizationEvaluator auth,
         IAccountSecurityService accountSecurity,
+        IConfiguration configuration,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
@@ -47,7 +48,8 @@ internal static class AccountEndpoints
             ashlarUser.Email,
             ashlarUser.Name,
             posture.Value,
-            isAdmin);
+            isAdmin,
+            SampleGoogleOidc.IsConfigured(configuration));
     }
 
     private static async Task<IResult> UpdateProfileAsync(

@@ -39,6 +39,43 @@ internal sealed record SampleEmailChangeConfirmRequest(string Token);
 internal sealed record SampleEmailVerificationConfirmRequest(string Token);
 internal sealed record UpdateProfileRequest(string? Name);
 
+internal static class SampleGoogleOidc
+{
+    public const string ProviderName = "Google";
+    public const string InvitationTokenProperty = "ashlar.sample.invitationToken";
+    public const string InvitationDisplayNameProperty = "ashlar.sample.invitationDisplayName";
+
+    public static bool IsConfigured(IConfiguration configuration)
+    {
+        return !string.IsNullOrWhiteSpace(configuration["Authentication:Google:ClientId"])
+            && !string.IsNullOrWhiteSpace(configuration["Authentication:Google:ClientSecret"]);
+    }
+
+    public static string[] GetHostedDomains(IConfiguration configuration)
+    {
+        var section = configuration.GetSection("Authentication:Google:HostedDomains");
+        var values = section.Get<string[]>();
+        if (values is { Length: > 0 })
+        {
+            return NormalizeHostedDomains(values);
+        }
+
+        var singleValue = configuration["Authentication:Google:HostedDomains"];
+        return string.IsNullOrWhiteSpace(singleValue)
+            ? []
+            : NormalizeHostedDomains(singleValue.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+    }
+
+    private static string[] NormalizeHostedDomains(IEnumerable<string> values)
+    {
+        return values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+}
+
 internal static class SampleResultErrors
 {
     public static object From(Result result, string? fallbackMessage = null)
@@ -199,11 +236,16 @@ internal static class LandingPages
                     button.secondary:hover { background: #e5e7eb; }
                     button.danger { color: #dc2626; border-color: #fca5a5; }
                     button.danger:hover { background: #fef2f2; }
+                    button.google-button { background: #fff; color: #1f1f1f; border: 1px solid #747775; height: 3rem; width: 100%; display: inline-flex; justify-content: center; align-items: center; gap: 10px; font-family: Roboto, Arial, sans-serif; font-size: 0.875rem; font-weight: 500; line-height: 1.25rem; padding: 0 12px; }
+                    button.google-button:hover { background: #f8fafd; box-shadow: none; }
+                    button.google-button img { display: block; width: 18px; height: 18px; object-fit: contain; background: #fff; flex: 0 0 18px; }
                     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
                     form { margin: 0; }
                     .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; background: #e5e7eb; color: #374151; }
                     .badge-success { background: #dcfce7; color: #166534; }
                     .badge-warning { background: #fef9c3; color: #854d0e; }
+                    .sign-in-button-wrap { position: relative; }
+                    .last-sign-in-pill { position: absolute; right: 0.75rem; top: -0.65rem; z-index: 1; white-space: nowrap; box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
                     .status-box { background: #f3f4f6; padding: 1rem; border-radius: 4px; margin-bottom: 1.5rem; font-size: 0.875rem; }
                     #result { margin-top: 1rem; font-weight: 500; font-size: 0.875rem; min-height: 1.25rem; }
                     code { background: #f3f4f6; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.875rem; word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }

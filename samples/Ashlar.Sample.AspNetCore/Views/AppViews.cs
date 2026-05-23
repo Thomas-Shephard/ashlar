@@ -288,7 +288,41 @@ internal static class AppViews
             return window.PublicKeyCredential && navigator.credentials && window.isSecureContext;
         }
 
-        function handleMfaRequired(handshakeToken, requiredFactors) {
+        const AshlarStorage = {
+            keys: { lastSignInMethod: 'ashlar.sample.lastSignInMethod' },
+            get: (key) => {
+                try { return localStorage.getItem(key); } catch (err) { return null; }
+            },
+            set: (key, value) => {
+                try { localStorage.setItem(key, value); } catch (err) { }
+            }
+        };
+
+        function rememberSignInMethod(method) {
+            AshlarStorage.set(AshlarStorage.keys.lastSignInMethod, method);
+        }
+
+        function getLastSignInMethod() {
+            return AshlarStorage.get(AshlarStorage.keys.lastSignInMethod);
+        }
+
+        function applyLastSignInMethodHint() {
+            const query = new URLSearchParams(location.search);
+            const signedInWith = query.get('signedInWith');
+            if (signedInWith) {
+                rememberSignInMethod(signedInWith);
+                query.delete('signedInWith');
+                const nextQuery = query.toString();
+                history.replaceState(null, '', location.pathname + (nextQuery ? '?' + nextQuery : '') + location.hash);
+            }
+
+            const last = getLastSignInMethod();
+            document.querySelectorAll('[data-last-sign-in-method]').forEach(el => {
+                el.classList.toggle('hidden', el.dataset.lastSignInMethod !== last);
+            });
+        }
+
+        function handleMfaRequired(handshakeToken, requiredFactors, primaryMethod) {
             const factors = (requiredFactors || []).map(f => String(f).toLowerCase());
             const canUsePasskey = factors.includes('passkey');
             document.querySelector('.card').innerHTML = '<h1>Additional Verification Required</h1><p>Please enter an authenticator app code or recovery code below.</p><form id="mfaForm"><input type="text" id="mfaCode" placeholder="000000 or XXXX-XXXX-XXXX" required /><button type="submit">Verify</button></form>' + (canUsePasskey ? '<button id="passkeyMfaButton" class="secondary" style="margin-top: 1rem;">Use Passkey</button>' : '') + '<div id="mfaResult"></div>';
@@ -305,6 +339,7 @@ internal static class AppViews
                     });
                     const mfaResult = await mfaResp.json();
                     if (mfaResp.ok) {
+                        if (primaryMethod) rememberSignInMethod(primaryMethod);
                         location.href = '/';
                     } else {
                         mfaRes.style.color = '#dc2626';
@@ -350,6 +385,7 @@ internal static class AppViews
                     });
                     const completeResult = await completeResponse.json();
                     if (completeResponse.ok && completeResult.status === 'signed_in') {
+                        if (primaryMethod) rememberSignInMethod(primaryMethod);
                         location.href = '/';
                     } else if (completeResponse.ok && completeResult.status === 'mfa_required') {
                         handleMfaRequired(completeResult.handshakeToken, completeResult.requiredFactors);
@@ -370,6 +406,8 @@ internal static class AppViews
     private const string DashboardScripts = $$"""
         <script>
             {{SharedScripts}}
+
+            applyLastSignInMethodHint();
 
             setupForm('bootstrapForm', '/api/bootstrap/invitations', 'POST',
                 f => ({ email: f.querySelector('#bootstrapEmail').value, userName: f.querySelector('#bootstrapUsername').value }),
@@ -411,9 +449,10 @@ internal static class AppViews
                         });
                         const completeResult = await completeResponse.json();
                         if (completeResponse.ok && completeResult.status === 'signed_in') {
+                            rememberSignInMethod('passkey');
                             location.href = '/';
                         } else if (completeResponse.ok && completeResult.status === 'mfa_required') {
-                            handleMfaRequired(completeResult.handshakeToken, completeResult.requiredFactors);
+                            handleMfaRequired(completeResult.handshakeToken, completeResult.requiredFactors, 'passkey');
                         } else {
                             resDiv.style.color = '#dc2626';
                             resDiv.innerText = formatSampleError(completeResult.error, 'Passkey sign-in failed.');
@@ -429,10 +468,10 @@ internal static class AppViews
         </script>
     """;
 
-    public static IResult RenderDashboard(BootstrapStatus status, bool isAuthenticated, string? userName, bool isAdmin, List<(string Id, string Name, bool HasAccess)> projects)
+    public static IResult RenderDashboard(BootstrapStatus status, bool isAuthenticated, string? userName, bool isAdmin, List<(string Id, string Name, bool HasAccess)> projects, bool googleConfigured)
     {
         var bootstrapSection = RenderBootstrapSection(status, isAuthenticated);
-        var authSection = RenderAuthSection(status, isAuthenticated, userName);
+        var authSection = RenderAuthSection(status, isAuthenticated, userName, googleConfigured);
         var projectSection = isAuthenticated ? RenderProjectSection(projects) : "";
 
         var navLinks = "";
@@ -479,7 +518,7 @@ internal static class AppViews
         """;
     }
 
-    private static string RenderAuthSection(BootstrapStatus status, bool isAuthenticated, string? userName)
+    private static string RenderAuthSection(BootstrapStatus status, bool isAuthenticated, string? userName, bool googleConfigured)
     {
         if (isAuthenticated)
         {
@@ -497,19 +536,35 @@ internal static class AppViews
             return "";
         }
 
-        return """
+        var googleButton = googleConfigured
+            ? RenderGoogleButton("Sign in with Google", onclick: "location.href='/auth/google'")
+            : "";
+
+        return $$"""
             <div class="card">
                 <h2>Sign In</h2>
                 <p>Welcome to Ashlar. Enter your email to receive a magic link for signing in.</p>
                 <form id="signInForm">
                     <input type="email" id="signInEmail" placeholder="your@email.com" required />
-                    <button type="submit">Send Magic Link</button>
+                    <div class="sign-in-button-wrap">
+                        {{RenderLastUsedPill("magic-link")}}
+                        <button type="submit">Send Magic Link</button>
+                    </div>
                 </form>
                 <div id="signInFormResult"></div>
                 <hr style="margin: 2rem 0; border: 0; border-top: 1px solid #e5e7eb;" />
-                <button id="passkeySignInButton" class="secondary" type="button">Sign In With Passkey</button>
+                <div class="sign-in-button-wrap">
+                    {{RenderLastUsedPill("passkey")}}
+                    <button id="passkeySignInButton" class="secondary" type="button">Sign in with Passkey</button>
+                </div>
                 <p id="passkeyUnavailable" class="hidden" style="color: #6b7280; margin-bottom: 0;">Passkeys require HTTPS or localhost in a browser that supports WebAuthn.</p>
                 <div id="passkeySignInResult"></div>
+                {{(googleConfigured ? $$"""
+                    <div class="sign-in-button-wrap" style="margin-top: 1rem;">
+                        {{RenderLastUsedPill("google")}}
+                        {{googleButton}}
+                    </div>
+                    """ : "")}}
             </div>
         """;
     }
@@ -690,6 +745,45 @@ internal static class AppViews
           """;
     }
 
+    private static string RenderGoogleAccountSection(UserSecurityPosture posture, bool googleConfigured)
+    {
+        if (!googleConfigured)
+        {
+            return "";
+        }
+
+        var hasGoogle = posture.CredentialInventory.Any(c =>
+            c.IsAvailable &&
+            c.Provider.Type == ProviderType.Oidc &&
+            string.Equals(c.Provider.Name, SampleGoogleOidc.ProviderName, StringComparison.Ordinal));
+
+        var status = hasGoogle
+            ? "<span class=\"badge badge-success\">Linked</span>"
+            : "<span class=\"badge\">Not linked</span>";
+        var action = hasGoogle
+            ? """
+                <form id="unlinkGoogleForm" style="margin-top: 1rem;">
+                    <button type="submit" class="secondary danger" style="height: 2.5rem;">Unlink Google Account</button>
+                </form>
+                <div id="unlinkGoogleFormResult"></div>
+              """
+            : RenderGoogleButton("Continue with Google", id: "linkGoogleButton", style: "margin-top: 1rem;") + """
+                <div id="linkGoogleResult"></div>
+              """;
+
+        return $$"""
+            <hr style="margin: 2.5rem 0; border: 0; border-top: 1px solid #e5e7eb;" />
+            <h3>Google Account</h3>
+            <div class="status-box" style="margin-top: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
+                    <strong>Google sign-in</strong>
+                    {{status}}
+                </div>
+                {{action}}
+            </div>
+        """;
+    }
+
     private sealed record AccountSecurityDisplayState(
         bool HasTotp,
         bool HasRecoveryCodes,
@@ -699,7 +793,7 @@ internal static class AppViews
         string MissingVerification,
         string VerificationStatus);
 
-    public static IResult RenderAccountSettings(string userEmail, string? userName, UserSecurityPosture posture, bool isAdmin)
+    public static IResult RenderAccountSettings(string userEmail, string? userName, UserSecurityPosture posture, bool isAdmin, bool googleConfigured)
     {
         var verifiedBadge = FormatEmailVerificationBadge(posture);
         var verifyForm = RenderVerifyEmailForm(posture);
@@ -708,6 +802,47 @@ internal static class AppViews
         var passkeyStatus = FormatRegisteredBadge(securityDisplay.HasPasskeys);
         var recoveryStatus = FormatGeneratedBadge(securityDisplay.HasRecoveryCodes);
         var mfaActions = RenderMfaActions(securityDisplay);
+        var googleAccountSection = RenderGoogleAccountSection(posture, googleConfigured);
+        var googleAccountScripts = googleConfigured
+            ? """
+                setupForm('unlinkGoogleForm', '/api/account/external/google/unlink', 'POST',
+                    f => ({}),
+                    (r, div) => {
+                        div.innerHTML = '<p class="badge badge-success">Google account unlinked.</p>';
+                        setTimeout(() => location.reload(), 500);
+                    }
+                );
+
+                const linkGoogleButton = document.getElementById('linkGoogleButton');
+                if (linkGoogleButton) {
+                    linkGoogleButton.onclick = async () => {
+                        const div = document.getElementById('linkGoogleResult');
+                        linkGoogleButton.disabled = true;
+                        div.style.color = '';
+                        div.innerText = 'Preparing Google sign-in...';
+                        try {
+                            const response = await ashlarFetchWithStepUp('/account/external/google/link', {
+                                method: 'GET',
+                                redirect: 'manual'
+                            });
+
+                            if (response.status === 403) {
+                                div.style.color = '#dc2626';
+                                div.innerText = 'Additional verification is required before linking Google.';
+                                linkGoogleButton.disabled = false;
+                                return;
+                            }
+
+                            location.href = '/account/external/google/link';
+                        } catch (err) {
+                            div.style.color = '#dc2626';
+                            div.innerText = 'Connection error.';
+                            linkGoogleButton.disabled = false;
+                        }
+                    };
+                }
+              """
+            : "";
 
         var navLinks = $"""
             <a href="/">Dashboard</a>
@@ -783,6 +918,8 @@ internal static class AppViews
                     </div>
                     {{mfaActions}}
 
+                    {{googleAccountSection}}
+
                     <hr style="margin: 2.5rem 0; border: 0; border-top: 1px solid #e5e7eb;" />
 
                     <h3>Passkeys</h3>
@@ -838,6 +975,8 @@ internal static class AppViews
                     f => ({}),
                     (r, div) => { div.innerHTML = '<p class="badge badge-success">Verification code sent! <a href="/account/verify-email">Go to verification page</a></p>'; }
                 );
+
+                {{googleAccountScripts}}
 
                 if (document.getElementById('generateBtn')) {
                     document.getElementById('generateBtn').onclick = async (e) => {
@@ -1333,8 +1472,9 @@ internal static class AppViews
                         const result = await response.json();
                         if (response.ok) {
                             if (result.status === 'mfa_required') {
-                                handleMfaRequired(result.handshakeToken, result.requiredFactors);
+                                handleMfaRequired(result.handshakeToken, result.requiredFactors, 'magic-link');
                             } else {
+                                rememberSignInMethod('magic-link');
                                 location.href = '/';
                             }
                         } else {
@@ -1352,8 +1492,15 @@ internal static class AppViews
             """);
     }
 
-    public static IResult RenderInvitationAccept(string token)
+    public static IResult RenderInvitationAccept(string token, bool googleConfigured)
     {
+        var googleSection = googleConfigured
+            ? $$"""
+                <hr style="margin: 2rem 0; border: 0; border-top: 1px solid #e5e7eb;" />
+                {{RenderGoogleButton("Sign up with Google", id: "googleInviteButton")}}
+              """
+            : "";
+
         return LandingPages.Render(
             "Join Ashlar",
             "You've been invited to join the application. Please enter your name to complete the process.",
@@ -1362,9 +1509,21 @@ internal static class AppViews
                 <input type="text" id="userName" placeholder="Your Name (Optional)" />
                 <button type="submit">Accept Invitation</button>
             </form>
+            {{googleSection}}
             <div id="result"></div>
             <script>
                 {{SharedScripts}}
+
+                const googleInviteButton = document.getElementById('googleInviteButton');
+                if (googleInviteButton) {
+                    googleInviteButton.onclick = () => {
+                        const name = document.getElementById('userName').value || '';
+                        const url = new URL('/invitations/accept/google', window.location.origin);
+                        url.searchParams.set('t', '{{System.Web.HttpUtility.JavaScriptStringEncode(token)}}');
+                        url.searchParams.set('userName', name);
+                        location.href = url.toString();
+                    };
+                }
 
                 document.getElementById('acceptForm').onsubmit = async (e) => {
                     e.preventDefault();
@@ -1398,6 +1557,55 @@ internal static class AppViews
                 };
             </script>
             """);
+    }
+
+    public static IResult RenderGoogleOidcResult(string title, string message)
+    {
+        return LandingPages.Render(
+            title,
+            message,
+            """
+            <button onclick="location.href='/'">Return to Dashboard</button>
+            """);
+    }
+
+    public static IResult RenderGoogleMfaCallback(string handshakeToken, IEnumerable<string> requiredFactors)
+    {
+        var serializedFactors = System.Text.Json.JsonSerializer.Serialize(requiredFactors);
+
+        return LandingPages.Render(
+            "Additional Verification Required",
+            "Complete additional verification to finish signing in with Google.",
+            $$"""
+            <div id="result"></div>
+            <script>
+                {{SharedScripts}}
+
+                handleMfaRequired(
+                    '{{System.Web.HttpUtility.JavaScriptStringEncode(handshakeToken)}}',
+                    {{serializedFactors}},
+                    'google');
+            </script>
+            """);
+    }
+
+    private static string RenderGoogleButton(string text, string? id = null, string? onclick = null, string? style = null)
+    {
+        var idAttribute = string.IsNullOrWhiteSpace(id) ? "" : $" id=\"{System.Net.WebUtility.HtmlEncode(id)}\"";
+        var onclickAttribute = string.IsNullOrWhiteSpace(onclick) ? "" : $" onclick=\"{System.Net.WebUtility.HtmlEncode(onclick)}\"";
+        var styleAttribute = string.IsNullOrWhiteSpace(style) ? "" : $" style=\"{System.Net.WebUtility.HtmlEncode(style)}\"";
+
+        return $"""
+            <button{idAttribute} type="button" class="google-button"{onclickAttribute}{styleAttribute}>
+                <img src="/google/g-logo.png" alt="" aria-hidden="true" />
+                <span>{System.Net.WebUtility.HtmlEncode(text)}</span>
+            </button>
+            """;
+    }
+
+    private static string RenderLastUsedPill(string method)
+    {
+        return $"""<span class="badge last-sign-in-pill hidden" data-last-sign-in-method="{System.Net.WebUtility.HtmlEncode(method)}">Last used</span>""";
     }
 
     public static IResult RenderEmailVerification(string? token, string? userId)

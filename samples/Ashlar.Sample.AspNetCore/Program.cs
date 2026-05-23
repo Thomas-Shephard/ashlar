@@ -13,6 +13,7 @@ var app = builder.Build();
 await app.Services.InitializeAshlarPostgresSchemaAsync();
 await SampleSchemaInitializer.InitializeAsync(app.Services);
 
+app.UseStaticFiles();
 app.UseAshlarRequireIpAddress();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -25,6 +26,7 @@ app.MapPasskeyEndpoints();
 app.MapMfaEndpoints();
 app.MapSessionEndpoints();
 app.MapInvitationEndpoints();
+app.MapGoogleOidcEndpoints();
 app.MapAdminEndpoints();
 
 await app.RunAsync();
