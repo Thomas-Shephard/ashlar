@@ -500,7 +500,7 @@ public sealed class CredentialService(
     }
 
     /// <inheritdoc />
-    public async Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue = null, string? initialMetadata = null, CancellationToken cancellationToken = default)
+    public async Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue = null, string? credentialMetadata = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(assertion);
         ArgumentNullException.ThrowIfNull(provider);
@@ -576,7 +576,7 @@ public sealed class CredentialService(
             ExpiresAt = null,
             RevokedAt = null,
             Status = CredentialStatus.Active,
-            Metadata = initialMetadata,
+            Metadata = credentialMetadata,
             CredentialValue = credentialValue
         };
 

@@ -152,8 +152,8 @@ public sealed class TotpService : ITotpService
         await _repository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
 
         var assertion = new TotpAssertion(code);
-        var initialMetadata = System.Text.Json.JsonSerializer.Serialize(new { LastUsedStep = verifiedStep });
-        var linkResult = await _credentialService.LinkCredentialAsync(userId, assertion, _provider, sharedSecret, initialMetadata, cancellationToken);
+        var totpCredentialMetadata = System.Text.Json.JsonSerializer.Serialize(new { LastUsedStep = verifiedStep });
+        var linkResult = await _credentialService.LinkCredentialAsync(userId, assertion, _provider, sharedSecret, totpCredentialMetadata, cancellationToken);
 
         if (!linkResult.Succeeded)
         {

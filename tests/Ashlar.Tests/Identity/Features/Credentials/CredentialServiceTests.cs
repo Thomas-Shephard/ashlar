@@ -858,16 +858,16 @@ internal sealed class CredentialServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "new-key", It.IsAny<CancellationToken>())).ReturnsAsync((IUser?)null);
         _secretProtectorMock.Setup(s => s.Protect("prepared")).Returns("protected-prepared");
 
-        const string initialMetadata = "{\"LastUsedStep\":123}";
+        const string credentialMetadata = "{\"LastUsedStep\":123}";
         var beforeLink = _timeProvider.GetUtcNow();
-        await _service.LinkCredentialAsync(userId, assertionMock.Object, providerMock.Object, "raw", initialMetadata);
+        await _service.LinkCredentialAsync(userId, assertionMock.Object, providerMock.Object, "raw", credentialMetadata);
         var afterLink = _timeProvider.GetUtcNow();
 
         _repositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.UserId == userId &&
             c.ProviderKey == "new-key" &&
             c.CredentialValue == "protected-prepared" &&
-            c.Metadata == initialMetadata &&
+            c.Metadata == credentialMetadata &&
             c.CreatedAt >= beforeLink &&
             c.CreatedAt <= afterLink &&
             c.Status == CredentialStatus.Active &&

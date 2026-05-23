@@ -43,7 +43,7 @@ public sealed class AshlarExternalAccountLinkService
     /// <param name="currentUserId">The currently authenticated Ashlar user id.</param>
     /// <param name="providerName">The configured Ashlar provider name.</param>
     /// <param name="tenant">The tenant scope, when the application is tenant-aware.</param>
-    /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass tokens, cookies, or raw claim JSON.</param>
+    /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The external account link result.</returns>
     public async Task<AshlarExternalAccountLinkResult> CompleteOidcLinkAsync(
@@ -85,7 +85,7 @@ public sealed class AshlarExternalAccountLinkService
     /// <param name="providerName">The configured Ashlar provider name.</param>
     /// <param name="authenticateResult">The completed external authentication result.</param>
     /// <param name="tenant">The tenant scope, when the application is tenant-aware.</param>
-    /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass tokens, cookies, or raw claim JSON.</param>
+    /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The external account link result.</returns>
     public async Task<AshlarExternalAccountLinkResult> LinkOidcAccountAsync(
@@ -124,7 +124,7 @@ public sealed class AshlarExternalAccountLinkService
     /// <param name="providerName">The configured Ashlar provider name.</param>
     /// <param name="principal">The validated external principal.</param>
     /// <param name="tenant">The tenant scope, when the application is tenant-aware.</param>
-    /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass tokens, cookies, or raw claim JSON.</param>
+    /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The external account link result.</returns>
     public async Task<AshlarExternalAccountLinkResult> LinkOidcAccountAsync(
@@ -173,7 +173,7 @@ public sealed class AshlarExternalAccountLinkService
             assertion,
             provider,
             credentialValue: null,
-            initialMetadata: credentialMetadata,
+            credentialMetadata: credentialMetadata,
             cancellationToken);
 
         if (linkResult.Succeeded)
