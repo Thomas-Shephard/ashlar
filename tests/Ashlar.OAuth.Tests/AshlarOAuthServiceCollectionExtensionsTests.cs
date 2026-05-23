@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -158,6 +159,92 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarOAuthShouldConfigureExternalCookieOptions()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarOAuth(options => options.AddGoogle(oidc =>
+        {
+            oidc.ClientId = "client";
+            oidc.ClientSecret = "secret";
+        }));
+
+        using var provider = services.BuildServiceProvider();
+        var cookieOptions = provider.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get("Ashlar.OAuth.External");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cookieOptions.Cookie.HttpOnly, Is.True);
+            Assert.That(cookieOptions.Cookie.SameSite, Is.EqualTo(SameSiteMode.Lax));
+            Assert.That(cookieOptions.ExpireTimeSpan, Is.EqualTo(TimeSpan.FromMinutes(5)));
+            Assert.That(cookieOptions.SlidingExpiration, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task AddAshlarOAuthShouldChainTicketReceivedEvent()
+    {
+        var called = false;
+        var services = new ServiceCollection();
+        services.AddAshlarOAuth(options => options.AddGoogle(oidc =>
+        {
+            oidc.ClientId = "client";
+            oidc.ClientSecret = "secret";
+            oidc.Events.OnTicketReceived = _ =>
+            {
+                called = true;
+                return Task.CompletedTask;
+            };
+        }));
+        using var provider = services.BuildServiceProvider();
+        var oidcOptions = provider.GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>().Get("Google");
+        var context = new TicketReceivedContext(
+            new DefaultHttpContext(),
+            new AuthenticationScheme("Google", "Google", typeof(OpenIdConnectHandler)),
+            oidcOptions,
+            new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity("oidc")), new AuthenticationProperties(), "Google"));
+
+        await oidcOptions.Events.OnTicketReceived(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(called, Is.True);
+            Assert.That(context.Properties?.Items[AshlarOAuthAuthenticationProperties.ProviderName], Is.EqualTo("Google"));
+            Assert.That(context.Properties?.Items[AshlarOAuthAuthenticationProperties.SchemeName], Is.EqualTo("Google"));
+        }
+    }
+
+    [Test]
+    public void AddAshlarOAuthShouldRejectMissingProviders()
+    {
+        var services = new ServiceCollection();
+
+        Assert.Throws<ArgumentException>(() => services.AddAshlarOAuth(_ => { }));
+    }
+
+    [Test]
+    public void AddAshlarOAuthShouldRejectBlankExternalSignInScheme()
+    {
+        var services = new ServiceCollection();
+
+        Assert.Throws<ArgumentException>(() => services.AddAshlarOAuth(options =>
+        {
+            options.ExternalSignInScheme = " ";
+            options.AddGoogle();
+        }));
+    }
+
+    [Test]
+    public void AddAshlarOAuthShouldRejectNullArguments()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentNullException>(() => AshlarOAuthServiceCollectionExtensions.AddAshlarOAuth(null!, _ => { }));
+            Assert.Throws<ArgumentNullException>(() => new ServiceCollection().AddAshlarOAuth(null!));
+        }
+    }
+
+    [Test]
     public void AddAshlarOAuthShouldUseDecodedSchemeNameForCallbackPath()
     {
         var services = new ServiceCollection();
@@ -176,6 +263,42 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarOAuthShouldPreserveCustomCallbackPath()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarOAuth(options => options.AddGoogle(oidc =>
+        {
+            oidc.ClientId = "client";
+            oidc.ClientSecret = "secret";
+            oidc.CallbackPath = "/custom-google-callback";
+        }));
+
+        using var provider = services.BuildServiceProvider();
+        var oidcOptions = provider.GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>().Get("Google");
+
+        Assert.That(oidcOptions.CallbackPath.Value, Is.EqualTo("/custom-google-callback"));
+    }
+
+    [Test]
+    public void AddAshlarOAuthShouldSetProviderCallbackPathWhenCallbackPathIsEmpty()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarOAuth(options => options.AddGoogle(oidc =>
+        {
+            oidc.ClientId = "client";
+            oidc.ClientSecret = "secret";
+            oidc.CallbackPath = PathString.Empty;
+        }));
+
+        using var provider = services.BuildServiceProvider();
+        var oidcOptions = provider.GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>().Get("Google");
+
+        Assert.That(oidcOptions.CallbackPath.Value, Is.EqualTo("/signin-oidc/Google"));
+    }
+
+    [Test]
     public void AddMicrosoftShouldRequireExplicitTenantAndRegisterExpectedAuthority()
     {
         var options = new AshlarOAuthOptions();
@@ -190,6 +313,18 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             Assert.That(options.OidcProviders["Microsoft"].ProviderName, Is.EqualTo("Microsoft"));
             Assert.That(oidc.Authority, Is.EqualTo(MicrosoftOidcDefaults.BuildAuthority("contoso.onmicrosoft.com")));
         }
+    }
+
+    [Test]
+    public void AddMicrosoftShouldSupportConfigureOverload()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddMicrosoft("contoso.onmicrosoft.com", oidc => oidc.ClientId = "client");
+        var oidc = new OpenIdConnectOptions();
+        options.OidcProviders["Microsoft"].Configure(oidc);
+
+        Assert.That(oidc.ClientId, Is.EqualTo("client"));
     }
 
     [Test]

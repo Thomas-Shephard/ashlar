@@ -141,13 +141,9 @@ public sealed class AshlarExternalSignInService
 
     private static bool MatchesProvider(AuthenticateResult result, AshlarOidcProviderOptions provider)
     {
-        if (result.Properties == null)
-        {
-            return false;
-        }
-
-        return result.Properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.ProviderName, out var providerName)
-            && result.Properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.SchemeName, out var schemeName)
+        return result.Properties is { } properties
+            && properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.ProviderName, out var providerName)
+            && properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.SchemeName, out var schemeName)
             && string.Equals(provider.ProviderName, providerName, StringComparison.OrdinalIgnoreCase)
             && string.Equals(provider.SchemeName, schemeName, StringComparison.Ordinal);
     }

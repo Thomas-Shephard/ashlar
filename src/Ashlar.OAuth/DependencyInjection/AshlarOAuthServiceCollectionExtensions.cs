@@ -69,7 +69,7 @@ public static class AshlarOAuthServiceCollectionExtensions
         options.GetClaimsFromUserInfoEndpoint = true;
         options.MapInboundClaims = false;
 
-        if (!options.CallbackPath.HasValue || string.Equals(options.CallbackPath, "/signin-oidc", StringComparison.Ordinal))
+        if (!options.CallbackPath.HasValue || string.Equals(options.CallbackPath.Value, "/signin-oidc", StringComparison.Ordinal))
         {
             options.CallbackPath = $"/signin-oidc/{provider.SchemeName}";
         }

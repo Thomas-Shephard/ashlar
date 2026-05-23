@@ -29,6 +29,16 @@ internal sealed class AshlarExternalSignInServiceTests
     }
 
     [Test]
+    public async Task CompleteOidcSignInShouldReturnInvalidPrincipalWhenConfiguredProviderNameIsInvalid()
+    {
+        var service = CreateServiceWithProvider(new AshlarOidcProviderOptions(" ", "Google", _ => { }));
+
+        var result = await service.CompleteOidcSignInAsync("Google", CreatePrincipal("subject"), new AuthenticationContext());
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalSignInStatus.InvalidPrincipal));
+    }
+
+    [Test]
     public void CompleteOidcSignInShouldRejectNullPrincipal()
     {
         var service = CreateService(new AuthenticationResponse(false));
@@ -87,6 +97,89 @@ internal sealed class AshlarExternalSignInServiceTests
     }
 
     [Test]
+    public async Task CompleteOidcSignInFromHttpContextShouldReturnUnsupportedProviderForBlankProviderName()
+    {
+        var service = CreateService(new AuthenticationResponse(false));
+        var httpContext = CreateHttpContextWithExternalTicket("Google", "Google", "subject");
+
+        var result = await service.CompleteOidcSignInAsync(httpContext, " ");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalSignInStatus.UnsupportedProvider));
+    }
+
+    [Test]
+    public async Task CompleteOidcSignInFromHttpContextShouldReturnAuthenticationFailedWhenExternalAuthenticateFails()
+    {
+        var service = CreateService(new AuthenticationResponse(false));
+        var httpContext = CreateHttpContext(new TestAuthenticationService(AuthenticateResult.Fail("failed")));
+
+        var result = await service.CompleteOidcSignInAsync(httpContext, "Google");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalSignInStatus.AuthenticationFailed));
+    }
+
+    [Test]
+    public async Task CompleteOidcSignInFromHttpContextShouldReturnInvalidPrincipalWhenPrincipalHasNoClaims()
+    {
+        var service = CreateService(new AuthenticationResponse(false));
+        var httpContext = CreateHttpContext(new TestAuthenticationService(
+            AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(), CreateProperties("Google", "Google"), "Ashlar.OAuth.External"))));
+
+        var result = await service.CompleteOidcSignInAsync(httpContext, "Google");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalSignInStatus.InvalidPrincipal));
+    }
+
+    [Test]
+    public async Task CompleteOidcSignInFromHttpContextShouldReturnProviderMismatchWhenTicketPropertiesAreMissing()
+    {
+        var service = CreateService(new AuthenticationResponse(false));
+        var httpContext = CreateHttpContext(new TestAuthenticationService(
+            AuthenticateResult.Success(new AuthenticationTicket(CreatePrincipal("subject"), "Ashlar.OAuth.External"))));
+
+        var result = await service.CompleteOidcSignInAsync(httpContext, "Google");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalSignInStatus.ProviderMismatch));
+    }
+
+    [Test]
+    public async Task CompleteOidcSignInFromHttpContextShouldReturnProviderMismatchWhenTicketSchemeIsMissing()
+    {
+        var service = CreateService(new AuthenticationResponse(false));
+        var properties = new AuthenticationProperties();
+        properties.Items[AshlarOAuthAuthenticationProperties.ProviderName] = "Google";
+        var httpContext = CreateHttpContext(new TestAuthenticationService(
+            AuthenticateResult.Success(new AuthenticationTicket(CreatePrincipal("subject"), properties, "Ashlar.OAuth.External"))));
+
+        var result = await service.CompleteOidcSignInAsync(httpContext, "Google");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalSignInStatus.ProviderMismatch));
+    }
+
+    [Test]
+    public async Task CompleteOidcSignInFromHttpContextShouldReturnInvalidPrincipalForMissingSubject()
+    {
+        var service = CreateService(new AuthenticationResponse(false));
+        var httpContext = CreateHttpContext(new TestAuthenticationService(
+            AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity([], "oidc")), CreateProperties("Google", "Google"), "Ashlar.OAuth.External"))));
+
+        var result = await service.CompleteOidcSignInAsync(httpContext, "Google");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalSignInStatus.InvalidPrincipal));
+    }
+
+    [Test]
+    public async Task CompleteOidcSignInFromHttpContextShouldReturnInvalidPrincipalWhenConfiguredProviderNameIsInvalid()
+    {
+        var service = CreateServiceWithProvider(new AshlarOidcProviderOptions(" ", "Google", _ => { }));
+        var httpContext = CreateHttpContextWithExternalTicket(" ", "Google", "subject");
+
+        var result = await service.CompleteOidcSignInAsync(httpContext, "Google");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalSignInStatus.InvalidPrincipal));
+    }
+
+    [Test]
     public async Task CompleteOidcSignInFromHttpContextShouldAcceptMatchingExternalTicketProvider()
     {
         var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
@@ -95,6 +188,32 @@ internal sealed class AshlarExternalSignInServiceTests
         var result = await service.CompleteOidcSignInAsync(httpContext, "Google");
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalSignInStatus.Succeeded));
+    }
+
+    [Test]
+    public async Task CompleteOidcSignInFromHttpContextShouldPopulateAuthenticationContextFromHttpContext()
+    {
+        AuthenticationContext? observedContext = null;
+        var pipeline = new Mock<IAuthenticationPipeline>();
+        pipeline.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()))
+            .Callback<AuthenticationContext, IAuthenticationAssertion, CancellationToken>((context, _, _) => observedContext = context)
+            .ReturnsAsync(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
+        var service = CreateService(pipeline.Object);
+        var httpContext = CreateHttpContextWithExternalTicket("Google", "Google", "subject");
+        httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("127.0.0.1");
+        httpContext.Request.Headers.UserAgent = "test-agent";
+        httpContext.TraceIdentifier = "trace-123";
+        var tenantId = Guid.NewGuid();
+
+        await service.CompleteOidcSignInAsync(httpContext, "Google", tenantId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observedContext?.TenantId, Is.EqualTo(tenantId));
+            Assert.That(observedContext?.IpAddress, Is.EqualTo("127.0.0.1"));
+            Assert.That(observedContext?.UserAgent, Is.EqualTo("test-agent"));
+            Assert.That(observedContext?.CorrelationId, Is.EqualTo("trace-123"));
+        }
     }
 
     [Test]
@@ -116,6 +235,29 @@ internal sealed class AshlarExternalSignInServiceTests
         Assert.That(authService.SignOutCount, Is.EqualTo(1));
     }
 
+    [Test]
+    public void ConstructorShouldRejectNullDependencies()
+    {
+        var pipeline = new Mock<IAuthenticationPipeline>().Object;
+        var options = new TestOptionsMonitor(new AshlarOAuthOptions());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalSignInService(null!, options));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalSignInService(pipeline, null!));
+        }
+    }
+
+    [Test]
+    public void ResultSucceededShouldReflectStatus()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new AshlarExternalSignInResult(AshlarExternalSignInStatus.Succeeded).Succeeded, Is.True);
+            Assert.That(new AshlarExternalSignInResult(AshlarExternalSignInStatus.AuthenticationFailed).Succeeded, Is.False);
+        }
+    }
+
     private static AshlarExternalSignInService CreateService(AuthenticationResponse response)
     {
         var pipeline = new Mock<IAuthenticationPipeline>();
@@ -130,6 +272,19 @@ internal sealed class AshlarExternalSignInServiceTests
         options.AddOidcProvider("Google", _ => { });
         var monitor = new TestOptionsMonitor(options);
         return new AshlarExternalSignInService(pipeline, monitor);
+    }
+
+    private static AshlarExternalSignInService CreateServiceWithProvider(AshlarOidcProviderOptions provider)
+    {
+        var pipeline = new Mock<IAuthenticationPipeline>();
+        pipeline.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
+        var options = new AshlarOAuthOptions();
+        var providers = (Dictionary<string, AshlarOidcProviderOptions>)typeof(AshlarOAuthOptions)
+            .GetField("_oidcProviders", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(options)!;
+        providers["Google"] = provider;
+        return new AshlarExternalSignInService(pipeline.Object, new TestOptionsMonitor(options));
     }
 
     private static ClaimsPrincipal CreatePrincipal(string subject)

@@ -23,6 +23,11 @@ public sealed record AshlarExternalSignInResult(
 public enum AshlarExternalSignInStatus
 {
     /// <summary>
+    /// The external sign-in result has not been set.
+    /// </summary>
+    Unknown = 0,
+
+    /// <summary>
     /// The external sign-in completed successfully.
     /// </summary>
     Succeeded = 1,
