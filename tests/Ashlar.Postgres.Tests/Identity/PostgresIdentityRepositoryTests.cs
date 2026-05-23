@@ -583,7 +583,7 @@ internal sealed class PostgresIdentityRepositoryTests : PostgresTestBase
 
         await repo.CreateOrReplaceCredentialAsync(original);
 
-        var exception = Assert.ThrowsAsync<InvalidOperationException>(async () => await repo.CreateOrReplaceCredentialAsync(replacement));
+        var exception = Assert.ThrowsAsync<CredentialProviderKeyConflictException>(async () => await repo.CreateOrReplaceCredentialAsync(replacement));
 
         var oldUserCredential = await repo.GetCredentialForUserAsync(user1.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value, providerKey);
         var newUserCredential = await repo.GetCredentialForUserAsync(user2.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value, providerKey);

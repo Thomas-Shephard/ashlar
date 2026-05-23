@@ -131,7 +131,7 @@ internal abstract class IdentityRepositoryContractTests : ProviderContractFixtur
 
         var fetched = await repo.GetCredentialForUserAsync(user.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value, "shared-key");
         var moved = CreateCredential(otherUser.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value, "shared-key");
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await repo.CreateOrReplaceCredentialAsync(moved));
+        Assert.ThrowsAsync<CredentialProviderKeyConflictException>(async () => await repo.CreateOrReplaceCredentialAsync(moved));
         var otherFetched = await repo.GetCredentialForUserAsync(otherUser.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value, "shared-key");
 
         using (Assert.EnterMultipleScope())

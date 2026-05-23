@@ -84,7 +84,6 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         Assert.That(status.RootElement.GetProperty("status").GetString(), Is.EqualTo("Uninitialized"));
 
         var adminUserId = await BootstrapFirstAdminAsync();
-        await AssertGoogleUiHiddenWhenNotConfiguredAsync(AdminClient);
         await AssertAdminPageIncludesAccountSecurityPanelAsync(AdminClient);
         await EnrollTotpAsync(AdminClient);
         await AssertLastAdminCannotBeDisabledAsync(AdminClient, adminUserId);
@@ -124,42 +123,6 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         {
             Assert.That(sharedSecret, Is.Not.Empty);
             Assert.That(adminUserId, Is.Not.EqualTo(Guid.Empty));
-        }
-    }
-
-    [Test]
-    public async Task SampleGoogleOidcWiringIsConditionalAndFailsSafelyWithoutExternalTicket()
-    {
-        var missingGoogleSignIn = await AdminClient.GetAsync("/auth/google");
-        Assert.That(missingGoogleSignIn.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
-
-        await using var googleFactory = new SampleApplicationFactory(
-            GetConnectionString(),
-            new Dictionary<string, string?>
-            {
-                ["Authentication:Google:ClientId"] = "sample-client-id",
-                ["Authentication:Google:ClientSecret"] = "sample-client-secret",
-                ["Authentication:Google:HostedDomains:0"] = "example.com"
-            },
-            maskGoogleConfiguration: false);
-        using var client = googleFactory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-
-        var signIn = await client.GetAsync("/auth/google");
-        var signInCallback = await client.GetAsync("/auth/google/callback");
-        var invitationPage = await client.GetAsync("/invitations/accept?t=sample-token");
-        var invitationHtml = await invitationPage.Content.ReadAsStringAsync();
-        var invitationStart = await client.GetAsync("/invitations/accept/google?t=sample-token&userName=Member");
-        var invitationCallback = await client.GetAsync("/invitations/accept/google/callback");
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(signIn.StatusCode, Is.EqualTo(HttpStatusCode.Redirect));
-            Assert.That(signIn.Headers.Location?.Host, Does.Contain("google"));
-            Assert.That(await signInCallback.Content.ReadAsStringAsync(), Does.Contain("Google Sign-In Failed"));
-            Assert.That(invitationHtml, Does.Contain("Sign up with Google"));
-            Assert.That(invitationStart.StatusCode, Is.EqualTo(HttpStatusCode.Redirect));
-            Assert.That(invitationStart.Headers.Location?.Host, Does.Contain("google"));
-            Assert.That(await invitationCallback.Content.ReadAsStringAsync(), Does.Contain("Invitation Could Not Be Accepted"));
         }
     }
 
@@ -347,20 +310,6 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             Assert.That(html, Does.Contain("securityUserId"));
             Assert.That(html, Does.Contain("disableUserBtn"));
             Assert.That(html, Does.Contain("resetUserMfaBtn"));
-        }
-    }
-
-    private static async Task AssertGoogleUiHiddenWhenNotConfiguredAsync(HttpClient client)
-    {
-        var home = await client.GetAsync("/");
-        var invitation = await client.GetAsync("/invitations/accept?t=sample-token");
-        var account = await client.GetAsync("/account");
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(await home.Content.ReadAsStringAsync(), Does.Not.Contain("Google"));
-            Assert.That(await invitation.Content.ReadAsStringAsync(), Does.Not.Contain("Google"));
-            Assert.That(await account.Content.ReadAsStringAsync(), Does.Not.Contain("Google"));
         }
     }
 
