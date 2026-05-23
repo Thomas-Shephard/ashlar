@@ -5,19 +5,19 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.OAuth;
 
 /// <summary>
-/// Completes ASP.NET Core external sign-in callbacks by delegating to Ashlar authentication.
+/// Maps ASP.NET Core external OIDC callbacks to Ashlar assertions and can authenticate those credentials with Ashlar.
 /// </summary>
-public sealed class AshlarExternalSignInService
+public sealed class AshlarExternalCredentialAuthenticationService
 {
     private readonly IAuthenticationPipeline _authenticationPipeline;
     private readonly IOptionsMonitor<AshlarOAuthOptions> _options;
 
     /// <summary>
-    /// Initializes a new instance of the external sign-in service.
+    /// Initializes a new instance of the external credential authentication service.
     /// </summary>
     /// <param name="authenticationPipeline">The Ashlar authentication pipeline.</param>
     /// <param name="options">The OAuth options monitor.</param>
-    public AshlarExternalSignInService(
+    public AshlarExternalCredentialAuthenticationService(
         IAuthenticationPipeline authenticationPipeline,
         IOptionsMonitor<AshlarOAuthOptions> options)
     {
@@ -26,14 +26,19 @@ public sealed class AshlarExternalSignInService
     }
 
     /// <summary>
-    /// Completes sign-in using the ASP.NET Core authentication result for the configured provider scheme.
+    /// Validates the external OIDC callback, maps it to an Ashlar assertion, and authenticates that credential with Ashlar.
     /// </summary>
     /// <param name="httpContext">The current HTTP context.</param>
     /// <param name="providerName">The configured Ashlar provider name.</param>
     /// <param name="tenantId">The tenant for tenant-aware lookup, when applicable.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The external sign-in result.</returns>
-    public async Task<AshlarExternalSignInResult> CompleteOidcSignInAsync(
+    /// <returns>The external credential authentication result.</returns>
+    /// <remarks>
+    /// This method does not issue an application session or cookie. Applications with MFA or other orchestration policy
+    /// should prefer <see cref="CompleteOidcAssertionAsync(HttpContext, string)"/>, pass the returned assertion through
+    /// <see cref="IAuthenticationOrchestrator"/>, and issue a session only after orchestration succeeds.
+    /// </remarks>
+    public async Task<AshlarExternalCredentialAuthenticationResult> CompleteOidcCredentialAuthenticationAsync(
         HttpContext httpContext,
         string providerName,
         Guid? tenantId = null,
@@ -44,23 +49,29 @@ public sealed class AshlarExternalSignInService
         var assertionResult = await CompleteOidcAssertionAsync(httpContext, providerName);
         if (!assertionResult.Succeeded)
         {
-            return new AshlarExternalSignInResult(MapAssertionStatus(assertionResult.Status), Assertion: assertionResult.Assertion);
+            return new AshlarExternalCredentialAuthenticationResult(MapAssertionStatus(assertionResult.Status), Assertion: assertionResult.Assertion);
         }
 
         var assertion = assertionResult.Assertion!;
         var response = await _authenticationPipeline.LoginAsync(CreateAuthenticationContext(httpContext, tenantId), assertion, cancellationToken);
-        return new AshlarExternalSignInResult(MapStatus(response), response, assertion);
+        return new AshlarExternalCredentialAuthenticationResult(MapStatus(response), response, assertion);
     }
 
     /// <summary>
-    /// Completes sign-in from an already validated external principal.
+    /// Maps an already validated external principal to an Ashlar assertion and authenticates that credential with Ashlar.
     /// </summary>
     /// <param name="providerName">The configured Ashlar provider name.</param>
     /// <param name="principal">The validated external principal. Do not pass principals built from request data or unvalidated tokens.</param>
     /// <param name="context">The Ashlar authentication context.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The external sign-in result.</returns>
-    public async Task<AshlarExternalSignInResult> CompleteOidcSignInAsync(
+    /// <returns>The external credential authentication result.</returns>
+    /// <remarks>
+    /// This method does not issue an application session or cookie. It is safe for session issuance only when the host
+    /// application's policy allows the authenticated external credential response to be treated as complete. Applications
+    /// with MFA policy must not issue sessions directly from this result; use <see cref="CompleteOidcAssertionAsync(HttpContext, string)"/>
+    /// and the host orchestration pipeline instead.
+    /// </remarks>
+    public async Task<AshlarExternalCredentialAuthenticationResult> CompleteOidcCredentialAuthenticationAsync(
         string providerName,
         System.Security.Claims.ClaimsPrincipal principal,
         AuthenticationContext context,
@@ -72,7 +83,7 @@ public sealed class AshlarExternalSignInService
         var provider = GetOidcProvider(providerName);
         if (provider == null)
         {
-            return new AshlarExternalSignInResult(AshlarExternalSignInStatus.UnsupportedProvider);
+            return new AshlarExternalCredentialAuthenticationResult(AshlarExternalCredentialAuthenticationStatus.UnsupportedProvider);
         }
 
         ExternalIdentityAssertion assertion;
@@ -82,26 +93,28 @@ public sealed class AshlarExternalSignInService
         }
         catch (InvalidOperationException)
         {
-            return new AshlarExternalSignInResult(AshlarExternalSignInStatus.InvalidPrincipal);
+            return new AshlarExternalCredentialAuthenticationResult(AshlarExternalCredentialAuthenticationStatus.InvalidPrincipal);
         }
         catch (ArgumentException)
         {
-            return new AshlarExternalSignInResult(AshlarExternalSignInStatus.InvalidPrincipal);
+            return new AshlarExternalCredentialAuthenticationResult(AshlarExternalCredentialAuthenticationStatus.InvalidPrincipal);
         }
 
         var response = await _authenticationPipeline.LoginAsync(context, assertion, cancellationToken);
-        return new AshlarExternalSignInResult(MapStatus(response), response, assertion);
+        return new AshlarExternalCredentialAuthenticationResult(MapStatus(response), response, assertion);
     }
 
     /// <summary>
-    /// Completes sign-in callback handling only up to a mapped Ashlar external identity assertion.
+    /// Completes callback handling only up to a mapped Ashlar external identity assertion.
     /// </summary>
     /// <param name="httpContext">The current HTTP context.</param>
     /// <param name="providerName">The configured Ashlar provider name.</param>
     /// <returns>The external assertion completion result.</returns>
     /// <remarks>
     /// Use this method when the host application must pass the mapped assertion through its own authentication
-    /// orchestration before issuing a session, such as when MFA policy is applied by <c>IAuthenticationOrchestrator</c>.
+    /// orchestration before issuing a session, such as when MFA policy is applied by <see cref="IAuthenticationOrchestrator"/>.
+    /// A successful result means the external OIDC credential was validated and mapped; it does not mean an application
+    /// session may be issued.
     /// </remarks>
     public async Task<AshlarExternalAssertionResult> CompleteOidcAssertionAsync(
         HttpContext httpContext,
@@ -172,30 +185,32 @@ public sealed class AshlarExternalSignInService
             && string.Equals(provider.SchemeName, schemeName, StringComparison.Ordinal);
     }
 
-    private static AshlarExternalSignInStatus MapStatus(AuthenticationResponse response)
+    private static AshlarExternalCredentialAuthenticationStatus MapStatus(AuthenticationResponse response)
     {
         if (response.Succeeded)
         {
-            return AshlarExternalSignInStatus.Succeeded;
+            return AshlarExternalCredentialAuthenticationStatus.Succeeded;
         }
 
         return response.Status switch
         {
-            AuthenticationStatus.Disabled => AshlarExternalSignInStatus.Disabled,
-            AuthenticationStatus.MfaRequired => AshlarExternalSignInStatus.MfaRequired,
-            _ => AshlarExternalSignInStatus.AshlarAuthenticationFailed
+            AuthenticationStatus.Disabled => AshlarExternalCredentialAuthenticationStatus.Disabled,
+            AuthenticationStatus.MfaRequired => AshlarExternalCredentialAuthenticationStatus.MfaRequired,
+            _ => AshlarExternalCredentialAuthenticationStatus.AshlarAuthenticationFailed
         };
     }
 
-    private static AshlarExternalSignInStatus MapAssertionStatus(AshlarExternalAssertionStatus status)
+    private static AshlarExternalCredentialAuthenticationStatus MapAssertionStatus(AshlarExternalAssertionStatus status)
     {
         return status switch
         {
-            AshlarExternalAssertionStatus.AuthenticationFailed => AshlarExternalSignInStatus.AuthenticationFailed,
-            AshlarExternalAssertionStatus.UnsupportedProvider => AshlarExternalSignInStatus.UnsupportedProvider,
-            AshlarExternalAssertionStatus.InvalidPrincipal => AshlarExternalSignInStatus.InvalidPrincipal,
-            AshlarExternalAssertionStatus.ProviderMismatch => AshlarExternalSignInStatus.ProviderMismatch,
-            _ => AshlarExternalSignInStatus.Unknown
+            AshlarExternalAssertionStatus.AuthenticationFailed => AshlarExternalCredentialAuthenticationStatus.AuthenticationFailed,
+            AshlarExternalAssertionStatus.UnsupportedProvider => AshlarExternalCredentialAuthenticationStatus.UnsupportedProvider,
+            AshlarExternalAssertionStatus.InvalidPrincipal => AshlarExternalCredentialAuthenticationStatus.InvalidPrincipal,
+            AshlarExternalAssertionStatus.ProviderMismatch => AshlarExternalCredentialAuthenticationStatus.ProviderMismatch,
+            // Assertion success only means the external OIDC credential was validated and mapped; MFA or other policy may still block session issuance.
+            AshlarExternalAssertionStatus.Succeeded => AshlarExternalCredentialAuthenticationStatus.Unknown,
+            _ => AshlarExternalCredentialAuthenticationStatus.Unknown
         };
     }
 }

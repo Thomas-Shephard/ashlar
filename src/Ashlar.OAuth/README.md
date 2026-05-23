@@ -1,10 +1,10 @@
 # Ashlar.OAuth
 
-ASP.NET Core OAuth and OpenID Connect sign-in integration for Ashlar.
+ASP.NET Core OAuth and OpenID Connect credential integration for Ashlar.
 
-This package registers ASP.NET Core OpenID Connect handlers, maps validated external principals to Ashlar `ExternalIdentityAssertion` values, and delegates sign-in to Ashlar's authentication pipeline.
+This package registers ASP.NET Core OpenID Connect handlers and maps validated external principals to Ashlar `ExternalIdentityAssertion` values.
 
-It does not provide UI, persist OAuth tokens, issue Ashlar session cookies, or allow open self-registration. Applications decide routing and issue their normal Ashlar session after a successful result.
+It does not provide UI, persist OAuth tokens, issue Ashlar session cookies, bypass MFA orchestration, or allow open self-registration. Applications decide routing and issue their normal Ashlar session only after their authentication orchestration succeeds.
 
 ## Setup
 
@@ -51,7 +51,7 @@ options.AddGoogle(...);
 
 Configures provider name `Google`, authority `https://accounts.google.com`, authorization code flow, and `openid profile email` scopes. Ashlar uses Google's stable `sub` claim as the provider key. Email claims are copied when present but are not used as the provider key.
 
-Passing hosted domains to `AddGoogle` adds Google's `hd` login UI hint and enforces the validated returned `hd` claim against the allowed domains before Ashlar login continues.
+Passing hosted domains to `AddGoogle` adds Google's `hd` login UI hint and enforces the validated returned `hd` claim against the allowed domains before Ashlar credential authentication continues.
 
 Microsoft Entra ID:
 
@@ -89,7 +89,7 @@ By default, provider callback paths are:
 
 For example, register `https://localhost:5001/signin-oidc/Google` with Google for local development.
 
-Start sign-in by challenging the provider scheme:
+Start an external OIDC challenge with the provider scheme:
 
 ```csharp
 await httpContext.ChallengeAsync("Google", new AuthenticationProperties
@@ -98,21 +98,43 @@ await httpContext.ChallengeAsync("Google", new AuthenticationProperties
 });
 ```
 
-Complete sign-in with `AshlarExternalSignInService`, then issue the Ashlar session:
+For MFA-aware applications, complete the callback only to an Ashlar assertion, pass that assertion through `IAuthenticationOrchestrator`, and issue the Ashlar session only after orchestration succeeds:
 
 ```csharp
-var result = await externalSignIn.CompleteOidcSignInAsync(httpContext, "Google");
-if (result.Succeeded && result.Authentication?.User != null)
+var assertionResult = await externalCredentials.CompleteOidcAssertionAsync(httpContext, "Google");
+if (!assertionResult.Succeeded || assertionResult.Assertion == null)
 {
-    await signInManager.SignInAsync(httpContext, result.Authentication.User.Id);
+    return Results.Redirect("/signin?external=failed");
 }
+
+var authentication = await orchestrator.AuthenticateAsync(
+    httpContext.ToAuthenticationContext(),
+    assertionResult.Assertion,
+    cancellationToken: cancellationToken);
+
+if (authentication.Status == MfaAuthenticationStatus.MfaRequired)
+{
+    return RenderMfaChallenge(authentication.HandshakeToken, authentication.RequiredFactors);
+}
+
+if (authentication.Status != MfaAuthenticationStatus.Succeeded || authentication.User == null)
+{
+    return Results.Redirect("/signin?external=failed");
+}
+
+await signInManager.SignInAsync(httpContext, authentication.User.Id, cancellationToken);
+return Results.Redirect("/");
 ```
+
+`CompleteOidcAssertionAsync` validates the temporary external ticket, checks that it was issued for the expected configured provider, clears the external cookie, and returns a mapped `ExternalIdentityAssertion`. A successful assertion result means the external OIDC credential was validated and mapped; it does not mean an application session may be issued.
+
+`AshlarExternalCredentialAuthenticationService.CompleteOidcCredentialAuthenticationAsync` is a lower-level helper that maps the OIDC credential and calls Ashlar's authentication pipeline directly. It still does not issue an application session or cookie. Use it only when the host application deliberately treats the returned Ashlar authentication response as the complete credential-authentication decision. Applications with MFA policy must not issue sessions directly from external credential validation; use `CompleteOidcAssertionAsync` and the host orchestration pipeline instead.
 
 ## Security Notes
 
 - ASP.NET Core's OpenID Connect handler performs state, nonce, code exchange, token validation, audience validation, signing key validation, and expiry validation according to the configured authority and token validation parameters.
 - Ashlar uses OIDC `sub` as the stable provider key, not email. For shared-authority providers that can admit multiple issuers, provider presets can qualify the key with `iss` as well as `sub`.
-- Google `hd` is an organization/domain signal, not an Ashlar tenant. When domains are passed to `AddGoogle`, Ashlar.OAuth validates the returned `hd` claim before completing sign-in.
+- Google `hd` is an organization/domain signal, not an Ashlar tenant. When domains are passed to `AddGoogle`, Ashlar.OAuth validates the returned `hd` claim before external credential authentication completes.
 
 ## Invitation registration
 
