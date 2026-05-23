@@ -32,6 +32,9 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         SetSampleEnvironment("Ashlar__Cookie__Secure", "false");
         SetSampleEnvironment("Ashlar__Outbox__PollingInterval", "01:00:00");
         SetSampleEnvironment("Ashlar__Cleanup__CleanupInterval", "01:00:00");
+        SetSampleEnvironment("Authentication__Google__ClientId", string.Empty);
+        SetSampleEnvironment("Authentication__Google__ClientSecret", string.Empty);
+        SetSampleEnvironment("Authentication__Google__HostedDomains__0", string.Empty);
 
         try
         {
@@ -58,7 +61,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         await base.OneTimeTearDown();
     }
 
-    private void SetSampleEnvironment(string name, string value)
+    private void SetSampleEnvironment(string name, string? value)
     {
         _previousEnvironmentValues.TryAdd(name, Environment.GetEnvironmentVariable(name));
         Environment.SetEnvironmentVariable(name, value);
@@ -435,20 +438,40 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     [GeneratedRegex("id=\"secret\" value=\"([^\"]+)\"", RegexOptions.CultureInvariant)]
     private static partial Regex SharedSecretInputRegex();
 
-    private sealed class SampleApplicationFactory(string connectionString) : WebApplicationFactory<Program>
+    private sealed class SampleApplicationFactory(
+        string connectionString,
+        IReadOnlyDictionary<string, string?>? additionalConfiguration = null,
+        bool maskGoogleConfiguration = true) : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.ConfigureAppConfiguration(configuration =>
             {
-                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                var values = new Dictionary<string, string?>
                 {
                     ["Ashlar:ConnectionString"] = connectionString,
                     ["Ashlar:PublicAppUrl"] = "http://localhost",
                     ["Ashlar:Cookie:Secure"] = "false",
                     ["Ashlar:Outbox:PollingInterval"] = "01:00:00",
                     ["Ashlar:Cleanup:CleanupInterval"] = "01:00:00"
-                });
+                };
+
+                if (maskGoogleConfiguration)
+                {
+                    values["Authentication:Google:ClientId"] = string.Empty;
+                    values["Authentication:Google:ClientSecret"] = string.Empty;
+                    values["Authentication:Google:HostedDomains:0"] = string.Empty;
+                }
+
+                if (additionalConfiguration != null)
+                {
+                    foreach (var (key, value) in additionalConfiguration)
+                    {
+                        values[key] = value;
+                    }
+                }
+
+                configuration.AddInMemoryCollection(values);
             });
 
             builder.ConfigureServices(services =>

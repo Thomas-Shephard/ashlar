@@ -204,7 +204,7 @@ internal sealed class SqliteIdentityRepositoryTests : SqliteTestBase
         }
 
         var moved = CreateCredential(otherUser.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value, "shared-key");
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await repo.CreateOrReplaceCredentialAsync(moved));
+        Assert.ThrowsAsync<CredentialProviderKeyConflictException>(async () => await repo.CreateOrReplaceCredentialAsync(moved));
         Assert.ThrowsAsync<SqliteException>(async () => await repo.CreateCredentialAsync(CreateCredential(user.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value, "shared-key")));
 
         var staleVersion = fetched.Version;

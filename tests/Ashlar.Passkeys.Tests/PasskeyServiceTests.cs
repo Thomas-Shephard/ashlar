@@ -220,7 +220,7 @@ internal sealed class PasskeyServiceTests
         validator.Setup(v => v.VerifyRegistrationAsync(It.IsAny<PasskeyOptions>(), challenge, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PasskeyRegistrationVerificationResult("cred", "pk", 1, []));
         repo.Setup(r => r.CreateOrReplaceCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("Credential provider key is already linked to another user."));
+            .ThrowsAsync(new CredentialProviderKeyConflictException());
         var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         var result = await service.CompleteRegistrationAsync(new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement));

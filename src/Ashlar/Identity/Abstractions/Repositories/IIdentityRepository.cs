@@ -83,6 +83,9 @@ public interface IIdentityRepository
     /// <param name="credential">The credential value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
+    /// <exception cref="CredentialProviderKeyConflictException">
+    /// The credential provider key is already linked to a different user.
+    /// </exception>
     Task CreateOrReplaceCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default);
 
     /// <summary>
