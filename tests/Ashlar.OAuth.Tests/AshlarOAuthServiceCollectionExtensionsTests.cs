@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Ashlar.OAuth.Providers.Apple;
 using Ashlar.OAuth.Providers.Google;
 using Ashlar.OAuth.Providers.Microsoft;
 
@@ -79,6 +80,69 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
         {
             Assert.That(options.OidcProviders, Does.ContainKey("Google-Workspace"));
             Assert.That(options.OidcProviders["Google-Workspace"].ProviderName, Is.EqualTo("Google-Workspace"));
+        }
+    }
+
+    [Test]
+    public void AddAppleShouldRegisterExpectedProviderSchemeAndDefaults()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddApple();
+
+        var provider = options.OidcProviders["Apple"];
+        var oidc = new OpenIdConnectOptions();
+        provider.Configure(oidc);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.ProviderName, Is.EqualTo("Apple"));
+            Assert.That(provider.SchemeName, Is.EqualTo("Apple"));
+            Assert.That(provider.ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.Subject));
+            Assert.That(oidc.Authority, Is.EqualTo(AppleOidcDefaults.Authority));
+            Assert.That(oidc.ResponseType, Is.EqualTo("code"));
+            Assert.That(oidc.Scope, Does.Contain("openid"));
+            Assert.That(oidc.Scope, Does.Contain("email"));
+            Assert.That(oidc.Scope, Does.Contain("name"));
+            Assert.That(oidc.Scope, Does.Not.Contain("profile"));
+        }
+    }
+
+    [Test]
+    public void AddAppleShouldAllowCallerConfigurationToOverrideAndExtendOidcOptions()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddApple(oidc =>
+        {
+            oidc.Authority = "https://apple.example.test";
+            oidc.ClientId = "client";
+            oidc.Scope.Add("custom");
+        });
+        var provider = options.OidcProviders["Apple"];
+        var oidc = new OpenIdConnectOptions();
+        provider.Configure(oidc);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(oidc.Authority, Is.EqualTo("https://apple.example.test"));
+            Assert.That(oidc.ClientId, Is.EqualTo("client"));
+            Assert.That(oidc.Scope, Does.Contain("custom"));
+        }
+    }
+
+    [Test]
+    public void AddAppleShouldSupportCustomProviderName()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddApple(providerName: "Apple-Work");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.OidcProviders, Does.ContainKey("Apple-Work"));
+            Assert.That(options.OidcProviders["Apple-Work"].ProviderName, Is.EqualTo("Apple-Work"));
+            Assert.That(options.OidcProviders["Apple-Work"].SchemeName, Is.EqualTo("Apple-Work"));
         }
     }
 
@@ -176,6 +240,30 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             Assert.That(oidcOptions.SaveTokens, Is.False);
             Assert.That(oidcOptions.GetClaimsFromUserInfoEndpoint, Is.True);
             Assert.That(oidcOptions.MapInboundClaims, Is.False);
+        }
+    }
+
+    [Test]
+    public void AddAshlarOAuthShouldConfigureAppleRemoteHandlerForProviderCallback()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarOAuth(options => options.AddApple(oidc =>
+        {
+            oidc.ClientId = "client";
+            oidc.ClientSecret = "secret";
+        }));
+
+        using var provider = services.BuildServiceProvider();
+        var oidcOptions = provider.GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>().Get("Apple");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(oidcOptions.SignInScheme, Is.EqualTo("Ashlar.OAuth.External"));
+            Assert.That(oidcOptions.CallbackPath.Value, Is.EqualTo("/signin-oidc/Apple"));
+            Assert.That(oidcOptions.SaveTokens, Is.False);
+            Assert.That(oidcOptions.Authority, Is.EqualTo(AppleOidcDefaults.Authority));
+            Assert.That(oidcOptions.ResponseType, Is.EqualTo("code"));
         }
     }
 
@@ -459,6 +547,16 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             options.AddOidcProvider("Google", _ => { });
             options.AddOidcProvider(" google ", _ => { });
         }));
+    }
+
+    [Test]
+    public void AddAppleShouldKeepDuplicateProviderNameBehaviorConsistent()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddApple();
+
+        Assert.Throws<ArgumentException>(() => options.AddApple(providerName: " apple "));
     }
 
     private static OpenIdConnectOptions ConfigureGoogleOptions(IEnumerable<string> hostedDomains)

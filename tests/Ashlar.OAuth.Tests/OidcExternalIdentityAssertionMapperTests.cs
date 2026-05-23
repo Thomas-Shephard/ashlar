@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Ashlar.OAuth.Providers.Apple;
 
 namespace Ashlar.OAuth.Tests;
 
@@ -40,6 +41,27 @@ internal sealed class OidcExternalIdentityAssertionMapperTests
         var assertion = OidcExternalIdentityAssertionMapper.Map("Google", principal);
 
         Assert.That(assertion.ProviderKey, Is.EqualTo("stable-subject"));
+    }
+
+    [Test]
+    public void MapShouldUseAppleSubjectAsProviderKey()
+    {
+        var principal = CreatePrincipal(
+        [
+            new Claim("iss", AppleOidcDefaults.Authority),
+            new Claim("sub", "apple-subject"),
+            new Claim("email", "person@privaterelay.appleid.com")
+        ]);
+
+        var assertion = OidcExternalIdentityAssertionMapper.Map(AppleOidcDefaults.ProviderName, principal);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(assertion.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey(ProviderType.Oidc, "Apple")));
+            Assert.That(assertion.ProviderKey, Is.EqualTo("apple-subject"));
+            Assert.That(assertion.Claims["iss"], Is.EqualTo([AppleOidcDefaults.Authority]));
+            Assert.That(assertion.Claims["email"], Is.EqualTo(["person@privaterelay.appleid.com"]));
+        }
     }
 
     [Test]
