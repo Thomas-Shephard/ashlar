@@ -53,6 +53,22 @@ Configures provider name `Google`, authority `https://accounts.google.com`, auth
 
 Passing hosted domains to `AddGoogle` adds Google's `hd` login UI hint and enforces the validated returned `hd` claim against the allowed domains before Ashlar credential authentication continues.
 
+Apple:
+
+```csharp
+using Ashlar.OAuth.Providers.Apple;
+
+options.AddApple(oidc =>
+{
+    oidc.ClientId = builder.Configuration["Authentication:Apple:ClientId"];
+    oidc.ClientSecret = builder.Configuration["Authentication:Apple:ClientSecret"];
+});
+```
+
+Configures provider name `Apple`, authority `https://appleid.apple.com`, authorization code flow, `form_post` response mode, and `openid email name` scopes. Apple does not publish a user-info endpoint, so the preset reads identity claims from the validated ID token and maps first-authorization display name hints from Apple's `user` authorization response parameter when present. Ashlar uses Apple's stable `sub` claim as the provider key. Apple client secrets are normally application-generated JWTs; production apps must configure generation, rotation, and storage themselves through `OpenIdConnectOptions`, for example by setting `ClientSecret` in the configure callback.
+
+Apple profile claims are display hints only. The `name` value may only be returned during the first authorization, and `email` may be an Apple private relay address. Invitation email matching uses the generic verified-email policy unless the application replaces `IOidcInvitationEmailMatchPolicy`.
+
 Microsoft Entra ID:
 
 ```csharp

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Ashlar.OAuth.Providers.Apple;
 using Ashlar.OAuth.Providers.Google;
 using Ashlar.OAuth.Providers.Microsoft;
 
@@ -83,6 +84,71 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAppleShouldRegisterExpectedProviderSchemeAndDefaults()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddApple();
+
+        var provider = options.OidcProviders["Apple"];
+        var oidc = new OpenIdConnectOptions();
+        provider.Configure(oidc);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.ProviderName, Is.EqualTo("Apple"));
+            Assert.That(provider.SchemeName, Is.EqualTo("Apple"));
+            Assert.That(provider.ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.Subject));
+            Assert.That(provider.GetClaimsFromUserInfoEndpoint, Is.False);
+            Assert.That(oidc.Authority, Is.EqualTo(AppleOidcDefaults.Authority));
+            Assert.That(oidc.ResponseType, Is.EqualTo("code"));
+            Assert.That(oidc.ResponseMode, Is.EqualTo(OpenIdConnectResponseMode.FormPost));
+            Assert.That(oidc.Scope, Does.Contain("openid"));
+            Assert.That(oidc.Scope, Does.Contain("email"));
+            Assert.That(oidc.Scope, Does.Contain("name"));
+            Assert.That(oidc.Scope, Does.Not.Contain("profile"));
+        }
+    }
+
+    [Test]
+    public void AddAppleShouldAllowCallerConfigurationToOverrideAndExtendOidcOptions()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddApple(oidc =>
+        {
+            oidc.Authority = "https://apple.example.test";
+            oidc.ClientId = "client";
+            oidc.Scope.Add("custom");
+        });
+        var provider = options.OidcProviders["Apple"];
+        var oidc = new OpenIdConnectOptions();
+        provider.Configure(oidc);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(oidc.Authority, Is.EqualTo("https://apple.example.test"));
+            Assert.That(oidc.ClientId, Is.EqualTo("client"));
+            Assert.That(oidc.Scope, Does.Contain("custom"));
+        }
+    }
+
+    [Test]
+    public void AddAppleShouldSupportCustomProviderName()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddApple(providerName: "Apple-Work");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.OidcProviders, Does.ContainKey("Apple-Work"));
+            Assert.That(options.OidcProviders["Apple-Work"].ProviderName, Is.EqualTo("Apple-Work"));
+            Assert.That(options.OidcProviders["Apple-Work"].SchemeName, Is.EqualTo("Apple-Work"));
+        }
+    }
+
+    [Test]
     public void AddOidcProviderShouldSupportCustomProviderKeyMode()
     {
         var options = new AshlarOAuthOptions();
@@ -90,6 +156,16 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
         options.AddOidcProvider("SharedIssuer", AshlarOidcProviderKeyMode.IssuerAndSubject, _ => { });
 
         Assert.That(options.OidcProviders["SharedIssuer"].ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.IssuerAndSubject));
+    }
+
+    [Test]
+    public void AddOidcProviderShouldSupportUserInfoEndpointOptOut()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddOidcProvider("NoUserInfo", AshlarOidcProviderKeyMode.Subject, _ => { }, getClaimsFromUserInfoEndpoint: false);
+
+        Assert.That(options.OidcProviders["NoUserInfo"].GetClaimsFromUserInfoEndpoint, Is.False);
     }
 
     [Test]
@@ -177,6 +253,145 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             Assert.That(oidcOptions.GetClaimsFromUserInfoEndpoint, Is.True);
             Assert.That(oidcOptions.MapInboundClaims, Is.False);
         }
+    }
+
+    [Test]
+    public void AddAshlarOAuthShouldConfigureAppleRemoteHandlerForProviderCallback()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarOAuth(options => options.AddApple(oidc =>
+        {
+            oidc.ClientId = "client";
+            oidc.ClientSecret = "secret";
+        }));
+
+        using var provider = services.BuildServiceProvider();
+        var oidcOptions = provider.GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>().Get("Apple");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(oidcOptions.SignInScheme, Is.EqualTo("Ashlar.OAuth.External"));
+            Assert.That(oidcOptions.CallbackPath.Value, Is.EqualTo("/signin-oidc/Apple"));
+            Assert.That(oidcOptions.SaveTokens, Is.False);
+            Assert.That(oidcOptions.GetClaimsFromUserInfoEndpoint, Is.False);
+            Assert.That(oidcOptions.Authority, Is.EqualTo(AppleOidcDefaults.Authority));
+            Assert.That(oidcOptions.ResponseType, Is.EqualTo("code"));
+            Assert.That(oidcOptions.ResponseMode, Is.EqualTo(OpenIdConnectResponseMode.FormPost));
+        }
+    }
+
+    [Test]
+    public async Task AddAppleShouldMapFirstAuthorizationUserNameClaimsAndChainTokenValidatedEvent()
+    {
+        var called = false;
+        var oidc = ConfigureAppleOptions(options =>
+        {
+            options.Events.OnTokenValidated = _ =>
+            {
+                called = true;
+                return Task.CompletedTask;
+            };
+        });
+        var context = CreateAppleTokenValidatedContext(oidc, """{"name":{"firstName":" Ada ","lastName":" Lovelace "},"email":"ignored@example.com"}""");
+
+        await oidc.Events.OnTokenValidated(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(called, Is.True);
+            Assert.That(context.Principal?.FindFirstValue("given_name"), Is.EqualTo("Ada"));
+            Assert.That(context.Principal?.FindFirstValue("family_name"), Is.EqualTo("Lovelace"));
+            Assert.That(context.Principal?.FindFirstValue("name"), Is.EqualTo("Ada Lovelace"));
+            Assert.That(context.Principal?.Claims.Where(claim => claim.Type == "email").Select(claim => claim.Value), Is.EqualTo(["id-token@example.com"]));
+        }
+    }
+
+    [Test]
+    public async Task AddAppleShouldMapPartialFirstAuthorizationUserNameClaims()
+    {
+        var oidc = ConfigureAppleOptions();
+        var context = CreateAppleTokenValidatedContext(oidc, """{"name":{"lastName":" Hopper "}}""");
+
+        await oidc.Events.OnTokenValidated(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Principal?.FindFirstValue("given_name"), Is.Null);
+            Assert.That(context.Principal?.FindFirstValue("family_name"), Is.EqualTo("Hopper"));
+            Assert.That(context.Principal?.FindFirstValue("name"), Is.EqualTo("Hopper"));
+        }
+    }
+
+    [Test]
+    public async Task AddAppleShouldMapGivenNameOnlyFirstAuthorizationUserNameClaim()
+    {
+        var oidc = ConfigureAppleOptions();
+        var context = CreateAppleTokenValidatedContext(oidc, """{"name":{"firstName":" Ada "}}""");
+
+        await oidc.Events.OnTokenValidated(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Principal?.FindFirstValue("given_name"), Is.EqualTo("Ada"));
+            Assert.That(context.Principal?.FindFirstValue("family_name"), Is.Null);
+            Assert.That(context.Principal?.FindFirstValue("name"), Is.EqualTo("Ada"));
+        }
+    }
+
+    [Test]
+    public async Task AddAppleShouldPreserveExistingNameClaims()
+    {
+        var oidc = ConfigureAppleOptions();
+        var context = CreateAppleTokenValidatedContext(
+            oidc,
+            """{"name":{"firstName":"New","lastName":"Person"}}""",
+            new Claim("given_name", "Existing"),
+            new Claim("family_name", "Claims"),
+            new Claim("name", "Existing Claims"));
+
+        await oidc.Events.OnTokenValidated(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Principal?.FindFirstValue("given_name"), Is.EqualTo("Existing"));
+            Assert.That(context.Principal?.FindFirstValue("family_name"), Is.EqualTo("Claims"));
+            Assert.That(context.Principal?.FindFirstValue("name"), Is.EqualTo("Existing Claims"));
+        }
+    }
+
+    [TestCase(null)]
+    [TestCase(" ")]
+    [TestCase("not-json")]
+    [TestCase("{}")]
+    [TestCase("""{"name":"Ada"}""")]
+    [TestCase("""{"name":{"firstName":" ","lastName":" "}}""")]
+    [TestCase("""{"name":{"firstName":42,"lastName":false}}""")]
+    public async Task AddAppleShouldIgnoreMissingOrInvalidUserNamePayload(string? userJson)
+    {
+        var oidc = ConfigureAppleOptions();
+        var context = CreateAppleTokenValidatedContext(oidc, userJson);
+
+        await oidc.Events.OnTokenValidated(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Principal?.FindFirstValue("given_name"), Is.Null);
+            Assert.That(context.Principal?.FindFirstValue("family_name"), Is.Null);
+            Assert.That(context.Principal?.FindFirstValue("name"), Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task AddAppleShouldIgnoreUserNamePayloadWhenPrincipalIsMissing()
+    {
+        var oidc = ConfigureAppleOptions();
+        var context = CreateAppleTokenValidatedContext(oidc, """{"name":{"firstName":"Ada"}}""");
+        context.Principal = null!;
+
+        Assert.DoesNotThrowAsync(async () => await oidc.Events.OnTokenValidated(context));
+
+        Assert.That(context.Principal, Is.Null);
     }
 
     [Test]
@@ -461,12 +676,31 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
         }));
     }
 
+    [Test]
+    public void AddAppleShouldKeepDuplicateProviderNameBehaviorConsistent()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddApple();
+
+        Assert.Throws<ArgumentException>(() => options.AddApple(providerName: " apple "));
+    }
+
     private static OpenIdConnectOptions ConfigureGoogleOptions(IEnumerable<string> hostedDomains)
     {
         var options = new AshlarOAuthOptions();
         options.AddGoogle(hostedDomains);
         var oidc = new OpenIdConnectOptions();
         options.OidcProviders["Google"].Configure(oidc);
+        return oidc;
+    }
+
+    private static OpenIdConnectOptions ConfigureAppleOptions(Action<OpenIdConnectOptions>? configure = null)
+    {
+        var options = new AshlarOAuthOptions();
+        options.AddApple(configure);
+        var oidc = new OpenIdConnectOptions();
+        options.OidcProviders["Apple"].Configure(oidc);
         return oidc;
     }
 
@@ -498,5 +732,31 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             options,
             principal,
             new AuthenticationProperties());
+    }
+
+    private static TokenValidatedContext CreateAppleTokenValidatedContext(OpenIdConnectOptions options, string? userJson, params Claim[] claims)
+    {
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim("sub", "apple-subject"),
+            new Claim("email", "id-token@example.com"),
+            ..claims
+        ], "oidc"));
+        var context = new TokenValidatedContext(
+            new DefaultHttpContext(),
+            new AuthenticationScheme("Apple", "Apple", typeof(OpenIdConnectHandler)),
+            options,
+            principal,
+            new AuthenticationProperties())
+        {
+            ProtocolMessage = new OpenIdConnectMessage()
+        };
+
+        if (userJson != null)
+        {
+            context.ProtocolMessage.SetParameter("user", userJson);
+        }
+
+        return context;
     }
 }
