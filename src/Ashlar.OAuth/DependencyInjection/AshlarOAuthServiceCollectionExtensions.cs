@@ -39,6 +39,7 @@ public static class AshlarOAuthServiceCollectionExtensions
 
         services.Configure(configure);
         services.TryAddScoped<AshlarExternalSignInService>();
+        services.TryAddScoped<AshlarExternalAccountLinkService>();
 
         var authenticationBuilder = services.AddAuthentication();
         authenticationBuilder.AddCookie(options.ExternalSignInScheme, cookieOptions =>
