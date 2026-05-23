@@ -15,7 +15,7 @@ internal sealed class RedisAuthenticationRateLimiterContractTests : Authenticati
     protected override async Task<IServiceProvider> CreateInitializedServiceProviderAsync()
     {
         await _redis.InitializeAsync();
-        await _redis.FlushDatabaseAsync();
+        await _redis.FlushAsync();
 
         _timeProvider = new FakeTimeProvider(Start);
         var services = new ServiceCollection();
@@ -32,6 +32,11 @@ internal sealed class RedisAuthenticationRateLimiterContractTests : Authenticati
     private sealed class RedisTestHost : RedisTestBase
     {
         public IConnectionMultiplexer Connection => GetConnection();
+
+        internal Task FlushAsync()
+        {
+            return FlushDatabaseAsync();
+        }
 
         public async Task InitializeAsync()
         {
