@@ -39,8 +39,7 @@ public sealed class MicrosoftOidcInvitationEmailMatchPolicy : IOidcInvitationEma
 
         if (CandidateEmailClaimTypes
             .SelectMany(context.Principal.FindAll)
-            .Where(claim => string.Equals(claim.Value.Trim(), context.Invitation.Email.Trim(), StringComparison.OrdinalIgnoreCase))
-            .Any())
+            .Any(claim => string.Equals(claim.Value.Trim(), context.Invitation.Email.Trim(), StringComparison.OrdinalIgnoreCase)))
         {
             return OidcInvitationEmailMatchResult.Success();
         }
