@@ -11,7 +11,7 @@ namespace Microsoft.Extensions.DependencyInjection;
 public static class AshlarHealthChecksBuilderExtensions
 {
     /// <summary>
-    /// Adds all Ashlar health checks for diagnostics services registered in the service collection.
+    /// Adds all Ashlar health checks. Missing diagnostics services are reported using each check's not-supported status.
     /// </summary>
     /// <param name="builder">The health checks builder.</param>
     /// <param name="configureSchema">The optional schema health check options callback.</param>
@@ -82,10 +82,15 @@ public static class AshlarHealthChecksBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
+        var optionsBuilder = builder.Services.AddOptions<AshlarEmailOutboxHealthCheckOptions>();
         if (configure is not null)
         {
-            builder.Services.Configure(configure);
+            optionsBuilder.Configure(configure);
         }
+
+        optionsBuilder.Validate(
+            AshlarEmailOutboxHealthCheckOptions.Validate,
+            "Ashlar email outbox health check thresholds must be non-negative, and the oldest pending age threshold must be positive.");
 
         return builder.AddCheck<AshlarEmailOutboxHealthCheck>(name, failureStatus, tags ?? []);
     }

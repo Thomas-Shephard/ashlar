@@ -257,6 +257,48 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
     }
 
     [Test]
+    public void EmailOutboxThresholdOptionsShouldRejectInvalidThresholds()
+    {
+        using var provider = BuildProvider(services =>
+        {
+            services.AddHealthChecks().AddAshlarEmailOutbox(options =>
+            {
+                options.PendingCountThreshold = -1;
+                options.ExpiredLockCountThreshold = -1;
+                options.FailedCountThreshold = -1;
+                options.OldestPendingAgeThreshold = TimeSpan.Zero;
+            });
+        });
+
+        Assert.Throws<OptionsValidationException>(() => _ = provider.GetRequiredService<IOptions<AshlarEmailOutboxHealthCheckOptions>>().Value);
+    }
+
+    [Test]
+    public void EmailOutboxThresholdOptionsShouldAcceptZeroCountThresholdsAndPositiveAgeThreshold()
+    {
+        using var provider = BuildProvider(services =>
+        {
+            services.AddHealthChecks().AddAshlarEmailOutbox(options =>
+            {
+                options.PendingCountThreshold = 0;
+                options.ExpiredLockCountThreshold = 0;
+                options.FailedCountThreshold = 0;
+                options.OldestPendingAgeThreshold = TimeSpan.FromTicks(1);
+            });
+        });
+
+        var options = provider.GetRequiredService<IOptions<AshlarEmailOutboxHealthCheckOptions>>().Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.PendingCountThreshold, Is.Zero);
+            Assert.That(options.ExpiredLockCountThreshold, Is.Zero);
+            Assert.That(options.FailedCountThreshold, Is.Zero);
+            Assert.That(options.OldestPendingAgeThreshold, Is.EqualTo(TimeSpan.FromTicks(1)));
+        }
+    }
+
+    [Test]
     public async Task EmailOutboxFallbackStatusesShouldMapToUnhealthy()
     {
         using var provider = BuildProvider(services =>
@@ -471,7 +513,7 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
     }
 
     [Test]
-    public async Task AddAshlarHealthChecksShouldSkipMissingOptionalDiagnostics()
+    public async Task AddAshlarHealthChecksShouldReportMissingOptionalDiagnosticsAsDegraded()
     {
         using var provider = BuildProvider(services =>
         {
