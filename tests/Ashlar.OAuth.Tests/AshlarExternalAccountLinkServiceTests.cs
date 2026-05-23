@@ -18,6 +18,33 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     private static readonly string[] ChangedEmails = ["old@example.com", "new@example.com"];
 
     [Test]
+    public void ConstructorShouldRejectNullDependencies()
+    {
+        var credentialService = Mock.Of<ICredentialService>();
+        var repository = new StubRepository();
+        var options = new TestOptionsMonitor(new AshlarOAuthOptions());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(null!, repository, options));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, null!, options));
+            Assert.Throws<ArgumentNullException>(() => new AshlarExternalAccountLinkService(credentialService, repository, null!));
+        }
+    }
+
+    [Test]
+    public void ResultConveniencePropertiesShouldReflectStatus()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.Linked).Linked, Is.True);
+            Assert.That(new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.AlreadyLinked).Linked, Is.False);
+            Assert.That(new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.AlreadyLinked).AlreadyLinked, Is.True);
+            Assert.That(new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.Linked).AlreadyLinked, Is.False);
+        }
+    }
+
+    [Test]
     public async Task LinkOidcAccountShouldMapPrincipalAndLinkCredentialForCurrentUser()
     {
         var userId = Guid.NewGuid();
@@ -85,6 +112,24 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     [Test]
+    public void LinkOidcAccountShouldRejectNullPrincipal()
+    {
+        var service = CreateService();
+
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.LinkOidcAccountAsync(Guid.NewGuid(), "Google", (ClaimsPrincipal)null!));
+    }
+
+    [Test]
+    public async Task LinkOidcAccountShouldReturnInvalidPrincipalWhenConfiguredProviderNameIsInvalid()
+    {
+        var service = CreateServiceWithProvider(new AshlarOidcProviderOptions(" ", "Google", _ => { }));
+
+        var result = await service.LinkOidcAccountAsync(Guid.NewGuid(), "Google", CreatePrincipal("sub"));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.InvalidPrincipal));
+    }
+
+    [Test]
     public async Task LinkOidcAccountShouldReturnInvalidPrincipalForEmptyCurrentUser()
     {
         var service = CreateService();
@@ -120,6 +165,48 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var result = await service.LinkOidcAccountAsync(Guid.NewGuid(), "Google", CreatePrincipal("sub"));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.AlreadyLinkedToAnotherUser));
+    }
+
+    [Test]
+    public async Task LinkOidcAccountShouldReturnInvalidPrincipalWhenCredentialServiceRejectsProviderKey()
+    {
+        var credentialService = new Mock<ICredentialService>();
+        credentialService
+            .Setup(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure(AshlarFailureCodes.InvalidProviderKey));
+        var service = CreateService(credentialService.Object);
+
+        var result = await service.LinkOidcAccountAsync(Guid.NewGuid(), "Google", CreatePrincipal("sub"));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.InvalidPrincipal));
+    }
+
+    [Test]
+    public async Task LinkOidcAccountShouldReturnFailedForUnknownCredentialFailure()
+    {
+        var credentialService = new Mock<ICredentialService>();
+        credentialService
+            .Setup(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure(AshlarFailureCodes.UserNotFound));
+        var service = CreateService(credentialService.Object);
+
+        var result = await service.LinkOidcAccountAsync(Guid.NewGuid(), "Google", CreatePrincipal("sub"));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Failed));
+    }
+
+    [Test]
+    public async Task LinkOidcAccountShouldReturnFailedForCredentialFailureWithoutDetails()
+    {
+        var credentialService = new Mock<ICredentialService>();
+        credentialService
+            .Setup(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result(false));
+        var service = CreateService(credentialService.Object);
+
+        var result = await service.LinkOidcAccountAsync(Guid.NewGuid(), "Google", CreatePrincipal("sub"));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Failed));
     }
 
     [Test]
@@ -184,6 +271,106 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     [Test]
+    public async Task LinkOidcAccountShouldAllowMatchingTenant()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var credentialService = new Mock<ICredentialService>();
+        credentialService
+            .Setup(s => s.LinkCredentialAsync(userId, It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        var service = CreateService(credentialService.Object, new StubRepository(new TenantUser(userId, tenantId)));
+
+        var result = await service.LinkOidcAccountAsync(userId, "Google", CreatePrincipal("sub"), new TenantContext(tenantId));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
+    }
+
+    [Test]
+    public async Task LinkOidcAccountShouldAllowGlobalTenantForTenantUserWithoutTenant()
+    {
+        var userId = Guid.NewGuid();
+        var credentialService = new Mock<ICredentialService>();
+        credentialService
+            .Setup(s => s.LinkCredentialAsync(userId, It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        var service = CreateService(credentialService.Object, new StubRepository(new TenantUser(userId, null)));
+
+        var result = await service.LinkOidcAccountAsync(userId, "Google", CreatePrincipal("sub"), TenantContext.Global);
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
+    }
+
+    [Test]
+    public async Task LinkOidcAccountShouldFailTenantScopedTenantUserWithoutTenant()
+    {
+        var userId = Guid.NewGuid();
+        var credentialService = new Mock<ICredentialService>();
+        var service = CreateService(credentialService.Object, new StubRepository(new TenantUser(userId, null)));
+
+        var result = await service.LinkOidcAccountAsync(userId, "Google", CreatePrincipal("sub"), new TenantContext(Guid.NewGuid()));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Failed));
+    }
+
+    [Test]
+    public async Task LinkOidcAccountShouldFailTenantScopedMissingUser()
+    {
+        var credentialService = new Mock<ICredentialService>();
+        var service = CreateService(credentialService.Object, new StubRepository());
+
+        var result = await service.LinkOidcAccountAsync(Guid.NewGuid(), "Google", CreatePrincipal("sub"), new TenantContext(Guid.NewGuid()));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Failed));
+    }
+
+    [Test]
+    public async Task LinkOidcAccountShouldAllowGlobalTenantForGlobalUser()
+    {
+        var userId = Guid.NewGuid();
+        var credentialService = new Mock<ICredentialService>();
+        credentialService
+            .Setup(s => s.LinkCredentialAsync(userId, It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        var service = CreateService(credentialService.Object, new StubRepository(new BasicUser(userId)));
+
+        var result = await service.LinkOidcAccountAsync(userId, "Google", CreatePrincipal("sub"), TenantContext.Global);
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
+    }
+
+    [Test]
+    public async Task LinkOidcAccountShouldFailTenantScopedGlobalUser()
+    {
+        var userId = Guid.NewGuid();
+        var credentialService = new Mock<ICredentialService>();
+        var service = CreateService(credentialService.Object, new StubRepository(new BasicUser(userId)));
+
+        var result = await service.LinkOidcAccountAsync(userId, "Google", CreatePrincipal("sub"), new TenantContext(Guid.NewGuid()));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Failed));
+    }
+
+    [Test]
+    public async Task CompleteOidcLinkShouldReturnUnsupportedProvider()
+    {
+        var service = CreateService();
+        var httpContext = CreateHttpContext(new TestAuthenticationService(AuthenticateResult.NoResult()));
+
+        var result = await service.CompleteOidcLinkAsync(httpContext, Guid.NewGuid(), "Microsoft");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.UnsupportedProvider));
+    }
+
+    [Test]
+    public void CompleteOidcLinkShouldRejectNullHttpContext()
+    {
+        var service = CreateService();
+
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.CompleteOidcLinkAsync(null!, Guid.NewGuid(), "Google"));
+    }
+
+    [Test]
     public async Task CompleteOidcLinkShouldClearExternalCookieBeforeLinking()
     {
         var authService = new TestAuthenticationService(AuthenticateResult.Success(new AuthenticationTicket(
@@ -221,6 +408,66 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var result = await service.LinkOidcAccountAsync(Guid.NewGuid(), "Google", ticket);
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
+    }
+
+    [Test]
+    public void LinkOidcAccountFromAuthenticateResultShouldRejectNullResult()
+    {
+        var service = CreateService();
+
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.LinkOidcAccountAsync(Guid.NewGuid(), "Google", (AuthenticateResult)null!));
+    }
+
+    [Test]
+    public async Task LinkOidcAccountFromAuthenticateResultShouldReturnUnsupportedProvider()
+    {
+        var service = CreateService();
+        var ticket = AuthenticateResult.Success(new AuthenticationTicket(
+            CreatePrincipal("sub"),
+            CreateProperties("Google", "Google"),
+            "Ashlar.OAuth.External"));
+
+        var result = await service.LinkOidcAccountAsync(Guid.NewGuid(), "Microsoft", ticket);
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.UnsupportedProvider));
+    }
+
+    [Test]
+    public async Task LinkOidcAccountFromAuthenticateResultShouldReturnAuthenticationFailedForFailedTicket()
+    {
+        var service = CreateService();
+
+        var result = await service.LinkOidcAccountAsync(Guid.NewGuid(), "Google", AuthenticateResult.Fail("failed"));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.AuthenticationFailed));
+    }
+
+    [Test]
+    public async Task LinkOidcAccountFromAuthenticateResultShouldReturnInvalidPrincipalForEmptyPrincipal()
+    {
+        var service = CreateService();
+        var ticket = AuthenticateResult.Success(new AuthenticationTicket(
+            new ClaimsPrincipal(),
+            CreateProperties("Google", "Google"),
+            "Ashlar.OAuth.External"));
+
+        var result = await service.LinkOidcAccountAsync(Guid.NewGuid(), "Google", ticket);
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.InvalidPrincipal));
+    }
+
+    [Test]
+    public async Task LinkOidcAccountFromAuthenticateResultShouldReturnProviderMismatch()
+    {
+        var service = CreateService();
+        var ticket = AuthenticateResult.Success(new AuthenticationTicket(
+            CreatePrincipal("sub"),
+            new AuthenticationProperties(),
+            "Ashlar.OAuth.External"));
+
+        var result = await service.LinkOidcAccountAsync(Guid.NewGuid(), "Google", ticket);
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.ProviderMismatch));
     }
 
     [Test]
@@ -268,6 +515,20 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         return new AshlarExternalAccountLinkService(
             credentialService,
             repository ?? new StubRepository(),
+            new TestOptionsMonitor(options));
+    }
+
+    private static AshlarExternalAccountLinkService CreateServiceWithProvider(AshlarOidcProviderOptions provider)
+    {
+        var options = new AshlarOAuthOptions();
+        var providers = (Dictionary<string, AshlarOidcProviderOptions>)typeof(AshlarOAuthOptions)
+            .GetField("_oidcProviders", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(options)!;
+        providers["Google"] = provider;
+
+        return new AshlarExternalAccountLinkService(
+            Mock.Of<ICredentialService>(),
+            new StubRepository(),
             new TestOptionsMonitor(options));
     }
 
@@ -339,6 +600,14 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     private sealed record TenantUser(Guid Id, Guid? TenantId) : ITenantUser
     {
         public string Email => "tenant@example.com";
+        public string? Name => null;
+        public bool IsActive => true;
+        public DateTimeOffset? EmailVerifiedAt => null;
+    }
+
+    private sealed record BasicUser(Guid Id) : IUser
+    {
+        public string Email => "global@example.com";
         public string? Name => null;
         public bool IsActive => true;
         public DateTimeOffset? EmailVerifiedAt => null;

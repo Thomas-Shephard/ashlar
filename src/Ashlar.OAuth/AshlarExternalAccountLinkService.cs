@@ -63,7 +63,7 @@ public sealed class AshlarExternalAccountLinkService
         }
 
         var result = await httpContext.AuthenticateAsync(_options.CurrentValue.ExternalSignInScheme);
-        if (!result.Succeeded || result.Principal == null)
+        if (!result.Succeeded)
         {
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.AuthenticationFailed);
         }
@@ -104,7 +104,7 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.UnsupportedProvider);
         }
 
-        if (!authenticateResult.Succeeded || authenticateResult.Principal == null)
+        if (!authenticateResult.Succeeded)
         {
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.AuthenticationFailed);
         }
