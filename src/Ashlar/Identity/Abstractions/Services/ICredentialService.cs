@@ -39,7 +39,7 @@ public interface ICredentialService
     /// <param name="userId">The user id value.</param>
     /// <param name="assertion">The assertion value.</param>
     /// <param name="provider">The provider value.</param>
-    /// <param name="credentialValue">The credential value value.</param>
+    /// <param name="credentialValue">The credential value.</param>
     /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the credential. Callers must not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>

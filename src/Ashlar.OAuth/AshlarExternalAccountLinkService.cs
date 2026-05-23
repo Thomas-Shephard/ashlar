@@ -174,7 +174,7 @@ public sealed class AshlarExternalAccountLinkService
             provider,
             credentialValue: null,
             credentialMetadata: credentialMetadata,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         if (linkResult.Succeeded)
         {
