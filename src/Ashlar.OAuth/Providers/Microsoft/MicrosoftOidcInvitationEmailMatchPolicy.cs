@@ -37,15 +37,12 @@ public sealed class MicrosoftOidcInvitationEmailMatchPolicy : IOidcInvitationEma
             return _fallbackPolicy.Validate(context);
         }
 
-        foreach (var claimType in CandidateEmailClaimTypes)
+        if (CandidateEmailClaimTypes
+            .SelectMany(context.Principal.FindAll)
+            .Where(claim => string.Equals(claim.Value.Trim(), context.Invitation.Email.Trim(), StringComparison.OrdinalIgnoreCase))
+            .Any())
         {
-            foreach (var claim in context.Principal.FindAll(claimType))
-            {
-                if (string.Equals(claim.Value.Trim(), context.Invitation.Email.Trim(), StringComparison.OrdinalIgnoreCase))
-                {
-                    return OidcInvitationEmailMatchResult.Success();
-                }
-            }
+            return OidcInvitationEmailMatchResult.Success();
         }
 
         return HasAnyCandidateEmail(context.Principal)
