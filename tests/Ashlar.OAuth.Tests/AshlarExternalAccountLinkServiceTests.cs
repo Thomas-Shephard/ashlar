@@ -511,7 +511,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var tenant = new TenantContext(Guid.NewGuid());
         AccountSecurityOperationRequest? observedRequest = null;
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, tenant, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
+            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
             revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
         accountSecurity
             .Setup(s => s.RevokeCredentialsAsync(userId, new AuthenticationProviderKey(ProviderType.Oidc, "Google"), It.IsAny<AccountSecurityOperationRequest>(), It.IsAny<CancellationToken>()))
@@ -588,7 +588,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task UnlinkOidcAccountShouldReturnNotLinkedWhenConfiguredProviderIsAbsent()
     {
         var userId = Guid.NewGuid();
-        var accountSecurity = CreateAccountSecurityService(CreatePosture(userId, null, CreateCredentialItem(ProviderType.Oidc, "Microsoft"), CreateCredentialItem(ProviderType.Local, "Local")));
+        var accountSecurity = CreateAccountSecurityService(CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Microsoft"), CreateCredentialItem(ProviderType.Local, "Local")));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
         var result = await service.UnlinkOidcAccountAsync(userId, "Google", CreateRequest());
@@ -607,7 +607,6 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var accountSecurity = CreateAccountSecurityService(
             CreatePosture(
                 userId,
-                null,
                 CreateCredentialItem(ProviderType.Oidc, "Google"),
                 CreateCredentialItem(ProviderType.Oidc, "Microsoft"),
                 CreateCredentialItem(ProviderType.OAuth, "Google"),
@@ -631,7 +630,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task UnlinkOidcAccountShouldPreventRemovingLastUsablePrimaryCredential()
     {
         var userId = Guid.NewGuid();
-        var accountSecurity = CreateAccountSecurityService(CreatePosture(userId, null, CreateCredentialItem(ProviderType.Oidc, "Google")));
+        var accountSecurity = CreateAccountSecurityService(CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google")));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
         var result = await service.UnlinkOidcAccountAsync(userId, "Google", CreateRequest());
@@ -648,7 +647,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, null, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
+            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
             revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
@@ -662,7 +661,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, null, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
+            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
             revokeResult: Result.Success(new AccountSecurityOperationResult(userId)));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
@@ -676,7 +675,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, null, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
+            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
             revokeResult: new Result<AccountSecurityOperationResult>(true));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
@@ -690,7 +689,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, null, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
+            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
             revokeResult: Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
@@ -749,7 +748,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, null, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
+            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
             revokeResult: Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.ValidationError));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
@@ -763,7 +762,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, null, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
+            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
             revokeResult: new Result<AccountSecurityOperationResult>(false));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
@@ -777,7 +776,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, TenantContext.Global, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
+            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
             revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
@@ -787,11 +786,23 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     [Test]
+    public async Task UnlinkOidcAccountShouldRejectGlobalTenantForTenantScopedUser()
+    {
+        var userId = Guid.NewGuid();
+        var accountSecurity = CreateAccountSecurityService();
+        var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new TenantUser(userId, Guid.NewGuid())));
+
+        var result = await service.UnlinkOidcAccountAsync(userId, "Google", CreateRequest(TenantContext.Global));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.TenantMismatch));
+    }
+
+    [Test]
     public async Task UnlinkOidcAccountShouldAllowGlobalTenantForTenantUserWithoutTenant()
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(
-            CreatePosture(userId, TenantContext.Global, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
+            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
             revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new TenantUser(userId, null)));
 
@@ -878,7 +889,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         accountSecurity
             .Setup(s => s.GetUserSecurityPostureAsync(It.IsAny<Guid>(), It.IsAny<UserSecurityPostureRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid userId, UserSecurityPostureRequest request, CancellationToken _) =>
-                Result.Success(posture ?? CreatePosture(userId, request.Tenant, CreateCredentialItem(ProviderType.Local, "Local"))));
+                Result.Success(posture ?? CreatePosture(userId, CreateCredentialItem(ProviderType.Local, "Local"))));
         accountSecurity
             .Setup(s => s.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<AuthenticationProviderKey>(), It.IsAny<AccountSecurityOperationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(revokeResult ?? Result.Success(new AccountSecurityOperationResult(Guid.NewGuid(), CredentialsRevoked: 1)));
@@ -890,7 +901,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         return new AccountSecurityOperationRequest(new AuditContext(Guid.NewGuid(), "127.0.0.1", "NUnit", "corr"), tenant, "unlink");
     }
 
-    private static UserSecurityPosture CreatePosture(Guid userId, TenantContext? tenant, params CredentialPostureItem[] credentials)
+    private static UserSecurityPosture CreatePosture(Guid userId, params CredentialPostureItem[] credentials)
     {
         var primary = credentials.Where(c => c.IsPrimaryCredential && c.IsAvailable).ToArray();
         return new UserSecurityPosture(

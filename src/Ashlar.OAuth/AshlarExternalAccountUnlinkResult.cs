@@ -27,35 +27,35 @@ public enum AshlarExternalAccountUnlinkStatus
     /// <summary>
     /// The external account credential was revoked.
     /// </summary>
-    Unlinked,
+    Unlinked = 0,
 
     /// <summary>
     /// The configured provider is not currently linked to the current Ashlar user.
     /// </summary>
-    NotLinked,
+    NotLinked = 1,
 
     /// <summary>
     /// The requested provider is not configured.
     /// </summary>
-    UnsupportedProvider,
+    UnsupportedProvider = 2,
 
     /// <summary>
     /// The current Ashlar user could not be found.
     /// </summary>
-    UserNotFound,
+    UserNotFound = 3,
 
     /// <summary>
     /// The current Ashlar user does not belong to the requested tenant.
     /// </summary>
-    TenantMismatch,
+    TenantMismatch = 4,
 
     /// <summary>
     /// Removing this credential would leave the user without a usable primary sign-in method.
     /// </summary>
-    WouldRemoveLastSignInMethod,
+    WouldRemoveLastSignInMethod = 5,
 
     /// <summary>
     /// The credential could not be unlinked.
     /// </summary>
-    Failed
+    Failed = 6
 }

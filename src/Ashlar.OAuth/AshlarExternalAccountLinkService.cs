@@ -301,17 +301,16 @@ public sealed class AshlarExternalAccountLinkService
 
     private static bool IsInRequestedTenant(IUser user, TenantContext? tenant)
     {
-        if (tenant == null || tenant == TenantContext.Global)
+        if (tenant == null)
         {
             return true;
         }
 
-        if (user is not ITenantUser tenantUser)
+        return user switch
         {
-            return false;
-        }
-
-        return tenantUser.TenantId.HasValue && tenantUser.TenantId.Value == tenant.TenantId!.Value;
+            ITenantUser tenantUser => tenantUser.TenantId == tenant.TenantId,
+            _ => tenant.TenantId == null
+        };
     }
 
     private static bool HasUsablePrimarySignInMethodAfterUnlink(UserSecurityPosture posture, AuthenticationProviderKey provider)
