@@ -47,6 +47,40 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
             Assert.That(result.Assertion?.Claims, Does.Not.ContainKey("access_token"));
             Assert.That(observedCredentialValue, Is.Null);
             Assert.That(observedMetadata, Is.Null);
+            invitations.Verify(s => s.AcceptInvitationAsync(
+                It.Is<AcceptInvitationRequest>(r => r.UserName == "Invitee"),
+                It.IsAny<AuthenticationContext?>(),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
+    public async Task RegisterShouldNotInferDisplayNameFromPrincipal()
+    {
+        var userId = Guid.NewGuid();
+        AcceptInvitationRequest? observedRequest = null;
+        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        invitations.Setup(s => s.AcceptInvitationAsync(It.Is<AcceptInvitationRequest>(r => r.Token == "token"), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()))
+            .Callback<AcceptInvitationRequest, AuthenticationContext?, CancellationToken>((request, _, _) => observedRequest = request)
+            .ReturnsAsync(Result.Success(userId));
+        var credentials = new Mock<ICredentialService>();
+        credentials.Setup(s => s.LinkCredentialAsync(userId, It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        var service = CreateService(invitations.Object, credentials.Object);
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim("sub", "subject"),
+            new Claim("name", "Principal Name"),
+            new Claim("email", "invitee@example.com"),
+            new Claim("email_verified", "true")
+        ], "oidc"));
+
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", principal);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
+            Assert.That(observedRequest?.UserName, Is.Null);
         }
     }
 

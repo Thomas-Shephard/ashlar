@@ -143,6 +143,11 @@ internal static class GoogleOidcEndpoints
         var registration = services.GetRequiredService<AshlarOidcInvitationRegistrationService>();
         var signInManager = services.GetRequiredService<IAshlarSignInManager>();
         ticket.Properties.Items.TryGetValue(SampleGoogleOidc.InvitationDisplayNameProperty, out var displayName);
+        if (displayName == null && ticket.Principal != null)
+        {
+            displayName = AshlarOidcProfileMapper.GetSuggestedDisplayName(ticket.Principal);
+        }
+
         var result = await registration.CompleteOidcInvitationRegistrationAsync(
             httpContext,
             invitationToken,
