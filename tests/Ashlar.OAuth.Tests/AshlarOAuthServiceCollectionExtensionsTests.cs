@@ -159,6 +159,16 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddOidcProviderShouldSupportUserInfoEndpointOptOut()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddOidcProvider("NoUserInfo", AshlarOidcProviderKeyMode.Subject, _ => { }, getClaimsFromUserInfoEndpoint: false);
+
+        Assert.That(options.OidcProviders["NoUserInfo"].GetClaimsFromUserInfoEndpoint, Is.False);
+    }
+
+    [Test]
     public void AddOidcProviderShouldRejectUnsupportedProviderKeyMode()
     {
         var options = new AshlarOAuthOptions();
@@ -269,6 +279,119 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             Assert.That(oidcOptions.ResponseType, Is.EqualTo("code"));
             Assert.That(oidcOptions.ResponseMode, Is.EqualTo(OpenIdConnectResponseMode.FormPost));
         }
+    }
+
+    [Test]
+    public async Task AddAppleShouldMapFirstAuthorizationUserNameClaimsAndChainTokenValidatedEvent()
+    {
+        var called = false;
+        var oidc = ConfigureAppleOptions(options =>
+        {
+            options.Events.OnTokenValidated = _ =>
+            {
+                called = true;
+                return Task.CompletedTask;
+            };
+        });
+        var context = CreateAppleTokenValidatedContext(oidc, """{"name":{"firstName":" Ada ","lastName":" Lovelace "},"email":"ignored@example.com"}""");
+
+        await oidc.Events.OnTokenValidated(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(called, Is.True);
+            Assert.That(context.Principal?.FindFirstValue("given_name"), Is.EqualTo("Ada"));
+            Assert.That(context.Principal?.FindFirstValue("family_name"), Is.EqualTo("Lovelace"));
+            Assert.That(context.Principal?.FindFirstValue("name"), Is.EqualTo("Ada Lovelace"));
+            Assert.That(context.Principal?.Claims.Where(claim => claim.Type == "email").Select(claim => claim.Value), Is.EqualTo(["id-token@example.com"]));
+        }
+    }
+
+    [Test]
+    public async Task AddAppleShouldMapPartialFirstAuthorizationUserNameClaims()
+    {
+        var oidc = ConfigureAppleOptions();
+        var context = CreateAppleTokenValidatedContext(oidc, """{"name":{"lastName":" Hopper "}}""");
+
+        await oidc.Events.OnTokenValidated(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Principal?.FindFirstValue("given_name"), Is.Null);
+            Assert.That(context.Principal?.FindFirstValue("family_name"), Is.EqualTo("Hopper"));
+            Assert.That(context.Principal?.FindFirstValue("name"), Is.EqualTo("Hopper"));
+        }
+    }
+
+    [Test]
+    public async Task AddAppleShouldMapGivenNameOnlyFirstAuthorizationUserNameClaim()
+    {
+        var oidc = ConfigureAppleOptions();
+        var context = CreateAppleTokenValidatedContext(oidc, """{"name":{"firstName":" Ada "}}""");
+
+        await oidc.Events.OnTokenValidated(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Principal?.FindFirstValue("given_name"), Is.EqualTo("Ada"));
+            Assert.That(context.Principal?.FindFirstValue("family_name"), Is.Null);
+            Assert.That(context.Principal?.FindFirstValue("name"), Is.EqualTo("Ada"));
+        }
+    }
+
+    [Test]
+    public async Task AddAppleShouldPreserveExistingNameClaims()
+    {
+        var oidc = ConfigureAppleOptions();
+        var context = CreateAppleTokenValidatedContext(
+            oidc,
+            """{"name":{"firstName":"New","lastName":"Person"}}""",
+            new Claim("given_name", "Existing"),
+            new Claim("family_name", "Claims"),
+            new Claim("name", "Existing Claims"));
+
+        await oidc.Events.OnTokenValidated(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Principal?.FindFirstValue("given_name"), Is.EqualTo("Existing"));
+            Assert.That(context.Principal?.FindFirstValue("family_name"), Is.EqualTo("Claims"));
+            Assert.That(context.Principal?.FindFirstValue("name"), Is.EqualTo("Existing Claims"));
+        }
+    }
+
+    [TestCase(null)]
+    [TestCase(" ")]
+    [TestCase("not-json")]
+    [TestCase("{}")]
+    [TestCase("""{"name":"Ada"}""")]
+    [TestCase("""{"name":{"firstName":" ","lastName":" "}}""")]
+    [TestCase("""{"name":{"firstName":42,"lastName":false}}""")]
+    public async Task AddAppleShouldIgnoreMissingOrInvalidUserNamePayload(string? userJson)
+    {
+        var oidc = ConfigureAppleOptions();
+        var context = CreateAppleTokenValidatedContext(oidc, userJson);
+
+        await oidc.Events.OnTokenValidated(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Principal?.FindFirstValue("given_name"), Is.Null);
+            Assert.That(context.Principal?.FindFirstValue("family_name"), Is.Null);
+            Assert.That(context.Principal?.FindFirstValue("name"), Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task AddAppleShouldIgnoreUserNamePayloadWhenPrincipalIsMissing()
+    {
+        var oidc = ConfigureAppleOptions();
+        var context = CreateAppleTokenValidatedContext(oidc, """{"name":{"firstName":"Ada"}}""");
+        context.Principal = null!;
+
+        Assert.DoesNotThrowAsync(async () => await oidc.Events.OnTokenValidated(context));
+
+        Assert.That(context.Principal, Is.Null);
     }
 
     [Test]
@@ -572,6 +695,15 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
         return oidc;
     }
 
+    private static OpenIdConnectOptions ConfigureAppleOptions(Action<OpenIdConnectOptions>? configure = null)
+    {
+        var options = new AshlarOAuthOptions();
+        options.AddApple(configure);
+        var oidc = new OpenIdConnectOptions();
+        options.OidcProviders["Apple"].Configure(oidc);
+        return oidc;
+    }
+
     private static RedirectContext CreateRedirectContext(OpenIdConnectOptions options)
     {
         var context = new RedirectContext(
@@ -600,5 +732,31 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             options,
             principal,
             new AuthenticationProperties());
+    }
+
+    private static TokenValidatedContext CreateAppleTokenValidatedContext(OpenIdConnectOptions options, string? userJson, params Claim[] claims)
+    {
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim("sub", "apple-subject"),
+            new Claim("email", "id-token@example.com"),
+            ..claims
+        ], "oidc"));
+        var context = new TokenValidatedContext(
+            new DefaultHttpContext(),
+            new AuthenticationScheme("Apple", "Apple", typeof(OpenIdConnectHandler)),
+            options,
+            principal,
+            new AuthenticationProperties())
+        {
+            ProtocolMessage = new OpenIdConnectMessage()
+        };
+
+        if (userJson != null)
+        {
+            context.ProtocolMessage.SetParameter("user", userJson);
+        }
+
+        return context;
     }
 }

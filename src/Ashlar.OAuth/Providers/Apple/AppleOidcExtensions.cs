@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 
@@ -44,6 +46,95 @@ public static class AppleOidcExtensions
             oidcOptions.AddIfMissing("email");
             oidcOptions.AddIfMissing("name");
             configure?.Invoke(oidcOptions);
+            ConfigureUserNameClaims(oidcOptions);
         }, GetClaimsFromUserInfoEndpoint: false));
+    }
+
+    private static void ConfigureUserNameClaims(OpenIdConnectOptions options)
+    {
+        var onTokenValidated = options.Events.OnTokenValidated;
+        options.Events.OnTokenValidated = async context =>
+        {
+            AddUserNameClaims(context);
+            if (onTokenValidated != null)
+            {
+                await onTokenValidated(context);
+            }
+        };
+    }
+
+    private static void AddUserNameClaims(TokenValidatedContext context)
+    {
+        if (context.Principal?.Identity is not ClaimsIdentity identity)
+        {
+            return;
+        }
+
+        var userJson = context.ProtocolMessage.GetParameter("user");
+        if (string.IsNullOrWhiteSpace(userJson))
+        {
+            return;
+        }
+
+        if (!TryReadAppleName(userJson, out var givenName, out var familyName))
+        {
+            return;
+        }
+
+        AddClaimIfMissing(identity, "given_name", givenName);
+        AddClaimIfMissing(identity, "family_name", familyName);
+        AddClaimIfMissing(identity, "name", CreateDisplayName(givenName, familyName));
+    }
+
+    private static bool TryReadAppleName(string userJson, out string? givenName, out string? familyName)
+    {
+        givenName = null;
+        familyName = null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(userJson);
+            if (!document.RootElement.TryGetProperty("name", out var nameElement) || nameElement.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            givenName = ReadTrimmedString(nameElement, "firstName");
+            familyName = ReadTrimmedString(nameElement, "lastName");
+            return givenName != null || familyName != null;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static string? ReadTrimmedString(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var value = property.GetString()!.Trim();
+        return string.IsNullOrEmpty(value) ? null : value;
+    }
+
+    private static string? CreateDisplayName(string? givenName, string? familyName)
+    {
+        if (givenName == null)
+        {
+            return familyName;
+        }
+
+        return familyName == null ? givenName : string.Concat(givenName, " ", familyName);
+    }
+
+    private static void AddClaimIfMissing(ClaimsIdentity identity, string claimType, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value) && !identity.HasClaim(claim => string.Equals(claim.Type, claimType, StringComparison.Ordinal)))
+        {
+            identity.AddClaim(new Claim(claimType, value));
+        }
     }
 }
