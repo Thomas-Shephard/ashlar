@@ -68,6 +68,25 @@ internal sealed class AshlarExternalSignInServiceTests
         }
     }
 
+    [TestCase(AshlarExternalAssertionStatus.AuthenticationFailed, AshlarExternalSignInStatus.AuthenticationFailed)]
+    [TestCase(AshlarExternalAssertionStatus.UnsupportedProvider, AshlarExternalSignInStatus.UnsupportedProvider)]
+    [TestCase(AshlarExternalAssertionStatus.InvalidPrincipal, AshlarExternalSignInStatus.InvalidPrincipal)]
+    [TestCase(AshlarExternalAssertionStatus.ProviderMismatch, AshlarExternalSignInStatus.ProviderMismatch)]
+    [TestCase(AshlarExternalAssertionStatus.Unknown, AshlarExternalSignInStatus.Unknown)]
+    [TestCase(AshlarExternalAssertionStatus.Succeeded, AshlarExternalSignInStatus.Unknown)]
+    public void MapAssertionStatusShouldMapAssertionFailuresAndDefensiveFallbacks(
+        AshlarExternalAssertionStatus assertionStatus,
+        AshlarExternalSignInStatus expectedStatus)
+    {
+        var method = typeof(AshlarExternalSignInService).GetMethod(
+            "MapAssertionStatus",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        var status = method?.Invoke(null, [assertionStatus]);
+
+        Assert.That(status, Is.EqualTo(expectedStatus));
+    }
+
     [Test]
     public async Task CompleteOidcSignInShouldPassTenantAwareContextToPipeline()
     {

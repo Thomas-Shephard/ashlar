@@ -41,7 +41,7 @@ public sealed class AshlarExternalSignInService
     {
         ArgumentNullException.ThrowIfNull(httpContext);
 
-        var assertionResult = await CompleteOidcAssertionAsync(httpContext, providerName, cancellationToken);
+        var assertionResult = await CompleteOidcAssertionAsync(httpContext, providerName);
         if (!assertionResult.Succeeded)
         {
             return new AshlarExternalSignInResult(MapAssertionStatus(assertionResult.Status), Assertion: assertionResult.Assertion);
@@ -50,58 +50,6 @@ public sealed class AshlarExternalSignInService
         var assertion = assertionResult.Assertion!;
         var response = await _authenticationPipeline.LoginAsync(CreateAuthenticationContext(httpContext, tenantId), assertion, cancellationToken);
         return new AshlarExternalSignInResult(MapStatus(response), response, assertion);
-    }
-
-    /// <summary>
-    /// Completes sign-in callback handling only up to a mapped Ashlar external identity assertion.
-    /// </summary>
-    /// <param name="httpContext">The current HTTP context.</param>
-    /// <param name="providerName">The configured Ashlar provider name.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The external assertion completion result.</returns>
-    /// <remarks>
-    /// Use this method when the host application must pass the mapped assertion through its own authentication
-    /// orchestration before issuing a session, such as when MFA policy is applied by <c>IAuthenticationOrchestrator</c>.
-    /// </remarks>
-    public async Task<AshlarExternalAssertionResult> CompleteOidcAssertionAsync(
-        HttpContext httpContext,
-        string providerName,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(httpContext);
-
-        var provider = GetOidcProvider(providerName);
-        if (provider == null)
-        {
-            await AshlarExternalTicket.TryClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme);
-            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.UnsupportedProvider);
-        }
-
-        var result = await AshlarExternalTicket.AuthenticateAndClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme);
-
-        if (!result.Succeeded || result.Principal == null)
-        {
-            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.AuthenticationFailed);
-        }
-
-        if (!MatchesProvider(result, provider))
-        {
-            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.ProviderMismatch);
-        }
-
-        try
-        {
-            var assertion = OidcExternalIdentityAssertionMapper.Map(provider.ProviderName, result.Principal, provider.ProviderKeyMode);
-            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.Succeeded, assertion);
-        }
-        catch (InvalidOperationException)
-        {
-            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.InvalidPrincipal);
-        }
-        catch (ArgumentException)
-        {
-            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.InvalidPrincipal);
-        }
     }
 
     /// <summary>
@@ -143,6 +91,56 @@ public sealed class AshlarExternalSignInService
 
         var response = await _authenticationPipeline.LoginAsync(context, assertion, cancellationToken);
         return new AshlarExternalSignInResult(MapStatus(response), response, assertion);
+    }
+
+    /// <summary>
+    /// Completes sign-in callback handling only up to a mapped Ashlar external identity assertion.
+    /// </summary>
+    /// <param name="httpContext">The current HTTP context.</param>
+    /// <param name="providerName">The configured Ashlar provider name.</param>
+    /// <returns>The external assertion completion result.</returns>
+    /// <remarks>
+    /// Use this method when the host application must pass the mapped assertion through its own authentication
+    /// orchestration before issuing a session, such as when MFA policy is applied by <c>IAuthenticationOrchestrator</c>.
+    /// </remarks>
+    public async Task<AshlarExternalAssertionResult> CompleteOidcAssertionAsync(
+        HttpContext httpContext,
+        string providerName)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        var provider = GetOidcProvider(providerName);
+        if (provider == null)
+        {
+            await AshlarExternalTicket.TryClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme);
+            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.UnsupportedProvider);
+        }
+
+        var result = await AshlarExternalTicket.AuthenticateAndClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme);
+
+        if (!result.Succeeded || result.Principal == null)
+        {
+            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.AuthenticationFailed);
+        }
+
+        if (!MatchesProvider(result, provider))
+        {
+            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.ProviderMismatch);
+        }
+
+        try
+        {
+            var assertion = OidcExternalIdentityAssertionMapper.Map(provider.ProviderName, result.Principal, provider.ProviderKeyMode);
+            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.Succeeded, assertion);
+        }
+        catch (InvalidOperationException)
+        {
+            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.InvalidPrincipal);
+        }
+        catch (ArgumentException)
+        {
+            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.InvalidPrincipal);
+        }
     }
 
     private AshlarOidcProviderOptions? GetOidcProvider(string providerName)
