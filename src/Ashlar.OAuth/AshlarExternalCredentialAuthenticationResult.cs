@@ -1,34 +1,34 @@
 namespace Ashlar.OAuth;
 
 /// <summary>
-/// Describes the result of completing an external sign-in callback.
+/// Describes the result of authenticating a validated external OIDC credential with Ashlar.
 /// </summary>
-/// <param name="Status">The external sign-in status.</param>
-/// <param name="Authentication">The Ashlar authentication response when authentication was attempted.</param>
+/// <param name="Status">The external credential verification status.</param>
+/// <param name="Authentication">The Ashlar response when credential verification was attempted.</param>
 /// <param name="Assertion">The mapped external identity assertion when available.</param>
-public sealed record AshlarExternalSignInResult(
-    AshlarExternalSignInStatus Status,
+public sealed record AshlarExternalCredentialAuthenticationResult(
+    AshlarExternalCredentialAuthenticationStatus Status,
     AuthenticationResponse? Authentication = null,
     ExternalIdentityAssertion? Assertion = null)
 {
     /// <summary>
-    /// Gets a value indicating whether external sign-in completed successfully.
+    /// Gets a value indicating whether the external credential authenticated successfully with Ashlar.
     /// </summary>
-    public bool Succeeded => Status == AshlarExternalSignInStatus.Succeeded;
+    public bool Succeeded => Status == AshlarExternalCredentialAuthenticationStatus.Succeeded;
 }
 
 /// <summary>
-/// Defines external sign-in completion states.
+/// Defines external credential authentication states.
 /// </summary>
-public enum AshlarExternalSignInStatus
+public enum AshlarExternalCredentialAuthenticationStatus
 {
     /// <summary>
-    /// The external sign-in result has not been set.
+    /// The external credential authentication result has not been set.
     /// </summary>
     Unknown = 0,
 
     /// <summary>
-    /// The external sign-in completed successfully.
+    /// The external credential authenticated successfully with Ashlar.
     /// </summary>
     Succeeded = 1,
     /// <summary>
@@ -56,7 +56,7 @@ public enum AshlarExternalSignInStatus
     /// </summary>
     Disabled = 7,
     /// <summary>
-    /// Ashlar requires MFA before completing sign-in.
+    /// Ashlar requires MFA before the application may issue a session.
     /// </summary>
     MfaRequired = 8
 }

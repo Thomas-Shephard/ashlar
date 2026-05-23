@@ -45,10 +45,10 @@ internal static class GoogleOidcEndpoints
             return Results.NotFound();
         }
 
-        var externalSignIn = services.GetRequiredService<AshlarExternalSignInService>();
+        var externalCredentialAuthentication = services.GetRequiredService<AshlarExternalCredentialAuthenticationService>();
         var orchestrator = services.GetRequiredService<IAuthenticationOrchestrator>();
         var signInManager = services.GetRequiredService<IAshlarSignInManager>();
-        var result = await externalSignIn.CompleteOidcAssertionAsync(httpContext, SampleGoogleOidc.ProviderName);
+        var result = await externalCredentialAuthentication.CompleteOidcAssertionAsync(httpContext, SampleGoogleOidc.ProviderName);
         if (result.Succeeded && result.Assertion != null)
         {
             var mfaResult = await orchestrator.AuthenticateAsync(

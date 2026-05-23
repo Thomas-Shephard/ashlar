@@ -38,7 +38,7 @@ public static class AshlarOAuthServiceCollectionExtensions
         ArgumentException.ThrowIfNullOrWhiteSpace(options.ExternalSignInScheme);
 
         services.Configure(configure);
-        services.TryAddScoped<AshlarExternalSignInService>();
+        services.TryAddScoped<AshlarExternalCredentialAuthenticationService>();
         services.TryAddScoped<AshlarExternalAccountLinkService>();
         services.TryAddScoped<AshlarOidcInvitationRegistrationService>();
         services.TryAddScoped<IOidcInvitationEmailMatchPolicy>(_ =>

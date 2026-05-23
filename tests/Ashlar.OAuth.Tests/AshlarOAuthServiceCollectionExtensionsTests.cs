@@ -39,7 +39,7 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             Assert.That(directOptions.OidcProviders, Does.ContainKey("Google"));
             Assert.That(snapshotOptions.OidcProviders, Does.ContainKey("Google"));
             Assert.That(authProviders.Select(p => p.Key), Does.Contain(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
-            Assert.That(services.Any(d => d.ServiceType == typeof(AshlarExternalSignInService)), Is.True);
+            Assert.That(services.Any(d => d.ServiceType == typeof(AshlarExternalCredentialAuthenticationService)), Is.True);
             Assert.That(services.Any(d => d.ServiceType == typeof(AshlarExternalAccountLinkService)), Is.True);
             Assert.That(services.Any(d => d.ServiceType == typeof(AshlarOidcInvitationRegistrationService)), Is.True);
             Assert.That(scope.ServiceProvider.GetRequiredService<IOidcInvitationEmailMatchPolicy>(), Is.TypeOf<StandardOidcVerifiedEmailMatchPolicy>());
