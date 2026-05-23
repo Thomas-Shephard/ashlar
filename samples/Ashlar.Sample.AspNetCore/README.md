@@ -85,9 +85,9 @@ Authentication__Google__HostedDomains__0=example.com
 
 When enabled, the sample adds:
 
-- **Sign In With Google** for users who already have a linked Google OIDC credential.
-- **Accept Invitation With Google** on invitation acceptance. The invitation token is preserved in ASP.NET Core authentication properties during the Google challenge and is only consumed after OIDC validation and Ashlar invitation registration succeed.
-- **Link Google Account** and **Unlink Google Account** under Account -> Security. Both require fresh MFA when the current account has a usable eligible verification factor.
+- **Sign in with Google** for users who already have a linked Google OIDC credential.
+- **Sign up with Google** on invitation acceptance. The invitation token is preserved in ASP.NET Core authentication properties during the Google challenge and is only consumed after OIDC validation and Ashlar invitation registration succeed.
+- **Link Google account** and **Unlink Google account** under Account -> Security. Both require fresh MFA when the current account has a usable eligible verification factor.
 
 Google uses the configured Ashlar provider name `Google`. The sample displays only friendly linked/not-linked state from `UserSecurityPosture.CredentialInventory`; it does not display provider keys, OIDC subjects, raw claims, or tokens. `Ashlar.OAuth` configures `SaveTokens = false`, and the sample does not persist OAuth access, refresh, or ID tokens.
 
@@ -110,7 +110,7 @@ Navigate to `http://localhost:5000` in your browser.
 3. **Authenticator app**: Go to Account → Security to enroll in TOTP. A QR code will be generated for your authenticator app. After verifying your first code, you can also generate recovery codes. When the sample asks for additional verification after magic-link sign-in, the current policy accepts an authenticator app code or recovery code.
 4. **Step-up verification**: Sensitive account operations require fresh MFA. When a protected action needs step-up, the sample opens a modal for an authenticator app code or recovery code. Successful verification marks only the current Ashlar session fresh.
 5. **Passkeys**: Use **Sign in with Passkey** on the dashboard to authenticate with a registered passkey. While signed in, open **Account → Security** to register, list, rename, and revoke passkeys. The sample shows authenticator apps, recovery codes, and passkeys as separate sign-in verification methods. Passkeys require HTTPS or localhost and a browser that supports WebAuthn. Passkeys are wired for primary sign-in and for passkey factor handshakes; passkey step-up can be validated manually through the browser WebAuthn factor endpoints. The automated smoke tests avoid hardware-backed WebAuthn.
-6. **Google OIDC**: If Google is configured, use **Sign In With Google** for linked accounts, **Accept Invitation With Google** for invitation-based registration, and **Account → Security** to link or unlink Google. Linking and unlinking require fresh MFA when an eligible verification factor is available.
+6. **Google OIDC**: If Google is configured, use **Sign in with Google** for linked accounts, **Sign up with Google** for invitation-based registration, and **Account → Security** to link or unlink Google. Linking and unlinking require fresh MFA when an eligible verification factor is available.
 7. **Email Verification**: If your email is unverified, click "Resend Verification Email" and check the console for the link.
 8. **Email Change**: Use "Change Email" in your profile to request a new email address. This requires fresh MFA. Confirm the change via the link in the console.
 9. **Session Management**: Go to Account → Security to view your active sessions. You can revoke a specific session or all other sessions with conditional fresh MFA when a usable factor exists.
