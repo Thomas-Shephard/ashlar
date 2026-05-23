@@ -46,6 +46,6 @@ internal static class InvitationEndpoints
             return Results.Ok(new { userId = result.Value });
         });
 
-        app.MapGet("/invitations/accept", (string t) => AppViews.RenderInvitationAccept(t));
+        app.MapGet("/invitations/accept", (string t, IConfiguration configuration) => AppViews.RenderInvitationAccept(t, SampleGoogleOidc.IsConfigured(configuration)));
     }
 }

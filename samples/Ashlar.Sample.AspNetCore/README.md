@@ -1,6 +1,6 @@
 # Ashlar ASP.NET Core Sample
 
-This sample is a small reference application for composing Ashlar in an ASP.NET Core app. It uses PostgreSQL persistence, Data Protection secret protection, Ashlar session cookies, magic-link and email-code sign-in, passkeys, bootstrap setup, invitations, authorization grants, scoped ASP.NET Core policies, authenticator app verification, recovery codes, email verification, email change, session management, the PostgreSQL email outbox, cleanup service, audit sink, and rate limiter.
+This sample is a small reference application for composing Ashlar in an ASP.NET Core app. It uses PostgreSQL persistence, Data Protection secret protection, Ashlar session cookies, magic-link and email-code sign-in, passkeys, optional Google OIDC sign-in/linking/invitation registration, bootstrap setup, invitations, authorization grants, scoped ASP.NET Core policies, authenticator app verification, recovery codes, email verification, email change, session management, the PostgreSQL email outbox, cleanup service, audit sink, and rate limiter.
 
 The entire sample can be exercised directly through the web UI at `http://localhost:5000`.
 
@@ -38,6 +38,59 @@ For local HTTP testing, set `Ashlar:Cookie:Secure` to `false`, use an HTTP `Publ
 
 The sample derives its allowed callback URIs from `PublicAppUrl` and the fixed magic-link, invitation, email verification, and email change paths it emits. Links are built from this configured value, not from request-supplied return URLs. Keep `PublicAppUrl` to the exact local or public origin you expect, without query strings or fragments. In production, configure an HTTPS public URL and keep `Ashlar:Cookie:Secure` enabled.
 
+### Optional Google OIDC
+
+Google OIDC is disabled by default. The sample starts normally without Google configuration and hides all Google buttons when it is not configured.
+
+To enable it, create a Google OAuth client in Google Cloud Console:
+
+1. Open **APIs & Services -> Credentials**.
+2. Choose **Create credentials -> OAuth client ID**.
+3. For **Application type**, choose **Web application**.
+4. Use any local name, such as `Ashlar Sample Local`.
+5. Under **Authorised JavaScript origins**, add the sample origin:
+
+```text
+http://localhost:5000
+```
+
+6. Under **Authorised redirect URIs**, add the sample OIDC callback URL:
+
+```text
+http://localhost:5000/signin-oidc/Google
+```
+
+Google may take a few minutes to apply OAuth client changes. If you change `Ashlar:PublicAppUrl` or run the sample on a different port, update both Google Console values to match that origin and use `/signin-oidc/Google` as the redirect path.
+
+Then copy the generated **Client ID** and **Client secret** into user secrets or environment variables. The sample project includes a `UserSecretsId`, so these commands write to your local profile and do not modify repository files. Do not commit real credentials.
+
+```bash
+dotnet user-secrets set "Authentication:Google:ClientId" "<client-id>" --project samples/Ashlar.Sample.AspNetCore/Ashlar.Sample.AspNetCore.csproj
+dotnet user-secrets set "Authentication:Google:ClientSecret" "<client-secret>" --project samples/Ashlar.Sample.AspNetCore/Ashlar.Sample.AspNetCore.csproj
+```
+
+Optional hosted-domain restrictions can be configured as either a comma-separated value or an array:
+
+```bash
+dotnet user-secrets set "Authentication:Google:HostedDomains:0" "example.com" --project samples/Ashlar.Sample.AspNetCore/Ashlar.Sample.AspNetCore.csproj
+```
+
+Equivalent environment variables are:
+
+```text
+Authentication__Google__ClientId=<client-id>
+Authentication__Google__ClientSecret=<client-secret>
+Authentication__Google__HostedDomains__0=example.com
+```
+
+When enabled, the sample adds:
+
+- **Sign in with Google** for users who already have a linked Google OIDC credential.
+- **Sign up with Google** on invitation acceptance. The invitation token is preserved in ASP.NET Core authentication properties during the Google challenge and is only consumed after OIDC validation and Ashlar invitation registration succeed.
+- **Link Google account** and **Unlink Google account** under Account -> Security. Both require fresh MFA when the current account has a usable eligible verification factor.
+
+Google uses the configured Ashlar provider name `Google`. The sample displays only friendly linked/not-linked state from `UserSecurityPosture.CredentialInventory`; it does not display provider keys, OIDC subjects, raw claims, or tokens. `Ashlar.OAuth` configures `SaveTokens = false`, and the sample does not persist OAuth access, refresh, or ID tokens.
+
 ## Database Initialization
 
 The sample calls `InitializeAshlarPostgresSchemaAsync()` at startup. When using a configured connection string, the database must already exist and the connection user must be able to create or update the Ashlar schema objects. When using the auto-container, the temporary database is created for you.
@@ -56,13 +109,14 @@ Navigate to `http://localhost:5000` in your browser.
 2. **Dashboard**: Once signed in, you can view your project access and navigate to account or administration tasks.
 3. **Authenticator app**: Go to Account → Security to enroll in TOTP. A QR code will be generated for your authenticator app. After verifying your first code, you can also generate recovery codes. When the sample asks for additional verification after magic-link sign-in, the current policy accepts an authenticator app code or recovery code.
 4. **Step-up verification**: Sensitive account operations require fresh MFA. When a protected action needs step-up, the sample opens a modal for an authenticator app code or recovery code. Successful verification marks only the current Ashlar session fresh.
-5. **Passkeys**: Use **Sign In With Passkey** on the dashboard to authenticate with a registered passkey. While signed in, open **Account → Security** to register, list, rename, and revoke passkeys. The sample shows authenticator apps, recovery codes, and passkeys as separate sign-in verification methods. Passkeys require HTTPS or localhost and a browser that supports WebAuthn. Passkeys are wired for primary sign-in and for passkey factor handshakes; passkey step-up can be validated manually through the browser WebAuthn factor endpoints. The automated smoke tests avoid hardware-backed WebAuthn.
-6. **Email Verification**: If your email is unverified, click "Resend Verification Email" and check the console for the link.
-7. **Email Change**: Use "Change Email" in your profile to request a new email address. This requires fresh MFA. Confirm the change via the link in the console.
-8. **Session Management**: Go to Account → Security to view your active sessions. You can revoke a specific session or all other sessions with conditional fresh MFA when a usable factor exists.
-9. **Invitations**: As an administrator, you can invite new users by entering their email address.
-10. **Accepting Invitations**: Check the application console to find the (simulated) invitation email. Click the link provided to join the application. You will be automatically signed in as the new user.
-11. **Authorization**: Use the administration section to grant "project.manage" permissions to other users for the "alpha" or "beta" projects. The dashboard dynamically updates to show where you have manager access.
+5. **Passkeys**: Use **Sign in with Passkey** on the dashboard to authenticate with a registered passkey. While signed in, open **Account → Security** to register, list, rename, and revoke passkeys. The sample shows authenticator apps, recovery codes, and passkeys as separate sign-in verification methods. Passkeys require HTTPS or localhost and a browser that supports WebAuthn. Passkeys are wired for primary sign-in and for passkey factor handshakes; passkey step-up can be validated manually through the browser WebAuthn factor endpoints. The automated smoke tests avoid hardware-backed WebAuthn.
+6. **Google OIDC**: If Google is configured, use **Sign in with Google** for linked accounts, **Sign up with Google** for invitation-based registration, and **Account → Security** to link or unlink Google. Linking and unlinking require fresh MFA when an eligible verification factor is available.
+7. **Email Verification**: If your email is unverified, click "Resend Verification Email" and check the console for the link.
+8. **Email Change**: Use "Change Email" in your profile to request a new email address. This requires fresh MFA. Confirm the change via the link in the console.
+9. **Session Management**: Go to Account → Security to view your active sessions. You can revoke a specific session or all other sessions with conditional fresh MFA when a usable factor exists.
+10. **Invitations**: As an administrator, you can invite new users by entering their email address.
+11. **Accepting Invitations**: Check the application console to find the (simulated) invitation email. Click the link provided to join the application. You will be automatically signed in as the new user.
+12. **Authorization**: Use the administration section to grant "project.manage" permissions to other users for the "alpha" or "beta" projects. The dashboard dynamically updates to show where you have manager access.
 
 ## Fresh MFA in the sample
 
@@ -77,7 +131,7 @@ options.RequireFreshMfa();
 options.RequireFreshMfaIfAvailable();
 ```
 
-Routes use `.RequireFreshMfa()` for high-risk sensitive operations: passkey registration/rename/revoke, TOTP reset, recovery-code generation, email change requests, and administrator disable/reactivate/session-revoke/MFA-reset actions. User-owned session revocation endpoints use `.RequireFreshMfaIfAvailable()` to demonstrate adaptive protection: users with a usable eligible additional verification factor must complete fresh step-up, while users without one are not locked out of revoking old devices. Ordinary sign-in, sign-out, email verification, invitation acceptance, account viewing, and session listing remain available with a normal authenticated session.
+Routes use `.RequireFreshMfa()` for high-risk sensitive operations: passkey registration/rename/revoke, TOTP reset, recovery-code generation, email change requests, and administrator disable/reactivate/session-revoke/MFA-reset actions. User-owned session revocation and Google account link/unlink endpoints use `.RequireFreshMfaIfAvailable()` to demonstrate adaptive protection: users with a usable eligible additional verification factor must complete fresh step-up, while users without one are not locked out of revoking old devices or adding another sign-in method. Ordinary sign-in, sign-out, email verification, invitation acceptance, account viewing, and session listing remain available with a normal authenticated session.
 
 The account and administration pages render Ashlar's account security posture model. They show sign-in methods separately from additional verification, use friendly labels such as "Authenticator app", "Recovery codes", and "Passkeys", and show whether protected actions are available or blocked until setup.
 
@@ -89,4 +143,4 @@ The cleanup hosted service and email outbox dispatcher start with the applicatio
 
 `tests/Ashlar.Postgres.Tests` includes a net10-only ASP.NET Core smoke test for this sample. It hosts the real sample app with `WebApplicationFactory<Program>`, supplies an isolated PostgreSQL database from the existing Testcontainers fixture, disables background hosted loops, and inspects `ashlar_email_outbox` directly instead of using SMTP.
 
-The smoke test is intentionally thin: it proves the composed routing, DI, session cookie authentication, Postgres persistence, outbox-backed email flows, bootstrap, invitations, scoped authorization grants, email verification/change, authenticator app enrollment, recovery-code step-up, fresh-MFA protected sample operations, and session endpoints work together. Passkey endpoints require manual browser WebAuthn validation and are not exercised as an automated hardware-backed flow. The smoke test does not replace the lower-level unit and integration tests that cover branch-level behavior.
+The smoke test is intentionally thin: it proves the composed routing, DI, session cookie authentication, Postgres persistence, outbox-backed email flows, bootstrap, invitations, scoped authorization grants, email verification/change, authenticator app enrollment, recovery-code step-up, fresh-MFA protected sample operations, session endpoints, and conditional Google OIDC sample wiring work together. Google smoke coverage uses configuration and local safe-failure/challenge checks only; it never calls Google and does not require real Google credentials. Passkey endpoints require manual browser WebAuthn validation and are not exercised as an automated hardware-backed flow. The smoke test does not replace the lower-level unit and integration tests that cover branch-level behavior.

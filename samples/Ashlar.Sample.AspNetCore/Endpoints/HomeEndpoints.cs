@@ -58,7 +58,7 @@ internal static class HomeEndpoints
                 }
             }
 
-            return AppViews.RenderDashboard(status, isAuthenticated, userName, isAdmin, projectsWithAccess);
+            return AppViews.RenderDashboard(status, isAuthenticated, userName, isAdmin, projectsWithAccess, SampleGoogleOidc.IsConfigured(services.Configuration));
         });
     }
 
@@ -67,5 +67,6 @@ internal static class HomeEndpoints
         [FromServices] IAuthorizationEvaluator Auth,
         [FromServices] IAuthorizationGrantService Grants,
         [FromServices] IIdentityRepository Users,
-        [FromServices] IPostgresConnectionProvider ConnectionProvider);
+        [FromServices] IPostgresConnectionProvider ConnectionProvider,
+        [FromServices] IConfiguration Configuration);
 }

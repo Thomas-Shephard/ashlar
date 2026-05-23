@@ -1,4 +1,5 @@
 using Ashlar.Identity.Models.Totp;
+using Ashlar.OAuth.Providers.Google;
 using Microsoft.AspNetCore.Authorization;
 
 namespace Ashlar.Sample.AspNetCore.Extensions;
@@ -42,6 +43,18 @@ internal static class ServiceCollectionExtensions
         services.AddAshlarEmailChange();
         services.AddAshlarSecurityNotifications();
         services.AddAshlarInvitations();
+        if (SampleGoogleOidc.IsConfigured(configuration))
+        {
+            services.AddAshlarOAuth(options =>
+            {
+                options.AddGoogle(SampleGoogleOidc.GetHostedDomains(configuration), oidc =>
+                {
+                    oidc.ClientId = configuration["Authentication:Google:ClientId"];
+                    oidc.ClientSecret = configuration["Authentication:Google:ClientSecret"];
+                });
+            });
+        }
+
         services.AddAshlarBootstrap(options =>
         {
             options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
