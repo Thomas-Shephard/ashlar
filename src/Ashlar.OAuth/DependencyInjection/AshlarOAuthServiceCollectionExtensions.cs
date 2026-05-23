@@ -1,0 +1,92 @@
+// ReSharper disable CheckNamespace
+
+using Ashlar.OAuth;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
+#pragma warning disable IDE0130
+namespace Microsoft.Extensions.DependencyInjection;
+#pragma warning restore IDE0130
+
+/// <summary>
+/// Provides dependency injection registration helpers for Ashlar OAuth and OpenID Connect integration.
+/// </summary>
+public static class AshlarOAuthServiceCollectionExtensions
+{
+    /// <summary>
+    /// Adds Ashlar OAuth and OpenID Connect sign-in integration.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configure">The OAuth options configuration callback.</param>
+    /// <returns>The service collection.</returns>
+    public static IServiceCollection AddAshlarOAuth(this IServiceCollection services, Action<AshlarOAuthOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        services.AddAshlarIdentity();
+
+        var options = new AshlarOAuthOptions();
+        configure(options);
+
+        if (options.OidcProviders.Count == 0)
+        {
+            throw new ArgumentException("At least one OpenID Connect provider must be configured.", nameof(configure));
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.ExternalSignInScheme);
+
+        services.Configure(configure);
+        services.TryAddScoped<AshlarExternalSignInService>();
+
+        var authenticationBuilder = services.AddAuthentication();
+        authenticationBuilder.AddCookie(options.ExternalSignInScheme, cookieOptions =>
+        {
+            cookieOptions.Cookie.HttpOnly = true;
+            cookieOptions.Cookie.SameSite = SameSiteMode.Lax;
+            cookieOptions.ExpireTimeSpan = TimeSpan.FromMinutes(5);
+            cookieOptions.SlidingExpiration = false;
+        });
+
+        foreach (var provider in options.OidcProviders.Values)
+        {
+            services.AddAuthenticationProvider(_ => new OidcAuthenticationProvider(provider.ProviderName));
+            authenticationBuilder.AddOpenIdConnect(provider.SchemeName, oidcOptions =>
+            {
+                provider.Configure(oidcOptions);
+                ConfigureDefaults(oidcOptions, options.ExternalSignInScheme, provider);
+            });
+        }
+
+        return services;
+    }
+
+    private static void ConfigureDefaults(OpenIdConnectOptions options, string externalSignInScheme, AshlarOidcProviderOptions provider)
+    {
+        options.SignInScheme = externalSignInScheme;
+        options.SaveTokens = false;
+        options.GetClaimsFromUserInfoEndpoint = true;
+        options.MapInboundClaims = false;
+
+        if (!options.CallbackPath.HasValue || string.Equals(options.CallbackPath, "/signin-oidc", StringComparison.Ordinal))
+        {
+            options.CallbackPath = $"/signin-oidc/{provider.SchemeName}";
+        }
+
+        var onTicketReceived = options.Events.OnTicketReceived;
+        options.Events.OnTicketReceived = async context =>
+        {
+            if (context.Properties != null)
+            {
+                context.Properties.Items[AshlarOAuthAuthenticationProperties.ProviderName] = provider.ProviderName;
+                context.Properties.Items[AshlarOAuthAuthenticationProperties.SchemeName] = provider.SchemeName;
+            }
+
+            if (onTicketReceived != null)
+            {
+                await onTicketReceived(context);
+            }
+        };
+    }
+}

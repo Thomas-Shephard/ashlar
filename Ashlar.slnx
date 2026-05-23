@@ -3,6 +3,7 @@
     <Project Path="src/Ashlar/Ashlar.csproj" />
     <Project Path="src/Ashlar.AspNetCore/Ashlar.AspNetCore.csproj" />
     <Project Path="src/Ashlar.Email.Smtp/Ashlar.Email.Smtp.csproj" />
+    <Project Path="src/Ashlar.OAuth/Ashlar.OAuth.csproj" />
     <Project Path="src/Ashlar.Passkeys/Ashlar.Passkeys.csproj" />
     <Project Path="src/Ashlar.Postgres/Ashlar.Postgres.csproj" />
     <Project Path="src/Ashlar.Redis/Ashlar.Redis.csproj" />
@@ -14,6 +15,7 @@
     <Project Path="tests/Ashlar.Tests/Ashlar.Tests.csproj" />
     <Project Path="tests/Ashlar.AspNetCore.Tests/Ashlar.AspNetCore.Tests.csproj" />
     <Project Path="tests/Ashlar.Email.Smtp.Tests/Ashlar.Email.Smtp.Tests.csproj" />
+    <Project Path="tests/Ashlar.OAuth.Tests/Ashlar.OAuth.Tests.csproj" />
     <Project Path="tests/Ashlar.Passkeys.Tests/Ashlar.Passkeys.Tests.csproj" />
     <Project Path="tests/Ashlar.Postgres.Tests/Ashlar.Postgres.Tests.csproj" />
     <Project Path="tests/Ashlar.Redis.Tests/Ashlar.Redis.Tests.csproj" />
