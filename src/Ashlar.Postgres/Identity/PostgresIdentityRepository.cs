@@ -300,7 +300,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
             var rowsAffected = await connectionHandle.Connection.ExecuteAsync(command);
             if (rowsAffected == 0)
             {
-                throw new InvalidOperationException("Credential provider key is already linked to another user.");
+                throw new CredentialProviderKeyConflictException();
             }
         }
     }

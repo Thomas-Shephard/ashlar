@@ -41,41 +41,67 @@ public sealed class AshlarExternalSignInService
     {
         ArgumentNullException.ThrowIfNull(httpContext);
 
+        var assertionResult = await CompleteOidcAssertionAsync(httpContext, providerName, cancellationToken);
+        if (!assertionResult.Succeeded)
+        {
+            return new AshlarExternalSignInResult(MapAssertionStatus(assertionResult.Status), Assertion: assertionResult.Assertion);
+        }
+
+        var assertion = assertionResult.Assertion!;
+        var response = await _authenticationPipeline.LoginAsync(CreateAuthenticationContext(httpContext, tenantId), assertion, cancellationToken);
+        return new AshlarExternalSignInResult(MapStatus(response), response, assertion);
+    }
+
+    /// <summary>
+    /// Completes sign-in callback handling only up to a mapped Ashlar external identity assertion.
+    /// </summary>
+    /// <param name="httpContext">The current HTTP context.</param>
+    /// <param name="providerName">The configured Ashlar provider name.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The external assertion completion result.</returns>
+    /// <remarks>
+    /// Use this method when the host application must pass the mapped assertion through its own authentication
+    /// orchestration before issuing a session, such as when MFA policy is applied by <c>IAuthenticationOrchestrator</c>.
+    /// </remarks>
+    public async Task<AshlarExternalAssertionResult> CompleteOidcAssertionAsync(
+        HttpContext httpContext,
+        string providerName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+
         var provider = GetOidcProvider(providerName);
         if (provider == null)
         {
             await AshlarExternalTicket.TryClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme);
-            return new AshlarExternalSignInResult(AshlarExternalSignInStatus.UnsupportedProvider);
+            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.UnsupportedProvider);
         }
 
         var result = await AshlarExternalTicket.AuthenticateAndClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme);
 
         if (!result.Succeeded || result.Principal == null)
         {
-            return new AshlarExternalSignInResult(AshlarExternalSignInStatus.AuthenticationFailed);
+            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.AuthenticationFailed);
         }
 
         if (!MatchesProvider(result, provider))
         {
-            return new AshlarExternalSignInResult(AshlarExternalSignInStatus.ProviderMismatch);
+            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.ProviderMismatch);
         }
 
-        ExternalIdentityAssertion assertion;
         try
         {
-            assertion = OidcExternalIdentityAssertionMapper.Map(provider.ProviderName, result.Principal, provider.ProviderKeyMode);
+            var assertion = OidcExternalIdentityAssertionMapper.Map(provider.ProviderName, result.Principal, provider.ProviderKeyMode);
+            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.Succeeded, assertion);
         }
         catch (InvalidOperationException)
         {
-            return new AshlarExternalSignInResult(AshlarExternalSignInStatus.InvalidPrincipal);
+            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.InvalidPrincipal);
         }
         catch (ArgumentException)
         {
-            return new AshlarExternalSignInResult(AshlarExternalSignInStatus.InvalidPrincipal);
+            return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.InvalidPrincipal);
         }
-
-        var response = await _authenticationPipeline.LoginAsync(CreateAuthenticationContext(httpContext, tenantId), assertion, cancellationToken);
-        return new AshlarExternalSignInResult(MapStatus(response), response, assertion);
     }
 
     /// <summary>
@@ -160,6 +186,18 @@ public sealed class AshlarExternalSignInService
             AuthenticationStatus.Disabled => AshlarExternalSignInStatus.Disabled,
             AuthenticationStatus.MfaRequired => AshlarExternalSignInStatus.MfaRequired,
             _ => AshlarExternalSignInStatus.AshlarAuthenticationFailed
+        };
+    }
+
+    private static AshlarExternalSignInStatus MapAssertionStatus(AshlarExternalAssertionStatus status)
+    {
+        return status switch
+        {
+            AshlarExternalAssertionStatus.AuthenticationFailed => AshlarExternalSignInStatus.AuthenticationFailed,
+            AshlarExternalAssertionStatus.UnsupportedProvider => AshlarExternalSignInStatus.UnsupportedProvider,
+            AshlarExternalAssertionStatus.InvalidPrincipal => AshlarExternalSignInStatus.InvalidPrincipal,
+            AshlarExternalAssertionStatus.ProviderMismatch => AshlarExternalSignInStatus.ProviderMismatch,
+            _ => AshlarExternalSignInStatus.Unknown
         };
     }
 }

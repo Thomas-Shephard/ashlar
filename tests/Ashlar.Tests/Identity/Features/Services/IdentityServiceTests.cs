@@ -607,6 +607,31 @@ internal sealed class IdentityServiceTests
     }
 
     [Test]
+    public async Task LinkCredentialAsyncWithConcurrentProviderKeyCollisionShouldFail()
+    {
+        var userId = Guid.NewGuid();
+        var type = ProviderType.Oidc;
+        var providerName = "Google";
+        var providerKey = "sub-123";
+        var assertion = new ExternalIdentityAssertion(type, providerName, providerKey, new Dictionary<string, string>());
+
+        _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
+        _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(type, providerName, providerKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IUser?)null);
+        _repositoryMock.Setup(r => r.CreateOrReplaceCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new CredentialProviderKeyConflictException());
+
+        var result = await _identityService.LinkCredentialAsync(userId, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.AlreadyLinkedToOther));
+        }
+    }
+
+    [Test]
     public async Task LinkCredentialAsyncWithLocalTypeShouldForceProviderNameToLocal()
     {
         var userId = Guid.NewGuid();

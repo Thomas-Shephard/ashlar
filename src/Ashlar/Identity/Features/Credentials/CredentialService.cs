@@ -580,7 +580,23 @@ public sealed class CredentialService(
             CredentialValue = credentialValue
         };
 
-        await _repository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
+        try
+        {
+            await _repository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
+        }
+        catch (CredentialProviderKeyConflictException)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.CredentialLinked,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Provider = providerKeyIdentity,
+                FailureReason = AshlarFailureCodes.AlreadyLinkedToOther.Value
+            }, cancellationToken);
+            return Result.Failure(AshlarFailureCodes.AlreadyLinkedToOther);
+        }
+
         transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.CredentialLinked,

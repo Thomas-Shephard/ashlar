@@ -239,6 +239,114 @@ internal sealed class AshlarExternalSignInServiceTests
     }
 
     [Test]
+    public async Task CompleteOidcAssertionShouldMapMatchingExternalTicketWithoutCallingAuthenticationPipeline()
+    {
+        var pipeline = new Mock<IAuthenticationPipeline>(MockBehavior.Strict);
+        var service = CreateService(pipeline.Object);
+        var httpContext = CreateHttpContextWithExternalTicket("Google", "Google", "subject");
+
+        var result = await service.CompleteOidcAssertionAsync(httpContext, "Google");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.Succeeded));
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Assertion?.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
+            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("subject"));
+        }
+
+        pipeline.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public async Task CompleteOidcAssertionShouldReturnProviderMismatchForMismatchedExternalTicketProvider()
+    {
+        var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
+        var httpContext = CreateHttpContextWithExternalTicket("Microsoft", "Microsoft", "subject");
+
+        var result = await service.CompleteOidcAssertionAsync(httpContext, "Google");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.ProviderMismatch));
+            Assert.That(result.Succeeded, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task CompleteOidcAssertionShouldReturnAuthenticationFailedForFailedTicket()
+    {
+        var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
+        var httpContext = CreateHttpContext(new TestAuthenticationService(AuthenticateResult.Fail("failed")));
+
+        var result = await service.CompleteOidcAssertionAsync(httpContext, "Google");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.AuthenticationFailed));
+    }
+
+    [Test]
+    public async Task CompleteOidcAssertionShouldReturnProviderMismatchWhenTicketPropertiesAreMissing()
+    {
+        var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
+        var httpContext = CreateHttpContext(new TestAuthenticationService(
+            AuthenticateResult.Success(new AuthenticationTicket(CreatePrincipal("subject"), "Ashlar.OAuth.External"))));
+
+        var result = await service.CompleteOidcAssertionAsync(httpContext, "Google");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.ProviderMismatch));
+    }
+
+    [Test]
+    public async Task CompleteOidcAssertionShouldReturnInvalidPrincipalForMissingSubject()
+    {
+        var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
+        var httpContext = CreateHttpContext(new TestAuthenticationService(
+            AuthenticateResult.Success(new AuthenticationTicket(
+                new ClaimsPrincipal(new ClaimsIdentity([], "oidc")),
+                CreateProperties("Google", "Google"),
+                "Ashlar.OAuth.External"))));
+
+        var result = await service.CompleteOidcAssertionAsync(httpContext, "Google");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.InvalidPrincipal));
+    }
+
+    [Test]
+    public async Task CompleteOidcAssertionShouldReturnInvalidPrincipalWhenConfiguredProviderNameIsInvalid()
+    {
+        var service = CreateServiceWithProvider(new AshlarOidcProviderOptions(" ", "Google", _ => { }));
+        var httpContext = CreateHttpContextWithExternalTicket(" ", "Google", "subject");
+
+        var result = await service.CompleteOidcAssertionAsync(httpContext, "Google");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.InvalidPrincipal));
+    }
+
+    [Test]
+    public async Task CompleteOidcAssertionShouldClearExternalTicketForUnsupportedProvider()
+    {
+        var service = CreateService(new AuthenticationResponse(false));
+        var authService = new TestAuthenticationService(AuthenticateResult.NoResult());
+        var httpContext = CreateHttpContext(authService);
+
+        var result = await service.CompleteOidcAssertionAsync(httpContext, " ");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.UnsupportedProvider));
+            Assert.That(authService.SignOutCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void CompleteOidcAssertionShouldRejectNullHttpContext()
+    {
+        var service = CreateService(new AuthenticationResponse(false));
+
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.CompleteOidcAssertionAsync(null!, "Google"));
+    }
+
+    [Test]
     public async Task CompleteOidcSignInFromHttpContextShouldNotFailWhenCleanupFailsAfterSuccessfulAuthentication()
     {
         var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));

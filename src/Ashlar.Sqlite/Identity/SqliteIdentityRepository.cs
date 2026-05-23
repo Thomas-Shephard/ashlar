@@ -253,7 +253,7 @@ public sealed class SqliteIdentityRepository(ISqliteConnectionProvider connectio
         var rowsAffected = await command.ExecuteNonQueryAsync(cancellationToken);
         if (rowsAffected == 0)
         {
-            throw new InvalidOperationException("Credential provider key is already linked to another user.");
+            throw new CredentialProviderKeyConflictException();
         }
     }
 

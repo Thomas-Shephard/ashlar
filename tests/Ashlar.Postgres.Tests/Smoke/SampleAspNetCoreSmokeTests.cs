@@ -32,6 +32,9 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         SetSampleEnvironment("Ashlar__Cookie__Secure", "false");
         SetSampleEnvironment("Ashlar__Outbox__PollingInterval", "01:00:00");
         SetSampleEnvironment("Ashlar__Cleanup__CleanupInterval", "01:00:00");
+        SetSampleEnvironment("Authentication__Google__ClientId", string.Empty);
+        SetSampleEnvironment("Authentication__Google__ClientSecret", string.Empty);
+        SetSampleEnvironment("Authentication__Google__HostedDomains__0", string.Empty);
 
         try
         {
@@ -58,7 +61,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         await base.OneTimeTearDown();
     }
 
-    private void SetSampleEnvironment(string name, string value)
+    private void SetSampleEnvironment(string name, string? value)
     {
         _previousEnvironmentValues.TryAdd(name, Environment.GetEnvironmentVariable(name));
         Environment.SetEnvironmentVariable(name, value);
@@ -81,6 +84,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         Assert.That(status.RootElement.GetProperty("status").GetString(), Is.EqualTo("Uninitialized"));
 
         var adminUserId = await BootstrapFirstAdminAsync();
+        await AssertGoogleUiHiddenWhenNotConfiguredAsync(AdminClient);
         await AssertAdminPageIncludesAccountSecurityPanelAsync(AdminClient);
         await EnrollTotpAsync(AdminClient);
         await AssertLastAdminCannotBeDisabledAsync(AdminClient, adminUserId);
@@ -120,6 +124,42 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         {
             Assert.That(sharedSecret, Is.Not.Empty);
             Assert.That(adminUserId, Is.Not.EqualTo(Guid.Empty));
+        }
+    }
+
+    [Test]
+    public async Task SampleGoogleOidcWiringIsConditionalAndFailsSafelyWithoutExternalTicket()
+    {
+        var missingGoogleSignIn = await AdminClient.GetAsync("/auth/google");
+        Assert.That(missingGoogleSignIn.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+
+        await using var googleFactory = new SampleApplicationFactory(
+            GetConnectionString(),
+            new Dictionary<string, string?>
+            {
+                ["Authentication:Google:ClientId"] = "sample-client-id",
+                ["Authentication:Google:ClientSecret"] = "sample-client-secret",
+                ["Authentication:Google:HostedDomains:0"] = "example.com"
+            },
+            maskGoogleConfiguration: false);
+        using var client = googleFactory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        var signIn = await client.GetAsync("/auth/google");
+        var signInCallback = await client.GetAsync("/auth/google/callback");
+        var invitationPage = await client.GetAsync("/invitations/accept?t=sample-token");
+        var invitationHtml = await invitationPage.Content.ReadAsStringAsync();
+        var invitationStart = await client.GetAsync("/invitations/accept/google?t=sample-token&userName=Member");
+        var invitationCallback = await client.GetAsync("/invitations/accept/google/callback");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(signIn.StatusCode, Is.EqualTo(HttpStatusCode.Redirect));
+            Assert.That(signIn.Headers.Location?.Host, Does.Contain("google"));
+            Assert.That(await signInCallback.Content.ReadAsStringAsync(), Does.Contain("Google Sign-In Failed"));
+            Assert.That(invitationHtml, Does.Contain("Sign up with Google"));
+            Assert.That(invitationStart.StatusCode, Is.EqualTo(HttpStatusCode.Redirect));
+            Assert.That(invitationStart.Headers.Location?.Host, Does.Contain("google"));
+            Assert.That(await invitationCallback.Content.ReadAsStringAsync(), Does.Contain("Invitation Could Not Be Accepted"));
         }
     }
 
@@ -310,6 +350,20 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         }
     }
 
+    private static async Task AssertGoogleUiHiddenWhenNotConfiguredAsync(HttpClient client)
+    {
+        var home = await client.GetAsync("/");
+        var invitation = await client.GetAsync("/invitations/accept?t=sample-token");
+        var account = await client.GetAsync("/account");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await home.Content.ReadAsStringAsync(), Does.Not.Contain("Google"));
+            Assert.That(await invitation.Content.ReadAsStringAsync(), Does.Not.Contain("Google"));
+            Assert.That(await account.Content.ReadAsStringAsync(), Does.Not.Contain("Google"));
+        }
+    }
+
     private static async Task AssertLastAdminCannotBeDisabledAsync(HttpClient client, Guid adminUserId)
     {
         var response = await client.PostAsJsonAsync($"/api/admin/users/{adminUserId}/disable", new { reason = "smoke-test" });
@@ -435,20 +489,40 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     [GeneratedRegex("id=\"secret\" value=\"([^\"]+)\"", RegexOptions.CultureInvariant)]
     private static partial Regex SharedSecretInputRegex();
 
-    private sealed class SampleApplicationFactory(string connectionString) : WebApplicationFactory<Program>
+    private sealed class SampleApplicationFactory(
+        string connectionString,
+        IReadOnlyDictionary<string, string?>? additionalConfiguration = null,
+        bool maskGoogleConfiguration = true) : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.ConfigureAppConfiguration(configuration =>
             {
-                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                var values = new Dictionary<string, string?>
                 {
                     ["Ashlar:ConnectionString"] = connectionString,
                     ["Ashlar:PublicAppUrl"] = "http://localhost",
                     ["Ashlar:Cookie:Secure"] = "false",
                     ["Ashlar:Outbox:PollingInterval"] = "01:00:00",
                     ["Ashlar:Cleanup:CleanupInterval"] = "01:00:00"
-                });
+                };
+
+                if (maskGoogleConfiguration)
+                {
+                    values["Authentication:Google:ClientId"] = string.Empty;
+                    values["Authentication:Google:ClientSecret"] = string.Empty;
+                    values["Authentication:Google:HostedDomains:0"] = string.Empty;
+                }
+
+                if (additionalConfiguration != null)
+                {
+                    foreach (var (key, value) in additionalConfiguration)
+                    {
+                        values[key] = value;
+                    }
+                }
+
+                configuration.AddInMemoryCollection(values);
             });
 
             builder.ConfigureServices(services =>
