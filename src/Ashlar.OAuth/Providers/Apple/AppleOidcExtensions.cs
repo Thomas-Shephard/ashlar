@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 
 namespace Ashlar.OAuth.Providers.Apple;
 
@@ -31,16 +32,18 @@ public static class AppleOidcExtensions
         Action<OpenIdConnectOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(options);
+        var normalizedProviderName = AshlarOAuthOptions.NormalizeProviderName(providerName);
 
-        return options.AddOidcProvider(providerName, oidcOptions =>
+        return options.AddOidcProvider(new AshlarOidcProviderOptions(normalizedProviderName, normalizedProviderName, oidcOptions =>
         {
             oidcOptions.Authority = AppleOidcDefaults.Authority;
             oidcOptions.ResponseType = "code";
+            oidcOptions.ResponseMode = OpenIdConnectResponseMode.FormPost;
             oidcOptions.Scope.Remove("profile");
             oidcOptions.AddIfMissing("openid");
             oidcOptions.AddIfMissing("email");
             oidcOptions.AddIfMissing("name");
             configure?.Invoke(oidcOptions);
-        });
+        }, GetClaimsFromUserInfoEndpoint: false));
     }
 }

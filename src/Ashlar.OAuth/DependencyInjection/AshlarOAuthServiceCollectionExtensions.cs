@@ -78,7 +78,7 @@ public static class AshlarOAuthServiceCollectionExtensions
     {
         options.SignInScheme = externalSignInScheme;
         options.SaveTokens = false;
-        options.GetClaimsFromUserInfoEndpoint = true;
+        options.GetClaimsFromUserInfoEndpoint = provider.GetClaimsFromUserInfoEndpoint;
         options.MapInboundClaims = false;
 
         if (!options.CallbackPath.HasValue || string.Equals(options.CallbackPath.Value, "/signin-oidc", StringComparison.Ordinal))

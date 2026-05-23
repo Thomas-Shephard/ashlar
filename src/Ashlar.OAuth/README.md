@@ -65,7 +65,7 @@ options.AddApple(oidc =>
 });
 ```
 
-Configures provider name `Apple`, authority `https://appleid.apple.com`, authorization code flow, and `openid email name` scopes. Ashlar uses Apple's stable `sub` claim as the provider key. Apple client secrets are normally application-generated JWTs; production apps must configure generation, rotation, and storage themselves through `OpenIdConnectOptions`, for example by setting `ClientSecret` in the configure callback.
+Configures provider name `Apple`, authority `https://appleid.apple.com`, authorization code flow, `form_post` response mode, and `openid email name` scopes. Apple does not publish a user-info endpoint, so the preset reads claims from the validated ID token and authorization response instead. Ashlar uses Apple's stable `sub` claim as the provider key. Apple client secrets are normally application-generated JWTs; production apps must configure generation, rotation, and storage themselves through `OpenIdConnectOptions`, for example by setting `ClientSecret` in the configure callback.
 
 Apple profile claims are display hints only. The `name` value may only be returned during the first authorization, and `email` may be an Apple private relay address. Invitation email matching uses the generic verified-email policy unless the application replaces `IOidcInvitationEmailMatchPolicy`.
 

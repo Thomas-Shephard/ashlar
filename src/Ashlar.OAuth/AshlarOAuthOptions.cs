@@ -92,11 +92,13 @@ public sealed class AshlarOAuthOptions
 /// <param name="SchemeName">The ASP.NET Core authentication scheme name.</param>
 /// <param name="Configure">The OpenID Connect handler configuration callback.</param>
 /// <param name="ProviderKeyMode">How Ashlar composes the stable provider key from validated OIDC claims.</param>
+/// <param name="GetClaimsFromUserInfoEndpoint">Whether the handler should request claims from the provider user-info endpoint.</param>
 public sealed record AshlarOidcProviderOptions(
     string ProviderName,
     string SchemeName,
     Action<OpenIdConnectOptions> Configure,
-    AshlarOidcProviderKeyMode ProviderKeyMode = AshlarOidcProviderKeyMode.Subject);
+    AshlarOidcProviderKeyMode ProviderKeyMode = AshlarOidcProviderKeyMode.Subject,
+    bool GetClaimsFromUserInfoEndpoint = true);
 
 /// <summary>
 /// Defines how an OpenID Connect provider key is composed from validated claims.

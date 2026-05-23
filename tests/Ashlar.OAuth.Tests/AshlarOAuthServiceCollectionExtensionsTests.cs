@@ -99,8 +99,10 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             Assert.That(provider.ProviderName, Is.EqualTo("Apple"));
             Assert.That(provider.SchemeName, Is.EqualTo("Apple"));
             Assert.That(provider.ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.Subject));
+            Assert.That(provider.GetClaimsFromUserInfoEndpoint, Is.False);
             Assert.That(oidc.Authority, Is.EqualTo(AppleOidcDefaults.Authority));
             Assert.That(oidc.ResponseType, Is.EqualTo("code"));
+            Assert.That(oidc.ResponseMode, Is.EqualTo(OpenIdConnectResponseMode.FormPost));
             Assert.That(oidc.Scope, Does.Contain("openid"));
             Assert.That(oidc.Scope, Does.Contain("email"));
             Assert.That(oidc.Scope, Does.Contain("name"));
@@ -262,8 +264,10 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             Assert.That(oidcOptions.SignInScheme, Is.EqualTo("Ashlar.OAuth.External"));
             Assert.That(oidcOptions.CallbackPath.Value, Is.EqualTo("/signin-oidc/Apple"));
             Assert.That(oidcOptions.SaveTokens, Is.False);
+            Assert.That(oidcOptions.GetClaimsFromUserInfoEndpoint, Is.False);
             Assert.That(oidcOptions.Authority, Is.EqualTo(AppleOidcDefaults.Authority));
             Assert.That(oidcOptions.ResponseType, Is.EqualTo("code"));
+            Assert.That(oidcOptions.ResponseMode, Is.EqualTo(OpenIdConnectResponseMode.FormPost));
         }
     }
 
