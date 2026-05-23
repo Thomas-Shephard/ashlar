@@ -289,6 +289,9 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
     /// <param name="credential">The credential value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
+    /// <exception cref="CredentialProviderKeyConflictException">
+    /// The credential provider key is already linked to a different user.
+    /// </exception>
     public async Task CreateOrReplaceCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(credential);
@@ -300,7 +303,7 @@ public sealed class PostgresIdentityRepository(IPostgresConnectionProvider conne
             var rowsAffected = await connectionHandle.Connection.ExecuteAsync(command);
             if (rowsAffected == 0)
             {
-                throw new InvalidOperationException("Credential provider key is already linked to another user.");
+                throw new CredentialProviderKeyConflictException();
             }
         }
     }
