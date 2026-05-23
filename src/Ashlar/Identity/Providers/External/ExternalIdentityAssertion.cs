@@ -11,15 +11,27 @@ public sealed record ExternalIdentityAssertion : IAuthenticationAssertion
     /// <param name="type">The type value.</param>
     /// <param name="providerName">The provider name value.</param>
     /// <param name="providerKey">The provider key value.</param>
-    /// <param name="claims">The claims value.</param>
-    public ExternalIdentityAssertion(ProviderType type, string providerName, string providerKey, IDictionary<string, string> claims)
+    /// <param name="claims">The multi-value claims value.</param>
+    public ExternalIdentityAssertion(ProviderType type, string providerName, string providerKey, IReadOnlyDictionary<string, IReadOnlyList<string>> claims)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerKey);
         ArgumentNullException.ThrowIfNull(claims);
 
         ProviderKey = providerKey.Trim();
-        Claims = new Dictionary<string, string>(claims).AsReadOnly();
+        Claims = AuthenticationClaims.Copy(claims);
         ProviderIdentity = new AuthenticationProviderKey(type, providerName);
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the external identity assertion class from single-value claims.
+    /// </summary>
+    /// <param name="type">The type value.</param>
+    /// <param name="providerName">The provider name value.</param>
+    /// <param name="providerKey">The provider key value.</param>
+    /// <param name="claims">The single-value claims value.</param>
+    public ExternalIdentityAssertion(ProviderType type, string providerName, string providerKey, IDictionary<string, string> claims)
+        : this(type, providerName, providerKey, AuthenticationClaims.FromSingleValues(claims))
+    {
     }
 
     /// <summary>
@@ -30,7 +42,7 @@ public sealed record ExternalIdentityAssertion : IAuthenticationAssertion
     /// <summary>
     /// Gets or sets the claims value.
     /// </summary>
-    public IDictionary<string, string> Claims { get; }
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> Claims { get; }
 
     /// <summary>
     /// Gets or sets the provider identity value.

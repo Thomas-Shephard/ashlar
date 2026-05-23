@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -146,7 +147,7 @@ public sealed class AuthenticationOrchestrator(
         {
             foreach (var claim in response.Claims)
             {
-                metadata[$"claim:{claim.Key}"] = claim.Value;
+                metadata[$"claim:{claim.Key}"] = JsonSerializer.Serialize(claim.Value);
             }
         }
 
@@ -219,7 +220,7 @@ public sealed class AuthenticationOrchestrator(
 
     private static HashSet<string> ResolveRequiredFactors(
         MfaPolicyEvaluation policyEvaluation,
-        IDictionary<string, string>? claims,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? claims,
         string providerFactorsClaimName)
     {
         var requiredFactors = new HashSet<string>(
@@ -228,10 +229,10 @@ public sealed class AuthenticationOrchestrator(
 
         if (requiredFactors.Count == 0 &&
             claims?.TryGetValue(providerFactorsClaimName, out var providerFactors) == true &&
-            !string.IsNullOrWhiteSpace(providerFactors))
+            providerFactors.Any(value => !string.IsNullOrWhiteSpace(value)))
         {
             requiredFactors.UnionWith(providerFactors
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .SelectMany(value => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 .Where(factor => !string.IsNullOrWhiteSpace(factor)));
         }
 
@@ -253,9 +254,9 @@ public sealed class AuthenticationOrchestrator(
             && string.Equals(credentialKey, credentialAssertion.CredentialKey, StringComparison.Ordinal);
     }
 
-    private static Dictionary<string, string> BuildClaimMetadata(IDictionary<string, string>? claims, IAuthenticationAssertion primaryAssertion)
+    private static Dictionary<string, string> BuildClaimMetadata(IReadOnlyDictionary<string, IReadOnlyList<string>>? claims, IAuthenticationAssertion primaryAssertion)
     {
-        var metadata = claims?.ToDictionary(claim => $"claim:{claim.Key}", claim => claim.Value) ?? [];
+        var metadata = claims?.ToDictionary(claim => $"claim:{claim.Key}", claim => JsonSerializer.Serialize(claim.Value)) ?? [];
         metadata[PrimaryProviderTypeMetadataKey] = primaryAssertion.ProviderIdentity.TypeValueOrUnknown;
         metadata[PrimaryProviderNameMetadataKey] = primaryAssertion.ProviderIdentity.Name;
         if (primaryAssertion is ICredentialKeyAuthenticationAssertion credentialAssertion)
@@ -266,11 +267,13 @@ public sealed class AuthenticationOrchestrator(
         return metadata;
     }
 
-    private static Dictionary<string, string> ExtractClaims(IDictionary<string, string>? metadata)
+    private static Dictionary<string, IReadOnlyList<string>> ExtractClaims(IDictionary<string, string>? metadata)
     {
         return metadata?
             .Where(kvp => kvp.Key.StartsWith("claim:", StringComparison.Ordinal))
-            .ToDictionary(kvp => kvp.Key[6..], kvp => kvp.Value) ?? [];
+            .ToDictionary(
+                kvp => kvp.Key[6..],
+                kvp => (IReadOnlyList<string>)(JsonSerializer.Deserialize<string[]>(kvp.Value) ?? [])) ?? [];
     }
 
     private static string GetHandshakeVerificationFailureMessage(AshlarFailureCode? failureCode)

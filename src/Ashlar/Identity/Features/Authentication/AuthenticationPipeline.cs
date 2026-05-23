@@ -179,7 +179,7 @@ public sealed class AuthenticationPipeline(
         IAuthenticationProvider provider,
         AuthenticationContext context,
         AuthenticationStatus status,
-        IDictionary<string, string>? claims,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? claims,
         Dictionary<string, string>? properties,
         CancellationToken cancellationToken)
     {

@@ -582,6 +582,117 @@ internal sealed class InvitationServiceTests
     }
 
     [Test]
+    public async Task GetInvitationAcceptancePreviewReturnsAvailableInvitationEmailAndTenant()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = tenantId }, new Uri("https://myapp.com/join"));
+        var token = ExtractToken(fixture.EmailSender.Messages.First());
+
+        var result = await fixture.Service.GetInvitationAcceptancePreviewAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value?.Email, Is.EqualTo("test@example.com"));
+            Assert.That(result.Value?.TenantId, Is.EqualTo(tenantId));
+        }
+    }
+
+    [Test]
+    public async Task GetInvitationAcceptancePreviewFailsForMissingInvitation()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+
+        var result = await fixture.Service.GetInvitationAcceptancePreviewAsync("missing", new AuthenticationContext(TenantId: tenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationPreviewed).TenantId, Is.EqualTo(tenantId));
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationPreviewed).Properties?["operation"], Is.EqualTo("preview"));
+        }
+    }
+
+    [Test]
+    public async Task GetInvitationAcceptancePreviewAppliesPreviewRateLimitBeforeLookup()
+    {
+        var fixture = CreateFixture(previewAllowed: false);
+
+        var result = await fixture.Service.GetInvitationAcceptancePreviewAsync("missing", new AuthenticationContext(IpAddress: "1.2.3.4"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.RateLimited));
+            Assert.That(fixture.InvitationRepository.LookupCount, Is.Zero);
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationRateLimited).Properties?["operation"], Is.EqualTo("preview"));
+        }
+    }
+
+    [Test]
+    public async Task GetInvitationAcceptancePreviewFailsForAcceptedInvitation()
+    {
+        var fixture = CreateFixture();
+        var invitationTenantId = Guid.NewGuid();
+        var contextTenantId = Guid.NewGuid();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = invitationTenantId }, new Uri("https://myapp.com/join"));
+        var token = ExtractToken(fixture.EmailSender.Messages.First());
+        await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token });
+
+        var result = await fixture.Service.GetInvitationAcceptancePreviewAsync(token, new AuthenticationContext(TenantId: contextTenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationPreviewed).TenantId, Is.EqualTo(invitationTenantId));
+        }
+    }
+
+    [Test]
+    public async Task GetInvitationAcceptancePreviewUsesContextTenantWhenUnavailableInvitationIsGlobal()
+    {
+        var fixture = CreateFixture();
+        var contextTenantId = Guid.NewGuid();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com" }, new Uri("https://myapp.com/join"));
+        var token = ExtractToken(fixture.EmailSender.Messages.First());
+        await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token });
+
+        var result = await fixture.Service.GetInvitationAcceptancePreviewAsync(token, new AuthenticationContext(TenantId: contextTenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationPreviewed).TenantId, Is.EqualTo(contextTenantId));
+        }
+    }
+
+    [Test]
+    public async Task GetInvitationAcceptancePreviewUsesNoTenantWhenUnavailableInvitationIsGlobalAndContextHasNoTenant()
+    {
+        var fixture = CreateFixture();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com" }, new Uri("https://myapp.com/join"));
+        var token = ExtractToken(fixture.EmailSender.Messages.First());
+        await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token });
+
+        var result = await fixture.Service.GetInvitationAcceptancePreviewAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationPreviewed).TenantId, Is.Null);
+        }
+    }
+
+    [Test]
+    public void GetInvitationAcceptancePreviewValidatesToken()
+    {
+        var fixture = CreateFixture();
+
+        Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.GetInvitationAcceptancePreviewAsync(" "));
+    }
+
+    [Test]
     public async Task AcceptInvitationUsesContextForRateLimit()
     {
         var fixture = CreateFixture();
@@ -595,12 +706,53 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rateLimitAttempt.Key, Is.EqualTo("invitation-accept:1.2.3.4"));
+            Assert.That(rateLimitAttempt.Purpose, Is.EqualTo("invitation-accept"));
             Assert.That(rateLimitAttempt.IpAddress, Is.EqualTo("1.2.3.4"));
             Assert.That(rateLimitAttempt.CorrelationId, Is.EqualTo("corr-123"));
         }
     }
 
-    private static Fixture CreateFixture(User? user = null, bool creationAllowed = true, bool acceptanceAllowed = true, Action<InvitationOptions>? configureOptions = null, bool callbackAllowed = true)
+    [Test]
+    public async Task GetInvitationAcceptancePreviewUsesSeparateRateLimitBucket()
+    {
+        var fixture = CreateFixture();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com" }, new Uri("https://myapp.com/join"));
+        var token = ExtractToken(fixture.EmailSender.Messages.First());
+        var context = new AuthenticationContext(IpAddress: "1.2.3.4", CorrelationId: "corr-123");
+
+        await fixture.Service.GetInvitationAcceptancePreviewAsync(token, context);
+
+        var rateLimitAttempt = fixture.RateLimiter.GetLastAttempt();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rateLimitAttempt.Key, Is.EqualTo("invitation-preview:1.2.3.4"));
+            Assert.That(rateLimitAttempt.Purpose, Is.EqualTo("invitation-preview"));
+            Assert.That(rateLimitAttempt.IpAddress, Is.EqualTo("1.2.3.4"));
+            Assert.That(rateLimitAttempt.CorrelationId, Is.EqualTo("corr-123"));
+        }
+    }
+
+    [Test]
+    public async Task GetInvitationAcceptancePreviewUsesUnknownIpRateLimitBucketWhenIpAddressIsBlank()
+    {
+        var fixture = CreateFixture();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com" }, new Uri("https://myapp.com/join"));
+        var token = ExtractToken(fixture.EmailSender.Messages.First());
+        var context = new AuthenticationContext(IpAddress: " ", CorrelationId: "corr-123");
+
+        await fixture.Service.GetInvitationAcceptancePreviewAsync(token, context);
+
+        var rateLimitAttempt = fixture.RateLimiter.GetLastAttempt();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rateLimitAttempt.Key, Is.EqualTo("invitation-preview:unknown-ip"));
+            Assert.That(rateLimitAttempt.Purpose, Is.EqualTo("invitation-preview"));
+            Assert.That(rateLimitAttempt.IpAddress, Is.EqualTo("unknown-ip"));
+            Assert.That(rateLimitAttempt.CorrelationId, Is.EqualTo("corr-123"));
+        }
+    }
+
+    private static Fixture CreateFixture(User? user = null, bool creationAllowed = true, bool acceptanceAllowed = true, bool previewAllowed = true, Action<InvitationOptions>? configureOptions = null, bool callbackAllowed = true)
     {
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 5, 3, 12, 0, 0, TimeSpan.Zero));
         var identityRepository = new InMemoryIdentityRepository(user);
@@ -610,7 +762,7 @@ internal sealed class InvitationServiceTests
         var tokenHasher = new Sha256TokenHasher();
         var tokenGenerator = new SecureTokenGenerator();
         var transactionProvider = new NullTransactionProvider();
-        var rateLimiter = new StubRateLimiter(creationAllowed, acceptanceAllowed, time);
+        var rateLimiter = new StubRateLimiter(creationAllowed, acceptanceAllowed, previewAllowed, time);
 
         var options = new InvitationOptions();
         configureOptions?.Invoke(options);
@@ -699,7 +851,7 @@ internal sealed class InvitationServiceTests
 
     private sealed record Fixture(InvitationService Service, InMemoryInvitationRepository InvitationRepository, InMemoryIdentityRepository IdentityRepository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, ISecureTokenHasher TokenHasher, StubRateLimiter RateLimiter);
 
-    private sealed class StubRateLimiter(bool creationAllowed, bool acceptanceAllowed, TimeProvider timeProvider) : IAuthenticationRateLimiter
+    private sealed class StubRateLimiter(bool creationAllowed, bool acceptanceAllowed, bool previewAllowed, TimeProvider timeProvider) : IAuthenticationRateLimiter
     {
         private RateLimitAttempt? _lastAttempt;
         public RateLimitAttempt GetLastAttempt()
@@ -715,7 +867,12 @@ internal sealed class InvitationServiceTests
         public Task<RateLimitDecision> CheckAsync(RateLimitAttempt attempt, RateLimitRule rule, CancellationToken cancellationToken = default)
         {
             _lastAttempt = attempt;
-            var allowed = attempt.Purpose == "invitation-create" ? creationAllowed : acceptanceAllowed;
+            var allowed = attempt.Purpose switch
+            {
+                "invitation-create" => creationAllowed,
+                "invitation-preview" => previewAllowed,
+                _ => acceptanceAllowed
+            };
             return Task.FromResult(new RateLimitDecision
             {
                 Status = allowed ? RateLimitStatus.Allowed : RateLimitStatus.Blocked,
@@ -792,6 +949,7 @@ internal sealed class InvitationServiceTests
     {
         public List<UserInvitation> Invitations { get; } = [];
         public bool SimulateConflict { get; set; }
+        public int LookupCount { get; private set; }
 
         public Task CreateInvitationAsync(UserInvitation invitation, CancellationToken cancellationToken = default)
         {
@@ -801,6 +959,7 @@ internal sealed class InvitationServiceTests
 
         public Task<UserInvitation?> GetInvitationByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default)
         {
+            LookupCount++;
             return Task.FromResult(Invitations.FirstOrDefault(i => i.TokenHash == tokenHash));
         }
 

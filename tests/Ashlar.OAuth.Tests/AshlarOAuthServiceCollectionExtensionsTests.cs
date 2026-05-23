@@ -41,6 +41,8 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             Assert.That(authProviders.Select(p => p.Key), Does.Contain(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
             Assert.That(services.Any(d => d.ServiceType == typeof(AshlarExternalSignInService)), Is.True);
             Assert.That(services.Any(d => d.ServiceType == typeof(AshlarExternalAccountLinkService)), Is.True);
+            Assert.That(services.Any(d => d.ServiceType == typeof(AshlarOidcInvitationRegistrationService)), Is.True);
+            Assert.That(scope.ServiceProvider.GetRequiredService<IOidcInvitationEmailMatchPolicy>(), Is.TypeOf<StandardOidcVerifiedEmailMatchPolicy>());
         }
     }
 
@@ -78,6 +80,24 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             Assert.That(options.OidcProviders, Does.ContainKey("Google-Workspace"));
             Assert.That(options.OidcProviders["Google-Workspace"].ProviderName, Is.EqualTo("Google-Workspace"));
         }
+    }
+
+    [Test]
+    public void AddOidcProviderShouldSupportCustomProviderKeyMode()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddOidcProvider("SharedIssuer", AshlarOidcProviderKeyMode.IssuerAndSubject, _ => { });
+
+        Assert.That(options.OidcProviders["SharedIssuer"].ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.IssuerAndSubject));
+    }
+
+    [Test]
+    public void AddOidcProviderShouldRejectUnsupportedProviderKeyMode()
+    {
+        var options = new AshlarOAuthOptions();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => options.AddOidcProvider("SharedIssuer", (AshlarOidcProviderKeyMode)42, _ => { }));
     }
 
     [Test]
@@ -343,11 +363,90 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddMicrosoftPersonalAccountsShouldRegisterConsumersAuthority()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddMicrosoftPersonalAccounts();
+
+        var oidc = new OpenIdConnectOptions();
+        options.OidcProviders["MicrosoftPersonal"].Configure(oidc);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.OidcProviders["MicrosoftPersonal"].ProviderName, Is.EqualTo("MicrosoftPersonal"));
+            Assert.That(options.OidcProviders["MicrosoftPersonal"].ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.IssuerAndSubject));
+            Assert.That(oidc.Authority, Is.EqualTo(MicrosoftOidcDefaults.BuildSignInAuthority("consumers")));
+        }
+    }
+
+    [Test]
+    public void AddMicrosoftAnyAccountShouldRegisterCommonAuthority()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddMicrosoftAnyAccount(providerName: "MicrosoftAll");
+
+        var oidc = new OpenIdConnectOptions();
+        options.OidcProviders["MicrosoftAll"].Configure(oidc);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.OidcProviders["MicrosoftAll"].ProviderName, Is.EqualTo("MicrosoftAll"));
+            Assert.That(options.OidcProviders["MicrosoftAll"].ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.IssuerAndSubject));
+            Assert.That(oidc.Authority, Is.EqualTo(MicrosoftOidcDefaults.BuildSignInAuthority("common")));
+            Assert.That(oidc.TokenValidationParameters.IssuerValidator, Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void AddMicrosoftShouldUseUnqualifiedProviderKeyForExplicitTenantAuthority()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddMicrosoft("contoso.onmicrosoft.com");
+
+        Assert.That(options.OidcProviders["Microsoft"].ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.Subject));
+    }
+
+    [Test]
+    public void AddMicrosoftShouldRegisterMicrosoftInvitationEmailPolicy()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarOAuth(options => options.AddMicrosoft("contoso.onmicrosoft.com"));
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetRequiredService<IOidcInvitationEmailMatchPolicy>(), Is.TypeOf<MicrosoftOidcInvitationEmailMatchPolicy>());
+    }
+
+    [Test]
+    public void AddMicrosoftPersonalAccountsShouldUseStandardInvitationEmailPolicy()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarOAuth(options => options.AddMicrosoftPersonalAccounts());
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetRequiredService<IOidcInvitationEmailMatchPolicy>(), Is.TypeOf<StandardOidcVerifiedEmailMatchPolicy>());
+    }
+
+    [Test]
     public void AddMicrosoftShouldRejectMissingTenant()
     {
         var options = new AshlarOAuthOptions();
 
         Assert.Throws<ArgumentException>(() => options.AddMicrosoft(" "));
+    }
+
+    [TestCase("common")]
+    [TestCase("organizations")]
+    [TestCase("consumers")]
+    public void AddMicrosoftShouldRejectSharedTenantSegments(string tenant)
+    {
+        var options = new AshlarOAuthOptions();
+
+        Assert.Throws<ArgumentException>(() => options.AddMicrosoft(tenant));
     }
 
     [Test]

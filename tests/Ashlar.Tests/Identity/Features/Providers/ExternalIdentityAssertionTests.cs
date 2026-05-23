@@ -20,7 +20,7 @@ internal sealed class ExternalIdentityAssertionTests
     public void ConstructorShouldRejectNullClaims()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "key", null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "key", (IReadOnlyDictionary<string, IReadOnlyList<string>>)null!));
     }
 
     [Test]
@@ -38,7 +38,7 @@ internal sealed class ExternalIdentityAssertionTests
 
         claims["sub"] = "456";
 
-        Assert.That(assertion.Claims["sub"], Is.EqualTo("123"));
-        Assert.Throws<NotSupportedException>(() => assertion.Claims.Add("new", "val"));
+        Assert.That(assertion.Claims["sub"], Is.EqualTo(["123"]));
+        Assert.Throws<NotSupportedException>(() => ((IDictionary<string, IReadOnlyList<string>>)assertion.Claims).Add("new", ["val"]));
     }
 }

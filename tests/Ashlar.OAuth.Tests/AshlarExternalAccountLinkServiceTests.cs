@@ -80,7 +80,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
             Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("stable-sub"));
             Assert.That(observedAssertion?.ProviderKey, Is.EqualTo("stable-sub"));
-            Assert.That(observedAssertion?.Claims["email"], Is.EqualTo("first@example.com"));
+            Assert.That(observedAssertion?.Claims["email"], Is.EqualTo(["first@example.com"]));
             Assert.That(observedProvider?.Key, Is.EqualTo(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
             Assert.That(observedCredentialValue, Is.Null);
         }
@@ -234,7 +234,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(assertions.Select(a => a.ProviderKey), Is.EqualTo(SameSubjectTwice));
-            Assert.That(assertions.Select(a => a.Claims["email"]), Is.EqualTo(ChangedEmails));
+            Assert.That(assertions.Select(a => a.Claims["email"].Single()), Is.EqualTo(ChangedEmails));
         }
     }
 
@@ -365,7 +365,11 @@ internal sealed class AshlarExternalAccountLinkServiceTests
 
         var result = await service.CompleteOidcLinkAsync(httpContext, Guid.NewGuid(), "Microsoft");
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.UnsupportedProvider));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.UnsupportedProvider));
+            Assert.That(((TestAuthenticationService)httpContext.RequestServices.GetRequiredService<IAuthenticationService>()).SignOutCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -396,6 +400,16 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
             Assert.That(authService.SignOutCount, Is.EqualTo(1));
         }
+    }
+
+    [Test]
+    public void CompleteOidcLinkShouldClearExternalTicketWhenAuthenticateThrows()
+    {
+        var service = CreateService();
+        var authService = new TestAuthenticationService(AuthenticateResult.NoResult(), new InvalidOperationException("auth failed"));
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.CompleteOidcLinkAsync(CreateHttpContext(authService), Guid.NewGuid(), "Google"));
+        Assert.That(authService.SignOutCount, Is.EqualTo(1));
     }
 
     [Test]
@@ -498,10 +512,15 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task CompleteOidcLinkShouldReturnAuthenticationFailedWhenTicketMissing()
     {
         var service = CreateService();
+        var authService = new TestAuthenticationService(AuthenticateResult.NoResult());
 
-        var result = await service.CompleteOidcLinkAsync(CreateHttpContext(new TestAuthenticationService(AuthenticateResult.NoResult())), Guid.NewGuid(), "Google");
+        var result = await service.CompleteOidcLinkAsync(CreateHttpContext(authService), Guid.NewGuid(), "Google");
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.AuthenticationFailed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.AuthenticationFailed));
+            Assert.That(authService.SignOutCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -977,10 +996,18 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         public IDisposable? OnChange(Action<AshlarOAuthOptions, string?> listener) => null;
     }
 
-    private sealed class TestAuthenticationService(AuthenticateResult result) : IAuthenticationService
+    private sealed class TestAuthenticationService(AuthenticateResult result, Exception? authenticateException = null) : IAuthenticationService
     {
         public int SignOutCount { get; private set; }
-        public Task<AuthenticateResult> AuthenticateAsync(HttpContext context, string? scheme) => Task.FromResult(result);
+        public Task<AuthenticateResult> AuthenticateAsync(HttpContext context, string? scheme)
+        {
+            if (authenticateException != null)
+            {
+                throw authenticateException;
+            }
+
+            return Task.FromResult(result);
+        }
         public Task ChallengeAsync(HttpContext context, string? scheme, AuthenticationProperties? properties) => Task.CompletedTask;
         public Task ForbidAsync(HttpContext context, string? scheme, AuthenticationProperties? properties) => Task.CompletedTask;
         public Task SignInAsync(HttpContext context, string? scheme, ClaimsPrincipal principal, AuthenticationProperties? properties) => Task.CompletedTask;

@@ -53,7 +53,7 @@ internal sealed class AuthenticationOrchestratorTests
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
             Assert.That(result.User, Is.EqualTo(_userMock.Object));
-            Assert.That(result.Claims, Is.EqualTo(claims));
+            Assert.That(result.Claims?["test"], Is.EqualTo(["value"]));
         }
     }
 
@@ -123,7 +123,7 @@ internal sealed class AuthenticationOrchestratorTests
             It.Is<CreateAuthenticationHandshakeRequest>(r =>
                 r.UserId == _userMock.Object.Id &&
                 r.RequiredFactors.SequenceEqual(requiredFactors) &&
-                r.Metadata != null && r.Metadata["claim:test"] == "value"),
+                r.Metadata != null && r.Metadata["claim:test"] == "[\"value\"]"),
             It.IsAny<CancellationToken>()));
     }
 
@@ -201,7 +201,7 @@ internal sealed class AuthenticationOrchestratorTests
         _handshakeServiceMock.Verify(h => h.CreateHandshakeAsync(
             It.Is<CreateAuthenticationHandshakeRequest>(r =>
                 r.RequiredFactors.SequenceEqual(requiredFactors) &&
-                r.Metadata != null && r.Metadata["claim:mfa_factors"] == "totp, email_code, "),
+                r.Metadata != null && r.Metadata["claim:mfa_factors"] == "[\"totp, email_code, \"]"),
             It.IsAny<CancellationToken>()));
     }
 
@@ -488,7 +488,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var handshakeId = Guid.NewGuid();
         var userId = _userMock.Object.Id;
-        var metadata = new Dictionary<string, string> { ["claim:role"] = "admin" };
+        var metadata = new Dictionary<string, string> { ["claim:role"] = "[\"admin\"]" };
         var handshake = new AuthenticationHandshake(handshakeId, userId, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>(), metadata);
 
         _handshakeServiceMock.Setup(h => h.GetHandshakeAsync("token", It.IsAny<CancellationToken>()))
@@ -497,7 +497,7 @@ internal sealed class AuthenticationOrchestratorTests
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success, new Dictionary<string, string> { ["new_claim"] = "new_val" }));
 
-        var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "totp" }, IsCompleted = true, Metadata = new Dictionary<string, string>(metadata) { ["claim:new_claim"] = "new_val" } };
+        var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "totp" }, IsCompleted = true, Metadata = new Dictionary<string, string>(metadata) { ["claim:new_claim"] = "[\"new_val\"]" } };
         _handshakeServiceMock.Setup(h => h.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(completedHandshake));
 
@@ -507,8 +507,8 @@ internal sealed class AuthenticationOrchestratorTests
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
             Assert.That(result.User, Is.EqualTo(_userMock.Object));
-            Assert.That(result.Claims?["role"], Is.EqualTo("admin"));
-            Assert.That(result.Claims?["new_claim"], Is.EqualTo("new_val"));
+            Assert.That(result.Claims?["role"], Is.EqualTo(["admin"]));
+            Assert.That(result.Claims?["new_claim"], Is.EqualTo(["new_val"]));
         }
     }
 

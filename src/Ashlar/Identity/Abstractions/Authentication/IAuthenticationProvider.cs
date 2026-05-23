@@ -88,11 +88,38 @@ public interface IAuthenticationProvider
 /// <param name="CredentialUpdateRequirement">The credential update requirement value.</param>
 public sealed record AuthenticationResult(
     AuthenticationResultStatus Status,
-    IDictionary<string, string>? Claims = null,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims = null,
     string? NewCredentialValue = null,
     string? NewMetadata = null,
     bool IsCredentialConsumed = false,
-    CredentialUpdateRequirement CredentialUpdateRequirement = CredentialUpdateRequirement.BestEffort);
+    CredentialUpdateRequirement CredentialUpdateRequirement = CredentialUpdateRequirement.BestEffort)
+{
+    /// <summary>
+    /// Initializes a new instance of the authentication result class from single-value claims.
+    /// </summary>
+    /// <param name="status">The status value.</param>
+    /// <param name="claims">The single-value claims.</param>
+    /// <param name="newCredentialValue">The new credential value value.</param>
+    /// <param name="newMetadata">The new metadata value.</param>
+    /// <param name="isCredentialConsumed">The is credential consumed value.</param>
+    /// <param name="credentialUpdateRequirement">The credential update requirement value.</param>
+    public AuthenticationResult(
+        AuthenticationResultStatus status,
+        IDictionary<string, string>? claims,
+        string? newCredentialValue = null,
+        string? newMetadata = null,
+        bool isCredentialConsumed = false,
+        CredentialUpdateRequirement credentialUpdateRequirement = CredentialUpdateRequirement.BestEffort)
+        : this(
+            status,
+            AuthenticationClaims.FromSingleValues(claims),
+            newCredentialValue,
+            newMetadata,
+            isCredentialConsumed,
+            credentialUpdateRequirement)
+    {
+    }
+}
 
 /// <summary>
 /// Represents the outcome of an authentication attempt.

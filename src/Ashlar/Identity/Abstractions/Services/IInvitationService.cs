@@ -18,6 +18,15 @@ public interface IInvitationService
     Task<Result> CreateInvitationAsync(CreateInvitationRequest request, Uri callbackBaseUri, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets safe invitation details needed to validate an acceptance flow before consuming the invitation token.
+    /// </summary>
+    /// <param name="token">The invitation token.</param>
+    /// <param name="context">Optional request context for auditing.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>The acceptable invitation details, or an invalid invitation failure.</returns>
+    Task<Result<InvitationAcceptancePreview>> GetInvitationAcceptancePreviewAsync(string token, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Accepts an invitation token and creates the invited user.
     /// </summary>
     /// <param name="request">The invitation acceptance details.</param>

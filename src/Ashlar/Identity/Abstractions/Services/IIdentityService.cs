@@ -94,4 +94,21 @@ public sealed record AuthenticationResponse(
     bool Succeeded,
     IUser? User = null,
     AuthenticationStatus Status = AuthenticationStatus.Failed,
-    IDictionary<string, string>? Claims = null);
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims = null)
+{
+    /// <summary>
+    /// Initializes a new instance of the authentication response class from single-value claims.
+    /// </summary>
+    /// <param name="succeeded">Whether authentication completed successfully.</param>
+    /// <param name="user">The authenticated user when available.</param>
+    /// <param name="status">The authentication outcome.</param>
+    /// <param name="claims">Additional single-value claims produced by the authentication provider.</param>
+    public AuthenticationResponse(
+        bool succeeded,
+        IUser? user,
+        AuthenticationStatus status,
+        IDictionary<string, string>? claims)
+        : this(succeeded, user, status, AuthenticationClaims.FromSingleValues(claims))
+    {
+    }
+}

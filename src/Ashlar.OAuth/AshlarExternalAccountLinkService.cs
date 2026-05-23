@@ -63,16 +63,16 @@ public sealed class AshlarExternalAccountLinkService
         var provider = GetOidcProvider(providerName);
         if (provider == null)
         {
+            await AshlarExternalTicket.TryClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme);
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.UnsupportedProvider);
         }
 
-        var result = await httpContext.AuthenticateAsync(_options.CurrentValue.ExternalSignInScheme);
-        if (!result.Succeeded)
+        var result = await AshlarExternalTicket.AuthenticateAndClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme);
+
+        if (!result.Succeeded || result.Principal == null)
         {
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.AuthenticationFailed);
         }
-
-        await httpContext.SignOutAsync(_options.CurrentValue.ExternalSignInScheme);
 
         if (!MatchesProvider(result, provider))
         {
@@ -108,7 +108,7 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.UnsupportedProvider);
         }
 
-        if (!authenticateResult.Succeeded)
+        if (!authenticateResult.Succeeded || authenticateResult.Principal == null)
         {
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.AuthenticationFailed);
         }
@@ -126,7 +126,7 @@ public sealed class AshlarExternalAccountLinkService
     /// </summary>
     /// <param name="currentUserId">The currently authenticated Ashlar user id.</param>
     /// <param name="providerName">The configured Ashlar provider name.</param>
-    /// <param name="principal">The validated external principal.</param>
+    /// <param name="principal">The validated external principal. Do not pass principals built from request data or unvalidated tokens.</param>
     /// <param name="tenant">The tenant scope, when the application is tenant-aware.</param>
     /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
@@ -155,7 +155,7 @@ public sealed class AshlarExternalAccountLinkService
         ExternalIdentityAssertion assertion;
         try
         {
-            assertion = OidcExternalIdentityAssertionMapper.Map(providerOptions.ProviderName, principal);
+            assertion = OidcExternalIdentityAssertionMapper.Map(providerOptions.ProviderName, principal, providerOptions.ProviderKeyMode);
         }
         catch (InvalidOperationException)
         {

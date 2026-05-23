@@ -21,14 +21,16 @@ public sealed class InvitationOptions
     public string EmailTextTemplate { get; set; } = "You have been invited. Use this link to join: {0}";
 
     /// <summary>
-    /// Executes the new operation.
+    /// Gets or sets the rate limit rule for creating invitations.
     /// </summary>
-    /// <param name="PermitLimit">The permit limit value.</param>
     public RateLimitRule CreationRateLimit { get; set; } = new() { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) };
     /// <summary>
-    /// Executes the new operation.
+    /// Gets or sets the rate limit rule for previewing invitations before acceptance.
     /// </summary>
-    /// <param name="PermitLimit">The permit limit value.</param>
+    public RateLimitRule PreviewRateLimit { get; set; } = new() { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) };
+    /// <summary>
+    /// Gets or sets the rate limit rule for accepting invitations.
+    /// </summary>
     public RateLimitRule AcceptanceRateLimit { get; set; } = new() { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) };
 
     /// <summary>

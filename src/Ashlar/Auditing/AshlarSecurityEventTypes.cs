@@ -130,6 +130,10 @@ public static class AshlarSecurityEventTypes
     /// </summary>
     public const string InvitationAccepted = "ashlar.invitation.accepted";
     /// <summary>
+    /// Defines the invitation previewed value.
+    /// </summary>
+    public const string InvitationPreviewed = "ashlar.invitation.previewed";
+    /// <summary>
     /// Defines the invitation revoked value.
     /// </summary>
     public const string InvitationRevoked = "ashlar.invitation.revoked";

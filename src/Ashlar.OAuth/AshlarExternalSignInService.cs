@@ -44,16 +44,16 @@ public sealed class AshlarExternalSignInService
         var provider = GetOidcProvider(providerName);
         if (provider == null)
         {
+            await AshlarExternalTicket.TryClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme);
             return new AshlarExternalSignInResult(AshlarExternalSignInStatus.UnsupportedProvider);
         }
 
-        var result = await httpContext.AuthenticateAsync(_options.CurrentValue.ExternalSignInScheme);
+        var result = await AshlarExternalTicket.AuthenticateAndClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme);
+
         if (!result.Succeeded || result.Principal == null)
         {
             return new AshlarExternalSignInResult(AshlarExternalSignInStatus.AuthenticationFailed);
         }
-
-        await httpContext.SignOutAsync(_options.CurrentValue.ExternalSignInScheme);
 
         if (!MatchesProvider(result, provider))
         {
@@ -63,7 +63,7 @@ public sealed class AshlarExternalSignInService
         ExternalIdentityAssertion assertion;
         try
         {
-            assertion = OidcExternalIdentityAssertionMapper.Map(provider.ProviderName, result.Principal);
+            assertion = OidcExternalIdentityAssertionMapper.Map(provider.ProviderName, result.Principal, provider.ProviderKeyMode);
         }
         catch (InvalidOperationException)
         {
@@ -82,7 +82,7 @@ public sealed class AshlarExternalSignInService
     /// Completes sign-in from an already validated external principal.
     /// </summary>
     /// <param name="providerName">The configured Ashlar provider name.</param>
-    /// <param name="principal">The validated external principal.</param>
+    /// <param name="principal">The validated external principal. Do not pass principals built from request data or unvalidated tokens.</param>
     /// <param name="context">The Ashlar authentication context.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The external sign-in result.</returns>
@@ -104,7 +104,7 @@ public sealed class AshlarExternalSignInService
         ExternalIdentityAssertion assertion;
         try
         {
-            assertion = OidcExternalIdentityAssertionMapper.Map(provider.ProviderName, principal);
+            assertion = OidcExternalIdentityAssertionMapper.Map(provider.ProviderName, principal, provider.ProviderKeyMode);
         }
         catch (InvalidOperationException)
         {
