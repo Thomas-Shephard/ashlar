@@ -130,6 +130,19 @@ return Results.Redirect("/");
 
 `AshlarExternalCredentialAuthenticationService.CompleteOidcCredentialAuthenticationAsync` is a lower-level helper that maps the OIDC credential and calls Ashlar's authentication pipeline directly. It still does not issue an application session or cookie. Use it only when the host application deliberately treats the returned Ashlar authentication response as the complete credential-authentication decision. Applications with MFA policy must not issue sessions directly from external credential validation; use `CompleteOidcAssertionAsync` and the host orchestration pipeline instead.
 
+## Profile Hints
+
+Applications can map conservative display hints from a principal that has already been validated by the configured OpenID Connect handler:
+
+```csharp
+var profile = AshlarOidcProfileMapper.Map(validatedPrincipal);
+var displayName = profile.DisplayName;
+```
+
+Profile values are display hints only. They are not identity assertions, provider keys, authorization inputs, tenancy decisions, or instructions to mutate an Ashlar user. Callers must only pass principals that have already been validated by the configured OIDC handler; do not build principals from request data or unvalidated tokens.
+
+`Email` and `EmailVerified` are profile hints and do not replace invitation email match policy. Invitation registration still uses the configured `IOidcInvitationEmailMatchPolicy`.
+
 ## Security Notes
 
 - ASP.NET Core's OpenID Connect handler performs state, nonce, code exchange, token validation, audience validation, signing key validation, and expiry validation according to the configured authority and token validation parameters.
