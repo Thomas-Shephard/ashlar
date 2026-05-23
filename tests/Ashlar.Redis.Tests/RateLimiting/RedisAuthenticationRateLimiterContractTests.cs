@@ -15,7 +15,7 @@ internal sealed class RedisAuthenticationRateLimiterContractTests : Authenticati
     protected override async Task<IServiceProvider> CreateInitializedServiceProviderAsync()
     {
         await _redis.InitializeAsync();
-        await _redis.FlushRedisDatabaseAsync();
+        await _redis.FlushDatabaseAsync();
 
         _timeProvider = new FakeTimeProvider(Start);
         var services = new ServiceCollection();

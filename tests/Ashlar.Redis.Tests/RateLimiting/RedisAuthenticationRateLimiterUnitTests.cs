@@ -58,6 +58,24 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
     }
 
     [Test]
+    public void CheckAsyncObservesCancellationBeforeRedisWork()
+    {
+        var connection = new Mock<IConnectionMultiplexer>(MockBehavior.Strict);
+        var limiter = new RedisAuthenticationRateLimiter(
+            connection.Object,
+            Options.Create(new RedisAuthenticationRateLimiterOptions()),
+            new FakeTimeProvider());
+        using var cancellationTokenSource = new CancellationTokenSource();
+        cancellationTokenSource.Cancel();
+
+        Assert.ThrowsAsync<OperationCanceledException>(async () => await limiter.CheckAsync(
+            new Ashlar.Identity.RateLimiting.Models.RateLimitAttempt { Key = "cancelled" },
+            new Ashlar.Identity.RateLimiting.Models.RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(1) },
+            cancellationTokenSource.Token));
+        connection.Verify(redis => redis.GetDatabase(It.IsAny<int>(), It.IsAny<object>()), Times.Never);
+    }
+
+    [Test]
     public void CheckAsyncRejectsNullRedisScriptResponse()
     {
         var database = new Mock<IDatabase>(MockBehavior.Strict);
@@ -94,6 +112,32 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
                 It.IsAny<RedisValue[]>(),
                 CommandFlags.None))
             .ReturnsAsync(RedisResult.Create(1));
+
+        var connection = new Mock<IConnectionMultiplexer>(MockBehavior.Strict);
+        connection
+            .Setup(redis => redis.GetDatabase(-1, null))
+            .Returns(database.Object);
+        var limiter = new RedisAuthenticationRateLimiter(
+            connection.Object,
+            Options.Create(new RedisAuthenticationRateLimiterOptions()),
+            new FakeTimeProvider());
+
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await limiter.CheckAsync(
+            new Ashlar.Identity.RateLimiting.Models.RateLimitAttempt { Key = "test" },
+            new Ashlar.Identity.RateLimiting.Models.RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMinutes(1) }));
+    }
+
+    [Test]
+    public void CheckAsyncRejectsUnexpectedRedisScriptResponseLength()
+    {
+        var database = new Mock<IDatabase>(MockBehavior.Strict);
+        database
+            .Setup(redis => redis.ScriptEvaluateAsync(
+                It.IsAny<string>(),
+                It.IsAny<RedisKey[]>(),
+                It.IsAny<RedisValue[]>(),
+                CommandFlags.None))
+            .ReturnsAsync(RedisResult.Create([RedisResult.Create(0)]));
 
         var connection = new Mock<IConnectionMultiplexer>(MockBehavior.Strict);
         connection

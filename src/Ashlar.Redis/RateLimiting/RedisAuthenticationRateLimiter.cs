@@ -139,6 +139,7 @@ public sealed class RedisAuthenticationRateLimiter : IAuthenticationRateLimiter
         ArgumentNullException.ThrowIfNull(rule);
         ArgumentException.ThrowIfNullOrWhiteSpace(attempt.Key);
         ValidateRule(rule);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var now = _timeProvider.GetUtcNow();
         var connection = await _getConnectionAsync();
@@ -206,6 +207,11 @@ public sealed class RedisAuthenticationRateLimiter : IAuthenticationRateLimiter
         {
             var result = (RedisResult[]?)scriptResult;
             ArgumentNullException.ThrowIfNull(result);
+            if (result.Length != 4)
+            {
+                throw new InvalidOperationException("Redis rate limiter returned an invalid response.");
+            }
+
             return result;
         }
         catch (Exception ex) when (ex is InvalidCastException or ArgumentNullException)

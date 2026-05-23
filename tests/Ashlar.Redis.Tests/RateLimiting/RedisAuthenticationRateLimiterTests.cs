@@ -95,14 +95,23 @@ internal sealed class RedisAuthenticationRateLimiterTests : RedisTestBase
     [Test]
     public async Task CheckAsyncExpiresRedisKeyAfterReset()
     {
-        var limiter = _provider.GetRequiredService<IAuthenticationRateLimiter>();
-        var rule = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMilliseconds(100) };
+        var keyPrefix = $"ashlar:test:{Guid.NewGuid():N}";
+        var services = new ServiceCollection();
+        services.AddAshlarRedisRateLimiting(GetConnection(), options =>
+        {
+            options.KeyPrefix = keyPrefix;
+            options.ExpirationSkew = TimeSpan.Zero;
+        });
+        services.AddSingleton<TimeProvider>(_timeProvider);
+        await using var provider = services.BuildServiceProvider();
+        var limiter = provider.GetRequiredService<IAuthenticationRateLimiter>();
+        var rule = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.FromMilliseconds(50) };
 
         await limiter.CheckAsync(new RateLimitAttempt { Key = "expiring" }, rule);
-        await Task.Delay(TimeSpan.FromSeconds(6));
+        await Task.Delay(TimeSpan.FromMilliseconds(250));
 
         var server = GetConnection().GetServer(GetConnection().GetEndPoints().Single());
-        var keys = server.Keys(pattern: $"{_keyPrefix}:auth:*").ToArray();
+        var keys = server.Keys(pattern: $"{keyPrefix}:auth:*").ToArray();
 
         Assert.That(keys, Is.Empty);
     }

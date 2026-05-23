@@ -38,6 +38,7 @@ internal sealed class RedisAuthenticationRateLimiterDiagnostics : IAuthenticatio
 
     public async Task<AuthenticationRateLimiterDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var checkedAt = _timeProvider.GetUtcNow();
         try
         {

@@ -99,8 +99,10 @@ internal sealed class AshlarRedisServiceCollectionExtensionsTests
         {
             Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "" }), Is.False);
             Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "has spaces" }), Is.False);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { Database = -1 }), Is.False);
             Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { ExpirationSkew = TimeSpan.FromMilliseconds(-1) }), Is.False);
             Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "ashlar:test" }), Is.True);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { Database = 0 }), Is.True);
         }
     }
 }

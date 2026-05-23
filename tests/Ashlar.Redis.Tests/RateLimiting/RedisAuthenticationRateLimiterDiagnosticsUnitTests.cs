@@ -44,6 +44,27 @@ internal sealed class RedisAuthenticationRateLimiterDiagnosticsUnitTests
     }
 
     [Test]
+    public void CheckAsyncObservesCancellationBeforeRedisWork()
+    {
+        var created = false;
+        var connection = new RedisAuthenticationRateLimiterConnection(new Lazy<Task<IConnectionMultiplexer>>(() =>
+        {
+            created = true;
+            return Task.FromResult(Mock.Of<IConnectionMultiplexer>());
+        }), false);
+        var diagnostics = new RedisAuthenticationRateLimiterDiagnostics(
+            connection,
+            Options.Create(new RedisAuthenticationRateLimiterOptions()),
+            new FakeTimeProvider(CheckedAt),
+            NullLogger<RedisAuthenticationRateLimiterDiagnostics>.Instance);
+        using var cancellationTokenSource = new CancellationTokenSource();
+        cancellationTokenSource.Cancel();
+
+        Assert.ThrowsAsync<OperationCanceledException>(async () => await diagnostics.CheckAsync(cancellationTokenSource.Token));
+        Assert.That(created, Is.False);
+    }
+
+    [Test]
     public void ConstructorRejectsNullArguments()
     {
         var connection = new RedisAuthenticationRateLimiterConnection(new Lazy<Task<IConnectionMultiplexer>>(() => Task.FromResult(Mock.Of<IConnectionMultiplexer>())), false);

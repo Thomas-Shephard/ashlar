@@ -45,18 +45,13 @@ internal abstract class RedisTestBase
         return _connection.Value;
     }
 
-    protected async Task FlushDatabaseAsync()
+    protected internal async Task FlushDatabaseAsync()
     {
         foreach (var endpoint in GetConnection().GetEndPoints())
         {
             var server = GetConnection().GetServer(endpoint);
             await server.FlushDatabaseAsync();
         }
-    }
-
-    public Task FlushRedisDatabaseAsync()
-    {
-        return FlushDatabaseAsync();
     }
 
     private static async Task EnsureContainerStartedAsync()

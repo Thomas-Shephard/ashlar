@@ -39,6 +39,11 @@ public sealed class RedisAuthenticationRateLimiterOptions
             return false;
         }
 
+        if (options.Database < 0)
+        {
+            return false;
+        }
+
         if (options.ExpirationSkew < TimeSpan.Zero)
         {
             return false;
