@@ -139,7 +139,7 @@ internal sealed class AuthenticationPipelineTests
             Assert.That(response.Succeeded, Is.False);
             Assert.That(response.User, Is.SameAs(user));
             Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.MfaRequired));
-            Assert.That(response.Claims, Is.SameAs(claims));
+            Assert.That(response.Claims, Is.SameAs(result.Claims));
         }
 
         _credentialServiceMock.Verify(
@@ -172,7 +172,7 @@ internal sealed class AuthenticationPipelineTests
             Assert.That(response.Succeeded, Is.True);
             Assert.That(response.User, Is.SameAs(user));
             Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessWithCredentialUpdate));
-            Assert.That(response.Claims, Is.SameAs(claims));
+            Assert.That(response.Claims, Is.SameAs(result.Claims));
         }
     }
 
@@ -198,7 +198,7 @@ internal sealed class AuthenticationPipelineTests
             Assert.That(response.Succeeded, Is.True);
             Assert.That(response.User, Is.SameAs(user));
             Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Success));
-            Assert.That(response.Claims, Is.SameAs(claims));
+            Assert.That(response.Claims, Is.SameAs(result.Claims));
         }
 
         _credentialServiceMock.Verify(

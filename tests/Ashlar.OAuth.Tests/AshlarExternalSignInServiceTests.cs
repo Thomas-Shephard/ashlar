@@ -108,14 +108,62 @@ internal sealed class AshlarExternalSignInServiceTests
     }
 
     [Test]
+    public async Task CompleteOidcSignInFromHttpContextShouldClearExternalTicketForUnsupportedProvider()
+    {
+        var service = CreateService(new AuthenticationResponse(false));
+        var authService = new TestAuthenticationService(AuthenticateResult.NoResult());
+        var httpContext = CreateHttpContext(authService);
+
+        var result = await service.CompleteOidcSignInAsync(httpContext, " ");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalSignInStatus.UnsupportedProvider));
+            Assert.That(authService.SignOutCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task CompleteOidcSignInFromHttpContextShouldIgnoreCleanupFailureForUnsupportedProvider()
+    {
+        var service = CreateService(new AuthenticationResponse(false));
+        var authService = new TestAuthenticationService(AuthenticateResult.NoResult(), signOutException: new InvalidOperationException("cleanup failed"));
+        var httpContext = CreateHttpContext(authService);
+
+        var result = await service.CompleteOidcSignInAsync(httpContext, " ");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalSignInStatus.UnsupportedProvider));
+            Assert.That(authService.SignOutCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task CompleteOidcSignInFromHttpContextShouldReturnAuthenticationFailedWhenExternalAuthenticateFails()
     {
         var service = CreateService(new AuthenticationResponse(false));
-        var httpContext = CreateHttpContext(new TestAuthenticationService(AuthenticateResult.Fail("failed")));
+        var authService = new TestAuthenticationService(AuthenticateResult.Fail("failed"));
+        var httpContext = CreateHttpContext(authService);
 
         var result = await service.CompleteOidcSignInAsync(httpContext, "Google");
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalSignInStatus.AuthenticationFailed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalSignInStatus.AuthenticationFailed));
+            Assert.That(authService.SignOutCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void CompleteOidcSignInFromHttpContextShouldClearExternalTicketWhenAuthenticateThrows()
+    {
+        var service = CreateService(new AuthenticationResponse(false));
+        var authService = new TestAuthenticationService(AuthenticateResult.NoResult(), new InvalidOperationException("auth failed"));
+        var httpContext = CreateHttpContext(authService);
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.CompleteOidcSignInAsync(httpContext, "Google"));
+        Assert.That(authService.SignOutCount, Is.EqualTo(1));
     }
 
     [Test]
@@ -188,6 +236,27 @@ internal sealed class AshlarExternalSignInServiceTests
         var result = await service.CompleteOidcSignInAsync(httpContext, "Google");
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalSignInStatus.Succeeded));
+    }
+
+    [Test]
+    public async Task CompleteOidcSignInFromHttpContextShouldNotFailWhenCleanupFailsAfterSuccessfulAuthentication()
+    {
+        var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
+        var authService = new TestAuthenticationService(
+            AuthenticateResult.Success(new AuthenticationTicket(
+                CreatePrincipal("subject"),
+                CreateProperties("Google", "Google"),
+                "Ashlar.OAuth.External")),
+            signOutException: new InvalidOperationException("cleanup failed"));
+        var httpContext = CreateHttpContext(authService);
+
+        var result = await service.CompleteOidcSignInAsync(httpContext, "Google");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalSignInStatus.Succeeded));
+            Assert.That(authService.SignOutCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -323,12 +392,17 @@ internal sealed class AshlarExternalSignInServiceTests
         public IDisposable? OnChange(Action<AshlarOAuthOptions, string?> listener) => null;
     }
 
-    private sealed class TestAuthenticationService(AuthenticateResult result) : IAuthenticationService
+    private sealed class TestAuthenticationService(AuthenticateResult result, Exception? authenticateException = null, Exception? signOutException = null) : IAuthenticationService
     {
         public int SignOutCount { get; private set; }
 
         public Task<AuthenticateResult> AuthenticateAsync(HttpContext context, string? scheme)
         {
+            if (authenticateException != null)
+            {
+                throw authenticateException;
+            }
+
             return Task.FromResult(result);
         }
 
@@ -350,6 +424,11 @@ internal sealed class AshlarExternalSignInServiceTests
         public Task SignOutAsync(HttpContext context, string? scheme, AuthenticationProperties? properties)
         {
             SignOutCount++;
+            if (signOutException != null)
+            {
+                throw signOutException;
+            }
+
             return Task.CompletedTask;
         }
     }

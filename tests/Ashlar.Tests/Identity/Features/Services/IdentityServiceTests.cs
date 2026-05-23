@@ -314,7 +314,7 @@ internal sealed class IdentityServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Succeeded, Is.True);
-            Assert.That(response.Claims, Is.EqualTo(claims));
+            Assert.That(response.Claims, Is.EqualTo(assertion.Claims));
         }
     }
 
@@ -668,7 +668,7 @@ internal sealed class IdentityServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Succeeded, Is.True);
-            Assert.That(response.Claims, Is.EqualTo(claims));
+            Assert.That(response.Claims, Is.EqualTo(assertion.Claims));
         }
     }
 

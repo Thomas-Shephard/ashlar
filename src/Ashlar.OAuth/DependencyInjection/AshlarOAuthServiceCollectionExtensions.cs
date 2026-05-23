@@ -25,7 +25,7 @@ public static class AshlarOAuthServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configure);
 
-        services.AddAshlarIdentity();
+        services.AddAshlarInvitations();
 
         var options = new AshlarOAuthOptions();
         configure(options);
@@ -40,6 +40,17 @@ public static class AshlarOAuthServiceCollectionExtensions
         services.Configure(configure);
         services.TryAddScoped<AshlarExternalSignInService>();
         services.TryAddScoped<AshlarExternalAccountLinkService>();
+        services.TryAddScoped<AshlarOidcInvitationRegistrationService>();
+        services.TryAddScoped<IOidcInvitationEmailMatchPolicy>(_ =>
+        {
+            IOidcInvitationEmailMatchPolicy policy = new StandardOidcVerifiedEmailMatchPolicy();
+            foreach (var decorator in options.InvitationEmailMatchPolicyDecorators)
+            {
+                policy = decorator(policy);
+            }
+
+            return policy;
+        });
 
         var authenticationBuilder = services.AddAuthentication();
         authenticationBuilder.AddCookie(options.ExternalSignInScheme, cookieOptions =>

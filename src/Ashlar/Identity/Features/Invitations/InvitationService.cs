@@ -136,30 +136,12 @@ internal sealed class InvitationService(
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Token);
 
-        var tokenHash = _dependencies.TokenHasher.HashToken(request.Token);
-        var rateLimitKey = $"invitation-accept:{context?.IpAddress ?? "unknown-ip"}";
-        var rateLimit = await _dependencies.RateLimiter.CheckAsync(new RateLimitAttempt
+        if (!await CheckInvitationRateLimitAsync("accept", _options.Value.AcceptanceRateLimit, context, cancellationToken))
         {
-            Key = rateLimitKey,
-            Purpose = "invitation-accept",
-            IpAddress = context?.IpAddress,
-            CorrelationId = context?.CorrelationId
-        }, _options.Value.AcceptanceRateLimit, cancellationToken);
-
-        if (!rateLimit.IsAllowed)
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.InvitationRateLimited,
-                Outcome = SecurityEventOutcomes.Failure,
-                FailureReason = AshlarFailureCodes.RateLimited.Value,
-                TenantId = context?.TenantId,
-                Properties = new Dictionary<string, string> { ["operation"] = "accept" },
-                Context = context
-            }, cancellationToken);
             return Result.Failure<Guid>(AshlarFailureCodes.RateLimited);
         }
 
+        var tokenHash = _dependencies.TokenHasher.HashToken(request.Token);
         var invitation = await _dependencies.InvitationRepository.GetInvitationByTokenHashAsync(tokenHash, cancellationToken);
         var now = _dependencies.TimeProvider.GetUtcNow();
 
@@ -232,6 +214,64 @@ internal sealed class InvitationService(
         await transaction.CommitAsync(cancellationToken);
 
         return Result.Success(acceptedUser.UserId);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<InvitationAcceptancePreview>> GetInvitationAcceptancePreviewAsync(string token, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+
+        if (!await CheckInvitationRateLimitAsync("preview", _options.Value.PreviewRateLimit, context, cancellationToken))
+        {
+            return Result.Failure<InvitationAcceptancePreview>(AshlarFailureCodes.RateLimited);
+        }
+
+        var tokenHash = _dependencies.TokenHasher.HashToken(token);
+        var invitation = await _dependencies.InvitationRepository.GetInvitationByTokenHashAsync(tokenHash, cancellationToken);
+        if (invitation == null || !invitation.IsAvailable(_dependencies.TimeProvider.GetUtcNow()))
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.InvitationPreviewed,
+                Outcome = SecurityEventOutcomes.Failure,
+                FailureReason = AshlarFailureCodes.InvalidInvitation.Value,
+                TenantId = invitation?.TenantId ?? context?.TenantId,
+                Properties = new Dictionary<string, string> { ["operation"] = "preview" },
+                Context = context
+            }, cancellationToken);
+            return Result.Failure<InvitationAcceptancePreview>(AshlarFailureCodes.InvalidInvitation);
+        }
+
+        return Result.Success(new InvitationAcceptancePreview(invitation.Email, invitation.TenantId));
+    }
+
+    private async Task<bool> CheckInvitationRateLimitAsync(string operation, RateLimitRule rule, AuthenticationContext? context, CancellationToken cancellationToken)
+    {
+        var ipAddress = string.IsNullOrWhiteSpace(context?.IpAddress) ? "unknown-ip" : context.IpAddress;
+        var rateLimitKey = $"invitation-{operation}:{ipAddress}";
+        var rateLimit = await _dependencies.RateLimiter.CheckAsync(new RateLimitAttempt
+        {
+            Key = rateLimitKey,
+            Purpose = $"invitation-{operation}",
+            IpAddress = ipAddress,
+            CorrelationId = context?.CorrelationId
+        }, rule, cancellationToken);
+
+        if (rateLimit.IsAllowed)
+        {
+            return true;
+        }
+
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.InvitationRateLimited,
+            Outcome = SecurityEventOutcomes.Failure,
+            FailureReason = AshlarFailureCodes.RateLimited.Value,
+            TenantId = context?.TenantId,
+            Properties = new Dictionary<string, string> { ["operation"] = operation },
+            Context = context
+        }, cancellationToken);
+        return false;
     }
 
     private async Task<AcceptedInvitationUser> AcceptInvitationUserAsync(UserInvitation invitation, string? requestedUserName, DateTimeOffset now, CancellationToken cancellationToken)
