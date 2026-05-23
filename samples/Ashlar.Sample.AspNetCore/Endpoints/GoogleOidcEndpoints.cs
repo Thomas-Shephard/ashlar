@@ -9,6 +9,8 @@ namespace Ashlar.Sample.AspNetCore.Endpoints;
 
 internal static class GoogleOidcEndpoints
 {
+    private const string GoogleSignInFailedTitle = "Google Sign-In Failed";
+
     public static void MapGoogleOidcEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/auth/google", StartGoogleSignIn);
@@ -62,7 +64,7 @@ internal static class GoogleOidcEndpoints
             if (mfaResult.Status != MfaAuthenticationStatus.Succeeded || mfaResult.User == null)
             {
                 return AppViews.RenderGoogleOidcResult(
-                    "Google Sign-In Failed",
+                    GoogleSignInFailedTitle,
                     "We could not complete additional verification for Google sign-in. Use another sign-in method and try again.");
             }
 
@@ -77,19 +79,19 @@ internal static class GoogleOidcEndpoints
         if (result.Status == AshlarExternalAssertionStatus.AuthenticationFailed)
         {
             return AppViews.RenderGoogleOidcResult(
-                "Google Sign-In Failed",
+                GoogleSignInFailedTitle,
                 "Google sign-in was not completed. Try again, or use another sign-in method.");
         }
 
         if (result.Status == AshlarExternalAssertionStatus.InvalidPrincipal)
         {
             return AppViews.RenderGoogleOidcResult(
-                "Google Sign-In Failed",
+                GoogleSignInFailedTitle,
                 "Google did not return the account information needed to sign you in. Try again, or use another sign-in method.");
         }
 
         return AppViews.RenderGoogleOidcResult(
-            "Google Sign-In Failed",
+            GoogleSignInFailedTitle,
             "We could not sign you in with Google. The Google account may not be linked yet, or the Google sign-in was not completed. Sign in with another method, then link Google from Account -> Security.");
     }
 
