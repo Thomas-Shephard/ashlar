@@ -27,7 +27,9 @@ $packageIds = @(
     "Ashlar.Sqlite",
     "Ashlar.Postgres",
     "Ashlar.Passkeys",
-    "Ashlar.Email.Smtp"
+    "Ashlar.Email.Smtp",
+    "Ashlar.Observability",
+    "Ashlar.Webhooks"
 )
 
 function Invoke-DotNet {
@@ -124,6 +126,8 @@ builder.Services.AddAshlarSmtpEmailSender(options =>
 {
     options.Host = "localhost";
 });
+builder.Services.AddAshlarSecurityEventMetrics();
+builder.Services.AddAshlarSecurityEventWebhooks();
 
 var app = builder.Build();
 
