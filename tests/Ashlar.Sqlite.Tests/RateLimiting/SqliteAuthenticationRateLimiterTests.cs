@@ -18,6 +18,7 @@ internal sealed class SqliteAuthenticationRateLimiterTests : SqliteTestBase
         _timeProvider = new FakeTimeProvider(Start);
         var services = new ServiceCollection();
         services.AddAshlarSqlite(GetConnectionString());
+        services.AddAshlarSqliteRateLimiting();
         services.AddSingleton<TimeProvider>(_timeProvider);
         _provider = services.BuildServiceProvider();
         await _provider.InitializeAshlarSqliteSchemaAsync();

@@ -21,7 +21,7 @@ internal sealed class SqliteAshlarCleanupServiceTests : SqliteTestBase
         _timeProvider = new FakeTimeProvider(Now);
         var services = new ServiceCollection();
         services.AddAshlarSqlite(GetConnectionString());
-        services.Configure<AshlarCleanupOptions>(options =>
+        services.AddAshlarSqliteCleanup(options =>
         {
             options.BatchSize = 100;
             options.RemoveAuditEventsAfter = TimeSpan.FromDays(90);

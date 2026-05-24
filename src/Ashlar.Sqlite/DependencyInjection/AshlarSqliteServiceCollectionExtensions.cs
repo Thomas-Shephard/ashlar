@@ -46,17 +46,87 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.TryAddScoped<IAuthenticationHandshakeRepository, SqliteAuthenticationHandshakeRepository>();
         services.TryAddScoped<IPasskeyChallengeRepository, SqlitePasskeyChallengeRepository>();
         services.TryAddScoped<IAuthorizationGrantRepository, SqliteAuthorizationGrantRepository>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddScoped<IAshlarSchemaDiagnostics, SqliteSchemaDiagnostics>();
+        services.TryAddTransient<SqliteSchemaManager>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar SQLite-backed security audit event sink.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarSqliteAuditSink(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.TryAddSingleton<SqliteSecurityEventSink>();
+        services.TryAddScoped<ISecurityEventAdministrationRepository, SqliteSecurityEventAdministrationRepository>();
+        services.Replace(ServiceDescriptor.Singleton<ISecurityEventSink>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
+        services.Replace(ServiceDescriptor.Singleton<IUserSecurityEventSummaryRepository>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar SQLite-backed authentication rate limiter.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarSqliteRateLimiting(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiter, SqliteAuthenticationRateLimiter>());
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiterDiagnostics, SqliteAuthenticationRateLimiterDiagnostics>());
-        services.AddOptions<AshlarCleanupOptions>().Validate(AshlarCleanupOptions.Validate);
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar SQLite cleanup service for explicit cleanup calls.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional cleanup configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarSqliteCleanup(
+        this IServiceCollection services,
+        Action<AshlarCleanupOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddOptions<AshlarCleanupOptions>()
+            .Validate(AshlarCleanupOptions.Validate, "Cleanup options are invalid.");
+
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarCleanupDiagnostics, SqliteAshlarCleanupDiagnostics>();
         services.TryAddScoped<IAshlarCleanupService, SqliteAshlarCleanupService>();
-        services.TryAddSingleton<SqliteSecurityEventSink>();
-        services.Replace(ServiceDescriptor.Singleton<ISecurityEventSink>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
-        services.Replace(ServiceDescriptor.Singleton<IUserSecurityEventSummaryRepository>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
-        services.TryAddScoped<IAshlarSchemaDiagnostics, SqliteSchemaDiagnostics>();
-        services.TryAddTransient<SqliteSchemaManager>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar SQLite cleanup service and starts a hosted cleanup loop.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional cleanup configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarSqliteCleanupHostedService(
+        this IServiceCollection services,
+        Action<AshlarCleanupOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarSqliteCleanup(configure);
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, SqliteAshlarCleanupHostedService>());
 
         return services;
     }

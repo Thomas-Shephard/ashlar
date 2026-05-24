@@ -5,20 +5,20 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-namespace Ashlar.Postgres.Operational;
+namespace Ashlar.Sqlite.Operational;
 
 /// <summary>
-/// Provides postgres ashlar cleanup hosted service behavior.
+/// Provides SQLite ashlar cleanup hosted service behavior.
 /// </summary>
 /// <param name="scopeFactory">The scope factory value.</param>
 /// <param name="timeProvider">The time provider value.</param>
 /// <param name="options">The options value.</param>
 /// <param name="logger">The logger value.</param>
-public sealed class PostgresAshlarCleanupHostedService(
+public sealed class SqliteAshlarCleanupHostedService(
     IServiceScopeFactory scopeFactory,
     TimeProvider timeProvider,
     IOptions<AshlarCleanupOptions> options,
-    ILogger<PostgresAshlarCleanupHostedService>? logger = null) : BackgroundService
+    ILogger<SqliteAshlarCleanupHostedService>? logger = null) : BackgroundService
 {
     private static readonly Action<ILogger, int, int, int, int, int, int, Exception?> CleanupRunCompleted =
         LoggerMessage.Define<int, int, int, int, int, int>(
@@ -35,7 +35,7 @@ public sealed class PostgresAshlarCleanupHostedService(
     private readonly IServiceScopeFactory _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     private readonly AshlarCleanupOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
-    private readonly ILogger<PostgresAshlarCleanupHostedService> _logger = logger ?? NullLogger<PostgresAshlarCleanupHostedService>.Instance;
+    private readonly ILogger<SqliteAshlarCleanupHostedService> _logger = logger ?? NullLogger<SqliteAshlarCleanupHostedService>.Instance;
 
     /// <summary>
     /// Performs the execute <see langword="async" /> operation and returns the result.
