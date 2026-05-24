@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.OAuth;
 
 /// <summary>
-/// Links validated OpenID Connect identities to an existing Ashlar user.
+/// Links validated external identities to an existing Ashlar user.
 /// </summary>
 /// <remarks>
 /// Applications should treat calls to this service as sensitive account security operations and require
@@ -50,7 +50,7 @@ public sealed class AshlarExternalAccountLinkService
     /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The external account link result.</returns>
-    public async Task<AshlarExternalAccountLinkResult> CompleteOidcLinkAsync(
+    public async Task<AshlarExternalAccountLinkResult> CompleteExternalLinkAsync(
         HttpContext httpContext,
         Guid currentUserId,
         string providerName,
@@ -60,7 +60,7 @@ public sealed class AshlarExternalAccountLinkService
     {
         ArgumentNullException.ThrowIfNull(httpContext);
 
-        var provider = GetOidcProvider(providerName);
+        var provider = AshlarExternalProviderResolver.GetProvider(_options.CurrentValue, providerName);
         if (provider == null)
         {
             await AshlarExternalTicket.TryClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme);
@@ -74,12 +74,12 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.AuthenticationFailed);
         }
 
-        if (!MatchesProvider(result, provider))
+        if (!AshlarExternalProviderResolver.MatchesProvider(result, provider))
         {
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.ProviderMismatch);
         }
 
-        return await LinkOidcAccountAsync(currentUserId, providerName, result, tenant, credentialMetadata, cancellationToken);
+        return await LinkExternalAccountAsync(currentUserId, providerName, result, tenant, credentialMetadata, cancellationToken);
     }
 
     /// <summary>
@@ -92,7 +92,7 @@ public sealed class AshlarExternalAccountLinkService
     /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The external account link result.</returns>
-    public async Task<AshlarExternalAccountLinkResult> LinkOidcAccountAsync(
+    public async Task<AshlarExternalAccountLinkResult> LinkExternalAccountAsync(
         Guid currentUserId,
         string providerName,
         AuthenticateResult authenticateResult,
@@ -102,7 +102,7 @@ public sealed class AshlarExternalAccountLinkService
     {
         ArgumentNullException.ThrowIfNull(authenticateResult);
 
-        var provider = GetOidcProvider(providerName);
+        var provider = AshlarExternalProviderResolver.GetProvider(_options.CurrentValue, providerName);
         if (provider == null)
         {
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.UnsupportedProvider);
@@ -113,16 +113,16 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.AuthenticationFailed);
         }
 
-        if (!MatchesProvider(authenticateResult, provider))
+        if (!AshlarExternalProviderResolver.MatchesProvider(authenticateResult, provider))
         {
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.ProviderMismatch);
         }
 
-        return await LinkOidcAccountAsync(currentUserId, providerName, authenticateResult.Principal, tenant, credentialMetadata, cancellationToken);
+        return await LinkExternalAccountAsync(currentUserId, providerName, authenticateResult.Principal, tenant, credentialMetadata, cancellationToken);
     }
 
     /// <summary>
-    /// Links an already validated OpenID Connect principal to the current Ashlar user.
+    /// Links an already validated external principal to the current Ashlar user.
     /// </summary>
     /// <param name="currentUserId">The currently authenticated Ashlar user id.</param>
     /// <param name="providerName">The configured Ashlar provider name.</param>
@@ -131,7 +131,7 @@ public sealed class AshlarExternalAccountLinkService
     /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The external account link result.</returns>
-    public async Task<AshlarExternalAccountLinkResult> LinkOidcAccountAsync(
+    public async Task<AshlarExternalAccountLinkResult> LinkExternalAccountAsync(
         Guid currentUserId,
         string providerName,
         System.Security.Claims.ClaimsPrincipal principal,
@@ -146,7 +146,7 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.InvalidPrincipal);
         }
 
-        var providerOptions = GetOidcProvider(providerName);
+        var providerOptions = AshlarExternalProviderResolver.GetProvider(_options.CurrentValue, providerName);
         if (providerOptions == null)
         {
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.UnsupportedProvider);
@@ -155,7 +155,7 @@ public sealed class AshlarExternalAccountLinkService
         ExternalIdentityAssertion assertion;
         try
         {
-            assertion = OidcExternalIdentityAssertionMapper.Map(providerOptions.ProviderName, principal, providerOptions.ProviderKeyMode);
+            assertion = AshlarExternalProviderResolver.MapAssertion(providerOptions, principal);
         }
         catch (InvalidOperationException)
         {
@@ -171,7 +171,7 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.Failed, assertion);
         }
 
-        var provider = new OidcAuthenticationProvider(providerOptions.ProviderName);
+        var provider = AshlarExternalProviderResolver.CreateAuthenticationProvider(providerOptions);
         var linkResult = await _credentialService.LinkCredentialAsync(
             currentUserId,
             assertion,
@@ -197,7 +197,7 @@ public sealed class AshlarExternalAccountLinkService
     }
 
     /// <summary>
-    /// Unlinks a configured OpenID Connect provider from the current Ashlar user by revoking that provider's credential family.
+    /// Unlinks a configured external provider from the current Ashlar user by revoking that provider's credential family.
     /// </summary>
     /// <param name="currentUserId">The currently authenticated Ashlar user id.</param>
     /// <param name="providerName">The configured Ashlar provider name.</param>
@@ -209,10 +209,10 @@ public sealed class AshlarExternalAccountLinkService
     /// appropriate recent verification, such as fresh MFA, before invoking it. The service does not require or
     /// enforce fresh MFA itself. User interfaces should prefer generic failure messages even though the result
     /// status is explicit for application branching. Unlinking revokes active credentials for the configured
-    /// OpenID Connect provider family, such as all active Google credentials stored under the configured Google
+    /// external provider family, such as all active Google credentials stored under the configured Google
     /// provider name, rather than a single provider subject or raw external account key.
     /// </remarks>
-    public async Task<AshlarExternalAccountUnlinkResult> UnlinkOidcAccountAsync(
+    public async Task<AshlarExternalAccountUnlinkResult> UnlinkExternalAccountAsync(
         Guid currentUserId,
         string providerName,
         AccountSecurityOperationRequest request,
@@ -225,7 +225,7 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.UserNotFound);
         }
 
-        var providerOptions = GetOidcProvider(providerName);
+        var providerOptions = AshlarExternalProviderResolver.GetProvider(_options.CurrentValue, providerName);
         if (providerOptions == null)
         {
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.UnsupportedProvider);
@@ -242,7 +242,7 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.TenantMismatch);
         }
 
-        var provider = new AuthenticationProviderKey(ProviderType.Oidc, providerOptions.ProviderName);
+        var provider = new AuthenticationProviderKey(providerOptions.Type, providerOptions.ProviderName);
         var postureResult = await _accountSecurityService.GetUserSecurityPostureAsync(
             currentUserId,
             new UserSecurityPostureRequest(request.Tenant),
@@ -275,17 +275,6 @@ public sealed class AshlarExternalAccountLinkService
                 ? AshlarExternalAccountUnlinkStatus.Unlinked
                 : AshlarExternalAccountUnlinkStatus.NotLinked,
             revokeResult);
-    }
-
-    private AshlarOidcProviderOptions? GetOidcProvider(string providerName)
-    {
-        if (string.IsNullOrWhiteSpace(providerName))
-        {
-            return null;
-        }
-
-        var normalizedProviderName = AshlarOAuthOptions.NormalizeProviderName(providerName);
-        return _options.CurrentValue.OidcProviders.TryGetValue(normalizedProviderName, out var provider) ? provider : null;
     }
 
     private async Task<bool> CurrentUserMatchesTenantAsync(Guid currentUserId, TenantContext? tenant, CancellationToken cancellationToken)
@@ -335,12 +324,4 @@ public sealed class AshlarExternalAccountLinkService
             : AshlarExternalAccountUnlinkStatus.Failed;
     }
 
-    private static bool MatchesProvider(AuthenticateResult result, AshlarOidcProviderOptions provider)
-    {
-        return result.Properties is { } properties
-            && properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.ProviderName, out var providerName)
-            && properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.SchemeName, out var schemeName)
-            && string.Equals(provider.ProviderName, providerName, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(provider.SchemeName, schemeName, StringComparison.Ordinal);
-    }
 }

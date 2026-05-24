@@ -1,11 +1,10 @@
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.OAuth;
 
 /// <summary>
-/// Maps ASP.NET Core external OIDC callbacks to Ashlar assertions and can authenticate those credentials with Ashlar.
+/// Maps ASP.NET Core external identities to Ashlar assertions and can authenticate those credentials with Ashlar.
 /// </summary>
 public sealed class AshlarExternalCredentialAuthenticationService
 {
@@ -26,7 +25,7 @@ public sealed class AshlarExternalCredentialAuthenticationService
     }
 
     /// <summary>
-    /// Validates the external OIDC callback, maps it to an Ashlar assertion, and authenticates that credential with Ashlar.
+    /// Validates the external callback, maps it to an Ashlar assertion, and authenticates that credential with Ashlar.
     /// </summary>
     /// <param name="httpContext">The current HTTP context.</param>
     /// <param name="providerName">The configured Ashlar provider name.</param>
@@ -35,10 +34,10 @@ public sealed class AshlarExternalCredentialAuthenticationService
     /// <returns>The external credential authentication result.</returns>
     /// <remarks>
     /// This method does not issue an application session or cookie. Applications with MFA or other orchestration policy
-    /// should prefer <see cref="CompleteOidcAssertionAsync(HttpContext, string)"/>, pass the returned assertion through
+    /// should prefer <see cref="CompleteExternalAssertionAsync(HttpContext, string)"/>, pass the returned assertion through
     /// <see cref="IAuthenticationOrchestrator"/>, and issue a session only after orchestration succeeds.
     /// </remarks>
-    public async Task<AshlarExternalCredentialAuthenticationResult> CompleteOidcCredentialAuthenticationAsync(
+    public async Task<AshlarExternalCredentialAuthenticationResult> CompleteExternalCredentialAuthenticationAsync(
         HttpContext httpContext,
         string providerName,
         Guid? tenantId = null,
@@ -46,7 +45,7 @@ public sealed class AshlarExternalCredentialAuthenticationService
     {
         ArgumentNullException.ThrowIfNull(httpContext);
 
-        var assertionResult = await CompleteOidcAssertionAsync(httpContext, providerName);
+        var assertionResult = await CompleteExternalAssertionAsync(httpContext, providerName);
         if (!assertionResult.Succeeded)
         {
             return new AshlarExternalCredentialAuthenticationResult(MapAssertionStatus(assertionResult.Status), Assertion: assertionResult.Assertion);
@@ -68,10 +67,10 @@ public sealed class AshlarExternalCredentialAuthenticationService
     /// <remarks>
     /// This method does not issue an application session or cookie. It is safe for session issuance only when the host
     /// application's policy allows the authenticated external credential response to be treated as complete. Applications
-    /// with MFA policy must not issue sessions directly from this result; use <see cref="CompleteOidcAssertionAsync(HttpContext, string)"/>
+    /// with MFA policy must not issue sessions directly from this result; use <see cref="CompleteExternalAssertionAsync(HttpContext, string)"/>
     /// and the host orchestration pipeline instead.
     /// </remarks>
-    public async Task<AshlarExternalCredentialAuthenticationResult> CompleteOidcCredentialAuthenticationAsync(
+    public async Task<AshlarExternalCredentialAuthenticationResult> CompleteExternalCredentialAuthenticationAsync(
         string providerName,
         System.Security.Claims.ClaimsPrincipal principal,
         AuthenticationContext context,
@@ -80,7 +79,7 @@ public sealed class AshlarExternalCredentialAuthenticationService
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(principal);
 
-        var provider = GetOidcProvider(providerName);
+        var provider = AshlarExternalProviderResolver.GetProvider(_options.CurrentValue, providerName);
         if (provider == null)
         {
             return new AshlarExternalCredentialAuthenticationResult(AshlarExternalCredentialAuthenticationStatus.UnsupportedProvider);
@@ -89,7 +88,7 @@ public sealed class AshlarExternalCredentialAuthenticationService
         ExternalIdentityAssertion assertion;
         try
         {
-            assertion = OidcExternalIdentityAssertionMapper.Map(provider.ProviderName, principal, provider.ProviderKeyMode);
+            assertion = AshlarExternalProviderResolver.MapAssertion(provider, principal);
         }
         catch (InvalidOperationException)
         {
@@ -113,16 +112,16 @@ public sealed class AshlarExternalCredentialAuthenticationService
     /// <remarks>
     /// Use this method when the host application must pass the mapped assertion through its own authentication
     /// orchestration before issuing a session, such as when MFA policy is applied by <see cref="IAuthenticationOrchestrator"/>.
-    /// A successful result means the external OIDC credential was validated and mapped; it does not mean an application
+    /// A successful result means the external credential was validated and mapped; it does not mean an application
     /// session may be issued.
     /// </remarks>
-    public async Task<AshlarExternalAssertionResult> CompleteOidcAssertionAsync(
+    public async Task<AshlarExternalAssertionResult> CompleteExternalAssertionAsync(
         HttpContext httpContext,
         string providerName)
     {
         ArgumentNullException.ThrowIfNull(httpContext);
 
-        var provider = GetOidcProvider(providerName);
+        var provider = AshlarExternalProviderResolver.GetProvider(_options.CurrentValue, providerName);
         if (provider == null)
         {
             await AshlarExternalTicket.TryClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme);
@@ -136,14 +135,14 @@ public sealed class AshlarExternalCredentialAuthenticationService
             return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.AuthenticationFailed);
         }
 
-        if (!MatchesProvider(result, provider))
+        if (!AshlarExternalProviderResolver.MatchesProvider(result, provider))
         {
             return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.ProviderMismatch);
         }
 
         try
         {
-            var assertion = OidcExternalIdentityAssertionMapper.Map(provider.ProviderName, result.Principal, provider.ProviderKeyMode);
+            var assertion = AshlarExternalProviderResolver.MapAssertion(provider, result.Principal);
             return new AshlarExternalAssertionResult(AshlarExternalAssertionStatus.Succeeded, assertion);
         }
         catch (InvalidOperationException)
@@ -156,17 +155,6 @@ public sealed class AshlarExternalCredentialAuthenticationService
         }
     }
 
-    private AshlarOidcProviderOptions? GetOidcProvider(string providerName)
-    {
-        if (string.IsNullOrWhiteSpace(providerName))
-        {
-            return null;
-        }
-
-        var normalizedProviderName = AshlarOAuthOptions.NormalizeProviderName(providerName);
-        return _options.CurrentValue.OidcProviders.TryGetValue(normalizedProviderName, out var provider) ? provider : null;
-    }
-
     private static AuthenticationContext CreateAuthenticationContext(HttpContext httpContext, Guid? tenantId)
     {
         return new AuthenticationContext(
@@ -174,15 +162,6 @@ public sealed class AshlarExternalCredentialAuthenticationService
             IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
             UserAgent: httpContext.Request.Headers.UserAgent.ToString(),
             CorrelationId: httpContext.TraceIdentifier);
-    }
-
-    private static bool MatchesProvider(AuthenticateResult result, AshlarOidcProviderOptions provider)
-    {
-        return result.Properties is { } properties
-            && properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.ProviderName, out var providerName)
-            && properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.SchemeName, out var schemeName)
-            && string.Equals(provider.ProviderName, providerName, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(provider.SchemeName, schemeName, StringComparison.Ordinal);
     }
 
     private static AshlarExternalCredentialAuthenticationStatus MapStatus(AuthenticationResponse response)
@@ -208,7 +187,7 @@ public sealed class AshlarExternalCredentialAuthenticationService
             AshlarExternalAssertionStatus.UnsupportedProvider => AshlarExternalCredentialAuthenticationStatus.UnsupportedProvider,
             AshlarExternalAssertionStatus.InvalidPrincipal => AshlarExternalCredentialAuthenticationStatus.InvalidPrincipal,
             AshlarExternalAssertionStatus.ProviderMismatch => AshlarExternalCredentialAuthenticationStatus.ProviderMismatch,
-            // Assertion success only means the external OIDC credential was validated and mapped; MFA or other policy may still block session issuance.
+            // Assertion success only means the external credential was validated and mapped; MFA or other policy may still block session issuance.
             AshlarExternalAssertionStatus.Succeeded => AshlarExternalCredentialAuthenticationStatus.Unknown,
             _ => AshlarExternalCredentialAuthenticationStatus.Unknown
         };

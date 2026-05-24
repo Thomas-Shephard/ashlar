@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Ashlar.Identity.Abstractions.Tenancy;
 using Ashlar.Identity.Models.Mfa;
 using Ashlar.Identity.Providers.External;
+using Ashlar.OAuth.Providers.GitHub;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,48 +13,48 @@ namespace Ashlar.OAuth.Tests;
 internal sealed class AshlarExternalCredentialAuthenticationServiceTests
 {
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationShouldReturnUnsupportedProviderForMissingProvider()
+    public async Task CompleteExternalCredentialAuthenticationShouldReturnUnsupportedProviderForMissingProvider()
     {
         var service = CreateService(new AuthenticationResponse(false));
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync("Missing", CreatePrincipal("sub"), new AuthenticationContext());
+        var result = await service.CompleteExternalCredentialAuthenticationAsync("Missing", CreatePrincipal("sub"), new AuthenticationContext());
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalCredentialAuthenticationStatus.UnsupportedProvider));
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationShouldReturnInvalidPrincipalForMissingSubject()
+    public async Task CompleteExternalCredentialAuthenticationShouldReturnInvalidPrincipalForMissingSubject()
     {
         var service = CreateService(new AuthenticationResponse(false));
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync("Google", new ClaimsPrincipal(new ClaimsIdentity()), new AuthenticationContext());
+        var result = await service.CompleteExternalCredentialAuthenticationAsync("Google", new ClaimsPrincipal(new ClaimsIdentity()), new AuthenticationContext());
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalCredentialAuthenticationStatus.InvalidPrincipal));
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationShouldReturnInvalidPrincipalWhenConfiguredProviderNameIsInvalid()
+    public async Task CompleteExternalCredentialAuthenticationShouldReturnInvalidPrincipalWhenConfiguredProviderNameIsInvalid()
     {
         var service = CreateServiceWithProvider(new AshlarOidcProviderOptions(" ", "Google", _ => { }));
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync("Google", CreatePrincipal("subject"), new AuthenticationContext());
+        var result = await service.CompleteExternalCredentialAuthenticationAsync("Google", CreatePrincipal("subject"), new AuthenticationContext());
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalCredentialAuthenticationStatus.InvalidPrincipal));
     }
 
     [Test]
-    public void CompleteOidcCredentialAuthenticationShouldRejectNullPrincipal()
+    public void CompleteExternalCredentialAuthenticationShouldRejectNullPrincipal()
     {
         var service = CreateService(new AuthenticationResponse(false));
 
-        Assert.ThrowsAsync<ArgumentNullException>(() => service.CompleteOidcCredentialAuthenticationAsync("Google", null!, new AuthenticationContext()));
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.CompleteExternalCredentialAuthenticationAsync("Google", null!, new AuthenticationContext()));
     }
 
     [TestCase(AuthenticationStatus.Success, true, AshlarExternalCredentialAuthenticationStatus.Succeeded)]
     [TestCase(AuthenticationStatus.Failed, false, AshlarExternalCredentialAuthenticationStatus.AshlarAuthenticationFailed)]
     [TestCase(AuthenticationStatus.Disabled, false, AshlarExternalCredentialAuthenticationStatus.Disabled)]
     [TestCase(AuthenticationStatus.MfaRequired, false, AshlarExternalCredentialAuthenticationStatus.MfaRequired)]
-    public async Task CompleteOidcCredentialAuthenticationShouldMapAshlarResponseStatus(
+    public async Task CompleteExternalCredentialAuthenticationShouldMapAshlarResponseStatus(
         AuthenticationStatus authenticationStatus,
         bool succeeded,
         AshlarExternalCredentialAuthenticationStatus expectedStatus)
@@ -61,7 +62,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
         var response = new AuthenticationResponse(succeeded, Status: authenticationStatus);
         var service = CreateService(response);
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync("Google", CreatePrincipal("subject"), new AuthenticationContext(TenantId: Guid.NewGuid()));
+        var result = await service.CompleteExternalCredentialAuthenticationAsync("Google", CreatePrincipal("subject"), new AuthenticationContext(TenantId: Guid.NewGuid()));
 
         using (Assert.EnterMultipleScope())
         {
@@ -91,7 +92,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationShouldPassTenantAwareContextToPipeline()
+    public async Task CompleteExternalCredentialAuthenticationShouldPassTenantAwareContextToPipeline()
     {
         var tenantId = Guid.NewGuid();
         AuthenticationContext? observedContext = null;
@@ -102,41 +103,41 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
 
         var service = CreateService(pipeline.Object);
 
-        await service.CompleteOidcCredentialAuthenticationAsync("Google", CreatePrincipal("subject"), new AuthenticationContext(TenantId: tenantId));
+        await service.CompleteExternalCredentialAuthenticationAsync("Google", CreatePrincipal("subject"), new AuthenticationContext(TenantId: tenantId));
 
         Assert.That(observedContext?.TenantId, Is.EqualTo(tenantId));
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationFromHttpContextShouldRejectMismatchedExternalTicketProvider()
+    public async Task CompleteExternalCredentialAuthenticationFromHttpContextShouldRejectMismatchedExternalTicketProvider()
     {
         var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
         var httpContext = CreateHttpContextWithExternalTicket("Microsoft", "Microsoft", "subject");
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync(httpContext, "Google");
+        var result = await service.CompleteExternalCredentialAuthenticationAsync(httpContext, "Google");
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalCredentialAuthenticationStatus.ProviderMismatch));
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationFromHttpContextShouldReturnUnsupportedProviderForBlankProviderName()
+    public async Task CompleteExternalCredentialAuthenticationFromHttpContextShouldReturnUnsupportedProviderForBlankProviderName()
     {
         var service = CreateService(new AuthenticationResponse(false));
         var httpContext = CreateHttpContextWithExternalTicket("Google", "Google", "subject");
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync(httpContext, " ");
+        var result = await service.CompleteExternalCredentialAuthenticationAsync(httpContext, " ");
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalCredentialAuthenticationStatus.UnsupportedProvider));
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationFromHttpContextShouldClearExternalTicketForUnsupportedProvider()
+    public async Task CompleteExternalCredentialAuthenticationFromHttpContextShouldClearExternalTicketForUnsupportedProvider()
     {
         var service = CreateService(new AuthenticationResponse(false));
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult());
         var httpContext = CreateHttpContext(authService);
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync(httpContext, " ");
+        var result = await service.CompleteExternalCredentialAuthenticationAsync(httpContext, " ");
 
         using (Assert.EnterMultipleScope())
         {
@@ -146,13 +147,13 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationFromHttpContextShouldIgnoreCleanupFailureForUnsupportedProvider()
+    public async Task CompleteExternalCredentialAuthenticationFromHttpContextShouldIgnoreCleanupFailureForUnsupportedProvider()
     {
         var service = CreateService(new AuthenticationResponse(false));
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult(), signOutException: new InvalidOperationException("cleanup failed"));
         var httpContext = CreateHttpContext(authService);
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync(httpContext, " ");
+        var result = await service.CompleteExternalCredentialAuthenticationAsync(httpContext, " ");
 
         using (Assert.EnterMultipleScope())
         {
@@ -162,13 +163,13 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationFromHttpContextShouldReturnAuthenticationFailedWhenExternalAuthenticateFails()
+    public async Task CompleteExternalCredentialAuthenticationFromHttpContextShouldReturnAuthenticationFailedWhenExternalAuthenticateFails()
     {
         var service = CreateService(new AuthenticationResponse(false));
         var authService = new TestAuthenticationService(AuthenticateResult.Fail("failed"));
         var httpContext = CreateHttpContext(authService);
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync(httpContext, "Google");
+        var result = await service.CompleteExternalCredentialAuthenticationAsync(httpContext, "Google");
 
         using (Assert.EnterMultipleScope())
         {
@@ -178,42 +179,42 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
-    public void CompleteOidcCredentialAuthenticationFromHttpContextShouldClearExternalTicketWhenAuthenticateThrows()
+    public void CompleteExternalCredentialAuthenticationFromHttpContextShouldClearExternalTicketWhenAuthenticateThrows()
     {
         var service = CreateService(new AuthenticationResponse(false));
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult(), new InvalidOperationException("auth failed"));
         var httpContext = CreateHttpContext(authService);
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => service.CompleteOidcCredentialAuthenticationAsync(httpContext, "Google"));
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.CompleteExternalCredentialAuthenticationAsync(httpContext, "Google"));
         Assert.That(authService.SignOutCount, Is.EqualTo(1));
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationFromHttpContextShouldReturnInvalidPrincipalWhenPrincipalHasNoClaims()
+    public async Task CompleteExternalCredentialAuthenticationFromHttpContextShouldReturnInvalidPrincipalWhenPrincipalHasNoClaims()
     {
         var service = CreateService(new AuthenticationResponse(false));
         var httpContext = CreateHttpContext(new TestAuthenticationService(
             AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(), CreateProperties("Google", "Google"), "Ashlar.OAuth.External"))));
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync(httpContext, "Google");
+        var result = await service.CompleteExternalCredentialAuthenticationAsync(httpContext, "Google");
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalCredentialAuthenticationStatus.InvalidPrincipal));
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationFromHttpContextShouldReturnProviderMismatchWhenTicketPropertiesAreMissing()
+    public async Task CompleteExternalCredentialAuthenticationFromHttpContextShouldReturnProviderMismatchWhenTicketPropertiesAreMissing()
     {
         var service = CreateService(new AuthenticationResponse(false));
         var httpContext = CreateHttpContext(new TestAuthenticationService(
             AuthenticateResult.Success(new AuthenticationTicket(CreatePrincipal("subject"), "Ashlar.OAuth.External"))));
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync(httpContext, "Google");
+        var result = await service.CompleteExternalCredentialAuthenticationAsync(httpContext, "Google");
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalCredentialAuthenticationStatus.ProviderMismatch));
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationFromHttpContextShouldReturnProviderMismatchWhenTicketSchemeIsMissing()
+    public async Task CompleteExternalCredentialAuthenticationFromHttpContextShouldReturnProviderMismatchWhenTicketSchemeIsMissing()
     {
         var service = CreateService(new AuthenticationResponse(false));
         var properties = new AuthenticationProperties();
@@ -221,53 +222,53 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
         var httpContext = CreateHttpContext(new TestAuthenticationService(
             AuthenticateResult.Success(new AuthenticationTicket(CreatePrincipal("subject"), properties, "Ashlar.OAuth.External"))));
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync(httpContext, "Google");
+        var result = await service.CompleteExternalCredentialAuthenticationAsync(httpContext, "Google");
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalCredentialAuthenticationStatus.ProviderMismatch));
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationFromHttpContextShouldReturnInvalidPrincipalForMissingSubject()
+    public async Task CompleteExternalCredentialAuthenticationFromHttpContextShouldReturnInvalidPrincipalForMissingSubject()
     {
         var service = CreateService(new AuthenticationResponse(false));
         var httpContext = CreateHttpContext(new TestAuthenticationService(
             AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity([], "oidc")), CreateProperties("Google", "Google"), "Ashlar.OAuth.External"))));
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync(httpContext, "Google");
+        var result = await service.CompleteExternalCredentialAuthenticationAsync(httpContext, "Google");
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalCredentialAuthenticationStatus.InvalidPrincipal));
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationFromHttpContextShouldReturnInvalidPrincipalWhenConfiguredProviderNameIsInvalid()
+    public async Task CompleteExternalCredentialAuthenticationFromHttpContextShouldReturnInvalidPrincipalWhenConfiguredProviderNameIsInvalid()
     {
         var service = CreateServiceWithProvider(new AshlarOidcProviderOptions(" ", "Google", _ => { }));
         var httpContext = CreateHttpContextWithExternalTicket(" ", "Google", "subject");
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync(httpContext, "Google");
+        var result = await service.CompleteExternalCredentialAuthenticationAsync(httpContext, "Google");
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalCredentialAuthenticationStatus.InvalidPrincipal));
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationFromHttpContextShouldAcceptMatchingExternalTicketProvider()
+    public async Task CompleteExternalCredentialAuthenticationFromHttpContextShouldAcceptMatchingExternalTicketProvider()
     {
         var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
         var httpContext = CreateHttpContextWithExternalTicket("Google", "Google", "subject");
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync(httpContext, "Google");
+        var result = await service.CompleteExternalCredentialAuthenticationAsync(httpContext, "Google");
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalCredentialAuthenticationStatus.Succeeded));
     }
 
     [Test]
-    public async Task CompleteOidcAssertionShouldMapMatchingExternalTicketWithoutCallingAuthenticationPipeline()
+    public async Task CompleteExternalAssertionShouldMapMatchingExternalTicketWithoutCallingAuthenticationPipeline()
     {
         var pipeline = new Mock<IAuthenticationPipeline>(MockBehavior.Strict);
         var service = CreateService(pipeline.Object);
         var httpContext = CreateHttpContextWithExternalTicket("Google", "Google", "subject");
 
-        var result = await service.CompleteOidcAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
 
         using (Assert.EnterMultipleScope())
         {
@@ -281,7 +282,109 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
-    public async Task CompleteOidcAssertionShouldLeaveSessionIssuanceToHostOrchestration()
+    public async Task CompleteExternalAssertionShouldAcceptLegacyExternalTicketWithoutProviderType()
+    {
+        var pipeline = new Mock<IAuthenticationPipeline>(MockBehavior.Strict);
+        var service = CreateService(pipeline.Object);
+        var httpContext = CreateHttpContext(new TestAuthenticationService(
+            AuthenticateResult.Success(new AuthenticationTicket(
+                CreatePrincipal("subject"),
+                CreateProperties("Google", "Google", includeProviderType: false),
+                "Ashlar.OAuth.External"))));
+
+        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.Succeeded));
+            Assert.That(result.Assertion?.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
+            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("subject"));
+        }
+
+        pipeline.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public async Task CompleteExternalAssertionShouldMapGitHubTicketAsOAuthAssertion()
+    {
+        var pipeline = new Mock<IAuthenticationPipeline>(MockBehavior.Strict);
+        var service = CreateService(pipeline.Object, includeGitHub: true);
+        var httpContext = CreateHttpContextWithExternalTicket("GitHub", "GitHub", ProviderType.OAuth, CreateGitHubPrincipal("12345"));
+
+        var result = await service.CompleteExternalAssertionAsync(httpContext, "GitHub");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.Succeeded));
+            Assert.That(result.Assertion?.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey(ProviderType.OAuth, "GitHub")));
+            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("12345"));
+            Assert.That(result.Assertion?.Claims["login"], Is.EqualTo(["octocat"]));
+        }
+
+        pipeline.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public async Task CompleteExternalAssertionShouldReturnProviderMismatchForWrongProviderType()
+    {
+        var service = CreateService(new AuthenticationResponse(false), includeGitHub: true);
+        var httpContext = CreateHttpContextWithExternalTicket("GitHub", "GitHub", ProviderType.Oidc, CreateGitHubPrincipal("12345"));
+
+        var result = await service.CompleteExternalAssertionAsync(httpContext, "GitHub");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.ProviderMismatch));
+    }
+
+    [Test]
+    public async Task CompleteExternalAssertionShouldReturnProviderMismatchForOAuthTicketWithoutProviderType()
+    {
+        var service = CreateService(new AuthenticationResponse(false), includeGitHub: true);
+        var httpContext = CreateHttpContext(new TestAuthenticationService(
+            AuthenticateResult.Success(new AuthenticationTicket(
+                CreateGitHubPrincipal("12345"),
+                CreateProperties("GitHub", "GitHub", includeProviderType: false),
+                "Ashlar.OAuth.External"))));
+
+        var result = await service.CompleteExternalAssertionAsync(httpContext, "GitHub");
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.ProviderMismatch));
+    }
+
+    [Test]
+    public async Task CompleteExternalCredentialAuthenticationShouldAuthenticateGitHubAssertion()
+    {
+        var response = new AuthenticationResponse(true, Status: AuthenticationStatus.Success);
+        var service = CreateService(response, includeGitHub: true);
+
+        var result = await service.CompleteExternalCredentialAuthenticationAsync("GitHub", CreateGitHubPrincipal("12345"), new AuthenticationContext());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalCredentialAuthenticationStatus.Succeeded));
+            Assert.That(result.Assertion?.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey(ProviderType.OAuth, "GitHub")));
+            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("12345"));
+        }
+    }
+
+    [Test]
+    public async Task CompleteExternalCredentialAuthenticationShouldUseConfiguredOAuth2ProviderKeyClaim()
+    {
+        var response = new AuthenticationResponse(true, Status: AuthenticationStatus.Success);
+        var service = CreateService(response, options => options.AddOAuth2Provider("CustomOAuth", "uid", _ => { }));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("uid", "stable-uid"), new Claim("id", "not-used")], "oauth"));
+
+        var result = await service.CompleteExternalCredentialAuthenticationAsync("CustomOAuth", principal, new AuthenticationContext());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalCredentialAuthenticationStatus.Succeeded));
+            Assert.That(result.Assertion?.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey(ProviderType.OAuth, "CustomOAuth")));
+            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("stable-uid"));
+        }
+    }
+
+    [Test]
+    public async Task CompleteExternalAssertionShouldLeaveSessionIssuanceToHostOrchestration()
     {
         var pipeline = new Mock<IAuthenticationPipeline>(MockBehavior.Strict);
         var orchestrator = new Mock<IAuthenticationOrchestrator>(MockBehavior.Strict);
@@ -301,7 +404,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
             })
             .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user.Object));
 
-        var assertionResult = await service.CompleteOidcAssertionAsync(httpContext, "Google");
+        var assertionResult = await service.CompleteExternalAssertionAsync(httpContext, "Google");
         var authentication = await orchestrator.Object.AuthenticateAsync(new AuthenticationContext(), assertionResult.Assertion!, cancellationToken: CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
@@ -317,12 +420,12 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
-    public async Task CompleteOidcAssertionShouldReturnProviderMismatchForMismatchedExternalTicketProvider()
+    public async Task CompleteExternalAssertionShouldReturnProviderMismatchForMismatchedExternalTicketProvider()
     {
         var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
         var httpContext = CreateHttpContextWithExternalTicket("Microsoft", "Microsoft", "subject");
 
-        var result = await service.CompleteOidcAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
 
         using (Assert.EnterMultipleScope())
         {
@@ -332,30 +435,30 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
-    public async Task CompleteOidcAssertionShouldReturnAuthenticationFailedForFailedTicket()
+    public async Task CompleteExternalAssertionShouldReturnAuthenticationFailedForFailedTicket()
     {
         var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
         var httpContext = CreateHttpContext(new TestAuthenticationService(AuthenticateResult.Fail("failed")));
 
-        var result = await service.CompleteOidcAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.AuthenticationFailed));
     }
 
     [Test]
-    public async Task CompleteOidcAssertionShouldReturnProviderMismatchWhenTicketPropertiesAreMissing()
+    public async Task CompleteExternalAssertionShouldReturnProviderMismatchWhenTicketPropertiesAreMissing()
     {
         var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
         var httpContext = CreateHttpContext(new TestAuthenticationService(
             AuthenticateResult.Success(new AuthenticationTicket(CreatePrincipal("subject"), "Ashlar.OAuth.External"))));
 
-        var result = await service.CompleteOidcAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.ProviderMismatch));
     }
 
     [Test]
-    public async Task CompleteOidcAssertionShouldReturnInvalidPrincipalForMissingSubject()
+    public async Task CompleteExternalAssertionShouldReturnInvalidPrincipalForMissingSubject()
     {
         var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
         var httpContext = CreateHttpContext(new TestAuthenticationService(
@@ -364,30 +467,30 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
                 CreateProperties("Google", "Google"),
                 "Ashlar.OAuth.External"))));
 
-        var result = await service.CompleteOidcAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.InvalidPrincipal));
     }
 
     [Test]
-    public async Task CompleteOidcAssertionShouldReturnInvalidPrincipalWhenConfiguredProviderNameIsInvalid()
+    public async Task CompleteExternalAssertionShouldReturnInvalidPrincipalWhenConfiguredProviderNameIsInvalid()
     {
         var service = CreateServiceWithProvider(new AshlarOidcProviderOptions(" ", "Google", _ => { }));
         var httpContext = CreateHttpContextWithExternalTicket(" ", "Google", "subject");
 
-        var result = await service.CompleteOidcAssertionAsync(httpContext, "Google");
+        var result = await service.CompleteExternalAssertionAsync(httpContext, "Google");
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.InvalidPrincipal));
     }
 
     [Test]
-    public async Task CompleteOidcAssertionShouldClearExternalTicketForUnsupportedProvider()
+    public async Task CompleteExternalAssertionShouldClearExternalTicketForUnsupportedProvider()
     {
         var service = CreateService(new AuthenticationResponse(false));
         var authService = new TestAuthenticationService(AuthenticateResult.NoResult());
         var httpContext = CreateHttpContext(authService);
 
-        var result = await service.CompleteOidcAssertionAsync(httpContext, " ");
+        var result = await service.CompleteExternalAssertionAsync(httpContext, " ");
 
         using (Assert.EnterMultipleScope())
         {
@@ -397,15 +500,15 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
-    public void CompleteOidcAssertionShouldRejectNullHttpContext()
+    public void CompleteExternalAssertionShouldRejectNullHttpContext()
     {
         var service = CreateService(new AuthenticationResponse(false));
 
-        Assert.ThrowsAsync<ArgumentNullException>(() => service.CompleteOidcAssertionAsync(null!, "Google"));
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.CompleteExternalAssertionAsync(null!, "Google"));
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationFromHttpContextShouldNotFailWhenCleanupFailsAfterSuccessfulAuthentication()
+    public async Task CompleteExternalCredentialAuthenticationFromHttpContextShouldNotFailWhenCleanupFailsAfterSuccessfulAuthentication()
     {
         var service = CreateService(new AuthenticationResponse(true, Status: AuthenticationStatus.Success));
         var authService = new TestAuthenticationService(
@@ -416,7 +519,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
             signOutException: new InvalidOperationException("cleanup failed"));
         var httpContext = CreateHttpContext(authService);
 
-        var result = await service.CompleteOidcCredentialAuthenticationAsync(httpContext, "Google");
+        var result = await service.CompleteExternalCredentialAuthenticationAsync(httpContext, "Google");
 
         using (Assert.EnterMultipleScope())
         {
@@ -426,7 +529,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
-    public async Task CompleteOidcCredentialAuthenticationFromHttpContextShouldPopulateAuthenticationContextFromHttpContext()
+    public async Task CompleteExternalCredentialAuthenticationFromHttpContextShouldPopulateAuthenticationContextFromHttpContext()
     {
         AuthenticationContext? observedContext = null;
         var pipeline = new Mock<IAuthenticationPipeline>();
@@ -440,7 +543,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
         httpContext.TraceIdentifier = "trace-123";
         var tenantId = Guid.NewGuid();
 
-        await service.CompleteOidcCredentialAuthenticationAsync(httpContext, "Google", tenantId);
+        await service.CompleteExternalCredentialAuthenticationAsync(httpContext, "Google", tenantId);
 
         using (Assert.EnterMultipleScope())
         {
@@ -452,7 +555,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
-    public void CompleteOidcCredentialAuthenticationFromHttpContextShouldClearExternalTicketBeforePipelineFailure()
+    public void CompleteExternalCredentialAuthenticationFromHttpContextShouldClearExternalTicketBeforePipelineFailure()
     {
         var pipeline = new Mock<IAuthenticationPipeline>();
         pipeline.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()))
@@ -466,7 +569,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
         var service = CreateService(pipeline.Object);
         var httpContext = CreateHttpContext(authService);
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => service.CompleteOidcCredentialAuthenticationAsync(httpContext, "Google"));
+        Assert.ThrowsAsync<InvalidOperationException>(() => service.CompleteExternalCredentialAuthenticationAsync(httpContext, "Google"));
         Assert.That(authService.SignOutCount, Is.EqualTo(1));
     }
 
@@ -493,18 +596,30 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
         }
     }
 
-    private static AshlarExternalCredentialAuthenticationService CreateService(AuthenticationResponse response)
+    private static AshlarExternalCredentialAuthenticationService CreateService(AuthenticationResponse response, bool includeGitHub = false)
+    {
+        return CreateService(response, includeGitHub ? options => options.AddGitHub() : null);
+    }
+
+    private static AshlarExternalCredentialAuthenticationService CreateService(AuthenticationResponse response, Action<AshlarOAuthOptions>? configureOptions)
     {
         var pipeline = new Mock<IAuthenticationPipeline>();
         pipeline.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(response);
-        return CreateService(pipeline.Object);
+        return CreateService(pipeline.Object, configureOptions);
     }
 
-    private static AshlarExternalCredentialAuthenticationService CreateService(IAuthenticationPipeline pipeline)
+    private static AshlarExternalCredentialAuthenticationService CreateService(IAuthenticationPipeline pipeline, bool includeGitHub = false)
+    {
+        return CreateService(pipeline, includeGitHub ? options => options.AddGitHub() : null);
+    }
+
+    private static AshlarExternalCredentialAuthenticationService CreateService(IAuthenticationPipeline pipeline, Action<AshlarOAuthOptions>? configureOptions)
     {
         var options = new AshlarOAuthOptions();
         options.AddOidcProvider("Google", _ => { });
+        configureOptions?.Invoke(options);
+
         var monitor = new TestOptionsMonitor(options);
         return new AshlarExternalCredentialAuthenticationService(pipeline, monitor);
     }
@@ -527,12 +642,22 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
         return new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", subject), new Claim("email", "person@example.com")], "oidc"));
     }
 
+    private static ClaimsPrincipal CreateGitHubPrincipal(string id)
+    {
+        return new ClaimsPrincipal(new ClaimsIdentity([new Claim("id", id), new Claim("login", "octocat"), new Claim("email", "octo@example.com")], "oauth"));
+    }
+
     private static DefaultHttpContext CreateHttpContextWithExternalTicket(string providerName, string schemeName, string subject)
+    {
+        return CreateHttpContextWithExternalTicket(providerName, schemeName, ProviderType.Oidc, CreatePrincipal(subject));
+    }
+
+    private static DefaultHttpContext CreateHttpContextWithExternalTicket(string providerName, string schemeName, ProviderType providerType, ClaimsPrincipal principal)
     {
         return CreateHttpContext(new TestAuthenticationService(
             AuthenticateResult.Success(new AuthenticationTicket(
-                CreatePrincipal(subject),
-                CreateProperties(providerName, schemeName),
+                principal,
+                CreateProperties(providerName, schemeName, providerType),
                 "Ashlar.OAuth.External"))));
     }
 
@@ -543,11 +668,16 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
         return new DefaultHttpContext { RequestServices = services.BuildServiceProvider() };
     }
 
-    private static AuthenticationProperties CreateProperties(string providerName, string schemeName)
+    private static AuthenticationProperties CreateProperties(string providerName, string schemeName, ProviderType? providerType = null, bool includeProviderType = true)
     {
         var properties = new AuthenticationProperties();
         properties.Items[AshlarOAuthAuthenticationProperties.ProviderName] = providerName;
         properties.Items[AshlarOAuthAuthenticationProperties.SchemeName] = schemeName;
+        if (includeProviderType)
+        {
+            properties.Items[AshlarOAuthAuthenticationProperties.ProviderType] = (providerType ?? ProviderType.Oidc).Value;
+        }
+
         return properties;
     }
 

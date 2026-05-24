@@ -2,6 +2,7 @@
 
 using Ashlar.OAuth;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -30,9 +31,9 @@ public static class AshlarOAuthServiceCollectionExtensions
         var options = new AshlarOAuthOptions();
         configure(options);
 
-        if (options.OidcProviders.Count == 0)
+        if (options.OidcProviders.Count == 0 && options.OAuth2Providers.Count == 0)
         {
-            throw new ArgumentException("At least one OpenID Connect provider must be configured.", nameof(configure));
+            throw new ArgumentException("At least one external OAuth or OpenID Connect provider must be configured.", nameof(configure));
         }
 
         ArgumentException.ThrowIfNullOrWhiteSpace(options.ExternalSignInScheme);
@@ -71,6 +72,16 @@ public static class AshlarOAuthServiceCollectionExtensions
             });
         }
 
+        foreach (var provider in options.OAuth2Providers.Values)
+        {
+            services.AddAuthenticationProvider(_ => new OAuthAuthenticationProvider(provider.ProviderName));
+            authenticationBuilder.AddOAuth(provider.SchemeName, oauthOptions =>
+            {
+                provider.Configure(oauthOptions);
+                ConfigureDefaults(oauthOptions, options.ExternalSignInScheme, provider);
+            });
+        }
+
         return services;
     }
 
@@ -93,6 +104,34 @@ public static class AshlarOAuthServiceCollectionExtensions
             {
                 context.Properties.Items[AshlarOAuthAuthenticationProperties.ProviderName] = provider.ProviderName;
                 context.Properties.Items[AshlarOAuthAuthenticationProperties.SchemeName] = provider.SchemeName;
+                context.Properties.Items[AshlarOAuthAuthenticationProperties.ProviderType] = ProviderType.Oidc.Value;
+            }
+
+            if (onTicketReceived != null)
+            {
+                await onTicketReceived(context);
+            }
+        };
+    }
+
+    private static void ConfigureDefaults(OAuthOptions options, string externalSignInScheme, AshlarOAuth2ProviderOptions provider)
+    {
+        options.SignInScheme = externalSignInScheme;
+        options.SaveTokens = false;
+
+        if (!options.CallbackPath.HasValue || string.Equals(options.CallbackPath.Value, "/signin-oauth", StringComparison.Ordinal))
+        {
+            options.CallbackPath = $"/signin-oauth/{provider.SchemeName}";
+        }
+
+        var onTicketReceived = options.Events.OnTicketReceived;
+        options.Events.OnTicketReceived = async context =>
+        {
+            if (context.Properties != null)
+            {
+                context.Properties.Items[AshlarOAuthAuthenticationProperties.ProviderName] = provider.ProviderName;
+                context.Properties.Items[AshlarOAuthAuthenticationProperties.SchemeName] = provider.SchemeName;
+                context.Properties.Items[AshlarOAuthAuthenticationProperties.ProviderType] = ProviderType.OAuth.Value;
             }
 
             if (onTicketReceived != null)
