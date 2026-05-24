@@ -503,14 +503,14 @@ internal sealed class SecurityAuditEventTests
     }
 
     [Test]
-    public void AddAshlarIdentityRegistersNullAuditSinkByDefault()
+    public void AddAshlarIdentityRegistersFanOutAuditSinkByDefault()
     {
         var services = new ServiceCollection();
 
         services.AddAshlarIdentity();
 
         var descriptor = services.Single(d => d.ServiceType == typeof(ISecurityEventSink));
-        Assert.That(descriptor.ImplementationType, Is.EqualTo(typeof(NullSecurityEventSink)));
+        Assert.That(descriptor.ImplementationType, Is.EqualTo(typeof(SecurityEventFanOutSink)));
     }
 
     private static (AuthenticationPipeline Pipeline, Mock<IAuthenticationProviderRegistry> Registry, Mock<ICredentialService> CredentialService, Mock<IAuthenticationProvider> ProviderMock, IAuthenticationProvider Provider, TestAssertion Assertion, User User, UserCredential Credential) CreatePipeline(ISecurityEventSink sink)

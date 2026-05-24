@@ -234,13 +234,13 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
 
     private static void AddNullSecurityEventSinkIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
     {
-        if (serviceProvider.GetService<ISecurityEventSink>() is NullSecurityEventSink)
+        if (serviceProvider.GetService<IPersistentSecurityEventSink>() is null)
         {
             issues.Add(new AshlarConfigurationIssue(
                 AshlarConfigurationIssueCodes.NullSecurityEventSink,
                 AshlarConfigurationIssueSeverity.Warning,
-                "Security audit events use NullSecurityEventSink, so Ashlar audit events will not be persisted.",
-                "Register a production ISecurityEventSink, usually from an Ashlar persistence provider.",
+                "Security audit events do not have a persistent sink configured, so Ashlar audit events will not be persisted.",
+                "Register a production IPersistentSecurityEventSink, usually from an Ashlar persistence provider.",
                 "Security auditing"));
         }
     }

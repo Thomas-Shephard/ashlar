@@ -116,8 +116,9 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SqliteSecurityEventSink>());
-            Assert.That(provider.GetRequiredService<IUserSecurityEventSummaryRepository>(), Is.SameAs(provider.GetRequiredService<ISecurityEventSink>()));
+            Assert.That(provider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
+            Assert.That(provider.GetRequiredService<IPersistentSecurityEventSink>(), Is.TypeOf<SqliteSecurityEventSink>());
+            Assert.That(provider.GetRequiredService<IUserSecurityEventSummaryRepository>(), Is.SameAs(provider.GetRequiredService<IPersistentSecurityEventSink>()));
             Assert.That(issueCodes, Does.Not.Contain(AshlarConfigurationIssueCodes.NullSecurityEventSink));
         }
     }

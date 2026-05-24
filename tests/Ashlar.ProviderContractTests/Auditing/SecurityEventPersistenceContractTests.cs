@@ -22,7 +22,7 @@ internal abstract class SecurityEventPersistenceContractTests : ProviderContract
             });
 
         await sink.RecordAsync(securityEvent);
-        await FlushAsync(sink);
+        await FlushAsync(scope.ServiceProvider);
 
         var row = (await ReadSecurityEventStorageRecordsAsync()).Single(record => record.Id == securityEvent.Id);
         using (Assert.EnterMultipleScope())
@@ -57,7 +57,7 @@ internal abstract class SecurityEventPersistenceContractTests : ProviderContract
         };
 
         await sink.RecordAsync(securityEvent);
-        await FlushAsync(sink);
+        await FlushAsync(scope.ServiceProvider);
 
         var row = (await ReadSecurityEventStorageRecordsAsync()).Single(record => record.Id == securityEvent.Id);
         using (Assert.EnterMultipleScope())
@@ -91,7 +91,7 @@ internal abstract class SecurityEventPersistenceContractTests : ProviderContract
         };
 
         await sink.RecordAsync(securityEvent);
-        await FlushAsync(sink);
+        await FlushAsync(scope.ServiceProvider);
 
         var row = (await ReadSecurityEventStorageRecordsAsync()).Single(record => record.Id == securityEvent.Id);
         using (Assert.EnterMultipleScope())
@@ -111,7 +111,7 @@ internal abstract class SecurityEventPersistenceContractTests : ProviderContract
 
         await sink.RecordAsync(first);
         await sink.RecordAsync(second);
-        await FlushAsync(sink);
+        await FlushAsync(scope.ServiceProvider);
 
         var rows = await ReadSecurityEventStorageRecordsAsync();
         Assert.That(rows.Select(record => record.Id), Is.SupersetOf(new[] { first.Id, second.Id }));
@@ -132,7 +132,7 @@ internal abstract class SecurityEventPersistenceContractTests : ProviderContract
         await sink.RecordAsync(CreateEvent("Old", userId, occurredAt: since.AddTicks(-1), outcome: "Success"));
         await sink.RecordAsync(CreateEvent("OtherUser", otherUserId, occurredAt: OccurredAt, outcome: "Success"));
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "NoUser", OccurredAt = OccurredAt });
-        await FlushAsync(sink);
+        await FlushAsync(scope.ServiceProvider);
 
         var count = await summary.CountSecurityEventsForUserAsync(userId, since);
 
@@ -171,9 +171,9 @@ internal abstract class SecurityEventPersistenceContractTests : ProviderContract
         return json == null ? null : JsonSerializer.Deserialize<Dictionary<string, string>>(json);
     }
 
-    private static async Task FlushAsync(ISecurityEventSink sink)
+    private static async Task FlushAsync(IServiceProvider serviceProvider)
     {
-        if (sink is IAsyncDisposable asyncDisposable)
+        if (GetPersistentSecurityEventSink(serviceProvider) is IAsyncDisposable asyncDisposable)
         {
             await asyncDisposable.DisposeAsync();
         }

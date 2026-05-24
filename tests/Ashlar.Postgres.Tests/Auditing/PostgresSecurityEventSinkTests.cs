@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Dapper;
+using Ashlar.Identity.Models.AccountSecurity;
 
 namespace Ashlar.Postgres.Tests.Auditing;
 
@@ -209,7 +210,7 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
     }
 
     [Test]
-    public async Task AddAshlarPostgresAuditSinkReplacesDefaultSink()
+    public async Task AddAshlarPostgresAuditSinkRegistersPersistentSink()
     {
         var services = new ServiceCollection();
         services.AddAshlarIdentity();
@@ -218,8 +219,14 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
         await using var provider = services.BuildServiceProvider();
 
         var sink = provider.GetRequiredService<ISecurityEventSink>();
+        var persistentSink = provider.GetRequiredService<IPersistentSecurityEventSink>();
 
-        Assert.That(sink, Is.TypeOf<PostgresSecurityEventSink>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sink, Is.TypeOf<SecurityEventFanOutSink>());
+            Assert.That(persistentSink, Is.TypeOf<PostgresSecurityEventSink>());
+            Assert.That(provider.GetRequiredService<IUserSecurityEventSummaryRepository>(), Is.SameAs(persistentSink));
+        }
     }
 
     [Test]

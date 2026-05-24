@@ -107,7 +107,7 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         services.TryAddSingleton<ISecureTokenHasher, Sha256TokenHasher>();
         services.TryAddSingleton<SecureTokenContext>();
-        services.TryAddSingleton<ISecurityEventSink, NullSecurityEventSink>();
+        services.TryAddSingleton<ISecurityEventSink, SecurityEventFanOutSink>();
         services.TryAddSingleton<InMemoryAuthenticationRateLimiter>();
         services.TryAddSingleton<IAuthenticationRateLimiter>(provider => provider.GetRequiredService<InMemoryAuthenticationRateLimiter>());
         services.TryAddScoped<IAuthenticationRateLimiterDiagnostics>(provider =>
@@ -126,6 +126,44 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarTransactionProvider, NullTransactionProvider>();
         services.AddAshlarUriValidation();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers a security event handler for Ashlar security event fan-out.
+    /// </summary>
+    /// <typeparam name="THandler">The handler type.</typeparam>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarSecurityEventHandler<THandler>(this IServiceCollection services)
+        where THandler : class, ISecurityEventHandler
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISecurityEventHandler, THandler>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers a security event handler factory for Ashlar security event fan-out.
+    /// </summary>
+    /// <typeparam name="THandler">The handler type.</typeparam>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="implementationFactory">The handler implementation factory.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarSecurityEventHandler<THandler>(
+        this IServiceCollection services,
+        Func<IServiceProvider, THandler> implementationFactory)
+        where THandler : class, ISecurityEventHandler
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(implementationFactory);
+
+        services.AddAshlarIdentity();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISecurityEventHandler, THandler>(implementationFactory));
 
         return services;
     }

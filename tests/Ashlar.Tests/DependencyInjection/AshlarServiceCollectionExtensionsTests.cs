@@ -1,6 +1,7 @@
 using Ashlar.Authorization;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
+using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Providers.Email;
 using Ashlar.Identity.Providers.External;
@@ -37,6 +38,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<ISecureTokenGenerator, SecureTokenGenerator>(services, ServiceLifetime.Singleton);
             AssertDescriptor<ISecureTokenHasher, Sha256TokenHasher>(services, ServiceLifetime.Singleton);
             AssertDescriptor<SecureTokenContext>(services, ServiceLifetime.Singleton);
+            AssertDescriptor<ISecurityEventSink, SecurityEventFanOutSink>(services, ServiceLifetime.Singleton);
             AssertDescriptor<IEmailSender, NullEmailSender>(services, ServiceLifetime.Singleton);
             AssertDescriptor<IdentityServiceOptions>(services, ServiceLifetime.Singleton);
             AssertDescriptor<AuthenticationSessionOptions>(services, ServiceLifetime.Singleton);
@@ -146,6 +148,46 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<TimeProvider>(), Is.SameAs(TimeProvider.System));
+    }
+
+    [Test]
+    public void AddAshlarIdentityResolvesSecurityEventFanOutSinkByDefault()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarIdentity();
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
+    }
+
+    [Test]
+    public void AddAshlarSecurityEventHandlerRegistersHandler()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarSecurityEventHandler<CustomSecurityEventHandler>();
+
+        using var provider = services.BuildServiceProvider();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
+            Assert.That(provider.GetServices<ISecurityEventHandler>().Single(), Is.TypeOf<CustomSecurityEventHandler>());
+        }
+    }
+
+    [Test]
+    public void AddAshlarSecurityEventHandlerFactoryRegistersHandler()
+    {
+        var services = new ServiceCollection();
+        var handler = new CustomSecurityEventHandler();
+
+        services.AddAshlarSecurityEventHandler(_ => handler);
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetServices<ISecurityEventHandler>().Single(), Is.SameAs(handler));
     }
 
     [Test]
@@ -402,6 +444,11 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     private sealed class CustomEmailSender : IEmailSender
     {
         public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class CustomSecurityEventHandler : ISecurityEventHandler
+    {
+        public Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     private sealed class CustomAuthorizationGrantService : IAuthorizationGrantService
