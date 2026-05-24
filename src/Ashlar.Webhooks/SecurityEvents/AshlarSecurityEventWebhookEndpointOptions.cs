@@ -44,16 +44,11 @@ public sealed class AshlarSecurityEventWebhookEndpointOptions
     {
         return endpoint is not null
             && !string.IsNullOrWhiteSpace(endpoint.Name)
-            && IsHeaderValueSafe(endpoint.Name)
+            && AshlarSecurityEventWebhookHeaderValues.IsSafe(endpoint.Name)
             && endpoint.Uri is { IsAbsoluteUri: true }
             && endpoint.Uri.Scheme == Uri.UriSchemeHttps
             && (endpoint.SharedSecret is null || !string.IsNullOrWhiteSpace(endpoint.SharedSecret))
             && (!endpoint.Timeout.HasValue || endpoint.Timeout.Value > TimeSpan.Zero)
             && endpoint.EventTypes.All(eventType => !string.IsNullOrWhiteSpace(eventType));
-    }
-
-    private static bool IsHeaderValueSafe(string value)
-    {
-        return !value.Any(character => character is '\r' or '\n');
     }
 }
