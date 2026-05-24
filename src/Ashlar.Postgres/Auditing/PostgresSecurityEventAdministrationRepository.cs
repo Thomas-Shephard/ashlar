@@ -29,13 +29,8 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
         parameters.Add("Limit", request.Limit);
         parameters.Add("Offset", request.Offset);
 
-        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using (connectionHandle)
-        {
-            var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            var rows = await connectionHandle.Connection.QueryAsync<SecurityEventRow>(command);
-            return rows.Select(static row => row.ToStorageRecord().ToSummary()).ToList().AsReadOnly();
-        }
+        var rows = await PostgresAdminQuery.QueryAsync<SecurityEventRow>(_connectionProvider, sql, parameters, cancellationToken);
+        return rows.Select(static row => row.ToStorageRecord().ToSummary()).ToList().AsReadOnly();
     }
 
     /// <summary>
@@ -47,13 +42,8 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
     public async Task<SecurityEventSummary?> GetSecurityEventAsync(Guid eventId, CancellationToken cancellationToken = default)
     {
         var sql = SelectSql + " WHERE id = @EventId";
-        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using (connectionHandle)
-        {
-            var command = new CommandDefinition(sql, new { EventId = eventId }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync<SecurityEventRow>(command);
-            return row?.ToStorageRecord().ToSummary();
-        }
+        var row = await PostgresAdminQuery.QuerySingleAsync<SecurityEventRow>(_connectionProvider, sql, new { EventId = eventId }, cancellationToken);
+        return row?.ToStorageRecord().ToSummary();
     }
 
     private const string SelectSql = """
@@ -67,11 +57,7 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
 
     private static void AddFilters(SearchSecurityEventsRequest request, ref string sql, DynamicParameters parameters)
     {
-        if (request.Tenant != null)
-        {
-            sql += request.Tenant.TenantId == null ? " AND tenant_id IS NULL" : " AND tenant_id = @TenantId";
-            parameters.Add("TenantId", request.Tenant.TenantId);
-        }
+        PostgresAdminQuery.AddTenantFilter(request.Tenant, "tenant_id", "TenantId", ref sql, parameters);
 
         if (request.UserId.HasValue)
         {
@@ -110,24 +96,9 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
             parameters.Add("FailureReason", request.FailureReason);
         }
 
-        if (request.Provider.HasValue)
-        {
-            sql += " AND provider_type = @ProviderType AND provider_name = @ProviderName";
-            parameters.Add("ProviderType", request.Provider.Value.TypeValueOrUnknown);
-            parameters.Add("ProviderName", request.Provider.Value.Name);
-        }
+        PostgresAdminQuery.AddProviderFilter(request.Provider, "provider_type", "provider_name", "ProviderType", "ProviderName", ref sql, parameters);
 
-        if (request.OccurredFrom.HasValue)
-        {
-            sql += " AND occurred_at >= @OccurredFrom";
-            parameters.Add("OccurredFrom", request.OccurredFrom.Value);
-        }
-
-        if (request.OccurredTo.HasValue)
-        {
-            sql += " AND occurred_at <= @OccurredTo";
-            parameters.Add("OccurredTo", request.OccurredTo.Value);
-        }
+        PostgresAdminQuery.AddDateRange(request.OccurredFrom, request.OccurredTo, "occurred_at", "OccurredFrom", "OccurredTo", ref sql, parameters);
     }
 
     private sealed record SecurityEventRow(
@@ -152,7 +123,7 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
             return new SecurityEventStorageRecord(
                 EventId,
                 EventType,
-                ToDateTimeOffset(OccurredAt),
+                PostgresAdminQuery.ToDateTimeOffset(OccurredAt),
                 UserId,
                 TenantId,
                 ActorUserId,
@@ -167,9 +138,5 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
                 PropertiesJson);
         }
 
-        private static DateTimeOffset ToDateTimeOffset(DateTime value)
-        {
-            return new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc));
-        }
     }
 }

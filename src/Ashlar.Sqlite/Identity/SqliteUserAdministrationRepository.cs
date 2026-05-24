@@ -20,61 +20,41 @@ public sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvider
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var sql = """
-            SELECT id, email, name, tenant_id, is_active, email_verified_at, created_at, updated_at
-            FROM ashlar_users
-            WHERE 1 = 1
-            """;
-
-        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using var command = handle.Connection.CreateCommand();
-        command.Transaction = handle.Transaction;
-
-        if (!string.IsNullOrWhiteSpace(request.Query))
+        return await SqliteQuery.QueryAsync(_connectionProvider, command =>
         {
-            sql += " AND (instr(lower(email), lower($query)) > 0 OR instr(lower(coalesce(name, '')), lower($query)) > 0)";
-            command.AddParameter("$query", request.Query.Trim());
-        }
+            var sql = """
+                SELECT id, email, name, tenant_id, is_active, email_verified_at, created_at, updated_at
+                FROM ashlar_users
+                WHERE 1 = 1
+                """;
 
-        if (request.Tenant != null)
-        {
-            if (request.Tenant.TenantId == null)
+            if (!string.IsNullOrWhiteSpace(request.Query))
             {
-                sql += " AND tenant_id IS NULL";
+                sql += " AND (instr(lower(email), lower($query)) > 0 OR instr(lower(coalesce(name, '')), lower($query)) > 0)";
+                command.AddParameter("$query", request.Query.Trim());
             }
-            else
+
+            command.AddTenantFilter(request.Tenant, "tenant_id", "$tenantId", ref sql);
+
+            if (request.IsActive.HasValue)
             {
-                sql += " AND tenant_id = $tenantId";
-                command.AddNullableGuidParameter("$tenantId", request.Tenant.TenantId);
+                sql += " AND is_active = $isActive";
+                command.AddParameter("$isActive", request.IsActive.Value ? 1 : 0);
             }
-        }
 
-        if (request.IsActive.HasValue)
-        {
-            sql += " AND is_active = $isActive";
-            command.AddParameter("$isActive", request.IsActive.Value ? 1 : 0);
-        }
+            if (request.IsEmailVerified.HasValue)
+            {
+                sql += request.IsEmailVerified.Value
+                    ? " AND email_verified_at IS NOT NULL"
+                    : " AND email_verified_at IS NULL";
+            }
 
-        if (request.IsEmailVerified.HasValue)
-        {
-            sql += request.IsEmailVerified.Value
-                ? " AND email_verified_at IS NOT NULL"
-                : " AND email_verified_at IS NULL";
-        }
+            sql += " ORDER BY lower(email), id LIMIT $limit OFFSET $offset;";
+            command.AddParameter("$limit", request.Limit);
+            command.AddParameter("$offset", request.Offset);
 
-        sql += " ORDER BY lower(email), id LIMIT $limit OFFSET $offset;";
-        command.CommandText = sql;
-        command.AddParameter("$limit", request.Limit);
-        command.AddParameter("$offset", request.Offset);
-
-        var users = new List<UserSummary>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            users.Add(ReadUserSummary(reader));
-        }
-
-        return users.AsReadOnly();
+            return sql;
+        }, ReadUserSummary, cancellationToken);
     }
 
     /// <summary>
@@ -91,14 +71,11 @@ public sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvider
             WHERE id = $userId;
             """;
 
-        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using var command = handle.Connection.CreateCommand();
-        command.Transaction = handle.Transaction;
-        command.CommandText = sql;
-        command.AddGuidParameter("$userId", userId);
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? ReadUserSummary(reader) : null;
+        return await SqliteQuery.QuerySingleAsync(_connectionProvider, command =>
+        {
+            command.AddGuidParameter("$userId", userId);
+            return sql;
+        }, ReadUserSummary, cancellationToken);
     }
 
     private static UserSummary ReadUserSummary(SqliteDataReader reader)

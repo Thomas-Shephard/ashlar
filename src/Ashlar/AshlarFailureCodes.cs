@@ -45,6 +45,8 @@ public static class AshlarFailureCodes
     public const string InvalidProviderKeyValue = "invalid_provider_key";
     /// <summary>The credential already exists.</summary>
     public const string CredentialAlreadyExistsValue = "credential_already_exists";
+    /// <summary>The credential was not found.</summary>
+    public const string CredentialNotFoundValue = "credential_not_found";
     /// <summary>The credential is already linked to the same user.</summary>
     public const string AlreadyLinkedToSelfValue = "already_linked_to_self";
     /// <summary>The credential is already linked to another user.</summary>
@@ -153,6 +155,8 @@ public static class AshlarFailureCodes
     public static readonly AshlarFailureCode InvalidProviderKey = new(InvalidProviderKeyValue);
     /// <summary>The credential already exists.</summary>
     public static readonly AshlarFailureCode CredentialAlreadyExists = new(CredentialAlreadyExistsValue);
+    /// <summary>The credential was not found.</summary>
+    public static readonly AshlarFailureCode CredentialNotFound = new(CredentialNotFoundValue);
     /// <summary>The credential is already linked to the same user.</summary>
     public static readonly AshlarFailureCode AlreadyLinkedToSelf = new(AlreadyLinkedToSelfValue);
     /// <summary>The credential is already linked to another user.</summary>

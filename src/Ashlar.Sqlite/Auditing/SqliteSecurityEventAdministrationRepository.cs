@@ -20,27 +20,16 @@ public sealed class SqliteSecurityEventAdministrationRepository(ISqliteConnectio
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var sql = SelectSql + " WHERE 1 = 1";
-
-        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using var command = handle.Connection.CreateCommand();
-        command.Transaction = handle.Transaction;
-
-        AddFilters(request, ref sql, command);
-
-        sql += " ORDER BY occurred_at DESC, id DESC LIMIT $limit OFFSET $offset;";
-        command.CommandText = sql;
-        command.AddParameter("$limit", request.Limit);
-        command.AddParameter("$offset", request.Offset);
-
-        var events = new List<SecurityEventSummary>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        return await SqliteQuery.QueryAsync(_connectionProvider, command =>
         {
-            events.Add(ReadStorageRecord(reader).ToSummary());
-        }
+            var sql = SelectSql + " WHERE 1 = 1";
+            AddFilters(request, ref sql, command);
+            sql += " ORDER BY occurred_at DESC, id DESC LIMIT $limit OFFSET $offset;";
+            command.AddParameter("$limit", request.Limit);
+            command.AddParameter("$offset", request.Offset);
 
-        return events.AsReadOnly();
+            return sql;
+        }, static reader => ReadStorageRecord(reader).ToSummary(), cancellationToken);
     }
 
     /// <summary>
@@ -51,16 +40,11 @@ public sealed class SqliteSecurityEventAdministrationRepository(ISqliteConnectio
     /// <returns>The security event, or <see langword="null" /> when it does not exist.</returns>
     public async Task<SecurityEventSummary?> GetSecurityEventAsync(Guid eventId, CancellationToken cancellationToken = default)
     {
-        var sql = SelectSql + " WHERE id = $eventId;";
-
-        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using var command = handle.Connection.CreateCommand();
-        command.Transaction = handle.Transaction;
-        command.CommandText = sql;
-        command.AddGuidParameter("$eventId", eventId);
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? ReadStorageRecord(reader).ToSummary() : null;
+        return await SqliteQuery.QuerySingleAsync(_connectionProvider, command =>
+        {
+            command.AddGuidParameter("$eventId", eventId);
+            return SelectSql + " WHERE id = $eventId;";
+        }, static reader => ReadStorageRecord(reader).ToSummary(), cancellationToken);
     }
 
     private const string SelectSql = """
@@ -72,18 +56,7 @@ public sealed class SqliteSecurityEventAdministrationRepository(ISqliteConnectio
 
     private static void AddFilters(SearchSecurityEventsRequest request, ref string sql, SqliteCommand command)
     {
-        if (request.Tenant != null)
-        {
-            if (request.Tenant.TenantId == null)
-            {
-                sql += " AND tenant_id IS NULL";
-            }
-            else
-            {
-                sql += " AND tenant_id = $tenantId";
-                command.AddNullableGuidParameter("$tenantId", request.Tenant.TenantId);
-            }
-        }
+        command.AddTenantFilter(request.Tenant, "tenant_id", "$tenantId", ref sql);
 
         if (request.UserId.HasValue)
         {
@@ -129,24 +102,9 @@ public sealed class SqliteSecurityEventAdministrationRepository(ISqliteConnectio
             command.AddParameter("$failureReason", request.FailureReason);
         }
 
-        if (request.Provider.HasValue)
-        {
-            sql += " AND provider_type = $providerType AND provider_name = $providerName";
-            command.AddParameter("$providerType", request.Provider.Value.TypeValueOrUnknown);
-            command.AddParameter("$providerName", request.Provider.Value.Name);
-        }
+        command.AddProviderFilter(request.Provider, "provider_type", "provider_name", "$providerType", "$providerName", ref sql);
 
-        if (request.OccurredFrom.HasValue)
-        {
-            sql += " AND occurred_at >= $occurredFrom";
-            command.AddDateTimeOffsetParameter("$occurredFrom", request.OccurredFrom.Value);
-        }
-
-        if (request.OccurredTo.HasValue)
-        {
-            sql += " AND occurred_at <= $occurredTo";
-            command.AddDateTimeOffsetParameter("$occurredTo", request.OccurredTo.Value);
-        }
+        command.AddDateRange(request.OccurredFrom, request.OccurredTo, "occurred_at", "$occurredFrom", "$occurredTo", ref sql);
     }
 
     private static SecurityEventStorageRecord ReadStorageRecord(SqliteDataReader reader)
