@@ -27,6 +27,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.That(scope.ServiceProvider.GetRequiredService<SqliteSchemaManager>(), Is.Not.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarSchemaDiagnostics>(), Is.TypeOf<SqliteSchemaDiagnostics>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IIdentityRepository>(), Is.TypeOf<SqliteIdentityRepository>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationSessionAdministrationRepository>(), Is.TypeOf<SqliteAuthenticationSessionAdministrationRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IBootstrapStateRepository>(), Is.TypeOf<SqliteBootstrapStateRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationSessionRepository>(), Is.TypeOf<SqliteAuthenticationSessionRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationHandshakeRepository>(), Is.TypeOf<SqliteAuthenticationHandshakeRepository>());

@@ -91,6 +91,7 @@ public static class AshlarServiceCollectionExtensions
         services.TryAddScoped<IAccountSecurityService, AccountSecurityService>();
         services.TryAddScoped<IUserAdministrationService, UserAdministrationService>();
         services.TryAddScoped<ISecurityEventAdministrationService, SecurityEventAdministrationService>();
+        services.TryAddScoped<IAuthenticationSessionAdministrationService, AuthenticationSessionAdministrationService>();
         services.TryAddScoped(provider => new AuthenticationSessionServiceDependencies(
             provider.GetService<AuthenticationSessionOptions>(),
             provider.GetService<TimeProvider>(),

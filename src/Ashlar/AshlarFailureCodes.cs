@@ -101,6 +101,8 @@ public static class AshlarFailureCodes
     public const string PasskeyCredentialNotFoundValue = "passkey_credential_not_found";
     /// <summary>The session was not found or is inactive.</summary>
     public const string SessionNotFoundOrInactiveValue = "session_not_found_or_inactive";
+    /// <summary>The session was not found.</summary>
+    public const string SessionNotFoundValue = "session_not_found";
     /// <summary>The security event was not found.</summary>
     public const string SecurityEventNotFoundValue = "security_event_not_found";
     /// <summary>Additional verification is required.</summary>
@@ -207,6 +209,8 @@ public static class AshlarFailureCodes
     public static readonly AshlarFailureCode PasskeyCredentialNotFound = new(PasskeyCredentialNotFoundValue);
     /// <summary>The session was not found or is inactive.</summary>
     public static readonly AshlarFailureCode SessionNotFoundOrInactive = new(SessionNotFoundOrInactiveValue);
+    /// <summary>The session was not found.</summary>
+    public static readonly AshlarFailureCode SessionNotFound = new(SessionNotFoundValue);
     /// <summary>The security event was not found.</summary>
     public static readonly AshlarFailureCode SecurityEventNotFound = new(SecurityEventNotFoundValue);
     /// <summary>Additional verification is required.</summary>

@@ -37,6 +37,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.TryAddScoped<IIdentityRepository, SqliteIdentityRepository>();
         services.TryAddScoped<IUserAdministrationRepository, SqliteUserAdministrationRepository>();
         services.TryAddScoped<ISecurityEventAdministrationRepository, SqliteSecurityEventAdministrationRepository>();
+        services.TryAddScoped<IAuthenticationSessionAdministrationRepository, SqliteAuthenticationSessionAdministrationRepository>();
         services.TryAddScoped<IBootstrapStateRepository, SqliteBootstrapStateRepository>();
         services.TryAddScoped<IInvitationRepository, SqliteInvitationRepository>();
         services.TryAddScoped<IAuthenticationSessionRepository, SqliteAuthenticationSessionRepository>();
