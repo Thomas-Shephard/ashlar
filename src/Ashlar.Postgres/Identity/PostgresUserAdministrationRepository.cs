@@ -110,15 +110,13 @@ public sealed class PostgresUserAdministrationRepository(IPostgresConnectionProv
         return new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc));
     }
 
-    private sealed class UserAdministrationUserRow
-    {
-        public Guid UserId { get; init; }
-        public string Email { get; init; } = string.Empty;
-        public string? Name { get; init; }
-        public Guid? TenantId { get; init; }
-        public bool IsActive { get; init; }
-        public bool IsEmailVerified { get; init; }
-        public DateTime CreatedAt { get; init; }
-        public DateTime? UpdatedAt { get; init; }
-    }
+    private sealed record UserAdministrationUserRow(
+        Guid UserId,
+        string Email,
+        string? Name,
+        Guid? TenantId,
+        bool IsActive,
+        bool IsEmailVerified,
+        DateTime CreatedAt,
+        DateTime? UpdatedAt);
 }
