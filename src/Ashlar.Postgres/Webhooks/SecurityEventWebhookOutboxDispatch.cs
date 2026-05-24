@@ -28,13 +28,18 @@ internal static class SecurityEventWebhookOutboxDispatch
         var headers = JsonSerializer.Deserialize<Dictionary<string, string>>(entry.Headers);
         if (headers != null)
         {
-            foreach (var header in headers.Where(header => !request.Headers.TryAddWithoutValidation(header.Key, header.Value)))
+            foreach (var header in headers.Where(header => ShouldAddAsContentHeader(request, header)))
             {
                 request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
             }
         }
 
         return request;
+    }
+
+    private static bool ShouldAddAsContentHeader(HttpRequestMessage request, KeyValuePair<string, string> header)
+    {
+        return !request.Headers.TryAddWithoutValidation(header.Key, header.Value);
     }
 
     public static WebhookOutboxFailureUpdate CreateFailureUpdate(
