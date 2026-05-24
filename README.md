@@ -711,6 +711,29 @@ await signInManager.RevokeOtherSessionsForCurrentUserAsync(httpContext);
 
 Session listing is ordered by `CreatedAt` descending (newest first). Sensitive fields like IP address and user agent are only populated if they were enabled during session creation. Token hashes are never exposed through these APIs. In the PostgreSQL store, last-seen writes are ignored once a session is revoked or expired, so a concurrent sign-out or expiry cannot be undone by validation telemetry.
 
+#### Admin Session Browsing
+Use `IAuthenticationSessionAdministrationService` for read-only admin and operations tooling that needs to browse sessions across users and tenants without querying provider tables directly:
+
+```csharp
+var result = await sessionAdministration.SearchAuthenticationSessionsAsync(
+    new SearchAuthenticationSessionsRequest
+    {
+        UserId = userId,
+        Active = true,
+        Limit = 50
+    });
+
+if (result.Succeeded)
+{
+    foreach (var session in result.Value.Items)
+    {
+        // session includes Id, UserId, TenantId, provider, timestamps, IpAddress, UserAgent, and IsActive.
+    }
+}
+```
+
+These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. Raw session tokens and token hashes are never returned, and session metadata is not included in the admin read model.
+
 ### Admin Account Recovery
 Ashlar exposes framework-neutral administrator primitives through `IAccountSecurityService`. The service is intentionally small and composes existing identity, credential, MFA, recovery-code, session, and audit infrastructure.
 

@@ -72,6 +72,11 @@ internal abstract class ProviderContractFixture
         return serviceProvider.GetRequiredService<IAuthenticationSessionRepository>();
     }
 
+    protected static IAuthenticationSessionAdministrationRepository GetAuthenticationSessionAdministrationRepository(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IAuthenticationSessionAdministrationRepository>();
+    }
+
     protected static IAuthenticationHandshakeRepository GetAuthenticationHandshakeRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IAuthenticationHandshakeRepository>();

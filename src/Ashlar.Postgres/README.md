@@ -109,6 +109,7 @@ Cleanup diagnostics do not query provider tables, track last run state, or expos
 - **Tenant Email Isolation**: The same normalized email can exist in different tenants, but not twice in the same tenant or twice without a tenant.
 - **Atomic Operations**: Optimistic concurrency (version checking) for all credential updates and consumption.
 - **Session Persistence**: Stores session expiry, last-seen, revocation, request metadata, safe authentication metadata, and deterministic token hashes. Raw session tokens are never stored.
+- **Admin Session Reads**: Implements `IAuthenticationSessionAdministrationRepository` for provider-neutral read-only session/device browsing. Raw session tokens and token hashes are never returned.
 - **Case-Insensitive Identity**: Emails are normalized and looked up case-insensitively using optimized indexes.
 - **Modern Npgsql**: Built for `NpgsqlDataSource` and .NET 8+.
 
