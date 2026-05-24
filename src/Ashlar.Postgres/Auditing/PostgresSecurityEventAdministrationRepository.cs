@@ -65,11 +65,6 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
         FROM ashlar_security_events
         """;
 
-    private static DateTimeOffset ToDateTimeOffset(DateTime value)
-    {
-        return new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc));
-    }
-
     private static void AddFilters(SearchSecurityEventsRequest request, ref string sql, DynamicParameters parameters)
     {
         if (request.Tenant != null)
@@ -170,6 +165,11 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
                 Outcome,
                 FailureReason,
                 PropertiesJson);
+        }
+
+        private static DateTimeOffset ToDateTimeOffset(DateTime value)
+        {
+            return new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc));
         }
     }
 }
