@@ -13,6 +13,7 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
     {
         var services = new ServiceCollection();
         services.AddAshlarSqlite(GetConnectionString());
+        services.AddAshlarSqliteAuditSink();
         _serviceProvider = services.BuildServiceProvider();
         await _serviceProvider.InitializeAshlarSqliteSchemaAsync();
     }

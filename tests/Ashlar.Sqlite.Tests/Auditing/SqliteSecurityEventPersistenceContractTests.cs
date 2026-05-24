@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Ashlar.Sqlite.Tests.Auditing;
 
@@ -8,7 +9,7 @@ internal sealed class SqliteSecurityEventPersistenceContractTests : SecurityEven
 
     protected override async Task<IServiceProvider> CreateInitializedServiceProviderAsync()
     {
-        _database = await SqliteContractDatabase.CreateAsync();
+        _database = await SqliteContractDatabase.CreateAsync(services => services.AddAshlarSqliteAuditSink());
         return _database.ServiceProvider;
     }
 

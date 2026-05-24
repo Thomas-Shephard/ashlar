@@ -20,7 +20,7 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
         _timeProvider = new FakeTimeProvider(Now);
         _database = await SqliteContractDatabase.CreateAsync(services =>
         {
-            services.Configure<AshlarCleanupOptions>(options =>
+            services.AddAshlarSqliteCleanup(options =>
             {
                 options.BatchSize = 2;
                 options.MaxBatchesPerRun = 1;
@@ -138,7 +138,7 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
 
         var services = new ServiceCollection();
         services.AddAshlarSqlite(_database.ConnectionString);
-        services.Configure<AshlarCleanupOptions>(options => options.RemoveAuditEventsAfter = null);
+        services.AddAshlarSqliteCleanup(options => options.RemoveAuditEventsAfter = null);
         services.AddSingleton<TimeProvider>(_timeProvider);
         await using var provider = services.BuildServiceProvider();
         return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();

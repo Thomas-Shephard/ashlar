@@ -16,7 +16,11 @@ internal sealed class SqliteAuthenticationRateLimiterContractTests : Authenticat
     protected override async Task<IServiceProvider> CreateInitializedServiceProviderAsync()
     {
         _timeProvider = new FakeTimeProvider(Start);
-        _database = await SqliteContractDatabase.CreateAsync(services => services.AddSingleton<TimeProvider>(_timeProvider));
+        _database = await SqliteContractDatabase.CreateAsync(services =>
+        {
+            services.AddAshlarSqliteRateLimiting();
+            services.AddSingleton<TimeProvider>(_timeProvider);
+        });
         return _database.ServiceProvider;
     }
 
