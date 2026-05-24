@@ -39,10 +39,15 @@ public sealed class AshlarCleanupHostedServiceRunner
         IOptions<AshlarCleanupOptions> options,
         ILogger logger)
     {
-        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
-        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-        _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        ArgumentNullException.ThrowIfNull(scopeFactory);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        _scopeFactory = scopeFactory;
+        _timeProvider = timeProvider;
+        _options = options.Value;
+        _logger = logger;
     }
 
     /// <summary>
