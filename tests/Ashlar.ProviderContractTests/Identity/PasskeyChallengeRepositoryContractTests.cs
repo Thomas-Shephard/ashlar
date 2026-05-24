@@ -11,9 +11,9 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
     public async Task CreateAndFetchChallengeByIdMapsCoreFields()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetPasskeyChallengeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var challenge = CreateAuthenticationChallenge(user.Id);
 
         await repository.CreateAsync(challenge);
@@ -37,9 +37,9 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
     public async Task RegistrationChallengeRoundTrips()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetPasskeyChallengeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var challenge = CreateRegistrationChallenge(user.Id);
 
         await repository.CreateAsync(challenge);
@@ -53,9 +53,9 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
     public async Task AuthenticationChallengeWithHandshakeBindingRoundTrips()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetPasskeyChallengeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var challenge = CreateAuthenticationChallenge(user.Id, handshakeTokenHash: "hash:handshake", factorType: "passkey");
 
         await repository.CreateAsync(challenge);
@@ -74,9 +74,9 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
     public async Task ChallengeValueUniquenessIsEnforced()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetPasskeyChallengeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var first = CreateAuthenticationChallenge(user.Id);
         var duplicate = CreateAuthenticationChallenge(user.Id, challengeValue: first.Challenge);
         await repository.CreateAsync(first);
@@ -88,9 +88,9 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
     public async Task ConsumeAsyncSucceedsOnceWithCorrectVersion()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetPasskeyChallengeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var challenge = CreateAuthenticationChallenge(user.Id);
         await repository.CreateAsync(challenge);
 
@@ -109,9 +109,9 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
     public async Task ConsumeAsyncRejectsStaleOrWrongVersion()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetPasskeyChallengeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var challenge = CreateAuthenticationChallenge(user.Id);
         await repository.CreateAsync(challenge);
 
@@ -124,9 +124,9 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
     public async Task ConsumeAsyncRejectsAlreadyConsumedChallenge()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetPasskeyChallengeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var challenge = CreateAuthenticationChallenge(user.Id);
         await repository.CreateAsync(challenge);
         await repository.ConsumeAsync(challenge.Id, challenge.Version, DateTimeOffset.UtcNow);
@@ -141,9 +141,9 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
     public async Task ConsumeAsyncRejectsExpiredChallenge()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetPasskeyChallengeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var now = DateTimeOffset.UtcNow;
         var challenge = CreateAuthenticationChallenge(user.Id, createdAt: now.AddMinutes(-10), expiresAt: now.AddMinutes(-1));
         await repository.CreateAsync(challenge);
@@ -157,9 +157,9 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
     public async Task SuccessfulConsumePersistsConsumedAt()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetPasskeyChallengeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var challenge = CreateAuthenticationChallenge(user.Id);
         var consumedAt = DateTimeOffset.UtcNow;
         await repository.CreateAsync(challenge);
@@ -182,9 +182,9 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
                 Assert.Ignore("Provider does not register IAshlarTransactionProvider.");
             }
 
-            var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+            var userRepository = GetUserRepository(scope.ServiceProvider);
             var repository = GetPasskeyChallengeRepository(scope.ServiceProvider);
-            var user = await CreateUserAsync(identityRepository);
+            var user = await CreateUserAsync(userRepository);
             var challenge = CreateAuthenticationChallenge(user.Id);
             challengeId = challenge.Id;
 

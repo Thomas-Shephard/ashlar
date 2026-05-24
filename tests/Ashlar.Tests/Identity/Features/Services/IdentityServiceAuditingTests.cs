@@ -10,7 +10,7 @@ internal sealed class IdentityServiceAuditingTests
     public async Task ManualConstructionWithAuditSinkShouldEmitEvents()
     {
         var sinkMock = new Mock<ISecurityEventSink>();
-        var repositoryMock = new Mock<IIdentityRepository>();
+        var repositoryMock = new Mock<IUserRepository>();
         var providers = new List<IAuthenticationProvider>
         {
             new OidcAuthenticationProvider("Google")

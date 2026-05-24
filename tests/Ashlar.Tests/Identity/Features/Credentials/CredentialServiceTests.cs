@@ -9,7 +9,8 @@ namespace Ashlar.Tests.Identity.Features.Credentials;
 
 internal sealed class CredentialServiceTests
 {
-    private Mock<IIdentityRepository> _repositoryMock;
+    private Mock<IUserRepository> _repositoryMock;
+    private Mock<ICredentialRepository> _credentialRepositoryMock;
     private Mock<ISecretProtector> _secretProtectorMock;
     private FakeTimeProvider _timeProvider;
     private CredentialService _service;
@@ -17,7 +18,8 @@ internal sealed class CredentialServiceTests
     [SetUp]
     public void SetUp()
     {
-        _repositoryMock = new Mock<IIdentityRepository>();
+        _repositoryMock = new Mock<IUserRepository>();
+        _credentialRepositoryMock = new Mock<ICredentialRepository>();
         _secretProtectorMock = new Mock<ISecretProtector>();
         _timeProvider = new FakeTimeProvider();
 
@@ -26,6 +28,7 @@ internal sealed class CredentialServiceTests
 
         _service = new CredentialService(
             _repositoryMock.Object,
+            _credentialRepositoryMock.Object,
             _secretProtectorMock.Object,
             new NullTransactionProvider(),
             new CredentialServiceDependencies(TimeProvider: _timeProvider));
@@ -42,7 +45,7 @@ internal sealed class CredentialServiceTests
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
         var providerMock = new Mock<IAuthenticationProvider>();
 
-        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
@@ -61,7 +64,7 @@ internal sealed class CredentialServiceTests
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, NewMetadata: "new");
         var providerMock = new Mock<IAuthenticationProvider>();
 
-        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
@@ -89,7 +92,7 @@ internal sealed class CredentialServiceTests
 
         await _service.LinkCredentialAsync(userId, assertionMock.Object, providerMock.Object);
 
-        _repositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
+        _credentialRepositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.CreatedAt == testTime), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -105,7 +108,7 @@ internal sealed class CredentialServiceTests
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(credential.UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = credential.UserId, Email = "test@example.com" });
-        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(credential.UserId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(credential.UserId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
 
         var resolvedCredential = await ResolveCredentialAsync(credential);
@@ -136,7 +139,7 @@ internal sealed class CredentialServiceTests
             CredentialValue = "protected(token)"
         };
 
-        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
 
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -188,7 +191,7 @@ internal sealed class CredentialServiceTests
         providerMock.Setup(p => p.GetProviderKey(assertionMock.Object, userId)).Returns(userId.ToString("D"));
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
-        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", userId.ToString("D"), It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", userId.ToString("D"), It.IsAny<CancellationToken>()))
             .ReturnsAsync(CreateCredential(userId));
 
         var (resolvedUser, _, _, _) = await _service.ResolveAsync(context, assertionMock.Object, providerMock.Object);
@@ -219,7 +222,7 @@ internal sealed class CredentialServiceTests
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = credential.UserId, Email = "test@example.com" });
-        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
 
         var (_, resolvedCredential, _, _) = await _service.ResolveAsync(credential.UserId, new Mock<IAuthenticationAssertion>().Object, providerMock.Object);
@@ -248,7 +251,7 @@ internal sealed class CredentialServiceTests
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(credential.UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = credential.UserId, Email = "test@example.com" });
-        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(credential.UserId, ProviderType.Local, AuthenticationProviderKey.Local.Name, "key", It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(credential.UserId, ProviderType.Local, AuthenticationProviderKey.Local.Name, "key", It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), credential.UserId)).Returns("key");
 
@@ -281,12 +284,12 @@ internal sealed class CredentialServiceTests
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, NewMetadata: "new");
         var providerMock = new Mock<IAuthenticationProvider>();
 
-        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
-        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.Metadata == "new"), "v1", It.IsAny<CancellationToken>()), Times.Once);
+        _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.Metadata == "new"), "v1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -306,13 +309,13 @@ internal sealed class CredentialServiceTests
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
         var providerMock = new Mock<IAuthenticationProvider>();
 
-        _repositoryMock.Setup(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         var consumed = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
         Assert.That(consumed, Is.True);
-        _repositoryMock.Verify(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()), Times.Once);
+        _credentialRepositoryMock.Verify(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -332,7 +335,7 @@ internal sealed class CredentialServiceTests
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
         var providerMock = new Mock<IAuthenticationProvider>();
 
-        _repositoryMock.Setup(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         var consumed = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
@@ -358,7 +361,7 @@ internal sealed class CredentialServiceTests
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.BestEffort);
         var providerMock = new Mock<IAuthenticationProvider>();
 
-        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         var success = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
@@ -384,7 +387,7 @@ internal sealed class CredentialServiceTests
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.Required);
         var providerMock = new Mock<IAuthenticationProvider>();
 
-        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         var success = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
@@ -410,7 +413,7 @@ internal sealed class CredentialServiceTests
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.BestEffort);
         var providerMock = new Mock<IAuthenticationProvider>();
 
-        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("DB Error"));
 
         var success = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
@@ -465,7 +468,7 @@ internal sealed class CredentialServiceTests
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.Required);
         var providerMock = new Mock<IAuthenticationProvider>();
 
-        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("DB Error"));
 
         var success = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
@@ -491,7 +494,7 @@ internal sealed class CredentialServiceTests
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.Required);
         var providerMock = new Mock<IAuthenticationProvider>();
 
-        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OperationCanceledException());
 
         Assert.ThrowsAsync<OperationCanceledException>(async () => await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object));
@@ -515,7 +518,7 @@ internal sealed class CredentialServiceTests
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true, CredentialUpdateRequirement: CredentialUpdateRequirement.BestEffort);
         var providerMock = new Mock<IAuthenticationProvider>();
 
-        _repositoryMock.Setup(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         var success = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
@@ -560,7 +563,7 @@ internal sealed class CredentialServiceTests
         await _service.UpdateCredentialUsageAsync(unprotectedCredential, originalCredential, result, providerMock.Object);
 
         // Verify that UpdateCredentialAsync was called with the original protected value, NOT the plain-text one.
-        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.CredentialValue == "protected-original"), "v1", It.IsAny<CancellationToken>()), Times.Once);
+        _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.CredentialValue == "protected-original"), "v1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -588,7 +591,7 @@ internal sealed class CredentialServiceTests
         await _service.UpdateCredentialUsageAsync(unprotectedCredential, null, result, providerMock.Object);
 
         // Verify that UpdateCredentialAsync was called with the re-protected value.
-        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.CredentialValue == "re-protected-secret"), "v1", It.IsAny<CancellationToken>()), Times.Once);
+        _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.CredentialValue == "re-protected-secret"), "v1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -618,7 +621,7 @@ internal sealed class CredentialServiceTests
         await _service.UpdateCredentialUsageAsync(unprotectedCredential, null, result, providerMock.Object);
 
         // Verify that UpdateCredentialAsync was NEVER called because we couldn't guarantee protection.
-        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -660,7 +663,7 @@ internal sealed class CredentialServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(success, Is.False);
-            _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
@@ -690,7 +693,7 @@ internal sealed class CredentialServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(success, Is.False);
-            _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
@@ -703,7 +706,7 @@ internal sealed class CredentialServiceTests
 
         await _service.ResolveAsync(Guid.NewGuid(), new Mock<IAuthenticationAssertion>().Object, providerMock.Object);
 
-        _repositoryMock.Verify(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), "Mock", It.Is<string>(s => !string.IsNullOrEmpty(s)), It.IsAny<CancellationToken>()), Times.Once);
+        _credentialRepositoryMock.Verify(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), "Mock", It.Is<string>(s => !string.IsNullOrEmpty(s)), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -723,7 +726,7 @@ internal sealed class CredentialServiceTests
             CredentialValue = "bad-value"
         };
 
-        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
 
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -739,6 +742,7 @@ internal sealed class CredentialServiceTests
         var logger = new RecordingLogger<CredentialService>();
         var service = new CredentialService(
             _repositoryMock.Object,
+            _credentialRepositoryMock.Object,
             _secretProtectorMock.Object,
             new NullTransactionProvider(),
             new CredentialServiceDependencies(TimeProvider: _timeProvider, Logger: logger));
@@ -765,7 +769,7 @@ internal sealed class CredentialServiceTests
         // to avoid leaking whether the user/credential exists via side channels.
 
         var userId = Guid.NewGuid();
-        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserCredential?)null);
 
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -784,6 +788,7 @@ internal sealed class CredentialServiceTests
         var logger = new RecordingLogger<CredentialService>();
         var service = new CredentialService(
             _repositoryMock.Object,
+            _credentialRepositoryMock.Object,
             _secretProtectorMock.Object,
             new NullTransactionProvider(),
             new CredentialServiceDependencies(TimeProvider: _timeProvider, Logger: logger));
@@ -820,7 +825,7 @@ internal sealed class CredentialServiceTests
             CredentialValue = null
         };
 
-        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
 
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -863,7 +868,7 @@ internal sealed class CredentialServiceTests
         await _service.LinkCredentialAsync(userId, assertionMock.Object, providerMock.Object, "raw", credentialMetadata);
         var afterLink = _timeProvider.GetUtcNow();
 
-        _repositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
+        _credentialRepositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.UserId == userId &&
             c.ProviderKey == "new-key" &&
             c.CredentialValue == "protected-prepared" &&
@@ -894,7 +899,7 @@ internal sealed class CredentialServiceTests
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
-        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
 
         var providerMock = CreateProviderMock();
@@ -961,12 +966,12 @@ internal sealed class CredentialServiceTests
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, NewMetadata: "new");
         var providerMock = new Mock<IAuthenticationProvider>();
 
-        _repositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
-        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
+        _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
             c.Metadata == "new" &&
             c.UpdatedAt != null), "v1", It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -984,7 +989,7 @@ internal sealed class CredentialServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(credential.UpdatedAt, Is.Null);
-            _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
@@ -999,7 +1004,7 @@ internal sealed class CredentialServiceTests
 
         await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
-        _repositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -1183,35 +1188,42 @@ internal sealed class CredentialServiceTests
     public void ConstructorShouldThrowOnNullRepository()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new CredentialService(null!, _secretProtectorMock.Object, new NullTransactionProvider()));
+        Assert.Throws<ArgumentNullException>(() => _ = new CredentialService(null!, _credentialRepositoryMock.Object, _secretProtectorMock.Object, new NullTransactionProvider()));
+    }
+
+    [Test]
+    public void ConstructorShouldThrowOnNullCredentialRepository()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _ = new CredentialService(_repositoryMock.Object, null!, _secretProtectorMock.Object, new NullTransactionProvider()));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullSecretProtector()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new CredentialService(_repositoryMock.Object, null!, new NullTransactionProvider()));
+        Assert.Throws<ArgumentNullException>(() => _ = new CredentialService(_repositoryMock.Object, _credentialRepositoryMock.Object, null!, new NullTransactionProvider()));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullTransactionProvider()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object, null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new CredentialService(_repositoryMock.Object, _credentialRepositoryMock.Object, _secretProtectorMock.Object, null!));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullDependencies()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new CredentialService(_repositoryMock.Object, _secretProtectorMock.Object, new NullTransactionProvider(), null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new CredentialService(_repositoryMock.Object, _credentialRepositoryMock.Object, _secretProtectorMock.Object, new NullTransactionProvider(), null!));
     }
 
     private async Task<UserCredential?> ResolveCredentialAsync(UserCredential credential)
     {
         _repositoryMock.Setup(r => r.GetUserByIdAsync(credential.UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = credential.UserId, Email = "test@example.com" });
-        _repositoryMock.Setup(r => r.GetCredentialForUserAsync(credential.UserId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
+        _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(credential.UserId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
 
         var providerMock = CreateProviderMock();

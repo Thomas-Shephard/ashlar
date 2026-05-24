@@ -25,7 +25,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
     private readonly IAuthenticationRateLimiter? _rateLimiter;
-    private readonly IIdentityRepository? _identityRepository;
+    private readonly IUserRepository? _userRepository;
     private readonly SecurityNotificationEmitter _notifications;
 
     /// <summary>
@@ -51,7 +51,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         _timeProvider = dependencies?.TimeProvider ?? TimeProvider.System;
         _securityEvents = new SecurityEventEmitter(dependencies?.SecurityEventSink, _timeProvider);
         _rateLimiter = dependencies?.RateLimiter;
-        _identityRepository = dependencies?.IdentityRepository;
+        _userRepository = dependencies?.UserRepository;
         _notifications = new SecurityNotificationEmitter(dependencies?.NotificationService);
     }
 
@@ -359,9 +359,9 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
             Properties = new Dictionary<string, string> { [HandshakeIdProperty] = handshake.Id.ToString() }
         }, cancellationToken);
 
-        if (_identityRepository != null)
+        if (_userRepository != null)
         {
-            var user = await _identityRepository.GetUserByIdAsync(handshake.UserId, cancellationToken);
+            var user = await _userRepository.GetUserByIdAsync(handshake.UserId, cancellationToken);
             if (user != null)
             {
                 await _notifications.NotifyAsync(SecurityNotificationType.SuspiciousAuthenticationAttempt, user, _timeProvider.GetUtcNow(), cancellationToken: cancellationToken);
@@ -449,12 +449,12 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
 /// <param name="TimeProvider">The time provider value.</param>
 /// <param name="SecurityEventSink">The security event sink value.</param>
 /// <param name="RateLimiter">The rate limiter value.</param>
-/// <param name="IdentityRepository">The identity repository value.</param>
+/// <param name="UserRepository">Looks up users when operations need notification context.</param>
 /// <param name="NotificationService">The notification service value.</param>
 public sealed record AuthenticationHandshakeServiceDependencies(
     IOptions<AuthenticationHandshakeOptions>? Options = null,
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,
     IAuthenticationRateLimiter? RateLimiter = null,
-    IIdentityRepository? IdentityRepository = null,
+    IUserRepository? UserRepository = null,
     ISecurityNotificationService? NotificationService = null);

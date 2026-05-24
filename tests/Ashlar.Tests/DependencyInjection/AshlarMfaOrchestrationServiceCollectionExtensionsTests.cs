@@ -26,7 +26,8 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
     public void AddAshlarMfaOrchestrationResolvesOrchestratorWhenRequiredDependenciesArePresent()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IIdentityRepository>());
+        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddAshlarMfaOrchestration();
@@ -82,7 +83,7 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
     public void AddAshlarRequireMfaWhenCredentialExistsRegistersCompositePolicy()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IIdentityRepository>());
+        services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddAshlarRequireMfaWhenCredentialExists(options =>
         {
             options.CredentialProviderKeys.Add(new AuthenticationProviderKey(ProviderType.Mfa, "totp"));

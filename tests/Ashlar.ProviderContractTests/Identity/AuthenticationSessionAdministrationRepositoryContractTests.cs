@@ -9,10 +9,10 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
     public async Task SearchAuthenticationSessionsSearchesAcrossMultipleUsersAndFiltersByUser()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var sessionRepository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var firstUser = await CreateUserAsync(identityRepository);
-        var secondUser = await CreateUserAsync(identityRepository);
+        var firstUser = await CreateUserAsync(userRepository);
+        var secondUser = await CreateUserAsync(userRepository);
         var first = CreateSession(firstUser.Id, createdAt: BaseTime.AddMinutes(1));
         var second = CreateSession(secondUser.Id, createdAt: BaseTime.AddMinutes(2));
         await sessionRepository.CreateSessionAsync(first);
@@ -34,12 +34,12 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
     public async Task SearchAuthenticationSessionsFiltersTenantScopes()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var sessionRepository = GetAuthenticationSessionRepository(scope.ServiceProvider);
         var tenantId = Guid.NewGuid();
-        var tenantUser = await CreateUserAsync(identityRepository, tenantId: tenantId);
-        var globalUser = await CreateUserAsync(identityRepository);
-        var otherTenantUser = await CreateUserAsync(identityRepository, tenantId: Guid.NewGuid());
+        var tenantUser = await CreateUserAsync(userRepository, tenantId: tenantId);
+        var globalUser = await CreateUserAsync(userRepository);
+        var otherTenantUser = await CreateUserAsync(userRepository, tenantId: Guid.NewGuid());
         var tenantSession = CreateSession(tenantUser.Id, tenantId: tenantId);
         var globalSession = CreateSession(globalUser.Id);
         var otherTenantSession = CreateSession(otherTenantUser.Id, tenantId: otherTenantUser.TenantId);
@@ -66,9 +66,9 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
     public async Task SearchAuthenticationSessionsFiltersActiveRevokedAndExpiredCorrectly()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var sessionRepository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var active = CreateSession(user.Id);
         var revoked = CreateSession(user.Id);
         var expired = CreateSession(user.Id, expiresAt: Now.AddMilliseconds(-1));
@@ -98,9 +98,9 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
     public async Task SearchAuthenticationSessionsFiltersByPrimaryProviderAndDateRanges()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var sessionRepository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var matching = CreateSession(user.Id, createdAt: BaseTime.AddMinutes(10), expiresAt: BaseTime.AddHours(3));
         matching.PrimaryProvider = AuthenticationProviderKey.MagicLink;
         matching.LastSeenAt = BaseTime.AddMinutes(20);
@@ -141,9 +141,9 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
     public async Task SearchAuthenticationSessionsOrdersByLastSeenCreatedAndIdDescending()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var sessionRepository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var noLastSeen = CreateSession(user.Id, id: Guid.Parse("00000000-0000-0000-0000-000000000003"), createdAt: BaseTime.AddMinutes(10));
         var olderLastSeen = CreateSession(user.Id, id: Guid.Parse("00000000-0000-0000-0000-000000000001"), createdAt: BaseTime.AddMinutes(1));
         olderLastSeen.LastSeenAt = BaseTime.AddMinutes(20);
@@ -165,9 +165,9 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
     public async Task GetAuthenticationSessionReturnsDetailByIdAndMissingReturnsNull()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var sessionRepository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var session = CreateSession(user.Id, tenantId: Guid.NewGuid());
         session.AuthenticatedAt = BaseTime.AddMinutes(1);
         session.PrimaryProvider = AuthenticationProviderKey.Local;
@@ -202,9 +202,9 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
     public async Task AuthenticationSessionAdministrationDoesNotReturnTokenHash()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var sessionRepository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var session = CreateSession(user.Id, tokenHash: "sha256:secret-token-hash");
         await sessionRepository.CreateSessionAsync(session);
 

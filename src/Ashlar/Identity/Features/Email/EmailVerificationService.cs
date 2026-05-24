@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.Identity.Features.Email;
 
 /// <summary>
-/// Provides email verification service behavior.
+/// Issues and confirms one-time email verification tokens.
 /// </summary>
 internal sealed class EmailVerificationService : IEmailVerificationService
 {
@@ -30,7 +30,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
     /// <summary>
     /// Initializes a new instance of the email verification service class.
     /// </summary>
-    /// <param name="dependencies">The dependencies value.</param>
+    /// <param name="dependencies">The dependencies required by the email verification workflow.</param>
     public EmailVerificationService(EmailVerificationServiceDependencies dependencies)
     {
         ArgumentNullException.ThrowIfNull(dependencies);
@@ -47,11 +47,11 @@ internal sealed class EmailVerificationService : IEmailVerificationService
     }
 
     /// <summary>
-    /// Performs the request verification <see langword="async" /> operation and returns the result.
+    /// Requests a verification email for an active, unverified user.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">The verification request.</param>
+    /// <param name="cancellationToken">A token that can cancel the request.</param>
+    /// <returns>A success result when a verification message is queued; otherwise, a failure describing the problem.</returns>
     public async Task<Result> RequestVerificationAsync(EmailVerificationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -69,7 +69,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
             return Result.Failure(AshlarFailureCodes.InvalidCallbackUri, $"The URI '{request.CallbackBaseUri}' is not allowed.");
         }
 
-        var user = await _identityContext.Repository.GetUserByIdAsync(request.UserId, cancellationToken);
+        var user = await _identityContext.UserRepository.GetUserByIdAsync(request.UserId, cancellationToken);
         if (user is not { IsActive: true })
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -132,8 +132,8 @@ internal sealed class EmailVerificationService : IEmailVerificationService
 
         await using var transaction = await _identityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
-        await _identityContext.Repository.RevokeCredentialsAsync(user.Id, ProviderType.Internal, ProviderName, cancellationToken);
-        await _identityContext.Repository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
+        await _identityContext.CredentialRepository.RevokeCredentialsAsync(user.Id, ProviderType.Internal, ProviderName, cancellationToken);
+        await _identityContext.CredentialRepository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
 
         var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(request.CallbackBaseUri, _options.Value.TokenParameterName, token, user.Id, _options.Value.UserIdParameterName);
         var message = IdentityUrlHelper.FormatEmailBody(_options.Value.EmailTextTemplate, callbackUrl, "Verification token", token);
@@ -162,11 +162,11 @@ internal sealed class EmailVerificationService : IEmailVerificationService
     }
 
     /// <summary>
-    /// Performs the confirm verification <see langword="async" /> operation and returns the result.
+    /// Confirms a verification token and marks the user's email address as verified.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">The confirmation request containing the token and user id.</param>
+    /// <param name="cancellationToken">A token that can cancel confirmation.</param>
+    /// <returns>A success result when the token is consumed; otherwise, a failure describing the problem.</returns>
     public async Task<Result> ConfirmVerificationAsync(ConfirmEmailVerificationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -195,7 +195,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         }
 
         var tokenHash = _tokenContext.Hasher.HashToken(token);
-        var credential = await _identityContext.Repository.GetCredentialForUserAsync(userId, ProviderType.Internal, ProviderName, tokenHash, cancellationToken);
+        var credential = await _identityContext.CredentialRepository.GetCredentialForUserAsync(userId, ProviderType.Internal, ProviderName, tokenHash, cancellationToken);
 
         var now = _timeProvider.GetUtcNow();
         if (credential == null || !credential.IsAvailable(now))
@@ -213,7 +213,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
 
         await using var transaction = await _identityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
-        var consumed = await _identityContext.Repository.ConsumeCredentialAsync(credential.Id, credential.Version, cancellationToken);
+        var consumed = await _identityContext.CredentialRepository.ConsumeCredentialAsync(credential.Id, credential.Version, cancellationToken);
         if (!consumed)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -227,7 +227,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
             return Result.Failure(AshlarFailureCodes.TokenConsumptionFailed, "Invalid or expired token.");
         }
 
-        var user = await _identityContext.Repository.GetUserByIdAsync(userId, cancellationToken);
+        var user = await _identityContext.UserRepository.GetUserByIdAsync(userId, cancellationToken);
         if (user is not { IsActive: true })
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -242,7 +242,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         }
 
         var updatedUser = new UpdatedUserWrapper(user, now);
-        await _identityContext.Repository.UpdateUserAsync(updatedUser, cancellationToken);
+        await _identityContext.UserRepository.UpdateUserAsync(updatedUser, cancellationToken);
 
         transaction.OnCommitted(async ct =>
         {
@@ -266,31 +266,31 @@ internal sealed class EmailVerificationService : IEmailVerificationService
     private sealed class UpdatedUserWrapper(IUser original, DateTimeOffset? emailVerifiedAt) : ITenantUser, IHasAuditMetadata
     {
         /// <summary>
-        /// Gets or sets the id value.
+        /// Gets the user identifier.
         /// </summary>
         public Guid Id => original.Id;
         /// <summary>
-        /// Gets or sets the email value.
+        /// Gets the user's email address.
         /// </summary>
         public string Email => original.Email;
         /// <summary>
-        /// Gets or sets the name value.
+        /// Gets the user's display name.
         /// </summary>
         public string? Name => original.Name;
         /// <summary>
-        /// Gets or sets the is active value.
+        /// Gets whether the user is active.
         /// </summary>
         public bool IsActive => original.IsActive;
         /// <summary>
-        /// Gets or sets the tenant id value.
+        /// Gets the tenant that owns the user.
         /// </summary>
         public Guid? TenantId => (original as ITenantUser)?.TenantId;
         /// <summary>
-        /// Gets or sets the email verified at value.
+        /// Gets the timestamp assigned when the email address is verified.
         /// </summary>
         public DateTimeOffset? EmailVerifiedAt { get; } = emailVerifiedAt;
         /// <summary>
-        /// Gets or sets the created at value.
+        /// Gets the original user creation timestamp.
         /// </summary>
         public DateTimeOffset CreatedAt => (original as IHasAuditMetadata)?.CreatedAt ?? default;
         public DateTimeOffset? UpdatedAt
@@ -306,13 +306,13 @@ internal sealed class EmailVerificationService : IEmailVerificationService
 }
 
 /// <summary>
-/// Provides email verification service dependencies behavior.
+/// Groups dependencies used by <see cref="EmailVerificationService" />.
 /// </summary>
-/// <param name="identityContext">The identity context value.</param>
-/// <param name="tokenContext">The token context value.</param>
-/// <param name="infrastructure">The infrastructure value.</param>
-/// <param name="audit">The audit value.</param>
-/// <param name="options">The options value.</param>
+/// <param name="identityContext">User, credential, identity, and transaction dependencies.</param>
+/// <param name="tokenContext">Token generation and hashing dependencies.</param>
+/// <param name="infrastructure">Email, rate limiting, and URI validation dependencies.</param>
+/// <param name="audit">Time, security event, and notification dependencies.</param>
+/// <param name="options">Optional email verification configuration.</param>
 internal sealed class EmailVerificationServiceDependencies(
     IdentityContext identityContext,
     SecureTokenContext tokenContext,
@@ -321,47 +321,47 @@ internal sealed class EmailVerificationServiceDependencies(
     IOptions<EmailVerificationOptions>? options = null)
 {
     /// <summary>
-    /// Gets the configured dependency value.
+    /// Gets identity persistence and transaction dependencies.
     /// </summary>
     public IdentityContext IdentityContext { get; } = identityContext ?? throw new ArgumentNullException(nameof(identityContext));
     /// <summary>
-    /// Gets the configured dependency value.
+    /// Gets token generation and hashing dependencies.
     /// </summary>
     public SecureTokenContext TokenContext { get; } = tokenContext ?? throw new ArgumentNullException(nameof(tokenContext));
     /// <summary>
-    /// Gets the configured dependency value.
+    /// Gets email, rate limiting, and URI validation dependencies.
     /// </summary>
     public IdentityInfrastructureContext Infrastructure { get; } = infrastructure ?? throw new ArgumentNullException(nameof(infrastructure));
     /// <summary>
-    /// Gets the configured dependency value.
+    /// Gets audit and notification dependencies.
     /// </summary>
     public IdentityAuditContext Audit { get; } = audit ?? throw new ArgumentNullException(nameof(audit));
     /// <summary>
-    /// Gets or sets the options value.
+    /// Gets email verification options.
     /// </summary>
     public IOptions<EmailVerificationOptions>? Options { get; } = options;
     /// <summary>
-    /// Gets or sets the email sender value.
+    /// Gets the email sender.
     /// </summary>
     public IEmailSender EmailSender => Infrastructure.EmailSender;
     /// <summary>
-    /// Gets or sets the rate limiter value.
+    /// Gets the authentication rate limiter.
     /// </summary>
     public IAuthenticationRateLimiter RateLimiter => Infrastructure.RateLimiter;
     /// <summary>
-    /// Gets or sets the uri validator value.
+    /// Gets the URI validator.
     /// </summary>
     public IUriValidator UriValidator => Infrastructure.UriValidator;
     /// <summary>
-    /// Gets or sets the time provider value.
+    /// Gets the time provider.
     /// </summary>
     public TimeProvider TimeProvider => Audit.TimeProvider;
     /// <summary>
-    /// Gets or sets the security event sink value.
+    /// Gets the security event sink.
     /// </summary>
     public ISecurityEventSink SecurityEventSink => Audit.SecurityEventSink;
     /// <summary>
-    /// Gets or sets the notification service value.
+    /// Gets the security notification service.
     /// </summary>
     public ISecurityNotificationService? NotificationService => Audit.NotificationService;
 }

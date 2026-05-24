@@ -5,9 +5,9 @@ using Npgsql;
 
 namespace Ashlar.Postgres.Tests.Identity;
 
-internal sealed class PostgresIdentityRepositoryTests : PostgresTestBase
+internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBase
 {
-    private IServiceProvider _serviceProvider;
+    private IServiceProvider? _serviceProvider;
 
     public override async Task OneTimeSetUp()
     {
@@ -33,13 +33,35 @@ internal sealed class PostgresIdentityRepositoryTests : PostgresTestBase
         }
     }
 
-    private PostgresIdentityRepository GetRepository() => (PostgresIdentityRepository)_serviceProvider.GetRequiredService<IIdentityRepository>();
+    private RepositoryFacade GetRepository()
+    {
+        return new RepositoryFacade(
+            _serviceProvider!.GetRequiredService<IUserRepository>(),
+            _serviceProvider!.GetRequiredService<ICredentialRepository>());
+    }
 
     [Test]
     public void ConstructorNullDataSourceShouldThrow()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new PostgresIdentityRepository(null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new PostgresUserRepository(null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new PostgresCredentialRepository(null!));
+    }
+
+    [Test]
+    public void ConstructorWithCustomTimeProviderShouldSucceed()
+    {
+        var connectionProvider = new PostgresTransactionManager(GetDataSource());
+
+        Assert.DoesNotThrow(() => _ = new PostgresCredentialRepository(connectionProvider, TimeProvider.System));
+    }
+
+    [Test]
+    public void ConstructorWithoutCustomTimeProviderShouldSucceed()
+    {
+        var connectionProvider = new PostgresTransactionManager(GetDataSource());
+
+        Assert.DoesNotThrow(() => _ = new PostgresCredentialRepository(connectionProvider));
     }
 
     [Test]
@@ -700,7 +722,7 @@ internal sealed class PostgresIdentityRepositoryTests : PostgresTestBase
         Assert.That(fetched.Name, Is.EqualTo("Updated"));
     }
 
-    private static async Task<AshlarPostgresUser> CreateTestUser(PostgresIdentityRepository repo)
+    private static async Task<AshlarPostgresUser> CreateTestUser(RepositoryFacade repo)
     {
         var user = new AshlarPostgresUser
         {
@@ -726,6 +748,22 @@ internal sealed class PostgresIdentityRepositoryTests : PostgresTestBase
             CreatedAt = DateTimeOffset.UtcNow,
             Status = CredentialStatus.Active
         };
+    }
+
+    private sealed class RepositoryFacade(IUserRepository users, ICredentialRepository credentials) : IUserRepository, ICredentialRepository
+    {
+        public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default) => users.GetUserByEmailAsync(email, tenantId, cancellationToken);
+        public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => users.GetUserByIdAsync(userId, cancellationToken);
+        public Task<IUser?> GetUserByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default) => users.GetUserByProviderKeyAsync(type, providerName, providerKey, cancellationToken);
+        public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default) => users.CreateUserAsync(user, cancellationToken);
+        public Task UpdateUserAsync(IUser user, CancellationToken cancellationToken = default) => users.UpdateUserAsync(user, cancellationToken);
+        public Task<UserCredential?> GetCredentialForUserAsync(Guid userId, ProviderType type, string providerName, string? providerKey = null, CancellationToken cancellationToken = default) => credentials.GetCredentialForUserAsync(userId, type, providerName, providerKey, cancellationToken);
+        public Task<IReadOnlyList<UserCredential>> ListCredentialsForUserAsync(Guid userId, bool activeOnly = true, CancellationToken cancellationToken = default) => credentials.ListCredentialsForUserAsync(userId, activeOnly, cancellationToken);
+        public Task CreateCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default) => credentials.CreateCredentialAsync(credential, cancellationToken);
+        public Task CreateOrReplaceCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default) => credentials.CreateOrReplaceCredentialAsync(credential, cancellationToken);
+        public Task<bool> UpdateCredentialAsync(UserCredential credential, string expectedVersion, CancellationToken cancellationToken = default) => credentials.UpdateCredentialAsync(credential, expectedVersion, cancellationToken);
+        public Task<bool> ConsumeCredentialAsync(Guid credentialId, string expectedVersion, CancellationToken cancellationToken = default) => credentials.ConsumeCredentialAsync(credentialId, expectedVersion, cancellationToken);
+        public Task<int> RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default) => credentials.RevokeCredentialsAsync(userId, type, providerName, cancellationToken);
     }
 
     private sealed class CredentialRevocationRow

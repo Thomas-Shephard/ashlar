@@ -26,7 +26,8 @@ internal sealed class EmailChangeServiceTests
     [Test]
     public void ConstructorUsesDefaultOptionsWhenOptionsAreNull()
     {
-        var identityContext = new IdentityContext(new InMemoryIdentityRepository(), Mock.Of<IIdentityService>(), new NullTransactionProvider());
+        var repository = new InMemoryUserCredentialStore();
+        var identityContext = new IdentityContext(repository, repository, Mock.Of<IIdentityService>(), new NullTransactionProvider());
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), new Sha256TokenHasher());
         var infrastructure = new IdentityInfrastructureContext(Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), Mock.Of<IUriValidator>());
         var audit = new IdentityAuditContext(new FakeTimeProvider(), new RecordingSecurityEventSink());
@@ -40,7 +41,8 @@ internal sealed class EmailChangeServiceTests
     [Test]
     public void ConstructorAcceptsNonNullLogger()
     {
-        var identityContext = new IdentityContext(new InMemoryIdentityRepository(), Mock.Of<IIdentityService>(), new NullTransactionProvider());
+        var repository = new InMemoryUserCredentialStore();
+        var identityContext = new IdentityContext(repository, repository, Mock.Of<IIdentityService>(), new NullTransactionProvider());
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), new Sha256TokenHasher());
         var infrastructure = new IdentityInfrastructureContext(Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), Mock.Of<IUriValidator>());
         var audit = new IdentityAuditContext(new FakeTimeProvider(), new RecordingSecurityEventSink());
@@ -79,7 +81,7 @@ internal sealed class EmailChangeServiceTests
 
         Assert.That(result.Succeeded, Is.True, result.FailureReason);
         var message = fixture.EmailSender.Messages.Single();
-        var credential = fixture.IdentityRepository.Credentials.Single();
+        var credential = fixture.UserCredentialStore.Credentials.Single();
 
         using (Assert.EnterMultipleScope())
         {
@@ -231,7 +233,7 @@ internal sealed class EmailChangeServiceTests
         fixture.Audit.Events.Clear();
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
-        var updatedUser = await fixture.IdentityRepository.GetUserByIdAsync(user.Id);
+        var updatedUser = await fixture.UserCredentialStore.GetUserByIdAsync(user.Id);
         var securityEvent = fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.EmailChanged);
 
         Assert.That(updatedUser, Is.Not.Null);
@@ -251,7 +253,7 @@ internal sealed class EmailChangeServiceTests
         var user = CreateUser();
         var fixture = CreateFixture(user);
         await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
-        var credential = fixture.IdentityRepository.Credentials.Single();
+        var credential = fixture.UserCredentialStore.Credentials.Single();
         credential.CredentialValue = fixture.SecretProtector.Protect(" changed@example.com\r\nBcc: attacker@example.com ");
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
@@ -300,7 +302,7 @@ internal sealed class EmailChangeServiceTests
 
         // Now someone else takes the email
         var otherUser = CreateUser("new@example.com") with { TenantId = tenantId };
-        fixture.IdentityRepository.Users.Add(otherUser);
+        fixture.UserCredentialStore.Users.Add(otherUser);
         fixture.Audit.Events.Clear();
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
@@ -386,7 +388,7 @@ internal sealed class EmailChangeServiceTests
         var fixture = CreateFixture(user);
         await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
-        fixture.IdentityRepository.Users.Clear();
+        fixture.UserCredentialStore.Users.Clear();
 
         var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
 
@@ -430,7 +432,7 @@ internal sealed class EmailChangeServiceTests
         ISecretProtector? secretProtector = null)
     {
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 5, 9, 12, 0, 0, TimeSpan.Zero));
-        var identityRepository = new InMemoryIdentityRepository(users ?? [user]);
+        var UserCredentialStore = new InMemoryUserCredentialStore(users ?? [user]);
         var audit = new RecordingSecurityEventSink();
         var emailSender = new RecordingEmailSender();
         var tokenHasher = new Sha256TokenHasher();
@@ -443,13 +445,13 @@ internal sealed class EmailChangeServiceTests
         notificationService
             .Setup(n => n.NotifyAsync(It.IsAny<SecurityNotification>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(SecurityNotificationResult.Success());
-        identityRepository.ConsumeSucceeds = consumeSucceeds;
+        UserCredentialStore.ConsumeSucceeds = consumeSucceeds;
 
         var uriValidator = new Mock<IUriValidator>();
         uriValidator.Setup(v => v.IsValid(It.IsAny<Uri?>())).Returns(true);
 
         var dependencies = new EmailChangeDependencies(
-            new IdentityContext(identityRepository, Mock.Of<IIdentityService>(), transactionProvider),
+            new IdentityContext(UserCredentialStore, UserCredentialStore, Mock.Of<IIdentityService>(), transactionProvider),
             new SecureTokenContext(tokenGenerator, tokenHasher),
             new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator.Object),
             sessionRepository,
@@ -457,10 +459,10 @@ internal sealed class EmailChangeServiceTests
             new IdentityAuditContext(time, audit, notificationService.Object));
         var service = new EmailChangeService(dependencies);
 
-        return new Fixture(service, identityRepository, emailSender, audit, resolvedSecretProtector, sessionRepository, notificationService, uriValidator);
+        return new Fixture(service, UserCredentialStore, emailSender, audit, resolvedSecretProtector, sessionRepository, notificationService, uriValidator);
     }
 
-    private sealed record Fixture(EmailChangeService Service, InMemoryIdentityRepository IdentityRepository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, ISecretProtector SecretProtector, StubSessionRepository SessionRepository, Mock<ISecurityNotificationService> NotificationService, Mock<IUriValidator> UriValidator);
+    private sealed record Fixture(EmailChangeService Service, InMemoryUserCredentialStore UserCredentialStore, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, ISecretProtector SecretProtector, StubSessionRepository SessionRepository, Mock<ISecurityNotificationService> NotificationService, Mock<IUriValidator> UriValidator);
 
     private sealed class StubRateLimiter(bool requestAllowed, bool verifyAllowed) : IAuthenticationRateLimiter
     {
@@ -532,13 +534,13 @@ internal sealed class EmailChangeServiceTests
         public Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
-    private sealed class InMemoryIdentityRepository : IIdentityRepository
+    private sealed class InMemoryUserCredentialStore : IUserRepository, ICredentialRepository
     {
         public List<IUser> Users { get; } = [];
         public List<UserCredential> Credentials { get; } = [];
         public bool ConsumeSucceeds { get; set; } = true;
 
-        public InMemoryIdentityRepository(params IUser?[] users)
+        public InMemoryUserCredentialStore(params IUser?[] users)
         {
             Users.AddRange(users.OfType<IUser>());
         }

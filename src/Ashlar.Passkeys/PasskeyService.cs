@@ -9,20 +9,16 @@ namespace Ashlar.Passkeys;
 /// <summary>
 /// Provides passkey registration, authentication, and credential management operations.
 /// </summary>
-/// <param name="identityRepository">The identity repository.</param>
+/// <param name="userRepository">Stores and retrieves users.</param>
+/// <param name="credentialRepository">Stores and retrieves credentials.</param>
 /// <param name="challengeRepository">The passkey challenge repository.</param>
 /// <param name="ceremonyValidator">The passkey ceremony validator.</param>
-/// <param name="authenticationOrchestrator">The orchestrator for MFA-aware authentication flows.</param>
-/// <param name="handshakeService">The authentication handshake service.</param>
-/// <param name="tokenHasher">The secure token hasher.</param>
 /// <param name="dependencies">The passkey service dependencies.</param>
 public sealed class PasskeyService(
-    IIdentityRepository identityRepository,
+    IUserRepository userRepository,
+    ICredentialRepository credentialRepository,
     IPasskeyChallengeRepository challengeRepository,
     IPasskeyCeremonyValidator ceremonyValidator,
-    IAuthenticationOrchestrator authenticationOrchestrator,
-    IAuthenticationHandshakeService handshakeService,
-    ISecureTokenHasher tokenHasher,
     PasskeyServiceDependencies dependencies) : IPasskeyService
 {
     private const string RegistrationPurpose = "passkey-registration";
@@ -30,12 +26,13 @@ public sealed class PasskeyService(
     private const string PrimaryProviderTypeMetadataKey = "primary_provider_type";
     private const string PrimaryProviderNameMetadataKey = "primary_provider_name";
     private const string PrimaryCredentialKeyMetadataKey = "primary_credential_key";
-    private readonly IIdentityRepository _identityRepository = identityRepository;
+    private readonly IUserRepository _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
+    private readonly ICredentialRepository _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
     private readonly IPasskeyChallengeRepository _challengeRepository = challengeRepository;
     private readonly IPasskeyCeremonyValidator _ceremonyValidator = ceremonyValidator;
-    private readonly IAuthenticationOrchestrator _authenticationOrchestrator = authenticationOrchestrator;
-    private readonly IAuthenticationHandshakeService _handshakeService = handshakeService;
-    private readonly ISecureTokenHasher _tokenHasher = tokenHasher;
+    private readonly IAuthenticationOrchestrator _authenticationOrchestrator = ValidateDependencies(dependencies).AuthenticationOrchestrator;
+    private readonly IAuthenticationHandshakeService _handshakeService = ValidateDependencies(dependencies).HandshakeService;
+    private readonly ISecureTokenHasher _tokenHasher = ValidateDependencies(dependencies).TokenHasher;
     private readonly PasskeyOptions _options = ValidateDependencies(dependencies).Options.Value;
     private readonly TimeProvider _timeProvider = ValidateDependencies(dependencies).TimeProvider;
     private readonly ISecurityEventSink? _securityEventSink = ValidateDependencies(dependencies).SecurityEventSink;
@@ -47,9 +44,9 @@ public sealed class PasskeyService(
 
     public async Task<PasskeyCeremonyOptions> StartRegistrationAsync(StartPasskeyRegistrationRequest request, CancellationToken cancellationToken = default)
     {
-        var user = await _identityRepository.GetUserByIdAsync(request.UserId, cancellationToken)
+        var user = await _userRepository.GetUserByIdAsync(request.UserId, cancellationToken)
             ?? throw new InvalidOperationException("User was not found.");
-        var existing = await _identityRepository.ListCredentialsForUserAsync(request.UserId, cancellationToken: cancellationToken);
+        var existing = await _credentialRepository.ListCredentialsForUserAsync(request.UserId, cancellationToken: cancellationToken);
         var displayName = NormalizeDisplayName(request.DisplayName);
         var challengeValue = CreateChallenge();
         var optionsJson = _ceremonyValidator.CreateRegistrationOptions(_options, user, displayName, challengeValue, existing.Where(IsPasskey).ToList());
@@ -115,7 +112,7 @@ public sealed class PasskeyService(
 
         try
         {
-            await _identityRepository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
+            await _credentialRepository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -131,7 +128,7 @@ public sealed class PasskeyService(
     {
         Guid? userId = request.UserId;
         var credentials = userId.HasValue
-            ? (await _identityRepository.ListCredentialsForUserAsync(userId.Value, cancellationToken: cancellationToken)).Where(IsPasskey).ToList()
+            ? (await _credentialRepository.ListCredentialsForUserAsync(userId.Value, cancellationToken: cancellationToken)).Where(IsPasskey).ToList()
             : [];
         var challengeValue = CreateChallenge();
         var optionsJson = _ceremonyValidator.CreateAuthenticationOptions(_options, challengeValue, credentials);
@@ -212,7 +209,7 @@ public sealed class PasskeyService(
             return Result.Failure<PasskeyCeremonyOptions>(AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
-        var credentials = (await _identityRepository.ListCredentialsForUserAsync(handshake.UserId, cancellationToken: cancellationToken))
+        var credentials = (await _credentialRepository.ListCredentialsForUserAsync(handshake.UserId, cancellationToken: cancellationToken))
             .Where(IsPasskey)
             .Where(credential => !IsPrimaryCredential(handshake, credential))
             .ToList();
@@ -302,13 +299,13 @@ public sealed class PasskeyService(
 
     public async Task<IReadOnlyList<PasskeyCredentialSummary>> ListAsync(Guid userId, CancellationToken cancellationToken = default)
     {
-        var credentials = await _identityRepository.ListCredentialsForUserAsync(userId, cancellationToken: cancellationToken);
+        var credentials = await _credentialRepository.ListCredentialsForUserAsync(userId, cancellationToken: cancellationToken);
         return credentials.Where(IsPasskey).Select(ToSummary).ToList().AsReadOnly();
     }
 
     public async Task<Result> RenameAsync(RenamePasskeyRequest request, CancellationToken cancellationToken = default)
     {
-        var credential = (await _identityRepository.ListCredentialsForUserAsync(request.UserId, cancellationToken: cancellationToken)).FirstOrDefault(c => c.Id == request.CredentialId && IsPasskey(c));
+        var credential = (await _credentialRepository.ListCredentialsForUserAsync(request.UserId, cancellationToken: cancellationToken)).FirstOrDefault(c => c.Id == request.CredentialId && IsPasskey(c));
         if (credential == null)
         {
             return Result.Failure(AshlarFailureCodes.PasskeyCredentialNotFound);
@@ -317,14 +314,14 @@ public sealed class PasskeyService(
         var metadata = ReadMetadata(credential);
         metadata.DisplayName = NormalizeDisplayName(request.DisplayName);
         credential.Metadata = JsonSerializer.Serialize(metadata, PasskeyJson.Options);
-        var updated = await _identityRepository.UpdateCredentialAsync(credential, credential.Version, cancellationToken);
+        var updated = await _credentialRepository.UpdateCredentialAsync(credential, credential.Version, cancellationToken);
         await RecordAsync(AshlarSecurityEventTypes.PasskeyRenamed, updated ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure, request.UserId, updated ? null : AshlarFailureCodes.ConcurrencyConflict.Value, request.Audit, cancellationToken);
         return updated ? Result.Success() : Result.Failure(AshlarFailureCodes.ConcurrencyConflict);
     }
 
     public async Task<Result> RevokeAsync(RevokePasskeyRequest request, CancellationToken cancellationToken = default)
     {
-        var credential = (await _identityRepository.ListCredentialsForUserAsync(request.UserId, cancellationToken: cancellationToken)).FirstOrDefault(c => c.Id == request.CredentialId && IsPasskey(c));
+        var credential = (await _credentialRepository.ListCredentialsForUserAsync(request.UserId, cancellationToken: cancellationToken)).FirstOrDefault(c => c.Id == request.CredentialId && IsPasskey(c));
         if (credential == null)
         {
             return Result.Failure(AshlarFailureCodes.PasskeyCredentialNotFound);
@@ -332,7 +329,7 @@ public sealed class PasskeyService(
 
         credential.Status = CredentialStatus.Revoked;
         credential.RevokedAt = _timeProvider.GetUtcNow();
-        var updated = await _identityRepository.UpdateCredentialAsync(credential, credential.Version, cancellationToken);
+        var updated = await _credentialRepository.UpdateCredentialAsync(credential, credential.Version, cancellationToken);
         await RecordAsync(AshlarSecurityEventTypes.PasskeyRevoked, updated ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure, request.UserId, updated ? null : AshlarFailureCodes.ConcurrencyConflict.Value, request.Audit, cancellationToken);
         return updated ? Result.Success() : Result.Failure(AshlarFailureCodes.ConcurrencyConflict);
     }
@@ -364,14 +361,14 @@ public sealed class PasskeyService(
         }
 
         var user = challenge.UserId.HasValue
-            ? await _identityRepository.GetUserByIdAsync(challenge.UserId.Value, cancellationToken)
-            : await _identityRepository.GetUserByProviderKeyAsync(_options.ProviderKey.Type, _options.ProviderKey.Name, credentialId, cancellationToken);
+            ? await _userRepository.GetUserByIdAsync(challenge.UserId.Value, cancellationToken)
+            : await _userRepository.GetUserByProviderKeyAsync(_options.ProviderKey.Type, _options.ProviderKey.Name, credentialId, cancellationToken);
         if (user == null)
         {
             return CompletedPasskeyAssertion.Failed(AshlarFailureCodes.PasskeyCredentialNotFound);
         }
 
-        var credential = await _identityRepository.GetCredentialForUserAsync(user.Id, _options.ProviderKey.Type, _options.ProviderKey.Name, credentialId, cancellationToken);
+        var credential = await _credentialRepository.GetCredentialForUserAsync(user.Id, _options.ProviderKey.Type, _options.ProviderKey.Name, credentialId, cancellationToken);
         if (credential == null)
         {
             return CompletedPasskeyAssertion.Failed(AshlarFailureCodes.PasskeyCredentialNotFound);
@@ -513,10 +510,16 @@ internal sealed record CompletedPasskeyAssertion(
 /// Provides passkey service dependencies.
 /// </summary>
 /// <param name="options">The passkey options.</param>
+/// <param name="authenticationOrchestrator">The orchestrator for MFA-aware authentication flows.</param>
+/// <param name="handshakeService">The authentication handshake service.</param>
+/// <param name="tokenHasher">The secure token hasher.</param>
 /// <param name="timeProvider">The time provider.</param>
 /// <param name="securityEventSink">The security event sink.</param>
 public sealed class PasskeyServiceDependencies(
     IOptions<PasskeyOptions> options,
+    IAuthenticationOrchestrator authenticationOrchestrator,
+    IAuthenticationHandshakeService handshakeService,
+    ISecureTokenHasher tokenHasher,
     TimeProvider? timeProvider = null,
     ISecurityEventSink? securityEventSink = null)
 {
@@ -524,6 +527,18 @@ public sealed class PasskeyServiceDependencies(
     /// Gets the configured passkey options.
     /// </summary>
     public IOptions<PasskeyOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
+    /// <summary>
+    /// Gets the orchestrator used to complete authentication flows.
+    /// </summary>
+    public IAuthenticationOrchestrator AuthenticationOrchestrator { get; } = authenticationOrchestrator ?? throw new ArgumentNullException(nameof(authenticationOrchestrator));
+    /// <summary>
+    /// Gets the service used to create and inspect passkey authentication handshakes.
+    /// </summary>
+    public IAuthenticationHandshakeService HandshakeService { get; } = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
+    /// <summary>
+    /// Gets the hasher used for passkey handshake tokens.
+    /// </summary>
+    public ISecureTokenHasher TokenHasher { get; } = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
     /// <summary>
     /// Gets the configured time provider.
     /// </summary>

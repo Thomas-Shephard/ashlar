@@ -3,38 +3,38 @@ using Ashlar.Security.Tokens;
 namespace Ashlar.Identity.Providers.Email;
 
 /// <summary>
-/// Provides magic link authentication provider behavior.
+/// Authenticates one-time magic link tokens.
 /// </summary>
-/// <param name="tokenHasher">The token hasher value.</param>
+/// <param name="tokenHasher">Hashes raw magic link tokens before lookup.</param>
 public sealed class MagicLinkAuthenticationProvider(ISecureTokenHasher tokenHasher) : IAuthenticationProvider
 {
     /// <summary>
-    /// Defines the credential purpose value.
+    /// Identifies credentials issued for magic link sign-in.
     /// </summary>
     public const string CredentialPurpose = "magic-link-sign-in";
     private readonly ISecureTokenHasher _tokenHasher = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
 
     /// <summary>
-    /// Gets or sets the key value.
+    /// Gets the provider key.
     /// </summary>
     public AuthenticationProviderKey Key => AuthenticationProviderKey.MagicLink;
 
     /// <summary>
-    /// Gets or sets the protects credentials value.
+    /// Gets whether credential values should be encrypted before storage.
     /// </summary>
     public bool ProtectsCredentials => false;
 
     /// <summary>
-    /// Gets or sets the typical credential length value.
+    /// Gets the typical raw token length.
     /// </summary>
     public int TypicalCredentialLength => 71;
 
     /// <summary>
-    /// Performs the get provider key operation and returns the result.
+    /// Hashes the magic link token into the provider key.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="userId">The user id value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">The magic link assertion.</param>
+    /// <param name="userId">Unused for magic link tokens.</param>
+    /// <returns>The token hash, or an empty string for unsupported assertions.</returns>
     public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId)
     {
         if (assertion is not MagicLinkAssertion magicLinkAssertion)
@@ -46,25 +46,25 @@ public sealed class MagicLinkAuthenticationProvider(ISecureTokenHasher tokenHash
     }
 
     /// <summary>
-    /// Performs the prepare credential value operation and returns the result.
+    /// Returns the raw token hash value to store with the credential.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="rawValue">The raw value value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">The magic link assertion.</param>
+    /// <param name="rawValue">The raw value prepared by the sign-in flow.</param>
+    /// <returns>The value to store for later authentication.</returns>
     public string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue)
     {
         return rawValue;
     }
 
     /// <summary>
-    /// Performs the find user <see langword="async" /> operation and returns the result.
+    /// Finds the user linked to the magic link token.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="repository">The repository value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
-    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default)
+    /// <param name="assertion">The magic link assertion.</param>
+    /// <param name="context">The authentication request context.</param>
+    /// <param name="repository">The user repository.</param>
+    /// <param name="cancellationToken">A token that can cancel the lookup.</param>
+    /// <returns>The linked user, or <see langword="null" /> when the assertion is unsupported or unlinked.</returns>
+    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default)
     {
         if (assertion is not MagicLinkAssertion magicLinkAssertion)
         {
@@ -76,12 +76,12 @@ public sealed class MagicLinkAuthenticationProvider(ISecureTokenHasher tokenHash
     }
 
     /// <summary>
-    /// Performs the authenticate <see langword="async" /> operation and returns the result.
+    /// Validates that the resolved credential was issued for magic link sign-in.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="credential">The credential value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">The magic link assertion.</param>
+    /// <param name="credential">The credential resolved by provider key.</param>
+    /// <param name="cancellationToken">A token that can cancel authentication.</param>
+    /// <returns>The authentication result.</returns>
     public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default)
     {
         if (assertion is not MagicLinkAssertion)

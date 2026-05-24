@@ -73,7 +73,7 @@ internal static class HomeEndpoints
         [FromServices] IBootstrapService Bootstrap,
         [FromServices] IAuthorizationEvaluator Auth,
         [FromServices] IAuthorizationGrantService Grants,
-        [FromServices] IIdentityRepository Users,
+        [FromServices] IUserRepository Users,
         [FromServices] IPostgresConnectionProvider ConnectionProvider,
         [FromServices] IConfiguration Configuration);
 }

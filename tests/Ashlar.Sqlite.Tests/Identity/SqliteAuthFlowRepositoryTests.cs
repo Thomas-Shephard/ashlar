@@ -366,7 +366,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
             Email = $"{Guid.NewGuid():N}@example.com",
             IsActive = true
         };
-        await _serviceProvider.GetRequiredService<IIdentityRepository>().CreateUserAsync(user);
+        await _serviceProvider.GetRequiredService<IUserRepository>().CreateUserAsync(user);
         return user;
     }
 

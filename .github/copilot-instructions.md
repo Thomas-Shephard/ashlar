@@ -46,7 +46,7 @@ Use the following **exact** CLI commands to build, test, and validate the projec
 *   `src/Ashlar/` - Core library source code.
     *   `Auditing/` - Security event auditing infrastructure (`ISecurityEventSink`, `AshlarSecurityEvent`).
     *   `Identity/` - Main identity services (`IdentityService`).
-    *   `Identity/Abstractions/` - Core interfaces (`IIdentityService`, `IUser`, `ITenantUser`, `IIdentityRepository`, `IAuthenticationProvider`).
+    *   `Identity/Abstractions/` - Core interfaces (`IIdentityService`, `IUser`, `ITenantUser`, `IUserRepository`, `ICredentialRepository`, `IAuthenticationProvider`).
     *   `Identity/Models/` - Data models (`Tenant`, `UserCredential`).
     *   `Identity/Providers/` - Authentication strategies organized by type.
         *   `Local/` - Local authentication strategies (`LocalPasswordProvider`, `LocalPasswordAssertion`).

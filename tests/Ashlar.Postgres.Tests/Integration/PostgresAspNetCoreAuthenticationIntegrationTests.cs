@@ -60,7 +60,7 @@ internal sealed class PostgresAspNetCoreAuthenticationIntegrationTests : Postgre
         };
 
         await using var setupScope = ServiceProvider.CreateAsyncScope();
-        await setupScope.ServiceProvider.GetRequiredService<IIdentityRepository>().CreateUserAsync(user);
+        await setupScope.ServiceProvider.GetRequiredService<IUserRepository>().CreateUserAsync(user);
 
         var magicLinks = setupScope.ServiceProvider.GetRequiredService<IMagicLinkSignInService>();
         await magicLinks.RequestLinkAsync(user.Email, new Uri("https://example.test/sign-in/callback"));

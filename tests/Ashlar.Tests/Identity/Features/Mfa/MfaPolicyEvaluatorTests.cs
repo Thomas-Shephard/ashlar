@@ -139,7 +139,7 @@ internal sealed class MfaPolicyEvaluatorTests
     public async Task RequireMfaWhenCredentialExistsPolicyEvaluatorIgnoresWrongProvider()
     {
         var user = CreateUser();
-        var repository = new Mock<IIdentityRepository>(MockBehavior.Strict);
+        var repository = new Mock<ICredentialRepository>(MockBehavior.Strict);
         repository.Setup(r => r.GetCredentialForUserAsync(user.Object.Id, ProviderType.Mfa, "totp", null, It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserCredential?)null);
 
@@ -158,7 +158,7 @@ internal sealed class MfaPolicyEvaluatorTests
     public async Task RequireMfaWhenCredentialExistsPolicyEvaluatorChecksMultipleMatchingProviders()
     {
         var user = CreateUser();
-        var repository = new Mock<IIdentityRepository>(MockBehavior.Strict);
+        var repository = new Mock<ICredentialRepository>(MockBehavior.Strict);
         repository.Setup(r => r.GetCredentialForUserAsync(user.Object.Id, ProviderType.Mfa, "totp", null, It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserCredential?)null);
         repository.Setup(r => r.GetCredentialForUserAsync(user.Object.Id, ProviderType.Mfa, "webauthn", null, It.IsAny<CancellationToken>()))
@@ -184,7 +184,7 @@ internal sealed class MfaPolicyEvaluatorTests
     [Test]
     public async Task RequireMfaWhenCredentialExistsPolicyEvaluatorIgnoresInactiveUserWithoutRepositoryQuery()
     {
-        var repository = new Mock<IIdentityRepository>(MockBehavior.Strict);
+        var repository = new Mock<ICredentialRepository>(MockBehavior.Strict);
         var result = await CreateCredentialEvaluator(repository.Object).EvaluateAsync(CreateUser(isActive: false).Object, _context);
 
         Assert.That(result.IsMfaRequired, Is.False);
@@ -194,7 +194,7 @@ internal sealed class MfaPolicyEvaluatorTests
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void RequireMfaWhenCredentialExistsPolicyEvaluatorValidatesOptionsAndArguments()
     {
-        var repository = Mock.Of<IIdentityRepository>();
+        var repository = Mock.Of<ICredentialRepository>();
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentNullException>(() => _ = new RequireMfaWhenCredentialExistsPolicyEvaluator(null!, Options.Create(new CredentialBackedMfaPolicyOptions())));
@@ -210,7 +210,7 @@ internal sealed class MfaPolicyEvaluatorTests
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void RequireMfaWhenCredentialExistsPolicyEvaluatorThrowsWhenEvaluateArgumentsAreNull()
     {
-        var evaluator = CreateCredentialEvaluator(Mock.Of<IIdentityRepository>());
+        var evaluator = CreateCredentialEvaluator(Mock.Of<ICredentialRepository>());
         var user = CreateUser();
 
         using (Assert.EnterMultipleScope())
@@ -304,7 +304,7 @@ internal sealed class MfaPolicyEvaluatorTests
         }
     }
 
-    private static RequireMfaWhenCredentialExistsPolicyEvaluator CreateCredentialEvaluator(IIdentityRepository repository, TimeProvider? timeProvider = null)
+    private static RequireMfaWhenCredentialExistsPolicyEvaluator CreateCredentialEvaluator(ICredentialRepository repository, TimeProvider? timeProvider = null)
     {
         return new RequireMfaWhenCredentialExistsPolicyEvaluator(
             repository,
@@ -316,9 +316,9 @@ internal sealed class MfaPolicyEvaluatorTests
             timeProvider);
     }
 
-    private static Mock<IIdentityRepository> CreateRepositoryReturning(UserCredential? credential)
+    private static Mock<ICredentialRepository> CreateRepositoryReturning(UserCredential? credential)
     {
-        var repository = new Mock<IIdentityRepository>(MockBehavior.Strict);
+        var repository = new Mock<ICredentialRepository>(MockBehavior.Strict);
         repository.Setup(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
         return repository;

@@ -524,7 +524,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     private static async Task<Guid> CreateSampleUserAsync(IServiceProvider services, string email)
     {
         await using var scope = services.CreateAsyncScope();
-        var users = scope.ServiceProvider.GetRequiredService<IIdentityRepository>();
+        var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
         var user = new AshlarUser
         {
             Id = Guid.NewGuid(),

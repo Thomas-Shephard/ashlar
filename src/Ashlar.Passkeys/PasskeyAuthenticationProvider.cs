@@ -48,10 +48,10 @@ public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> optio
     /// </summary>
     /// <param name="assertion">The authentication assertion.</param>
     /// <param name="context">The authentication context.</param>
-    /// <param name="repository">The identity repository.</param>
+    /// <param name="repository">The user repository.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The user when a matching credential exists.</returns>
-    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default)
+    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default)
     {
         if (assertion is not PasskeyAssertion passkey)
         {
@@ -60,8 +60,7 @@ public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> optio
 
         if (context.UserId.HasValue)
         {
-            var credential = await repository.GetCredentialForUserAsync(context.UserId.Value, Key.Type, Key.Name, passkey.CredentialId, cancellationToken);
-            return credential == null ? null : await repository.GetUserByIdAsync(context.UserId.Value, cancellationToken);
+            return await repository.GetUserByIdAsync(context.UserId.Value, cancellationToken);
         }
 
         return await repository.GetUserByProviderKeyAsync(Key.Type, Key.Name, passkey.CredentialId, cancellationToken);

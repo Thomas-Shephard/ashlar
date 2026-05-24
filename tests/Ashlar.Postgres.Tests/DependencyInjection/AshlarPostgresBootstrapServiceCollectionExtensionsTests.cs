@@ -18,7 +18,7 @@ internal sealed class AshlarPostgresBootstrapServiceCollectionExtensionsTests
         services.AddAshlarPostgresBootstrap(connectionString);
 
         // Register other required dependencies for IBootstrapService
-        services.AddScoped(_ => new Mock<IIdentityRepository>().Object);
+        services.AddScoped(_ => new Mock<IUserRepository>().Object);
         services.AddScoped(_ => new Mock<IInvitationRepository>().Object);
         services.AddScoped(_ => new Mock<IAuthorizationGrantRepository>().Object);
 

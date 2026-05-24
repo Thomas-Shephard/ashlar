@@ -987,7 +987,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     private static AshlarExternalAccountLinkService CreateService(
         ICredentialService? credentialService = null,
         IAccountSecurityService? accountSecurityService = null,
-        IIdentityRepository? repository = null,
+        IUserRepository? repository = null,
         bool includeGitHub = false,
         Action<AshlarOAuthOptions>? configureOptions = null)
     {
@@ -1159,20 +1159,13 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         }
     }
 
-    private sealed class StubRepository(IUser? user = null) : IIdentityRepository
+    private sealed class StubRepository(IUser? user = null) : IUserRepository
     {
         public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(null);
         public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => Task.FromResult(user?.Id == userId ? user : null);
-        public Task<UserCredential?> GetCredentialForUserAsync(Guid userId, ProviderType type, string providerName, string? providerKey = null, CancellationToken cancellationToken = default) => Task.FromResult<UserCredential?>(null);
         public Task<IUser?> GetUserByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(null);
-        public Task<IReadOnlyList<UserCredential>> ListCredentialsForUserAsync(Guid userId, bool activeOnly = true, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<UserCredential>>(Array.Empty<UserCredential>());
         public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task UpdateUserAsync(IUser user, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task CreateCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task CreateOrReplaceCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task<bool> UpdateCredentialAsync(UserCredential credential, string expectedVersion, CancellationToken cancellationToken = default) => Task.FromResult(true);
-        public Task<bool> ConsumeCredentialAsync(Guid credentialId, string expectedVersion, CancellationToken cancellationToken = default) => Task.FromResult(true);
-        public Task<int> RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default) => Task.FromResult(0);
     }
 
     private sealed record TenantUser(Guid Id, Guid? TenantId) : ITenantUser

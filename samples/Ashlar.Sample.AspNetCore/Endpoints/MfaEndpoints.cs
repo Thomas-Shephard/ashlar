@@ -20,26 +20,19 @@ internal static class MfaEndpoints
         app.MapGet("/api/account/security/step-up-options", GetStepUpOptionsAsync).RequireAuthorization();
         app.MapPost("/api/account/security/verify", VerifyCurrentSessionAsync).RequireAuthorization();
 
-        app.MapGet("/account/mfa/enroll", async (
-            ITotpService totp,
-            IIdentityRepository users,
-            IAuthorizationEvaluator auth,
-            HttpContext httpContext,
-            ClaimsPrincipal user,
-            IOptions<SampleAshlarOptions> options,
-            CancellationToken cancellationToken) =>
+        app.MapGet("/account/mfa/enroll", async ([AsParameters] MfaEnrollServices services) =>
         {
-            var userId = user.GetAshlarUserId();
-            var ashlarUser = await users.GetUserByIdAsync(userId, cancellationToken);
+            var userId = services.User.GetAshlarUserId();
+            var ashlarUser = await services.Users.GetUserByIdAsync(userId, services.CancellationToken);
             if (ashlarUser == null) return Results.NotFound();
 
-            var totpCredential = await users.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, cancellationToken);
+            var totpCredential = await services.Credentials.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, services.CancellationToken);
             var hasTotp = totpCredential != null;
 
             if (!hasTotp)
             {
-                var enrollment = await totp.StartEnrollmentAsync(userId, options.Value.AppName, ashlarUser.Email, httpContext.ToTenantContext(), httpContext.ToAuditContext(), cancellationToken);
-                var isAdmin = (await auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), cancellationToken)).Succeeded;
+                var enrollment = await services.Totp.StartEnrollmentAsync(userId, services.Options.Value.AppName, ashlarUser.Email, services.HttpContext.ToTenantContext(), services.HttpContext.ToAuditContext(), services.CancellationToken);
+                var isAdmin = (await services.Auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), services.CancellationToken)).Succeeded;
                 return AppViews.RenderMfaSetup(enrollment.SharedSecret, enrollment.AuthenticatorUri, isAdmin);
             }
 
@@ -98,6 +91,16 @@ internal static class MfaEndpoints
             return result.Succeeded ? Results.Ok(new { codes = result.Value }) : Results.BadRequest(SampleResultErrors.From(result));
         }).RequireAuthorization().RequireFreshMfa();
     }
+
+    private sealed record MfaEnrollServices(
+        [FromServices] ITotpService Totp,
+        [FromServices] IUserRepository Users,
+        [FromServices] ICredentialRepository Credentials,
+        [FromServices] IAuthorizationEvaluator Auth,
+        HttpContext HttpContext,
+        ClaimsPrincipal User,
+        [FromServices] IOptions<SampleAshlarOptions> Options,
+        CancellationToken CancellationToken);
 
     private static async Task<IResult> VerifyMfaAsync(
             MfaVerifyRequest request,
@@ -165,14 +168,14 @@ internal static class MfaEndpoints
     }
 
     private static async Task<IResult> GetStepUpOptionsAsync(
-        IIdentityRepository users,
+        ICredentialRepository credentials,
         IPasskeyService passkeys,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
         var userId = user.GetAshlarUserId();
-        var totpCredential = await users.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, cancellationToken);
-        var recoveryCredential = await users.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", null, cancellationToken);
+        var totpCredential = await credentials.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, cancellationToken);
+        var recoveryCredential = await credentials.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", null, cancellationToken);
         var hasPasskeys = (await passkeys.ListAsync(userId, cancellationToken)).Count > 0;
         var canUseCode = totpCredential != null || recoveryCredential != null;
 
@@ -262,7 +265,7 @@ internal static class MfaEndpoints
         [FromServices] IAuthenticationOrchestrator Orchestrator,
         [FromServices] IAuthenticationHandshakeService HandshakeService,
         [FromServices] IAuthenticationPipeline Pipeline,
-        [FromServices] IIdentityRepository Users,
+        [FromServices] IUserRepository Users,
         [FromServices] IAshlarSignInManager SignInManager);
 
     private sealed record StepUpVerifyRequest(string Code);

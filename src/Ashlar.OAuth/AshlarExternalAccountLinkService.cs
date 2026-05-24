@@ -18,7 +18,7 @@ public sealed class AshlarExternalAccountLinkService
 {
     private readonly ICredentialService _credentialService;
     private readonly IAccountSecurityService _accountSecurityService;
-    private readonly IIdentityRepository _repository;
+    private readonly IUserRepository _repository;
     private readonly IOptionsMonitor<AshlarOAuthOptions> _options;
 
     /// <summary>
@@ -26,12 +26,12 @@ public sealed class AshlarExternalAccountLinkService
     /// </summary>
     /// <param name="credentialService">The Ashlar credential service.</param>
     /// <param name="accountSecurityService">The Ashlar account security service.</param>
-    /// <param name="repository">The Ashlar identity repository.</param>
+    /// <param name="repository">The repository used to load the current Ashlar user.</param>
     /// <param name="options">The OAuth options monitor.</param>
     public AshlarExternalAccountLinkService(
         ICredentialService credentialService,
         IAccountSecurityService accountSecurityService,
-        IIdentityRepository repository,
+        IUserRepository repository,
         IOptionsMonitor<AshlarOAuthOptions> options)
     {
         _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));

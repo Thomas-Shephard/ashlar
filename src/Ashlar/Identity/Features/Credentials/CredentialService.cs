@@ -9,10 +9,11 @@ namespace Ashlar.Identity.Features.Credentials;
 /// <summary>
 /// Implements credential management services including resolution, linking, and lifecycle updates.
 /// </summary>
-/// <param name="repository">The repository value.</param>
-/// <param name="secretProtector">The secret protector value.</param>
-/// <param name="transactionProvider">The transaction provider value.</param>
-/// <param name="dependencies">The dependencies value.</param>
+/// <param name="userRepository">Stores and retrieves users.</param>
+/// <param name="credentialRepository">Stores and retrieves credentials.</param>
+/// <param name="secretProtector">Protects credential secrets before persistence.</param>
+/// <param name="transactionProvider">Creates transactions for credential lifecycle updates.</param>
+/// <param name="dependencies">Operational dependencies used by credential flows.</param>
 /// <remarks>
 /// This service implements timing attack resistance by ensuring that unprotection operations
 /// are performed even when a user or credential is not found, using provider-specific dummy values.
@@ -20,7 +21,8 @@ namespace Ashlar.Identity.Features.Credentials;
 /// logging is desired for both credential operations and security event sink failures.
 /// </remarks>
 public sealed class CredentialService(
-    IIdentityRepository repository,
+    IUserRepository userRepository,
+    ICredentialRepository credentialRepository,
     ISecretProtector secretProtector,
     IAshlarTransactionProvider transactionProvider,
     CredentialServiceDependencies dependencies)
@@ -69,7 +71,8 @@ public sealed class CredentialService(
             "Dummy credential unprotection failed during timing-resistant credential resolution. ProviderType={ProviderType} ProviderName={ProviderName} TypicalCredentialLength={TypicalCredentialLength}");
 
     private const string CredentialIdPropertyName = "credential_id";
-    private readonly IIdentityRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+    private readonly IUserRepository _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
+    private readonly ICredentialRepository _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
     private readonly ISecretProtector _secretProtector = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly IdentityServiceOptions _options = ValidateDependencies(dependencies).Options ?? new IdentityServiceOptions();
@@ -84,14 +87,16 @@ public sealed class CredentialService(
     /// <summary>
     /// Initializes a configured service instance.
     /// </summary>
-    /// <param name="repository">The repository value.</param>
-    /// <param name="secretProtector">The secret protector value.</param>
-    /// <param name="transactionProvider">The transaction provider value.</param>
+    /// <param name="userRepository">Stores and retrieves users.</param>
+    /// <param name="credentialRepository">Stores and retrieves credentials.</param>
+    /// <param name="secretProtector">Protects credential secrets before persistence.</param>
+    /// <param name="transactionProvider">Creates transactions for credential lifecycle updates.</param>
     public CredentialService(
-        IIdentityRepository repository,
+        IUserRepository userRepository,
+        ICredentialRepository credentialRepository,
         ISecretProtector secretProtector,
         IAshlarTransactionProvider transactionProvider)
-        : this(repository, secretProtector, transactionProvider, new CredentialServiceDependencies())
+        : this(userRepository, credentialRepository, secretProtector, transactionProvider, new CredentialServiceDependencies())
     {
     }
 
@@ -110,11 +115,11 @@ public sealed class CredentialService(
         ArgumentNullException.ThrowIfNull(assertion);
         ArgumentNullException.ThrowIfNull(provider);
 
-        var user = await provider.FindUserAsync(assertion, context, _repository, cancellationToken);
+        var user = await provider.FindUserAsync(assertion, context, _userRepository, cancellationToken);
 
         if (user == null && context.UserId.HasValue)
         {
-            user = await _repository.GetUserByIdAsync(context.UserId.Value, cancellationToken);
+            user = await _userRepository.GetUserByIdAsync(context.UserId.Value, cancellationToken);
         }
 
         var userId = user?.Id ?? Guid.NewGuid();
@@ -132,7 +137,7 @@ public sealed class CredentialService(
         ArgumentNullException.ThrowIfNull(assertion);
         ArgumentNullException.ThrowIfNull(provider);
 
-        var user = await _repository.GetUserByIdAsync(userId, cancellationToken);
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
 
         var (unprotectedCredential, credential, unprotectFailed) = await ResolveCredentialCoreAsync(userId, assertion, provider, null, cancellationToken);
         return (user, unprotectedCredential, credential, unprotectFailed);
@@ -150,12 +155,12 @@ public sealed class CredentialService(
         UserCredential? credential;
         if (!string.IsNullOrEmpty(providerKey))
         {
-            credential = await _repository.GetCredentialForUserAsync(userId, provider.Key.Type, provider.Key.Name, providerKey, cancellationToken);
+            credential = await _credentialRepository.GetCredentialForUserAsync(userId, provider.Key.Type, provider.Key.Name, providerKey, cancellationToken);
         }
         else
         {
             // Timing attack resistance: hit the repository even if no credential was resolved by the provider.
-            credential = await provider.ResolveCredentialAsync(userId, assertion, context, _repository, cancellationToken) ?? await _repository.GetCredentialForUserAsync(userId, provider.Key.Type, provider.Key.Name, Guid.NewGuid().ToString("N"), cancellationToken);
+            credential = await provider.ResolveCredentialAsync(userId, assertion, context, _credentialRepository, cancellationToken) ?? await _credentialRepository.GetCredentialForUserAsync(userId, provider.Key.Type, provider.Key.Name, Guid.NewGuid().ToString("N"), cancellationToken);
         }
 
         var (unprotectedCredential, unprotectFailed) = UnprotectCredential(credential, provider);
@@ -165,7 +170,7 @@ public sealed class CredentialService(
     /// <summary>
     /// Unprotects the credential value if the provider requires protection.
     /// </summary>
-    /// <param name="provider">The provider value.</param>
+    /// <param name="provider">Authentication provider that owns the credential.</param>
     /// <remarks>
     /// This method is timing-safe. If the <paramref name="credential"/> is <see langword="null" />, it performs an unprotection
     /// operation on a cached dummy value matching the provider's typical credential length.
@@ -323,7 +328,7 @@ public sealed class CredentialService(
         IAshlarTransaction transaction,
         CancellationToken cancellationToken)
     {
-        var consumed = await _repository.ConsumeCredentialAsync(unprotectedCredential.Id, GetExpectedVersion(unprotectedCredential, originalCredential), cancellationToken);
+        var consumed = await _credentialRepository.ConsumeCredentialAsync(unprotectedCredential.Id, GetExpectedVersion(unprotectedCredential, originalCredential), cancellationToken);
         transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.CredentialConsumed,
@@ -466,7 +471,7 @@ public sealed class CredentialService(
     {
         try
         {
-            var updateSucceeded = await _repository.UpdateCredentialAsync(credential, GetExpectedVersion(credential, original), cancellationToken);
+            var updateSucceeded = await _credentialRepository.UpdateCredentialAsync(credential, GetExpectedVersion(credential, original), cancellationToken);
             if (!updateSucceeded)
             {
                 CredentialUpdateConcurrencyConflict(
@@ -512,7 +517,7 @@ public sealed class CredentialService(
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
-        var user = await _repository.GetUserByIdAsync(userId, cancellationToken);
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
         if (user == null)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -540,7 +545,7 @@ public sealed class CredentialService(
             return Result.Failure(AshlarFailureCodes.InvalidProviderKey);
         }
 
-        var linkedUser = await _repository.GetUserByProviderKeyAsync(providerKeyIdentity.Type, providerName, providerKey, cancellationToken);
+        var linkedUser = await _userRepository.GetUserByProviderKeyAsync(providerKeyIdentity.Type, providerName, providerKey, cancellationToken);
 
         if (linkedUser != null)
         {
@@ -582,7 +587,7 @@ public sealed class CredentialService(
 
         try
         {
-            await _repository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
+            await _credentialRepository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
         }
         catch (CredentialProviderKeyConflictException)
         {
@@ -632,11 +637,11 @@ public sealed class CredentialService(
 }
 
 /// <summary>
-/// Represents the credential service dependencies data model.
+/// Optional dependencies used by credential service operations.
 /// </summary>
-/// <param name="Options">The options value.</param>
-/// <param name="TimeProvider">The time provider value.</param>
-/// <param name="SecurityEventSink">The security event sink value.</param>
+/// <param name="Options">Identity service options for credential behavior.</param>
+/// <param name="TimeProvider">Clock used for credential timestamps.</param>
+/// <param name="SecurityEventSink">Receives credential-related security events.</param>
 /// <param name="Logger">Receives operational messages emitted directly by the credential service.</param>
 /// <param name="LoggerFactory">Creates diagnostics for embedded security event sink failures.</param>
 public sealed record CredentialServiceDependencies(

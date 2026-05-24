@@ -15,7 +15,8 @@ internal sealed class EmailVerificationServiceTests
     [Test]
     public void ConstructorUsesDefaultOptionsWhenOptionsAreNull()
     {
-        var identityContext = new IdentityContext(new InMemoryIdentityRepository(), Mock.Of<IIdentityService>(), new NullTransactionProvider());
+        var repository = new InMemoryUserCredentialStore();
+        var identityContext = new IdentityContext(repository, repository, Mock.Of<IIdentityService>(), new NullTransactionProvider());
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), new Sha256TokenHasher());
         var infrastructure = new IdentityInfrastructureContext(Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), Mock.Of<IUriValidator>());
         var audit = new IdentityAuditContext(new FakeTimeProvider(), new RecordingSecurityEventSink());
@@ -36,7 +37,7 @@ internal sealed class EmailVerificationServiceTests
 
         Assert.That(result.Succeeded, Is.True);
         var message = fixture.EmailSender.Messages.Single();
-        var credential = fixture.IdentityRepository.Credentials.Single();
+        var credential = fixture.UserCredentialStore.Credentials.Single();
 
         using (Assert.EnterMultipleScope())
         {
@@ -138,14 +139,14 @@ internal sealed class EmailVerificationServiceTests
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
 
         var result = await fixture.Service.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest { UserId = _user.Id, Token = token });
-        var updatedUser = await fixture.IdentityRepository.GetUserByIdAsync(_user.Id);
+        var updatedUser = await fixture.UserCredentialStore.GetUserByIdAsync(_user.Id);
 
         Assert.That(updatedUser, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(updatedUser.EmailVerifiedAt, Is.Not.Null);
-            Assert.That(fixture.IdentityRepository.Credentials, Is.Empty);
+            Assert.That(fixture.UserCredentialStore.Credentials, Is.Empty);
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailVerified), Is.True);
         }
     }
@@ -236,7 +237,7 @@ internal sealed class EmailVerificationServiceTests
         var fixture = CreateFixture(_user);
         await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = _user.Id, CallbackBaseUri = new Uri("http://localhost") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
-        fixture.IdentityRepository.Users.Clear();
+        fixture.UserCredentialStore.Users.Clear();
 
         var result = await fixture.Service.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest { UserId = _user.Id, Token = token });
 
@@ -286,29 +287,29 @@ internal sealed class EmailVerificationServiceTests
     private static Fixture CreateFixture(IUser? user = null, bool requestAllowed = true, bool verifyAllowed = true, bool consumeSucceeds = true)
     {
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 5, 9, 12, 0, 0, TimeSpan.Zero));
-        var identityRepository = new InMemoryIdentityRepository(user);
+        var UserCredentialStore = new InMemoryUserCredentialStore(user);
         var audit = new RecordingSecurityEventSink();
         var emailSender = new RecordingEmailSender();
         var tokenHasher = new Sha256TokenHasher();
         var tokenGenerator = new SecureTokenGenerator();
         var transactionProvider = new NullTransactionProvider();
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed);
-        identityRepository.ConsumeSucceeds = consumeSucceeds;
+        UserCredentialStore.ConsumeSucceeds = consumeSucceeds;
 
         var uriValidator = new Mock<IUriValidator>();
         uriValidator.Setup(v => v.IsValid(It.IsAny<Uri?>())).Returns(true);
 
         var service = new EmailVerificationService(
             new EmailVerificationServiceDependencies(
-                new IdentityContext(identityRepository, Mock.Of<IIdentityService>(), transactionProvider),
+                new IdentityContext(UserCredentialStore, UserCredentialStore, Mock.Of<IIdentityService>(), transactionProvider),
                 new SecureTokenContext(tokenGenerator, tokenHasher),
                 new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator.Object),
                 new IdentityAuditContext(time, audit)));
 
-        return new Fixture(service, identityRepository, emailSender, audit, time, tokenHasher, rateLimiter, uriValidator);
+        return new Fixture(service, UserCredentialStore, emailSender, audit, time, tokenHasher, rateLimiter, uriValidator);
     }
 
-    private sealed record Fixture(EmailVerificationService Service, InMemoryIdentityRepository IdentityRepository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, ISecureTokenHasher TokenHasher, StubRateLimiter RateLimiter, Mock<IUriValidator> UriValidator);
+    private sealed record Fixture(EmailVerificationService Service, InMemoryUserCredentialStore UserCredentialStore, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, ISecureTokenHasher TokenHasher, StubRateLimiter RateLimiter, Mock<IUriValidator> UriValidator);
 
     private sealed class StubRateLimiter(bool requestAllowed, bool verifyAllowed) : IAuthenticationRateLimiter
     {
@@ -344,13 +345,13 @@ internal sealed class EmailVerificationServiceTests
         }
     }
 
-    private sealed class InMemoryIdentityRepository : IIdentityRepository
+    private sealed class InMemoryUserCredentialStore : IUserRepository, ICredentialRepository
     {
         public List<IUser> Users { get; } = [];
         public List<UserCredential> Credentials { get; } = [];
         public bool ConsumeSucceeds { get; set; } = true;
 
-        public InMemoryIdentityRepository(IUser? user = null)
+        public InMemoryUserCredentialStore(IUser? user = null)
         {
             if (user != null) Users.Add(user);
         }

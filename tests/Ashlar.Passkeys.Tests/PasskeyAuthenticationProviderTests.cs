@@ -167,19 +167,7 @@ internal sealed class PasskeyAuthenticationProviderTests
         var provider = new PasskeyAuthenticationProvider(Options.Create(new PasskeyOptions()));
         var expectedUserId = Guid.NewGuid();
         var user = new TestUser(expectedUserId, "test@example.com");
-        var repository = new Mock<IIdentityRepository>();
-        repository.Setup(r => r.GetCredentialForUserAsync(expectedUserId, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new UserCredential
-            {
-                Id = Guid.NewGuid(),
-                UserId = expectedUserId,
-                ProviderType = ProviderType.Passkey,
-                ProviderName = "PASSKEY",
-                ProviderKey = "cred",
-                Version = "v1",
-                CreatedAt = DateTimeOffset.UtcNow,
-                Status = CredentialStatus.Active
-            });
+        var repository = new Mock<IUserRepository>();
         repository.Setup(r => r.GetUserByIdAsync(expectedUserId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
 
         var result = await provider.FindUserAsync(new PasskeyAssertion("cred", 1), new AuthenticationContext(UserId: expectedUserId), repository.Object);
@@ -193,7 +181,7 @@ internal sealed class PasskeyAuthenticationProviderTests
     {
         var provider = new PasskeyAuthenticationProvider(Options.Create(new PasskeyOptions()));
         var user = new TestUser(Guid.NewGuid(), "test@example.com");
-        var repository = new Mock<IIdentityRepository>();
+        var repository = new Mock<IUserRepository>();
         repository.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
@@ -203,13 +191,11 @@ internal sealed class PasskeyAuthenticationProviderTests
     }
 
     [Test]
-    public async Task FindUserAsyncShouldReturnNullForUnsupportedOrMissingScopedCredential()
+    public async Task FindUserAsyncShouldReturnNullForUnsupportedOrMissingScopedUser()
     {
         var provider = new PasskeyAuthenticationProvider(Options.Create(new PasskeyOptions()));
-        var repository = new Mock<IIdentityRepository>();
+        var repository = new Mock<IUserRepository>();
         var userId = Guid.NewGuid();
-        repository.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((UserCredential?)null);
 
         using (Assert.EnterMultipleScope())
         {

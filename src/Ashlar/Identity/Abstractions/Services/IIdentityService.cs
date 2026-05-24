@@ -38,7 +38,7 @@ public interface IIdentityService
     Task<AuthenticationResponse> LoginAsync(AuthenticationContext context, IAuthenticationAssertion assertion, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Creates a user in the configured identity repository.
+    /// Creates a user in the configured user repository.
     /// </summary>
     /// <param name="user">The user to create.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>

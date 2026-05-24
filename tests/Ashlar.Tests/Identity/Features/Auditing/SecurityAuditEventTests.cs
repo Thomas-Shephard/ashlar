@@ -211,10 +211,12 @@ internal sealed class SecurityAuditEventTests
     public async Task CredentialLinkEmitsEventWithoutRawCredentialValue()
     {
         var sink = new RecordingSecurityEventSink();
-        var repository = new Mock<IIdentityRepository>();
+        var repository = new Mock<IUserRepository>();
+        var credentialRepository = new Mock<ICredentialRepository>();
         var protector = new Mock<ISecretProtector>();
         var service = new CredentialService(
             repository.Object,
+            credentialRepository.Object,
             protector.Object,
             new NullTransactionProvider(),
             new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: sink));
@@ -248,15 +250,17 @@ internal sealed class SecurityAuditEventTests
     public async Task CredentialConsumedEmitsEvent()
     {
         var sink = new RecordingSecurityEventSink();
-        var repository = new Mock<IIdentityRepository>();
+        var repository = new Mock<IUserRepository>();
+        var credentialRepository = new Mock<ICredentialRepository>();
         var service = new CredentialService(
             repository.Object,
+            credentialRepository.Object,
             Mock.Of<ISecretProtector>(),
             new NullTransactionProvider(),
             new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: sink));
         var credential = CreateCredential(Guid.NewGuid());
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
-        repository.Setup(r => r.ConsumeCredentialAsync(credential.Id, credential.Version, It.IsAny<CancellationToken>()))
+        credentialRepository.Setup(r => r.ConsumeCredentialAsync(credential.Id, credential.Version, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         var consumed = await service.UpdateCredentialUsageAsync(credential, credential, result, Mock.Of<IAuthenticationProvider>());
@@ -273,12 +277,14 @@ internal sealed class SecurityAuditEventTests
     public async Task MissingCredentialResolutionDoesNotEmitAuditEvent()
     {
         var sink = new RecordingSecurityEventSink();
-        var repository = new Mock<IIdentityRepository>();
+        var repository = new Mock<IUserRepository>();
+        var credentialRepository = new Mock<ICredentialRepository>();
         var protector = new Mock<ISecretProtector>();
         protector.Setup(p => p.Protect(It.IsAny<string>())).Returns<string>(value => $"protected:{value}");
         protector.Setup(p => p.Unprotect(It.IsAny<string>())).Returns<string>(value => value);
         var service = new CredentialService(
             repository.Object,
+            credentialRepository.Object,
             protector.Object,
             new NullTransactionProvider(),
             new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: sink));
@@ -289,7 +295,7 @@ internal sealed class SecurityAuditEventTests
         provider.Setup(p => p.ProtectsCredentials).Returns(true);
         repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
-        repository.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Local, AuthenticationProviderKey.Local.Name, "missing-key", It.IsAny<CancellationToken>()))
+        credentialRepository.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Local, AuthenticationProviderKey.Local.Name, "missing-key", It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserCredential?)null);
 
         var (_, resolvedCredential, originalCredential, _) = await service.ResolveAsync(userId, new TestAssertion(AuthenticationProviderKey.Local), provider.Object);

@@ -11,7 +11,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
     public async Task CreateAndGetGrantByIdMapsAllFields()
     {
         await using var scope = CreateAsyncScope();
-        var user = await CreateUserAsync(GetIdentityRepository(scope.ServiceProvider));
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
         var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
         var tenantId = Guid.NewGuid();
         var grant = CreateGrant(
@@ -57,10 +57,10 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
     public async Task ListGrantsFiltersByUserTenantAndScope()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
-        var otherUser = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
+        var otherUser = await CreateUserAsync(userRepository);
         var tenantId = Guid.NewGuid();
         var otherTenantId = Guid.NewGuid();
         var matching = CreateGrant(user.Id, tenantId, "project", "alpha", permission: "matching");
@@ -78,7 +78,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
     public async Task ScopeFilteringHandlesGlobalAndScopedGrantsDistinctly()
     {
         await using var scope = CreateAsyncScope();
-        var user = await CreateUserAsync(GetIdentityRepository(scope.ServiceProvider));
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
         var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
         var scoped = CreateGrant(user.Id, Guid.NewGuid(), "project", "alpha", role: "reviewer");
         var global = CreateGrant(user.Id, permission: "global.read");
@@ -101,7 +101,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
     public async Task RoleGrantsAndPermissionGrantsBothRoundTrip()
     {
         await using var scope = CreateAsyncScope();
-        var user = await CreateUserAsync(GetIdentityRepository(scope.ServiceProvider));
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
         var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
         var roleGrant = CreateGrant(user.Id, role: "admin");
         var permissionGrant = CreateGrant(user.Id, permission: "reports.read");
@@ -123,7 +123,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
     public async Task ActiveOnlyListingExcludesRevokedAndExpiredButAllListingIncludesThem()
     {
         await using var scope = CreateAsyncScope();
-        var user = await CreateUserAsync(GetIdentityRepository(scope.ServiceProvider));
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
         var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
         var active = CreateGrant(user.Id, permission: "active");
         var revoked = CreateGrant(user.Id, permission: "revoked");
@@ -147,7 +147,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
     public async Task RevokeGrantSucceedsOncePersistsTimestampAndPreservesFirstRevocation()
     {
         await using var scope = CreateAsyncScope();
-        var user = await CreateUserAsync(GetIdentityRepository(scope.ServiceProvider));
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
         var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
         var grant = CreateGrant(user.Id, permission: "revoke");
         var firstRevokedAt = Now.AddMinutes(1);
@@ -187,7 +187,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
                 Assert.Ignore("Provider does not register IAshlarTransactionProvider.");
             }
 
-            var user = await CreateUserAsync(GetIdentityRepository(scope.ServiceProvider));
+            var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
             var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
             var grant = CreateGrant(user.Id, permission: "rollback");
             grantId = grant.Id;

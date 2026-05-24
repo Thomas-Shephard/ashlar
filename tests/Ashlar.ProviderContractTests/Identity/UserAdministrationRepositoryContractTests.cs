@@ -6,7 +6,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
     public async Task SearchMatchesExactPartialAndCaseInsensitiveEmail()
     {
         await using var scope = CreateAsyncScope();
-        var identity = GetIdentityRepository(scope.ServiceProvider);
+        var identity = GetUserRepository(scope.ServiceProvider);
         var repository = GetUserAdministrationRepository(scope.ServiceProvider);
         var expected = await CreateUserAsync(identity, "Mixed.Admin@example.com");
         await CreateUserAsync(identity, "other@example.com");
@@ -26,7 +26,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
     public async Task SearchMatchesName()
     {
         await using var scope = CreateAsyncScope();
-        var identity = GetIdentityRepository(scope.ServiceProvider);
+        var identity = GetUserRepository(scope.ServiceProvider);
         var repository = GetUserAdministrationRepository(scope.ServiceProvider);
         var expected = await CreateNamedUserAsync(identity, "name-match@example.com", "Alex Operations");
         await CreateNamedUserAsync(identity, "name-miss@example.com", "Casey Support");
@@ -44,7 +44,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
     public async Task TenantScopeIsIsolated()
     {
         await using var scope = CreateAsyncScope();
-        var identity = GetIdentityRepository(scope.ServiceProvider);
+        var identity = GetUserRepository(scope.ServiceProvider);
         var repository = GetUserAdministrationRepository(scope.ServiceProvider);
         var tenant1 = Guid.NewGuid();
         var tenant2 = Guid.NewGuid();
@@ -60,7 +60,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
     public async Task GlobalTenantScopeSearchesOnlyGlobalUsers()
     {
         await using var scope = CreateAsyncScope();
-        var identity = GetIdentityRepository(scope.ServiceProvider);
+        var identity = GetUserRepository(scope.ServiceProvider);
         var repository = GetUserAdministrationRepository(scope.ServiceProvider);
         var global = await CreateUserAsync(identity, "global-scope@example.com");
         await CreateUserAsync(identity, "global-scope@example.com", Guid.NewGuid());
@@ -74,7 +74,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
     public async Task ActiveFilterIsApplied()
     {
         await using var scope = CreateAsyncScope();
-        var identity = GetIdentityRepository(scope.ServiceProvider);
+        var identity = GetUserRepository(scope.ServiceProvider);
         var repository = GetUserAdministrationRepository(scope.ServiceProvider);
         var active = await CreateUserAsync(identity, "active-filter@example.com", isActive: true);
         await CreateUserAsync(identity, "inactive-filter@example.com", isActive: false);
@@ -88,7 +88,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
     public async Task EmailVerifiedFilterIsApplied()
     {
         await using var scope = CreateAsyncScope();
-        var identity = GetIdentityRepository(scope.ServiceProvider);
+        var identity = GetUserRepository(scope.ServiceProvider);
         var repository = GetUserAdministrationRepository(scope.ServiceProvider);
         var verified = await CreateNamedUserAsync(identity, "verified-filter@example.com", "Verified", emailVerifiedAt: DateTimeOffset.UtcNow);
         await CreateNamedUserAsync(identity, "unverified-filter@example.com", "Unverified");
@@ -102,7 +102,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
     public async Task EmailUnverifiedFilterIsApplied()
     {
         await using var scope = CreateAsyncScope();
-        var identity = GetIdentityRepository(scope.ServiceProvider);
+        var identity = GetUserRepository(scope.ServiceProvider);
         var repository = GetUserAdministrationRepository(scope.ServiceProvider);
         await CreateNamedUserAsync(identity, "verified-only@example.com", "Verified", emailVerifiedAt: DateTimeOffset.UtcNow);
         var unverified = await CreateNamedUserAsync(identity, "unverified-only@example.com", "Unverified");
@@ -116,7 +116,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
     public async Task GetUserSummaryReturnsUpdatedAtAfterUserUpdate()
     {
         await using var scope = CreateAsyncScope();
-        var identity = GetIdentityRepository(scope.ServiceProvider);
+        var identity = GetUserRepository(scope.ServiceProvider);
         var repository = GetUserAdministrationRepository(scope.ServiceProvider);
         var user = await CreateUserAsync(identity, "updated-at@example.com");
         await identity.UpdateUserAsync(user with { Name = "Updated" });
@@ -134,7 +134,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
     public async Task SearchOrderingIsDeterministicByEmailThenUserId()
     {
         await using var scope = CreateAsyncScope();
-        var identity = GetIdentityRepository(scope.ServiceProvider);
+        var identity = GetUserRepository(scope.ServiceProvider);
         var repository = GetUserAdministrationRepository(scope.ServiceProvider);
         var beta = await CreateUserAsync(identity, "z-admin-order@example.com");
         var alpha1 = await CreateUserAsync(identity, "a-admin-order@example.com", Guid.NewGuid());
@@ -150,7 +150,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
     public async Task LimitOffsetSupportPaging()
     {
         await using var scope = CreateAsyncScope();
-        var identity = GetIdentityRepository(scope.ServiceProvider);
+        var identity = GetUserRepository(scope.ServiceProvider);
         var repository = GetUserAdministrationRepository(scope.ServiceProvider);
         var users = new List<AshlarUser>();
         for (var i = 0; i < 5; i++)
@@ -168,12 +168,13 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
     public async Task UserSummariesDoNotExposeCredentialSecrets()
     {
         await using var scope = CreateAsyncScope();
-        var identity = GetIdentityRepository(scope.ServiceProvider);
+        var identity = GetUserRepository(scope.ServiceProvider);
+        var credentials = GetCredentialRepository(scope.ServiceProvider);
         var repository = GetUserAdministrationRepository(scope.ServiceProvider);
         var user = await CreateUserAsync(identity, "secret-search@example.com");
         var credential = CreateCredential(user.Id, ProviderType.Local, ProviderType.Local.Value);
         credential.CredentialValue = "password-hash";
-        await identity.CreateCredentialAsync(credential);
+        await credentials.CreateCredentialAsync(credential);
 
         var search = await repository.SearchUsersAsync(new SearchUsersRequest { Query = "secret-search", Limit = 10 });
         var detail = await repository.GetUserSummaryAsync(user.Id);
@@ -195,7 +196,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
     }
 
     private static async Task<AshlarUser> CreateNamedUserAsync(
-        IIdentityRepository repository,
+        IUserRepository repository,
         string email,
         string name,
         Guid? tenantId = null,

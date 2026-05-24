@@ -257,7 +257,7 @@ internal sealed class LocalPasswordProviderTests
     public async Task FindUserAsyncWithWrongAssertionTypeShouldReturnNull()
     {
         var assertion = new Mock<IAuthenticationAssertion>().Object;
-        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext("test@example.com"), new Mock<IIdentityRepository>().Object);
+        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext("test@example.com"), new Mock<IUserRepository>().Object);
         Assert.That(result, Is.Null);
     }
 
@@ -265,7 +265,7 @@ internal sealed class LocalPasswordProviderTests
     public async Task FindUserAsyncWithEmptyEmailShouldReturnNull()
     {
         var assertion = new LocalPasswordAssertion("pass");
-        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(""), new Mock<IIdentityRepository>().Object);
+        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(""), new Mock<IUserRepository>().Object);
         Assert.That(result, Is.Null);
     }
 
@@ -276,7 +276,7 @@ internal sealed class LocalPasswordProviderTests
         var email = "test@example.com";
         var tenantId = Guid.NewGuid();
         var user = new User { Id = Guid.NewGuid(), Email = email };
-        var repoMock = new Mock<IIdentityRepository>();
+        var repoMock = new Mock<IUserRepository>();
         repoMock.Setup(r => r.GetUserByEmailAsync(email, tenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 

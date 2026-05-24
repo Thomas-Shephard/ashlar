@@ -272,7 +272,7 @@ internal sealed class BootstrapService(
                 Context = context
             }, ct);
 
-            var notifiedUser = await _invitationDependencies.IdentityRepository.GetUserByIdAsync(userId, ct);
+            var notifiedUser = await _invitationDependencies.UserRepository.GetUserByIdAsync(userId, ct);
             if (notifiedUser != null)
             {
                 await _notifications.NotifyAsync(SecurityNotificationType.BootstrapCompleted, notifiedUser, now, context: context, cancellationToken: ct);

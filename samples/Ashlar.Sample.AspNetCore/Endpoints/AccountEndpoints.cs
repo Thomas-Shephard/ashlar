@@ -29,7 +29,7 @@ internal static class AccountEndpoints
     }
 
     private static async Task<IResult> RenderAccountSettingsAsync(
-        IIdentityRepository users,
+        IUserRepository users,
         IAuthorizationEvaluator auth,
         IAccountSecurityService accountSecurity,
         IConfiguration configuration,
@@ -55,7 +55,7 @@ internal static class AccountEndpoints
 
     private static async Task<IResult> UpdateProfileAsync(
         UpdateProfileRequest request,
-        IIdentityRepository users,
+        IUserRepository users,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {

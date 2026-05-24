@@ -15,7 +15,7 @@ internal sealed class BootstrapServiceTests
     private Mock<IBootstrapStateRepository> _stateRepository;
     private Mock<IInvitationService> _invitationService;
     private Mock<IInvitationRepository> _invitationRepository;
-    private Mock<IIdentityRepository> _identityRepository;
+    private Mock<IUserRepository> _userRepository;
     private Mock<IAshlarTransactionProvider> _transactionProvider;
     private Mock<IAuthorizationGrantService> _grantService;
     private Mock<ISecureTokenGenerator> _tokenGenerator;
@@ -33,7 +33,7 @@ internal sealed class BootstrapServiceTests
         _stateRepository = new Mock<IBootstrapStateRepository>();
         _invitationService = new Mock<IInvitationService>();
         _invitationRepository = new Mock<IInvitationRepository>();
-        _identityRepository = new Mock<IIdentityRepository>();
+        _userRepository = new Mock<IUserRepository>();
         _transactionProvider = new Mock<IAshlarTransactionProvider>();
         _grantService = new Mock<IAuthorizationGrantService>();
         _tokenGenerator = new Mock<ISecureTokenGenerator>();
@@ -50,7 +50,7 @@ internal sealed class BootstrapServiceTests
         var audit = new IdentityAuditContext(_timeProvider, _securityEventSink.Object);
 
         _dependencies = new InvitationDependencies(
-            new InvitationStoreContext(_invitationRepository.Object, _identityRepository.Object, _transactionProvider.Object),
+            new InvitationStoreContext(_invitationRepository.Object, _userRepository.Object, _transactionProvider.Object),
             new SecureTokenContext(_tokenGenerator.Object, _tokenHasher.Object),
             infrastructure,
             audit);

@@ -47,9 +47,14 @@ internal abstract class ProviderContractFixture
         return Services.CreateAsyncScope();
     }
 
-    protected static IIdentityRepository GetIdentityRepository(IServiceProvider serviceProvider)
+    protected static IUserRepository GetUserRepository(IServiceProvider serviceProvider)
     {
-        return serviceProvider.GetRequiredService<IIdentityRepository>();
+        return serviceProvider.GetRequiredService<IUserRepository>();
+    }
+
+    protected static ICredentialRepository GetCredentialRepository(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<ICredentialRepository>();
     }
 
     protected static IUserAdministrationRepository GetUserAdministrationRepository(IServiceProvider serviceProvider)
@@ -148,7 +153,7 @@ internal abstract class ProviderContractFixture
     }
 
     protected static async Task<AshlarUser> CreateUserAsync(
-        IIdentityRepository repository,
+        IUserRepository repository,
         string? email = null,
         Guid? tenantId = null,
         bool isActive = true)

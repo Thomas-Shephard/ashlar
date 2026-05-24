@@ -43,9 +43,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task CreateAndFetchSessionByTokenHashShouldMapAllFields()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var session = CreateSession(user.Id, tenantId: Guid.NewGuid());
         session.LastSeenAt = new DateTimeOffset(2026, 1, 2, 12, 5, 0, TimeSpan.Zero);
         session.RevokedAt = new DateTimeOffset(2026, 1, 2, 12, 10, 0, TimeSpan.Zero);
@@ -89,9 +89,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task GetSessionAsyncShouldReturnSessionById()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var session = CreateSession(user.Id);
 
         await sessionRepository.CreateSessionAsync(session);
@@ -119,9 +119,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task CreateSessionShouldRejectEmptySessionId()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var session = new AuthenticationSession
         {
             Id = Guid.Empty,
@@ -150,9 +150,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task TokenHashUniquenessShouldBeEnforced()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var first = CreateSession(user.Id);
         var second = CreateSession(user.Id, first.TokenHash);
 
@@ -164,9 +164,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task CreateSessionShouldRejectInvalidMetadataJson()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var session = CreateSession(user.Id);
         session.Metadata = "not-json";
 
@@ -178,9 +178,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task UpdateSessionLastSeenShouldUpdateOnlyTargetSession()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var target = CreateSession(user.Id);
         var other = CreateSession(user.Id);
         var lastSeenAt = new DateTimeOffset(2026, 1, 2, 13, 0, 0, TimeSpan.Zero);
@@ -203,9 +203,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task UpdateSessionLastSeenShouldNotOverwriteNewerTimestamp()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var session = CreateSession(user.Id);
         var newerLastSeenAt = new DateTimeOffset(2026, 1, 2, 13, 0, 0, TimeSpan.Zero);
         var olderLastSeenAt = new DateTimeOffset(2026, 1, 2, 12, 30, 0, TimeSpan.Zero);
@@ -227,9 +227,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task UpdateSessionLastSeenShouldRejectRevokedSession()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var session = CreateSession(user.Id);
         var revokedAt = new DateTimeOffset(2026, 1, 2, 12, 30, 0, TimeSpan.Zero);
         var lastSeenAt = new DateTimeOffset(2026, 1, 2, 13, 0, 0, TimeSpan.Zero);
@@ -251,9 +251,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task UpdateSessionLastSeenShouldRejectExpiredSession()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var expiresAt = new DateTimeOffset(2026, 1, 2, 12, 30, 0, TimeSpan.Zero);
         var session = CreateSession(user.Id, expiresAt: expiresAt);
         var lastSeenAt = new DateTimeOffset(2026, 1, 2, 13, 0, 0, TimeSpan.Zero);
@@ -274,10 +274,10 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task MarkStepUpVerifiedShouldUpdateOnlyActiveOwnedTargetSession()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var owner = await CreateTestUser(identityRepository);
-        var otherUser = await CreateTestUser(identityRepository);
+        var owner = await CreateTestUser(userRepository);
+        var otherUser = await CreateTestUser(userRepository);
         var target = CreateSession(owner.Id);
         var otherOwnerSession = CreateSession(owner.Id);
         var otherUserSession = CreateSession(otherUser.Id);
@@ -308,10 +308,10 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task MarkStepUpVerifiedShouldRejectWrongUserRevokedAndExpiredSessions()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var owner = await CreateTestUser(identityRepository);
-        var other = await CreateTestUser(identityRepository);
+        var owner = await CreateTestUser(userRepository);
+        var other = await CreateTestUser(userRepository);
         var active = CreateSession(owner.Id);
         var revoked = CreateSession(owner.Id);
         var expired = CreateSession(owner.Id, expiresAt: new DateTimeOffset(2026, 1, 2, 12, 30, 0, TimeSpan.Zero));
@@ -339,9 +339,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task RevokeSessionShouldRevokeOnlyTargetSession()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var target = CreateSession(user.Id);
         var other = CreateSession(user.Id);
         var revokedAt = new DateTimeOffset(2026, 1, 2, 14, 0, 0, TimeSpan.Zero);
@@ -366,9 +366,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task RevokeSessionShouldNotOverwriteExistingRevocation()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var session = CreateSession(user.Id);
         var firstRevokedAt = new DateTimeOffset(2026, 1, 2, 14, 0, 0, TimeSpan.Zero);
         var secondRevokedAt = new DateTimeOffset(2026, 1, 2, 15, 0, 0, TimeSpan.Zero);
@@ -390,10 +390,10 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task RevokeSessionsForUserShouldRevokeAllSessionsForTargetUser()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var targetUser = await CreateTestUser(identityRepository);
-        var otherUser = await CreateTestUser(identityRepository);
+        var targetUser = await CreateTestUser(userRepository);
+        var otherUser = await CreateTestUser(userRepository);
         var first = CreateSession(targetUser.Id);
         var second = CreateSession(targetUser.Id);
         var other = CreateSession(otherUser.Id);
@@ -423,9 +423,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task RevokeSessionsForUserShouldNotOverwriteExistingRevocations()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var alreadyRevoked = CreateSession(user.Id);
         var active = CreateSession(user.Id);
         var firstRevokedAt = new DateTimeOffset(2026, 1, 2, 14, 0, 0, TimeSpan.Zero);
@@ -453,9 +453,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task ListSessionsForUserShouldReturnSessionsInCorrectOrder()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var first = CreateSession(user.Id, createdAt: new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
         var second = CreateSession(user.Id, createdAt: new DateTimeOffset(2026, 1, 2, 12, 0, 0, TimeSpan.Zero));
 
@@ -475,9 +475,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task ListSessionsForUserShouldFilterActiveOnly()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var active = CreateSession(user.Id, expiresAt: DateTimeOffset.UtcNow.AddDays(1));
         var revoked = CreateSession(user.Id, expiresAt: DateTimeOffset.UtcNow.AddDays(1));
         var expired = CreateSession(user.Id, expiresAt: DateTimeOffset.UtcNow.AddHours(-1));
@@ -496,10 +496,10 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task RevokeSessionByIdShouldEnforceOwnership()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var owner = await CreateTestUser(identityRepository);
-        var other = await CreateTestUser(identityRepository);
+        var owner = await CreateTestUser(userRepository);
+        var other = await CreateTestUser(userRepository);
         var session = CreateSession(owner.Id);
 
         await sessionRepository.CreateSessionAsync(session);
@@ -517,9 +517,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task RevokeOtherSessionsForUserShouldPreserveCurrentSession()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var current = CreateSession(user.Id);
         var other1 = CreateSession(user.Id);
         var other2 = CreateSession(user.Id);
@@ -546,9 +546,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     [Test]
     public async Task DeletingUserShouldCascadeDeleteSessions()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var session = CreateSession(user.Id);
 
         await sessionRepository.CreateSessionAsync(session);
@@ -559,7 +559,7 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         Assert.That(fetched, Is.Null);
     }
 
-    private PostgresIdentityRepository GetIdentityRepository() => (PostgresIdentityRepository)_serviceProvider.GetRequiredService<IIdentityRepository>();
+    private IUserRepository GetUserRepository() => _serviceProvider.GetRequiredService<IUserRepository>();
 
     private PostgresAuthenticationSessionRepository GetSessionRepository()
     {
@@ -574,7 +574,7 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         await command.ExecuteNonQueryAsync();
     }
 
-    private static async Task<AshlarPostgresUser> CreateTestUser(PostgresIdentityRepository repo)
+    private static async Task<AshlarPostgresUser> CreateTestUser(IUserRepository repo)
     {
         var user = new AshlarPostgresUser
         {

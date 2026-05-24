@@ -29,9 +29,9 @@ internal sealed class InvitationDependencies(
     /// </summary>
     public IInvitationRepository InvitationRepository => _storeContext.InvitationRepository;
     /// <summary>
-    /// Gets or sets the identity repository value.
+    /// Gets or sets the user repository value.
     /// </summary>
-    public IIdentityRepository IdentityRepository => _storeContext.IdentityRepository;
+    public IUserRepository UserRepository => _storeContext.UserRepository;
     /// <summary>
     /// Gets or sets the transaction provider value.
     /// </summary>

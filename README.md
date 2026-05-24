@@ -56,7 +56,7 @@ services
     .AddPasswordHasher<PasswordHasherV1>();
 ```
 
-Applications must provide an `IIdentityRepository` implementation (either by using an official package above or a custom one).
+Applications must provide `IUserRepository` and `ICredentialRepository` implementations (either by using an official package above or custom ones).
 
 Applications must also provide secret protection. For ASP.NET Core Data Protection, register Data Protection and call `AddAshlarDataProtectionSecretProtector()`. Ashlar does not use an insecure fallback protector.
 

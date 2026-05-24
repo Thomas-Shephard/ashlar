@@ -160,7 +160,7 @@ internal sealed class PostgresPasskeyChallengeRepositoryTests : PostgresTestBase
             IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        await _serviceProvider.GetRequiredService<IIdentityRepository>().CreateUserAsync(user);
+        await _serviceProvider.GetRequiredService<IUserRepository>().CreateUserAsync(user);
         return user.Id;
     }
 

@@ -41,7 +41,7 @@ internal sealed class PostgresBootstrapStateRepositoryTests : PostgresTestBase
         var userId = Guid.NewGuid();
         var initializedAt = DateTimeOffset.UtcNow;
 
-        var identityRepo = new PostgresIdentityRepository(new PostgresTransactionManager(GetDataSource()));
+        var identityRepo = new PostgresUserRepository(new PostgresTransactionManager(GetDataSource()));
         await identityRepo.CreateUserAsync(new AshlarUser
         {
             Id = userId,
@@ -61,7 +61,7 @@ internal sealed class PostgresBootstrapStateRepositoryTests : PostgresTestBase
     {
         var userId1 = Guid.NewGuid();
         var userId2 = Guid.NewGuid();
-        var identityRepo = new PostgresIdentityRepository(new PostgresTransactionManager(GetDataSource()));
+        var identityRepo = new PostgresUserRepository(new PostgresTransactionManager(GetDataSource()));
 
         await identityRepo.CreateUserAsync(new AshlarUser { Id = userId1, Email = "admin1@example.com", IsActive = true });
         await identityRepo.CreateUserAsync(new AshlarUser { Id = userId2, Email = "admin2@example.com", IsActive = true });
@@ -76,7 +76,7 @@ internal sealed class PostgresBootstrapStateRepositoryTests : PostgresTestBase
     public async Task MarkAsInitializedAsyncHandlesConcurrentAttempts()
     {
         var userId = Guid.NewGuid();
-        var identityRepo = new PostgresIdentityRepository(new PostgresTransactionManager(GetDataSource()));
+        var identityRepo = new PostgresUserRepository(new PostgresTransactionManager(GetDataSource()));
         await identityRepo.CreateUserAsync(new AshlarUser { Id = userId, Email = "admin@example.com", IsActive = true });
 
         var tasks = Enumerable.Range(0, 10).Select(_ => _repository.MarkAsInitializedAsync(userId, DateTimeOffset.UtcNow)).ToList();
