@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Ashlar.Webhooks\Ashlar.Webhooks.csproj" />
+    <ProjectReference Include="..\..\src\Ashlar\Ashlar.csproj" />
+  </ItemGroup>
+
+</Project>

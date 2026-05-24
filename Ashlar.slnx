@@ -9,6 +9,7 @@
     <Project Path="src/Ashlar.Postgres/Ashlar.Postgres.csproj" />
     <Project Path="src/Ashlar.Redis/Ashlar.Redis.csproj" />
     <Project Path="src/Ashlar.Sqlite/Ashlar.Sqlite.csproj" />
+    <Project Path="src/Ashlar.Webhooks/Ashlar.Webhooks.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Ashlar.Testing/Ashlar.Testing.csproj" />
@@ -22,6 +23,7 @@
     <Project Path="tests/Ashlar.Postgres.Tests/Ashlar.Postgres.Tests.csproj" />
     <Project Path="tests/Ashlar.Redis.Tests/Ashlar.Redis.Tests.csproj" />
     <Project Path="tests/Ashlar.Sqlite.Tests/Ashlar.Sqlite.Tests.csproj" />
+    <Project Path="tests/Ashlar.Webhooks.Tests/Ashlar.Webhooks.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Ashlar.Sample.AspNetCore/Ashlar.Sample.AspNetCore.csproj" />
