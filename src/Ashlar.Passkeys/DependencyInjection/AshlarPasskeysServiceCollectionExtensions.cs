@@ -1,4 +1,5 @@
 using Ashlar.Auditing;
+using Ashlar.Operational.Configuration;
 using Ashlar.Passkeys;
 using Ashlar.Security.Tokens;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -47,6 +48,8 @@ public static class AshlarPasskeysServiceCollectionExtensions
             provider.GetService<ISecurityEventSink>()));
         services.TryAddScoped<IPasskeyService, PasskeyService>();
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<PasskeyOptions>>().Value);
+        services.AddAshlarConfigurationValidation();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAshlarConfigurationCheck, PasskeyConfigurationCheck>());
         return services;
     }
 }

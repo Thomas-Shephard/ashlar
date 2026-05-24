@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Ashlar.Operational.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -56,6 +57,61 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
         {
             Assert.That(services.Where(descriptor => descriptor.ServiceType == typeof(IAuthenticationProvider) && descriptor.ImplementationType == typeof(PasskeyAuthenticationProvider)), Has.Exactly(1).Items);
             Assert.That(services.Where(descriptor => descriptor.ServiceType == typeof(IPasskeyService) && descriptor.ImplementationType == typeof(PasskeyService)), Has.Exactly(1).Items);
+        }
+    }
+
+    [Test]
+    public async Task AddAshlarPasskeysReportsMissingChallengeRepository()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarPasskeys();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues, Has.Some.Matches<AshlarConfigurationIssue>(issue =>
+            issue.Code == AshlarConfigurationIssueCodes.PasskeyChallengeRepositoryMissing
+            && issue.Severity == AshlarConfigurationIssueSeverity.Error));
+    }
+
+    [Test]
+    public void AddAshlarPasskeysRegistersConfigurationValidator()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarPasskeys();
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetRequiredService<IAshlarConfigurationValidator>(), Is.Not.Null);
+    }
+
+    [Test]
+    public async Task AddAshlarPasskeysDoesNotReportChallengeRepositoryWhenRegistered()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IPasskeyChallengeRepository, StubPasskeyChallengeRepository>();
+
+        services.AddAshlarPasskeys();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.PasskeyChallengeRepositoryMissing));
+    }
+
+    [Test]
+    public void IsServiceRegisteredFallsBackWhenProviderDoesNotExposeIsService()
+    {
+        var provider = new FallbackServiceProvider(typeof(IPasskeyChallengeRepository), new StubPasskeyChallengeRepository());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.IsServiceRegistered<IPasskeyChallengeRepository>(), Is.True);
+            Assert.That(provider.IsServiceRegistered<IPasskeyService>(), Is.False);
         }
     }
 
@@ -127,6 +183,32 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
         public Task<PasskeyAuthenticationVerificationResult> VerifyAuthenticationAsync(PasskeyOptions options, PasskeyChallenge challenge, UserCredential credential, JsonElement assertionResponse, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
+        }
+    }
+
+    private sealed class StubPasskeyChallengeRepository : IPasskeyChallengeRepository
+    {
+        public Task CreateAsync(PasskeyChallenge challenge, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<PasskeyChallenge?> GetAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<bool> ConsumeAsync(Guid id, string expectedVersion, DateTimeOffset consumedAt, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
+    private sealed class FallbackServiceProvider(Type serviceType, object service) : IServiceProvider
+    {
+        public object? GetService(Type requestedServiceType)
+        {
+            return requestedServiceType == serviceType ? service : null;
         }
     }
 }

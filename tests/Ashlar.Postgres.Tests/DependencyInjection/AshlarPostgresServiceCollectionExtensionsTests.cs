@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Ashlar.Operational;
+using Ashlar.Operational.Configuration;
 using Ashlar.Operational.Diagnostics;
 using Ashlar.Postgres.Schema;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,6 +34,21 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
             Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IAuthenticationHandshakeRepository>(), Is.TypeOf<PostgresAuthenticationHandshakeRepository>());
             Assert.That(provider.GetService<SchemaManager>(), Is.Not.Null);
         }
+    }
+
+    [Test]
+    public async Task AddAshlarPostgresSuppressesNullTransactionConfigurationWarning()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarIdentity();
+        services.AddAshlarPostgres(GetDataSource());
+
+        await using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain("ASHLAR-CONFIG-NULL-TRANSACTION-PROVIDER"));
     }
 
     [Test]

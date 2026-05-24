@@ -989,6 +989,23 @@ var result = await diagnostics.CheckAsync(cancellationToken);
 
 The result reports provider name, `CheckedAt`, whether cleanup is configured, whether `AshlarCleanupOptions` are valid, cleanup interval, batch size, max batches per run, and enabled/disabled cleanup category counts. It returns `Healthy` when configured options are valid, `Unhealthy` when configured options are invalid, and `NotSupported` when cleanup diagnostics cannot read configured cleanup options. The result does not query cleanup tables or expose provider internals.
 
+## Configuration Validation
+Ashlar includes provider-neutral configuration validation for startup and deployment checks. It reports incomplete or development-oriented setup without sending email, writing data, starting background work, or querying provider infrastructure.
+
+```csharp
+using Ashlar.Operational.Configuration;
+
+var validator = serviceProvider.GetRequiredService<IAshlarConfigurationValidator>();
+var result = await validator.ValidateAsync();
+
+foreach (var issue in result.Issues)
+{
+    Console.WriteLine($"{issue.Severity}: {issue.Code} - {issue.Message}");
+}
+```
+
+`AddAshlarIdentity()` registers the validator automatically; applications can also call `AddAshlarConfigurationValidation()` directly. This is not a replacement for health checks: health checks answer whether running infrastructure is healthy, while configuration validation answers whether Ashlar appears safely and completely configured. Warnings may be acceptable in development. Production apps should pay attention to missing repositories, missing secret protection, `NullEmailSender`, `NullSecurityEventSink`, in-memory authentication rate limiting, and no durable transaction provider.
+
 ## Transactions
 Ashlar supports scoped database transactions through the `IAshlarTransactionProvider` abstraction. This allows multiple repository operations within a single service scope to participate in a shared unit of work.
 

@@ -28,6 +28,7 @@ public static partial class AshlarServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        services.AddAshlarConfigurationValidation();
         services.AddOptions<AuthorizationGrantOptions>()
             .Validate(AuthorizationGrantOptions.Validate, "Authorization grant options are invalid.");
         if (configure != null)
