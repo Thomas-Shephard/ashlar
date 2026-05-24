@@ -112,6 +112,61 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         Assert.That(exception?.OptionsType, Is.EqualTo(typeof(AshlarSecurityEventWebhookOptions)));
     }
 
+    [Test]
+    public async Task AddAshlarSecurityEventWebhookOutboxRegistersDurableHandler()
+    {
+        var enqueuer = new TestWebhookEnqueuer();
+        var services = new ServiceCollection();
+        services.AddSingleton<IAshlarSecurityEventWebhookEnqueuer>(enqueuer);
+        services.AddAshlarSecurityEventWebhookOutbox(options =>
+        {
+            options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions
+            {
+                Name = "audit",
+                Uri = new Uri("https://example.test/security-events"),
+                SharedSecret = "shared-secret"
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var handler = provider.GetServices<ISecurityEventHandler>().Single();
+
+        await handler.HandleAsync(new AshlarSecurityEvent
+        {
+            Id = Guid.NewGuid(),
+            EventType = "test.event",
+            OccurredAt = DateTimeOffset.UtcNow
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handler, Is.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+            Assert.That(provider.GetRequiredService<AshlarSecurityEventWebhookDeliveryFactory>(), Is.Not.Null);
+            Assert.That(enqueuer.Deliveries, Has.Count.EqualTo(1));
+            Assert.That(enqueuer.Deliveries.Single().Headers, Does.ContainKey(AshlarSecurityEventWebhookSender.SignatureHeaderName));
+        }
+    }
+
+    [Test]
+    public void AddAshlarSecurityEventWebhookOutboxRejectsNullServices()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => AshlarWebhooksServiceCollectionExtensions.AddAshlarSecurityEventWebhookOutbox(null!));
+
+        Assert.That(exception?.ParamName, Is.EqualTo("services"));
+    }
+
+    [Test]
+    public void AddAshlarSecurityEventWebhookOutboxAllowsNullConfigure()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IAshlarSecurityEventWebhookEnqueuer, TestWebhookEnqueuer>();
+
+        services.AddAshlarSecurityEventWebhookOutbox();
+
+        using var provider = services.BuildServiceProvider();
+        Assert.That(provider.GetServices<ISecurityEventHandler>().Single(), Is.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+    }
+
     private sealed class TestHttpClientFactory : IHttpClientFactory
     {
         public List<string> CreatedClients { get; } = [];
@@ -120,6 +175,17 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         {
             CreatedClients.Add(name);
             return new HttpClient();
+        }
+    }
+
+    private sealed class TestWebhookEnqueuer : IAshlarSecurityEventWebhookEnqueuer
+    {
+        public List<AshlarSecurityEventWebhookDelivery> Deliveries { get; } = [];
+
+        public Task EnqueueAsync(AshlarSecurityEventWebhookDelivery delivery, CancellationToken cancellationToken = default)
+        {
+            Deliveries.Add(delivery);
+            return Task.CompletedTask;
         }
     }
 }

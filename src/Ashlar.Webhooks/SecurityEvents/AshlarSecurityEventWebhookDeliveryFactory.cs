@@ -47,10 +47,48 @@ public sealed class AshlarSecurityEventWebhookDeliveryFactory
                 endpoint.Name,
                 GetEndpointUri(endpoint),
                 endpoint.Timeout ?? _options.Timeout,
-                endpoint.SharedSecret,
+                CreateHeaders(endpoint.Name, endpoint.SharedSecret, payload, body),
                 payload,
                 body))
             .ToArray();
+    }
+
+    /// <summary>
+    /// Creates the final safe headers for a prepared webhook delivery.
+    /// </summary>
+    /// <param name="endpointName">The endpoint name value.</param>
+    /// <param name="sharedSecret">The optional shared secret value.</param>
+    /// <param name="payload">The payload value.</param>
+    /// <param name="body">The serialized body bytes used for signing.</param>
+    /// <returns>The final headers.</returns>
+    public static IReadOnlyDictionary<string, string> CreateHeaders(
+        string endpointName,
+        string? sharedSecret,
+        AshlarSecurityEventWebhookPayload payload,
+        ReadOnlySpan<byte> body)
+    {
+        AshlarSecurityEventWebhookHeaderValues.ThrowIfRequiredUnsafe(
+            endpointName,
+            nameof(endpointName),
+            "Endpoint name is required.",
+            "Endpoint name must not contain line breaks.");
+        ArgumentNullException.ThrowIfNull(payload);
+
+        var headers = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["X-Ashlar-Event-Id"] = payload.Id.ToString("D"),
+            ["X-Ashlar-Event-Type"] = payload.EventType,
+            ["X-Ashlar-Webhook-Endpoint"] = endpointName,
+            ["X-Ashlar-Timestamp"] = payload.OccurredAt.ToString("O")
+        };
+
+        if (!string.IsNullOrEmpty(sharedSecret))
+        {
+            headers[AshlarSecurityEventWebhookSender.SignatureHeaderName] =
+                AshlarSecurityEventWebhookSender.CreateSignature(sharedSecret, body);
+        }
+
+        return headers;
     }
 
     /// <summary>

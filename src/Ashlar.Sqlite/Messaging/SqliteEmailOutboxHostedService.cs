@@ -46,7 +46,7 @@ public sealed class SqliteEmailOutboxHostedService<TTransport>(
     /// <returns>The operation result.</returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await EmailOutboxDispatch.RunHostedLoopAsync(
+        await OutboxLoopRunner.RunHostedLoopAsync(
             _serviceProvider,
             _options.BatchSize,
             _options.PollingInterval,

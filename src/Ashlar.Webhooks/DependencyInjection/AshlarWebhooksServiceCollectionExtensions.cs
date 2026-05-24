@@ -41,4 +41,30 @@ public static class AshlarWebhooksServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Registers durable outbox enqueue behavior for Ashlar security event webhooks.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional webhook configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarSecurityEventWebhookOutbox(
+        this IServiceCollection services,
+        Action<AshlarSecurityEventWebhookOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddOptions<AshlarSecurityEventWebhookOptions>()
+            .Validate(AshlarSecurityEventWebhookOptions.Validate, "Ashlar security event webhook options are invalid.")
+            .ValidateOnStart();
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddSingleton<AshlarSecurityEventWebhookDeliveryFactory>();
+        services.AddAshlarSecurityEventHandler<AshlarSecurityEventWebhookOutboxHandler>();
+
+        return services;
+    }
 }

@@ -1,5 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
 namespace Ashlar.Messaging;
@@ -81,61 +79,6 @@ public static class EmailOutboxDispatch
     private const int MaxLastErrorLength = 1000;
 
     /// <summary>
-    /// Runs a hosted email outbox polling loop.
-    /// </summary>
-    /// <param name="serviceProvider">The service provider.</param>
-    /// <param name="batchSize">The configured batch size.</param>
-    /// <param name="pollingInterval">The polling interval.</param>
-    /// <param name="logger">The logger.</param>
-    /// <param name="processBatchAsync">The provider-specific scoped batch processor.</param>
-    /// <param name="logBatchFailed">The provider-specific failure logger.</param>
-    /// <param name="stoppingToken">The stopping token.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
-    public static async Task RunHostedLoopAsync(
-        IServiceProvider serviceProvider,
-        int batchSize,
-        TimeSpan pollingInterval,
-        ILogger logger,
-        Func<IServiceProvider, CancellationToken, Task<int>> processBatchAsync,
-        Action<ILogger, int, Exception?> logBatchFailed,
-        CancellationToken stoppingToken)
-    {
-        ArgumentNullException.ThrowIfNull(serviceProvider);
-        ArgumentNullException.ThrowIfNull(logger);
-        ArgumentNullException.ThrowIfNull(processBatchAsync);
-        ArgumentNullException.ThrowIfNull(logBatchFailed);
-
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
-            {
-                int processedCount;
-                using (var scope = serviceProvider.CreateScope())
-                {
-                    processedCount = await processBatchAsync(scope.ServiceProvider, stoppingToken);
-                }
-
-                if (processedCount < batchSize)
-                {
-                    await Task.Delay(pollingInterval, stoppingToken);
-                }
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception exception)
-            {
-                logBatchFailed(logger, batchSize, exception);
-                if (!await DelayUntilNextPollAsync(pollingInterval, stoppingToken))
-                {
-                    break;
-                }
-            }
-        }
-    }
-
-    /// <summary>
     /// Computes the provider-specific values used to mark a failed delivery attempt.
     /// </summary>
     /// <param name="attemptCount">The current attempt count.</param>
@@ -198,16 +141,4 @@ public static class EmailOutboxDispatch
             });
     }
 
-    private static async ValueTask<bool> DelayUntilNextPollAsync(TimeSpan delay, CancellationToken stoppingToken)
-    {
-        try
-        {
-            await Task.Delay(delay, stoppingToken);
-            return true;
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            return false;
-        }
-    }
 }

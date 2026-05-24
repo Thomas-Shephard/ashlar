@@ -5,39 +5,39 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-namespace Ashlar.Postgres.Messaging;
+namespace Ashlar.Postgres.Webhooks;
 
 /// <summary>
-/// A background service that periodically triggers the <see cref="IEmailOutboxDispatcher"/>.
+/// Background service that periodically dispatches PostgreSQL-backed security event webhook deliveries.
 /// </summary>
 /// <param name="serviceProvider">The service provider value.</param>
 /// <param name="options">The options value.</param>
 /// <param name="logger">The logger value.</param>
-public sealed class PostgresEmailOutboxHostedService(
+public sealed class PostgresSecurityEventWebhookOutboxHostedService(
     IServiceProvider serviceProvider,
-    IOptions<PostgresEmailOutboxOptions> options,
-    ILogger<PostgresEmailOutboxHostedService>? logger = null) : BackgroundService
+    IOptions<PostgresSecurityEventWebhookOutboxOptions> options,
+    ILogger<PostgresSecurityEventWebhookOutboxHostedService>? logger = null) : BackgroundService
 {
     private static readonly Action<ILogger, int, Exception?> OutboxBatchFailed =
         LoggerMessage.Define<int>(
             LogLevel.Error,
-            new EventId(1000, nameof(OutboxBatchFailed)),
-            "PostgreSQL email outbox hosted service batch failed. BatchSize={BatchSize}");
+            new EventId(2000, nameof(OutboxBatchFailed)),
+            "PostgreSQL security event webhook outbox hosted service batch failed. BatchSize={BatchSize}");
 
     private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
-    private readonly PostgresEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
-    private readonly ILogger<PostgresEmailOutboxHostedService> _logger = logger ?? NullLogger<PostgresEmailOutboxHostedService>.Instance;
+    private readonly PostgresSecurityEventWebhookOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
+    private readonly ILogger<PostgresSecurityEventWebhookOutboxHostedService> _logger = logger ?? NullLogger<PostgresSecurityEventWebhookOutboxHostedService>.Instance;
 
     /// <summary>
-    /// Validates options and starts the background email outbox dispatcher.
+    /// Validates options and starts the background webhook outbox dispatcher.
     /// </summary>
-    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>A task that represents the asynchronous start operation.</returns>
     public override Task StartAsync(CancellationToken cancellationToken)
     {
-        if (!PostgresEmailOutboxOptions.Validate(_options))
+        if (!PostgresSecurityEventWebhookOutboxOptions.Validate(_options))
         {
-            throw new InvalidOperationException("Email outbox options are invalid.");
+            throw new InvalidOperationException("Security event webhook outbox options are invalid.");
         }
 
         return base.StartAsync(cancellationToken);
@@ -55,7 +55,7 @@ public sealed class PostgresEmailOutboxHostedService(
             _options.BatchSize,
             _options.PollingInterval,
             _logger,
-            static (provider, token) => provider.GetRequiredService<IEmailOutboxDispatcher>().ProcessBatchAsync(token),
+            static (provider, token) => provider.GetRequiredService<PostgresSecurityEventWebhookOutboxDispatcher>().ProcessBatchAsync(token),
             OutboxBatchFailed,
             stoppingToken);
     }

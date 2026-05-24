@@ -38,7 +38,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<ISecureTokenGenerator, SecureTokenGenerator>(services, ServiceLifetime.Singleton);
             AssertDescriptor<ISecureTokenHasher, Sha256TokenHasher>(services, ServiceLifetime.Singleton);
             AssertDescriptor<SecureTokenContext>(services, ServiceLifetime.Singleton);
-            AssertDescriptor<ISecurityEventSink, SecurityEventFanOutSink>(services, ServiceLifetime.Singleton);
+            AssertDescriptor<ISecurityEventSink, SecurityEventFanOutSink>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IEmailSender, NullEmailSender>(services, ServiceLifetime.Singleton);
             AssertDescriptor<IdentityServiceOptions>(services, ServiceLifetime.Singleton);
             AssertDescriptor<AuthenticationSessionOptions>(services, ServiceLifetime.Singleton);

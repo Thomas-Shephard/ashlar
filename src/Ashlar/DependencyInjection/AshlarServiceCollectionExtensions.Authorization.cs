@@ -38,7 +38,7 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<AuthorizationGrantOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
-        services.TryAddSingleton<ISecurityEventSink, SecurityEventFanOutSink>();
+        services.TryAddScoped<ISecurityEventSink, SecurityEventFanOutSink>();
         services.TryAddScoped<IAuthorizationGrantService, AuthorizationGrantService>();
         services.TryAddScoped<IAuthorizationEvaluator, AuthorizationEvaluator>();
 

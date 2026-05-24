@@ -107,7 +107,7 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         services.TryAddSingleton<ISecureTokenHasher, Sha256TokenHasher>();
         services.TryAddSingleton<SecureTokenContext>();
-        services.TryAddSingleton<ISecurityEventSink, SecurityEventFanOutSink>();
+        services.TryAddScoped<ISecurityEventSink, SecurityEventFanOutSink>();
         services.TryAddSingleton<InMemoryAuthenticationRateLimiter>();
         services.TryAddSingleton<IAuthenticationRateLimiter>(provider => provider.GetRequiredService<InMemoryAuthenticationRateLimiter>());
         services.TryAddScoped<IAuthenticationRateLimiterDiagnostics>(provider =>
@@ -142,7 +142,7 @@ public static partial class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarIdentity();
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISecurityEventHandler, THandler>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ISecurityEventHandler, THandler>());
 
         return services;
     }
@@ -163,7 +163,7 @@ public static partial class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(implementationFactory);
 
         services.AddAshlarIdentity();
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISecurityEventHandler, THandler>(implementationFactory));
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ISecurityEventHandler, THandler>(implementationFactory));
 
         return services;
     }
