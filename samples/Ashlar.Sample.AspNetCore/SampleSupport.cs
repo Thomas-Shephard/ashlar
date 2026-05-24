@@ -76,6 +76,17 @@ internal static class SampleGoogleOidc
     }
 }
 
+internal static class SampleGitHubOAuth
+{
+    public const string ProviderName = "GitHub";
+
+    public static bool IsConfigured(IConfiguration configuration)
+    {
+        return !string.IsNullOrWhiteSpace(configuration["Authentication:GitHub:ClientId"])
+            && !string.IsNullOrWhiteSpace(configuration["Authentication:GitHub:ClientSecret"]);
+    }
+}
+
 internal static class SampleResultErrors
 {
     public static object From(Result result, string? fallbackMessage = null)
@@ -239,6 +250,9 @@ internal static class LandingPages
                     button.google-button { background: #fff; color: #1f1f1f; border: 1px solid #747775; height: 3rem; width: 100%; display: inline-flex; justify-content: center; align-items: center; gap: 10px; font-family: Roboto, Arial, sans-serif; font-size: 0.875rem; font-weight: 500; line-height: 1.25rem; padding: 0 12px; }
                     button.google-button:hover { background: #f8fafd; box-shadow: none; }
                     button.google-button img { display: block; width: 18px; height: 18px; object-fit: contain; background: #fff; flex: 0 0 18px; }
+                    button.github-button { background: #24292f; color: #fff; border: 1px solid #24292f; height: 3rem; width: 100%; display: inline-flex; justify-content: center; align-items: center; gap: 10px; font-size: 0.875rem; font-weight: 600; line-height: 1.25rem; padding: 0 12px; }
+                    button.github-button:hover { background: #32383f; box-shadow: none; }
+                    button.github-button img { display: block; width: 18px; height: 18px; object-fit: contain; flex: 0 0 18px; }
                     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
                     form { margin: 0; }
                     .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; background: #e5e7eb; color: #374151; }

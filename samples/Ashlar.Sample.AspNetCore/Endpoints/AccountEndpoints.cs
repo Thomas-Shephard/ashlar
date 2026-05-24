@@ -49,7 +49,8 @@ internal static class AccountEndpoints
             ashlarUser.Name,
             posture.Value,
             isAdmin,
-            SampleGoogleOidc.IsConfigured(configuration));
+            SampleGoogleOidc.IsConfigured(configuration),
+            SampleGitHubOAuth.IsConfigured(configuration));
     }
 
     private static async Task<IResult> UpdateProfileAsync(

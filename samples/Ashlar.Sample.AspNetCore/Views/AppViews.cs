@@ -468,10 +468,10 @@ internal static class AppViews
         </script>
     """;
 
-    public static IResult RenderDashboard(BootstrapStatus status, bool isAuthenticated, string? userName, bool isAdmin, List<(string Id, string Name, bool HasAccess)> projects, bool googleConfigured)
+    public static IResult RenderDashboard(BootstrapStatus status, bool isAuthenticated, string? userName, bool isAdmin, List<(string Id, string Name, bool HasAccess)> projects, bool googleConfigured, bool githubConfigured)
     {
         var bootstrapSection = RenderBootstrapSection(status, isAuthenticated);
-        var authSection = RenderAuthSection(status, isAuthenticated, userName, googleConfigured);
+        var authSection = RenderAuthSection(status, isAuthenticated, userName, googleConfigured, githubConfigured);
         var projectSection = isAuthenticated ? RenderProjectSection(projects) : "";
 
         var navLinks = "";
@@ -518,7 +518,7 @@ internal static class AppViews
         """;
     }
 
-    private static string RenderAuthSection(BootstrapStatus status, bool isAuthenticated, string? userName, bool googleConfigured)
+    private static string RenderAuthSection(BootstrapStatus status, bool isAuthenticated, string? userName, bool googleConfigured, bool githubConfigured)
     {
         if (isAuthenticated)
         {
@@ -538,6 +538,9 @@ internal static class AppViews
 
         var googleButton = googleConfigured
             ? RenderGoogleButton("Sign in with Google", onclick: "location.href='/auth/google'")
+            : "";
+        var githubButton = githubConfigured
+            ? RenderGitHubButton("Sign in with GitHub", onclick: "location.href='/auth/github'")
             : "";
 
         return $$"""
@@ -563,6 +566,12 @@ internal static class AppViews
                     <div class="sign-in-button-wrap" style="margin-top: 1rem;">
                         {{RenderLastUsedPill("google")}}
                         {{googleButton}}
+                    </div>
+                    """ : "")}}
+                {{(githubConfigured ? $$"""
+                    <div class="sign-in-button-wrap" style="margin-top: 1rem;">
+                        {{RenderLastUsedPill("github")}}
+                        {{githubButton}}
                     </div>
                     """ : "")}}
             </div>
@@ -745,17 +754,23 @@ internal static class AppViews
           """;
     }
 
-    private static string RenderGoogleAccountSection(UserSecurityPosture posture, bool googleConfigured)
+    private static bool HasExternalCredential(UserSecurityPosture posture, ProviderType providerType, string providerName)
+    {
+        return posture.CredentialInventory.Any(c =>
+            c.IsAvailable &&
+            c.Provider.Type == providerType &&
+            string.Equals(c.Provider.Name, providerName, StringComparison.Ordinal));
+    }
+
+    private static string RenderGoogleAccountItem(UserSecurityPosture posture, bool googleConfigured)
     {
         if (!googleConfigured)
         {
             return "";
         }
 
-        var hasGoogle = posture.CredentialInventory.Any(c =>
-            c.IsAvailable &&
-            c.Provider.Type == ProviderType.Oidc &&
-            string.Equals(c.Provider.Name, SampleGoogleOidc.ProviderName, StringComparison.Ordinal));
+        var hasGoogle = HasExternalCredential(posture, ProviderType.Oidc, SampleGoogleOidc.ProviderName);
+        var label = hasGoogle ? "Linked Google Account" : "Google Account";
 
         var status = hasGoogle
             ? "<span class=\"badge badge-success\">Linked</span>"
@@ -772,15 +787,65 @@ internal static class AppViews
               """;
 
         return $$"""
-            <hr style="margin: 2.5rem 0; border: 0; border-top: 1px solid #e5e7eb;" />
-            <h3>Google Account</h3>
             <div class="status-box" style="margin-top: 1rem;">
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
-                    <strong>Google sign-in</strong>
+                    <strong>{{label}}</strong>
                     {{status}}
                 </div>
                 {{action}}
             </div>
+        """;
+    }
+
+    private static string RenderGitHubAccountItem(UserSecurityPosture posture, bool githubConfigured)
+    {
+        if (!githubConfigured)
+        {
+            return "";
+        }
+
+        var hasGitHub = HasExternalCredential(posture, ProviderType.OAuth, SampleGitHubOAuth.ProviderName);
+        var label = hasGitHub ? "Linked GitHub Account" : "GitHub Account";
+
+        var status = hasGitHub
+            ? "<span class=\"badge badge-success\">Linked</span>"
+            : "<span class=\"badge\">Not linked</span>";
+        var action = hasGitHub
+            ? """
+                <form id="unlinkGitHubForm" style="margin-top: 1rem;">
+                    <button type="submit" class="secondary danger" style="height: 2.5rem;">Unlink GitHub Account</button>
+                </form>
+                <div id="unlinkGitHubFormResult"></div>
+              """
+            : RenderGitHubButton("Continue with GitHub", id: "linkGitHubButton", style: "margin-top: 1rem;") + """
+                <div id="linkGitHubResult"></div>
+              """;
+
+        return $$"""
+            <div class="status-box" style="margin-top: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
+                    <strong>{{label}}</strong>
+                    {{status}}
+                </div>
+                {{action}}
+            </div>
+        """;
+    }
+
+    private static string RenderExternalAccountsSection(UserSecurityPosture posture, bool googleConfigured, bool githubConfigured)
+    {
+        var googleAccountItem = RenderGoogleAccountItem(posture, googleConfigured);
+        var githubAccountItem = RenderGitHubAccountItem(posture, githubConfigured);
+        if (string.IsNullOrEmpty(googleAccountItem) && string.IsNullOrEmpty(githubAccountItem))
+        {
+            return "";
+        }
+
+        return $$"""
+            <hr style="margin: 2.5rem 0; border: 0; border-top: 1px solid #e5e7eb;" />
+            <h3>External Accounts</h3>
+            {{googleAccountItem}}
+            {{githubAccountItem}}
         """;
     }
 
@@ -793,7 +858,7 @@ internal static class AppViews
         string MissingVerification,
         string VerificationStatus);
 
-    public static IResult RenderAccountSettings(string userEmail, string? userName, UserSecurityPosture posture, bool isAdmin, bool googleConfigured)
+    public static IResult RenderAccountSettings(string userEmail, string? userName, UserSecurityPosture posture, bool isAdmin, bool googleConfigured, bool githubConfigured)
     {
         var verifiedBadge = FormatEmailVerificationBadge(posture);
         var verifyForm = RenderVerifyEmailForm(posture);
@@ -802,7 +867,7 @@ internal static class AppViews
         var passkeyStatus = FormatRegisteredBadge(securityDisplay.HasPasskeys);
         var recoveryStatus = FormatGeneratedBadge(securityDisplay.HasRecoveryCodes);
         var mfaActions = RenderMfaActions(securityDisplay);
-        var googleAccountSection = RenderGoogleAccountSection(posture, googleConfigured);
+        var externalAccountsSection = RenderExternalAccountsSection(posture, googleConfigured, githubConfigured);
         var googleAccountScripts = googleConfigured
             ? """
                 setupForm('unlinkGoogleForm', '/api/account/external/google/unlink', 'POST',
@@ -838,6 +903,46 @@ internal static class AppViews
                             div.style.color = '#dc2626';
                             div.innerText = 'Connection error.';
                             linkGoogleButton.disabled = false;
+                        }
+                    };
+                }
+              """
+            : "";
+        var githubAccountScripts = githubConfigured
+            ? """
+                setupForm('unlinkGitHubForm', '/api/account/external/github/unlink', 'POST',
+                    f => ({}),
+                    (r, div) => {
+                        div.innerHTML = '<p class="badge badge-success">GitHub account unlinked.</p>';
+                        setTimeout(() => location.reload(), 500);
+                    }
+                );
+
+                const linkGitHubButton = document.getElementById('linkGitHubButton');
+                if (linkGitHubButton) {
+                    linkGitHubButton.onclick = async () => {
+                        const div = document.getElementById('linkGitHubResult');
+                        linkGitHubButton.disabled = true;
+                        div.style.color = '';
+                        div.innerText = 'Preparing GitHub sign-in...';
+                        try {
+                            const response = await ashlarFetchWithStepUp('/account/external/github/link', {
+                                method: 'GET',
+                                redirect: 'manual'
+                            });
+
+                            if (response.status === 403) {
+                                div.style.color = '#dc2626';
+                                div.innerText = 'Additional verification is required before linking GitHub.';
+                                linkGitHubButton.disabled = false;
+                                return;
+                            }
+
+                            location.href = '/account/external/github/link';
+                        } catch (err) {
+                            div.style.color = '#dc2626';
+                            div.innerText = 'Connection error.';
+                            linkGitHubButton.disabled = false;
                         }
                     };
                 }
@@ -918,7 +1023,7 @@ internal static class AppViews
                     </div>
                     {{mfaActions}}
 
-                    {{googleAccountSection}}
+                    {{externalAccountsSection}}
 
                     <hr style="margin: 2.5rem 0; border: 0; border-top: 1px solid #e5e7eb;" />
 
@@ -977,6 +1082,7 @@ internal static class AppViews
                 );
 
                 {{googleAccountScripts}}
+                {{githubAccountScripts}}
 
                 if (document.getElementById('generateBtn')) {
                     document.getElementById('generateBtn').onclick = async (e) => {
@@ -1561,6 +1667,11 @@ internal static class AppViews
 
     public static IResult RenderGoogleOidcResult(string title, string message)
     {
+        return RenderExternalProviderResult(title, message);
+    }
+
+    public static IResult RenderExternalProviderResult(string title, string message)
+    {
         return LandingPages.Render(
             title,
             message,
@@ -1571,11 +1682,18 @@ internal static class AppViews
 
     public static IResult RenderGoogleMfaCallback(string handshakeToken, IEnumerable<string> requiredFactors)
     {
+        return RenderExternalProviderMfaCallback("Google", "google", handshakeToken, requiredFactors);
+    }
+
+    public static IResult RenderExternalProviderMfaCallback(string displayName, string primaryMethod, string handshakeToken, IEnumerable<string> requiredFactors)
+    {
         var serializedFactors = System.Text.Json.JsonSerializer.Serialize(requiredFactors);
+        var encodedDisplayName = System.Net.WebUtility.HtmlEncode(displayName);
+        var encodedPrimaryMethod = System.Web.HttpUtility.JavaScriptStringEncode(primaryMethod);
 
         return LandingPages.Render(
             "Additional Verification Required",
-            "Complete additional verification to finish signing in with Google.",
+            $"Complete additional verification to finish signing in with {encodedDisplayName}.",
             $$"""
             <div id="result"></div>
             <script>
@@ -1584,20 +1702,30 @@ internal static class AppViews
                 handleMfaRequired(
                     '{{System.Web.HttpUtility.JavaScriptStringEncode(handshakeToken)}}',
                     {{serializedFactors}},
-                    'google');
+                    '{{encodedPrimaryMethod}}');
             </script>
             """);
     }
 
     private static string RenderGoogleButton(string text, string? id = null, string? onclick = null, string? style = null)
     {
+        return RenderExternalProviderButton("google-button", "/google/g-logo.png", text, id, onclick, style);
+    }
+
+    private static string RenderGitHubButton(string text, string? id = null, string? onclick = null, string? style = null)
+    {
+        return RenderExternalProviderButton("github-button", "/github/mark-white.svg", text, id, onclick, style);
+    }
+
+    private static string RenderExternalProviderButton(string className, string imagePath, string text, string? id, string? onclick, string? style)
+    {
         var idAttribute = string.IsNullOrWhiteSpace(id) ? "" : $" id=\"{System.Net.WebUtility.HtmlEncode(id)}\"";
         var onclickAttribute = string.IsNullOrWhiteSpace(onclick) ? "" : $" onclick=\"{System.Net.WebUtility.HtmlEncode(onclick)}\"";
         var styleAttribute = string.IsNullOrWhiteSpace(style) ? "" : $" style=\"{System.Net.WebUtility.HtmlEncode(style)}\"";
 
         return $"""
-            <button{idAttribute} type="button" class="google-button"{onclickAttribute}{styleAttribute}>
-                <img src="/google/g-logo.png" alt="" aria-hidden="true" />
+            <button{idAttribute} type="button" class="{System.Net.WebUtility.HtmlEncode(className)}"{onclickAttribute}{styleAttribute}>
+                <img src="{System.Net.WebUtility.HtmlEncode(imagePath)}" alt="" aria-hidden="true" />
                 <span>{System.Net.WebUtility.HtmlEncode(text)}</span>
             </button>
             """;

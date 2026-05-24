@@ -27,6 +27,7 @@ app.MapMfaEndpoints();
 app.MapSessionEndpoints();
 app.MapInvitationEndpoints();
 app.MapGoogleOidcEndpoints();
+app.MapGitHubOAuthEndpoints();
 app.MapAdminEndpoints();
 
 await app.RunAsync();

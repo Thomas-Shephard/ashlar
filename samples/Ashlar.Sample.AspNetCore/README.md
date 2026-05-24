@@ -1,6 +1,6 @@
 # Ashlar ASP.NET Core Sample
 
-This sample is a small reference application for composing Ashlar in an ASP.NET Core app. It uses PostgreSQL persistence, Data Protection secret protection, Ashlar session cookies, magic-link and email-code sign-in, passkeys, optional Google OIDC sign-in/linking/invitation registration, bootstrap setup, invitations, authorization grants, scoped ASP.NET Core policies, authenticator app verification, recovery codes, email verification, email change, session management, the PostgreSQL email outbox, cleanup service, audit sink, and rate limiter.
+This sample is a small reference application for composing Ashlar in an ASP.NET Core app. It uses PostgreSQL persistence, Data Protection secret protection, Ashlar session cookies, magic-link and email-code sign-in, passkeys, optional Google OIDC sign-in/linking/invitation registration, optional GitHub OAuth sign-in/linking, bootstrap setup, invitations, authorization grants, scoped ASP.NET Core policies, authenticator app verification, recovery codes, email verification, email change, session management, the PostgreSQL email outbox, cleanup service, audit sink, and rate limiter.
 
 The entire sample can be exercised directly through the web UI at `http://localhost:5000`.
 
@@ -91,6 +91,52 @@ When enabled, the sample adds:
 
 Google uses the configured Ashlar provider name `Google`. The sample displays only friendly linked/not-linked state from `UserSecurityPosture.CredentialInventory`; it does not display provider keys, OIDC subjects, raw claims, or tokens. `Ashlar.OAuth` configures `SaveTokens = false`, and the sample does not persist OAuth access, refresh, or ID tokens.
 
+### Optional GitHub OAuth
+
+GitHub OAuth is disabled by default. The sample starts normally without GitHub configuration and hides all GitHub buttons when it is not configured.
+
+To enable it, create a GitHub OAuth app:
+
+1. Open **GitHub -> Settings -> Developer settings -> OAuth Apps**.
+2. Choose **New OAuth App**.
+3. Use any local name, such as `Ashlar Sample Local`.
+4. Set **Homepage URL** to the sample origin:
+
+```text
+http://localhost:5000
+```
+
+5. Set **Authorization callback URL** to the sample OAuth callback URL:
+
+```text
+http://localhost:5000/signin-oauth/GitHub
+```
+
+If you change `Ashlar:PublicAppUrl` or run the sample on a different port, update both GitHub values to match that origin and use `/signin-oauth/GitHub` as the redirect path.
+
+Then copy the generated **Client ID** and **Client secret** into user secrets or environment variables. Do not commit real credentials.
+
+```bash
+dotnet user-secrets set "Authentication:GitHub:ClientId" "<client-id>" --project samples/Ashlar.Sample.AspNetCore/Ashlar.Sample.AspNetCore.csproj
+dotnet user-secrets set "Authentication:GitHub:ClientSecret" "<client-secret>" --project samples/Ashlar.Sample.AspNetCore/Ashlar.Sample.AspNetCore.csproj
+```
+
+Equivalent environment variables are:
+
+```text
+Authentication__GitHub__ClientId=<client-id>
+Authentication__GitHub__ClientSecret=<client-secret>
+```
+
+When enabled, the sample adds:
+
+- **Sign in with GitHub** for users who already have a linked GitHub OAuth credential.
+- **Link GitHub account** and **Unlink GitHub account** under Account -> Security. Both require fresh MFA when the current account has a usable eligible verification factor.
+
+GitHub uses the configured Ashlar provider name `GitHub` with `ProviderType.OAuth`. The sample displays only friendly linked/not-linked state from `UserSecurityPosture.CredentialInventory`; it does not display GitHub provider keys, raw GitHub IDs, raw claims, access tokens, or profile JSON. `Ashlar.OAuth` configures `SaveTokens = false`, and the sample does not persist OAuth access or refresh tokens.
+
+GitHub invitation acceptance is intentionally not enabled in this sample. The basic GitHub `/user` endpoint does not provide a reliable verified-email policy for invitation registration.
+
 ## Database Initialization
 
 The sample calls `InitializeAshlarPostgresSchemaAsync()` at startup. When using a configured connection string, the database must already exist and the connection user must be able to create or update the Ashlar schema objects. When using the auto-container, the temporary database is created for you.
@@ -111,12 +157,13 @@ Navigate to `http://localhost:5000` in your browser.
 4. **Step-up verification**: Sensitive account operations require fresh MFA. When a protected action needs step-up, the sample opens a modal for an authenticator app code or recovery code. Successful verification marks only the current Ashlar session fresh.
 5. **Passkeys**: Use **Sign in with Passkey** on the dashboard to authenticate with a registered passkey. While signed in, open **Account → Security** to register, list, rename, and revoke passkeys. The sample shows authenticator apps, recovery codes, and passkeys as separate sign-in verification methods. Passkeys require HTTPS or localhost and a browser that supports WebAuthn. Passkeys are wired for primary sign-in and for passkey factor handshakes; passkey step-up can be validated manually through the browser WebAuthn factor endpoints. The automated smoke tests avoid hardware-backed WebAuthn.
 6. **Google OIDC**: If Google is configured, use **Sign in with Google** for linked accounts, **Sign up with Google** for invitation-based registration, and **Account → Security** to link or unlink Google. Linking and unlinking require fresh MFA when an eligible verification factor is available.
-7. **Email Verification**: If your email is unverified, click "Resend Verification Email" and check the console for the link.
-8. **Email Change**: Use "Change Email" in your profile to request a new email address. This requires fresh MFA. Confirm the change via the link in the console.
-9. **Session Management**: Go to Account → Security to view your active sessions. You can revoke a specific session or all other sessions with conditional fresh MFA when a usable factor exists.
-10. **Invitations**: As an administrator, you can invite new users by entering their email address.
-11. **Accepting Invitations**: Check the application console to find the (simulated) invitation email. Click the link provided to join the application. You will be automatically signed in as the new user.
-12. **Authorization**: Use the administration section to grant "project.manage" permissions to other users for the "alpha" or "beta" projects. The dashboard dynamically updates to show where you have manager access.
+7. **GitHub OAuth**: If GitHub is configured, use **Sign in with GitHub** for linked accounts and **Account → Security** to link or unlink GitHub. Linking and unlinking require fresh MFA when an eligible verification factor is available. GitHub invitation acceptance is not enabled.
+8. **Email Verification**: If your email is unverified, click "Resend Verification Email" and check the console for the link.
+9. **Email Change**: Use "Change Email" in your profile to request a new email address. This requires fresh MFA. Confirm the change via the link in the console.
+10. **Session Management**: Go to Account → Security to view your active sessions. You can revoke a specific session or all other sessions with conditional fresh MFA when a usable factor exists.
+11. **Invitations**: As an administrator, you can invite new users by entering their email address.
+12. **Accepting Invitations**: Check the application console to find the (simulated) invitation email. Click the link provided to join the application. You will be automatically signed in as the new user.
+13. **Authorization**: Use the administration section to grant "project.manage" permissions to other users for the "alpha" or "beta" projects. The dashboard dynamically updates to show where you have manager access.
 
 ## Fresh MFA in the sample
 
@@ -131,7 +178,7 @@ options.RequireFreshMfa();
 options.RequireFreshMfaIfAvailable();
 ```
 
-Routes use `.RequireFreshMfa()` for high-risk sensitive operations: passkey registration/rename/revoke, TOTP reset, recovery-code generation, email change requests, and administrator disable/reactivate/session-revoke/MFA-reset actions. User-owned session revocation and Google account link/unlink endpoints use `.RequireFreshMfaIfAvailable()` to demonstrate adaptive protection: users with a usable eligible additional verification factor must complete fresh step-up, while users without one are not locked out of revoking old devices or adding another sign-in method. Ordinary sign-in, sign-out, email verification, invitation acceptance, account viewing, and session listing remain available with a normal authenticated session.
+Routes use `.RequireFreshMfa()` for high-risk sensitive operations: passkey registration/rename/revoke, TOTP reset, recovery-code generation, email change requests, and administrator disable/reactivate/session-revoke/MFA-reset actions. User-owned session revocation and Google/GitHub account link/unlink endpoints use `.RequireFreshMfaIfAvailable()` to demonstrate adaptive protection: users with a usable eligible additional verification factor must complete fresh step-up, while users without one are not locked out of revoking old devices or adding another sign-in method. Ordinary sign-in, sign-out, email verification, invitation acceptance, account viewing, and session listing remain available with a normal authenticated session.
 
 The account and administration pages render Ashlar's account security posture model. They show sign-in methods separately from additional verification, use friendly labels such as "Authenticator app", "Recovery codes", and "Passkeys", and show whether protected actions are available or blocked until setup.
 
@@ -143,4 +190,4 @@ The cleanup hosted service and email outbox dispatcher start with the applicatio
 
 `tests/Ashlar.Postgres.Tests` includes a net10-only ASP.NET Core smoke test for this sample. It hosts the real sample app with `WebApplicationFactory<Program>`, supplies an isolated PostgreSQL database from the existing Testcontainers fixture, disables background hosted loops, and inspects `ashlar_email_outbox` directly instead of using SMTP.
 
-The smoke test is intentionally thin: it proves the composed routing, DI, session cookie authentication, Postgres persistence, outbox-backed email flows, bootstrap, invitations, scoped authorization grants, email verification/change, authenticator app enrollment, recovery-code step-up, fresh-MFA protected sample operations, session endpoints, and conditional Google OIDC sample wiring work together. Google smoke coverage uses configuration and local safe-failure/challenge checks only; it never calls Google and does not require real Google credentials. Passkey endpoints require manual browser WebAuthn validation and are not exercised as an automated hardware-backed flow. The smoke test does not replace the lower-level unit and integration tests that cover branch-level behavior.
+The smoke test is intentionally thin: it proves the composed routing, DI, session cookie authentication, Postgres persistence, outbox-backed email flows, bootstrap, invitations, scoped authorization grants, email verification/change, authenticator app enrollment, recovery-code step-up, fresh-MFA protected sample operations, session endpoints, and conditional Google OIDC and GitHub OAuth sample wiring work together. Google and GitHub smoke coverage uses configuration and local safe-failure/challenge checks only; it never calls Google or GitHub and does not require real provider credentials. Passkey endpoints require manual browser WebAuthn validation and are not exercised as an automated hardware-backed flow. The smoke test does not replace the lower-level unit and integration tests that cover branch-level behavior.
