@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Ashlar.Auditing;
 
 namespace Ashlar.ProviderContractTests.Auditing;
 

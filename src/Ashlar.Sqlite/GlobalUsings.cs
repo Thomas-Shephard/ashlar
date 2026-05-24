@@ -7,6 +7,7 @@ global using Ashlar.Sqlite.Operational;
 global using Ashlar.Sqlite.RateLimiting;
 global using Ashlar.Sqlite.Transactions;
 
+global using Ashlar.Auditing;
 global using Ashlar.Identity.Abstractions.Repositories;
 global using Ashlar.Identity.Abstractions.Tenancy;
 global using Ashlar.Identity.Abstractions.Transactions;

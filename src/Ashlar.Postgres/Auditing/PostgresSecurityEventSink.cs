@@ -1,4 +1,3 @@
-using Ashlar.Auditing;
 using Dapper;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
