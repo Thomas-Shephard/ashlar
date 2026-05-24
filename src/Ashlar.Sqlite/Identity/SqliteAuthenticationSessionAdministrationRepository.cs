@@ -27,7 +27,7 @@ public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteC
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
 
-        AddFilters(request, now, ref sql, command);
+        AddFilters(request, ref sql, command);
 
         sql += " ORDER BY last_seen_at IS NULL ASC, last_seen_at DESC, created_at DESC, id DESC LIMIT $limit OFFSET $offset;";
         command.CommandText = sql;
@@ -75,7 +75,7 @@ public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteC
         FROM ashlar_sessions
         """;
 
-    private static void AddFilters(SearchAuthenticationSessionsRequest request, DateTimeOffset now, ref string sql, SqliteCommand command)
+    private static void AddFilters(SearchAuthenticationSessionsRequest request, ref string sql, SqliteCommand command)
     {
         if (request.Tenant != null)
         {
