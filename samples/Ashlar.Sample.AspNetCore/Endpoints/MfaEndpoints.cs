@@ -92,22 +92,15 @@ internal static class MfaEndpoints
         }).RequireAuthorization().RequireFreshMfa();
     }
 
-    private sealed class MfaEnrollServices
-    {
-        [FromServices]
-        public required ITotpService Totp { get; init; }
-        [FromServices]
-        public required IUserRepository Users { get; init; }
-        [FromServices]
-        public required ICredentialRepository Credentials { get; init; }
-        [FromServices]
-        public required IAuthorizationEvaluator Auth { get; init; }
-        public required HttpContext HttpContext { get; init; }
-        public required ClaimsPrincipal User { get; init; }
-        [FromServices]
-        public required IOptions<SampleAshlarOptions> Options { get; init; }
-        public CancellationToken CancellationToken { get; init; }
-    }
+    private sealed record MfaEnrollServices(
+        [FromServices] ITotpService Totp,
+        [FromServices] IUserRepository Users,
+        [FromServices] ICredentialRepository Credentials,
+        [FromServices] IAuthorizationEvaluator Auth,
+        HttpContext HttpContext,
+        ClaimsPrincipal User,
+        [FromServices] IOptions<SampleAshlarOptions> Options,
+        CancellationToken CancellationToken);
 
     private static async Task<IResult> VerifyMfaAsync(
             MfaVerifyRequest request,
