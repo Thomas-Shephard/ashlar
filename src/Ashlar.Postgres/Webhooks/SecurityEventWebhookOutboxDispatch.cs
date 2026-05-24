@@ -28,12 +28,9 @@ internal static class SecurityEventWebhookOutboxDispatch
         var headers = JsonSerializer.Deserialize<Dictionary<string, string>>(entry.Headers);
         if (headers != null)
         {
-            foreach (var header in headers)
+            foreach (var header in headers.Where(header => !request.Headers.TryAddWithoutValidation(header.Key, header.Value)))
             {
-                if (!request.Headers.TryAddWithoutValidation(header.Key, header.Value))
-                {
-                    request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
-                }
+                request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
             }
         }
 
