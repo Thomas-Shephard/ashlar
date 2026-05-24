@@ -390,6 +390,27 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     }
 
     [Test]
+    public void MapToHttpRequestAddsRequestHeaders()
+    {
+        using var request = SecurityEventWebhookOutboxDispatch.MapToHttpRequest(new SecurityEventWebhookOutboxEntry
+        {
+            Id = Guid.NewGuid(),
+            Uri = "https://example.test/security-events",
+            Body = Encoding.UTF8.GetBytes("{}"),
+            Headers = """{"X-Ashlar-Event-Type":"ashlar.test"}""",
+            TimeoutMs = 1000,
+            AttemptCount = 0
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.Headers.TryGetValues("X-Ashlar-Event-Type", out var requestValues), Is.True);
+            Assert.That(requestValues!.Single(), Is.EqualTo("ashlar.test"));
+            Assert.That(request.Content!.Headers.Contains("X-Ashlar-Event-Type"), Is.False);
+        }
+    }
+
+    [Test]
     public void MapToHttpRequestHandlesEmptyHeaders()
     {
         using var request = SecurityEventWebhookOutboxDispatch.MapToHttpRequest(new SecurityEventWebhookOutboxEntry
