@@ -1,5 +1,6 @@
 using Ashlar.Auditing;
 using Ashlar.Passkeys;
+using Ashlar.Security.Tokens;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
@@ -39,6 +40,9 @@ public static class AshlarPasskeysServiceCollectionExtensions
         services.TryAddScoped<IPasskeyCeremonyValidator, Fido2PasskeyCeremonyValidator>();
         services.TryAddScoped(provider => new PasskeyServiceDependencies(
             provider.GetRequiredService<IOptions<PasskeyOptions>>(),
+            provider.GetRequiredService<IAuthenticationOrchestrator>(),
+            provider.GetRequiredService<IAuthenticationHandshakeService>(),
+            provider.GetRequiredService<ISecureTokenHasher>(),
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>()));
         services.TryAddScoped<IPasskeyService, PasskeyService>();

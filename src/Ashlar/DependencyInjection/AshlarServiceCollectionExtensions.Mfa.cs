@@ -35,6 +35,11 @@ public static partial class AshlarServiceCollectionExtensions
         }
 
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, RecoveryCodeAuthenticationProvider>());
+        services.TryAddScoped(provider => new RecoveryCodeServiceDependencies(
+            provider.GetRequiredService<IOptions<RecoveryCodeOptions>>(),
+            provider.GetService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>(),
+            provider.GetService<ISecurityNotificationService>()));
         services.TryAddScoped<IRecoveryCodeService, RecoveryCodeService>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IPasswordHasher, PasswordHasherV1>());
 

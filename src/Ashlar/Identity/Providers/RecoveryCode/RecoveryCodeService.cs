@@ -25,35 +25,29 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
     /// <param name="credentialRepository">Stores and retrieves credentials.</param>
     /// <param name="transactionProvider">The transaction provider value.</param>
     /// <param name="hasherSelector">The hasher selector value.</param>
-    /// <param name="options">The options value.</param>
-    /// <param name="timeProvider">The time provider value.</param>
-    /// <param name="securityEventSink">The security event sink value.</param>
-    /// <param name="notificationService">The notification service value.</param>
+    /// <param name="dependencies">Options and operational dependencies used by recovery-code flows.</param>
     public RecoveryCodeService(
         IUserRepository userRepository,
         ICredentialRepository credentialRepository,
         IAshlarTransactionProvider transactionProvider,
         Security.Hashing.PasswordHasherSelector hasherSelector,
-        IOptions<RecoveryCodeOptions> options,
-        TimeProvider? timeProvider = null,
-        ISecurityEventSink? securityEventSink = null,
-        ISecurityNotificationService? notificationService = null)
+        RecoveryCodeServiceDependencies dependencies)
     {
         ArgumentNullException.ThrowIfNull(userRepository);
         ArgumentNullException.ThrowIfNull(credentialRepository);
         ArgumentNullException.ThrowIfNull(transactionProvider);
         ArgumentNullException.ThrowIfNull(hasherSelector);
-        ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(options.Value);
+        ArgumentNullException.ThrowIfNull(dependencies);
+        ArgumentNullException.ThrowIfNull(dependencies.Options.Value);
 
         _userRepository = userRepository;
         _credentialRepository = credentialRepository;
         _transactionProvider = transactionProvider;
         _hasherSelector = hasherSelector;
-        _options = options.Value;
-        _timeProvider = timeProvider ?? TimeProvider.System;
-        _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
-        _notifications = new SecurityNotificationEmitter(notificationService);
+        _options = dependencies.Options.Value;
+        _timeProvider = dependencies.TimeProvider;
+        _securityEvents = new SecurityEventEmitter(dependencies.SecurityEventSink, _timeProvider);
+        _notifications = new SecurityNotificationEmitter(dependencies.NotificationService);
     }
 
     /// <inheritdoc />
@@ -235,4 +229,38 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
             UserAgent: audit.UserAgent,
             CorrelationId: audit.CorrelationId);
     }
+}
+
+/// <summary>
+/// Optional dependencies used by recovery-code service operations.
+/// </summary>
+/// <param name="options">Recovery-code options.</param>
+/// <param name="timeProvider">Clock used for recovery-code timestamps.</param>
+/// <param name="securityEventSink">Receives recovery-code security events.</param>
+/// <param name="notificationService">Sends recovery-code security notifications.</param>
+public sealed class RecoveryCodeServiceDependencies(
+    IOptions<RecoveryCodeOptions> options,
+    TimeProvider? timeProvider = null,
+    ISecurityEventSink? securityEventSink = null,
+    ISecurityNotificationService? notificationService = null)
+{
+    /// <summary>
+    /// Gets the configured recovery-code options.
+    /// </summary>
+    public IOptions<RecoveryCodeOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
+
+    /// <summary>
+    /// Gets the clock used for recovery-code timestamps.
+    /// </summary>
+    public TimeProvider TimeProvider { get; } = timeProvider ?? TimeProvider.System;
+
+    /// <summary>
+    /// Gets the sink used to record recovery-code security events.
+    /// </summary>
+    public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
+
+    /// <summary>
+    /// Gets the service used to send recovery-code security notifications.
+    /// </summary>
+    public ISecurityNotificationService? NotificationService { get; } = notificationService;
 }

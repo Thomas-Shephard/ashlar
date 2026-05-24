@@ -13,18 +13,12 @@ namespace Ashlar.Passkeys;
 /// <param name="credentialRepository">Stores and retrieves credentials.</param>
 /// <param name="challengeRepository">The passkey challenge repository.</param>
 /// <param name="ceremonyValidator">The passkey ceremony validator.</param>
-/// <param name="authenticationOrchestrator">The orchestrator for MFA-aware authentication flows.</param>
-/// <param name="handshakeService">The authentication handshake service.</param>
-/// <param name="tokenHasher">The secure token hasher.</param>
 /// <param name="dependencies">The passkey service dependencies.</param>
 public sealed class PasskeyService(
     IUserRepository userRepository,
     ICredentialRepository credentialRepository,
     IPasskeyChallengeRepository challengeRepository,
     IPasskeyCeremonyValidator ceremonyValidator,
-    IAuthenticationOrchestrator authenticationOrchestrator,
-    IAuthenticationHandshakeService handshakeService,
-    ISecureTokenHasher tokenHasher,
     PasskeyServiceDependencies dependencies) : IPasskeyService
 {
     private const string RegistrationPurpose = "passkey-registration";
@@ -36,9 +30,9 @@ public sealed class PasskeyService(
     private readonly ICredentialRepository _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
     private readonly IPasskeyChallengeRepository _challengeRepository = challengeRepository;
     private readonly IPasskeyCeremonyValidator _ceremonyValidator = ceremonyValidator;
-    private readonly IAuthenticationOrchestrator _authenticationOrchestrator = authenticationOrchestrator;
-    private readonly IAuthenticationHandshakeService _handshakeService = handshakeService;
-    private readonly ISecureTokenHasher _tokenHasher = tokenHasher;
+    private readonly IAuthenticationOrchestrator _authenticationOrchestrator = ValidateDependencies(dependencies).AuthenticationOrchestrator;
+    private readonly IAuthenticationHandshakeService _handshakeService = ValidateDependencies(dependencies).HandshakeService;
+    private readonly ISecureTokenHasher _tokenHasher = ValidateDependencies(dependencies).TokenHasher;
     private readonly PasskeyOptions _options = ValidateDependencies(dependencies).Options.Value;
     private readonly TimeProvider _timeProvider = ValidateDependencies(dependencies).TimeProvider;
     private readonly ISecurityEventSink? _securityEventSink = ValidateDependencies(dependencies).SecurityEventSink;
@@ -516,10 +510,16 @@ internal sealed record CompletedPasskeyAssertion(
 /// Provides passkey service dependencies.
 /// </summary>
 /// <param name="options">The passkey options.</param>
+/// <param name="authenticationOrchestrator">The orchestrator for MFA-aware authentication flows.</param>
+/// <param name="handshakeService">The authentication handshake service.</param>
+/// <param name="tokenHasher">The secure token hasher.</param>
 /// <param name="timeProvider">The time provider.</param>
 /// <param name="securityEventSink">The security event sink.</param>
 public sealed class PasskeyServiceDependencies(
     IOptions<PasskeyOptions> options,
+    IAuthenticationOrchestrator authenticationOrchestrator,
+    IAuthenticationHandshakeService handshakeService,
+    ISecureTokenHasher tokenHasher,
     TimeProvider? timeProvider = null,
     ISecurityEventSink? securityEventSink = null)
 {
@@ -527,6 +527,18 @@ public sealed class PasskeyServiceDependencies(
     /// Gets the configured passkey options.
     /// </summary>
     public IOptions<PasskeyOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
+    /// <summary>
+    /// Gets the orchestrator used to complete authentication flows.
+    /// </summary>
+    public IAuthenticationOrchestrator AuthenticationOrchestrator { get; } = authenticationOrchestrator ?? throw new ArgumentNullException(nameof(authenticationOrchestrator));
+    /// <summary>
+    /// Gets the service used to create and inspect passkey authentication handshakes.
+    /// </summary>
+    public IAuthenticationHandshakeService HandshakeService { get; } = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
+    /// <summary>
+    /// Gets the hasher used for passkey handshake tokens.
+    /// </summary>
+    public ISecureTokenHasher TokenHasher { get; } = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
     /// <summary>
     /// Gets the configured time provider.
     /// </summary>
