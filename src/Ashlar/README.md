@@ -16,10 +16,12 @@ Register the core services, then provide persistence and secret protection throu
 services.AddAshlarIdentity();
 services.AddAshlarAuthorization();
 
-services.AddDataProtection();
-services.AddAshlarDataProtectionSecretProtector();
+// Required before using credential features that store protected secrets.
+// Register an ISecretProtector implementation from a companion package or your application.
 services.AddAshlarPostgres(connectionString);
 ```
+
+Core Ashlar owns the `ISecretProtector` abstraction but does not ship a default implementation. Hosts must register an implementation before using credential features that store or read protected secrets, such as TOTP shared secrets, recovery credentials, and email-change secrets. ASP.NET Core Data Protection integration is provided by `Ashlar.AspNetCore`.
 
 Add authentication providers for the flows your application supports:
 

@@ -27,7 +27,7 @@ Ashlar provides `IServiceCollection` extensions for registering its core identit
 // 1. Register persistence (e.g., PostgreSQL)
 services.AddAshlarPostgres(connectionString);
 
-// 2. Register secret protection
+// 2. Register secret protection required by credential features that store protected secrets
 services.AddDataProtection();
 services.AddAshlarDataProtectionSecretProtector();
 
@@ -58,7 +58,7 @@ services
 
 Applications must provide `IUserRepository` and `ICredentialRepository` implementations (either by using an official package above or custom ones).
 
-Applications must also provide secret protection. For ASP.NET Core Data Protection, register Data Protection and call `AddAshlarDataProtectionSecretProtector()`. Ashlar does not use an insecure fallback protector.
+Applications must also provide secret protection before using credential features that store or read protected secrets, such as TOTP shared secrets, recovery credentials, and email-change secrets. Core Ashlar owns the `ISecretProtector` abstraction but does not ship a default implementation. ASP.NET Core Data Protection integration is provided by `Ashlar.AspNetCore`; register Data Protection and call `AddAshlarDataProtectionSecretProtector()` from the ASP.NET Core package. Ashlar does not use an insecure fallback protector.
 
 Ashlar models durable authentication sessions through `AuthenticationSession`, `IAuthenticationSessionRepository`, and `IAuthenticationSessionService`.
 The session service generates high-entropy raw tokens, hashes them before persistence, updates last-seen timestamps, and revokes sessions. Raw tokens are returned only once from `CreateSessionAsync`; `AuthenticationSession` stores only the deterministic token hash. Sessions can also carry safe authentication metadata such as authentication time, primary provider, and recent additional verification provider/factor. This metadata intentionally excludes raw tokens, one-time codes, passkey ceremony payloads, recovery codes, password hashes, and protected secrets. Last-seen updates are advisory and must not make revoked or expired sessions active again. HTTP cookies and ASP.NET authentication middleware are separate integration layers.

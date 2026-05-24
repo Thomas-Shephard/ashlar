@@ -10,7 +10,6 @@ using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 using Ashlar.Security.Tokens;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -382,42 +381,6 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         {
             Assert.That(exception.Message, Does.Contain(nameof(IUserRepository)));
             Assert.That(exception.Message, Does.Contain("No service for type"));
-        }
-    }
-
-    [Test]
-    public void AddAshlarDataProtectionSecretProtectorRegistersSecretProtectorWhenDataProtectionProviderIsConfigured()
-    {
-        var dataProtectionProvider = new Mock<IDataProtectionProvider>();
-        var dataProtector = new Mock<IDataProtector>();
-        dataProtectionProvider
-            .Setup(provider => provider.CreateProtector("Ashlar.Identity.Features.Credentials"))
-            .Returns(dataProtector.Object);
-
-        var services = new ServiceCollection();
-        services.AddSingleton(dataProtectionProvider.Object);
-        services.AddAshlarDataProtectionSecretProtector();
-
-        using var provider = services.BuildServiceProvider();
-        using var scope = provider.CreateScope();
-
-        var protector = scope.ServiceProvider.GetRequiredService<ISecretProtector>();
-
-        Assert.That(protector, Is.TypeOf<DataProtectionSecretProtector>());
-    }
-
-    [Test]
-    public void AddAshlarDataProtectionSecretProtectorRegistersCoreIdentityServices()
-    {
-        var services = new ServiceCollection();
-
-        services.AddAshlarDataProtectionSecretProtector();
-
-        using (Assert.EnterMultipleScope())
-        {
-            AssertDescriptor<IIdentityService>(services, ServiceLifetime.Scoped);
-            AssertDescriptor<ICredentialService, CredentialService>(services, ServiceLifetime.Scoped);
-            AssertDescriptor<ISecretProtector, DataProtectionSecretProtector>(services, ServiceLifetime.Scoped);
         }
     }
 

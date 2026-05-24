@@ -1,6 +1,7 @@
+using Ashlar.Security.Encryption;
 using Microsoft.AspNetCore.DataProtection;
 
-namespace Ashlar.Security.Encryption;
+namespace Ashlar.AspNetCore.Security.Encryption;
 
 /// <summary>
 /// Provides an <see cref="ISecretProtector"/> implementation that uses ASP.NET Core Data Protection
