@@ -734,6 +734,30 @@ if (result.Succeeded)
 
 These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. Raw session tokens and token hashes are never returned, and session metadata is not included in the admin read model.
 
+#### Admin Credential Inventory
+Use `ICredentialAdministrationService` for read-only admin and operations tooling that needs to browse credential inventory across users or tenants without querying provider tables directly:
+
+```csharp
+var result = await credentialAdministration.SearchCredentialsAsync(
+    new SearchCredentialsRequest
+    {
+        UserId = userId,
+        Provider = AuthenticationProviderKey.Passkey,
+        Available = true,
+        Limit = 50
+    });
+
+if (result.Succeeded)
+{
+    foreach (var credential in result.Value.Items)
+    {
+        // credential includes CredentialId, UserId, TenantId, Provider, Purpose, Status, timestamps, and IsAvailable.
+    }
+}
+```
+
+Call `GetCredentialAsync(credentialId)` for the same safe fields for a single credential. These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. Raw credential values, provider keys, metadata, password hashes, token hashes, passkey payloads, recovery codes, OAuth/OIDC subject identifiers, provider-specific raw identifiers, and other secrets are never returned.
+
 ### Admin Account Recovery
 Ashlar exposes framework-neutral administrator primitives through `IAccountSecurityService`. The service is intentionally small and composes existing identity, credential, MFA, recovery-code, session, and audit infrastructure.
 
