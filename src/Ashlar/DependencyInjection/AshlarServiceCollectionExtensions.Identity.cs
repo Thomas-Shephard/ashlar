@@ -38,6 +38,7 @@ public static partial class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarMessaging();
+        services.AddAshlarConfigurationValidation();
         services.AddOptions();
         if (configure != null)
         {

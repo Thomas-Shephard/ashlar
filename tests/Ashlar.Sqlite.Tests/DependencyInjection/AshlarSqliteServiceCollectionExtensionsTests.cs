@@ -1,6 +1,7 @@
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Operational;
+using Ashlar.Operational.Configuration;
 using Ashlar.Operational.Diagnostics;
 using Ashlar.Sqlite.Schema;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,6 +43,21 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.That(provider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SqliteSecurityEventSink>());
             Assert.That(provider.GetRequiredService<IUserSecurityEventSummaryRepository>(), Is.SameAs(provider.GetRequiredService<ISecurityEventSink>()));
         }
+    }
+
+    [Test]
+    public async Task AddAshlarSqliteSuppressesNullTransactionConfigurationWarning()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarIdentity();
+        services.AddAshlarSqlite(GetConnectionString());
+
+        await using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain("ASHLAR-CONFIG-NULL-TRANSACTION-PROVIDER"));
     }
 
     [Test]
