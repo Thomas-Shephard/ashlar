@@ -4,6 +4,7 @@ namespace Microsoft.Extensions.DependencyInjection;
 #pragma warning restore IDE0130
 
 using Ashlar.Webhooks.SecurityEvents;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 /// <summary>
 /// Extension methods for registering Ashlar webhook services.
@@ -24,7 +25,7 @@ public static class AshlarWebhooksServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        var httpClientBuilder = services.AddHttpClient(AshlarSecurityEventWebhookHandler.HttpClientName);
+        var httpClientBuilder = services.AddHttpClient(AshlarSecurityEventWebhookSender.HttpClientName);
         configureHttpClient?.Invoke(httpClientBuilder);
         services.AddOptions<AshlarSecurityEventWebhookOptions>()
             .Validate(AshlarSecurityEventWebhookOptions.Validate, "Ashlar security event webhook options are invalid.")
@@ -34,6 +35,8 @@ public static class AshlarWebhooksServiceCollectionExtensions
             services.Configure(configure);
         }
 
+        services.TryAddSingleton<AshlarSecurityEventWebhookDeliveryFactory>();
+        services.TryAddSingleton<IAshlarSecurityEventWebhookSender, AshlarSecurityEventWebhookSender>();
         services.AddAshlarSecurityEventHandler<AshlarSecurityEventWebhookHandler>();
 
         return services;

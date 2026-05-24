@@ -32,12 +32,14 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
             });
 
         using var provider = services.BuildServiceProvider();
-        var httpClient = provider.GetRequiredService<IHttpClientFactory>().CreateClient(AshlarSecurityEventWebhookHandler.HttpClientName);
+        var httpClient = provider.GetRequiredService<IHttpClientFactory>().CreateClient(AshlarSecurityEventWebhookSender.HttpClientName);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
             Assert.That(provider.GetServices<ISecurityEventHandler>().Single(), Is.TypeOf<AshlarSecurityEventWebhookHandler>());
+            Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookSender>(), Is.TypeOf<AshlarSecurityEventWebhookSender>());
+            Assert.That(provider.GetRequiredService<AshlarSecurityEventWebhookDeliveryFactory>(), Is.Not.Null);
             Assert.That(provider.GetRequiredService<IOptions<AshlarSecurityEventWebhookOptions>>().Value.Endpoints.Single().Name, Is.EqualTo("audit"));
             Assert.That(configuredHttpClient, Is.True);
             Assert.That(httpClient.DefaultRequestHeaders.GetValues("X-Test").Single(), Is.EqualTo("configured"));
@@ -54,7 +56,12 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
 
         using var provider = services.BuildServiceProvider();
 
-        Assert.That(provider.GetServices<ISecurityEventHandler>().OfType<AshlarSecurityEventWebhookHandler>(), Has.Exactly(1).Items);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetServices<ISecurityEventHandler>().OfType<AshlarSecurityEventWebhookHandler>(), Has.Exactly(1).Items);
+            Assert.That(provider.GetServices<IAshlarSecurityEventWebhookSender>().OfType<AshlarSecurityEventWebhookSender>(), Has.Exactly(1).Items);
+            Assert.That(provider.GetServices<AshlarSecurityEventWebhookDeliveryFactory>(), Has.Exactly(1).Items);
+        }
     }
 
     [Test]
