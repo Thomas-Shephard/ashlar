@@ -21,28 +21,17 @@ public sealed class SqliteCredentialAdministrationRepository(ISqliteConnectionPr
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var sql = SelectSql + " WHERE 1 = 1";
-
-        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using var command = handle.Connection.CreateCommand();
-        command.Transaction = handle.Transaction;
-
-        AddFilters(request, ref sql, command);
-
-        sql += " ORDER BY c.last_used_at IS NULL ASC, c.last_used_at DESC, c.created_at DESC, c.id DESC LIMIT $limit OFFSET $offset;";
-        command.CommandText = sql;
-        command.AddParameter("$limit", request.Limit);
-        command.AddParameter("$offset", request.Offset);
-        command.AddDateTimeOffsetParameter("$now", now);
-
-        var credentials = new List<CredentialAdministrationSummary>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        return await SqliteQuery.QueryAsync(_connectionProvider, command =>
         {
-            credentials.Add(ReadSummary(reader));
-        }
+            var sql = SelectSql + " WHERE 1 = 1";
+            AddFilters(request, ref sql, command);
+            sql += " ORDER BY c.last_used_at IS NULL ASC, c.last_used_at DESC, c.created_at DESC, c.id DESC LIMIT $limit OFFSET $offset;";
+            command.AddParameter("$limit", request.Limit);
+            command.AddParameter("$offset", request.Offset);
+            command.AddDateTimeOffsetParameter("$now", now);
 
-        return credentials.AsReadOnly();
+            return sql;
+        }, ReadSummary, cancellationToken);
     }
 
     /// <summary>
@@ -54,17 +43,13 @@ public sealed class SqliteCredentialAdministrationRepository(ISqliteConnectionPr
     /// <returns>The credential, or <see langword="null" /> when it does not exist.</returns>
     public async Task<CredentialAdministrationDetail?> GetCredentialAsync(Guid credentialId, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        var sql = SelectSql + " WHERE c.id = $credentialId;";
+        return await SqliteQuery.QuerySingleAsync(_connectionProvider, command =>
+        {
+            command.AddGuidParameter("$credentialId", credentialId);
+            command.AddDateTimeOffsetParameter("$now", now);
 
-        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using var command = handle.Connection.CreateCommand();
-        command.Transaction = handle.Transaction;
-        command.CommandText = sql;
-        command.AddGuidParameter("$credentialId", credentialId);
-        command.AddDateTimeOffsetParameter("$now", now);
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? ReadDetail(reader) : null;
+            return SelectSql + " WHERE c.id = $credentialId;";
+        }, ReadDetail, cancellationToken);
     }
 
     private const string SelectSql = """
@@ -77,18 +62,7 @@ public sealed class SqliteCredentialAdministrationRepository(ISqliteConnectionPr
 
     private static void AddFilters(SearchCredentialsRequest request, ref string sql, SqliteCommand command)
     {
-        if (request.Tenant != null)
-        {
-            if (request.Tenant.TenantId == null)
-            {
-                sql += " AND u.tenant_id IS NULL";
-            }
-            else
-            {
-                sql += " AND u.tenant_id = $tenantId";
-                command.AddNullableGuidParameter("$tenantId", request.Tenant.TenantId);
-            }
-        }
+        command.AddTenantFilter(request.Tenant, "u.tenant_id", "$tenantId", ref sql);
 
         if (request.UserId.HasValue)
         {
@@ -96,12 +70,7 @@ public sealed class SqliteCredentialAdministrationRepository(ISqliteConnectionPr
             command.AddGuidParameter("$userId", request.UserId.Value);
         }
 
-        if (request.Provider.HasValue)
-        {
-            sql += " AND c.provider_type = $providerType AND c.provider_name = $providerName";
-            command.AddParameter("$providerType", request.Provider.Value.TypeValueOrUnknown);
-            command.AddParameter("$providerName", request.Provider.Value.Name);
-        }
+        command.AddProviderFilter(request.Provider, "c.provider_type", "c.provider_name", "$providerType", "$providerName", ref sql);
 
         if (!string.IsNullOrWhiteSpace(request.Purpose))
         {
@@ -127,25 +96,10 @@ public sealed class SqliteCredentialAdministrationRepository(ISqliteConnectionPr
             sql += request.Revoked.Value ? " AND c.revoked_at IS NOT NULL" : " AND c.revoked_at IS NULL";
         }
 
-        AddDateRange(request.CreatedFrom, request.CreatedTo, "c.created_at", "$createdFrom", "$createdTo", ref sql, command);
-        AddDateRange(request.UpdatedFrom, request.UpdatedTo, "c.updated_at", "$updatedFrom", "$updatedTo", ref sql, command);
-        AddDateRange(request.LastUsedFrom, request.LastUsedTo, "c.last_used_at", "$lastUsedFrom", "$lastUsedTo", ref sql, command);
-        AddDateRange(request.ExpiresFrom, request.ExpiresTo, "c.expires_at", "$expiresFrom", "$expiresTo", ref sql, command);
-    }
-
-    private static void AddDateRange(DateTimeOffset? from, DateTimeOffset? to, string column, string fromParameter, string toParameter, ref string sql, SqliteCommand command)
-    {
-        if (from.HasValue)
-        {
-            sql += $" AND {column} >= {fromParameter}";
-            command.AddDateTimeOffsetParameter(fromParameter, from.Value);
-        }
-
-        if (to.HasValue)
-        {
-            sql += $" AND {column} <= {toParameter}";
-            command.AddDateTimeOffsetParameter(toParameter, to.Value);
-        }
+        command.AddDateRange(request.CreatedFrom, request.CreatedTo, "c.created_at", "$createdFrom", "$createdTo", ref sql);
+        command.AddDateRange(request.UpdatedFrom, request.UpdatedTo, "c.updated_at", "$updatedFrom", "$updatedTo", ref sql);
+        command.AddDateRange(request.LastUsedFrom, request.LastUsedTo, "c.last_used_at", "$lastUsedFrom", "$lastUsedTo", ref sql);
+        command.AddDateRange(request.ExpiresFrom, request.ExpiresTo, "c.expires_at", "$expiresFrom", "$expiresTo", ref sql);
     }
 
     private static CredentialAdministrationSummary ReadSummary(SqliteDataReader reader)

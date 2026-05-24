@@ -34,13 +34,7 @@ public sealed class PostgresUserAdministrationRepository(IPostgresConnectionProv
             parameters.Add("Query", $"%{request.Query.Trim()}%");
         }
 
-        if (request.Tenant != null)
-        {
-            sql += request.Tenant.TenantId == null
-                ? " AND tenant_id IS NULL"
-                : " AND tenant_id = @TenantId";
-            parameters.Add("TenantId", request.Tenant.TenantId);
-        }
+        PostgresAdminQuery.AddTenantFilter(request.Tenant, "tenant_id", "TenantId", ref sql, parameters);
 
         if (request.IsActive.HasValue)
         {
@@ -59,13 +53,8 @@ public sealed class PostgresUserAdministrationRepository(IPostgresConnectionProv
         parameters.Add("Limit", request.Limit);
         parameters.Add("Offset", request.Offset);
 
-        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using (connectionHandle)
-        {
-            var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            var result = await connectionHandle.Connection.QueryAsync<UserAdministrationUserRow>(command);
-            return result.Select(ToUserSummary).ToList().AsReadOnly();
-        }
+        var rows = await PostgresAdminQuery.QueryAsync<UserAdministrationUserRow>(_connectionProvider, sql, parameters, cancellationToken);
+        return rows.Select(ToUserSummary).ToList().AsReadOnly();
     }
 
     /// <summary>
@@ -83,13 +72,8 @@ public sealed class PostgresUserAdministrationRepository(IPostgresConnectionProv
             WHERE id = @UserId
             """;
 
-        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using (connectionHandle)
-        {
-            var command = new CommandDefinition(sql, new { UserId = userId }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync<UserAdministrationUserRow>(command);
-            return row == null ? null : ToUserSummary(row);
-        }
+        var row = await PostgresAdminQuery.QuerySingleAsync<UserAdministrationUserRow>(_connectionProvider, sql, new { UserId = userId }, cancellationToken);
+        return row == null ? null : ToUserSummary(row);
     }
 
     private static UserSummary ToUserSummary(UserAdministrationUserRow row)
@@ -101,13 +85,8 @@ public sealed class PostgresUserAdministrationRepository(IPostgresConnectionProv
             row.TenantId,
             row.IsActive,
             row.IsEmailVerified,
-            ToDateTimeOffset(row.CreatedAt),
-            row.UpdatedAt.HasValue ? ToDateTimeOffset(row.UpdatedAt.Value) : null);
-    }
-
-    private static DateTimeOffset ToDateTimeOffset(DateTime value)
-    {
-        return new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc));
+            PostgresAdminQuery.ToDateTimeOffset(row.CreatedAt),
+            PostgresAdminQuery.ToNullableDateTimeOffset(row.UpdatedAt));
     }
 
     private sealed record UserAdministrationUserRow(

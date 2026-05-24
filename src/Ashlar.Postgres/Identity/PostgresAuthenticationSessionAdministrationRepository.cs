@@ -31,13 +31,8 @@ public sealed class PostgresAuthenticationSessionAdministrationRepository(IPostg
         parameters.Add("Limit", request.Limit);
         parameters.Add("Offset", request.Offset);
 
-        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using (connectionHandle)
-        {
-            var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            var rows = await connectionHandle.Connection.QueryAsync<AuthenticationSessionAdministrationRow>(command);
-            return rows.Select(static row => row.ToSummary()).ToList().AsReadOnly();
-        }
+        var rows = await PostgresAdminQuery.QueryAsync<AuthenticationSessionAdministrationRow>(_connectionProvider, sql, parameters, cancellationToken);
+        return rows.Select(static row => row.ToSummary()).ToList().AsReadOnly();
     }
 
     /// <summary>
@@ -50,13 +45,8 @@ public sealed class PostgresAuthenticationSessionAdministrationRepository(IPostg
     public async Task<AuthenticationSessionAdministrationDetail?> GetAuthenticationSessionAsync(Guid sessionId, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         var sql = SelectSql + " WHERE id = @Id";
-        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using (connectionHandle)
-        {
-            var command = new CommandDefinition(sql, new { Id = sessionId, Now = now }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync<AuthenticationSessionAdministrationRow>(command);
-            return row?.ToDetail();
-        }
+        var row = await PostgresAdminQuery.QuerySingleAsync<AuthenticationSessionAdministrationRow>(_connectionProvider, sql, new { Id = sessionId, Now = now }, cancellationToken);
+        return row?.ToDetail();
     }
 
     private const string SelectSql = """
@@ -71,11 +61,7 @@ public sealed class PostgresAuthenticationSessionAdministrationRepository(IPostg
 
     private static void AddFilters(SearchAuthenticationSessionsRequest request, ref string sql, DynamicParameters parameters)
     {
-        if (request.Tenant != null)
-        {
-            sql += request.Tenant.TenantId == null ? " AND tenant_id IS NULL" : " AND tenant_id = @TenantId";
-            parameters.Add("TenantId", request.Tenant.TenantId);
-        }
+        PostgresAdminQuery.AddTenantFilter(request.Tenant, "tenant_id", "TenantId", ref sql, parameters);
 
         if (request.UserId.HasValue)
         {
@@ -83,12 +69,7 @@ public sealed class PostgresAuthenticationSessionAdministrationRepository(IPostg
             parameters.Add("UserId", request.UserId.Value);
         }
 
-        if (request.PrimaryProvider.HasValue)
-        {
-            sql += " AND primary_provider_type = @PrimaryProviderType AND primary_provider_name = @PrimaryProviderName";
-            parameters.Add("PrimaryProviderType", request.PrimaryProvider.Value.TypeValueOrUnknown);
-            parameters.Add("PrimaryProviderName", request.PrimaryProvider.Value.Name);
-        }
+        PostgresAdminQuery.AddProviderFilter(request.PrimaryProvider, "primary_provider_type", "primary_provider_name", "PrimaryProviderType", "PrimaryProviderName", ref sql, parameters);
 
         if (request.Active.HasValue)
         {
@@ -102,24 +83,9 @@ public sealed class PostgresAuthenticationSessionAdministrationRepository(IPostg
             sql += request.Revoked.Value ? " AND revoked_at IS NOT NULL" : " AND revoked_at IS NULL";
         }
 
-        AddDateRange(request.CreatedFrom, request.CreatedTo, "created_at", "CreatedFrom", "CreatedTo", ref sql, parameters);
-        AddDateRange(request.ExpiresFrom, request.ExpiresTo, "expires_at", "ExpiresFrom", "ExpiresTo", ref sql, parameters);
-        AddDateRange(request.LastSeenFrom, request.LastSeenTo, "last_seen_at", "LastSeenFrom", "LastSeenTo", ref sql, parameters);
-    }
-
-    private static void AddDateRange(DateTimeOffset? from, DateTimeOffset? to, string column, string fromParameter, string toParameter, ref string sql, DynamicParameters parameters)
-    {
-        if (from.HasValue)
-        {
-            sql += $" AND {column} >= @{fromParameter}";
-            parameters.Add(fromParameter, from.Value);
-        }
-
-        if (to.HasValue)
-        {
-            sql += $" AND {column} <= @{toParameter}";
-            parameters.Add(toParameter, to.Value);
-        }
+        PostgresAdminQuery.AddDateRange(request.CreatedFrom, request.CreatedTo, "created_at", "CreatedFrom", "CreatedTo", ref sql, parameters);
+        PostgresAdminQuery.AddDateRange(request.ExpiresFrom, request.ExpiresTo, "expires_at", "ExpiresFrom", "ExpiresTo", ref sql, parameters);
+        PostgresAdminQuery.AddDateRange(request.LastSeenFrom, request.LastSeenTo, "last_seen_at", "LastSeenFrom", "LastSeenTo", ref sql, parameters);
     }
 
     private sealed record AuthenticationSessionAdministrationRow(
@@ -148,15 +114,15 @@ public sealed class PostgresAuthenticationSessionAdministrationRepository(IPostg
                 Id,
                 UserId,
                 TenantId,
-                ToDateTimeOffset(CreatedAt),
-                ToNullableDateTimeOffset(AuthenticatedAt),
+                PostgresAdminQuery.ToDateTimeOffset(CreatedAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(AuthenticatedAt),
                 CreateProvider(PrimaryProviderType, PrimaryProviderName),
-                ToNullableDateTimeOffset(AdditionalVerificationAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(AdditionalVerificationAt),
                 CreateProvider(AdditionalVerificationProviderType, AdditionalVerificationProviderName),
                 AdditionalVerificationFactor,
-                ToDateTimeOffset(ExpiresAt),
-                ToNullableDateTimeOffset(LastSeenAt),
-                ToNullableDateTimeOffset(RevokedAt),
+                PostgresAdminQuery.ToDateTimeOffset(ExpiresAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(LastSeenAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(RevokedAt),
                 RevocationReason,
                 IpAddress,
                 UserAgent,
@@ -183,16 +149,6 @@ public sealed class PostgresAuthenticationSessionAdministrationRepository(IPostg
                 summary.IpAddress,
                 summary.UserAgent,
                 summary.IsActive);
-        }
-
-        private static DateTimeOffset ToDateTimeOffset(DateTime value)
-        {
-            return new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc));
-        }
-
-        private static DateTimeOffset? ToNullableDateTimeOffset(DateTime? value)
-        {
-            return value == null ? null : ToDateTimeOffset(value.Value);
         }
 
         private static AuthenticationProviderKey? CreateProvider(string? type, string? name)

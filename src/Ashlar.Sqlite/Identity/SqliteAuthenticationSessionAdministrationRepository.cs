@@ -21,28 +21,17 @@ public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteC
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var sql = SelectSql + " WHERE 1 = 1";
-
-        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using var command = handle.Connection.CreateCommand();
-        command.Transaction = handle.Transaction;
-
-        AddFilters(request, ref sql, command);
-
-        sql += " ORDER BY last_seen_at IS NULL ASC, last_seen_at DESC, created_at DESC, id DESC LIMIT $limit OFFSET $offset;";
-        command.CommandText = sql;
-        command.AddParameter("$limit", request.Limit);
-        command.AddParameter("$offset", request.Offset);
-        command.AddDateTimeOffsetParameter("$now", now);
-
-        var sessions = new List<AuthenticationSessionAdministrationSummary>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        return await SqliteQuery.QueryAsync(_connectionProvider, command =>
         {
-            sessions.Add(ReadSummary(reader));
-        }
+            var sql = SelectSql + " WHERE 1 = 1";
+            AddFilters(request, ref sql, command);
+            sql += " ORDER BY last_seen_at IS NULL ASC, last_seen_at DESC, created_at DESC, id DESC LIMIT $limit OFFSET $offset;";
+            command.AddParameter("$limit", request.Limit);
+            command.AddParameter("$offset", request.Offset);
+            command.AddDateTimeOffsetParameter("$now", now);
 
-        return sessions.AsReadOnly();
+            return sql;
+        }, ReadSummary, cancellationToken);
     }
 
     /// <summary>
@@ -54,17 +43,13 @@ public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteC
     /// <returns>The authentication session, or <see langword="null" /> when it does not exist.</returns>
     public async Task<AuthenticationSessionAdministrationDetail?> GetAuthenticationSessionAsync(Guid sessionId, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        var sql = SelectSql + " WHERE id = $id;";
+        return await SqliteQuery.QuerySingleAsync(_connectionProvider, command =>
+        {
+            command.AddGuidParameter("$id", sessionId);
+            command.AddDateTimeOffsetParameter("$now", now);
 
-        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using var command = handle.Connection.CreateCommand();
-        command.Transaction = handle.Transaction;
-        command.CommandText = sql;
-        command.AddGuidParameter("$id", sessionId);
-        command.AddDateTimeOffsetParameter("$now", now);
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? ReadDetail(reader) : null;
+            return SelectSql + " WHERE id = $id;";
+        }, ReadDetail, cancellationToken);
     }
 
     private const string SelectSql = """
@@ -77,18 +62,7 @@ public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteC
 
     private static void AddFilters(SearchAuthenticationSessionsRequest request, ref string sql, SqliteCommand command)
     {
-        if (request.Tenant != null)
-        {
-            if (request.Tenant.TenantId == null)
-            {
-                sql += " AND tenant_id IS NULL";
-            }
-            else
-            {
-                sql += " AND tenant_id = $tenantId";
-                command.AddNullableGuidParameter("$tenantId", request.Tenant.TenantId);
-            }
-        }
+        command.AddTenantFilter(request.Tenant, "tenant_id", "$tenantId", ref sql);
 
         if (request.UserId.HasValue)
         {
@@ -96,12 +70,7 @@ public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteC
             command.AddGuidParameter("$userId", request.UserId.Value);
         }
 
-        if (request.PrimaryProvider.HasValue)
-        {
-            sql += " AND primary_provider_type = $primaryProviderType AND primary_provider_name = $primaryProviderName";
-            command.AddParameter("$primaryProviderType", request.PrimaryProvider.Value.TypeValueOrUnknown);
-            command.AddParameter("$primaryProviderName", request.PrimaryProvider.Value.Name);
-        }
+        command.AddProviderFilter(request.PrimaryProvider, "primary_provider_type", "primary_provider_name", "$primaryProviderType", "$primaryProviderName", ref sql);
 
         if (request.Active.HasValue)
         {
@@ -115,24 +84,9 @@ public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteC
             sql += request.Revoked.Value ? " AND revoked_at IS NOT NULL" : " AND revoked_at IS NULL";
         }
 
-        AddDateRange(request.CreatedFrom, request.CreatedTo, "created_at", "$createdFrom", "$createdTo", ref sql, command);
-        AddDateRange(request.ExpiresFrom, request.ExpiresTo, "expires_at", "$expiresFrom", "$expiresTo", ref sql, command);
-        AddDateRange(request.LastSeenFrom, request.LastSeenTo, "last_seen_at", "$lastSeenFrom", "$lastSeenTo", ref sql, command);
-    }
-
-    private static void AddDateRange(DateTimeOffset? from, DateTimeOffset? to, string column, string fromParameter, string toParameter, ref string sql, SqliteCommand command)
-    {
-        if (from.HasValue)
-        {
-            sql += $" AND {column} >= {fromParameter}";
-            command.AddDateTimeOffsetParameter(fromParameter, from.Value);
-        }
-
-        if (to.HasValue)
-        {
-            sql += $" AND {column} <= {toParameter}";
-            command.AddDateTimeOffsetParameter(toParameter, to.Value);
-        }
+        command.AddDateRange(request.CreatedFrom, request.CreatedTo, "created_at", "$createdFrom", "$createdTo", ref sql);
+        command.AddDateRange(request.ExpiresFrom, request.ExpiresTo, "expires_at", "$expiresFrom", "$expiresTo", ref sql);
+        command.AddDateRange(request.LastSeenFrom, request.LastSeenTo, "last_seen_at", "$lastSeenFrom", "$lastSeenTo", ref sql);
     }
 
     private static AuthenticationSessionAdministrationSummary ReadSummary(SqliteDataReader reader)

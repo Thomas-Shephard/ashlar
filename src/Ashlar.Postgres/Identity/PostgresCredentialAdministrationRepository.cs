@@ -31,13 +31,8 @@ public sealed class PostgresCredentialAdministrationRepository(IPostgresConnecti
         parameters.Add("Limit", request.Limit);
         parameters.Add("Offset", request.Offset);
 
-        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using (connectionHandle)
-        {
-            var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            var rows = await connectionHandle.Connection.QueryAsync<CredentialAdministrationRow>(command);
-            return rows.Select(static row => row.ToSummary()).ToList().AsReadOnly();
-        }
+        var rows = await PostgresAdminQuery.QueryAsync<CredentialAdministrationRow>(_connectionProvider, sql, parameters, cancellationToken);
+        return rows.Select(static row => row.ToSummary()).ToList().AsReadOnly();
     }
 
     /// <summary>
@@ -51,13 +46,8 @@ public sealed class PostgresCredentialAdministrationRepository(IPostgresConnecti
     {
         var sql = SelectSql + " WHERE c.id = @CredentialId";
 
-        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
-        await using (connectionHandle)
-        {
-            var command = new CommandDefinition(sql, new { CredentialId = credentialId, Now = now }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync<CredentialAdministrationRow>(command);
-            return row?.ToDetail();
-        }
+        var row = await PostgresAdminQuery.QuerySingleAsync<CredentialAdministrationRow>(_connectionProvider, sql, new { CredentialId = credentialId, Now = now }, cancellationToken);
+        return row?.ToDetail();
     }
 
     private const string SelectSql = """
@@ -72,11 +62,7 @@ public sealed class PostgresCredentialAdministrationRepository(IPostgresConnecti
 
     private static void AddFilters(SearchCredentialsRequest request, ref string sql, DynamicParameters parameters)
     {
-        if (request.Tenant != null)
-        {
-            sql += request.Tenant.TenantId == null ? " AND u.tenant_id IS NULL" : " AND u.tenant_id = @TenantId";
-            parameters.Add("TenantId", request.Tenant.TenantId);
-        }
+        PostgresAdminQuery.AddTenantFilter(request.Tenant, "u.tenant_id", "TenantId", ref sql, parameters);
 
         if (request.UserId.HasValue)
         {
@@ -84,12 +70,7 @@ public sealed class PostgresCredentialAdministrationRepository(IPostgresConnecti
             parameters.Add("UserId", request.UserId.Value);
         }
 
-        if (request.Provider.HasValue)
-        {
-            sql += " AND c.provider_type = @ProviderType AND c.provider_name = @ProviderName";
-            parameters.Add("ProviderType", request.Provider.Value.TypeValueOrUnknown);
-            parameters.Add("ProviderName", request.Provider.Value.Name);
-        }
+        PostgresAdminQuery.AddProviderFilter(request.Provider, "c.provider_type", "c.provider_name", "ProviderType", "ProviderName", ref sql, parameters);
 
         if (!string.IsNullOrWhiteSpace(request.Purpose))
         {
@@ -115,25 +96,10 @@ public sealed class PostgresCredentialAdministrationRepository(IPostgresConnecti
             sql += request.Revoked.Value ? " AND c.revoked_at IS NOT NULL" : " AND c.revoked_at IS NULL";
         }
 
-        AddDateRange(request.CreatedFrom, request.CreatedTo, "c.created_at", "CreatedFrom", "CreatedTo", ref sql, parameters);
-        AddDateRange(request.UpdatedFrom, request.UpdatedTo, "c.updated_at", "UpdatedFrom", "UpdatedTo", ref sql, parameters);
-        AddDateRange(request.LastUsedFrom, request.LastUsedTo, "c.last_used_at", "LastUsedFrom", "LastUsedTo", ref sql, parameters);
-        AddDateRange(request.ExpiresFrom, request.ExpiresTo, "c.expires_at", "ExpiresFrom", "ExpiresTo", ref sql, parameters);
-    }
-
-    private static void AddDateRange(DateTimeOffset? from, DateTimeOffset? to, string column, string fromParameter, string toParameter, ref string sql, DynamicParameters parameters)
-    {
-        if (from.HasValue)
-        {
-            sql += $" AND {column} >= @{fromParameter}";
-            parameters.Add(fromParameter, from.Value);
-        }
-
-        if (to.HasValue)
-        {
-            sql += $" AND {column} <= @{toParameter}";
-            parameters.Add(toParameter, to.Value);
-        }
+        PostgresAdminQuery.AddDateRange(request.CreatedFrom, request.CreatedTo, "c.created_at", "CreatedFrom", "CreatedTo", ref sql, parameters);
+        PostgresAdminQuery.AddDateRange(request.UpdatedFrom, request.UpdatedTo, "c.updated_at", "UpdatedFrom", "UpdatedTo", ref sql, parameters);
+        PostgresAdminQuery.AddDateRange(request.LastUsedFrom, request.LastUsedTo, "c.last_used_at", "LastUsedFrom", "LastUsedTo", ref sql, parameters);
+        PostgresAdminQuery.AddDateRange(request.ExpiresFrom, request.ExpiresTo, "c.expires_at", "ExpiresFrom", "ExpiresTo", ref sql, parameters);
     }
 
     private sealed record CredentialAdministrationRow(
@@ -161,11 +127,11 @@ public sealed class PostgresCredentialAdministrationRepository(IPostgresConnecti
                 Purpose,
                 (CredentialStatus)Status,
                 IsAvailable,
-                ToDateTimeOffset(CreatedAt),
-                ToNullableDateTimeOffset(UpdatedAt),
-                ToNullableDateTimeOffset(LastUsedAt),
-                ToNullableDateTimeOffset(ExpiresAt),
-                ToNullableDateTimeOffset(RevokedAt));
+                PostgresAdminQuery.ToDateTimeOffset(CreatedAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(UpdatedAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(LastUsedAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(ExpiresAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(RevokedAt));
         }
 
         public CredentialAdministrationDetail ToDetail()
@@ -192,14 +158,5 @@ public sealed class PostgresCredentialAdministrationRepository(IPostgresConnecti
             return new AuthenticationProviderKey(providerType, ProviderName);
         }
 
-        private static DateTimeOffset ToDateTimeOffset(DateTime value)
-        {
-            return new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc));
-        }
-
-        private static DateTimeOffset? ToNullableDateTimeOffset(DateTime? value)
-        {
-            return value == null ? null : ToDateTimeOffset(value.Value);
-        }
     }
 }
