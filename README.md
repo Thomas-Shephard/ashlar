@@ -58,7 +58,7 @@ services
 
 Applications must provide `IUserRepository` and `ICredentialRepository` implementations (either by using an official package above or custom ones).
 
-Applications must also provide secret protection. For ASP.NET Core Data Protection, register Data Protection and call `AddAshlarDataProtectionSecretProtector()`. Ashlar does not use an insecure fallback protector.
+Applications must also provide secret protection. Core Ashlar owns the `ISecretProtector` abstraction; ASP.NET Core Data Protection integration is provided by `Ashlar.AspNetCore`. Register Data Protection and call `AddAshlarDataProtectionSecretProtector()` from the ASP.NET Core package. Ashlar does not use an insecure fallback protector.
 
 Ashlar models durable authentication sessions through `AuthenticationSession`, `IAuthenticationSessionRepository`, and `IAuthenticationSessionService`.
 The session service generates high-entropy raw tokens, hashes them before persistence, updates last-seen timestamps, and revokes sessions. Raw tokens are returned only once from `CreateSessionAsync`; `AuthenticationSession` stores only the deterministic token hash. Sessions can also carry safe authentication metadata such as authentication time, primary provider, and recent additional verification provider/factor. This metadata intentionally excludes raw tokens, one-time codes, passkey ceremony payloads, recovery codes, password hashes, and protected secrets. Last-seen updates are advisory and must not make revoked or expired sessions active again. HTTP cookies and ASP.NET authentication middleware are separate integration layers.

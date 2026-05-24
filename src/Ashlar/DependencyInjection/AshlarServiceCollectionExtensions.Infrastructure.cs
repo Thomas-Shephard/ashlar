@@ -4,7 +4,6 @@ namespace Microsoft.Extensions.DependencyInjection;
 #pragma warning restore IDE0130
 
 using Ashlar.Messaging;
-using Ashlar.Security.Encryption;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 public static partial class AshlarServiceCollectionExtensions
@@ -42,28 +41,6 @@ public static partial class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.TryAddSingleton<IEmailSender, NullEmailSender>();
-
-        return services;
-    }
-
-    /// <summary>
-    /// Registers <see cref="DataProtectionSecretProtector"/> as Ashlar's secret protector.
-    /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="lifetime">The lifetime value.</param>
-    /// <returns>The service collection.</returns>
-    /// <remarks>
-    /// The application must also register ASP.NET Core Data Protection services or another
-    /// <see cref="Microsoft.AspNetCore.DataProtection.IDataProtectionProvider"/>.
-    /// </remarks>
-    public static IServiceCollection AddAshlarDataProtectionSecretProtector(
-        this IServiceCollection services,
-        ServiceLifetime lifetime = ServiceLifetime.Scoped)
-    {
-        ArgumentNullException.ThrowIfNull(services);
-
-        services.AddAshlarIdentity();
-        services.TryAdd(new ServiceDescriptor(typeof(ISecretProtector), typeof(DataProtectionSecretProtector), lifetime));
 
         return services;
     }

@@ -10,17 +10,22 @@ dotnet add package Ashlar.AspNetCore
 
 ## Minimal Usage
 
-Register Ashlar core services, persistence, and ASP.NET Core session cookies:
+Register Ashlar core services, persistence, secret protection, and ASP.NET Core session cookies:
 
 ```csharp
 services.AddAshlarIdentity();
 services.AddAshlarPostgres(connectionString);
+
+services.AddDataProtection();
+services.AddAshlarDataProtectionSecretProtector();
 
 services.AddAshlarAspNetCoreSessions(options =>
 {
     options.CookieName = "__Host-ashlar";
 });
 ```
+
+`AddAshlarDataProtectionSecretProtector()` registers the ASP.NET Core Data Protection implementation for Ashlar's core `ISecretProtector` abstraction. The host app must still configure Data Protection, including key persistence and protection policy appropriate for the environment.
 
 Use the middleware in the normal ASP.NET Core order:
 

@@ -16,10 +16,10 @@ Register the core services, then provide persistence and secret protection throu
 services.AddAshlarIdentity();
 services.AddAshlarAuthorization();
 
-services.AddDataProtection();
-services.AddAshlarDataProtectionSecretProtector();
 services.AddAshlarPostgres(connectionString);
 ```
+
+Core Ashlar owns the `ISecretProtector` abstraction and requires hosts to register an implementation. ASP.NET Core Data Protection integration is provided by `Ashlar.AspNetCore`.
 
 Add authentication providers for the flows your application supports:
 

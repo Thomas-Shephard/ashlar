@@ -2,7 +2,9 @@
 
 using Ashlar.AspNetCore.Authentication;
 using Ashlar.AspNetCore.Authorization;
+using Ashlar.AspNetCore.Security.Encryption;
 using Ashlar.AspNetCore.Sessions;
+using Ashlar.Security.Encryption;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -88,6 +90,29 @@ public static class AshlarAspNetCoreServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.TryAddEnumerable(ServiceDescriptor.Transient<IAuthorizationHandler, AshlarAuthorizationHandler>());
         services.TryAddEnumerable(ServiceDescriptor.Transient<IAuthorizationHandler, AshlarStepUpAuthorizationHandler>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers <see cref="DataProtectionSecretProtector"/> as Ashlar's secret protector.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="lifetime">The lifetime value.</param>
+    /// <returns>The service collection.</returns>
+    /// <remarks>
+    /// The host application must also register and configure ASP.NET Core Data Protection services
+    /// with <see cref="DataProtectionServiceCollectionExtensions.AddDataProtection(IServiceCollection)"/>
+    /// or an equivalent <see cref="Microsoft.AspNetCore.DataProtection.IDataProtectionProvider"/> registration.
+    /// </remarks>
+    public static IServiceCollection AddAshlarDataProtectionSecretProtector(
+        this IServiceCollection services,
+        ServiceLifetime lifetime = ServiceLifetime.Scoped)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.TryAdd(new ServiceDescriptor(typeof(ISecretProtector), typeof(DataProtectionSecretProtector), lifetime));
 
         return services;
     }

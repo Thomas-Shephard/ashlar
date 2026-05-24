@@ -1,7 +1,12 @@
+using Ashlar.AspNetCore.Security.Encryption;
+using Ashlar.Identity.Features.Credentials;
+using Ashlar.Security.Encryption;
 using Ashlar.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace Ashlar.AspNetCore.Tests;
 
@@ -111,5 +116,66 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
             options.Cookie.Path = "/app";
             options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
         }));
+    }
+
+    [Test]
+    public void AddAshlarDataProtectionSecretProtectorRegistersSecretProtectorWhenDataProtectionProviderIsConfigured()
+    {
+        var dataProtectionProvider = new Mock<IDataProtectionProvider>();
+        var dataProtector = new Mock<IDataProtector>();
+        dataProtectionProvider
+            .Setup(provider => provider.CreateProtector("Ashlar.Identity.Features.Credentials"))
+            .Returns(dataProtector.Object);
+
+        var services = new ServiceCollection();
+        services.AddSingleton(dataProtectionProvider.Object);
+        services.AddAshlarDataProtectionSecretProtector();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var protector = scope.ServiceProvider.GetRequiredService<ISecretProtector>();
+
+        Assert.That(protector, Is.TypeOf<DataProtectionSecretProtector>());
+    }
+
+    [Test]
+    public void AddAshlarDataProtectionSecretProtectorRegistersCoreIdentityServices()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarDataProtectionSecretProtector();
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertDescriptor<IIdentityService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<ICredentialService, CredentialService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<ISecretProtector, DataProtectionSecretProtector>(services, ServiceLifetime.Scoped);
+        }
+    }
+
+    [Test]
+    public void AddAshlarDataProtectionSecretProtectorPreservesConfiguredLifetime()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarDataProtectionSecretProtector(ServiceLifetime.Singleton);
+
+        AssertDescriptor<ISecretProtector, DataProtectionSecretProtector>(services, ServiceLifetime.Singleton);
+    }
+
+    private static void AssertDescriptor<TService, TImplementation>(IServiceCollection services, ServiceLifetime lifetime)
+    {
+        Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
+            descriptor.ServiceType == typeof(TService)
+            && descriptor.ImplementationType == typeof(TImplementation)
+            && descriptor.Lifetime == lifetime));
+    }
+
+    private static void AssertDescriptor<TService>(IServiceCollection services, ServiceLifetime lifetime)
+    {
+        Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
+            descriptor.ServiceType == typeof(TService)
+            && descriptor.Lifetime == lifetime));
     }
 }
