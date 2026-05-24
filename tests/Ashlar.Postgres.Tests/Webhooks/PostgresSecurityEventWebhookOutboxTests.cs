@@ -390,6 +390,26 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     }
 
     [Test]
+    public void MapToHttpRequestHandlesEmptyHeaders()
+    {
+        using var request = SecurityEventWebhookOutboxDispatch.MapToHttpRequest(new SecurityEventWebhookOutboxEntry
+        {
+            Id = Guid.NewGuid(),
+            Uri = "https://example.test/security-events",
+            Body = Encoding.UTF8.GetBytes("{}"),
+            Headers = "{}",
+            TimeoutMs = 1000,
+            AttemptCount = 0
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.Headers, Is.Empty);
+            Assert.That(request.Content!.Headers.ContentType?.ToString(), Is.EqualTo("application/json"));
+        }
+    }
+
+    [Test]
     public async Task DiRegistrationsResolve()
     {
         var services = new ServiceCollection();
