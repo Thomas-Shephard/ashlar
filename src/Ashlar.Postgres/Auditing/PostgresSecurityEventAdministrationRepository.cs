@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Dapper;
 
 namespace Ashlar.Postgres.Auditing;
@@ -35,7 +34,7 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
         {
             var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             var rows = await connectionHandle.Connection.QueryAsync<SecurityEventRow>(command);
-            return rows.Select(ToSummary).ToList().AsReadOnly();
+            return rows.Select(static row => row.ToStorageRecord().ToSummary()).ToList().AsReadOnly();
         }
     }
 
@@ -53,7 +52,7 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
         {
             var command = new CommandDefinition(sql, new { EventId = eventId }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync<SecurityEventRow>(command);
-            return row == null ? null : ToSummary(row);
+            return row?.ToStorageRecord().ToSummary();
         }
     }
 
@@ -65,6 +64,11 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
                outcome AS Outcome, failure_reason AS FailureReason, properties::text AS PropertiesJson
         FROM ashlar_security_events
         """;
+
+    private static DateTimeOffset ToDateTimeOffset(DateTime value)
+    {
+        return new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc));
+    }
 
     private static void AddFilters(SearchSecurityEventsRequest request, ref string sql, DynamicParameters parameters)
     {
@@ -131,69 +135,6 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
         }
     }
 
-    private static SecurityEventSummary ToSummary(SecurityEventRow row)
-    {
-        return new SecurityEventSummary(
-            row.EventId,
-            row.EventType,
-            ToDateTimeOffset(row.OccurredAt),
-            row.UserId,
-            row.TenantId,
-            row.ActorUserId,
-            row.SessionId,
-            ToProvider(row.ProviderType, row.ProviderName),
-            row.IpAddress,
-            row.UserAgent,
-            row.CorrelationId,
-            row.Outcome,
-            row.FailureReason,
-            ParseProperties(row.PropertiesJson));
-    }
-
-    private static DateTimeOffset ToDateTimeOffset(DateTime value)
-    {
-        return new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc));
-    }
-
-    private static AuthenticationProviderKey? ToProvider(string? providerType, string? providerName)
-    {
-        return string.IsNullOrWhiteSpace(providerType) || string.IsNullOrWhiteSpace(providerName)
-            ? null
-            : new AuthenticationProviderKey((ProviderType)providerType, providerName);
-    }
-
-    internal static Dictionary<string, string>? ParseProperties(string? propertiesJson)
-    {
-        if (string.IsNullOrWhiteSpace(propertiesJson))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(propertiesJson);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                return null;
-            }
-
-            var properties = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var property in document.RootElement.EnumerateObject())
-            {
-                if (property.Value.ValueKind == JsonValueKind.String)
-                {
-                    properties[property.Name] = property.Value.ToString();
-                }
-            }
-
-            return properties.Count == 0 ? null : properties;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
     private sealed record SecurityEventRow(
         Guid EventId,
         string EventType,
@@ -209,5 +150,26 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
         string? CorrelationId,
         string? Outcome,
         string? FailureReason,
-        string? PropertiesJson);
+        string? PropertiesJson)
+    {
+        public SecurityEventStorageRecord ToStorageRecord()
+        {
+            return new SecurityEventStorageRecord(
+                EventId,
+                EventType,
+                ToDateTimeOffset(OccurredAt),
+                UserId,
+                TenantId,
+                ActorUserId,
+                SessionId,
+                ProviderType,
+                ProviderName,
+                IpAddress,
+                UserAgent,
+                CorrelationId,
+                Outcome,
+                FailureReason,
+                PropertiesJson);
+        }
+    }
 }

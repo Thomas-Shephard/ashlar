@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Auditing;
@@ -38,7 +37,7 @@ public sealed class SqliteSecurityEventAdministrationRepository(ISqliteConnectio
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            events.Add(ReadSummary(reader));
+            events.Add(ReadStorageRecord(reader).ToSummary());
         }
 
         return events.AsReadOnly();
@@ -61,7 +60,7 @@ public sealed class SqliteSecurityEventAdministrationRepository(ISqliteConnectio
         command.AddGuidParameter("$eventId", eventId);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? ReadSummary(reader) : null;
+        return await reader.ReadAsync(cancellationToken) ? ReadStorageRecord(reader).ToSummary() : null;
     }
 
     private const string SelectSql = """
@@ -150,9 +149,9 @@ public sealed class SqliteSecurityEventAdministrationRepository(ISqliteConnectio
         }
     }
 
-    private static SecurityEventSummary ReadSummary(SqliteDataReader reader)
+    private static SecurityEventStorageRecord ReadStorageRecord(SqliteDataReader reader)
     {
-        return new SecurityEventSummary(
+        return new SecurityEventStorageRecord(
             reader.GetGuidFromText("id"),
             reader.GetString(reader.GetOrdinal("event_type")),
             reader.GetDateTimeOffsetFromText("occurred_at"),
@@ -160,51 +159,13 @@ public sealed class SqliteSecurityEventAdministrationRepository(ISqliteConnectio
             reader.GetNullableGuidFromText("tenant_id"),
             reader.GetNullableGuidFromText("actor_user_id"),
             reader.GetNullableGuidFromText("session_id"),
-            ToProvider(reader.GetNullableString("provider_type"), reader.GetNullableString("provider_name")),
+            reader.GetNullableString("provider_type"),
+            reader.GetNullableString("provider_name"),
             reader.GetNullableString("ip_address"),
             reader.GetNullableString("user_agent"),
             reader.GetNullableString("correlation_id"),
             reader.GetNullableString("outcome"),
             reader.GetNullableString("failure_reason"),
-            ParseProperties(reader.GetNullableString("properties")));
-    }
-
-    private static AuthenticationProviderKey? ToProvider(string? providerType, string? providerName)
-    {
-        return string.IsNullOrWhiteSpace(providerType) || string.IsNullOrWhiteSpace(providerName)
-            ? null
-            : new AuthenticationProviderKey((ProviderType)providerType, providerName);
-    }
-
-    internal static Dictionary<string, string>? ParseProperties(string? propertiesJson)
-    {
-        if (string.IsNullOrWhiteSpace(propertiesJson))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(propertiesJson);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                return null;
-            }
-
-            var properties = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var property in document.RootElement.EnumerateObject())
-            {
-                if (property.Value.ValueKind == JsonValueKind.String)
-                {
-                    properties[property.Name] = property.Value.ToString();
-                }
-            }
-
-            return properties.Count == 0 ? null : properties;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
+            reader.GetNullableString("properties"));
     }
 }
