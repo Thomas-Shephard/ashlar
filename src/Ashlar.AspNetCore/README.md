@@ -25,7 +25,7 @@ services.AddAshlarAspNetCoreSessions(options =>
 });
 ```
 
-`AddAshlarDataProtectionSecretProtector()` registers the ASP.NET Core Data Protection implementation for Ashlar's core `ISecretProtector` abstraction. The host app must still configure Data Protection, including key persistence and protection policy appropriate for the environment.
+`AddAshlarDataProtectionSecretProtector()` registers the ASP.NET Core Data Protection implementation for Ashlar's core `ISecretProtector` abstraction. Register it before using Ashlar credential features that store or read protected secrets, such as TOTP shared secrets, recovery credentials, and email-change secrets. The host app must still configure Data Protection, including key persistence and protection policy appropriate for the environment.
 
 Use the middleware in the normal ASP.NET Core order:
 
