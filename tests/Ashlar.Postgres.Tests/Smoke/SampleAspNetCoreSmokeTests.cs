@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Ashlar.Identity.Providers.External;
 using Dapper;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Builder;
@@ -35,6 +36,8 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         SetSampleEnvironment("Authentication__Google__ClientId", string.Empty);
         SetSampleEnvironment("Authentication__Google__ClientSecret", string.Empty);
         SetSampleEnvironment("Authentication__Google__HostedDomains__0", string.Empty);
+        SetSampleEnvironment("Authentication__GitHub__ClientId", string.Empty);
+        SetSampleEnvironment("Authentication__GitHub__ClientSecret", string.Empty);
 
         try
         {
@@ -85,6 +88,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
 
         var adminUserId = await BootstrapFirstAdminAsync();
         await AssertGoogleUiHiddenWhenNotConfiguredAsync(AdminClient);
+        await AssertGitHubUiHiddenWhenNotConfiguredAsync(AdminClient);
         await AssertAdminPageIncludesAccountSecurityPanelAsync(AdminClient);
         await EnrollTotpAsync(AdminClient);
         await AssertLastAdminCannotBeDisabledAsync(AdminClient, adminUserId);
@@ -164,6 +168,103 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             Environment.SetEnvironmentVariable("Authentication__Google__ClientId", string.Empty);
             Environment.SetEnvironmentVariable("Authentication__Google__ClientSecret", string.Empty);
             Environment.SetEnvironmentVariable("Authentication__Google__HostedDomains__0", string.Empty);
+        }
+    }
+
+    [Test]
+    public async Task SampleGitHubOAuthWiringIsConditionalAndFailsSafelyWithoutExternalTicket()
+    {
+        var missingGitHubSignIn = await AdminClient.GetAsync("/auth/github");
+        Assert.That(missingGitHubSignIn.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+
+        Environment.SetEnvironmentVariable("Authentication__GitHub__ClientId", "sample-client-id");
+        Environment.SetEnvironmentVariable("Authentication__GitHub__ClientSecret", "sample-client-secret");
+        try
+        {
+            await using var githubFactory = new SampleApplicationFactory(GetConnectionString(), maskGitHubConfiguration: false);
+            using var client = githubFactory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+            var signIn = await client.GetAsync("/auth/github");
+            var signInCallback = await client.GetAsync("/auth/github/callback");
+            var invitationPage = await client.GetAsync("/invitations/accept?t=sample-token");
+            var invitationHtml = await invitationPage.Content.ReadAsStringAsync();
+            var invitationStart = await client.GetAsync("/invitations/accept/github?t=sample-token&userName=Member");
+            var invitationCallback = await client.GetAsync("/invitations/accept/github/callback");
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(signIn.StatusCode, Is.EqualTo(HttpStatusCode.Redirect));
+                Assert.That(signIn.Headers.Location?.Host, Does.Contain("github"));
+                Assert.That(await signInCallback.Content.ReadAsStringAsync(), Does.Contain("GitHub Sign-In Failed"));
+                Assert.That(invitationHtml, Does.Not.Contain("Sign up with GitHub"));
+                Assert.That(invitationStart.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+                Assert.That(invitationCallback.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("Authentication__GitHub__ClientId", string.Empty);
+            Environment.SetEnvironmentVariable("Authentication__GitHub__ClientSecret", string.Empty);
+        }
+
+        await AssertGitHubCallbackUsesOrchestrationBeforeSessionAsync();
+    }
+
+    [Test]
+    public async Task SampleGitHubAccountSecurityRoutesRequireAuthorizationAndFreshMfaWhenAvailable()
+    {
+        Environment.SetEnvironmentVariable("Authentication__GitHub__ClientId", "sample-client-id");
+        Environment.SetEnvironmentVariable("Authentication__GitHub__ClientSecret", "sample-client-secret");
+        try
+        {
+            await using var githubFactory = new SampleApplicationFactory(GetConnectionString(), maskGitHubConfiguration: false);
+
+            using var anonymousClient = githubFactory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+            var anonymousLink = await anonymousClient.GetAsync("/account/external/github/link");
+            var anonymousUnlink = await anonymousClient.PostAsync("/api/account/external/github/unlink", null);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(anonymousLink.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+                Assert.That(anonymousUnlink.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+            }
+
+            var email = $"github-{Guid.NewGuid():N}@example.com";
+            var userId = await CreateSampleUserAsync(githubFactory.Services, email);
+            using var client = githubFactory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+            await SignInWithMagicLinkAsync(client, email);
+
+            var unlinkedAccountPage = await client.GetAsync("/account");
+            var unlinkedHtml = await unlinkedAccountPage.Content.ReadAsStringAsync();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(unlinkedAccountPage.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+                Assert.That(unlinkedHtml, Does.Contain("GitHub Account"));
+                Assert.That(unlinkedHtml, Does.Contain("GitHub sign-in"));
+                Assert.That(unlinkedHtml, Does.Contain("Not linked"));
+                Assert.That(unlinkedHtml, Does.Not.Contain("sample-client-secret"));
+            }
+
+            await LinkGitHubCredentialAsync(githubFactory.Services, userId);
+            var linkedAccountPage = await client.GetAsync("/account");
+            var linkedHtml = await linkedAccountPage.Content.ReadAsStringAsync();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(linkedAccountPage.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+                Assert.That(linkedHtml, Does.Contain("GitHub Account"));
+                Assert.That(linkedHtml, Does.Contain("Linked"));
+                Assert.That(linkedHtml, Does.Not.Contain($"github-{userId:N}"));
+            }
+
+            await EnrollTotpAsync(client);
+            await ExpireCurrentStepUpAsync(userId);
+            await AssertStepUpForbiddenGetAsync(client, "/account/external/github/link");
+            await AssertStepUpForbiddenPostAsync(client, "/api/account/external/github/unlink", null);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("Authentication__GitHub__ClientId", string.Empty);
+            Environment.SetEnvironmentVariable("Authentication__GitHub__ClientSecret", string.Empty);
         }
     }
 
@@ -387,6 +488,17 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         }
     }
 
+    private static async Task AssertStepUpForbiddenGetAsync(HttpClient client, string path)
+    {
+        var response = await client.GetAsync(path);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden), await response.Content.ReadAsStringAsync());
+            Assert.That(response.Headers.TryGetValues("X-Ashlar-Step-Up", out var values), Is.True);
+            Assert.That(values, Does.Contain("required"));
+        }
+    }
+
     private static async Task AssertGoogleUiHiddenWhenNotConfiguredAsync(HttpClient client)
     {
         var dashboard = await client.GetAsync("/");
@@ -396,6 +508,87 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             Assert.That(await dashboard.Content.ReadAsStringAsync(), Does.Not.Contain("Sign in with Google"));
             Assert.That(await invitation.Content.ReadAsStringAsync(), Does.Not.Contain("Sign up with Google"));
         }
+    }
+
+    private static async Task AssertGitHubUiHiddenWhenNotConfiguredAsync(HttpClient client)
+    {
+        var dashboard = await client.GetAsync("/");
+        var invitation = await client.GetAsync("/invitations/accept?t=sample-token");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await dashboard.Content.ReadAsStringAsync(), Does.Not.Contain("Sign in with GitHub"));
+            Assert.That(await invitation.Content.ReadAsStringAsync(), Does.Not.Contain("Sign up with GitHub"));
+        }
+    }
+
+    private static async Task<Guid> CreateSampleUserAsync(IServiceProvider services, string email)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var users = scope.ServiceProvider.GetRequiredService<IIdentityRepository>();
+        var user = new AshlarUser
+        {
+            Id = Guid.NewGuid(),
+            Email = email,
+            Name = "GitHub Smoke",
+            IsActive = true,
+            EmailVerifiedAt = DateTimeOffset.UtcNow
+        };
+
+        await users.CreateUserAsync(user);
+        return user.Id;
+    }
+
+    private static async Task LinkGitHubCredentialAsync(IServiceProvider services, Guid userId)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var credentials = scope.ServiceProvider.GetRequiredService<ICredentialService>();
+        var assertion = new ExternalIdentityAssertion(
+            ProviderType.OAuth,
+            "GitHub",
+            $"github-{userId:N}",
+            new Dictionary<string, string>());
+
+        var result = await credentials.LinkCredentialAsync(
+            userId,
+            assertion,
+            new OAuthAuthenticationProvider("GitHub"));
+
+        Assert.That(result.Succeeded, Is.True, result.FailureMessage);
+    }
+
+    private static async Task AssertGitHubCallbackUsesOrchestrationBeforeSessionAsync()
+    {
+        var source = await File.ReadAllTextAsync(Path.Combine(
+            LocateRepositoryRoot(),
+            "samples",
+            "Ashlar.Sample.AspNetCore",
+            "Endpoints",
+            "GitHubOAuthEndpoints.cs"));
+
+        var assertionIndex = source.IndexOf("CompleteExternalAssertionAsync", StringComparison.Ordinal);
+        var orchestratorIndex = source.IndexOf("orchestrator.AuthenticateAsync", StringComparison.Ordinal);
+        var signInIndex = source.IndexOf("signInManager.SignInAsync", StringComparison.Ordinal);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(assertionIndex, Is.GreaterThanOrEqualTo(0));
+            Assert.That(orchestratorIndex, Is.GreaterThan(assertionIndex));
+            Assert.That(signInIndex, Is.GreaterThan(orchestratorIndex));
+            Assert.That(source, Does.Contain("new AuthenticationProviderKey(ProviderType.OAuth, SampleGitHubOAuth.ProviderName)"));
+            Assert.That(source, Does.Not.Contain("CompleteExternalCredentialAuthenticationAsync"));
+        }
+    }
+
+    private static string LocateRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+        while (directory != null && !File.Exists(Path.Combine(directory.FullName, "Ashlar.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        Assert.That(directory, Is.Not.Null);
+        return directory!.FullName;
     }
 
     private static async Task<JsonDocument> GetJsonAsync(HttpClient client, string path)
@@ -493,7 +686,8 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     private sealed class SampleApplicationFactory(
         string connectionString,
         IReadOnlyDictionary<string, string?>? additionalConfiguration = null,
-        bool maskGoogleConfiguration = true) : WebApplicationFactory<Program>
+        bool maskGoogleConfiguration = true,
+        bool maskGitHubConfiguration = true) : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -513,6 +707,12 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
                     values["Authentication:Google:ClientId"] = string.Empty;
                     values["Authentication:Google:ClientSecret"] = string.Empty;
                     values["Authentication:Google:HostedDomains:0"] = string.Empty;
+                }
+
+                if (maskGitHubConfiguration)
+                {
+                    values["Authentication:GitHub:ClientId"] = string.Empty;
+                    values["Authentication:GitHub:ClientSecret"] = string.Empty;
                 }
 
                 if (additionalConfiguration != null)

@@ -58,7 +58,14 @@ internal static class HomeEndpoints
                 }
             }
 
-            return AppViews.RenderDashboard(status, isAuthenticated, userName, isAdmin, projectsWithAccess, SampleGoogleOidc.IsConfigured(services.Configuration));
+            return AppViews.RenderDashboard(
+                status,
+                isAuthenticated,
+                userName,
+                isAdmin,
+                projectsWithAccess,
+                SampleGoogleOidc.IsConfigured(services.Configuration),
+                SampleGitHubOAuth.IsConfigured(services.Configuration));
         });
     }
 

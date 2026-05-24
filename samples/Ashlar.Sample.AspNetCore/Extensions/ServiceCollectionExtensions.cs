@@ -1,4 +1,5 @@
 using Ashlar.Identity.Models.Totp;
+using Ashlar.OAuth.Providers.GitHub;
 using Ashlar.OAuth.Providers.Google;
 using Microsoft.AspNetCore.Authorization;
 
@@ -43,15 +44,27 @@ internal static class ServiceCollectionExtensions
         services.AddAshlarEmailChange();
         services.AddAshlarSecurityNotifications();
         services.AddAshlarInvitations();
-        if (SampleGoogleOidc.IsConfigured(configuration))
+        if (SampleGoogleOidc.IsConfigured(configuration) || SampleGitHubOAuth.IsConfigured(configuration))
         {
             services.AddAshlarOAuth(options =>
             {
-                options.AddGoogle(SampleGoogleOidc.GetHostedDomains(configuration), oidc =>
+                if (SampleGoogleOidc.IsConfigured(configuration))
                 {
-                    oidc.ClientId = configuration["Authentication:Google:ClientId"];
-                    oidc.ClientSecret = configuration["Authentication:Google:ClientSecret"];
-                });
+                    options.AddGoogle(SampleGoogleOidc.GetHostedDomains(configuration), oidc =>
+                    {
+                        oidc.ClientId = configuration["Authentication:Google:ClientId"];
+                        oidc.ClientSecret = configuration["Authentication:Google:ClientSecret"];
+                    });
+                }
+
+                if (SampleGitHubOAuth.IsConfigured(configuration))
+                {
+                    options.AddGitHub(oauth =>
+                    {
+                        oauth.ClientId = configuration["Authentication:GitHub:ClientId"]!;
+                        oauth.ClientSecret = configuration["Authentication:GitHub:ClientSecret"]!;
+                    });
+                }
             });
         }
 
