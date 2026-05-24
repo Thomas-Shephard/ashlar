@@ -4,6 +4,10 @@ namespace Ashlar.Auditing;
 /// Implements read-only administrator security event search and detail operations.
 /// </summary>
 /// <param name="repository">The repository value.</param>
+/// <remarks>
+/// These operations are intended for administrative diagnostics and do not authorize the caller.
+/// Host applications must protect usage of this service with appropriate admin authorization.
+/// </remarks>
 public sealed class SecurityEventAdministrationService(ISecurityEventAdministrationRepository repository) : ISecurityEventAdministrationService
 {
     internal const int MaximumLimit = 100;
@@ -44,7 +48,7 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
 
         var securityEvent = await _repository.GetSecurityEventAsync(eventId, cancellationToken);
         return securityEvent == null
-            ? Result.Failure<SecurityEventSummary>(AshlarFailureCodes.ValidationError, "Security event was not found.")
+            ? Result.Failure<SecurityEventSummary>(AshlarFailureCodes.SecurityEventNotFound, "Security event was not found.")
             : Result.Success(securityEvent);
     }
 }
