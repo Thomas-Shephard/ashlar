@@ -165,6 +165,7 @@ public static class AshlarPostgresServiceCollectionExtensions
     {
         services.AddAshlarAuthorization();
         services.TryAddScoped<PostgresTransactionManager>();
+        services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
         services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
         services.TryAddScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
 

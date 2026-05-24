@@ -1,6 +1,8 @@
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
+using Ashlar.Identity.Providers.Email;
+using Ashlar.Identity.Providers.RecoveryCode;
 using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
@@ -11,7 +13,7 @@ namespace Ashlar.Operational.Configuration;
 
 internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
 {
-    public ValueTask<IReadOnlyList<AshlarConfigurationIssue>> CheckAsync(
+    public async ValueTask<IReadOnlyList<AshlarConfigurationIssue>> CheckAsync(
         IServiceProvider serviceProvider,
         CancellationToken cancellationToken = default)
     {
@@ -27,7 +29,18 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             "Identity user persistence is not configured.",
             "Register a durable IUserRepository implementation, usually from an Ashlar persistence provider.",
             "Identity persistence",
-            typeof(IIdentityService));
+            typeof(IIdentityService),
+            typeof(ICredentialService),
+            typeof(IAccountSecurityService),
+            typeof(IUserAdministrationService),
+            typeof(IInvitationService),
+            typeof(IBootstrapService),
+            typeof(IEmailVerificationService),
+            typeof(IEmailChangeService),
+            typeof(IEmailCodeSignInService),
+            typeof(IMagicLinkSignInService),
+            typeof(ITotpService),
+            typeof(IRecoveryCodeService));
 
         AddMissingServiceIssue<ICredentialRepository>(
             serviceProvider,
@@ -36,7 +49,16 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             "Credential persistence is not configured.",
             "Register a durable ICredentialRepository implementation, usually from an Ashlar persistence provider.",
             "Credential persistence",
-            typeof(ICredentialService));
+            typeof(ICredentialService),
+            typeof(IAccountSecurityService),
+            typeof(IUserAdministrationService),
+            typeof(IEmailVerificationService),
+            typeof(IEmailChangeService),
+            typeof(IEmailCodeSignInService),
+            typeof(IMagicLinkSignInService),
+            typeof(ITotpService),
+            typeof(IRecoveryCodeService),
+            typeof(RequireMfaWhenCredentialExistsPolicyEvaluator));
 
         AddMissingServiceIssue<ISecretProtector>(
             serviceProvider,
@@ -45,7 +67,8 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             "Secret protection is not configured.",
             "Register an ISecretProtector implementation before enabling credential features that store protected values.",
             "Secret protection",
-            typeof(ICredentialService));
+            typeof(ICredentialService),
+            typeof(IEmailChangeService));
 
         AddMissingServiceIssue<IAuthenticationSessionRepository>(
             serviceProvider,
@@ -54,7 +77,10 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             "Authentication session persistence is not configured.",
             "Register an IAuthenticationSessionRepository implementation, usually from an Ashlar persistence provider.",
             "Session persistence",
-            typeof(IAuthenticationSessionService));
+            typeof(IAuthenticationSessionService),
+            typeof(IAccountSecurityService),
+            typeof(IUserAdministrationService),
+            typeof(IEmailChangeService));
 
         AddMissingServiceIssue<IUserAdministrationRepository>(
             serviceProvider,
@@ -129,13 +155,26 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             typeof(IAuthorizationGrantService),
             typeof(IAuthorizationEvaluator));
 
-        AddNullEmailSenderIssue(serviceProvider, issues);
+        var scopeFactory = serviceProvider.GetService<IServiceScopeFactory>();
+        if (scopeFactory is null)
+        {
+            AddImplementationIssues(serviceProvider, issues);
+            return issues;
+        }
+
+        await using var inspectionScope = scopeFactory.CreateAsyncScope();
+        AddImplementationIssues(inspectionScope.ServiceProvider, issues);
+
+        return issues;
+    }
+
+    private static void AddImplementationIssues(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
+    {
+        AddEmailSenderIssue(serviceProvider, issues);
         AddNullSecurityEventSinkIssue(serviceProvider, issues);
         AddInMemoryRateLimiterIssue(serviceProvider, issues);
         AddInMemorySecurityNotificationSuppressionStoreIssue(serviceProvider, issues);
         AddNullTransactionProviderIssue(serviceProvider, issues);
-
-        return ValueTask.FromResult<IReadOnlyList<AshlarConfigurationIssue>>(issues);
     }
 
     private static void AddMissingServiceIssue<TService>(
@@ -165,17 +204,32 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
         }
     }
 
-    private static void AddNullEmailSenderIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
+    private static void AddEmailSenderIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
     {
-        if (serviceProvider.GetService<IEmailSender>() is NullEmailSender)
+        if (!IsEmailDeliveryRequired(serviceProvider))
+        {
+            return;
+        }
+
+        if (serviceProvider.GetService<IEmailSender>() is null or NullEmailSender)
         {
             issues.Add(new AshlarConfigurationIssue(
-                AshlarConfigurationIssueCodes.NullEmailSender,
+                AshlarConfigurationIssueCodes.EmailSenderNotConfigured,
                 AshlarConfigurationIssueSeverity.Warning,
-                "Email delivery uses NullEmailSender, so Ashlar email messages will not be sent.",
+                "Email delivery is not configured, so Ashlar email messages will not be sent.",
                 "Register a production IEmailSender or an Ashlar email outbox sender before enabling email-based flows.",
                 "Messaging"));
         }
+    }
+
+    private static bool IsEmailDeliveryRequired(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.IsServiceRegistered<IEmailVerificationService>()
+            || serviceProvider.IsServiceRegistered<IEmailChangeService>()
+            || serviceProvider.IsServiceRegistered<IEmailCodeSignInService>()
+            || serviceProvider.IsServiceRegistered<IMagicLinkSignInService>()
+            || serviceProvider.IsServiceRegistered<IInvitationService>()
+            || serviceProvider.IsServiceRegistered<ISecurityNotificationService>();
     }
 
     private static void AddNullSecurityEventSinkIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
@@ -241,7 +295,6 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             || serviceProvider.IsServiceRegistered<IAuthenticationHandshakeRepository>()
             || serviceProvider.IsServiceRegistered<IInvitationRepository>()
             || serviceProvider.IsServiceRegistered<IBootstrapStateRepository>()
-            || serviceProvider.IsServiceRegistered<IPasskeyChallengeRepository>()
             || serviceProvider.IsServiceRegistered<IAuthorizationGrantRepository>();
 
         issues.Add(new AshlarConfigurationIssue(
@@ -285,7 +338,19 @@ public static class AshlarConfigurationServiceProviderExtensions
         ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(serviceType);
 
-        return serviceProvider.GetService<IServiceProviderIsService>()?.IsService(serviceType)
-            ?? serviceProvider.GetService(serviceType) != null;
+        try
+        {
+            var isService = serviceProvider.GetService<IServiceProviderIsService>();
+            if (isService is not null)
+            {
+                return isService.IsService(serviceType);
+            }
+
+            return serviceProvider.GetService(serviceType) != null;
+        }
+        catch (InvalidOperationException)
+        {
+            return true;
+        }
     }
 }

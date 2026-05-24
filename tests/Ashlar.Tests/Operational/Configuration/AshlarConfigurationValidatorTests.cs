@@ -1,6 +1,7 @@
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
+using Ashlar.Identity.Providers.Email;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
@@ -105,7 +106,6 @@ internal sealed class AshlarConfigurationValidatorTests
             AssertIssue(result, AshlarConfigurationIssueCodes.CredentialAdministrationRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
             AssertIssue(result, AshlarConfigurationIssueCodes.SecurityEventAdministrationRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
             AssertIssue(result, AshlarConfigurationIssueCodes.AuthenticationSessionAdministrationRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
-            AssertIssue(result, AshlarConfigurationIssueCodes.NullEmailSender, AshlarConfigurationIssueSeverity.Warning);
             AssertIssue(result, AshlarConfigurationIssueCodes.NullSecurityEventSink, AshlarConfigurationIssueSeverity.Warning);
             AssertIssue(result, AshlarConfigurationIssueCodes.InMemoryAuthenticationRateLimiter, AshlarConfigurationIssueSeverity.Warning);
             AssertIssue(result, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Information);
@@ -174,6 +174,20 @@ internal sealed class AshlarConfigurationValidatorTests
     }
 
     [Test]
+    public async Task CoreCheckDoesNotTreatPasskeyChallengeRepositoryAsCoreDurableTransactionSignal()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IPasskeyChallengeRepository>());
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        AssertIssue(result, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Information);
+    }
+
+    [Test]
     public async Task CoreCheckReportsFeatureRepositoryIssuesWhenFeaturesAreRegistered()
     {
         var services = new ServiceCollection();
@@ -192,6 +206,180 @@ internal sealed class AshlarConfigurationValidatorTests
             AssertIssue(result, AshlarConfigurationIssueCodes.BootstrapStateRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
             AssertIssue(result, AshlarConfigurationIssueCodes.AuthenticationHandshakeRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
             AssertIssue(result, AshlarConfigurationIssueCodes.AuthorizationGrantRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+        }
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotRequireCredentialRepositoryForInvitationServiceAlone()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IInvitationService>());
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertIssue(result, AshlarConfigurationIssueCodes.UserRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            AssertIssue(result, AshlarConfigurationIssueCodes.InvitationRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.CredentialRepositoryMissing));
+        }
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotRequireCredentialRepositoryForBootstrapServiceAlone()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IBootstrapService>());
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertIssue(result, AshlarConfigurationIssueCodes.UserRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            AssertIssue(result, AshlarConfigurationIssueCodes.BootstrapStateRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.CredentialRepositoryMissing));
+        }
+    }
+
+    [Test]
+    public async Task CoreCheckReportsSharedRepositoryIssuesWhenAccountSecurityServiceIsRegisteredWithoutIdentityService()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IAccountSecurityService>());
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertIssue(result, AshlarConfigurationIssueCodes.UserRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            AssertIssue(result, AshlarConfigurationIssueCodes.CredentialRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            AssertIssue(result, AshlarConfigurationIssueCodes.AuthenticationSessionRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+        }
+    }
+
+    [Test]
+    public async Task CoreCheckReportsSharedRepositoryIssuesWhenEmailChangeServiceIsRegisteredWithoutIdentityService()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IEmailChangeService>());
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertIssue(result, AshlarConfigurationIssueCodes.UserRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            AssertIssue(result, AshlarConfigurationIssueCodes.CredentialRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            AssertIssue(result, AshlarConfigurationIssueCodes.AuthenticationSessionRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            AssertIssue(result, AshlarConfigurationIssueCodes.SecretProtectorMissing, AshlarConfigurationIssueSeverity.Error);
+        }
+    }
+
+    [Test]
+    public async Task CoreCheckReportsEmailSenderIssueWhenEmailFlowIsRegisteredWithoutSender()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IEmailVerificationService>());
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        AssertIssue(result, AshlarConfigurationIssueCodes.EmailSenderNotConfigured, AshlarConfigurationIssueSeverity.Warning);
+    }
+
+    [Test]
+    public async Task CoreCheckReportsEmailSenderIssueWhenEmailFlowUsesNullSender()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IEmailVerificationService>());
+        services.AddSingleton<IEmailSender, NullEmailSender>();
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        AssertIssue(result, AshlarConfigurationIssueCodes.EmailSenderNotConfigured, AshlarConfigurationIssueSeverity.Warning);
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotReportEmailSenderIssueWhenEmailFlowUsesCustomSender()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IEmailVerificationService>());
+        services.AddSingleton<IEmailSender, CustomEmailSender>();
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.EmailSenderNotConfigured));
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotReportEmailSenderIssueWhenNoEmailFlowIsRegistered()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.EmailSenderNotConfigured));
+    }
+
+    [Test]
+    public async Task CoreCheckReportsSharedRepositoryIssuesWhenEmailSignInServicesAreRegisteredWithoutIdentityService()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IEmailCodeSignInService>());
+        services.AddSingleton(Mock.Of<IMagicLinkSignInService>());
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertIssue(result, AshlarConfigurationIssueCodes.UserRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            AssertIssue(result, AshlarConfigurationIssueCodes.CredentialRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.SecretProtectorMissing));
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.AuthenticationSessionRepositoryMissing));
+        }
+    }
+
+    [Test]
+    public async Task CoreCheckReportsCredentialRepositoryIssueWhenCredentialBackedMfaPolicyIsRegisteredWithoutIdentityService()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<RequireMfaWhenCredentialExistsPolicyEvaluator>();
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertIssue(result, AshlarConfigurationIssueCodes.CredentialRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.UserRepositoryMissing));
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.SecretProtectorMissing));
         }
     }
 
@@ -282,7 +470,7 @@ internal sealed class AshlarConfigurationValidatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.UserRepositoryMissing));
-            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.NullEmailSender));
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.EmailSenderNotConfigured));
             AssertIssue(result, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Information);
         }
     }
@@ -344,6 +532,44 @@ internal sealed class AshlarConfigurationValidatorTests
     }
 
     [Test]
+    public async Task CoreCheckDoesNotThrowWhenRootProviderRejectsScopedTransactionProviderResolution()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarIdentity();
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+        var check = new AshlarCoreConfigurationCheck();
+
+        var issues = await check.CheckAsync(provider);
+
+        Assert.That(issues, Has.Some.Matches<AshlarConfigurationIssue>(issue =>
+            issue.Code == AshlarConfigurationIssueCodes.NullTransactionProvider));
+    }
+
+    [Test]
+    public void CoreCheckDoesNotSwallowTransactionProviderActivationFailures()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IAshlarTransactionProvider>(_ => throw new InvalidOperationException("custom transaction failure"));
+        using var provider = services.BuildServiceProvider();
+        var check = new AshlarCoreConfigurationCheck();
+
+        var exception = Assert.ThrowsAsync<InvalidOperationException>(async () => await check.CheckAsync(provider).AsTask());
+
+        Assert.That(exception?.Message, Is.EqualTo("custom transaction failure"));
+    }
+
+    [Test]
+    public async Task CoreCheckSupportsServiceProvidersWithoutScopeFactory()
+    {
+        var provider = new FallbackServiceProvider(typeof(IUserRepository), Mock.Of<IUserRepository>());
+        var check = new AshlarCoreConfigurationCheck();
+
+        var issues = await check.CheckAsync(provider);
+
+        AssertIssue(issues, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Warning);
+    }
+
+    [Test]
     public void IsServiceRegisteredFallsBackWhenProviderDoesNotExposeIsService()
     {
         var provider = new FallbackServiceProvider(typeof(IUserRepository), Mock.Of<IUserRepository>());
@@ -353,6 +579,14 @@ internal sealed class AshlarConfigurationValidatorTests
             Assert.That(provider.IsServiceRegistered<IUserRepository>(), Is.True);
             Assert.That(provider.IsServiceRegistered<ICredentialRepository>(), Is.False);
         }
+    }
+
+    [Test]
+    public void IsServiceRegisteredTreatsInvalidOperationFromFallbackProviderAsRegistered()
+    {
+        var provider = new ThrowingFallbackServiceProvider();
+
+        Assert.That(provider.IsServiceRegistered<IUserRepository>(), Is.True);
     }
 
     [Test]
@@ -380,6 +614,19 @@ internal sealed class AshlarConfigurationValidatorTests
         AshlarConfigurationIssueSeverity severity)
     {
         Assert.That(result.Issues, Has.Some.Matches<AshlarConfigurationIssue>(issue =>
+            issue.Code == code
+            && issue.Severity == severity
+            && !string.IsNullOrWhiteSpace(issue.Message)
+            && !string.IsNullOrWhiteSpace(issue.Recommendation)
+            && !string.IsNullOrWhiteSpace(issue.Component)));
+    }
+
+    private static void AssertIssue(
+        IReadOnlyList<AshlarConfigurationIssue> issues,
+        string code,
+        AshlarConfigurationIssueSeverity severity)
+    {
+        Assert.That(issues, Has.Some.Matches<AshlarConfigurationIssue>(issue =>
             issue.Code == code
             && issue.Severity == severity
             && !string.IsNullOrWhiteSpace(issue.Message)
@@ -463,6 +710,14 @@ internal sealed class AshlarConfigurationValidatorTests
         public object? GetService(Type requestedServiceType)
         {
             return requestedServiceType == serviceType ? service : null;
+        }
+    }
+
+    private sealed class ThrowingFallbackServiceProvider : IServiceProvider
+    {
+        public object? GetService(Type serviceType)
+        {
+            throw new InvalidOperationException("Service is registered but cannot be activated.");
         }
     }
 }

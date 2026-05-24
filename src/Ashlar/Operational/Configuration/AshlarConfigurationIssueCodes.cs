@@ -71,9 +71,9 @@ public static class AshlarConfigurationIssueCodes
     public const string PasskeyChallengeRepositoryMissing = "ASHLAR-CONFIG-PASSKEY-CHALLENGE-REPOSITORY-MISSING";
 
     /// <summary>
-    /// Email delivery is configured with the <see langword="null" /> sender.
+    /// Email delivery is not configured for registered email-based features.
     /// </summary>
-    public const string NullEmailSender = "ASHLAR-CONFIG-NULL-EMAIL-SENDER";
+    public const string EmailSenderNotConfigured = "ASHLAR-CONFIG-EMAIL-SENDER-NOT-CONFIGURED";
 
     /// <summary>
     /// Security event auditing is configured with the <see langword="null" /> sink.

@@ -1004,7 +1004,7 @@ foreach (var issue in result.Issues)
 }
 ```
 
-`AddAshlarIdentity()` registers the validator automatically; applications can also call `AddAshlarConfigurationValidation()` directly. This is not a replacement for health checks: health checks answer whether running infrastructure is healthy, while configuration validation answers whether Ashlar appears safely and completely configured. Warnings may be acceptable in development. Production apps should pay attention to missing repositories, missing secret protection, `NullEmailSender`, `NullSecurityEventSink`, in-memory authentication rate limiting, and no durable transaction provider.
+`AddAshlarIdentity()` registers the validator automatically; applications can also call `AddAshlarConfigurationValidation()` directly. This is not a replacement for health checks: health checks answer whether running infrastructure is healthy, while configuration validation answers whether Ashlar appears safely and completely configured. Warnings may be acceptable in development. Production apps should pay attention to missing repositories, missing secret protection, missing or null email delivery for email-based flows, `NullSecurityEventSink`, in-memory authentication rate limiting, and no durable transaction provider.
 
 ## Transactions
 Ashlar supports scoped database transactions through the `IAshlarTransactionProvider` abstraction. This allows multiple repository operations within a single service scope to participate in a shared unit of work.

@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using Ashlar.Authorization.Abstractions;
 using Ashlar.Operational;
 using Ashlar.Operational.Configuration;
 using Ashlar.Operational.Diagnostics;
@@ -43,6 +44,37 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
 
         services.AddAshlarIdentity();
         services.AddAshlarPostgres(GetDataSource());
+
+        await using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain("ASHLAR-CONFIG-NULL-TRANSACTION-PROVIDER"));
+    }
+
+    [Test]
+    public async Task AddAshlarPostgresAuthorizationRegistersTransactionProvider()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarPostgresAuthorization(GetDataSource());
+
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<PostgresTransactionManager>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantRepository>(), Is.TypeOf<PostgresAuthorizationGrantRepository>());
+        }
+    }
+
+    [Test]
+    public async Task AddAshlarPostgresAuthorizationSuppressesNullTransactionConfigurationWarning()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarPostgresAuthorization(GetDataSource());
 
         await using var provider = services.BuildServiceProvider();
 

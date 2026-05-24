@@ -16,7 +16,7 @@ internal sealed class PasskeyConfigurationCheck : IAshlarConfigurationCheck
             return ValueTask.FromResult<IReadOnlyList<AshlarConfigurationIssue>>([]);
         }
 
-        IReadOnlyList<AshlarConfigurationIssue> issues =
+        return ValueTask.FromResult<IReadOnlyList<AshlarConfigurationIssue>>(
         [
             new(
                 AshlarConfigurationIssueCodes.PasskeyChallengeRepositoryMissing,
@@ -24,8 +24,6 @@ internal sealed class PasskeyConfigurationCheck : IAshlarConfigurationCheck
                 "Passkey challenge persistence is not configured.",
                 "Register an IPasskeyChallengeRepository implementation before using Ashlar passkeys.",
                 "Passkeys"),
-        ];
-
-        return ValueTask.FromResult(issues);
+        ]);
     }
 }
