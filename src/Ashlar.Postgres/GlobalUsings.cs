@@ -7,6 +7,7 @@ global using Ashlar.Postgres.Operational;
 global using Ashlar.Postgres.RateLimiting;
 global using Ashlar.Postgres.Transactions;
 
+global using Ashlar.Auditing;
 global using Ashlar.Identity.Abstractions.Repositories;
 global using Ashlar.Identity.Abstractions.Tenancy;
 global using Ashlar.Identity.Abstractions.Transactions;

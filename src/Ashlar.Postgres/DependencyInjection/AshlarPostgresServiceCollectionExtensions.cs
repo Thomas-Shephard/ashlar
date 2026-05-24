@@ -1,4 +1,3 @@
-using Ashlar.Auditing;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
@@ -60,6 +59,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
         services.TryAddScoped<IIdentityRepository, PostgresIdentityRepository>();
         services.TryAddScoped<IUserAdministrationRepository, PostgresUserAdministrationRepository>();
+        services.TryAddScoped<ISecurityEventAdministrationRepository, PostgresSecurityEventAdministrationRepository>();
         services.TryAddScoped<IInvitationRepository, PostgresInvitationRepository>();
         services.TryAddScoped<IAuthenticationSessionRepository, PostgresAuthenticationSessionRepository>();
         services.TryAddScoped<IAuthenticationHandshakeRepository, PostgresAuthenticationHandshakeRepository>();
@@ -265,6 +265,7 @@ public static class AshlarPostgresServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.TryAddSingleton<PostgresSecurityEventSink>();
+        services.TryAddScoped<ISecurityEventAdministrationRepository, PostgresSecurityEventAdministrationRepository>();
         services.Replace(ServiceDescriptor.Singleton<ISecurityEventSink>(provider => provider.GetRequiredService<PostgresSecurityEventSink>()));
         services.Replace(ServiceDescriptor.Singleton<IUserSecurityEventSummaryRepository>(provider => provider.GetRequiredService<PostgresSecurityEventSink>()));
 

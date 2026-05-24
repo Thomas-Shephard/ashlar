@@ -62,4 +62,66 @@ public sealed record SecurityEventStorageRecord(
             securityEvent.FailureReason,
             securityEvent.Properties != null ? JsonSerializer.Serialize(securityEvent.Properties) : null);
     }
+
+    /// <summary>
+    /// Creates a safe administrator summary from this storage record.
+    /// </summary>
+    /// <returns>The security event summary.</returns>
+    public SecurityEventSummary ToSummary()
+    {
+        return new SecurityEventSummary(
+            Id,
+            EventType,
+            OccurredAt,
+            UserId,
+            TenantId,
+            ActorUserId,
+            SessionId,
+            ToProvider(ProviderType, ProviderName),
+            IpAddress,
+            UserAgent,
+            CorrelationId,
+            Outcome,
+            FailureReason,
+            ParseProperties(PropertiesJson));
+    }
+
+    private static AuthenticationProviderKey? ToProvider(string? providerType, string? providerName)
+    {
+        return string.IsNullOrWhiteSpace(providerType) || string.IsNullOrWhiteSpace(providerName)
+            ? null
+            : new AuthenticationProviderKey((ProviderType)providerType, providerName);
+    }
+
+    private static Dictionary<string, string>? ParseProperties(string? propertiesJson)
+    {
+        if (string.IsNullOrWhiteSpace(propertiesJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(propertiesJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            var properties = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (property.Value.ValueKind == JsonValueKind.String)
+                {
+                    properties[property.Name] = property.Value.ToString();
+                }
+            }
+
+            return properties.Count == 0 ? null : properties;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }

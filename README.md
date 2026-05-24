@@ -995,6 +995,24 @@ services.AddAshlarPostgres(connectionString);
 services.AddAshlarPostgresAuditSink();
 ```
 
+### Security Event Browsing
+Ashlar also exposes provider-neutral read APIs for admin and operations tooling:
+
+```csharp
+var result = await securityEventAdministration.SearchSecurityEventsAsync(new SearchSecurityEventsRequest
+{
+    Tenant = null, // unscoped/admin-wide; use TenantContext.Global for only global events
+    UserId = userId,
+    EventTypes = new HashSet<string> { AshlarSecurityEventTypes.SessionCreated },
+    OccurredFrom = DateTimeOffset.UtcNow.AddDays(-7),
+    Limit = 50
+});
+```
+
+Use `ISecurityEventAdministrationService` from application code and implement or register `ISecurityEventAdministrationRepository` for the backing store. `Ashlar.Postgres` and `Ashlar.Sqlite` provide repository implementations that query `ashlar_security_events` without exposing provider-specific row ids or JSON storage details.
+
+These APIs do not authorize callers by themselves. Host applications must protect any endpoint or job that uses them with admin authorization and an appropriate step-up policy. Event properties are intended only for operational diagnostics and must never contain secrets.
+
 ## Security Notifications
 Ashlar includes generic opt-in security notifications to notify users about important account and security events, such as new sign-ins, session revocations, and MFA changes.
 

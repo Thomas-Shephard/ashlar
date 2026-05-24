@@ -1,4 +1,3 @@
-using Ashlar.Auditing;
 using Ashlar.Authorization.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Ashlar.Identity.RateLimiting.Abstractions;
@@ -91,6 +90,11 @@ internal abstract class ProviderContractFixture
     protected static IUserSecurityEventSummaryRepository GetUserSecurityEventSummaryRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IUserSecurityEventSummaryRepository>();
+    }
+
+    protected static ISecurityEventAdministrationRepository GetSecurityEventAdministrationRepository(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<ISecurityEventAdministrationRepository>();
     }
 
     protected static IPasskeyChallengeRepository GetPasskeyChallengeRepository(IServiceProvider serviceProvider)
