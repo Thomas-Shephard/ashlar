@@ -6,13 +6,13 @@ using Ashlar.Security.Tokens;
 namespace Ashlar.Identity.Providers.Email;
 
 /// <summary>
-/// Provides magic link sign in dependencies behavior.
+/// Groups the dependencies used when issuing and consuming magic links.
 /// </summary>
-/// <param name="identityContext">The identity context value.</param>
-/// <param name="tokenContext">The token context value.</param>
-/// <param name="infrastructure">The infrastructure value.</param>
-/// <param name="provider">The provider value.</param>
-/// <param name="audit">The audit value.</param>
+/// <param name="identityContext">Identity user, credential, service, and transaction dependencies.</param>
+/// <param name="tokenContext">Secure token generation and hashing dependencies.</param>
+/// <param name="infrastructure">Email, rate-limit, and callback validation dependencies.</param>
+/// <param name="provider">Authentication provider that owns issued magic-link credentials.</param>
+/// <param name="audit">Time and security-event dependencies.</param>
 internal sealed class MagicLinkSignInDependencies(
     IdentityContext identityContext,
     SecureTokenContext tokenContext,
@@ -26,47 +26,51 @@ internal sealed class MagicLinkSignInDependencies(
     private readonly IdentityAuditContext _audit = audit ?? throw new ArgumentNullException(nameof(audit));
 
     /// <summary>
-    /// Gets or sets the identity service value.
+    /// Gets the identity service used to materialize sign-in results.
     /// </summary>
     public IIdentityService IdentityService => _identityContext.IdentityService;
     /// <summary>
-    /// Gets or sets the repository value.
+    /// Gets the user repository used for email lookup.
     /// </summary>
-    public IIdentityRepository Repository => _identityContext.Repository;
+    public IUserRepository UserRepository => _identityContext.UserRepository;
     /// <summary>
-    /// Gets or sets the transaction provider value.
+    /// Gets the credential repository used for magic-link credentials.
+    /// </summary>
+    public ICredentialRepository CredentialRepository => _identityContext.CredentialRepository;
+    /// <summary>
+    /// Gets the transaction provider used to persist magic-link issuance atomically.
     /// </summary>
     public IAshlarTransactionProvider TransactionProvider => _identityContext.TransactionProvider;
     /// <summary>
-    /// Gets or sets the token generator value.
+    /// Gets the generator used to create magic-link tokens.
     /// </summary>
     public ISecureTokenGenerator TokenGenerator => _tokenContext.Generator;
     /// <summary>
-    /// Gets or sets the token hasher value.
+    /// Gets the hasher used to store magic-link token hashes.
     /// </summary>
     public ISecureTokenHasher TokenHasher => _tokenContext.Hasher;
     /// <summary>
-    /// Gets the configured dependency value.
+    /// Gets the authentication provider that owns issued magic-link credentials.
     /// </summary>
     public MagicLinkAuthenticationProvider Provider { get; } = provider ?? throw new ArgumentNullException(nameof(provider));
     /// <summary>
-    /// Gets or sets the email sender value.
+    /// Gets the sender used for magic-link messages.
     /// </summary>
     public IEmailSender EmailSender => _infrastructure.EmailSender;
     /// <summary>
-    /// Gets or sets the rate limiter value.
+    /// Gets the limiter used to throttle magic-link requests.
     /// </summary>
     public IAuthenticationRateLimiter RateLimiter => _infrastructure.RateLimiter;
     /// <summary>
-    /// Gets or sets the uri validator value.
+    /// Gets the validator used for callback URIs.
     /// </summary>
     public IUriValidator UriValidator => _infrastructure.UriValidator;
     /// <summary>
-    /// Gets or sets the time provider value.
+    /// Gets the time provider used for expiration checks and events.
     /// </summary>
     public TimeProvider TimeProvider => _audit.TimeProvider;
     /// <summary>
-    /// Gets or sets the security event sink value.
+    /// Gets the sink used to record security events.
     /// </summary>
     public ISecurityEventSink SecurityEventSink => _audit.SecurityEventSink;
 }

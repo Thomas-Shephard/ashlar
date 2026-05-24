@@ -42,7 +42,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<IdentityServiceOptions>(services, ServiceLifetime.Singleton);
             AssertDescriptor<AuthenticationSessionOptions>(services, ServiceLifetime.Singleton);
             AssertDescriptor<TimeProvider>(services, ServiceLifetime.Singleton);
-            Assert.That(services.Any(d => d.ServiceType == typeof(IIdentityRepository)), Is.False);
+            Assert.That(services.Any(d => d.ServiceType == typeof(IUserRepository)), Is.False);
         }
     }
 
@@ -122,7 +122,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void AddAshlarIdentityResolvesIdentityServiceWhenRequiredDependenciesArePresent()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IIdentityRepository>());
+        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services
             .AddAshlarIdentity()
@@ -250,9 +251,9 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void AddAshlarMfaHandshakesPassesNotificationDependencies()
     {
         var services = new ServiceCollection();
-        var identityRepository = Mock.Of<IIdentityRepository>();
+        var userRepository = Mock.Of<IUserRepository>();
         var notificationService = Mock.Of<ISecurityNotificationService>();
-        services.AddSingleton(identityRepository);
+        services.AddSingleton(userRepository);
         services.AddSingleton(notificationService);
 
         services.AddAshlarMfaHandshakes();
@@ -264,7 +265,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(dependencies.IdentityRepository, Is.SameAs(identityRepository));
+            Assert.That(dependencies.UserRepository, Is.SameAs(userRepository));
             Assert.That(dependencies.NotificationService, Is.SameAs(notificationService));
         }
     }
@@ -365,7 +366,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
-    public void MissingIdentityRepositoryFailsThroughServiceResolution()
+    public void MissingUserRepositoryFailsThroughServiceResolution()
     {
         var services = new ServiceCollection();
         services.AddSingleton(Mock.Of<ISecretProtector>());
@@ -379,7 +380,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exception.Message, Does.Contain(nameof(IIdentityRepository)));
+            Assert.That(exception.Message, Does.Contain(nameof(IUserRepository)));
             Assert.That(exception.Message, Does.Contain("No service for type"));
         }
     }
@@ -462,7 +463,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void AddAshlarEmailVerificationRegistersService()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IIdentityRepository>());
+        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddAshlarEmailVerification();
 
@@ -476,7 +478,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void AddAshlarEmailVerificationAppliesConfiguration()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IIdentityRepository>());
+        services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddAshlarEmailVerification(options => options.Subject = "Verify custom");
 
         using var provider = services.BuildServiceProvider();
@@ -488,7 +490,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void AddAshlarEmailChangeRegistersService()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IIdentityRepository>());
+        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
         services.AddAshlarEmailChange();
@@ -503,7 +506,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     public void AddAshlarEmailChangeAppliesConfiguration()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IIdentityRepository>());
+        services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
         services.AddAshlarEmailChange(options => options.Subject = "Change custom");

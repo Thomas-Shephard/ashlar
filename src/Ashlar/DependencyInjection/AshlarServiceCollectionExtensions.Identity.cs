@@ -22,12 +22,12 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's core identity services.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <param name="configureSessions">The configure sessions value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional configuration for identity service behavior.</param>
+    /// <param name="configureSessions">Optional configuration for authentication session behavior.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     /// <remarks>
-    /// This method intentionally does not register <see cref="IIdentityRepository"/> or
+    /// This method intentionally does not register <see cref="IUserRepository"/> or <see cref="ICredentialRepository"/> or
     /// <see cref="ISecretProtector"/>. Applications should provide those dependencies explicitly.
     /// </remarks>
     public static IServiceCollection AddAshlarIdentity(
@@ -53,7 +53,7 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAdd(new ServiceDescriptor(
             typeof(IIdentityService),
             provider => new IdentityService(
-                provider.GetRequiredService<IIdentityRepository>(),
+                provider.GetRequiredService<IUserRepository>(),
                 provider.GetRequiredService<IAuthenticationProviderRegistry>(),
                 provider.GetRequiredService<ICredentialService>(),
                 provider.GetRequiredService<IAuthenticationPipeline>(),
@@ -87,7 +87,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<AuthenticationSessionOptions>(),
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>(),
-            provider.GetService<IIdentityRepository>(),
+            provider.GetService<IUserRepository>(),
             provider.GetService<ISecurityNotificationService>(),
             provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationSessionService>>(),
             provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()));

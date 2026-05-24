@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Abstractions.Authentication;
 
 /// <summary>
-/// Defines the contract for authentication provider operations.
+/// Represents an authentication provider that can identify users and validate provider assertions.
 /// </summary>
 public interface IAuthenticationProvider
 {
@@ -25,52 +25,52 @@ public interface IAuthenticationProvider
     /// <summary>
     /// Gets the unique key for the user within this provider.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="userId">The user id value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">The assertion supplied by the caller.</param>
+    /// <param name="userId">The user that will own the credential.</param>
+    /// <returns>The provider-specific credential key.</returns>
     string GetProviderKey(IAuthenticationAssertion assertion, Guid userId);
 
     /// <summary>
     /// Prepares a raw credential value for storage.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="rawValue">The raw value value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">The assertion supplied by the caller.</param>
+    /// <param name="rawValue">The raw credential value before provider-specific preparation.</param>
+    /// <returns>The value to store for the credential, or <see langword="null" /> when no value should be stored.</returns>
     string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue);
 
     /// <summary>
     /// Attempts to resolve the user associated with the given assertion.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="repository">The repository value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
-    Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default);
+    /// <param name="assertion">The assertion supplied by the caller.</param>
+    /// <param name="context">The authentication request context.</param>
+    /// <param name="repository">The user repository.</param>
+    /// <param name="cancellationToken">A token that can cancel the lookup.</param>
+    /// <returns>The matching user, or <see langword="null" /> when the assertion does not identify a user.</returns>
+    Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Performs the authentication against the provided credential.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="credential">The credential value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">The assertion supplied by the caller.</param>
+    /// <param name="credential">The credential resolved for the assertion, when one exists.</param>
+    /// <param name="cancellationToken">A token that can cancel authentication.</param>
+    /// <returns>The authentication result.</returns>
     Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Resolves the credential associated with the given assertion and user.
     /// </summary>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="context">The authentication context value.</param>
-    /// <param name="repository">The repository value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="userId">The user that must own the credential.</param>
+    /// <param name="assertion">The assertion supplied by the caller.</param>
+    /// <param name="context">The authentication request context, when available.</param>
+    /// <param name="repository">The credential repository.</param>
+    /// <param name="cancellationToken">A token that can cancel the lookup.</param>
+    /// <returns>The matching credential, or <see langword="null" /> when the provider uses the default lookup.</returns>
     Task<UserCredential?> ResolveCredentialAsync(
         Guid userId,
         IAuthenticationAssertion assertion,
         AuthenticationContext? context,
-        IIdentityRepository repository,
+        ICredentialRepository repository,
         CancellationToken cancellationToken = default)
     {
         return Task.FromResult<UserCredential?>(null);
@@ -80,12 +80,12 @@ public interface IAuthenticationProvider
 /// <summary>
 /// Represents the result of an authentication attempt.
 /// </summary>
-/// <param name="Status">The status value.</param>
-/// <param name="Claims">The claims value.</param>
-/// <param name="NewCredentialValue">The new credential value value.</param>
-/// <param name="NewMetadata">The new metadata value.</param>
-/// <param name="IsCredentialConsumed">The is credential consumed value.</param>
-/// <param name="CredentialUpdateRequirement">The credential update requirement value.</param>
+/// <param name="Status">The outcome of the authentication attempt.</param>
+/// <param name="Claims">Claims produced by the provider.</param>
+/// <param name="NewCredentialValue">A replacement credential value to persist after successful authentication.</param>
+/// <param name="NewMetadata">Replacement credential metadata to persist after successful authentication.</param>
+/// <param name="IsCredentialConsumed">Whether the credential should be consumed after successful authentication.</param>
+/// <param name="CredentialUpdateRequirement">Whether credential update failures should fail authentication.</param>
 public sealed record AuthenticationResult(
     AuthenticationResultStatus Status,
     IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims = null,
@@ -97,12 +97,12 @@ public sealed record AuthenticationResult(
     /// <summary>
     /// Initializes a new instance of the authentication result class from single-value claims.
     /// </summary>
-    /// <param name="status">The status value.</param>
+    /// <param name="status">The outcome of the authentication attempt.</param>
     /// <param name="claims">The single-value claims.</param>
-    /// <param name="newCredentialValue">The new credential value value.</param>
-    /// <param name="newMetadata">The new metadata value.</param>
-    /// <param name="isCredentialConsumed">The is credential consumed value.</param>
-    /// <param name="credentialUpdateRequirement">The credential update requirement value.</param>
+    /// <param name="newCredentialValue">A replacement credential value to persist after successful authentication.</param>
+    /// <param name="newMetadata">Replacement credential metadata to persist after successful authentication.</param>
+    /// <param name="isCredentialConsumed">Whether the credential should be consumed after successful authentication.</param>
+    /// <param name="credentialUpdateRequirement">Whether credential update failures should fail authentication.</param>
     public AuthenticationResult(
         AuthenticationResultStatus status,
         IDictionary<string, string>? claims,

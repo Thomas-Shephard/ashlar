@@ -13,7 +13,8 @@ namespace Ashlar.Identity.Features.Mfa;
 /// </summary>
 public sealed class TotpService : ITotpService
 {
-    private readonly IIdentityRepository _repository;
+    private readonly IUserRepository _userRepository;
+    private readonly ICredentialRepository _credentialRepository;
     private readonly ICredentialService _credentialService;
     private readonly IAshlarTransactionProvider _transactionProvider;
     private readonly IAuthenticationProvider _provider;
@@ -25,19 +26,22 @@ public sealed class TotpService : ITotpService
     /// <summary>
     /// Initializes a configured service instance.
     /// </summary>
-    /// <param name="repository">The repository value.</param>
+    /// <param name="userRepository">Stores and retrieves users.</param>
+    /// <param name="credentialRepository">Stores and retrieves credentials.</param>
     /// <param name="credentialService">The credential service value.</param>
     /// <param name="transactionProvider">The transaction provider value.</param>
     /// <param name="providers">The providers value.</param>
     /// <param name="dependencies">The dependencies value.</param>
     public TotpService(
-        IIdentityRepository repository,
+        IUserRepository userRepository,
+        ICredentialRepository credentialRepository,
         ICredentialService credentialService,
         IAshlarTransactionProvider transactionProvider,
         IEnumerable<IAuthenticationProvider> providers,
         TotpServiceDependencies dependencies)
     {
-        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
+        _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
         _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
         _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
         ArgumentNullException.ThrowIfNull(dependencies);
@@ -149,7 +153,7 @@ public sealed class TotpService : ITotpService
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         // Replace any existing TOTP credential for this user.
-        await _repository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
+        await _credentialRepository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
 
         var assertion = new TotpAssertion(code);
         var totpCredentialMetadata = System.Text.Json.JsonSerializer.Serialize(new { LastUsedStep = verifiedStep });
@@ -182,7 +186,7 @@ public sealed class TotpService : ITotpService
                 Provider = _options.ProviderKey
             }, ct);
 
-            var user = await _repository.GetUserByIdAsync(userId, ct);
+            var user = await _userRepository.GetUserByIdAsync(userId, ct);
             if (user != null)
             {
                 await _notifications.NotifyAsync(SecurityNotificationType.TotpEnrolled, user, now, context: ToNotificationContext(audit), cancellationToken: ct);
@@ -201,7 +205,7 @@ public sealed class TotpService : ITotpService
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
-        var count = await _repository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
+        var count = await _credentialRepository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
         if (count == 0) return false;
 
         var now = _timeProvider.GetUtcNow();
@@ -217,7 +221,7 @@ public sealed class TotpService : ITotpService
                 Provider = _options.ProviderKey
             }, ct);
 
-            var user = await _repository.GetUserByIdAsync(userId, ct);
+            var user = await _userRepository.GetUserByIdAsync(userId, ct);
             if (user != null)
             {
                 await _notifications.NotifyAsync(SecurityNotificationType.TotpDisabled, user, now, context: ToNotificationContext(audit), cancellationToken: ct);

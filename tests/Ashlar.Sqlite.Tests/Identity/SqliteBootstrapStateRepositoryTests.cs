@@ -31,7 +31,7 @@ internal sealed class SqliteBootstrapStateRepositoryTests : SqliteTestBase
     public async Task BootstrapStatusStartsUninitializedThenInitializesOnce()
     {
         await using var scope = _serviceProvider.CreateAsyncScope();
-        var identity = scope.ServiceProvider.GetRequiredService<IIdentityRepository>();
+        var identity = scope.ServiceProvider.GetRequiredService<IUserRepository>();
         var repository = scope.ServiceProvider.GetRequiredService<IBootstrapStateRepository>();
         var user = new AshlarUser { Id = Guid.NewGuid(), Email = "admin@example.com", IsActive = true };
         await identity.CreateUserAsync(user);
@@ -55,7 +55,7 @@ internal sealed class SqliteBootstrapStateRepositoryTests : SqliteTestBase
     {
         await using (var scope = _serviceProvider.CreateAsyncScope())
         {
-            var identity = scope.ServiceProvider.GetRequiredService<IIdentityRepository>();
+            var identity = scope.ServiceProvider.GetRequiredService<IUserRepository>();
             var repository = scope.ServiceProvider.GetRequiredService<IBootstrapStateRepository>();
             var transactions = scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>();
             var user = new AshlarUser { Id = Guid.NewGuid(), Email = "rollback-admin@example.com", IsActive = true };

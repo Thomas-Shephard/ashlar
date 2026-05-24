@@ -1,6 +1,6 @@
 namespace Ashlar.Postgres.Tests.Identity;
 
-internal sealed class PostgresIdentityRepositoryContractTests : IdentityRepositoryContractTests
+internal sealed class PostgresCredentialRepositoryContractTests : CredentialRepositoryContractTests
 {
     private PostgresContractDatabaseLease? _database;
 
@@ -19,3 +19,4 @@ internal sealed class PostgresIdentityRepositoryContractTests : IdentityReposito
         }
     }
 }
+

@@ -153,7 +153,7 @@ internal sealed class InvitationServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value, Is.Not.EqualTo(Guid.Empty));
-            var user = fixture.IdentityRepository.Users.First(u => u.Email == "NewUser@Example.Com");
+            var user = fixture.UserRepository.Users.First(u => u.Email == "NewUser@Example.Com");
             Assert.That(user.Name, Is.EqualTo("New User"));
             Assert.That(user.IsActive, Is.True);
             Assert.That(fixture.InvitationRepository.Invitations.Any(i => i.AcceptedAt != null), Is.True);
@@ -174,7 +174,7 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            var user = fixture.IdentityRepository.Users.First(u => u.Email == "NewUser@Example.Com");
+            var user = fixture.UserRepository.Users.First(u => u.Email == "NewUser@Example.Com");
             Assert.That(user.EmailVerifiedAt, Is.EqualTo(fixture.Time.GetUtcNow()));
         }
     }
@@ -191,7 +191,7 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            var user = fixture.IdentityRepository.Users.First(u => u.Email == "NewUser@Example.Com");
+            var user = fixture.UserRepository.Users.First(u => u.Email == "NewUser@Example.Com");
             Assert.That(user.Name, Is.Null);
             Assert.That(user.EmailVerifiedAt, Is.Null);
         }
@@ -211,7 +211,7 @@ internal sealed class InvitationServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value, Is.EqualTo(inactiveUser.Id));
-            var user = fixture.IdentityRepository.Users.First(u => u.Id == inactiveUser.Id);
+            var user = fixture.UserRepository.Users.First(u => u.Id == inactiveUser.Id);
             Assert.That(user.IsActive, Is.True);
             Assert.That(user.Name, Is.EqualTo("Updated Name"));
         }
@@ -250,7 +250,7 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            var user = fixture.IdentityRepository.Users.First(u => u.Id == inactiveUser.Id);
+            var user = fixture.UserRepository.Users.First(u => u.Id == inactiveUser.Id);
             Assert.That(user.IsActive, Is.True);
             Assert.That(user.Name, Is.EqualTo("Updated Name"));
             Assert.That(user.EmailVerifiedAt, Is.Null);
@@ -271,7 +271,7 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            var user = fixture.IdentityRepository.Users.First(u => u.Id == inactiveUser.Id);
+            var user = fixture.UserRepository.Users.First(u => u.Id == inactiveUser.Id);
             Assert.That(user.IsActive, Is.True);
             Assert.That(user.EmailVerifiedAt, Is.EqualTo(verifiedAt));
         }
@@ -297,10 +297,10 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            var user = fixture.IdentityRepository.Users.First(u => u.Id == activeUser.Id);
+            var user = fixture.UserRepository.Users.First(u => u.Id == activeUser.Id);
             Assert.That(user.IsActive, Is.True);
             Assert.That(user.EmailVerifiedAt, Is.EqualTo(fixture.Time.GetUtcNow()));
-            Assert.That(fixture.IdentityRepository.UpdateCount, Is.EqualTo(1));
+            Assert.That(fixture.UserRepository.UpdateCount, Is.EqualTo(1));
         }
     }
 
@@ -325,10 +325,10 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            var user = fixture.IdentityRepository.Users.First(u => u.Id == activeUser.Id);
+            var user = fixture.UserRepository.Users.First(u => u.Id == activeUser.Id);
             Assert.That(user.Name, Is.EqualTo("Active User"));
             Assert.That(user.EmailVerifiedAt, Is.EqualTo(verifiedAt));
-            Assert.That(fixture.IdentityRepository.UpdateCount, Is.Zero);
+            Assert.That(fixture.UserRepository.UpdateCount, Is.Zero);
         }
     }
 
@@ -427,7 +427,7 @@ internal sealed class InvitationServiceTests
     public void AddAshlarInvitationsResolvesService()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IIdentityRepository>());
+        services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<IInvitationRepository>());
         services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
         services.AddAshlarInvitations();
@@ -442,7 +442,7 @@ internal sealed class InvitationServiceTests
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void ConstructorValidatesArguments()
     {
-        var storeContext = new InvitationStoreContext(Mock.Of<IInvitationRepository>(), Mock.Of<IIdentityRepository>(), Mock.Of<IAshlarTransactionProvider>());
+        var storeContext = new InvitationStoreContext(Mock.Of<IInvitationRepository>(), Mock.Of<IUserRepository>(), Mock.Of<IAshlarTransactionProvider>());
         var tokenContext = new SecureTokenContext(Mock.Of<ISecureTokenGenerator>(), Mock.Of<ISecureTokenHasher>());
         var infrastructure = new IdentityInfrastructureContext(Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), Mock.Of<IUriValidator>());
         var audit = new IdentityAuditContext(TimeProvider.System, Mock.Of<ISecurityEventSink>());
@@ -450,9 +450,9 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentNullException>(() => _ = new InvitationService(null!));
-            Assert.Throws<ArgumentNullException>(() => _ = new InvitationStoreContext(null!, Mock.Of<IIdentityRepository>(), Mock.Of<IAshlarTransactionProvider>()));
+            Assert.Throws<ArgumentNullException>(() => _ = new InvitationStoreContext(null!, Mock.Of<IUserRepository>(), Mock.Of<IAshlarTransactionProvider>()));
             Assert.Throws<ArgumentNullException>(() => _ = new InvitationStoreContext(Mock.Of<IInvitationRepository>(), null!, Mock.Of<IAshlarTransactionProvider>()));
-            Assert.Throws<ArgumentNullException>(() => _ = new InvitationStoreContext(Mock.Of<IInvitationRepository>(), Mock.Of<IIdentityRepository>(), null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new InvitationStoreContext(Mock.Of<IInvitationRepository>(), Mock.Of<IUserRepository>(), null!));
             Assert.Throws<ArgumentNullException>(() => _ = new InvitationDependencies(null!, tokenContext, infrastructure, audit));
             Assert.Throws<ArgumentNullException>(() => _ = new InvitationDependencies(storeContext, null!, infrastructure, audit));
             Assert.Throws<ArgumentNullException>(() => _ = new InvitationDependencies(storeContext, tokenContext, null!, audit));
@@ -503,7 +503,7 @@ internal sealed class InvitationServiceTests
     public void AddAshlarInvitationsConfiguresOptions()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IIdentityRepository>());
+        services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<IInvitationRepository>());
         services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
         services.AddAshlarInvitations(options => options.EmailSubject = "Custom Subject");
@@ -519,7 +519,7 @@ internal sealed class InvitationServiceTests
     {
         var service = new InvitationService(CreateDependencies(
             Mock.Of<IInvitationRepository>(),
-            Mock.Of<IIdentityRepository>(),
+            Mock.Of<IUserRepository>(),
             Mock.Of<ISecureTokenGenerator>(),
             Mock.Of<ISecureTokenHasher>(),
             Mock.Of<IEmailSender>(),
@@ -551,7 +551,7 @@ internal sealed class InvitationServiceTests
 
         await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token, UserName = null });
 
-        var user = fixture.IdentityRepository.Users.First(u => u.Id == inactiveUser.Id);
+        var user = fixture.UserRepository.Users.First(u => u.Id == inactiveUser.Id);
         Assert.That(user.Name, Is.EqualTo("Original Name"));
     }
 
@@ -559,7 +559,7 @@ internal sealed class InvitationServiceTests
     public void AddAshlarInvitationsWithNullConfigureWorks()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Mock.Of<IIdentityRepository>());
+        services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<IInvitationRepository>());
         services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
         services.AddAshlarInvitations();
@@ -755,7 +755,7 @@ internal sealed class InvitationServiceTests
     private static Fixture CreateFixture(User? user = null, bool creationAllowed = true, bool acceptanceAllowed = true, bool previewAllowed = true, Action<InvitationOptions>? configureOptions = null, bool callbackAllowed = true)
     {
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 5, 3, 12, 0, 0, TimeSpan.Zero));
-        var identityRepository = new InMemoryIdentityRepository(user);
+        var UserRepository = new InMemoryUserRepository(user);
         var invitationRepository = new InMemoryInvitationRepository(time);
         var audit = new RecordingSecurityEventSink();
         var emailSender = new RecordingEmailSender();
@@ -770,7 +770,7 @@ internal sealed class InvitationServiceTests
         var service = new InvitationService(
             CreateDependencies(
                 invitationRepository,
-                identityRepository,
+                UserRepository,
                 tokenGenerator,
                 tokenHasher,
                 emailSender,
@@ -781,7 +781,7 @@ internal sealed class InvitationServiceTests
                 callbackAllowed),
             Options.Create(options));
 
-        return new Fixture(service, invitationRepository, identityRepository, emailSender, audit, time, tokenHasher, rateLimiter);
+        return new Fixture(service, invitationRepository, UserRepository, emailSender, audit, time, tokenHasher, rateLimiter);
     }
 
     private static string ExtractToken(EmailMessage message)
@@ -824,7 +824,7 @@ internal sealed class InvitationServiceTests
 
     private static InvitationDependencies CreateDependencies(
         IInvitationRepository invitationRepository,
-        IIdentityRepository identityRepository,
+        IUserRepository UserRepository,
         ISecureTokenGenerator tokenGenerator,
         ISecureTokenHasher tokenHasher,
         IEmailSender emailSender,
@@ -843,13 +843,13 @@ internal sealed class InvitationServiceTests
         }
 
         return new InvitationDependencies(
-            new InvitationStoreContext(invitationRepository, identityRepository, transactionProvider),
+            new InvitationStoreContext(invitationRepository, UserRepository, transactionProvider),
             new SecureTokenContext(tokenGenerator, tokenHasher),
             new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator.Object),
             new IdentityAuditContext(timeProvider ?? TimeProvider.System, securityEventSink ?? new NullSecurityEventSink()));
     }
 
-    private sealed record Fixture(InvitationService Service, InMemoryInvitationRepository InvitationRepository, InMemoryIdentityRepository IdentityRepository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, ISecureTokenHasher TokenHasher, StubRateLimiter RateLimiter);
+    private sealed record Fixture(InvitationService Service, InMemoryInvitationRepository InvitationRepository, InMemoryUserRepository UserRepository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, ISecureTokenHasher TokenHasher, StubRateLimiter RateLimiter);
 
     private sealed class StubRateLimiter(bool creationAllowed, bool acceptanceAllowed, bool previewAllowed, TimeProvider timeProvider) : IAuthenticationRateLimiter
     {
@@ -902,7 +902,7 @@ internal sealed class InvitationServiceTests
         }
     }
 
-    private sealed class InMemoryIdentityRepository(params User?[] users) : IIdentityRepository
+    private sealed class InMemoryUserRepository(params User?[] users) : IUserRepository
     {
         public List<User> Users { get; } = users.OfType<User>().ToList();
         public int UpdateCount { get; private set; }
@@ -935,14 +935,7 @@ internal sealed class InvitationServiceTests
             return Task.CompletedTask;
         }
 
-        public Task<UserCredential?> GetCredentialForUserAsync(Guid userId, ProviderType type, string providerName, string? providerKey = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<IUser?> GetUserByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<IReadOnlyList<UserCredential>> ListCredentialsForUserAsync(Guid userId, bool activeOnly = true, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<UserCredential>>([]);
-        public Task CreateCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task CreateOrReplaceCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<bool> UpdateCredentialAsync(UserCredential credential, string expectedVersion, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<bool> ConsumeCredentialAsync(Guid credentialId, string expectedVersion, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<int> RevokeCredentialsAsync(Guid userId, ProviderType type, string providerName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
     private sealed class InMemoryInvitationRepository(TimeProvider timeProvider) : IInvitationRepository

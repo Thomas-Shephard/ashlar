@@ -22,7 +22,8 @@ internal static class MfaEndpoints
 
         app.MapGet("/account/mfa/enroll", async (
             ITotpService totp,
-            IIdentityRepository users,
+            IUserRepository users,
+            ICredentialRepository credentials,
             IAuthorizationEvaluator auth,
             HttpContext httpContext,
             ClaimsPrincipal user,
@@ -33,7 +34,7 @@ internal static class MfaEndpoints
             var ashlarUser = await users.GetUserByIdAsync(userId, cancellationToken);
             if (ashlarUser == null) return Results.NotFound();
 
-            var totpCredential = await users.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, cancellationToken);
+            var totpCredential = await credentials.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, cancellationToken);
             var hasTotp = totpCredential != null;
 
             if (!hasTotp)
@@ -165,14 +166,14 @@ internal static class MfaEndpoints
     }
 
     private static async Task<IResult> GetStepUpOptionsAsync(
-        IIdentityRepository users,
+        ICredentialRepository credentials,
         IPasskeyService passkeys,
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
         var userId = user.GetAshlarUserId();
-        var totpCredential = await users.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, cancellationToken);
-        var recoveryCredential = await users.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", null, cancellationToken);
+        var totpCredential = await credentials.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, cancellationToken);
+        var recoveryCredential = await credentials.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", null, cancellationToken);
         var hasPasskeys = (await passkeys.ListAsync(userId, cancellationToken)).Count > 0;
         var canUseCode = totpCredential != null || recoveryCredential != null;
 
@@ -262,7 +263,7 @@ internal static class MfaEndpoints
         [FromServices] IAuthenticationOrchestrator Orchestrator,
         [FromServices] IAuthenticationHandshakeService HandshakeService,
         [FromServices] IAuthenticationPipeline Pipeline,
-        [FromServices] IIdentityRepository Users,
+        [FromServices] IUserRepository Users,
         [FromServices] IAshlarSignInManager SignInManager);
 
     private sealed record StepUpVerifyRequest(string Code);

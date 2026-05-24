@@ -138,7 +138,7 @@ internal sealed class ExternalAuthenticationProviderTests
     public async Task FindUserAsyncWithNonExternalAssertionShouldReturnNull()
     {
         var assertion = new Mock<IAuthenticationAssertion>().Object;
-        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(), new Mock<IIdentityRepository>().Object);
+        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(), new Mock<IUserRepository>().Object);
         Assert.That(result, Is.Null);
     }
 
@@ -161,7 +161,7 @@ internal sealed class ExternalAuthenticationProviderTests
 
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = otherTenantId };
 
-        var repoMock = new Mock<IIdentityRepository>();
+        var repoMock = new Mock<IUserRepository>();
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
@@ -179,7 +179,7 @@ internal sealed class ExternalAuthenticationProviderTests
 
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = Guid.NewGuid() };
 
-        var repoMock = new Mock<IIdentityRepository>();
+        var repoMock = new Mock<IUserRepository>();
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
@@ -200,7 +200,7 @@ internal sealed class ExternalAuthenticationProviderTests
         // User is global (TenantId is null)
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = null };
 
-        var repoMock = new Mock<IIdentityRepository>();
+        var repoMock = new Mock<IUserRepository>();
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
@@ -219,7 +219,7 @@ internal sealed class ExternalAuthenticationProviderTests
 
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = null };
 
-        var repoMock = new Mock<IIdentityRepository>();
+        var repoMock = new Mock<IUserRepository>();
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
@@ -237,7 +237,7 @@ internal sealed class ExternalAuthenticationProviderTests
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
         var user = new GlobalUser(Guid.NewGuid(), "test@example.com");
 
-        var repoMock = new Mock<IIdentityRepository>();
+        var repoMock = new Mock<IUserRepository>();
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
@@ -254,7 +254,7 @@ internal sealed class ExternalAuthenticationProviderTests
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
         var user = new GlobalUser(Guid.NewGuid(), "test@example.com");
 
-        var repoMock = new Mock<IIdentityRepository>();
+        var repoMock = new Mock<IUserRepository>();
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 

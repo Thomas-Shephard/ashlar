@@ -113,7 +113,7 @@ Implemented:
 - nested transaction participants that join the active provider transaction
 - initial SQLite-compatible `ashlar_*` schema
 - `IBootstrapStateRepository`
-- `IIdentityRepository` for users and credentials
+- `IUserRepository` and `ICredentialRepository` for users and credentials
 - `IInvitationRepository`
 - `IAuthenticationSessionRepository`
 - `IAuthenticationSessionAdministrationRepository`

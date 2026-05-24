@@ -178,7 +178,7 @@ internal sealed class EmailCodeSignInTests
     public async Task ProviderFindUserReturnsNullForWrongAssertionOrMissingEmail()
     {
         var provider = CreateProvider();
-        var repository = new InMemoryIdentityRepository(_user);
+        var repository = new InMemoryUserCredentialStore(_user);
 
         var wrongAssertion = await provider.FindUserAsync(new LocalPasswordAssertion("pw"), new AuthenticationContext(_user.Email), repository);
         var missingEmail = await provider.FindUserAsync(new EmailCodeAssertion("123456"), new AuthenticationContext(" "), repository);
@@ -282,12 +282,12 @@ internal sealed class EmailCodeSignInTests
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void ServiceConstructorRequiresDependenciesAndDependencyBundleValidatesRequiredServices()
     {
-        var repository = new InMemoryIdentityRepository(_user);
+        var repository = new InMemoryUserCredentialStore(_user);
         var identity = Mock.Of<IIdentityService>();
         var emailSender = new RecordingEmailSender();
         var rateLimiter = new StubRateLimiter(true, true, TimeProvider.System);
         var provider = CreateProvider();
-        var core = new IdentityContext(repository, identity, new NullTransactionProvider());
+        var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());
         var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, TimeProvider.System);
 
         using (Assert.EnterMultipleScope())
@@ -306,7 +306,9 @@ internal sealed class EmailCodeSignInTests
     public void AddAshlarEmailCodeSignInResolvesServiceAndProvider()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IIdentityRepository>(new InMemoryIdentityRepository(_user));
+        var repository = new InMemoryUserCredentialStore(_user);
+        services.AddSingleton<IUserRepository>(repository);
+        services.AddSingleton<ICredentialRepository>(repository);
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton<IEmailSender, RecordingEmailSender>();
         services.AddAshlarEmailCodeSignIn(options => options.CodeLength = 6);
@@ -323,7 +325,7 @@ internal sealed class EmailCodeSignInTests
 
     private static Fixture CreateFixture(User? user = null, bool requestAllowed = true, bool verifyAllowed = true, EmailCodeSignInOptions? options = null)
     {
-        var repository = new InMemoryIdentityRepository(user);
+        var repository = new InMemoryUserCredentialStore(user);
         var audit = new RecordingSecurityEventSink();
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 5, 3, 12, 0, 0, TimeSpan.Zero));
         var emailSender = new RecordingEmailSender();
@@ -331,13 +333,14 @@ internal sealed class EmailCodeSignInTests
         var registry = new AuthenticationProviderRegistry([provider]);
         var credentialService = new CredentialService(
             repository,
+            repository,
             Mock.Of<ISecretProtector>(),
             new NullTransactionProvider(),
             new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: audit));
         var pipeline = new AuthenticationPipeline(registry, credentialService, new NullTransactionProvider(), audit, time);
         var identity = new IdentityService(repository, registry, credentialService, pipeline, new NullTransactionProvider(), audit, time);
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed, time);
-        var core = new IdentityContext(repository, identity, new NullTransactionProvider());
+        var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());
         var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, time, audit);
         var service = new EmailCodeSignInService(dependencies, Options.Create(options ?? new EmailCodeSignInOptions()));
         return new Fixture(service, repository, emailSender, audit, time);
@@ -381,7 +384,7 @@ internal sealed class EmailCodeSignInTests
         return string.Join("|", fixture.Audit.Events.SelectMany(e => new[] { e.EventType, e.FailureReason }.Concat(e.Properties?.Values ?? [])));
     }
 
-    private sealed record Fixture(EmailCodeSignInService Service, InMemoryIdentityRepository Repository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time);
+    private sealed record Fixture(EmailCodeSignInService Service, InMemoryUserCredentialStore Repository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time);
 
     private sealed class TestPasswordHasher : IPasswordHasher
     {
@@ -432,7 +435,7 @@ internal sealed class EmailCodeSignInTests
         }
     }
 
-    private sealed class InMemoryIdentityRepository(params User?[] users) : IIdentityRepository
+    private sealed class InMemoryUserCredentialStore(params User?[] users) : IUserRepository, ICredentialRepository
     {
         private readonly List<User> _users = users.OfType<User>().ToList();
         public List<UserCredential> Credentials { get; } = [];

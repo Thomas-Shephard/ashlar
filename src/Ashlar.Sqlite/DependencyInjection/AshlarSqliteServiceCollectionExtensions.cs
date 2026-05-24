@@ -20,9 +20,9 @@ public static class AshlarSqliteServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar SQLite persistence infrastructure.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="connectionString">The SQLite connection string value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="connectionString">The SQLite connection string used by Ashlar persistence repositories.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarSqlite(
         this IServiceCollection services,
         string connectionString)
@@ -34,7 +34,8 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.TryAddScoped<SqliteTransactionManager>();
         services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<SqliteTransactionManager>()));
         services.TryAddScoped<ISqliteConnectionProvider>(provider => provider.GetRequiredService<SqliteTransactionManager>());
-        services.TryAddScoped<IIdentityRepository, SqliteIdentityRepository>();
+        services.TryAddScoped<IUserRepository, SqliteUserRepository>();
+        services.TryAddScoped<ICredentialRepository, SqliteCredentialRepository>();
         services.TryAddScoped<IUserAdministrationRepository, SqliteUserAdministrationRepository>();
         services.TryAddScoped<ICredentialAdministrationRepository, SqliteCredentialAdministrationRepository>();
         services.TryAddScoped<ISecurityEventAdministrationRepository, SqliteSecurityEventAdministrationRepository>();
@@ -63,9 +64,9 @@ public static class AshlarSqliteServiceCollectionExtensions
     /// <summary>
     /// Initializes the Ashlar SQLite schema.
     /// </summary>
-    /// <param name="serviceProvider">The service provider value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="serviceProvider">The root service provider containing SQLite schema services.</param>
+    /// <param name="cancellationToken">A token that can cancel schema initialization.</param>
+    /// <returns>A task that completes when the schema has been initialized.</returns>
     public static async Task InitializeAshlarSqliteSchemaAsync(this IServiceProvider serviceProvider, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
@@ -78,9 +79,9 @@ public static class AshlarSqliteServiceCollectionExtensions
     /// <summary>
     /// Registers the Ashlar SQLite-backed email outbox enqueue sender.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional email outbox configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarSqliteEmailOutboxSender(
         this IServiceCollection services,
         Action<SqliteEmailOutboxOptions>? configure = null)
@@ -105,10 +106,10 @@ public static class AshlarSqliteServiceCollectionExtensions
     /// <summary>
     /// Registers the Ashlar SQLite-backed email outbox sender and dispatcher.
     /// </summary>
-    /// <typeparam name="TTransport">The transport type.</typeparam>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The operation result.</returns>
+    /// <typeparam name="TTransport">The email transport used to deliver queued messages.</typeparam>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional email outbox configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarSqliteEmailOutboxDispatcher<TTransport>(
         this IServiceCollection services,
         Action<SqliteEmailOutboxOptions>? configure = null)
@@ -131,10 +132,10 @@ public static class AshlarSqliteServiceCollectionExtensions
     /// <summary>
     /// Registers the Ashlar SQLite-backed email outbox dispatcher as a hosted service.
     /// </summary>
-    /// <typeparam name="TTransport">The transport type.</typeparam>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The operation result.</returns>
+    /// <typeparam name="TTransport">The email transport used by the hosted dispatcher.</typeparam>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional email outbox configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarSqliteEmailOutboxHostedService<TTransport>(
         this IServiceCollection services,
         Action<SqliteEmailOutboxOptions>? configure = null)

@@ -18,9 +18,9 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's recovery code authentication provider and management service.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional recovery code configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarRecoveryCodes(
         this IServiceCollection services,
         Action<RecoveryCodeOptions>? configure = null)
@@ -44,9 +44,9 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's TOTP authenticator MFA provider and management service.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional TOTP configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarTotp(
         this IServiceCollection services,
         Action<TotpOptions>? configure = null)
@@ -76,9 +76,9 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's generic multi-factor authentication handshake infrastructure.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional MFA handshake configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarMfaHandshakes(
         this IServiceCollection services,
         Action<AuthenticationHandshakeOptions>? configure = null)
@@ -98,7 +98,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>(),
             provider.GetService<IAuthenticationRateLimiter>(),
-            provider.GetService<IIdentityRepository>(),
+            provider.GetService<IUserRepository>(),
             provider.GetService<ISecurityNotificationService>()));
         services.TryAddScoped<IAuthenticationHandshakeService, AuthenticationHandshakeService>();
 
@@ -108,9 +108,9 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's MFA policy and authentication orchestration services.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional MFA orchestration configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarMfaOrchestration(
         this IServiceCollection services,
         Action<MfaOrchestrationOptions>? configure = null)
@@ -134,8 +134,8 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>
     /// Explicitly registers the no-MFA policy evaluator.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarNoMfaPolicy(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -149,9 +149,9 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers a reusable policy evaluator that requires MFA for every active user.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Configures the factors required for every active user.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarRequireMfaForAllUsers(
         this IServiceCollection services,
         Action<RequireMfaForAllUsersPolicyOptions> configure)
@@ -169,9 +169,9 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers a reusable policy evaluator that requires MFA when a qualifying active credential exists.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Configures the credential providers and factors that trigger MFA.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarRequireMfaWhenCredentialExists(
         this IServiceCollection services,
         Action<CredentialBackedMfaPolicyOptions> configure)
@@ -190,8 +190,8 @@ public static partial class AshlarServiceCollectionExtensions
     /// Adds a custom MFA policy evaluator to the composite policy.
     /// </summary>
     /// <typeparam name="T">The MFA policy evaluator implementation type.</typeparam>
-    /// <param name="services">The services value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarMfaPolicyEvaluator<T>(this IServiceCollection services)
         where T : class, IMfaPolicyEvaluator
     {

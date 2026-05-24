@@ -35,9 +35,9 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
     [Test]
     public async Task CreateAndFetchHandshakeShouldMapAllFields()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var repository = GetRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
 
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -82,9 +82,9 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
     [Test]
     public async Task UpdateHandshakeShouldUpdateTargetFields()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var repository = GetRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
 
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -144,9 +144,9 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
     [Test]
     public async Task FindByTokenHashForUpdateShouldReturnHandshake()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var repository = GetRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
 
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -180,9 +180,9 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
     [Test]
     public async Task CreateAndFetchHandshakeWithNullMetadataShouldWork()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var repository = GetRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
 
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -212,9 +212,9 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
     [Test]
     public async Task UpdateHandshakeWithNullMetadataShouldStoreSqlNull()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var repository = GetRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
 
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -265,9 +265,9 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
     [Test]
     public async Task FindByTokenHashShouldHandleNullJsonGracefully()
     {
-        var identityRepository = GetIdentityRepository();
+        var userRepository = GetUserRepository();
         var repository = GetRepository();
-        var user = await CreateTestUser(identityRepository);
+        var user = await CreateTestUser(userRepository);
         var tokenHash = "hashed:null-json";
 
         // Manually insert a row with "null" JSON values
@@ -292,7 +292,7 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
     }
 
     private IAuthenticationHandshakeRepository GetRepository() => _serviceProvider.GetRequiredService<IAuthenticationHandshakeRepository>();
-    private IIdentityRepository GetIdentityRepository() => _serviceProvider.GetRequiredService<IIdentityRepository>();
+    private IUserRepository GetUserRepository() => _serviceProvider.GetRequiredService<IUserRepository>();
 
     private async Task<bool> IsHandshakeMetadataSqlNullAsync(Guid handshakeId)
     {
@@ -307,7 +307,7 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
         }
     }
 
-    private static async Task<AshlarPostgresUser> CreateTestUser(IIdentityRepository repo)
+    private static async Task<AshlarPostgresUser> CreateTestUser(IUserRepository repo)
     {
         var user = new AshlarPostgresUser
         {

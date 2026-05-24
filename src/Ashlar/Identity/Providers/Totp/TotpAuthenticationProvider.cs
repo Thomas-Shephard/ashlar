@@ -55,7 +55,7 @@ public sealed class TotpAuthenticationProvider : IAuthenticationProvider
     public string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue) => rawValue;
 
     /// <inheritdoc />
-    public Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default)
+    public Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(repository);
@@ -74,7 +74,7 @@ public sealed class TotpAuthenticationProvider : IAuthenticationProvider
     }
 
     /// <inheritdoc />
-    public async Task<UserCredential?> ResolveCredentialAsync(Guid userId, IAuthenticationAssertion assertion, AuthenticationContext? context, IIdentityRepository repository, CancellationToken cancellationToken = default)
+    public async Task<UserCredential?> ResolveCredentialAsync(Guid userId, IAuthenticationAssertion assertion, AuthenticationContext? context, ICredentialRepository repository, CancellationToken cancellationToken = default)
     {
         if (assertion is not TotpAssertion)
         {

@@ -13,9 +13,9 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
     public async Task CreateAndFetchByTokenHashMapsAllFields()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var handshake = CreateHandshake(user.Id, requiredFactors: new HashSet<string>(TotpAndEmailFactors), verifiedFactors: new HashSet<string>(TotpFactor), metadata: new Dictionary<string, string> { ["device"] = "test", ["risk"] = "low" });
 
         await repository.CreateAsync(handshake);
@@ -39,9 +39,9 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
     public async Task FindByTokenHashForUpdateReturnsExpectedHandshakeAndCanBeUpdated()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var handshake = CreateHandshake(user.Id);
         await repository.CreateAsync(handshake);
 
@@ -60,9 +60,9 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
     public async Task RequiredAndVerifiedFactorsRoundTrip()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var handshake = CreateHandshake(user.Id, requiredFactors: new HashSet<string>(TotpAndPasskeyFactors), verifiedFactors: new HashSet<string>(PasskeyFactor));
 
         await repository.CreateAsync(handshake);
@@ -80,9 +80,9 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
     public async Task MetadataRoundTripsIncludingNullMetadata()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var withMetadata = CreateHandshake(user.Id, tokenHash: "hash:metadata", metadata: new Dictionary<string, string> { ["flow"] = "step-up" });
         var withoutMetadata = CreateHandshake(user.Id, tokenHash: "hash:null-metadata", metadata: null);
         await repository.CreateAsync(withMetadata);
@@ -102,9 +102,9 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
     public async Task UpdatePersistsCompletionStateAndTimestamp()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var handshake = CreateHandshake(user.Id);
         var completedAt = CreatedAt.AddMinutes(10);
         await repository.CreateAsync(handshake);
@@ -123,9 +123,9 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
     public async Task UpdateComputesCompletionTimestampWhenMissing()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var handshake = CreateHandshake(user.Id);
         await repository.CreateAsync(handshake);
 
@@ -143,9 +143,9 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
     public async Task UpdatePersistsRevocationStateAndTimestamp()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var handshake = CreateHandshake(user.Id);
         var revokedAt = CreatedAt.AddMinutes(11);
         await repository.CreateAsync(handshake);
@@ -164,9 +164,9 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
     public async Task UpdateComputesRevocationTimestampWhenMissing()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var handshake = CreateHandshake(user.Id);
         await repository.CreateAsync(handshake);
 
@@ -184,9 +184,9 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
     public async Task UpdateCanStoreAndResetVerifiedFactorsAndMetadata()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var handshake = CreateHandshake(user.Id, verifiedFactors: new HashSet<string>(TotpFactor), metadata: new Dictionary<string, string> { ["initial"] = "true" });
         await repository.CreateAsync(handshake);
 
@@ -238,9 +238,9 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
                 Assert.Ignore("Provider does not register IAshlarTransactionProvider.");
             }
 
-            var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+            var userRepository = GetUserRepository(scope.ServiceProvider);
             var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
-            var user = await CreateUserAsync(identityRepository);
+            var user = await CreateUserAsync(userRepository);
             var handshake = CreateHandshake(user.Id);
             handshakeId = handshake.Id;
 

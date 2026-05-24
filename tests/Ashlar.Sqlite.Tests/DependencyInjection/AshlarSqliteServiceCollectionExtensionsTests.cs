@@ -26,7 +26,8 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.That(scope.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>(), Is.TypeOf<SqliteTransactionManager>());
             Assert.That(scope.ServiceProvider.GetRequiredService<SqliteSchemaManager>(), Is.Not.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarSchemaDiagnostics>(), Is.TypeOf<SqliteSchemaDiagnostics>());
-            Assert.That(scope.ServiceProvider.GetRequiredService<IIdentityRepository>(), Is.TypeOf<SqliteIdentityRepository>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IUserRepository>(), Is.TypeOf<SqliteUserRepository>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<ICredentialRepository>(), Is.TypeOf<SqliteCredentialRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<ICredentialAdministrationRepository>(), Is.TypeOf<SqliteCredentialAdministrationRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationSessionAdministrationRepository>(), Is.TypeOf<SqliteAuthenticationSessionAdministrationRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IBootstrapStateRepository>(), Is.TypeOf<SqliteBootstrapStateRepository>());
@@ -107,7 +108,8 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.DoesNotThrow(() => _ = new SqliteIdentityRepository(connectionProvider));
+            Assert.DoesNotThrow(() => _ = new SqliteUserRepository(connectionProvider));
+            Assert.DoesNotThrow(() => _ = new SqliteCredentialRepository(connectionProvider));
             Assert.DoesNotThrow(() => _ = new SqliteInvitationRepository(connectionProvider));
             Assert.DoesNotThrow(() => _ = new SqliteAuthenticationHandshakeRepository(connectionProvider));
         }

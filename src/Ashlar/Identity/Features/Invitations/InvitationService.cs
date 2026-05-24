@@ -67,7 +67,7 @@ internal sealed class InvitationService(
             return Result.Failure(AshlarFailureCodes.RateLimited);
         }
 
-        var existingUser = await _dependencies.IdentityRepository.GetUserByEmailAsync(normalizedEmail, request.TenantId, cancellationToken);
+        var existingUser = await _dependencies.UserRepository.GetUserByEmailAsync(normalizedEmail, request.TenantId, cancellationToken);
         if (existingUser is { IsActive: true })
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -204,7 +204,7 @@ internal sealed class InvitationService(
                 Context = context
             }, ct);
 
-            var notifiedUser = await _dependencies.IdentityRepository.GetUserByIdAsync(acceptedUser.UserId, ct);
+            var notifiedUser = await _dependencies.UserRepository.GetUserByIdAsync(acceptedUser.UserId, ct);
             if (notifiedUser != null)
             {
                 await _notifications.NotifyAsync(SecurityNotificationType.InvitationAccepted, notifiedUser, now, context: context, metadata: new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() }, cancellationToken: ct);
@@ -276,7 +276,7 @@ internal sealed class InvitationService(
 
     private async Task<AcceptedInvitationUser> AcceptInvitationUserAsync(UserInvitation invitation, string? requestedUserName, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var user = await _dependencies.IdentityRepository.GetUserByEmailAsync(invitation.Email, invitation.TenantId, cancellationToken);
+        var user = await _dependencies.UserRepository.GetUserByEmailAsync(invitation.Email, invitation.TenantId, cancellationToken);
 
         if (user == null)
         {
@@ -290,7 +290,7 @@ internal sealed class InvitationService(
                 EmailVerifiedAt = _options.Value.VerifyEmailOnAcceptance ? now : null,
                 TenantId = invitation.TenantId
             };
-            await _dependencies.IdentityRepository.CreateUserAsync(newUser, cancellationToken);
+            await _dependencies.UserRepository.CreateUserAsync(newUser, cancellationToken);
             return new AcceptedInvitationUser(userId, IsNewUser: true);
         }
 
@@ -305,7 +305,7 @@ internal sealed class InvitationService(
                 EmailVerifiedAt = _options.Value.VerifyEmailOnAcceptance ? (user.EmailVerifiedAt ?? now) : user.EmailVerifiedAt,
                 TenantId = invitation.TenantId
             };
-            await _dependencies.IdentityRepository.UpdateUserAsync(updatedUser, cancellationToken);
+            await _dependencies.UserRepository.UpdateUserAsync(updatedUser, cancellationToken);
         }
 
         return new AcceptedInvitationUser(user.Id, IsNewUser: false);

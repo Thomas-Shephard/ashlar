@@ -24,19 +24,20 @@ internal sealed class PasskeyServiceTests
             CreatedAt = DateTimeOffset.UtcNow,
             Status = CredentialStatus.Active
         };
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         var events = new RecordingSecurityEventSink();
         repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
-        repo.Setup(r => r.ListCredentialsForUserAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync([credential]);
+        credentials.Setup(r => r.ListCredentialsForUserAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync([credential]);
         validator.Setup(v => v.CreateRegistrationOptions(It.IsAny<PasskeyOptions>(), user, "Passkey", It.IsAny<string>(), It.Is<IReadOnlyList<UserCredential>>(c => c.Count == 1)))
             .Returns("{}");
         PasskeyChallenge? storedChallenge = null;
         challenges.Setup(r => r.CreateAsync(It.IsAny<PasskeyChallenge>(), It.IsAny<CancellationToken>()))
             .Callback<PasskeyChallenge, CancellationToken>((challenge, _) => storedChallenge = challenge)
             .Returns(Task.CompletedTask);
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(securityEventSink: events));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(securityEventSink: events));
         var audit = new AuditContext(user.Id, "127.0.0.1", "Unit Test", "trace-1");
 
         var result = await service.StartRegistrationAsync(new StartPasskeyRegistrationRequest(user.Id, " ", audit));
@@ -56,7 +57,7 @@ internal sealed class PasskeyServiceTests
     [Test]
     public void StartRegistrationAsyncShouldThrowWhenUserIsMissing()
     {
-        var service = new PasskeyService(new Mock<IIdentityRepository>().Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
 
         Assert.ThrowsAsync<InvalidOperationException>(() => service.StartRegistrationAsync(new StartPasskeyRegistrationRequest(Guid.NewGuid(), "Laptop")));
     }
@@ -65,7 +66,28 @@ internal sealed class PasskeyServiceTests
     public void ConstructorShouldThrowWhenDependenciesAreNull()
     {
         Assert.Throws<ArgumentNullException>(() => _ = new PasskeyService(
-            new Mock<IIdentityRepository>().Object,
+            null!,
+            new Mock<ICredentialRepository>().Object,
+            new Mock<IPasskeyChallengeRepository>().Object,
+            new Mock<IPasskeyCeremonyValidator>().Object,
+            new Mock<IAuthenticationOrchestrator>().Object,
+            new Mock<IAuthenticationHandshakeService>().Object,
+            new TestTokenHasher(),
+            CreateDependencies()));
+
+        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyService(
+            new Mock<IUserRepository>().Object,
+            null!,
+            new Mock<IPasskeyChallengeRepository>().Object,
+            new Mock<IPasskeyCeremonyValidator>().Object,
+            new Mock<IAuthenticationOrchestrator>().Object,
+            new Mock<IAuthenticationHandshakeService>().Object,
+            new TestTokenHasher(),
+            CreateDependencies()));
+
+        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyService(
+            new Mock<IUserRepository>().Object,
+            new Mock<ICredentialRepository>().Object,
             new Mock<IPasskeyChallengeRepository>().Object,
             new Mock<IPasskeyCeremonyValidator>().Object,
             new Mock<IAuthenticationOrchestrator>().Object,
@@ -93,7 +115,8 @@ internal sealed class PasskeyServiceTests
             CreatedAt = now,
             ExpiresAt = now.AddMinutes(5)
         };
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         var pipeline = new Mock<IAuthenticationOrchestrator>();
@@ -102,11 +125,11 @@ internal sealed class PasskeyServiceTests
         validator.Setup(v => v.VerifyRegistrationAsync(It.IsAny<PasskeyOptions>(), challenge, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PasskeyRegistrationVerificationResult("cred", "pk", 1, ["internal"]));
 
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, pipeline.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(clock));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, pipeline.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(clock));
         var result = await service.CompleteRegistrationAsync(new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, "Laptop"));
 
         Assert.That(result.Succeeded, Is.True);
-        repo.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.ProviderType == ProviderType.Passkey && c.ProviderKey == "cred"), It.IsAny<CancellationToken>()), Times.Once);
+        credentials.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.ProviderType == ProviderType.Passkey && c.ProviderKey == "cred"), It.IsAny<CancellationToken>()), Times.Once);
         challenges.Verify(r => r.ConsumeAsync(challenge.Id, "v1", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -130,7 +153,7 @@ internal sealed class PasskeyServiceTests
         };
         var challenges = new Mock<IPasskeyChallengeRepository>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
-        var service = new PasskeyService(new Mock<IIdentityRepository>().Object, challenges.Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, challenges.Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
 
         var result = await service.CompleteRegistrationAsync(new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement));
 
@@ -145,7 +168,7 @@ internal sealed class PasskeyServiceTests
         var challenges = new Mock<IPasskeyChallengeRepository>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         var validator = new Mock<IPasskeyCeremonyValidator>();
-        var service = new PasskeyService(new Mock<IIdentityRepository>().Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
 
         var result = await service.CompleteRegistrationAsync(new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, UserId: Guid.NewGuid()));
 
@@ -170,19 +193,20 @@ internal sealed class PasskeyServiceTests
             CreatedAt = now,
             ExpiresAt = now.AddMinutes(5)
         };
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         challenges.Setup(r => r.ConsumeAsync(challenge.Id, "v1", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
         validator.Setup(v => v.VerifyRegistrationAsync(It.IsAny<PasskeyOptions>(), challenge, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PasskeyRegistrationVerificationResult("cred", "pk", 1, []));
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         var result = await service.CompleteRegistrationAsync(new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
-        repo.Verify(r => r.CreateOrReplaceCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Never);
+        credentials.Verify(r => r.CreateOrReplaceCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -190,18 +214,19 @@ internal sealed class PasskeyServiceTests
     {
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var challenge = CreateRegistrationChallenge(now);
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         validator.Setup(v => v.VerifyRegistrationAsync(It.IsAny<PasskeyOptions>(), challenge, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PasskeyRegistrationVerificationResult("cred", "pk", 1, ["internal"]));
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         await service.CompleteRegistrationAsync(new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, "Laptop"));
 
-        repo.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
+        credentials.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.Metadata != null &&
             c.Metadata.Contains("\"displayName\"", StringComparison.Ordinal) &&
             !c.Metadata.Contains("\"DisplayName\"", StringComparison.Ordinal)), It.IsAny<CancellationToken>()), Times.Once);
@@ -212,16 +237,17 @@ internal sealed class PasskeyServiceTests
     {
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var challenge = CreateRegistrationChallenge(now);
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         validator.Setup(v => v.VerifyRegistrationAsync(It.IsAny<PasskeyOptions>(), challenge, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PasskeyRegistrationVerificationResult("cred", "pk", 1, []));
-        repo.Setup(r => r.CreateOrReplaceCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
+        credentials.Setup(r => r.CreateOrReplaceCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new CredentialProviderKeyConflictException());
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         var result = await service.CompleteRegistrationAsync(new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement));
 
@@ -240,7 +266,7 @@ internal sealed class PasskeyServiceTests
         challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         validator.Setup(v => v.VerifyRegistrationAsync(It.IsAny<PasskeyOptions>(), challenge, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("bad ceremony"));
-        var service = new PasskeyService(new Mock<IIdentityRepository>().Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now), events));
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now), events));
 
         var result = await service.CompleteRegistrationAsync(new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement));
 
@@ -256,18 +282,19 @@ internal sealed class PasskeyServiceTests
     {
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var challenge = CreateRegistrationChallenge(now);
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         validator.Setup(v => v.VerifyRegistrationAsync(It.IsAny<PasskeyOptions>(), challenge, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PasskeyRegistrationVerificationResult("cred", "pk", 1, []));
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         await service.CompleteRegistrationAsync(new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement));
 
-        repo.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.Metadata != null && c.Metadata.Contains("\"displayName\":\"Passkey\"", StringComparison.Ordinal)), It.IsAny<CancellationToken>()), Times.Once);
+        credentials.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.Metadata != null && c.Metadata.Contains("\"displayName\":\"Passkey\"", StringComparison.Ordinal)), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -289,18 +316,19 @@ internal sealed class PasskeyServiceTests
             CreatedAt = challenge.CreatedAt,
             ExpiresAt = challenge.ExpiresAt
         };
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         validator.Setup(v => v.VerifyRegistrationAsync(It.IsAny<PasskeyOptions>(), challenge, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PasskeyRegistrationVerificationResult("cred", "pk", 1, []));
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         await service.CompleteRegistrationAsync(new CompletePasskeyRegistrationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement));
 
-        repo.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.Metadata != null && c.Metadata.Contains("\"displayName\":\"Work Laptop\"", StringComparison.Ordinal)), It.IsAny<CancellationToken>()), Times.Once);
+        credentials.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.Metadata != null && c.Metadata.Contains("\"displayName\":\"Work Laptop\"", StringComparison.Ordinal)), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -319,14 +347,15 @@ internal sealed class PasskeyServiceTests
             Status = CredentialStatus.Active,
             Metadata = JsonSerializer.Serialize(new PasskeyCredentialMetadata { DisplayName = "Laptop", PublicKey = "pk" }, PasskeyJson.Options)
         };
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
-        repo.Setup(r => r.ListCredentialsForUserAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync([credential]);
+        credentials.Setup(r => r.ListCredentialsForUserAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync([credential]);
         validator.Setup(v => v.CreateAuthenticationOptions(It.IsAny<PasskeyOptions>(), It.IsAny<string>(), It.Is<IReadOnlyList<UserCredential>>(c => c.Count == 1 && c[0].ProviderKey == "cred")))
             .Returns("{}");
         challenges.Setup(r => r.CreateAsync(It.IsAny<PasskeyChallenge>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
 
         var result = await service.StartAuthenticationAsync(new StartPasskeyAuthenticationRequest(UserId: user.Id));
 
@@ -342,7 +371,7 @@ internal sealed class PasskeyServiceTests
         var validator = new Mock<IPasskeyCeremonyValidator>();
         validator.Setup(v => v.CreateAuthenticationOptions(It.IsAny<PasskeyOptions>(), It.IsAny<string>(), It.Is<IReadOnlyList<UserCredential>>(c => c.Count == 0)))
             .Returns("{}");
-        var service = new PasskeyService(new Mock<IIdentityRepository>().Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
 
         var result = await service.StartAuthenticationAsync(new StartPasskeyAuthenticationRequest());
 
@@ -379,19 +408,20 @@ internal sealed class PasskeyServiceTests
             Status = CredentialStatus.Active,
             Metadata = JsonSerializer.Serialize(new PasskeyCredentialMetadata { DisplayName = "Laptop", PublicKey = "pk", SignCount = 1 }, PasskeyJson.Options)
         };
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         var pipeline = new Mock<IAuthenticationOrchestrator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         repo.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>())).ReturnsAsync(user);
-        repo.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>())).ReturnsAsync(credential);
+        credentials.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>())).ReturnsAsync(credential);
         validator.Setup(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), challenge, credential, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PasskeyAuthenticationVerificationResult("cred", 2, true));
         pipeline.Setup(p => p.AuthenticateAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<MfaOrchestrationOptions?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user));
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, pipeline.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, pipeline.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         var result = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement));
 
@@ -402,7 +432,7 @@ internal sealed class PasskeyServiceTests
             Assert.That(result.Credential?.LastUsedAt, Is.EqualTo(now));
         }
 
-        repo.Verify(r => r.ListCredentialsForUserAsync(It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        credentials.Verify(r => r.ListCredentialsForUserAsync(It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -424,7 +454,7 @@ internal sealed class PasskeyServiceTests
         var challenges = new Mock<IPasskeyChallengeRepository>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         var validator = new Mock<IPasskeyCeremonyValidator>();
-        var service = new PasskeyService(new Mock<IIdentityRepository>().Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         var result = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement));
 
@@ -440,7 +470,7 @@ internal sealed class PasskeyServiceTests
         var challenges = new Mock<IPasskeyChallengeRepository>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
-        var service = new PasskeyService(new Mock<IIdentityRepository>().Object, challenges.Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, challenges.Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         var result = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement));
 
@@ -455,9 +485,10 @@ internal sealed class PasskeyServiceTests
         var challenges = new Mock<IPasskeyChallengeRepository>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         var result = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("{}").RootElement));
 
@@ -474,7 +505,8 @@ internal sealed class PasskeyServiceTests
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var challenge = CreateAuthenticationChallenge(now, user.Id);
         var credential = CreatePasskeyCredential(user.Id, "cred", now);
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
@@ -483,12 +515,12 @@ internal sealed class PasskeyServiceTests
             .ReturnsAsync((IUser?)null)
             .ReturnsAsync(user)
             .ReturnsAsync(user);
-        repo.SetupSequence(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>()))
+        credentials.SetupSequence(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserCredential?)null)
             .ReturnsAsync(credential);
         validator.Setup(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), challenge, credential, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("bad assertion"));
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         var missingUser = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement));
         var missingCredential = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement));
@@ -509,21 +541,22 @@ internal sealed class PasskeyServiceTests
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var challenge = CreateAuthenticationChallenge(now);
         var credential = CreatePasskeyCredential(user.Id, "cred", now);
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         var orchestrator = new Mock<IAuthenticationOrchestrator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         repo.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>())).ReturnsAsync(user);
-        repo.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>())).ReturnsAsync(credential);
+        credentials.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>())).ReturnsAsync(credential);
         validator.Setup(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), challenge, credential, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PasskeyAuthenticationVerificationResult("cred", 2));
         orchestrator.SetupSequence(o => o.AuthenticateAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<MfaOrchestrationOptions?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.MfaRequired, user, "handshake", ["totp"]))
             .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, user, ErrorMessage: "failed"))
             .ThrowsAsync(new InvalidOperationException("pipeline failure"));
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, orchestrator.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, orchestrator.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         var mfa = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement));
         var failed = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement));
@@ -556,15 +589,16 @@ internal sealed class PasskeyServiceTests
             Status = CredentialStatus.Active,
             Metadata = JsonSerializer.Serialize(new PasskeyCredentialMetadata { DisplayName = "Laptop", PublicKey = "pk" }, PasskeyJson.Options)
         };
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         var handshakes = new Mock<IAuthenticationHandshakeService>();
         handshakes.Setup(h => h.GetHandshakeAsync("token", It.IsAny<CancellationToken>())).ReturnsAsync(handshake);
-        repo.Setup(r => r.ListCredentialsForUserAsync(userId, true, It.IsAny<CancellationToken>())).ReturnsAsync([credential]);
+        credentials.Setup(r => r.ListCredentialsForUserAsync(userId, true, It.IsAny<CancellationToken>())).ReturnsAsync([credential]);
         validator.Setup(v => v.CreateAuthenticationOptions(It.IsAny<PasskeyOptions>(), It.IsAny<string>(), It.Is<IReadOnlyList<UserCredential>>(c => c.Count == 1)))
             .Returns("{}");
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, handshakes.Object, new TestTokenHasher(), CreateDependencies());
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, handshakes.Object, new TestTokenHasher(), CreateDependencies());
 
         var result = await service.StartFactorAsync(new StartPasskeyFactorRequest("token"));
 
@@ -577,7 +611,7 @@ internal sealed class PasskeyServiceTests
     [TestCase("token", "totp")]
     public async Task StartFactorAsyncShouldRejectInvalidRequestShape(string token, string factorType)
     {
-        var service = new PasskeyService(new Mock<IIdentityRepository>().Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
 
         var result = await service.StartFactorAsync(new StartPasskeyFactorRequest(token, factorType));
 
@@ -596,7 +630,7 @@ internal sealed class PasskeyServiceTests
             .ReturnsAsync(CreateHandshake(userId) with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) })
             .ReturnsAsync(CreateHandshake(userId) with { RequiredFactors = new HashSet<string> { "totp" } })
             .ReturnsAsync(CreateHandshake(userId) with { VerifiedFactors = new HashSet<string> { "passkey" } });
-        var service = new PasskeyService(new Mock<IIdentityRepository>().Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, handshakes.Object, new TestTokenHasher(), CreateDependencies());
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, handshakes.Object, new TestTokenHasher(), CreateDependencies());
 
         for (var i = 0; i < 6; i++)
         {
@@ -616,7 +650,7 @@ internal sealed class PasskeyServiceTests
             ["primary_credential_key"] = "primary"
         };
         var handshake = CreateHandshake(userId) with { Metadata = metadata };
-        var credentials = new[]
+        var credentialList = new[]
         {
             new UserCredential
             {
@@ -643,15 +677,16 @@ internal sealed class PasskeyServiceTests
                 Metadata = JsonSerializer.Serialize(new PasskeyCredentialMetadata { DisplayName = "Secondary", PublicKey = "pk" }, PasskeyJson.Options)
             }
         };
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         var handshakes = new Mock<IAuthenticationHandshakeService>();
         handshakes.Setup(h => h.GetHandshakeAsync("token", It.IsAny<CancellationToken>())).ReturnsAsync(handshake);
-        repo.Setup(r => r.ListCredentialsForUserAsync(userId, true, It.IsAny<CancellationToken>())).ReturnsAsync(credentials);
+        credentials.Setup(r => r.ListCredentialsForUserAsync(userId, true, It.IsAny<CancellationToken>())).ReturnsAsync(credentialList);
         validator.Setup(v => v.CreateAuthenticationOptions(It.IsAny<PasskeyOptions>(), It.IsAny<string>(), It.Is<IReadOnlyList<UserCredential>>(c => c.Count == 1 && c[0].ProviderKey == "secondary")))
             .Returns("{}");
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, handshakes.Object, new TestTokenHasher(), CreateDependencies());
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, handshakes.Object, new TestTokenHasher(), CreateDependencies());
 
         var result = await service.StartFactorAsync(new StartPasskeyFactorRequest("token"));
 
@@ -682,13 +717,14 @@ internal sealed class PasskeyServiceTests
             Status = CredentialStatus.Active,
             Metadata = JsonSerializer.Serialize(new PasskeyCredentialMetadata { DisplayName = "Primary", PublicKey = "pk" }, PasskeyJson.Options)
         };
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         var handshakes = new Mock<IAuthenticationHandshakeService>();
         handshakes.Setup(h => h.GetHandshakeAsync("token", It.IsAny<CancellationToken>())).ReturnsAsync(handshake);
-        repo.Setup(r => r.ListCredentialsForUserAsync(userId, true, It.IsAny<CancellationToken>())).ReturnsAsync([credential]);
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, handshakes.Object, new TestTokenHasher(), CreateDependencies());
+        credentials.Setup(r => r.ListCredentialsForUserAsync(userId, true, It.IsAny<CancellationToken>())).ReturnsAsync([credential]);
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, new Mock<IAuthenticationOrchestrator>().Object, handshakes.Object, new TestTokenHasher(), CreateDependencies());
 
         var result = await service.StartFactorAsync(new StartPasskeyFactorRequest("token"));
 
@@ -729,19 +765,20 @@ internal sealed class PasskeyServiceTests
             Status = CredentialStatus.Active,
             Metadata = JsonSerializer.Serialize(new PasskeyCredentialMetadata { DisplayName = "Laptop", PublicKey = "pk", SignCount = 1 }, PasskeyJson.Options)
         };
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         var orchestrator = new Mock<IAuthenticationOrchestrator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
-        repo.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>())).ReturnsAsync(credential);
+        credentials.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>())).ReturnsAsync(credential);
         validator.Setup(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), challenge, credential, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PasskeyAuthenticationVerificationResult("cred", 2));
         orchestrator.Setup(o => o.VerifyFactorAsync("token", "passkey", It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user));
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, orchestrator.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, orchestrator.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, "token"));
 
@@ -756,19 +793,20 @@ internal sealed class PasskeyServiceTests
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var challenge = CreateAuthenticationChallenge(now, user.Id, "hashed:token", "passkey");
         var credential = CreatePasskeyCredential(user.Id, "cred", now);
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         var orchestrator = new Mock<IAuthenticationOrchestrator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
-        repo.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>())).ReturnsAsync(credential);
+        credentials.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>())).ReturnsAsync(credential);
         validator.Setup(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), challenge, credential, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PasskeyAuthenticationVerificationResult("cred", 2));
         orchestrator.Setup(o => o.VerifyFactorAsync("token", "passkey", It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.HandshakeIncomplete, user, "token", ["totp"]));
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, orchestrator.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, orchestrator.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, "token"));
 
@@ -803,7 +841,7 @@ internal sealed class PasskeyServiceTests
         var validator = new Mock<IPasskeyCeremonyValidator>();
         var orchestrator = new Mock<IAuthenticationOrchestrator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
-        var service = new PasskeyService(new Mock<IIdentityRepository>().Object, challenges.Object, validator.Object, orchestrator.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, challenges.Object, validator.Object, orchestrator.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, "token"));
 
@@ -823,8 +861,9 @@ internal sealed class PasskeyServiceTests
         var orchestrator = new Mock<IAuthenticationOrchestrator>();
         challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
         challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        var repo = new Mock<IIdentityRepository>();
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, orchestrator.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, orchestrator.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("{}").RootElement, "token"));
 
@@ -840,7 +879,7 @@ internal sealed class PasskeyServiceTests
     [TestCase("token", "totp")]
     public async Task CompleteFactorAsyncShouldRejectInvalidRequestShape(string token, string factorType)
     {
-        var service = new PasskeyService(new Mock<IIdentityRepository>().Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
 
         var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(Guid.NewGuid(), JsonDocument.Parse("{}").RootElement, token, factorType));
 
@@ -854,7 +893,8 @@ internal sealed class PasskeyServiceTests
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var challenge = CreateAuthenticationChallenge(now, user.Id, "hashed:token", "passkey");
         var credential = CreatePasskeyCredential(user.Id, "cred", now);
-        var repo = new Mock<IIdentityRepository>();
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
         var orchestrator = new Mock<IAuthenticationOrchestrator>();
@@ -872,7 +912,7 @@ internal sealed class PasskeyServiceTests
             .ReturnsAsync(user)
             .ReturnsAsync(user)
             .ReturnsAsync(user);
-        repo.SetupSequence(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>()))
+        credentials.SetupSequence(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserCredential?)null)
             .ReturnsAsync(credential)
             .ReturnsAsync(credential)
@@ -884,7 +924,7 @@ internal sealed class PasskeyServiceTests
         orchestrator.SetupSequence(o => o.VerifyFactorAsync("token", "passkey", It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, user, ErrorMessage: "failed"))
             .ThrowsAsync(new InvalidOperationException("pipeline failure"));
-        var service = new PasskeyService(repo.Object, challenges.Object, validator.Object, orchestrator.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, orchestrator.Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         var consumeFailed = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, "token"));
         var missingUser = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, "token"));
@@ -909,8 +949,9 @@ internal sealed class PasskeyServiceTests
     {
         var userId = Guid.NewGuid();
         var credentialId = Guid.NewGuid();
-        var repo = new Mock<IIdentityRepository>();
-        repo.Setup(r => r.ListCredentialsForUserAsync(userId, true, It.IsAny<CancellationToken>()))
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        credentials.Setup(r => r.ListCredentialsForUserAsync(userId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync([
                 new UserCredential
                 {
@@ -925,13 +966,13 @@ internal sealed class PasskeyServiceTests
                     Metadata = JsonSerializer.Serialize(new PasskeyCredentialMetadata { DisplayName = "Old", PublicKey = "pk" })
                 }
             ]);
-        repo.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), "v1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        var service = new PasskeyService(repo.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
+        credentials.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), "v1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies());
 
         var result = await service.RenameAsync(new RenamePasskeyRequest(userId, credentialId, ""));
 
         Assert.That(result.Succeeded, Is.True);
-        repo.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.Metadata != null && c.Metadata.Contains("Passkey", StringComparison.Ordinal)), "v1", It.IsAny<CancellationToken>()), Times.Once);
+        credentials.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.Metadata != null && c.Metadata.Contains("Passkey", StringComparison.Ordinal)), "v1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -954,15 +995,16 @@ internal sealed class PasskeyServiceTests
             Status = CredentialStatus.Active
         };
         passkey.Metadata = null;
-        var repo = new Mock<IIdentityRepository>();
-        repo.Setup(r => r.ListCredentialsForUserAsync(userId, true, It.IsAny<CancellationToken>()))
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        credentials.Setup(r => r.ListCredentialsForUserAsync(userId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync([passkey, nullMetadataPasskey, other]);
-        repo.SetupSequence(r => r.UpdateCredentialAsync(passkey, passkey.Version, It.IsAny<CancellationToken>()))
+        credentials.SetupSequence(r => r.UpdateCredentialAsync(passkey, passkey.Version, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false)
             .ReturnsAsync(true)
             .ReturnsAsync(false)
             .ReturnsAsync(true);
-        var service = new PasskeyService(repo.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
+        var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, new Mock<IAuthenticationOrchestrator>().Object, new Mock<IAuthenticationHandshakeService>().Object, new TestTokenHasher(), CreateDependencies(new FakeTimeProvider(now)));
 
         var list = await service.ListAsync(userId);
         var renameMissing = await service.RenameAsync(new RenamePasskeyRequest(userId, Guid.NewGuid(), "Name"));

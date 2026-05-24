@@ -15,7 +15,7 @@ internal abstract class BootstrapStateRepositoryContractTests : ProviderContract
     public async Task MarkInitializedSucceedsOnceAndPreservesFirstState()
     {
         await using var scope = CreateAsyncScope();
-        var identity = GetIdentityRepository(scope.ServiceProvider);
+        var identity = GetUserRepository(scope.ServiceProvider);
         var repository = GetBootstrapStateRepository(scope.ServiceProvider);
         var firstUser = await CreateUserAsync(identity, "bootstrap-first@example.com");
         var secondUser = await CreateUserAsync(identity, "bootstrap-second@example.com");
@@ -44,7 +44,7 @@ internal abstract class BootstrapStateRepositoryContractTests : ProviderContract
                 Assert.Ignore("Provider does not register IAshlarTransactionProvider.");
             }
 
-            var identity = GetIdentityRepository(scope.ServiceProvider);
+            var identity = GetUserRepository(scope.ServiceProvider);
             var repository = GetBootstrapStateRepository(scope.ServiceProvider);
             var user = await CreateUserAsync(identity, "bootstrap-rollback@example.com");
 

@@ -9,7 +9,8 @@ namespace Ashlar.Identity.Providers.RecoveryCode;
 /// </summary>
 public sealed class RecoveryCodeService : IRecoveryCodeService
 {
-    private readonly IIdentityRepository _repository;
+    private readonly IUserRepository _userRepository;
+    private readonly ICredentialRepository _credentialRepository;
     private readonly IAshlarTransactionProvider _transactionProvider;
     private readonly Security.Hashing.PasswordHasherSelector _hasherSelector;
     private readonly RecoveryCodeOptions _options;
@@ -20,7 +21,8 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
     /// <summary>
     /// Initializes a configured service instance.
     /// </summary>
-    /// <param name="repository">The repository value.</param>
+    /// <param name="userRepository">Stores and retrieves users.</param>
+    /// <param name="credentialRepository">Stores and retrieves credentials.</param>
     /// <param name="transactionProvider">The transaction provider value.</param>
     /// <param name="hasherSelector">The hasher selector value.</param>
     /// <param name="options">The options value.</param>
@@ -28,7 +30,8 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
     /// <param name="securityEventSink">The security event sink value.</param>
     /// <param name="notificationService">The notification service value.</param>
     public RecoveryCodeService(
-        IIdentityRepository repository,
+        IUserRepository userRepository,
+        ICredentialRepository credentialRepository,
         IAshlarTransactionProvider transactionProvider,
         Security.Hashing.PasswordHasherSelector hasherSelector,
         IOptions<RecoveryCodeOptions> options,
@@ -36,13 +39,15 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         ISecurityEventSink? securityEventSink = null,
         ISecurityNotificationService? notificationService = null)
     {
-        ArgumentNullException.ThrowIfNull(repository);
+        ArgumentNullException.ThrowIfNull(userRepository);
+        ArgumentNullException.ThrowIfNull(credentialRepository);
         ArgumentNullException.ThrowIfNull(transactionProvider);
         ArgumentNullException.ThrowIfNull(hasherSelector);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(options.Value);
 
-        _repository = repository;
+        _userRepository = userRepository;
+        _credentialRepository = credentialRepository;
         _transactionProvider = transactionProvider;
         _hasherSelector = hasherSelector;
         _options = options.Value;
@@ -64,7 +69,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         // Verify user exists
-        var user = await _repository.GetUserByIdAsync(userId, cancellationToken);
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
         if (user == null)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -130,7 +135,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         // Revoke existing recovery codes if requested
         if (request.ReplaceExisting)
         {
-            await _repository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
+            await _credentialRepository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
         }
 
         var rawCodes = new List<string>();
@@ -161,7 +166,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
                 ExpiresAt = expiresAt
             };
 
-            await _repository.CreateCredentialAsync(credential, cancellationToken);
+            await _credentialRepository.CreateCredentialAsync(credential, cancellationToken);
         }
 
         transaction.OnCommitted(async ct =>
@@ -202,7 +207,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
-        var count = await _repository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
+        var count = await _credentialRepository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
 
         transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
         {

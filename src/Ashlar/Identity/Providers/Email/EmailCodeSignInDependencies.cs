@@ -5,14 +5,14 @@ using Ashlar.Messaging;
 namespace Ashlar.Identity.Providers.Email;
 
 /// <summary>
-/// Provides email code sign in dependencies behavior.
+/// Groups the dependencies used when issuing and verifying email sign-in codes.
 /// </summary>
-/// <param name="identityContext">The identity context value.</param>
-/// <param name="emailSender">The email sender value.</param>
-/// <param name="rateLimiter">The rate limiter value.</param>
-/// <param name="provider">The provider value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-/// <param name="securityEventSink">The security event sink value.</param>
+/// <param name="identityContext">Identity user, credential, service, and transaction dependencies.</param>
+/// <param name="emailSender">Sends email-code messages.</param>
+/// <param name="rateLimiter">Applies request and verification rate limits.</param>
+/// <param name="provider">Authentication provider that owns the generated credentials.</param>
+/// <param name="timeProvider">Supplies the current time for expiration checks.</param>
+/// <param name="securityEventSink">Optional sink for security events.</param>
 internal sealed class EmailCodeSignInDependencies(
     IdentityContext identityContext,
     IEmailSender emailSender,
@@ -23,35 +23,39 @@ internal sealed class EmailCodeSignInDependencies(
 {
     private readonly IdentityContext _identityContext = identityContext ?? throw new ArgumentNullException(nameof(identityContext));
     /// <summary>
-    /// Gets or sets the repository value.
+    /// Gets the user repository used for email lookup.
     /// </summary>
-    public IIdentityRepository Repository => _identityContext.Repository;
+    public IUserRepository UserRepository => _identityContext.UserRepository;
     /// <summary>
-    /// Gets or sets the identity service value.
+    /// Gets the credential repository used for email-code credentials.
+    /// </summary>
+    public ICredentialRepository CredentialRepository => _identityContext.CredentialRepository;
+    /// <summary>
+    /// Gets the identity service used to materialize sign-in results.
     /// </summary>
     public IIdentityService IdentityService => _identityContext.IdentityService;
     /// <summary>
-    /// Gets or sets the transaction provider value.
+    /// Gets the transaction provider used to persist code issuance atomically.
     /// </summary>
     public IAshlarTransactionProvider TransactionProvider => _identityContext.TransactionProvider;
     /// <summary>
-    /// Gets the configured dependency value.
+    /// Gets the sender used for email-code messages.
     /// </summary>
     public IEmailSender EmailSender { get; } = emailSender ?? throw new ArgumentNullException(nameof(emailSender));
     /// <summary>
-    /// Gets the configured dependency value.
+    /// Gets the limiter used to throttle email-code flows.
     /// </summary>
     public IAuthenticationRateLimiter RateLimiter { get; } = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
     /// <summary>
-    /// Gets the configured dependency value.
+    /// Gets the authentication provider that owns issued email-code credentials.
     /// </summary>
     public EmailCodeAuthenticationProvider Provider { get; } = provider ?? throw new ArgumentNullException(nameof(provider));
     /// <summary>
-    /// Gets the configured dependency value.
+    /// Gets the time provider used for code lifetime checks.
     /// </summary>
     public TimeProvider TimeProvider { get; } = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     /// <summary>
-    /// Gets or sets the security event sink value.
+    /// Gets the optional sink used to record security events.
     /// </summary>
     public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
 }

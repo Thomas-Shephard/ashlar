@@ -54,7 +54,7 @@ public abstract class PasswordHashAuthenticationProvider(PasswordHasherSelector 
     /// <param name="repository">The repository value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IIdentityRepository repository, CancellationToken cancellationToken = default)
+    public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(repository);

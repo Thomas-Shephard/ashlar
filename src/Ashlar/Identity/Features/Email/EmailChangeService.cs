@@ -9,11 +9,11 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.Identity.Features.Email;
 
 /// <summary>
-/// Provides email change service behavior.
+/// Coordinates verified email-address changes for existing users.
 /// </summary>
-/// <param name="dependencies">The dependencies value.</param>
-/// <param name="options">The options value.</param>
-/// <param name="logger">The logger value.</param>
+/// <param name="dependencies">Dependencies used to create, store, and verify email-change credentials.</param>
+/// <param name="options">Email-change token and delivery options.</param>
+/// <param name="logger">Logger for email-change failures.</param>
 internal sealed class EmailChangeService(
     EmailChangeDependencies dependencies,
     IOptions<EmailChangeOptions>? options = null,
@@ -37,11 +37,11 @@ internal sealed class EmailChangeService(
     private readonly ILogger<EmailChangeService> _logger = logger ?? NullLogger<EmailChangeService>.Instance;
 
     /// <summary>
-    /// Performs the request change <see langword="async" /> operation and returns the result.
+    /// Creates an email-change verification credential and sends the confirmation message.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">Email-change request details.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>The result of the request operation.</returns>
     public async Task<Result> RequestChangeAsync(RequestEmailChangeRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -59,7 +59,7 @@ internal sealed class EmailChangeService(
             return Result.Failure(AshlarFailureCodes.InvalidCallbackUri, $"The URI '{request.CallbackBaseUri}' is not allowed.");
         }
 
-        var user = await _dependencies.IdentityContext.Repository.GetUserByIdAsync(request.UserId, cancellationToken);
+        var user = await _dependencies.IdentityContext.UserRepository.GetUserByIdAsync(request.UserId, cancellationToken);
         if (user is not { IsActive: true })
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -112,7 +112,7 @@ internal sealed class EmailChangeService(
             return Result.Failure(AshlarFailureCodes.RateLimited, "Too many requests.");
         }
 
-        var existingUser = await _dependencies.IdentityContext.Repository.GetUserByEmailAsync(normalizedNewEmail, (user as ITenantUser)?.TenantId, cancellationToken);
+        var existingUser = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(normalizedNewEmail, (user as ITenantUser)?.TenantId, cancellationToken);
         if (existingUser != null) return await SuppressEmailChangeRequestAsync(newEmail, user, request.Audit, cancellationToken);
 
         var token = _dependencies.TokenContext.Generator.GenerateToken();
@@ -136,8 +136,8 @@ internal sealed class EmailChangeService(
 
         await using var transaction = await _dependencies.IdentityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
-        await _dependencies.IdentityContext.Repository.RevokeCredentialsAsync(user.Id, ProviderType.Internal, ProviderName, cancellationToken);
-        await _dependencies.IdentityContext.Repository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
+        await _dependencies.IdentityContext.CredentialRepository.RevokeCredentialsAsync(user.Id, ProviderType.Internal, ProviderName, cancellationToken);
+        await _dependencies.IdentityContext.CredentialRepository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
 
         var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(request.CallbackBaseUri, _options.Value.TokenParameterName, token, user.Id, _options.Value.UserIdParameterName);
         var message = IdentityUrlHelper.FormatEmailBody(_options.Value.EmailTextTemplate, callbackUrl, "Confirmation token", token);
@@ -193,11 +193,11 @@ internal sealed class EmailChangeService(
     }
 
     /// <summary>
-    /// Performs the confirm change <see langword="async" /> operation and returns the result.
+    /// Consumes an email-change credential and updates the user's email address.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">Email-change confirmation details.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>The result of the confirmation operation.</returns>
     public async Task<Result> ConfirmChangeAsync(ConfirmEmailChangeRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -224,7 +224,7 @@ internal sealed class EmailChangeService(
         }
 
         var tokenHash = _dependencies.TokenContext.Hasher.HashToken(request.Token);
-        var credential = await _dependencies.IdentityContext.Repository.GetCredentialForUserAsync(request.UserId, ProviderType.Internal, ProviderName, tokenHash, cancellationToken);
+        var credential = await _dependencies.IdentityContext.CredentialRepository.GetCredentialForUserAsync(request.UserId, ProviderType.Internal, ProviderName, tokenHash, cancellationToken);
 
         var now = _dependencies.TimeProvider.GetUtcNow();
         if (credential == null || !credential.IsAvailable(now) || string.IsNullOrWhiteSpace(credential.CredentialValue))
@@ -263,7 +263,7 @@ internal sealed class EmailChangeService(
 
         await using var transaction = await _dependencies.IdentityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
-        var user = await _dependencies.IdentityContext.Repository.GetUserByIdAsync(request.UserId, cancellationToken);
+        var user = await _dependencies.IdentityContext.UserRepository.GetUserByIdAsync(request.UserId, cancellationToken);
         if (user is not { IsActive: true })
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -277,7 +277,7 @@ internal sealed class EmailChangeService(
             return Result.Failure(AshlarFailureCodes.UserNotFoundOrInactive, "Invalid or expired token.");
         }
 
-        var consumed = await _dependencies.IdentityContext.Repository.ConsumeCredentialAsync(credential.Id, credential.Version, cancellationToken);
+        var consumed = await _dependencies.IdentityContext.CredentialRepository.ConsumeCredentialAsync(credential.Id, credential.Version, cancellationToken);
         if (!consumed)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -291,7 +291,7 @@ internal sealed class EmailChangeService(
             return Result.Failure(AshlarFailureCodes.TokenConsumptionFailed, "Invalid or expired token.");
         }
 
-        var existingUser = await _dependencies.IdentityContext.Repository.GetUserByEmailAsync(normalizedNewEmail, (user as ITenantUser)?.TenantId, cancellationToken);
+        var existingUser = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(normalizedNewEmail, (user as ITenantUser)?.TenantId, cancellationToken);
         var tenantId = (user as ITenantUser)?.TenantId;
         if (existingUser != null)
         {
@@ -315,7 +315,7 @@ internal sealed class EmailChangeService(
         // Update user
         var updatedUser = new UpdatedUserWrapper(user, newEmail, now);
 
-        await _dependencies.IdentityContext.Repository.UpdateUserAsync(updatedUser, cancellationToken);
+        await _dependencies.IdentityContext.UserRepository.UpdateUserAsync(updatedUser, cancellationToken);
 
         if (_options.Value.RevokeSessions)
         {
@@ -356,31 +356,31 @@ internal sealed class EmailChangeService(
     private sealed class UpdatedUserWrapper(IUser original, string newEmail, DateTimeOffset? emailVerifiedAt) : ITenantUser, IHasAuditMetadata
     {
         /// <summary>
-        /// Gets or sets the id value.
+        /// Gets the existing user identifier.
         /// </summary>
         public Guid Id => original.Id;
         /// <summary>
-        /// Gets or sets the email value.
+        /// Gets the replacement email address.
         /// </summary>
         public string Email { get; } = newEmail;
         /// <summary>
-        /// Gets or sets the name value.
+        /// Gets the existing display name.
         /// </summary>
         public string? Name => original.Name;
         /// <summary>
-        /// Gets or sets the is active value.
+        /// Gets whether the existing user remains active.
         /// </summary>
         public bool IsActive => original.IsActive;
         /// <summary>
-        /// Gets or sets the tenant id value.
+        /// Gets the existing tenant identifier.
         /// </summary>
         public Guid? TenantId => (original as ITenantUser)?.TenantId;
         /// <summary>
-        /// Gets or sets the email verified at value.
+        /// Gets the updated email verification timestamp.
         /// </summary>
         public DateTimeOffset? EmailVerifiedAt { get; } = emailVerifiedAt;
         /// <summary>
-        /// Gets or sets the created at value.
+        /// Gets the existing creation timestamp.
         /// </summary>
         public DateTimeOffset CreatedAt => (original as IHasAuditMetadata)?.CreatedAt ?? default;
         public DateTimeOffset? UpdatedAt

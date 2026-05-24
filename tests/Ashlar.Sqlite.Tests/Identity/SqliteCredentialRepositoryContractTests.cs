@@ -1,6 +1,6 @@
 namespace Ashlar.Sqlite.Tests.Identity;
 
-internal sealed class SqliteIdentityRepositoryContractTests : IdentityRepositoryContractTests
+internal sealed class SqliteCredentialRepositoryContractTests : CredentialRepositoryContractTests
 {
     private SqliteContractDatabase? _database;
 
@@ -17,3 +17,4 @@ internal sealed class SqliteIdentityRepositoryContractTests : IdentityRepository
         return Task.CompletedTask;
     }
 }
+

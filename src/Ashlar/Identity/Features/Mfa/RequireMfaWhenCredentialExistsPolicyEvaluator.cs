@@ -7,7 +7,7 @@ namespace Ashlar.Identity.Features.Mfa;
 /// </summary>
 public sealed class RequireMfaWhenCredentialExistsPolicyEvaluator : IMfaPolicyEvaluator
 {
-    private readonly IIdentityRepository _repository;
+    private readonly ICredentialRepository _repository;
     private readonly CredentialBackedMfaPolicyOptions _options;
     private readonly TimeProvider _timeProvider;
 
@@ -19,7 +19,7 @@ public sealed class RequireMfaWhenCredentialExistsPolicyEvaluator : IMfaPolicyEv
     /// <param name="timeProvider">The time provider value.</param>
     /// <exception cref="OptionsValidationException">Thrown when the configured credential-backed MFA policy options are invalid.</exception>
     public RequireMfaWhenCredentialExistsPolicyEvaluator(
-        IIdentityRepository repository,
+        ICredentialRepository repository,
         IOptions<CredentialBackedMfaPolicyOptions> options,
         TimeProvider? timeProvider = null)
     {

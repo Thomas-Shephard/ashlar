@@ -9,25 +9,25 @@ namespace Ashlar.Passkeys;
 /// </summary>
 public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
 {
-    private readonly IIdentityRepository _identityRepository;
+    private readonly IUserRepository _userRepository;
     private readonly Func<Fido2NetLib.Fido2, MakeNewCredentialParams, CancellationToken, Task<RegisteredPublicKeyCredential>> _makeCredentialAsync;
     private readonly Func<Fido2NetLib.Fido2, MakeAssertionParams, CancellationToken, Task<VerifyAssertionResult>> _makeAssertionAsync;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Fido2PasskeyCeremonyValidator" /> class.
     /// </summary>
-    /// <param name="identityRepository">The identity repository.</param>
-    public Fido2PasskeyCeremonyValidator(IIdentityRepository identityRepository)
-        : this(identityRepository, static (fido, parameters, ct) => fido.MakeNewCredentialAsync(parameters, ct), static (fido, parameters, ct) => fido.MakeAssertionAsync(parameters, ct))
+    /// <param name="userRepository">The repository used to resolve users during passkey ceremonies.</param>
+    public Fido2PasskeyCeremonyValidator(IUserRepository userRepository)
+        : this(userRepository, static (fido, parameters, ct) => fido.MakeNewCredentialAsync(parameters, ct), static (fido, parameters, ct) => fido.MakeAssertionAsync(parameters, ct))
     {
     }
 
     internal Fido2PasskeyCeremonyValidator(
-        IIdentityRepository identityRepository,
+        IUserRepository userRepository,
         Func<Fido2NetLib.Fido2, MakeNewCredentialParams, CancellationToken, Task<RegisteredPublicKeyCredential>> makeCredentialAsync,
         Func<Fido2NetLib.Fido2, MakeAssertionParams, CancellationToken, Task<VerifyAssertionResult>> makeAssertionAsync)
     {
-        _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
+        _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
         _makeCredentialAsync = makeCredentialAsync ?? throw new ArgumentNullException(nameof(makeCredentialAsync));
         _makeAssertionAsync = makeAssertionAsync ?? throw new ArgumentNullException(nameof(makeAssertionAsync));
     }
@@ -69,7 +69,7 @@ public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
             AttestationResponse = response,
             OriginalOptions = originalOptions,
             IsCredentialIdUniqueToUserCallback = async (args, ct) =>
-                await _identityRepository.GetUserByProviderKeyAsync(options.ProviderKey.Type, options.ProviderKey.Name, Base64Url.Encode(args.CredentialId), ct) == null
+                await _userRepository.GetUserByProviderKeyAsync(options.ProviderKey.Type, options.ProviderKey.Name, Base64Url.Encode(args.CredentialId), ct) == null
         }, cancellationToken);
 
         return new PasskeyRegistrationVerificationResult(

@@ -578,7 +578,7 @@ internal sealed class AuthenticationHandshakeServiceTests
                 ["ip_address"] = "203.0.113.10",
                 ["user_agent"] = "Mozilla/5.0"
             });
-        var identityRepository = new Mock<IIdentityRepository>();
+        var userRepository = new Mock<IUserRepository>();
         var notificationService = new Mock<ISecurityNotificationService>();
         var service = new AuthenticationHandshakeService(
             _repositoryMock.Object,
@@ -590,7 +590,7 @@ internal sealed class AuthenticationHandshakeServiceTests
                 _timeProvider,
                 _eventSinkMock.Object,
                 _rateLimiterMock.Object,
-                identityRepository.Object,
+                userRepository.Object,
                 notificationService.Object));
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
@@ -602,7 +602,7 @@ internal sealed class AuthenticationHandshakeServiceTests
                             Remaining = 0,
                             WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
                         });
-        identityRepository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+        userRepository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
                           .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
 
         await service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
@@ -632,7 +632,7 @@ internal sealed class AuthenticationHandshakeServiceTests
                 ["ip_address"] = "198.51.100.1",
                 ["user_agent"] = "Original"
             });
-        var identityRepository = new Mock<IIdentityRepository>();
+        var userRepository = new Mock<IUserRepository>();
         var notificationService = new Mock<ISecurityNotificationService>();
         var service = new AuthenticationHandshakeService(
             _repositoryMock.Object,
@@ -644,7 +644,7 @@ internal sealed class AuthenticationHandshakeServiceTests
                 _timeProvider,
                 _eventSinkMock.Object,
                 _rateLimiterMock.Object,
-                identityRepository.Object,
+                userRepository.Object,
                 notificationService.Object));
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
@@ -656,7 +656,7 @@ internal sealed class AuthenticationHandshakeServiceTests
                             Remaining = 0,
                             WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
                         });
-        identityRepository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+        userRepository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
                           .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
 
         await service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest(

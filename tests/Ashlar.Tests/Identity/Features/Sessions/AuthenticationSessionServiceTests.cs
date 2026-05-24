@@ -648,7 +648,7 @@ internal sealed class AuthenticationSessionServiceTests
         var sessionId = Guid.NewGuid();
         var now = _timeProvider.GetUtcNow();
         var session = CreateSession(expiresAt: now.AddHours(1));
-        var identityRepository = new Mock<IIdentityRepository>();
+        var userRepository = new Mock<IUserRepository>();
         var notificationService = new Mock<ISecurityNotificationService>();
         var service = new AuthenticationSessionService(
             _repositoryMock.Object,
@@ -657,7 +657,7 @@ internal sealed class AuthenticationSessionServiceTests
             new NullTransactionProvider(),
             new AuthenticationSessionServiceDependencies(
                 TimeProvider: _timeProvider,
-                IdentityRepository: identityRepository.Object,
+                UserRepository: userRepository.Object,
                 NotificationService: notificationService.Object));
 
         _repositoryMock
@@ -666,7 +666,7 @@ internal sealed class AuthenticationSessionServiceTests
         _repositoryMock
             .Setup(r => r.RevokeSessionAsync(sessionId, now, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
-        identityRepository
+        userRepository
             .Setup(r => r.GetUserByIdAsync(session.UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
 
@@ -683,7 +683,7 @@ internal sealed class AuthenticationSessionServiceTests
         var now = _timeProvider.GetUtcNow();
         var session = CreateSession(expiresAt: now.AddHours(1));
         var user = new User { Id = session.UserId, Email = "user@example.com" };
-        var identityRepository = new Mock<IIdentityRepository>();
+        var userRepository = new Mock<IUserRepository>();
         var notificationService = new Mock<ISecurityNotificationService>();
         var service = new AuthenticationSessionService(
             _repositoryMock.Object,
@@ -692,7 +692,7 @@ internal sealed class AuthenticationSessionServiceTests
             new NullTransactionProvider(),
             new AuthenticationSessionServiceDependencies(
                 TimeProvider: _timeProvider,
-                IdentityRepository: identityRepository.Object,
+                UserRepository: userRepository.Object,
                 NotificationService: notificationService.Object));
 
         _repositoryMock
@@ -701,7 +701,7 @@ internal sealed class AuthenticationSessionServiceTests
         _repositoryMock
             .Setup(r => r.RevokeSessionAsync(sessionId, now, "manual", It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
-        identityRepository
+        userRepository
             .Setup(r => r.GetUserByIdAsync(session.UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
@@ -746,7 +746,7 @@ internal sealed class AuthenticationSessionServiceTests
         var userId = Guid.NewGuid();
         var now = _timeProvider.GetUtcNow();
         var user = new User { Id = userId, Email = "user@example.com" };
-        var identityRepository = new Mock<IIdentityRepository>();
+        var userRepository = new Mock<IUserRepository>();
         var notificationService = new Mock<ISecurityNotificationService>();
         var service = new AuthenticationSessionService(
             _repositoryMock.Object,
@@ -755,13 +755,13 @@ internal sealed class AuthenticationSessionServiceTests
             new NullTransactionProvider(),
             new AuthenticationSessionServiceDependencies(
                 TimeProvider: _timeProvider,
-                IdentityRepository: identityRepository.Object,
+                UserRepository: userRepository.Object,
                 NotificationService: notificationService.Object));
 
         _repositoryMock
             .Setup(r => r.RevokeSessionsForUserAsync(userId, now, "password-reset", It.IsAny<CancellationToken>()))
             .ReturnsAsync(2);
-        identityRepository
+        userRepository
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
@@ -869,7 +869,7 @@ internal sealed class AuthenticationSessionServiceTests
         var secondSessionId = Guid.NewGuid();
         var now = _timeProvider.GetUtcNow();
         var user = new User { Id = userId, Email = "user@example.com" };
-        var identityRepository = new Mock<IIdentityRepository>();
+        var userRepository = new Mock<IUserRepository>();
         var notificationService = new Mock<ISecurityNotificationService>();
         var service = new AuthenticationSessionService(
             _repositoryMock.Object,
@@ -878,7 +878,7 @@ internal sealed class AuthenticationSessionServiceTests
             new NullTransactionProvider(),
             new AuthenticationSessionServiceDependencies(
                 TimeProvider: _timeProvider,
-                IdentityRepository: identityRepository.Object,
+                UserRepository: userRepository.Object,
                 NotificationService: notificationService.Object));
         var audit = new AuditContext(ActorUserId: userId, IpAddress: "203.0.113.60", UserAgent: "session-agent", CorrelationId: "session-correlation");
 
@@ -888,7 +888,7 @@ internal sealed class AuthenticationSessionServiceTests
         _repositoryMock
             .Setup(r => r.RevokeSessionByIdAsync(secondSessionId, userId, now, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
-        identityRepository
+        userRepository
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
@@ -908,7 +908,7 @@ internal sealed class AuthenticationSessionServiceTests
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         var now = _timeProvider.GetUtcNow();
-        var identityRepository = new Mock<IIdentityRepository>();
+        var userRepository = new Mock<IUserRepository>();
         var notificationService = new Mock<ISecurityNotificationService>();
         var service = new AuthenticationSessionService(
             _repositoryMock.Object,
@@ -917,13 +917,13 @@ internal sealed class AuthenticationSessionServiceTests
             new NullTransactionProvider(),
             new AuthenticationSessionServiceDependencies(
                 TimeProvider: _timeProvider,
-                IdentityRepository: identityRepository.Object,
+                UserRepository: userRepository.Object,
                 NotificationService: notificationService.Object));
 
         _repositoryMock
             .Setup(r => r.RevokeSessionByIdAsync(sessionId, userId, now, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
-        identityRepository
+        userRepository
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
 

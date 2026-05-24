@@ -3,24 +3,30 @@ namespace Ashlar.Identity.Features.Infrastructure;
 /// <summary>
 /// Groups core identity dependencies to simplify service constructors.
 /// </summary>
-/// <param name="repository">The repository value.</param>
-/// <param name="identityService">The identity service value.</param>
-/// <param name="transactionProvider">The transaction provider value.</param>
+/// <param name="userRepository">Stores and retrieves users.</param>
+/// <param name="credentialRepository">Stores and retrieves credentials.</param>
+/// <param name="identityService">Coordinates identity workflows that need user and credential operations.</param>
+/// <param name="transactionProvider">Creates transactions for multi-step identity workflows.</param>
 internal sealed class IdentityContext(
-    IIdentityRepository repository,
+    IUserRepository userRepository,
+    ICredentialRepository credentialRepository,
     IIdentityService identityService,
     IAshlarTransactionProvider transactionProvider)
 {
     /// <summary>
-    /// Gets the configured dependency value.
+    /// Gets the user repository.
     /// </summary>
-    public IIdentityRepository Repository { get; } = repository ?? throw new ArgumentNullException(nameof(repository));
+    public IUserRepository UserRepository { get; } = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
     /// <summary>
-    /// Gets the configured dependency value.
+    /// Gets the credential repository.
+    /// </summary>
+    public ICredentialRepository CredentialRepository { get; } = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
+    /// <summary>
+    /// Gets the identity service.
     /// </summary>
     public IIdentityService IdentityService { get; } = identityService ?? throw new ArgumentNullException(nameof(identityService));
     /// <summary>
-    /// Gets the configured dependency value.
+    /// Gets the transaction provider.
     /// </summary>
     public IAshlarTransactionProvider TransactionProvider { get; } = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
 }

@@ -10,7 +10,8 @@ namespace Ashlar.Identity.Features.AccountSecurity;
 /// <summary>
 /// Implements administrator-oriented account security operations.
 /// </summary>
-/// <param name="identityRepository">The identity repository value.</param>
+/// <param name="userRepository">Stores and retrieves users.</param>
+/// <param name="credentialRepository">Stores and retrieves credentials.</param>
 /// <param name="sessionService">The session service value.</param>
 /// <param name="transactionProvider">The transaction provider value.</param>
 /// <param name="accountSecurityGuard">The account security guard value.</param>
@@ -18,7 +19,8 @@ namespace Ashlar.Identity.Features.AccountSecurity;
 public sealed class AccountSecurityService : IAccountSecurityService
 {
     private const string AdminReason = "admin";
-    private readonly IIdentityRepository _identityRepository;
+    private readonly IUserRepository _userRepository;
+    private readonly ICredentialRepository _credentialRepository;
     private readonly IAuthenticationSessionService _sessionService;
     private readonly IAshlarTransactionProvider _transactionProvider;
     private readonly IAccountSecurityGuard _accountSecurityGuard;
@@ -32,13 +34,15 @@ public sealed class AccountSecurityService : IAccountSecurityService
     /// <summary>
     /// Initializes a configured service instance.
     /// </summary>
-    /// <param name="identityRepository">The identity repository value.</param>
+    /// <param name="userRepository">Stores and retrieves users.</param>
+    /// <param name="credentialRepository">Stores and retrieves credentials.</param>
     /// <param name="sessionService">The session service value.</param>
     /// <param name="transactionProvider">The transaction provider value.</param>
     /// <param name="accountSecurityGuard">The account security guard value.</param>
     /// <param name="dependencies">The dependencies value.</param>
     public AccountSecurityService(
-        IIdentityRepository identityRepository,
+        IUserRepository userRepository,
+        ICredentialRepository credentialRepository,
         IAuthenticationSessionService sessionService,
         IAshlarTransactionProvider transactionProvider,
         IAccountSecurityGuard accountSecurityGuard,
@@ -46,7 +50,8 @@ public sealed class AccountSecurityService : IAccountSecurityService
     {
         ArgumentNullException.ThrowIfNull(dependencies);
 
-        _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
+        _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
+        _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
         _sessionService = sessionService ?? throw new ArgumentNullException(nameof(sessionService));
         _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
         _accountSecurityGuard = accountSecurityGuard ?? throw new ArgumentNullException(nameof(accountSecurityGuard));
@@ -65,7 +70,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         request = RequireAudit(request);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
-        var user = await _identityRepository.GetUserByIdAsync(userId, cancellationToken);
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
         if (user == null || !IsInRequestedTenant(user, request.Tenant))
         {
             await RecordFailureAsync(AshlarSecurityEventTypes.UserDisabled, userId, request, AshlarFailureCodes.UserNotFound.Value, cancellationToken);
@@ -82,7 +87,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
                 return Result.Failure<AccountSecurityOperationResult>(guardResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.ValidationError));
             }
 
-            await _identityRepository.UpdateUserAsync(CloneUser(user, isActive: false), cancellationToken);
+            await _userRepository.UpdateUserAsync(CloneUser(user, isActive: false), cancellationToken);
         }
 
         var revoked = await _sessionService.RevokeSessionsForUserAsync(userId, request.Reason ?? AdminReason, request.Tenant, request.Audit, cancellationToken);
@@ -100,7 +105,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         request = RequireAudit(request);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
-        var user = await _identityRepository.GetUserByIdAsync(userId, cancellationToken);
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
         if (user == null || !IsInRequestedTenant(user, request.Tenant))
         {
             await RecordFailureAsync(AshlarSecurityEventTypes.UserReactivated, userId, request, AshlarFailureCodes.UserNotFound.Value, cancellationToken);
@@ -110,7 +115,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         var changed = !user.IsActive;
         if (changed)
         {
-            await _identityRepository.UpdateUserAsync(CloneUser(user, isActive: true), cancellationToken);
+            await _userRepository.UpdateUserAsync(CloneUser(user, isActive: true), cancellationToken);
         }
 
         var result = new AccountSecurityOperationResult(userId, changed);
@@ -125,7 +130,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
     {
         ValidateUserId(userId);
         request = RequireAudit(request);
-        var user = await _identityRepository.GetUserByIdAsync(userId, cancellationToken);
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
         if (user == null || !IsInRequestedTenant(user, request.Tenant))
         {
             await RecordFailureAsync(AshlarSecurityEventTypes.SessionsRevokedForUser, userId, request, AshlarFailureCodes.UserNotFound.Value, cancellationToken);
@@ -143,7 +148,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         ValidateProvider(provider);
         request = RequireAudit(request);
 
-        var user = await _identityRepository.GetUserByIdAsync(userId, cancellationToken);
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
         if (user == null || !IsInRequestedTenant(user, request.Tenant))
         {
             await RecordFailureAsync(AshlarSecurityEventTypes.UserCredentialsRevoked, userId, request, AshlarFailureCodes.UserNotFound.Value, cancellationToken, provider);
@@ -151,7 +156,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
-        var revoked = await _identityRepository.RevokeCredentialsAsync(userId, provider.Type, provider.Name, cancellationToken);
+        var revoked = await _credentialRepository.RevokeCredentialsAsync(userId, provider.Type, provider.Name, cancellationToken);
         var result = new AccountSecurityOperationResult(userId, CredentialsRevoked: revoked);
         transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserCredentialsRevoked, result, request, ct, provider));
 
@@ -165,7 +170,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         ValidateUserId(userId);
         request = RequireAudit(request);
 
-        var user = await _identityRepository.GetUserByIdAsync(userId, cancellationToken);
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
         if (user == null || !IsInRequestedTenant(user, request.Tenant))
         {
             await RecordFailureAsync(AshlarSecurityEventTypes.UserMfaReset, userId, request, AshlarFailureCodes.UserNotFound.Value, cancellationToken);
@@ -173,8 +178,8 @@ public sealed class AccountSecurityService : IAccountSecurityService
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
-        var revoked = await _identityRepository.RevokeCredentialsAsync(userId, _totpProvider.Type, _totpProvider.Name, cancellationToken);
-        revoked += await _identityRepository.RevokeCredentialsAsync(userId, _recoveryCodeProvider.Type, _recoveryCodeProvider.Name, cancellationToken);
+        var revoked = await _credentialRepository.RevokeCredentialsAsync(userId, _totpProvider.Type, _totpProvider.Name, cancellationToken);
+        revoked += await _credentialRepository.RevokeCredentialsAsync(userId, _recoveryCodeProvider.Type, _recoveryCodeProvider.Name, cancellationToken);
         var result = new AccountSecurityOperationResult(userId, CredentialsRevoked: revoked);
         transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserMfaReset, result, request, ct));
 
@@ -188,13 +193,13 @@ public sealed class AccountSecurityService : IAccountSecurityService
         ValidateUserId(userId);
         request ??= new UserSecurityPostureRequest();
 
-        var user = await _identityRepository.GetUserByIdAsync(userId, cancellationToken);
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
         if (user == null || !IsInRequestedTenant(user, request.Tenant))
         {
             return Result.Failure<UserSecurityPosture>(AshlarFailureCodes.UserNotFound);
         }
 
-        var credentials = await _identityRepository.ListCredentialsForUserAsync(userId, activeOnly: false, cancellationToken);
+        var credentials = await _credentialRepository.ListCredentialsForUserAsync(userId, activeOnly: false, cancellationToken);
         var sessions = await _sessionService.ListSessionsForUserAsync(userId, new ListAuthenticationSessionsRequest { ActiveOnly = true }, cancellationToken);
         int? eventCount = null;
         if (_securityEventSummaryRepository != null && request.RecentSecurityEventWindow is { } window)

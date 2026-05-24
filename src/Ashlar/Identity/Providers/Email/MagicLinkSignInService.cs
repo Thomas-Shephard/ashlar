@@ -58,7 +58,7 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
-        var user = await _dependencies.Repository.GetUserByEmailAsync(normalizedEmail, context.TenantId, cancellationToken);
+        var user = await _dependencies.UserRepository.GetUserByEmailAsync(normalizedEmail, context.TenantId, cancellationToken);
         if (user is not { IsActive: true })
         {
             transaction.OnCommitted(ct => RecordAsync(AshlarSecurityEventTypes.MagicLinkRequestSuppressed, SecurityEventOutcomes.Success, context, user?.Id, user == null ? "user_missing" : "user_disabled", ct));
@@ -86,8 +86,8 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
             Purpose = MagicLinkAuthenticationProvider.CredentialPurpose
         };
 
-        await _dependencies.Repository.RevokeCredentialsAsync(user.Id, _dependencies.Provider.Key.Type, _dependencies.Provider.Key.Name, cancellationToken);
-        await _dependencies.Repository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
+        await _dependencies.CredentialRepository.RevokeCredentialsAsync(user.Id, _dependencies.Provider.Key.Type, _dependencies.Provider.Key.Name, cancellationToken);
+        await _dependencies.CredentialRepository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
 
         var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(callbackBaseUri, signInOptions.LinkTokenParameterName, token);
         var message = IdentityUrlHelper.FormatEmailBody(signInOptions.EmailTextTemplate, callbackUrl);

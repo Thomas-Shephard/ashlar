@@ -54,7 +54,7 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
-        var user = await _dependencies.Repository.GetUserByEmailAsync(normalizedEmail, context.TenantId, cancellationToken);
+        var user = await _dependencies.UserRepository.GetUserByEmailAsync(normalizedEmail, context.TenantId, cancellationToken);
         if (user is not { IsActive: true })
         {
             transaction.OnCommitted(ct => RecordAsync(AshlarSecurityEventTypes.EmailCodeRequestSuppressed, SecurityEventOutcomes.Success, context, user?.Id, user == null ? "user_missing" : "user_disabled", ct));
@@ -80,7 +80,7 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
             Purpose = EmailCodeAuthenticationProvider.CredentialPurpose
         };
 
-        await _dependencies.Repository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
+        await _dependencies.CredentialRepository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
 
         transaction.OnCommitted(async (ct) =>
         {

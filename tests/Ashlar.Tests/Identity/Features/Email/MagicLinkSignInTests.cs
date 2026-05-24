@@ -269,7 +269,7 @@ internal sealed class MagicLinkSignInTests
             Assert.ThrowsAsync<ArgumentException>(() => provider.AuthenticateAsync(assertion, null));
             Assert.That(provider.GetProviderKey(assertion, Guid.NewGuid()), Is.Empty);
 
-            var user = await provider.FindUserAsync(assertion, new AuthenticationContext(), new InMemoryIdentityRepository());
+            var user = await provider.FindUserAsync(assertion, new AuthenticationContext(), new InMemoryUserCredentialStore());
             Assert.That(user, Is.Null);
         }
     }
@@ -351,14 +351,14 @@ internal sealed class MagicLinkSignInTests
     [Test]
     public void ServiceConstructorRequiresDependencies()
     {
-        var repository = new InMemoryIdentityRepository(_user);
+        var repository = new InMemoryUserCredentialStore(_user);
         var identity = Mock.Of<IIdentityService>();
         var emailSender = new RecordingEmailSender();
         var rateLimiter = new StubRateLimiter(true, true, TimeProvider.System);
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), new Sha256TokenHasher());
         var uriValidator = Mock.Of<IUriValidator>();
         var provider = new MagicLinkAuthenticationProvider(tokenContext.Hasher);
-        var core = new IdentityContext(repository, identity, new NullTransactionProvider());
+        var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());
         var infrastructure = new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator);
         var audit = new IdentityAuditContext(TimeProvider.System, Mock.Of<ISecurityEventSink>());
         var dependencies = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, provider, audit);
@@ -375,9 +375,9 @@ internal sealed class MagicLinkSignInTests
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void DependenciesRequireRequiredServices()
     {
-        var repository = new InMemoryIdentityRepository(_user);
+        var repository = new InMemoryUserCredentialStore(_user);
         var identity = Mock.Of<IIdentityService>();
-        var core = new IdentityContext(repository, identity, new NullTransactionProvider());
+        var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), new Sha256TokenHasher());
         var infrastructure = new IdentityInfrastructureContext(Mock.Of<IEmailSender>(), Mock.Of<IAuthenticationRateLimiter>(), Mock.Of<IUriValidator>());
         var provider = new MagicLinkAuthenticationProvider(tokenContext.Hasher);
@@ -409,7 +409,9 @@ internal sealed class MagicLinkSignInTests
     public void AddAshlarMagicLinkSignInResolvesServiceAndProvider()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IIdentityRepository>(new InMemoryIdentityRepository(_user));
+        var repository = new InMemoryUserCredentialStore(_user);
+        services.AddSingleton<IUserRepository>(repository);
+        services.AddSingleton<ICredentialRepository>(repository);
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton<IEmailSender, RecordingEmailSender>();
         services.AddAshlarMagicLinkSignIn(options => options.EmailSubject = "Modified");
@@ -441,7 +443,7 @@ internal sealed class MagicLinkSignInTests
 
     private static Fixture CreateFixture(User? user = null, bool requestAllowed = true, bool verifyAllowed = true, MagicLinkSignInOptions? options = null, bool callbackAllowed = true)
     {
-        var repository = new InMemoryIdentityRepository(user);
+        var repository = new InMemoryUserCredentialStore(user);
         var audit = new RecordingSecurityEventSink();
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 5, 3, 12, 0, 0, TimeSpan.Zero));
         var emailSender = new RecordingEmailSender();
@@ -451,12 +453,13 @@ internal sealed class MagicLinkSignInTests
         var transactionProvider = new NullTransactionProvider();
         var credentialService = new CredentialService(
             repository,
+            repository,
             Mock.Of<ISecretProtector>(),
             transactionProvider,
             new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: audit));
         var pipeline = new AuthenticationPipeline(registry, credentialService, transactionProvider, audit, time);
         var identity = new IdentityService(repository, registry, credentialService, pipeline, transactionProvider, audit, time);
-        var core = new IdentityContext(repository, identity, transactionProvider);
+        var core = new IdentityContext(repository, repository, identity, transactionProvider);
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), tokenHasher);
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed, time);
         var uriValidator = new Mock<IUriValidator>();
@@ -483,7 +486,7 @@ internal sealed class MagicLinkSignInTests
         return query["token"] ?? throw new AssertionException("Token not found in email body.");
     }
 
-    private sealed record Fixture(MagicLinkSignInService Service, InMemoryIdentityRepository Repository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, ISecureTokenHasher TokenHasher, StubRateLimiter RateLimiter);
+    private sealed record Fixture(MagicLinkSignInService Service, InMemoryUserCredentialStore Repository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, ISecureTokenHasher TokenHasher, StubRateLimiter RateLimiter);
 
     private sealed class StubRateLimiter(bool requestAllowed, bool verifyAllowed, TimeProvider timeProvider) : IAuthenticationRateLimiter
     {
@@ -522,7 +525,7 @@ internal sealed class MagicLinkSignInTests
         }
     }
 
-    private sealed class InMemoryIdentityRepository(params User?[] users) : IIdentityRepository
+    private sealed class InMemoryUserCredentialStore(params User?[] users) : IUserRepository, ICredentialRepository
     {
         private readonly List<User> _users = users.OfType<User>().ToList();
         public List<UserCredential> Credentials { get; } = [];

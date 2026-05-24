@@ -14,16 +14,16 @@ namespace Microsoft.Extensions.DependencyInjection;
 #pragma warning restore IDE0130
 
 /// <summary>
-/// Provides ashlar postgres service collection extensions behavior.
+/// Provides dependency injection registration methods for Ashlar PostgreSQL integrations.
 /// </summary>
 public static class AshlarPostgresServiceCollectionExtensions
 {
     /// <summary>
     /// Registers Ashlar PostgreSQL persistence services.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="connectionString">The connection string value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="connectionString">The PostgreSQL connection string used to create an <see cref="NpgsqlDataSource"/>.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarPostgres(
         this IServiceCollection services,
         string connectionString)
@@ -38,9 +38,9 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar PostgreSQL persistence services using a provided <see cref="NpgsqlDataSource"/>.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="dataSource">The data source value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="dataSource">The PostgreSQL data source used by Ashlar persistence repositories.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarPostgres(
         this IServiceCollection services,
         NpgsqlDataSource dataSource)
@@ -57,7 +57,8 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.TryAddScoped<PostgresTransactionManager>();
         services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
         services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
-        services.TryAddScoped<IIdentityRepository, PostgresIdentityRepository>();
+        services.TryAddScoped<IUserRepository, PostgresUserRepository>();
+        services.TryAddScoped<ICredentialRepository, PostgresCredentialRepository>();
         services.TryAddScoped<IUserAdministrationRepository, PostgresUserAdministrationRepository>();
         services.TryAddScoped<ICredentialAdministrationRepository, PostgresCredentialAdministrationRepository>();
         services.TryAddScoped<ISecurityEventAdministrationRepository, PostgresSecurityEventAdministrationRepository>();
@@ -78,10 +79,10 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar PostgreSQL-backed bootstrap persistence.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="connectionString">The connection string value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="connectionString">The PostgreSQL connection string used to create an <see cref="NpgsqlDataSource"/>.</param>
+    /// <param name="configure">Optional bootstrap configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarPostgresBootstrap(
         this IServiceCollection services,
         string connectionString,
@@ -97,10 +98,10 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar PostgreSQL-backed bootstrap persistence using a provided <see cref="NpgsqlDataSource"/>.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="dataSource">The data source value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="dataSource">The PostgreSQL data source used by bootstrap persistence.</param>
+    /// <param name="configure">Optional bootstrap configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarPostgresBootstrap(
         this IServiceCollection services,
         NpgsqlDataSource dataSource,
@@ -129,9 +130,9 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar PostgreSQL-backed authorization persistence.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="connectionString">The connection string value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="connectionString">The PostgreSQL connection string used to create an <see cref="NpgsqlDataSource"/>.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarPostgresAuthorization(
         this IServiceCollection services,
         string connectionString)
@@ -146,9 +147,9 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar PostgreSQL-backed authorization persistence using a provided <see cref="NpgsqlDataSource"/>.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="dataSource">The data source value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="dataSource">The PostgreSQL data source used by authorization persistence.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarPostgresAuthorization(
         this IServiceCollection services,
         NpgsqlDataSource dataSource)
@@ -173,9 +174,9 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <summary>
     /// Initializes the Ashlar PostgreSQL schema.
     /// </summary>
-    /// <param name="serviceProvider">The service provider value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="serviceProvider">The root service provider containing PostgreSQL schema services.</param>
+    /// <param name="cancellationToken">A token that can cancel schema initialization.</param>
+    /// <returns>A task that completes when the schema has been initialized.</returns>
     public static async Task InitializeAshlarPostgresSchemaAsync(this IServiceProvider serviceProvider, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
@@ -188,9 +189,9 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <summary>
     /// Registers the Ashlar PostgreSQL-backed authentication rate limiter.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional rate limiter configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarPostgresRateLimiting(
         this IServiceCollection services,
         Action<PostgresAuthenticationRateLimiterOptions>? configure = null)
@@ -214,9 +215,9 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <summary>
     /// Registers the Ashlar PostgreSQL cleanup service for explicit cleanup calls.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional cleanup configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarPostgresCleanup(
         this IServiceCollection services,
         Action<AshlarCleanupOptions>? configure = null)
@@ -241,9 +242,9 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <summary>
     /// Registers the Ashlar PostgreSQL cleanup service and starts a hosted cleanup loop.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional cleanup configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarPostgresCleanupHostedService(
         this IServiceCollection services,
         Action<AshlarCleanupOptions>? configure = null)
@@ -259,8 +260,8 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <summary>
     /// Registers the Ashlar PostgreSQL-backed security audit event sink.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarPostgresAuditSink(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -277,9 +278,9 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <summary>
     /// Registers the Ashlar PostgreSQL-backed email outbox enqueue sender.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional email outbox configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarPostgresEmailOutboxSender(
         this IServiceCollection services,
         Action<PostgresEmailOutboxOptions>? configure = null)
@@ -304,10 +305,10 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <summary>
     /// Registers the Ashlar PostgreSQL-backed email outbox sender and dispatcher.
     /// </summary>
-    /// <typeparam name="TTransport">The ttransport type.</typeparam>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The operation result.</returns>
+    /// <typeparam name="TTransport">The email transport used to deliver queued messages.</typeparam>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional email outbox configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarPostgresEmailOutboxDispatcher<TTransport>(
         this IServiceCollection services,
         Action<PostgresEmailOutboxOptions>? configure = null)
@@ -328,10 +329,10 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <summary>
     /// Registers the Ashlar PostgreSQL-backed email outbox dispatcher as a hosted service.
     /// </summary>
-    /// <typeparam name="TTransport">The ttransport type.</typeparam>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The operation result.</returns>
+    /// <typeparam name="TTransport">The email transport used by the hosted dispatcher.</typeparam>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional email outbox configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarPostgresEmailOutboxHostedService<TTransport>(
         this IServiceCollection services,
         Action<PostgresEmailOutboxOptions>? configure = null)

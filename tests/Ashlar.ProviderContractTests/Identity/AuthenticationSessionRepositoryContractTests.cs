@@ -10,9 +10,9 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
     public async Task CreateAndFetchSessionByTokenHashAndIdMapsFields()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var sessionRepository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var session = CreateSession(user.Id, tenantId: Guid.NewGuid());
         session.LastSeenAt = CreatedAt.AddMinutes(5);
         session.RevokedAt = CreatedAt.AddMinutes(10);
@@ -74,9 +74,9 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
     public async Task TokenHashUniquenessIsEnforced()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var first = CreateSession(user.Id);
         var second = CreateSession(user.Id, first.TokenHash);
 
@@ -89,9 +89,9 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
     public async Task UpdateLastSeenOnlyMovesForwardAndRejectsRevokedAndExpiredSessions()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var active = CreateSession(user.Id);
         var revoked = CreateSession(user.Id);
         var expired = CreateSession(user.Id, expiresAt: CreatedAt.AddMinutes(30));
@@ -126,10 +126,10 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
     public async Task MarkStepUpVerifiedUpdatesOnlyActiveOwnedSessions()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var owner = await CreateUserAsync(identityRepository);
-        var otherUser = await CreateUserAsync(identityRepository);
+        var owner = await CreateUserAsync(userRepository);
+        var otherUser = await CreateUserAsync(userRepository);
         var target = CreateSession(owner.Id);
         var otherOwnerSession = CreateSession(owner.Id);
         var otherUserSession = CreateSession(otherUser.Id);
@@ -159,10 +159,10 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
     public async Task MarkStepUpVerifiedRejectsWrongUserRevokedAndExpiredSessions()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var owner = await CreateUserAsync(identityRepository);
-        var other = await CreateUserAsync(identityRepository);
+        var owner = await CreateUserAsync(userRepository);
+        var other = await CreateUserAsync(userRepository);
         var active = CreateSession(owner.Id);
         var revoked = CreateSession(owner.Id);
         var expired = CreateSession(owner.Id, expiresAt: CreatedAt.AddMinutes(30));
@@ -190,10 +190,10 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
     public async Task RevocationOperationsPreserveFirstRevocationAndOwnership()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
-        var otherUser = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
+        var otherUser = await CreateUserAsync(userRepository);
         var single = CreateSession(user.Id);
         var alreadyRevoked = CreateSession(user.Id);
         var active = CreateSession(user.Id);
@@ -238,9 +238,9 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
     public async Task ListSessionsSupportsActiveOnlyFiltering()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var active = CreateSession(user.Id);
         var revoked = CreateSession(user.Id);
         var expired = CreateSession(user.Id, expiresAt: CreatedAt.AddMinutes(30));
@@ -263,9 +263,9 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
     public async Task RevokeOtherSessionsPreservesExcludedSession()
     {
         await using var scope = CreateAsyncScope();
-        var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+        var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(identityRepository);
+        var user = await CreateUserAsync(userRepository);
         var current = CreateSession(user.Id);
         var other1 = CreateSession(user.Id);
         var other2 = CreateSession(user.Id);
@@ -300,9 +300,9 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
                 Assert.Ignore("Provider does not register IAshlarTransactionProvider.");
             }
 
-            var identityRepository = GetIdentityRepository(scope.ServiceProvider);
+            var userRepository = GetUserRepository(scope.ServiceProvider);
             var repository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-            var user = await CreateUserAsync(identityRepository);
+            var user = await CreateUserAsync(userRepository);
             var session = CreateSession(user.Id);
             sessionId = session.Id;
 

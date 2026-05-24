@@ -66,7 +66,7 @@ public sealed class AuthenticationSessionService(
     private readonly TimeProvider _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
     private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider ?? TimeProvider.System, dependencies.LoggerFactory);
     private readonly ILogger<AuthenticationSessionService> _logger = logger ?? dependencies.Logger ?? NullLogger<AuthenticationSessionService>.Instance;
-    private readonly IIdentityRepository? _identityRepository = dependencies.IdentityRepository;
+    private readonly IUserRepository? _userRepository = dependencies.UserRepository;
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
 
     public async Task<CreateAuthenticationSessionResult> CreateSessionAsync(
@@ -136,9 +136,9 @@ public sealed class AuthenticationSessionService(
                 CorrelationId = request.CorrelationId
             }, ct);
 
-            if (_identityRepository != null)
+            if (_userRepository != null)
             {
-                var user = await _identityRepository.GetUserByIdAsync(userId, ct);
+                var user = await _userRepository.GetUserByIdAsync(userId, ct);
                 if (user != null)
                 {
                     await _notifications.NotifyAsync(SecurityNotificationType.SignIn, user, now, sessionId: session.Id, context: new AuthenticationContext(TenantId: request.TenantId, IpAddress: ipAddress, UserAgent: userAgent, CorrelationId: request.CorrelationId), cancellationToken: ct);
@@ -318,12 +318,12 @@ public sealed class AuthenticationSessionService(
             Properties = metadata
         }, cancellationToken);
 
-        if (!revoked || session == null || _identityRepository == null)
+        if (!revoked || session == null || _userRepository == null)
         {
             return;
         }
 
-        var user = await _identityRepository.GetUserByIdAsync(session.UserId, cancellationToken);
+        var user = await _userRepository.GetUserByIdAsync(session.UserId, cancellationToken);
         if (user != null)
         {
             await _notifications.NotifyAsync(SecurityNotificationType.SessionRevoked, user, now, sessionId: sessionId, metadata: metadata, cancellationToken: cancellationToken);
@@ -362,9 +362,9 @@ public sealed class AuthenticationSessionService(
                 Properties = properties
             }, ct);
 
-            if (revoked > 0 && _identityRepository != null)
+            if (revoked > 0 && _userRepository != null)
             {
-                var user = await _identityRepository.GetUserByIdAsync(userId, ct);
+                var user = await _userRepository.GetUserByIdAsync(userId, ct);
                 if (user != null)
                 {
                     await _notifications.NotifyAsync(SecurityNotificationType.AllSessionsRevoked, user, now, context: ToNotificationContext(audit, tenant), metadata: properties, cancellationToken: ct);
@@ -431,9 +431,9 @@ public sealed class AuthenticationSessionService(
                     : new Dictionary<string, string> { ["reason"] = request.Reason }
             }, ct);
 
-            if (revoked && _identityRepository != null)
+            if (revoked && _userRepository != null)
             {
-                var user = await _identityRepository.GetUserByIdAsync(userId, ct);
+                var user = await _userRepository.GetUserByIdAsync(userId, ct);
                 if (user != null)
                 {
                     await _notifications.NotifyAsync(SecurityNotificationType.SessionRevoked, user, now, sessionId: request.SessionId, context: ToNotificationContext(request.Audit), metadata: request.Reason == null ? null : new Dictionary<string, string> { ["reason"] = request.Reason }, cancellationToken: ct);
@@ -481,9 +481,9 @@ public sealed class AuthenticationSessionService(
                 Properties = properties
             }, ct);
 
-            if (revoked > 0 && _identityRepository != null)
+            if (revoked > 0 && _userRepository != null)
             {
-                var user = await _identityRepository.GetUserByIdAsync(userId, ct);
+                var user = await _userRepository.GetUserByIdAsync(userId, ct);
                 if (user != null)
                 {
                     await _notifications.NotifyAsync(SecurityNotificationType.AllOtherSessionsRevoked, user, now, sessionId: request.CurrentSessionId, context: ToNotificationContext(request.Audit), metadata: properties, cancellationToken: ct);
@@ -668,7 +668,7 @@ public sealed class AuthenticationSessionService(
 /// <param name="Options">The options value.</param>
 /// <param name="TimeProvider">The time provider value.</param>
 /// <param name="SecurityEventSink">The security event sink value.</param>
-/// <param name="IdentityRepository">The identity repository value.</param>
+/// <param name="UserRepository">Looks up users when operations need notification context.</param>
 /// <param name="NotificationService">The notification service value.</param>
 /// <param name="Logger">Receives operational messages emitted directly by the session service.</param>
 /// <param name="LoggerFactory">Creates diagnostics for embedded security event sink failures.</param>
@@ -676,7 +676,7 @@ public sealed record AuthenticationSessionServiceDependencies(
     AuthenticationSessionOptions? Options = null,
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,
-    IIdentityRepository? IdentityRepository = null,
+    IUserRepository? UserRepository = null,
     ISecurityNotificationService? NotificationService = null,
     ILogger<AuthenticationSessionService>? Logger = null,
     ILoggerFactory? LoggerFactory = null);
