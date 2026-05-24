@@ -65,7 +65,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.AddAshlarIdentity();
         services.TryAddSingleton<SqliteSecurityEventSink>();
         services.TryAddScoped<ISecurityEventAdministrationRepository, SqliteSecurityEventAdministrationRepository>();
-        services.Replace(ServiceDescriptor.Singleton<ISecurityEventSink>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
+        services.Replace(ServiceDescriptor.Singleton<IPersistentSecurityEventSink>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
         services.Replace(ServiceDescriptor.Singleton<IUserSecurityEventSummaryRepository>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
 
         return services;

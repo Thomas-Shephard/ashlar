@@ -102,6 +102,11 @@ internal abstract class ProviderContractFixture
         return serviceProvider.GetRequiredService<ISecurityEventSink>();
     }
 
+    protected static IPersistentSecurityEventSink GetPersistentSecurityEventSink(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IPersistentSecurityEventSink>();
+    }
+
     protected static IUserSecurityEventSummaryRepository GetUserSecurityEventSummaryRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IUserSecurityEventSummaryRepository>();

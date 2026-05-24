@@ -445,7 +445,7 @@ internal sealed class AshlarConfigurationValidatorTests
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionAdministrationRepository>());
         services.AddSingleton<IEmailSender, CustomEmailSender>();
-        services.AddSingleton<ISecurityEventSink, CustomSecurityEventSink>();
+        services.AddSingleton<IPersistentSecurityEventSink, CustomPersistentSecurityEventSink>();
         services.AddSingleton<IAuthenticationRateLimiter, CustomAuthenticationRateLimiter>();
         services.AddSingleton<IAshlarTransactionProvider, CustomTransactionProvider>();
         services.AddAshlarIdentity();
@@ -455,6 +455,19 @@ internal sealed class AshlarConfigurationValidatorTests
         var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
 
         Assert.That(result.Issues, Is.Empty);
+    }
+
+    [Test]
+    public async Task CoreCheckReportsAuditWarningWhenOnlySecurityEventHandlersAreRegistered()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarSecurityEventHandler<CustomSecurityEventHandler>();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        AssertIssue(result, AshlarConfigurationIssueCodes.NullSecurityEventSink, AshlarConfigurationIssueSeverity.Warning);
     }
 
     [Test]
@@ -661,9 +674,14 @@ internal sealed class AshlarConfigurationValidatorTests
         public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
-    private sealed class CustomSecurityEventSink : ISecurityEventSink
+    private sealed class CustomPersistentSecurityEventSink : IPersistentSecurityEventSink
     {
         public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class CustomSecurityEventHandler : ISecurityEventHandler
+    {
+        public Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     private sealed class CustomSecurityNotificationSuppressionStore : ISecurityNotificationSuppressionStore

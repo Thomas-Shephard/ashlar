@@ -224,7 +224,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
 
     private static async Task FlushAsync(IServiceProvider serviceProvider)
     {
-        if (GetSecurityEventSink(serviceProvider) is IAsyncDisposable asyncDisposable)
+        if (GetPersistentSecurityEventSink(serviceProvider) is IAsyncDisposable asyncDisposable)
         {
             await asyncDisposable.DisposeAsync();
         }

@@ -6,7 +6,7 @@ namespace Ashlar.Auditing;
 /// <summary>
 /// Provides asynchronous channel-based persistence for security event sinks.
 /// </summary>
-public abstract class PersistentSecurityEventSink : ISecurityEventSink, IAsyncDisposable
+public abstract class PersistentSecurityEventSink : IPersistentSecurityEventSink, IAsyncDisposable
 {
     private static readonly Action<ILogger, string, Guid?, Guid?, string?, string?, Exception?> SecurityEventQueueFailed =
         LoggerMessage.Define<string, Guid?, Guid?, string?, string?>(
