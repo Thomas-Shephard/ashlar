@@ -53,6 +53,11 @@ internal abstract class ProviderContractFixture
         return serviceProvider.GetRequiredService<IIdentityRepository>();
     }
 
+    protected static IUserAdministrationRepository GetUserAdministrationRepository(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IUserAdministrationRepository>();
+    }
+
     protected static IBootstrapStateRepository GetBootstrapStateRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IBootstrapStateRepository>();

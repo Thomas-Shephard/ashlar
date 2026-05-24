@@ -89,6 +89,7 @@ public static class AshlarServiceCollectionExtensions
             provider.GetService<IMfaPolicyEvaluator>()));
         services.TryAddScoped<IAccountSecurityGuard, AllowAccountSecurityGuard>();
         services.TryAddScoped<IAccountSecurityService, AccountSecurityService>();
+        services.TryAddScoped<IUserAdministrationService, UserAdministrationService>();
         services.TryAddScoped(provider => new AuthenticationSessionServiceDependencies(
             provider.GetService<AuthenticationSessionOptions>(),
             provider.GetService<TimeProvider>(),

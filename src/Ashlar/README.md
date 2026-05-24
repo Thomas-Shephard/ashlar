@@ -38,6 +38,12 @@ Ashlar keeps the core package framework-neutral. ASP.NET Core cookies, PostgreSQ
 
 Use `PrimaryCredentials` for sign-in methods, `AdditionalVerificationFactors` for authenticator apps, recovery codes, and policy-eligible passkeys, and `Policy` for readiness and missing factors. Do not render raw provider keys as the main UI label. The posture model does not expose credential values, token hashes, public keys, passkey ceremony JSON, recovery codes, password hashes, or protected secrets.
 
+## Admin User Reads
+
+`IUserAdministrationService` provides reusable read-only operations for admin and operations UIs: `SearchUsersAsync` returns safe `UserSummary` rows, and `GetUserDetailAsync` combines a summary with `UserSecurityPosture`. Provider packages implement the required `IUserAdministrationRepository`, so hosts do not need to query Ashlar provider tables directly.
+
+These APIs do not authorize callers by themselves. Host applications must protect any endpoints that expose them with their own admin authorization, audit policy, and step-up requirements.
+
 ## Related Packages
 
 - `Ashlar.AspNetCore`: ASP.NET Core session authentication and authorization integration.
