@@ -247,10 +247,11 @@ public sealed class AshlarOidcInvitationRegistrationService
 
     private static bool MatchesProvider(AuthenticateResult result, AshlarOidcProviderOptions provider)
     {
-        return result.Properties is { } properties
-            && properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.ProviderName, out var providerName)
-            && properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.SchemeName, out var schemeName)
-            && string.Equals(provider.ProviderName, providerName, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(provider.SchemeName, schemeName, StringComparison.Ordinal);
+        var externalProvider = new AshlarExternalProvider(
+            ProviderType.Oidc,
+            provider.ProviderName,
+            provider.SchemeName,
+            provider.ProviderKeyMode);
+        return AshlarExternalProviderResolver.MatchesProvider(result, externalProvider);
     }
 }

@@ -177,6 +177,38 @@ internal sealed class OidcExternalIdentityAssertionMapperTests
     }
 
     [Test]
+    public void MapShouldSkipSensitiveClaims()
+    {
+        var principal = CreatePrincipal(
+        [
+            new Claim("sub", "subject"),
+            new Claim("access_token", "secret"),
+            new Claim("refresh_token", "secret"),
+            new Claim("id_token", "secret"),
+            new Claim("authorization_code", "secret"),
+            new Claim("code", "secret"),
+            new Claim("cookie", "secret"),
+            new Claim("client_secret", "secret"),
+            new Claim("password", "secret")
+        ]);
+
+        var assertion = OidcExternalIdentityAssertionMapper.Map("Google", principal);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(assertion.Claims, Does.ContainKey("sub"));
+            Assert.That(assertion.Claims, Does.Not.ContainKey("access_token"));
+            Assert.That(assertion.Claims, Does.Not.ContainKey("refresh_token"));
+            Assert.That(assertion.Claims, Does.Not.ContainKey("id_token"));
+            Assert.That(assertion.Claims, Does.Not.ContainKey("authorization_code"));
+            Assert.That(assertion.Claims, Does.Not.ContainKey("code"));
+            Assert.That(assertion.Claims, Does.Not.ContainKey("cookie"));
+            Assert.That(assertion.Claims, Does.Not.ContainKey("client_secret"));
+            Assert.That(assertion.Claims, Does.Not.ContainKey("password"));
+        }
+    }
+
+    [Test]
     public void MapShouldPreserveDuplicateClaimTypes()
     {
         var principal = CreatePrincipal(

@@ -2,7 +2,7 @@
 
 ASP.NET Core OAuth and OpenID Connect credential integration for Ashlar.
 
-This package registers ASP.NET Core OpenID Connect handlers and maps validated external principals to Ashlar `ExternalIdentityAssertion` values.
+This package registers ASP.NET Core OpenID Connect and OAuth handlers and maps validated external principals to Ashlar `ExternalIdentityAssertion` values.
 
 It does not provide UI, persist OAuth tokens, issue Ashlar session cookies, bypass MFA orchestration, or allow open self-registration. Applications decide routing and issue their normal Ashlar session only after their authentication orchestration succeeds.
 
@@ -39,7 +39,41 @@ builder.Services.AddAshlarOAuth(options =>
 });
 ```
 
+For a generic non-OIDC OAuth2 provider:
+
+```csharp
+builder.Services.AddAshlarOAuth(options =>
+{
+    options.AddOAuth2Provider("Contoso", "uid", oauth =>
+    {
+        oauth.AuthorizationEndpoint = "https://oauth.contoso.example/authorize";
+        oauth.TokenEndpoint = "https://oauth.contoso.example/token";
+        oauth.UserInformationEndpoint = "https://oauth.contoso.example/user";
+    });
+});
+```
+
+The second argument to `AddOAuth2Provider` is the claim type Ashlar will use as the stable provider key after the OAuth handler has validated and populated the external principal. The default is `id`, which matches GitHub, but other providers may require values such as `sub`, `uid`, or `user_id`. Do not configure an email, username, login, or display name claim as the provider key.
+
 ## Presets
+
+GitHub:
+
+```csharp
+using Ashlar.OAuth.Providers.GitHub;
+
+options.AddGitHub(oauth =>
+{
+    oauth.ClientId = builder.Configuration["Authentication:GitHub:ClientId"];
+    oauth.ClientSecret = builder.Configuration["Authentication:GitHub:ClientSecret"];
+});
+```
+
+GitHub is OAuth2, not OpenID Connect. The preset uses ASP.NET Core's OAuth handler, authorization endpoint `https://github.com/login/oauth/authorize`, token endpoint `https://github.com/login/oauth/access_token`, and user endpoint `https://api.github.com/user`. It uses the authorization code flow with ASP.NET Core's state/correlation protection and enables S256 PKCE by default. By default it requests no extra scopes; ASP.NET Core sends an empty `scope` value for the default challenge. The basic `/user` response includes GitHub's stable numeric `id`, which Ashlar uses as the provider key. Ashlar does not use GitHub email, username, login, or display name as the provider key.
+
+The preset maps safe profile hints from `/user`: `id`, `login`, `name`, and `email` when GitHub returns them. GitHub email may be absent or private, and the basic `/user` endpoint is not a verified-email policy. This slice does not call `/user/emails`.
+
+Use the normal ASP.NET Core OAuth callback flow for GitHub sign-in and linking so the preset revalidates the user's identity with `/user` on every sign-in. Raw-principal overloads are for principals already validated by trusted infrastructure; do not build GitHub OAuth principals from request data, cached profile JSON, or stale tokens.
 
 Google:
 
@@ -101,9 +135,11 @@ By default, provider callback paths are:
 
 ```text
 /signin-oidc/{scheme}
+/signin-oauth/{scheme}
 ```
 
 For example, register `https://localhost:5001/signin-oidc/Google` with Google for local development.
+For GitHub, register `https://localhost:5001/signin-oauth/GitHub`.
 
 Start an external OIDC challenge with the provider scheme:
 
@@ -117,7 +153,7 @@ await httpContext.ChallengeAsync("Google", new AuthenticationProperties
 For MFA-aware applications, complete the callback only to an Ashlar assertion, pass that assertion through `IAuthenticationOrchestrator`, and issue the Ashlar session only after orchestration succeeds:
 
 ```csharp
-var assertionResult = await externalCredentials.CompleteOidcAssertionAsync(httpContext, "Google");
+var assertionResult = await externalCredentials.CompleteExternalAssertionAsync(httpContext, "Google");
 if (!assertionResult.Succeeded || assertionResult.Assertion == null)
 {
     return Results.Redirect("/signin?external=failed");
@@ -142,9 +178,9 @@ await signInManager.SignInAsync(httpContext, authentication.User.Id, cancellatio
 return Results.Redirect("/");
 ```
 
-`CompleteOidcAssertionAsync` validates the temporary external ticket, checks that it was issued for the expected configured provider, clears the external cookie, and returns a mapped `ExternalIdentityAssertion`. A successful assertion result means the external OIDC credential was validated and mapped; it does not mean an application session may be issued.
+`CompleteExternalAssertionAsync` validates the temporary external ticket, checks that it was issued for the expected configured provider and provider kind, clears the external cookie, and returns a mapped `ExternalIdentityAssertion`. Use this method for both OIDC and non-OIDC OAuth2 providers. A successful assertion result means the external credential was validated and mapped; it does not mean an application session may be issued.
 
-`AshlarExternalCredentialAuthenticationService.CompleteOidcCredentialAuthenticationAsync` is a lower-level helper that maps the OIDC credential and calls Ashlar's authentication pipeline directly. It still does not issue an application session or cookie. Use it only when the host application deliberately treats the returned Ashlar authentication response as the complete credential-authentication decision. Applications with MFA policy must not issue sessions directly from external credential validation; use `CompleteOidcAssertionAsync` and the host orchestration pipeline instead.
+`AshlarExternalCredentialAuthenticationService.CompleteExternalCredentialAuthenticationAsync` is a lower-level helper that maps the external credential and calls Ashlar's authentication pipeline directly. It works for both OIDC and non-OIDC OAuth2 providers, but still does not issue an application session or cookie. Use it only when the host application deliberately treats the returned Ashlar authentication response as the complete credential-authentication decision. Applications with MFA policy must not issue sessions directly from external credential validation; use `CompleteExternalAssertionAsync` and the host orchestration pipeline instead.
 
 ## Profile Hints
 
@@ -162,7 +198,9 @@ Profile values are display hints only. They are not identity assertions, provide
 ## Security Notes
 
 - ASP.NET Core's OpenID Connect handler performs state, nonce, code exchange, token validation, audience validation, signing key validation, and expiry validation according to the configured authority and token validation parameters.
+- ASP.NET Core's OAuth handler performs OAuth state validation and code exchange for GitHub, including S256 PKCE by default. GitHub identity is then loaded from GitHub's user-info API and mapped to `ProviderType.OAuth`.
 - Ashlar uses OIDC `sub` as the stable provider key, not email. For shared-authority providers that can admit multiple issuers, provider presets can qualify the key with `iss` as well as `sub`.
+- Ashlar uses GitHub `/user` `id` as the stable OAuth provider key, not email, username, login, or display name.
 - Google `hd` is an organization/domain signal, not an Ashlar tenant. When domains are passed to `AddGoogle`, Ashlar.OAuth validates the returned `hd` claim before external credential authentication completes.
 
 ## Invitation registration
@@ -170,6 +208,8 @@ Profile values are display hints only. They are not identity assertions, provide
 `AshlarOidcInvitationRegistrationService` accepts an existing Ashlar invitation token with a validated OIDC identity and then links the OIDC credential to the accepted Ashlar user. It does not sign the user in automatically. Overloads that accept a raw `ClaimsPrincipal` assume the caller has already validated that principal with the same configured OIDC provider; do not pass principals built from request data or unvalidated JWTs. Use the ASP.NET Core authentication-result overloads when completing normal external-auth callbacks.
 
 By default, `StandardOidcVerifiedEmailMatchPolicy` requires generic OIDC providers to match a standard `email` claim with `email_verified=true` before the invitation is consumed. Microsoft tenant providers registered with `AddMicrosoft` automatically use the provider-specific policy from `Providers.Microsoft`, matching the invitation email against Microsoft sign-in/email identity claims such as `email`, `preferred_username`, `upn`, or `unique_name`, because Microsoft identity platform ID tokens do not consistently emit standard OIDC `email_verified`. This Microsoft policy relies on the configured tenant/provider trust and identity claim validation; it is not a general standards-level verified-email proof. `AddMicrosoft` requires a tenant-specific authority and rejects `common`, `organizations`, and `consumers`; use separate provider names for separate tenants. `AddMicrosoftPersonalAccounts` and `AddMicrosoftAnyAccount` are sign-in/linking presets and do not opt into the Microsoft invitation email policy. Applications with stricter Microsoft requirements can replace `IOidcInvitationEmailMatchPolicy`. Missing email, unverified email, mismatched email, invalid tokens, provider mismatch, and link failures are returned as explicit statuses for application branching. Public UI should still use generic failure messages.
+
+GitHub invitation registration is not supported by `AshlarOidcInvitationRegistrationService`. GitHub's basic `/user` endpoint does not provide a reliable verified-email policy, and this package does not call GitHub's email API in this slice. Applications that need GitHub invitation registration should first define and implement an explicit verified-email policy.
 
 - `AuthenticationContext.TenantId` remains Ashlar's tenant context and should be supplied by the app when completing tenant-aware sign-in or invitation registration flows. Invitation registration rejects a context tenant that does not match the invitation tenant.
 - Do not log or persist authorization codes, access tokens, refresh tokens, ID tokens, raw claim payloads, or cookies in this slice.

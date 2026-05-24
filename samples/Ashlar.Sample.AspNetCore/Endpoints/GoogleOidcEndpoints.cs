@@ -48,7 +48,7 @@ internal static class GoogleOidcEndpoints
         var externalCredentialAuthentication = services.GetRequiredService<AshlarExternalCredentialAuthenticationService>();
         var orchestrator = services.GetRequiredService<IAuthenticationOrchestrator>();
         var signInManager = services.GetRequiredService<IAshlarSignInManager>();
-        var result = await externalCredentialAuthentication.CompleteOidcAssertionAsync(httpContext, SampleGoogleOidc.ProviderName);
+        var result = await externalCredentialAuthentication.CompleteExternalAssertionAsync(httpContext, SampleGoogleOidc.ProviderName);
         if (result.Succeeded && result.Assertion != null)
         {
             var mfaResult = await orchestrator.AuthenticateAsync(
@@ -192,7 +192,7 @@ internal static class GoogleOidcEndpoints
         }
 
         var accountLink = services.GetRequiredService<AshlarExternalAccountLinkService>();
-        var result = await accountLink.CompleteOidcLinkAsync(
+        var result = await accountLink.CompleteExternalLinkAsync(
             httpContext,
             user.GetAshlarUserId(),
             SampleGoogleOidc.ProviderName,
@@ -217,7 +217,7 @@ internal static class GoogleOidcEndpoints
         }
 
         var accountLink = services.GetRequiredService<AshlarExternalAccountLinkService>();
-        var result = await accountLink.UnlinkOidcAccountAsync(
+        var result = await accountLink.UnlinkExternalAccountAsync(
             user.GetAshlarUserId(),
             SampleGoogleOidc.ProviderName,
             new AccountSecurityOperationRequest(httpContext.ToAuditContext(), httpContext.ToTenantContext(), "sample-google-unlink"),

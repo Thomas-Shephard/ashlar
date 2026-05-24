@@ -1,12 +1,16 @@
 using System.Security.Claims;
+using System.Net;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Ashlar.OAuth.Providers.Apple;
+using Ashlar.OAuth.Providers.GitHub;
 using Ashlar.OAuth.Providers.Google;
 using Ashlar.OAuth.Providers.Microsoft;
 
@@ -149,6 +153,112 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddGitHubShouldRegisterExpectedProviderAndDefaults()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddGitHub();
+
+        var provider = options.OAuth2Providers["GitHub"];
+        var oauth = new OAuthOptions();
+        provider.Configure(oauth);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.ProviderName, Is.EqualTo("GitHub"));
+            Assert.That(provider.SchemeName, Is.EqualTo("GitHub"));
+            Assert.That(oauth.AuthorizationEndpoint, Is.EqualTo(GitHubOAuthDefaults.AuthorizationEndpoint));
+            Assert.That(oauth.TokenEndpoint, Is.EqualTo(GitHubOAuthDefaults.TokenEndpoint));
+            Assert.That(oauth.UserInformationEndpoint, Is.EqualTo(GitHubOAuthDefaults.UserInformationEndpoint));
+            Assert.That(oauth.UsePkce, Is.True);
+            Assert.That(oauth.Scope, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void AddGitHubShouldAllowCallerConfigurationToOverrideAndExtendOAuthOptions()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddGitHub(oauth =>
+        {
+            oauth.ClientId = "client";
+            oauth.Scope.Add("read:user");
+        });
+        var oauthOptions = new OAuthOptions();
+        options.OAuth2Providers["GitHub"].Configure(oauthOptions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(oauthOptions.ClientId, Is.EqualTo("client"));
+            Assert.That(oauthOptions.Scope, Does.Contain("read:user"));
+        }
+    }
+
+    [Test]
+    public void AddGitHubShouldSupportCustomProviderName()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddGitHub(providerName: "GitHub-Enterprise");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.OAuth2Providers, Does.ContainKey("GitHub-Enterprise"));
+            Assert.That(options.OAuth2Providers["GitHub-Enterprise"].ProviderName, Is.EqualTo("GitHub-Enterprise"));
+        }
+    }
+
+    [Test]
+    public void AddOAuth2ProviderShouldRegisterGenericProviderAndRejectNullConfigure()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddOAuth2Provider(" CustomOAuth ", oauth => oauth.AuthorizationEndpoint = "https://oauth.example/authorize");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.OAuth2Providers, Does.ContainKey("CustomOAuth"));
+            Assert.That(options.OAuth2Providers["CustomOAuth"].ProviderName, Is.EqualTo("CustomOAuth"));
+            Assert.That(options.OAuth2Providers["CustomOAuth"].ProviderKeyClaimType, Is.EqualTo("id"));
+            Assert.Throws<ArgumentNullException>(() => options.AddOAuth2Provider("Other", null!));
+        }
+    }
+
+    [Test]
+    public void AddOAuth2ProviderShouldSupportCustomProviderKeyClaimType()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddOAuth2Provider("CustomOAuth", " uid ", _ => { });
+
+        Assert.That(options.OAuth2Providers["CustomOAuth"].ProviderKeyClaimType, Is.EqualTo("uid"));
+    }
+
+    [Test]
+    public void AddOAuth2ProviderShouldNormalizeInternalSchemeName()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddOAuth2Provider(new AshlarOAuth2ProviderOptions(" CustomOAuth ", " CustomScheme ", _ => { }, " uid "));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.OAuth2Providers, Does.ContainKey("CustomOAuth"));
+            Assert.That(options.OAuth2Providers["CustomOAuth"].SchemeName, Is.EqualTo("CustomScheme"));
+            Assert.That(options.OAuth2Providers["CustomOAuth"].ProviderKeyClaimType, Is.EqualTo("uid"));
+        }
+    }
+
+    [Test]
+    public void AddOAuth2ProviderShouldRejectBlankProviderKeyClaimType()
+    {
+        var options = new AshlarOAuthOptions();
+
+        Assert.Throws<ArgumentException>(() => options.AddOAuth2Provider("CustomOAuth", " ", _ => { }));
+    }
+
+    [Test]
     public void AddOidcProviderShouldSupportCustomProviderKeyMode()
     {
         var options = new AshlarOAuthOptions();
@@ -278,6 +388,192 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             Assert.That(oidcOptions.Authority, Is.EqualTo(AppleOidcDefaults.Authority));
             Assert.That(oidcOptions.ResponseType, Is.EqualTo("code"));
             Assert.That(oidcOptions.ResponseMode, Is.EqualTo(OpenIdConnectResponseMode.FormPost));
+        }
+    }
+
+    [Test]
+    public void AddAshlarOAuthShouldConfigureGitHubOAuthHandlerDefaults()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarOAuth(options => options.AddGitHub(oauth =>
+        {
+            oauth.ClientId = "client";
+            oauth.ClientSecret = "secret";
+        }));
+
+        using var provider = services.BuildServiceProvider();
+        var oauthOptions = provider.GetRequiredService<IOptionsMonitor<OAuthOptions>>().Get("GitHub");
+        var authProviders = provider.GetServices<IAuthenticationProvider>().ToList();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(oauthOptions.SignInScheme, Is.EqualTo("Ashlar.OAuth.External"));
+            Assert.That(oauthOptions.CallbackPath.Value, Is.EqualTo("/signin-oauth/GitHub"));
+            Assert.That(oauthOptions.SaveTokens, Is.False);
+            Assert.That(oauthOptions.UsePkce, Is.True);
+            Assert.That(oauthOptions.AuthorizationEndpoint, Is.EqualTo(GitHubOAuthDefaults.AuthorizationEndpoint));
+            Assert.That(oauthOptions.TokenEndpoint, Is.EqualTo(GitHubOAuthDefaults.TokenEndpoint));
+            Assert.That(oauthOptions.UserInformationEndpoint, Is.EqualTo(GitHubOAuthDefaults.UserInformationEndpoint));
+            Assert.That(authProviders.Select(p => p.Key), Does.Contain(new AuthenticationProviderKey(ProviderType.OAuth, "GitHub")));
+        }
+    }
+
+    [Test]
+    public void AddAshlarOAuthShouldPreserveCustomOAuthCallbackPath()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarOAuth(options => options.AddGitHub(oauth =>
+        {
+            oauth.ClientId = "client";
+            oauth.ClientSecret = "secret";
+            oauth.CallbackPath = "/custom-github-callback";
+        }));
+
+        using var provider = services.BuildServiceProvider();
+        var oauthOptions = provider.GetRequiredService<IOptionsMonitor<OAuthOptions>>().Get("GitHub");
+
+        Assert.That(oauthOptions.CallbackPath.Value, Is.EqualTo("/custom-github-callback"));
+    }
+
+    [Test]
+    public void AddAshlarOAuthShouldSetOAuthProviderCallbackPathWhenCallbackPathIsEmpty()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarOAuth(options => options.AddGitHub(oauth =>
+        {
+            oauth.ClientId = "client";
+            oauth.ClientSecret = "secret";
+            oauth.CallbackPath = PathString.Empty;
+        }));
+
+        using var provider = services.BuildServiceProvider();
+        var oauthOptions = provider.GetRequiredService<IOptionsMonitor<OAuthOptions>>().Get("GitHub");
+
+        Assert.That(oauthOptions.CallbackPath.Value, Is.EqualTo("/signin-oauth/GitHub"));
+    }
+
+    [Test]
+    public async Task AddGitHubShouldMapUserInformationClaimsAndChainCreatingTicketEvent()
+    {
+        var called = false;
+        var oauth = ConfigureGitHubOptions(options =>
+        {
+            options.Events.OnCreatingTicket = _ =>
+            {
+                called = true;
+                return Task.CompletedTask;
+            };
+        });
+        var context = CreateGitHubCreatingTicketContext(oauth, """{"id":12345,"login":"octocat","name":"The Octocat","email":"octo@example.com"}""", out var handler);
+
+        await oauth.Events.OnCreatingTicket(context);
+        var principal = context.Principal!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(called, Is.True);
+            Assert.That(principal.FindFirstValue("id"), Is.EqualTo("12345"));
+            Assert.That(principal.FindFirstValue(ClaimTypes.NameIdentifier), Is.EqualTo("12345"));
+            Assert.That(principal.FindFirstValue("login"), Is.EqualTo("octocat"));
+            Assert.That(principal.FindFirstValue(ClaimTypes.Name), Is.EqualTo("The Octocat"));
+            Assert.That(principal.FindFirstValue(ClaimTypes.Email), Is.EqualTo("octo@example.com"));
+            Assert.That(handler.SawUserAgent, Is.True);
+            Assert.That(handler.Method, Is.EqualTo(HttpMethod.Get));
+            Assert.That(handler.RequestUri?.AbsoluteUri, Is.EqualTo(GitHubOAuthDefaults.UserInformationEndpoint));
+            Assert.That(handler.AuthorizationScheme, Is.EqualTo("Bearer"));
+            Assert.That(handler.AuthorizationParameter, Is.EqualTo("token"));
+            Assert.That(handler.Accept, Does.Contain("application/vnd.github+json"));
+        }
+    }
+
+    [Test]
+    public async Task AddGitHubShouldIgnoreMissingInvalidEmptyAndExistingUserInformationClaims()
+    {
+        var oauth = ConfigureGitHubOptions();
+        var context = CreateGitHubCreatingTicketContext(
+            oauth,
+            """{"id":12345,"login":"ignored","name":" ","email":{"value":"ignored"}}""",
+            out _,
+            new ClaimsPrincipal(new ClaimsIdentity([new Claim("login", "existing")], "oauth")));
+
+        await oauth.Events.OnCreatingTicket(context);
+
+        var principal = context.Principal!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(principal.FindFirstValue("id"), Is.EqualTo("12345"));
+            Assert.That(principal.FindFirstValue("login"), Is.EqualTo("existing"));
+            Assert.That(principal.FindFirstValue(ClaimTypes.Name), Is.Null);
+            Assert.That(principal.FindFirstValue(ClaimTypes.Email), Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task AddGitHubShouldIgnoreUserInformationWhenPrincipalHasNoIdentity()
+    {
+        var oauth = ConfigureGitHubOptions();
+        var context = CreateGitHubCreatingTicketContext(
+            oauth,
+            """{"id":12345,"login":"octocat"}""",
+            out _,
+            new ClaimsPrincipal());
+
+        await oauth.Events.OnCreatingTicket(context);
+
+        Assert.That(context.Principal?.Claims, Is.Empty);
+    }
+
+    [Test]
+    public async Task AddGitHubShouldFailTicketWhenUserInformationRequestFails()
+    {
+        var called = false;
+        var oauth = ConfigureGitHubOptions(options =>
+        {
+            options.Events.OnCreatingTicket = _ =>
+            {
+                called = true;
+                return Task.CompletedTask;
+            };
+        });
+        var context = CreateGitHubCreatingTicketContext(
+            oauth,
+            """{"message":"rate limited"}""",
+            out _,
+            statusCode: HttpStatusCode.TooManyRequests);
+
+        await oauth.Events.OnCreatingTicket(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Result?.Failure, Is.Not.Null);
+            Assert.That(context.Result?.Failure?.Message, Does.Contain("429"));
+            Assert.That(called, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task AddGitHubShouldFailTicketWhenUserInformationPayloadIsMalformed()
+    {
+        var called = false;
+        var oauth = ConfigureGitHubOptions(options =>
+        {
+            options.Events.OnCreatingTicket = _ =>
+            {
+                called = true;
+                return Task.CompletedTask;
+            };
+        });
+        var context = CreateGitHubCreatingTicketContext(oauth, "{not-json", out _);
+
+        await oauth.Events.OnCreatingTicket(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Result?.Failure, Is.InstanceOf<JsonException>());
+            Assert.That(called, Is.False);
         }
     }
 
@@ -447,6 +743,40 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             Assert.That(called, Is.True);
             Assert.That(context.Properties?.Items[AshlarOAuthAuthenticationProperties.ProviderName], Is.EqualTo("Google"));
             Assert.That(context.Properties?.Items[AshlarOAuthAuthenticationProperties.SchemeName], Is.EqualTo("Google"));
+        }
+    }
+
+    [Test]
+    public async Task AddAshlarOAuthShouldChainOAuthTicketReceivedEventAndSetProviderMetadata()
+    {
+        var called = false;
+        var services = new ServiceCollection();
+        services.AddAshlarOAuth(options => options.AddGitHub(oauth =>
+        {
+            oauth.ClientId = "client";
+            oauth.ClientSecret = "secret";
+            oauth.Events.OnTicketReceived = _ =>
+            {
+                called = true;
+                return Task.CompletedTask;
+            };
+        }));
+        using var provider = services.BuildServiceProvider();
+        var oauthOptions = provider.GetRequiredService<IOptionsMonitor<OAuthOptions>>().Get("GitHub");
+        var context = new TicketReceivedContext(
+            new DefaultHttpContext(),
+            new AuthenticationScheme("GitHub", "GitHub", typeof(OAuthHandler<OAuthOptions>)),
+            oauthOptions,
+            new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity("oauth")), new AuthenticationProperties(), "GitHub"));
+
+        await oauthOptions.Events.OnTicketReceived(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(called, Is.True);
+            Assert.That(context.Properties?.Items[AshlarOAuthAuthenticationProperties.ProviderName], Is.EqualTo("GitHub"));
+            Assert.That(context.Properties?.Items[AshlarOAuthAuthenticationProperties.SchemeName], Is.EqualTo("GitHub"));
+            Assert.That(context.Properties?.Items[AshlarOAuthAuthenticationProperties.ProviderType], Is.EqualTo(ProviderType.OAuth.Value));
         }
     }
 
@@ -677,6 +1007,42 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarOAuthShouldRejectDuplicateProviderNamesAcrossOidcAndOAuth2()
+    {
+        var services = new ServiceCollection();
+
+        Assert.Throws<ArgumentException>(() => services.AddAshlarOAuth(options =>
+        {
+            options.AddOidcProvider("GitHub", _ => { });
+            options.AddGitHub(providerName: " github ");
+        }));
+    }
+
+    [Test]
+    public void AddAshlarOAuthShouldRejectDuplicateOAuth2ProviderNamesIgnoringCaseAndWhitespace()
+    {
+        var services = new ServiceCollection();
+
+        Assert.Throws<ArgumentException>(() => services.AddAshlarOAuth(options =>
+        {
+            options.AddGitHub();
+            options.AddOAuth2Provider(" github ", _ => { });
+        }));
+    }
+
+    [Test]
+    public void AddAshlarOAuthShouldRejectDuplicateProviderNamesWhenOAuth2IsRegisteredFirst()
+    {
+        var services = new ServiceCollection();
+
+        Assert.Throws<ArgumentException>(() => services.AddAshlarOAuth(options =>
+        {
+            options.AddGitHub();
+            options.AddOidcProvider(" github ", _ => { });
+        }));
+    }
+
+    [Test]
     public void AddAppleShouldKeepDuplicateProviderNameBehaviorConsistent()
     {
         var options = new AshlarOAuthOptions();
@@ -702,6 +1068,16 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
         var oidc = new OpenIdConnectOptions();
         options.OidcProviders["Apple"].Configure(oidc);
         return oidc;
+    }
+
+    private static OAuthOptions ConfigureGitHubOptions(Action<OAuthOptions>? configure = null)
+    {
+        var options = new AshlarOAuthOptions();
+        options.AddGitHub(configure);
+        var oauth = new OAuthOptions();
+        options.OAuth2Providers["GitHub"].Configure(oauth);
+        oauth.Backchannel = new HttpClient(new RecordingHandler("""{"id":1}""", HttpStatusCode.OK));
+        return oauth;
     }
 
     private static RedirectContext CreateRedirectContext(OpenIdConnectOptions options)
@@ -758,5 +1134,50 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
         }
 
         return context;
+    }
+
+    private static OAuthCreatingTicketContext CreateGitHubCreatingTicketContext(
+        OAuthOptions options,
+        string userJson,
+        out RecordingHandler handler,
+        ClaimsPrincipal? principal = null,
+        HttpStatusCode statusCode = HttpStatusCode.OK)
+    {
+        handler = new RecordingHandler(userJson, statusCode);
+        var backchannel = new HttpClient(handler);
+        var context = new OAuthCreatingTicketContext(
+            principal ?? new ClaimsPrincipal(new ClaimsIdentity("oauth")),
+            new AuthenticationProperties(),
+            new DefaultHttpContext(),
+            new AuthenticationScheme("GitHub", "GitHub", typeof(OAuthHandler<OAuthOptions>)),
+            options,
+            backchannel,
+            OAuthTokenResponse.Success(JsonDocument.Parse("""{"access_token":"token","token_type":"bearer"}""")),
+            JsonDocument.Parse("{}").RootElement);
+        return context;
+    }
+
+    private sealed class RecordingHandler(string userJson, HttpStatusCode statusCode) : HttpMessageHandler
+    {
+        public bool SawUserAgent { get; private set; }
+        public HttpMethod? Method { get; private set; }
+        public Uri? RequestUri { get; private set; }
+        public string? AuthorizationScheme { get; private set; }
+        public string? AuthorizationParameter { get; private set; }
+        public string[] Accept { get; private set; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Method = request.Method;
+            RequestUri = request.RequestUri;
+            SawUserAgent = request.Headers.UserAgent.Count > 0;
+            AuthorizationScheme = request.Headers.Authorization?.Scheme;
+            AuthorizationParameter = request.Headers.Authorization?.Parameter;
+            Accept = request.Headers.Accept.Select(header => header.MediaType ?? string.Empty).ToArray();
+            return Task.FromResult(new HttpResponseMessage(statusCode)
+            {
+                Content = new StringContent(userJson)
+            });
+        }
     }
 }

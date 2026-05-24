@@ -631,15 +631,19 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
 
         var failed = await service.RegisterOidcInvitationAsync("token", "Google", AuthenticateResult.Fail("failed"));
         var mismatch = await service.RegisterOidcInvitationAsync("token", "Google", CreateTicket("Microsoft", "Microsoft", "subject"));
+        var wrongProviderType = await service.RegisterOidcInvitationAsync("token", "Google", CreateTicket("Google", "Google", "subject", ProviderType.OAuth));
         var missingProvider = await service.RegisterOidcInvitationAsync("token", "Microsoft", CreateTicket("Microsoft", "Microsoft", "subject"));
         var matched = await service.RegisterOidcInvitationAsync("token", "Google", CreateTicket("Google", "Google", "subject"));
+        var matchedWithProviderType = await service.RegisterOidcInvitationAsync("token", "Google", CreateTicket("Google", "Google", "subject", ProviderType.Oidc));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(failed.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.AuthenticationFailed));
             Assert.That(mismatch.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.ProviderMismatch));
+            Assert.That(wrongProviderType.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.ProviderMismatch));
             Assert.That(missingProvider.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.UnsupportedProvider));
             Assert.That(matched.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidInvitation));
+            Assert.That(matchedWithProviderType.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidInvitation));
         }
     }
 
@@ -670,19 +674,23 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var unsupportedAuth = new TestAuthenticationService(AuthenticateResult.NoResult());
         var failedAuth = new TestAuthenticationService(AuthenticateResult.Fail("failed"));
         var mismatchAuth = new TestAuthenticationService(CreateTicket("Microsoft", "Microsoft", "subject"));
+        var wrongProviderTypeAuth = new TestAuthenticationService(CreateTicket("Google", "Google", "subject", ProviderType.OAuth));
 
         var unsupported = await service.CompleteOidcInvitationRegistrationAsync(CreateHttpContext(unsupportedAuth), "token", "Microsoft");
         var failed = await service.CompleteOidcInvitationRegistrationAsync(CreateHttpContext(failedAuth), "token", "Google");
         var mismatch = await service.CompleteOidcInvitationRegistrationAsync(CreateHttpContext(mismatchAuth), "token", "Google");
+        var wrongProviderType = await service.CompleteOidcInvitationRegistrationAsync(CreateHttpContext(wrongProviderTypeAuth), "token", "Google");
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(unsupported.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.UnsupportedProvider));
             Assert.That(failed.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.AuthenticationFailed));
             Assert.That(mismatch.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.ProviderMismatch));
+            Assert.That(wrongProviderType.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.ProviderMismatch));
             Assert.That(unsupportedAuth.SignOutCount, Is.EqualTo(1));
             Assert.That(failedAuth.SignOutCount, Is.EqualTo(1));
             Assert.That(mismatchAuth.SignOutCount, Is.EqualTo(1));
+            Assert.That(wrongProviderTypeAuth.SignOutCount, Is.EqualTo(1));
         }
     }
 
@@ -788,11 +796,16 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         return string.Concat("oidc-sha256:", Convert.ToHexString(hash));
     }
 
-    private static AuthenticateResult CreateTicket(string providerName, string schemeName, string subject)
+    private static AuthenticateResult CreateTicket(string providerName, string schemeName, string subject, ProviderType? providerType = null)
     {
         var properties = new AuthenticationProperties();
         properties.Items[AshlarOAuthAuthenticationProperties.ProviderName] = providerName;
         properties.Items[AshlarOAuthAuthenticationProperties.SchemeName] = schemeName;
+        if (providerType != null)
+        {
+            properties.Items[AshlarOAuthAuthenticationProperties.ProviderType] = providerType.Value.Value;
+        }
+
         return AuthenticateResult.Success(new AuthenticationTicket(
             CreatePrincipal(subject, "invitee@example.com", "true"),
             properties,
