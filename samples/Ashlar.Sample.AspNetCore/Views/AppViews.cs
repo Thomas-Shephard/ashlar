@@ -1709,27 +1709,23 @@ internal static class AppViews
 
     private static string RenderGoogleButton(string text, string? id = null, string? onclick = null, string? style = null)
     {
-        var idAttribute = string.IsNullOrWhiteSpace(id) ? "" : $" id=\"{System.Net.WebUtility.HtmlEncode(id)}\"";
-        var onclickAttribute = string.IsNullOrWhiteSpace(onclick) ? "" : $" onclick=\"{System.Net.WebUtility.HtmlEncode(onclick)}\"";
-        var styleAttribute = string.IsNullOrWhiteSpace(style) ? "" : $" style=\"{System.Net.WebUtility.HtmlEncode(style)}\"";
-
-        return $"""
-            <button{idAttribute} type="button" class="google-button"{onclickAttribute}{styleAttribute}>
-                <img src="/google/g-logo.png" alt="" aria-hidden="true" />
-                <span>{System.Net.WebUtility.HtmlEncode(text)}</span>
-            </button>
-            """;
+        return RenderExternalProviderButton("google-button", "/google/g-logo.png", text, id, onclick, style);
     }
 
     private static string RenderGitHubButton(string text, string? id = null, string? onclick = null, string? style = null)
+    {
+        return RenderExternalProviderButton("github-button", "/github/mark-white.svg", text, id, onclick, style);
+    }
+
+    private static string RenderExternalProviderButton(string className, string imagePath, string text, string? id, string? onclick, string? style)
     {
         var idAttribute = string.IsNullOrWhiteSpace(id) ? "" : $" id=\"{System.Net.WebUtility.HtmlEncode(id)}\"";
         var onclickAttribute = string.IsNullOrWhiteSpace(onclick) ? "" : $" onclick=\"{System.Net.WebUtility.HtmlEncode(onclick)}\"";
         var styleAttribute = string.IsNullOrWhiteSpace(style) ? "" : $" style=\"{System.Net.WebUtility.HtmlEncode(style)}\"";
 
         return $"""
-            <button{idAttribute} type="button" class="github-button"{onclickAttribute}{styleAttribute}>
-                <img src="/github/mark-white.svg" alt="" aria-hidden="true" />
+            <button{idAttribute} type="button" class="{System.Net.WebUtility.HtmlEncode(className)}"{onclickAttribute}{styleAttribute}>
+                <img src="{System.Net.WebUtility.HtmlEncode(imagePath)}" alt="" aria-hidden="true" />
                 <span>{System.Net.WebUtility.HtmlEncode(text)}</span>
             </button>
             """;
