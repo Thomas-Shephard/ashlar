@@ -179,6 +179,25 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
     }
 
     [Test]
+    public async Task SenderSendAsyncPersistsSensitivity()
+    {
+        var sender = new PostgresEmailOutboxSender(
+            _serviceProvider.GetRequiredService<IPostgresConnectionProvider>(),
+            _timeProvider);
+
+        await sender.SendAsync(new EmailMessage(
+            "to@example.com",
+            "Subject",
+            "Body",
+            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret }));
+
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        var sensitivity = await connection.ExecuteScalarAsync<string>("SELECT sensitivity FROM ashlar_email_outbox");
+
+        Assert.That(sensitivity, Is.EqualTo(nameof(EmailMessageSensitivity.ContainsLiveSecret)));
+    }
+
+    [Test]
     public async Task SenderSendAsyncIsTransactional()
     {
         var provider = _serviceProvider.GetRequiredService<IPostgresConnectionProvider>();
@@ -459,7 +478,8 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
             Subject = "Sub",
             TextBody = "Body",
             Headers = null,
-            Metadata = null
+            Metadata = null,
+            Sensitivity = EmailMessageSensitivity.Normal
         };
 
         var message = EmailOutboxDispatch.MapToEmailMessage(entry);
@@ -482,7 +502,8 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
             Subject = "Sub",
             TextBody = "Body",
             Headers = "{\"X-Test\": \"Header\"}",
-            Metadata = "{\"Test\": \"Metadata\"}"
+            Metadata = "{\"Test\": \"Metadata\"}",
+            Sensitivity = EmailMessageSensitivity.ContainsLiveSecret
         };
 
         var message = EmailOutboxDispatch.MapToEmailMessage(entry);
@@ -493,7 +514,20 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
             Assert.That(message.Headers, Does.ContainKey("X-Test").WithValue("Header"));
             Assert.That(message.Metadata, Is.Not.Null);
             Assert.That(message.Metadata, Does.ContainKey("Test").WithValue("Metadata"));
+            Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
         }
+    }
+
+    [Test]
+    public void MapToEmailMessageDefaultsUnknownSensitivityToNormal()
+    {
+        Assert.That(EmailOutboxDispatch.ParseSensitivity("Unknown"), Is.EqualTo(EmailMessageSensitivity.Normal));
+    }
+
+    [Test]
+    public void MapToEmailMessageParsesSensitivityCaseInsensitively()
+    {
+        Assert.That(EmailOutboxDispatch.ParseSensitivity("containslivesecret"), Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
     }
 
     [Test]

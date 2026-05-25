@@ -10,7 +10,7 @@ namespace Ashlar.Sqlite.Messaging;
 /// <param name="timeProvider">The time provider value.</param>
 public sealed class SqliteEmailOutboxSender(
     ISqliteConnectionProvider connectionProvider,
-    TimeProvider timeProvider) : IEmailSender
+    TimeProvider timeProvider) : ITransactionalEmailOutboxSender
 {
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
@@ -27,9 +27,9 @@ public sealed class SqliteEmailOutboxSender(
 
         const string sql = """
             INSERT INTO ashlar_email_outbox (
-                id, to_address, from_address, reply_to_address, subject, text_body, html_body, headers, metadata, created_at, available_at
+                id, to_address, from_address, reply_to_address, subject, text_body, html_body, sensitivity, headers, metadata, created_at, available_at
             ) VALUES (
-                $id, $to, $from, $replyTo, $subject, $textBody, $htmlBody, $headers, $metadata, $createdAt, $availableAt
+                $id, $to, $from, $replyTo, $subject, $textBody, $htmlBody, $sensitivity, $headers, $metadata, $createdAt, $availableAt
             )
             """;
 
@@ -45,6 +45,7 @@ public sealed class SqliteEmailOutboxSender(
         command.AddParameter("$subject", message.Subject);
         command.AddParameter("$textBody", message.TextBody);
         command.AddParameter("$htmlBody", message.HtmlBody);
+        command.AddParameter("$sensitivity", message.Sensitivity.ToString());
         command.AddParameter("$headers", message.Headers != null ? JsonSerializer.Serialize(message.Headers) : null);
         command.AddParameter("$metadata", message.Metadata != null ? JsonSerializer.Serialize(message.Metadata) : null);
         command.AddDateTimeOffsetParameter("$createdAt", now);

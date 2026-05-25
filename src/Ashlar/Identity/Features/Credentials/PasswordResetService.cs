@@ -168,18 +168,39 @@ internal sealed class PasswordResetService : IPasswordResetService
 
         var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(callbackBaseUri, _options.Value.TokenParameterName, token);
         var message = IdentityUrlHelper.FormatEmailBody(_options.Value.EmailTextTemplate, callbackUrl, ResetTokenLabel, token);
+        var resetEmail = new EmailMessage(
+            user.Email,
+            _options.Value.Subject,
+            message,
+            options: new EmailMessageOptions
+            {
+                From = _options.Value.FromAddress,
+                Sensitivity = EmailMessageSensitivity.ContainsLiveSecret
+            });
+        var transactionalEmailOutbox = TransactionalEmailDelivery.IsTransactionalDurableOutbox(_dependencies.EmailSender);
+        var resetEmailQueued = true;
+        if (transactionalEmailOutbox)
+        {
+            resetEmailQueued = await SendResetEmailOrRevokeAsync(user, resetEmail, context, cancellationToken);
+        }
 
         transaction.OnCommitted(async ct =>
         {
-            await Task.WhenAll(
-                RecordAsync(
+            if (resetEmailQueued)
+            {
+                await RecordAsync(
                     AshlarSecurityEventTypes.PasswordResetRequested,
                     SecurityEventOutcomes.Success,
                     context,
                     user.Id,
                     failureReason: null,
-                    ct),
-                SendResetEmailOrRevokeAsync(user, message, context, ct));
+                    ct);
+            }
+
+            if (!transactionalEmailOutbox)
+            {
+                await SendResetEmailOrRevokeAsync(user, resetEmail, context, ct);
+            }
         });
 
         await transaction.CommitAsync(cancellationToken);
@@ -389,15 +410,12 @@ internal sealed class PasswordResetService : IPasswordResetService
         }, cancellationToken);
     }
 
-    private async Task SendResetEmailOrRevokeAsync(IUser user, string message, AuthenticationContext context, CancellationToken cancellationToken)
+    private async Task<bool> SendResetEmailOrRevokeAsync(IUser user, EmailMessage message, AuthenticationContext context, CancellationToken cancellationToken)
     {
         try
         {
-            await _dependencies.EmailSender.SendAsync(new EmailMessage(
-                user.Email,
-                _options.Value.Subject,
-                message,
-                options: new EmailMessageOptions { From = _options.Value.FromAddress }), cancellationToken);
+            await _dependencies.EmailSender.SendAsync(message, cancellationToken);
+            return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -409,6 +427,7 @@ internal sealed class PasswordResetService : IPasswordResetService
                 user.Id,
                 DeliveryFailedReason,
                 cancellationToken);
+            return false;
         }
     }
 

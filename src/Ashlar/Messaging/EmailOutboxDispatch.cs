@@ -53,6 +53,11 @@ public sealed class EmailOutboxEntry
     public string? Metadata { get; init; }
 
     /// <summary>
+    /// Gets or sets the message sensitivity value.
+    /// </summary>
+    public EmailMessageSensitivity Sensitivity { get; init; } = EmailMessageSensitivity.Normal;
+
+    /// <summary>
     /// Gets or sets the attempt count value.
     /// </summary>
     public int AttemptCount { get; init; }
@@ -137,8 +142,20 @@ public static class EmailOutboxDispatch
                 From = entry.FromAddress,
                 ReplyTo = entry.ReplyToAddress,
                 Headers = headers,
-                Metadata = metadata
+                Metadata = metadata,
+                Sensitivity = entry.Sensitivity
             });
     }
 
+    /// <summary>
+    /// Parses a persisted sensitivity value into a safe message sensitivity.
+    /// </summary>
+    /// <param name="value">The persisted sensitivity value.</param>
+    /// <returns>The parsed sensitivity, or <see cref="EmailMessageSensitivity.Normal"/> for unknown values.</returns>
+    public static EmailMessageSensitivity ParseSensitivity(string? value)
+    {
+        return Enum.TryParse<EmailMessageSensitivity>(value, ignoreCase: true, out var sensitivity)
+            ? sensitivity
+            : EmailMessageSensitivity.Normal;
+    }
 }

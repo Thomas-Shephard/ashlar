@@ -48,6 +48,7 @@ public sealed record EmailMessage
         ReplyTo = options?.ReplyTo;
         Cc = options?.Cc;
         Bcc = options?.Bcc;
+        Sensitivity = options?.Sensitivity ?? EmailMessageSensitivity.Normal;
 
         if (From != null)
         {
@@ -130,24 +131,48 @@ public sealed record EmailMessage
     public string? ReplyTo { get; }
 
     /// <summary>
-    /// Gets or sets the cc value.
+    /// Gets the cc value.
     /// </summary>
     public string? Cc { get; }
 
     /// <summary>
-    /// Gets or sets the bcc value.
+    /// Gets the bcc value.
     /// </summary>
     public string? Bcc { get; }
 
     /// <summary>
-    /// Gets or sets the headers value.
+    /// Gets the headers value.
     /// </summary>
     public IReadOnlyDictionary<string, string>? Headers { get; }
 
     /// <summary>
-    /// Gets or sets the metadata value.
+    /// Gets the metadata value.
     /// </summary>
     public IReadOnlyDictionary<string, string>? Metadata { get; }
+
+    /// <summary>
+    /// Gets the sensitivity classification for the message body.
+    /// </summary>
+    public EmailMessageSensitivity Sensitivity { get; }
+}
+
+/// <summary>
+/// Classifies whether an Ashlar email message contains live secret material.
+/// </summary>
+/// <remarks>
+/// Names are persisted by durable outbox providers and should not be renamed without a data migration.
+/// </remarks>
+public enum EmailMessageSensitivity
+{
+    /// <summary>
+    /// The message does not contain a live secret.
+    /// </summary>
+    Normal,
+
+    /// <summary>
+    /// The message contains a currently valid secret such as a token, link, or code.
+    /// </summary>
+    ContainsLiveSecret
 }
 
 /// <summary>
@@ -184,4 +209,9 @@ public sealed record EmailMessageOptions
     /// Gets or sets the metadata value.
     /// </summary>
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
+
+    /// <summary>
+    /// Gets or sets the sensitivity classification for the message body.
+    /// </summary>
+    public EmailMessageSensitivity Sensitivity { get; init; } = EmailMessageSensitivity.Normal;
 }

@@ -118,7 +118,9 @@ services.AddSingleton<IEmailSender, MyEmailSender>();
 services.AddAshlarIdentity();
 ```
 
-`EmailMessage` contains simple string address fields (`To`, `From`, and `ReplyTo`) plus subject, text and/or HTML body, headers, and metadata. Ashlar intentionally does not implement SMTP, vendor integrations, templates, MIME parsing, address-list handling, or outbox persistence in the core abstraction.
+`EmailMessage` contains simple string address fields (`To`, `From`, and `ReplyTo`) plus subject, text and/or HTML body, headers, metadata, and an `EmailMessageSensitivity` classification. Token-bearing Ashlar emails are marked `ContainsLiveSecret`; ordinary notifications remain `Normal`. This is a provider-neutral boundary for senders, outboxes, dispatchers, diagnostics, and future retention/redaction policy. It does not encrypt email bodies at rest.
+
+Durable provider outbox senders can also implement `ITransactionalEmailOutboxSender`. Ashlar token flows enqueue sensitive messages inside the active Ashlar transaction when this marker is present. Direct/non-transactional senders still run after commit, so SMTP delivery is not attempted while credential state can still roll back.
 
 ## Passwordless Email Sign-In
 Ashlar includes framework-neutral passwordless email sign-in services for one-time codes and magic links. Both flows use `IEmailSender`, `IAuthenticationRateLimiter`, `ISecureTokenGenerator`, and `ISecureTokenHasher`, so applications should replace the default `NullEmailSender` before using them in production.
@@ -159,6 +161,8 @@ var authenticationResult = await magicLinks.VerifyLinkAsync(
 
 `RequestLinkAsync` does not reveal whether an email address belongs to an active user. Generated links are stored as hashed credentials, expire according to `LinkLifetime`, and the default request and verification rate limits can be changed through `MagicLinkSignInOptions`. Successful magic-link and email-code assertions consume their backing credential so the same token or code cannot be replayed.
 
+Magic-link and one-time-code emails are classified as `EmailMessageSensitivity.ContainsLiveSecret`.
+
 One-time email codes are available through `AddAshlarEmailCodeSignIn()` and `IEmailCodeSignInService`:
 
 ```csharp
@@ -193,6 +197,8 @@ await verificationService.RequestVerificationAsync(new EmailVerificationRequest
     Audit = auditContext
 });
 ```
+
+Email verification messages contain live verification links and are classified as `EmailMessageSensitivity.ContainsLiveSecret`.
 
 Verify the token (e.g., from a link in the email):
 
@@ -282,6 +288,8 @@ if (result.Succeeded)
 
 Email change requests are automatically throttled, and the process ensures that the new email is not already in use by another user in the same tenant.
 
+Email change confirmation messages contain live confirmation links and are classified as `EmailMessageSensitivity.ContainsLiveSecret`. Suppression notices for already-used addresses do not contain a live secret and remain `Normal`.
+
 ## Password Reset
 Ashlar supports first-class password reset for local password credentials through `AddAshlarPasswordReset()` and `IPasswordResetService`.
 
@@ -347,7 +355,7 @@ if (!result.Succeeded && result.FailureCode == AshlarFailureCodes.InvalidOrExpir
 }
 ```
 
-Reset tokens are high-entropy generated tokens stored only as `ISecureTokenHasher` hashes in internal password-reset credentials. The new password is stored through the normal local password hashing path. Successful reset consumes the reset token, replaces existing local password credentials, revokes existing sessions by default, emits security audit events, and sends a post-reset security notification when security notifications are configured.
+Reset tokens are high-entropy generated tokens stored only as `ISecureTokenHasher` hashes in internal password-reset credentials. The new password is stored through the normal local password hashing path. Successful reset consumes the reset token, replaces existing local password credentials, revokes existing sessions by default, emits security audit events, and sends a post-reset security notification when security notifications are configured. Password reset emails contain live reset links and are classified as `EmailMessageSensitivity.ContainsLiveSecret`.
 
 ## TOTP Authenticator
 Ashlar includes a framework-neutral service for managing and verifying TOTP (Time-based One-Time Password) authenticator factors. These are standard RFC 6238 codes compatible with apps like Google Authenticator, Microsoft Authenticator, and 1Password.
@@ -454,6 +462,8 @@ if (result.Succeeded)
 ```
 
 `CreateInvitationAsync` generates a high-entropy token, stores its hash, and sends an invitation link via `IEmailSender`. When an invitation is accepted, Ashlar automatically creates a new active user if one does not exist, or activates/links an existing inactive user. Acceptance is atomic and single-use. PostgreSQL acceptance updates require the invitation to still be unaccepted, unrevoked, and unexpired at write time, so stale reads cannot replay or revive an invitation.
+
+Invitation emails contain live acceptance links and are classified as `EmailMessageSensitivity.ContainsLiveSecret`.
 
 ## Bootstrap and First-Admin Setup
 Ashlar includes generic bootstrap primitives that allow a newly self-hosted application to safely create its first administrative user without manual database edits.
@@ -1108,6 +1118,8 @@ public class MyIdentityService(
 - **Scope Bound**: Transactions are bound to the `IServiceProvider` scope (typically the HTTP request).
 - **Single Transaction**: Only one active transaction is supported per scope. Attempting to start a nested transaction will throw an `InvalidOperationException`.
 - **Resource Management**: Callers MUST call `DisposeAsync` (typically via `await using`) to release the underlying connection, even after a commit or rollback.
+
+Provider outbox senders that implement `ITransactionalEmailOutboxSender` can be called before commit by token-bearing Ashlar flows. Direct senders that only implement `IEmailSender` remain post-commit so external delivery is not attempted until credential changes are durable.
 
 ## Security Audit Events
 Ashlar emits structured security audit events for authentication, credential lifecycle, and session lifecycle operations. `AddAshlarIdentity()` registers `ISecurityEventSink` with `NullSecurityEventSink` by default, so events are no-op unless the application provides a sink:

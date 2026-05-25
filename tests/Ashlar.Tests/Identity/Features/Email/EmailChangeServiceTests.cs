@@ -89,6 +89,7 @@ internal sealed class EmailChangeServiceTests
             Assert.That(credential.UserId, Is.EqualTo(user.Id));
             Assert.That(fixture.SecretProtector.Unprotect(credential.CredentialValue!), Is.EqualTo("new@example.com"));
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailChangeRequested), Is.True);
+            Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
         }
     }
 
@@ -216,6 +217,7 @@ internal sealed class EmailChangeServiceTests
             Assert.That(result.Succeeded, Is.True);
             Assert.That(fixture.EmailSender.Messages, Has.Count.EqualTo(1));
             Assert.That(fixture.EmailSender.Messages.Single().TextBody, Contains.Substring("No changes were made"));
+            Assert.That(fixture.EmailSender.Messages.Single().Sensitivity, Is.EqualTo(EmailMessageSensitivity.Normal));
             Assert.That(securityEvent.TenantId, Is.EqualTo(tenantId));
             Assert.That(securityEvent.ActorUserId, Is.EqualTo(actorUserId));
             Assert.That(securityEvent.IpAddress, Is.EqualTo(audit.IpAddress));

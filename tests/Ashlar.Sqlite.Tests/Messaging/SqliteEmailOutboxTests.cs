@@ -104,7 +104,8 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
                 From = "from@example.com",
                 ReplyTo = "reply@example.com",
                 Headers = new Dictionary<string, string> { ["X-Test"] = "Header" },
-                Metadata = new Dictionary<string, string> { ["Trace"] = "Metadata" }
+                Metadata = new Dictionary<string, string> { ["Trace"] = "Metadata" },
+                Sensitivity = EmailMessageSensitivity.ContainsLiveSecret
             }));
 
         var row = await QuerySingleOutboxRowAsync();
@@ -118,6 +119,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             Assert.That(row.HtmlBody, Is.EqualTo("<p>Html</p>"));
             Assert.That(row.Headers, Does.Contain("\"X-Test\":\"Header\""));
             Assert.That(row.Metadata, Does.Contain("\"Trace\":\"Metadata\""));
+            Assert.That(row.Sensitivity, Is.EqualTo(nameof(EmailMessageSensitivity.ContainsLiveSecret)));
             Assert.That(row.CreatedAt, Is.EqualTo(_now));
             Assert.That(row.AvailableAt, Is.EqualTo(_now));
         }
@@ -292,6 +294,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             Subject = "Subject",
             TextBody = "Text",
             HtmlBody = "Html",
+            Sensitivity = EmailMessageSensitivity.ContainsLiveSecret,
             Headers = "{\"X-Test\":\"Header\"}",
             Metadata = "{\"Trace\":\"Metadata\"}"
         });
@@ -303,6 +306,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             Assert.That(message.ReplyTo, Is.EqualTo("reply@example.com"));
             Assert.That(message.Headers, Does.ContainKey("X-Test").WithValue("Header"));
             Assert.That(message.Metadata, Does.ContainKey("Trace").WithValue("Metadata"));
+            Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
         }
     }
 
@@ -471,7 +475,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT to_address, from_address, reply_to_address, subject, text_body, html_body,
-                   headers, metadata, created_at, available_at, attempt_count, sent_at,
+                   sensitivity, headers, metadata, created_at, available_at, attempt_count, sent_at,
                    failed_at, last_error, last_attempt_at
             FROM ashlar_email_outbox
             ORDER BY created_at, id
@@ -487,6 +491,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             Subject = reader.GetString(reader.GetOrdinal("subject")),
             TextBody = reader.GetNullableString("text_body"),
             HtmlBody = reader.GetNullableString("html_body"),
+            Sensitivity = reader.GetString(reader.GetOrdinal("sensitivity")),
             Headers = reader.GetNullableString("headers"),
             Metadata = reader.GetNullableString("metadata"),
             CreatedAt = reader.GetDateTimeOffsetFromText("created_at"),
@@ -521,6 +526,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
         public required string Subject { get; init; }
         public string? TextBody { get; init; }
         public string? HtmlBody { get; init; }
+        public required string Sensitivity { get; init; }
         public string? Headers { get; init; }
         public string? Metadata { get; init; }
         public DateTimeOffset CreatedAt { get; init; }

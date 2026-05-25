@@ -11,7 +11,7 @@ namespace Ashlar.Postgres.Messaging;
 /// <param name="timeProvider">The time provider value.</param>
 public sealed class PostgresEmailOutboxSender(
     IPostgresConnectionProvider connectionProvider,
-    TimeProvider timeProvider) : IEmailSender
+    TimeProvider timeProvider) : ITransactionalEmailOutboxSender
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
@@ -28,9 +28,9 @@ public sealed class PostgresEmailOutboxSender(
 
         const string sql = """
             INSERT INTO ashlar_email_outbox (
-                id, to_address, from_address, reply_to_address, subject, text_body, html_body, headers, metadata, created_at, available_at
+                id, to_address, from_address, reply_to_address, subject, text_body, html_body, sensitivity, headers, metadata, created_at, available_at
             ) VALUES (
-                @Id, @To, @From, @ReplyTo, @Subject, @TextBody, @HtmlBody, @Headers::jsonb, @Metadata::jsonb, @CreatedAt, @AvailableAt
+                @Id, @To, @From, @ReplyTo, @Subject, @TextBody, @HtmlBody, @Sensitivity, @Headers::jsonb, @Metadata::jsonb, @CreatedAt, @AvailableAt
             )
             """;
 
@@ -48,6 +48,7 @@ public sealed class PostgresEmailOutboxSender(
             message.Subject,
             message.TextBody,
             message.HtmlBody,
+            Sensitivity = message.Sensitivity.ToString(),
             Headers = headersJson,
             Metadata = metadataJson,
             CreatedAt = now,

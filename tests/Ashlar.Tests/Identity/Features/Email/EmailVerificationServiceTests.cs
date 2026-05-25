@@ -45,6 +45,7 @@ internal sealed class EmailVerificationServiceTests
             Assert.That(credential.UserId, Is.EqualTo(_user.Id));
             Assert.That(credential.Purpose, Is.EqualTo("email-verification"));
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailVerificationRequested), Is.True);
+            Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
         }
     }
 

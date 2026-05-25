@@ -56,6 +56,7 @@ internal sealed class PasswordResetServiceTests
             Assert.That(credential.CredentialValue, Is.Null);
             Assert.That(credential.Purpose, Is.EqualTo(PasswordResetService.CredentialPurpose));
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.PasswordResetRequested), Is.True);
+            Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
         }
     }
 
@@ -277,6 +278,40 @@ internal sealed class PasswordResetServiceTests
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.PasswordResetRequested), Is.True);
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.PasswordResetFailed && e.FailureReason == "delivery_failed"), Is.True);
             Assert.That(fixture.Store.Credentials.Any(c => c.ProviderType == ProviderType.Internal && c.ProviderName == PasswordResetService.ProviderName && c.Status == CredentialStatus.Active), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task RequestPasswordResetAsyncDoesNotRecordRequestedSuccessWhenTransactionalOutboxEnqueueFails()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user, transactionalEmailSender: true);
+        fixture.EmailSender.ThrowOnSend = true;
+
+        var result = await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.PasswordResetRequested), Is.False);
+            Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.PasswordResetFailed && e.FailureReason == "delivery_failed"), Is.True);
+            Assert.That(fixture.Store.Credentials.Any(c => c.ProviderType == ProviderType.Internal && c.ProviderName == PasswordResetService.ProviderName && c.Status == CredentialStatus.Active), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task RequestPasswordResetAsyncRecordsRequestedSuccessWhenTransactionalOutboxEnqueueSucceeds()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user, transactionalEmailSender: true);
+
+        var result = await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.PasswordResetRequested), Is.True);
+            Assert.That(fixture.EmailSender.Messages.Single().Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
         }
     }
 
@@ -556,7 +591,8 @@ internal sealed class PasswordResetServiceTests
         bool includeLocalPassword = true,
         bool requestAllowed = true,
         bool verifyAllowed = true,
-        Action<PasswordResetOptions>? configure = null)
+        Action<PasswordResetOptions>? configure = null,
+        bool transactionalEmailSender = false)
     {
         var time = new FakeTimeProvider(DateTimeOffset.Parse("2026-05-25T12:00:00Z", CultureInfo.InvariantCulture));
         var store = new InMemoryUserCredentialStore(time);
@@ -570,7 +606,7 @@ internal sealed class PasswordResetServiceTests
         }
 
         var rateLimiter = new RecordingRateLimiter(requestAllowed, verifyAllowed);
-        var emailSender = new RecordingEmailSender();
+        RecordingEmailSender emailSender = transactionalEmailSender ? new RecordingTransactionalEmailSender() : new RecordingEmailSender();
         var uriValidator = new Mock<IUriValidator>();
         uriValidator.Setup(v => v.IsValid(It.IsAny<Uri?>())).Returns(true);
         var audit = new RecordingSecurityEventSink();
@@ -645,7 +681,7 @@ internal sealed class PasswordResetServiceTests
         RecordingSessionRepository Sessions,
         FakeTimeProvider Time);
 
-    private sealed class RecordingEmailSender : IEmailSender
+    private class RecordingEmailSender : IEmailSender
     {
         public List<EmailMessage> Messages { get; } = [];
         public bool ThrowOnSend { get; set; }
@@ -662,6 +698,8 @@ internal sealed class PasswordResetServiceTests
             return Task.CompletedTask;
         }
     }
+
+    private sealed class RecordingTransactionalEmailSender : RecordingEmailSender, ITransactionalEmailOutboxSender;
 
     private sealed class RecordingSecurityEventSink : ISecurityEventSink
     {

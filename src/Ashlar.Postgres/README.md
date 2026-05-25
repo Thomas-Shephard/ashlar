@@ -117,13 +117,14 @@ Cleanup diagnostics do not query provider tables, track last run state, or expos
 
 The PostgreSQL-backed email outbox allows you to persist email messages durably within your database transactions and dispatch them asynchronously.
 The dispatcher claims rows with `FOR UPDATE SKIP LOCKED`, so multiple application instances can poll the same outbox table without intentionally sending the same pending row twice.
+The outbox persists `EmailMessage.Sensitivity` as a provider-neutral string (`Normal` or `ContainsLiveSecret`) and restores it before dispatch. Token-bearing Ashlar flows use this sender as an `ITransactionalEmailOutboxSender`, so the queued message commits or rolls back with the token credential.
 
 ### Registration
 
 Register the outbox sender and the hosted dispatcher in `Program.cs`:
 
 ```csharp
-// Register the outbox sender (implements IEmailSender)
+// Register the outbox sender (implements ITransactionalEmailOutboxSender)
 services.AddAshlarPostgresEmailOutboxSender();
 
 // Register the hosted dispatcher with a custom transport
