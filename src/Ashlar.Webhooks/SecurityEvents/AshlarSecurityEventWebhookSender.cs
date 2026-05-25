@@ -81,14 +81,9 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
             Content = new ReadOnlyMemoryContent(delivery.Body)
         };
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-        request.Headers.Add("X-Ashlar-Event-Id", delivery.Payload.Id.ToString("D"));
-        request.Headers.Add("X-Ashlar-Event-Type", delivery.Payload.EventType);
-        request.Headers.Add("X-Ashlar-Webhook-Endpoint", delivery.EndpointName);
-        request.Headers.Add("X-Ashlar-Timestamp", delivery.Payload.OccurredAt.ToString("O"));
-
-        if (!string.IsNullOrEmpty(delivery.SharedSecret))
+        foreach (var header in delivery.Headers)
         {
-            request.Headers.Add(SignatureHeaderName, CreateSignature(delivery.SharedSecret, delivery.Body.Span));
+            request.Headers.Add(header.Key, header.Value);
         }
 
         return request;

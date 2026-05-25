@@ -12,6 +12,8 @@ namespace Ashlar.Webhooks.Tests;
 
 internal sealed class AshlarSecurityEventWebhookHandlerTests
 {
+    private static readonly IReadOnlyDictionary<string, string> EmptyHeaders = new Dictionary<string, string>();
+
     [Test]
     public async Task HandleAsyncPostsSafeJsonPayload()
     {
@@ -289,6 +291,31 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     }
 
     [Test]
+    public void OutboxHandlerThrowsForNullArguments()
+    {
+        var factory = new AshlarSecurityEventWebhookDeliveryFactory(Options.Create(new AshlarSecurityEventWebhookOptions()));
+        var enqueuer = new TestWebhookEnqueuer();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookOutboxHandler(null!, enqueuer));
+            Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookOutboxHandler(factory, null!));
+            Assert.ThrowsAsync<ArgumentNullException>(() => new AshlarSecurityEventWebhookOutboxHandler(factory, enqueuer).HandleAsync(null!));
+        }
+    }
+
+    [Test]
+    public void OutboxHandlerRespectsCallerCancellation()
+    {
+        var factory = new AshlarSecurityEventWebhookDeliveryFactory(Options.Create(CreateOptions(CreateEndpoint())));
+        var handler = new AshlarSecurityEventWebhookOutboxHandler(factory, new TestWebhookEnqueuer());
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(), () => handler.HandleAsync(CreateEvent(), cancellation.Token));
+    }
+
+    [Test]
     public void CreatePayloadThrowsForNullEvent()
     {
         var exception = Assert.Throws<ArgumentNullException>(() => AshlarSecurityEventWebhookDeliveryFactory.CreatePayload(null!));
@@ -345,12 +372,13 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
 
     private static AshlarSecurityEventWebhookDelivery CreateDelivery()
     {
+        var payload = CreatePayload();
         return new AshlarSecurityEventWebhookDelivery(
             "audit",
             new Uri("https://example.test/security-events"),
             TimeSpan.FromSeconds(10),
-            null,
-            CreatePayload());
+            AshlarSecurityEventWebhookDeliveryFactory.CreateHeaders("audit", null, payload, []),
+            payload);
     }
 
     private static AshlarSecurityEventWebhookPayload CreatePayload()
@@ -429,15 +457,17 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery(" ", new Uri("https://example.test"), TimeSpan.FromSeconds(1), null, CreatePayload()))?.ParamName, Is.EqualTo("endpointName"));
-            Assert.That(Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookDelivery("audit", null!, TimeSpan.FromSeconds(1), null, CreatePayload()))?.ParamName, Is.EqualTo("uri"));
-            Assert.That(Assert.Throws<ArgumentOutOfRangeException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.Zero, null, CreatePayload()))?.ParamName, Is.EqualTo("timeout"));
-            Assert.That(Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), null, null!))?.ParamName, Is.EqualTo("payload"));
-            Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), " ", CreatePayload()))?.ParamName, Is.EqualTo("sharedSecret"));
-            Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit\r\nbad", new Uri("https://example.test"), TimeSpan.FromSeconds(1), null, CreatePayload()))?.ParamName, Is.EqualTo("endpointName"));
-            Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), null, CreatePayload(" ")))?.ParamName, Is.EqualTo("payload.EventType"));
-            Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), null, CreatePayload("bad\r\nevent")))?.ParamName, Is.EqualTo("payload.EventType"));
-            Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), null, CreatePayload(), ReadOnlyMemory<byte>.Empty))?.ParamName, Is.EqualTo("body"));
+            Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery(" ", new Uri("https://example.test"), TimeSpan.FromSeconds(1), EmptyHeaders, CreatePayload()))?.ParamName, Is.EqualTo("endpointName"));
+            Assert.That(Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookDelivery("audit", null!, TimeSpan.FromSeconds(1), EmptyHeaders, CreatePayload()))?.ParamName, Is.EqualTo("uri"));
+            Assert.That(Assert.Throws<ArgumentOutOfRangeException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.Zero, EmptyHeaders, CreatePayload()))?.ParamName, Is.EqualTo("timeout"));
+            Assert.That(Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), null!, CreatePayload()))?.ParamName, Is.EqualTo("headers"));
+            Assert.That(Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), EmptyHeaders, null!))?.ParamName, Is.EqualTo("payload"));
+            Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit\r\nbad", new Uri("https://example.test"), TimeSpan.FromSeconds(1), EmptyHeaders, CreatePayload()))?.ParamName, Is.EqualTo("endpointName"));
+            Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), EmptyHeaders, CreatePayload(" ")))?.ParamName, Is.EqualTo("payload.EventType"));
+            Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), EmptyHeaders, CreatePayload("bad\r\nevent")))?.ParamName, Is.EqualTo("payload.EventType"));
+            Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), EmptyHeaders, CreatePayload(), ReadOnlyMemory<byte>.Empty))?.ParamName, Is.EqualTo("body"));
+            Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), new Dictionary<string, string> { ["bad\r\nname"] = "value" }, CreatePayload()))?.ParamName, Is.EqualTo("headers"));
+            Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), new Dictionary<string, string> { ["X-Test"] = "bad\r\nvalue" }, CreatePayload()))?.ParamName, Is.EqualTo("headers"));
         }
     }
 
@@ -484,6 +514,14 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     private sealed class TestWebhookSender : IAshlarSecurityEventWebhookSender
     {
         public Task SendAsync(AshlarSecurityEventWebhookDelivery delivery, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class TestWebhookEnqueuer : IAshlarSecurityEventWebhookEnqueuer
+    {
+        public Task EnqueueAsync(AshlarSecurityEventWebhookDelivery delivery, CancellationToken cancellationToken = default)
         {
             return Task.CompletedTask;
         }

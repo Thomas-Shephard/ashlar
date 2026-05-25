@@ -4,6 +4,7 @@ using Ashlar.Messaging;
 using Ashlar.Operational;
 using Ashlar.Operational.Diagnostics;
 using Ashlar.Postgres.Schema;
+using Ashlar.Webhooks.SecurityEvents;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
@@ -343,6 +344,74 @@ public static class AshlarPostgresServiceCollectionExtensions
 
         services.AddAshlarPostgresEmailOutboxDispatcher<TTransport>(configure);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, PostgresEmailOutboxHostedService>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar PostgreSQL-backed security event webhook outbox enqueuer.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional webhook outbox configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarPostgresSecurityEventWebhookOutbox(
+        this IServiceCollection services,
+        Action<PostgresSecurityEventWebhookOutboxOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddOptions<PostgresSecurityEventWebhookOutboxOptions>()
+            .Validate(PostgresSecurityEventWebhookOutboxOptions.Validate, "Security event webhook outbox options are invalid.");
+
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddScoped<IAshlarSecurityEventWebhookEnqueuer, PostgresSecurityEventWebhookEnqueuer>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar PostgreSQL-backed security event webhook outbox enqueuer and dispatcher.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional webhook outbox configuration.</param>
+    /// <param name="configureHttpClient">Optional HTTP client builder configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarPostgresSecurityEventWebhookDispatcher(
+        this IServiceCollection services,
+        Action<PostgresSecurityEventWebhookOutboxOptions>? configure = null,
+        Action<IHttpClientBuilder>? configureHttpClient = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarPostgresSecurityEventWebhookOutbox(configure);
+        var httpClientBuilder = services.AddHttpClient(PostgresSecurityEventWebhookOutboxDispatcher.HttpClientName);
+        configureHttpClient?.Invoke(httpClientBuilder);
+        services.TryAddScoped<PostgresSecurityEventWebhookOutboxDispatcher>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar PostgreSQL-backed security event webhook outbox dispatcher as a hosted service.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional webhook outbox configuration.</param>
+    /// <param name="configureHttpClient">Optional HTTP client builder configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarPostgresSecurityEventWebhookHostedService(
+        this IServiceCollection services,
+        Action<PostgresSecurityEventWebhookOutboxOptions>? configure = null,
+        Action<IHttpClientBuilder>? configureHttpClient = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarPostgresSecurityEventWebhookDispatcher(configure, configureHttpClient);
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, PostgresSecurityEventWebhookOutboxHostedService>());
 
         return services;
     }

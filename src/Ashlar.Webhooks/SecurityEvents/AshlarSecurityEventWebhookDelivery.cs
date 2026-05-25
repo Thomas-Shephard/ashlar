@@ -11,15 +11,15 @@ public sealed record AshlarSecurityEventWebhookDelivery
     /// <param name="endpointName">The endpoint display name used in safe logs and headers.</param>
     /// <param name="uri">The endpoint URI.</param>
     /// <param name="timeout">The per-request timeout.</param>
-    /// <param name="sharedSecret">The optional shared secret used for best-effort signing.</param>
+    /// <param name="headers">The final safe headers to send with the webhook request.</param>
     /// <param name="payload">The safe webhook payload.</param>
     public AshlarSecurityEventWebhookDelivery(
         string endpointName,
         Uri uri,
         TimeSpan timeout,
-        string? sharedSecret,
+        IReadOnlyDictionary<string, string> headers,
         AshlarSecurityEventWebhookPayload payload)
-        : this(endpointName, uri, timeout, sharedSecret, payload, AshlarSecurityEventWebhookPayloadSerializer.Serialize(payload))
+        : this(endpointName, uri, timeout, headers, payload, AshlarSecurityEventWebhookPayloadSerializer.Serialize(payload))
     {
     }
 
@@ -27,7 +27,7 @@ public sealed record AshlarSecurityEventWebhookDelivery
         string endpointName,
         Uri uri,
         TimeSpan timeout,
-        string? sharedSecret,
+        IReadOnlyDictionary<string, string> headers,
         AshlarSecurityEventWebhookPayload payload,
         ReadOnlyMemory<byte> body)
     {
@@ -38,6 +38,7 @@ public sealed record AshlarSecurityEventWebhookDelivery
             "Endpoint name must not contain line breaks.");
         ArgumentNullException.ThrowIfNull(uri);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(timeout, TimeSpan.Zero);
+        ArgumentNullException.ThrowIfNull(headers);
         ArgumentNullException.ThrowIfNull(payload);
         AshlarSecurityEventWebhookHeaderValues.ThrowIfRequiredUnsafe(
             payload.EventType,
@@ -45,20 +46,29 @@ public sealed record AshlarSecurityEventWebhookDelivery
             "Event type is required.",
             "Event type must not contain line breaks.");
 
-        if (sharedSecret is not null && string.IsNullOrWhiteSpace(sharedSecret))
-        {
-            throw new ArgumentException("Shared secret must not be blank.", nameof(sharedSecret));
-        }
-
         if (body.IsEmpty)
         {
             throw new ArgumentException("Webhook body must not be empty.", nameof(body));
         }
 
+        foreach (var header in headers)
+        {
+            AshlarSecurityEventWebhookHeaderValues.ThrowIfRequiredUnsafe(
+                header.Key,
+                nameof(headers),
+                "Header names are required.",
+                "Header names must not contain line breaks.");
+            AshlarSecurityEventWebhookHeaderValues.ThrowIfRequiredUnsafe(
+                header.Value,
+                nameof(headers),
+                "Header values are required.",
+                "Header values must not contain line breaks.");
+        }
+
         EndpointName = endpointName;
         Uri = uri;
         Timeout = timeout;
-        SharedSecret = sharedSecret;
+        Headers = headers;
         Payload = payload;
         Body = body;
     }
@@ -79,13 +89,9 @@ public sealed record AshlarSecurityEventWebhookDelivery
     public TimeSpan Timeout { get; }
 
     /// <summary>
-    /// Gets the optional shared secret used for best-effort signing.
+    /// Gets the final safe headers to send with the webhook request.
     /// </summary>
-    /// <remarks>
-    /// Durable providers should avoid storing this plaintext value directly; a later provider slice should
-    /// either persist enqueue-time signature material or introduce a key identifier model.
-    /// </remarks>
-    public string? SharedSecret { get; }
+    public IReadOnlyDictionary<string, string> Headers { get; }
 
     /// <summary>
     /// Gets the safe webhook payload.

@@ -5,6 +5,7 @@ global using Ashlar.Postgres.Identity;
 global using Ashlar.Postgres.Messaging;
 global using Ashlar.Postgres.Operational;
 global using Ashlar.Postgres.RateLimiting;
+global using Ashlar.Postgres.Webhooks;
 global using Ashlar.Postgres.Transactions;
 
 global using Ashlar.Auditing;
