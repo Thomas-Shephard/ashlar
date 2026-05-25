@@ -31,6 +31,26 @@ public sealed record EmailOutboxDiagnosticSnapshot
     public long FailedCount { get; init; }
 
     /// <summary>
+    /// Gets the sensitive pending count.
+    /// </summary>
+    public long SensitivePendingCount { get; init; }
+
+    /// <summary>
+    /// Gets the sensitive scheduled count.
+    /// </summary>
+    public long SensitiveScheduledCount { get; init; }
+
+    /// <summary>
+    /// Gets the sensitive locked count.
+    /// </summary>
+    public long SensitiveLockedCount { get; init; }
+
+    /// <summary>
+    /// Gets the sensitive failed count.
+    /// </summary>
+    public long SensitiveFailedCount { get; init; }
+
+    /// <summary>
     /// Gets the oldest pending timestamp.
     /// </summary>
     public DateTimeOffset? OldestPendingAt { get; init; }

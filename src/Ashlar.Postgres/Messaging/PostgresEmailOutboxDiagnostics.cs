@@ -84,6 +84,29 @@ internal sealed class PostgresEmailOutboxDiagnostics(
                 COUNT(*) FILTER (
                     WHERE failed_at IS NOT NULL
                 ) AS FailedCount,
+                COUNT(*) FILTER (
+                    WHERE sensitivity = 'ContainsLiveSecret'
+                      AND sent_at IS NULL
+                      AND failed_at IS NULL
+                      AND available_at <= @Now
+                      AND (locked_until IS NULL OR locked_until <= @Now)
+                ) AS SensitivePendingCount,
+                COUNT(*) FILTER (
+                    WHERE sensitivity = 'ContainsLiveSecret'
+                      AND sent_at IS NULL
+                      AND failed_at IS NULL
+                      AND available_at > @Now
+                ) AS SensitiveScheduledCount,
+                COUNT(*) FILTER (
+                    WHERE sensitivity = 'ContainsLiveSecret'
+                      AND sent_at IS NULL
+                      AND failed_at IS NULL
+                      AND locked_until > @Now
+                ) AS SensitiveLockedCount,
+                COUNT(*) FILTER (
+                    WHERE sensitivity = 'ContainsLiveSecret'
+                      AND failed_at IS NOT NULL
+                ) AS SensitiveFailedCount,
                 MIN(available_at) FILTER (
                     WHERE sent_at IS NULL
                       AND failed_at IS NULL

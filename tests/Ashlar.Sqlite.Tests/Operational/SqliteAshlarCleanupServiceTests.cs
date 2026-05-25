@@ -124,6 +124,92 @@ internal sealed class SqliteAshlarCleanupServiceTests : SqliteTestBase
     }
 
     [Test]
+    public async Task CleanupAsyncRemovesSensitiveSentRowsUsingSensitiveRetention()
+    {
+        await ExecuteAsync("""
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, sent_at) VALUES
+            ($sensitiveOld, 'old-secret@example.com', 'sensitive-old-sent', 'live-token-link', 'ContainsLiveSecret', $old, $old, $old),
+            ($sensitiveRecent, 'recent-secret@example.com', 'sensitive-recent-sent', 'live-token-link', 'ContainsLiveSecret', $recent, $recent, $recent),
+            ($normalOld, 'normal@example.com', 'normal-old-sent', 'normal-body', 'Normal', $old, $old, $old);
+            """, command =>
+        {
+            command.AddGuidParameter("$sensitiveOld", Guid.NewGuid());
+            command.AddGuidParameter("$sensitiveRecent", Guid.NewGuid());
+            command.AddGuidParameter("$normalOld", Guid.NewGuid());
+            command.AddDateTimeOffsetParameter("$old", Now.AddHours(-2));
+            command.AddDateTimeOffsetParameter("$recent", Now.AddMinutes(-30));
+        });
+
+        var result = await _provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.SentSensitiveEmails, Is.EqualTo(1));
+            Assert.That(result.SentEmails, Is.Zero);
+            Assert.That(await CountEmailSubjectAsync("sensitive-old-sent"), Is.Zero);
+            Assert.That(await CountEmailSubjectAsync("sensitive-recent-sent"), Is.EqualTo(1));
+            Assert.That(await CountEmailSubjectAsync("normal-old-sent"), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task CleanupAsyncRemovesSensitiveTerminalFailedRowsUsingSensitiveRetention()
+    {
+        await ExecuteAsync("""
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, failed_at) VALUES
+            ($sensitiveOld, 'old-secret@example.com', 'sensitive-old-failed', 'live-token-link', 'ContainsLiveSecret', $old, $old, $old),
+            ($sensitiveRecent, 'recent-secret@example.com', 'sensitive-recent-failed', 'live-token-link', 'ContainsLiveSecret', $recent, $recent, $recent),
+            ($normalOld, 'normal@example.com', 'normal-old-failed', 'normal-body', 'Normal', $old, $old, $old);
+            """, command =>
+        {
+            command.AddGuidParameter("$sensitiveOld", Guid.NewGuid());
+            command.AddGuidParameter("$sensitiveRecent", Guid.NewGuid());
+            command.AddGuidParameter("$normalOld", Guid.NewGuid());
+            command.AddDateTimeOffsetParameter("$old", Now.AddHours(-2));
+            command.AddDateTimeOffsetParameter("$recent", Now.AddMinutes(-30));
+        });
+
+        var result = await _provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailedSensitiveEmails, Is.EqualTo(1));
+            Assert.That(result.FailedEmails, Is.Zero);
+            Assert.That(await CountEmailSubjectAsync("sensitive-old-failed"), Is.Zero);
+            Assert.That(await CountEmailSubjectAsync("sensitive-recent-failed"), Is.EqualTo(1));
+            Assert.That(await CountEmailSubjectAsync("normal-old-failed"), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task CleanupAsyncDoesNotRemovePendingOrLockedSensitiveRows()
+    {
+        await ExecuteAsync("""
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at) VALUES
+            ($pending, 'pending-secret@example.com', 'sensitive-pending', 'live-token-link', 'ContainsLiveSecret', $old, $old);
+
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, locked_until, locked_by) VALUES
+            ($locked, 'locked-secret@example.com', 'sensitive-locked', 'live-token-link', 'ContainsLiveSecret', $old, $old, $lockedUntil, 'worker');
+            """, command =>
+        {
+            command.AddGuidParameter("$pending", Guid.NewGuid());
+            command.AddGuidParameter("$locked", Guid.NewGuid());
+            command.AddDateTimeOffsetParameter("$old", Now.AddDays(-30));
+            command.AddDateTimeOffsetParameter("$lockedUntil", Now.AddMinutes(5));
+        });
+
+        var result = await _provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.SentSensitiveEmails, Is.Zero);
+            Assert.That(result.FailedSensitiveEmails, Is.Zero);
+            Assert.That(await CountEmailSubjectAsync("sensitive-pending"), Is.EqualTo(1));
+            Assert.That(await CountEmailSubjectAsync("sensitive-locked"), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task CleanupAsyncSkipsCategoriesWithNullRetention()
     {
         await ExecuteAsync(
@@ -305,6 +391,15 @@ internal sealed class SqliteAshlarCleanupServiceTests : SqliteTestBase
         await using var connection = await OpenConnectionAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = $"SELECT count(*) FROM {table};";
+        return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
+    }
+
+    private async Task<int> CountEmailSubjectAsync(string subject)
+    {
+        await using var connection = await OpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT count(*) FROM ashlar_email_outbox WHERE subject = $subject;";
+        command.AddParameter("$subject", subject);
         return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
     }
 

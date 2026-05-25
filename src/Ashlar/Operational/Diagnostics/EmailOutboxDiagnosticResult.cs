@@ -12,6 +12,10 @@ namespace Ashlar.Operational.Diagnostics;
 /// <param name="LockedCount">The locked count value.</param>
 /// <param name="ExpiredLockCount">The expired lock count value.</param>
 /// <param name="FailedCount">The failed count value.</param>
+/// <param name="SensitivePendingCount">The sensitive pending count value.</param>
+/// <param name="SensitiveScheduledCount">The sensitive scheduled count value.</param>
+/// <param name="SensitiveLockedCount">The sensitive locked count value.</param>
+/// <param name="SensitiveFailedCount">The sensitive failed count value.</param>
 /// <param name="OldestPendingAt">The oldest pending at value.</param>
 /// <param name="OldestFailedAt">The oldest failed at value.</param>
 /// <param name="MaxAttempts">The max attempts value.</param>
@@ -27,6 +31,10 @@ public sealed record EmailOutboxDiagnosticResult(
     long? LockedCount,
     long? ExpiredLockCount,
     long? FailedCount,
+    long? SensitivePendingCount,
+    long? SensitiveScheduledCount,
+    long? SensitiveLockedCount,
+    long? SensitiveFailedCount,
     DateTimeOffset? OldestPendingAt,
     DateTimeOffset? OldestFailedAt,
     int? MaxAttempts,

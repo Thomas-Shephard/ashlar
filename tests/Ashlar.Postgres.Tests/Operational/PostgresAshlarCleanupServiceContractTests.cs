@@ -114,10 +114,54 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
             new { id = Guid.NewGuid(), occurred = Now.AddYears(-10) });
     }
 
+    protected override async Task SeedSensitiveEmailCleanupRowsAsync()
+    {
+        await using var connection = await OpenConnectionAsync();
+        await connection.ExecuteAsync("""
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, sent_at) VALUES
+            (@sensitiveOldSent, 'old-sent@example.com', 'sensitive-old-sent', 'live-token-link', 'ContainsLiveSecret', @old, @old, @old),
+            (@sensitiveRecentSent, 'recent-sent@example.com', 'sensitive-recent-sent', 'live-token-link', 'ContainsLiveSecret', @recent, @recent, @recent),
+            (@normalOldSent, 'normal-sent@example.com', 'normal-old-sent', 'normal-body', 'Normal', @old, @old, @old);
+
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, failed_at) VALUES
+            (@sensitiveOldFailed, 'old-failed@example.com', 'sensitive-old-failed', 'live-token-link', 'ContainsLiveSecret', @old, @old, @old),
+            (@sensitiveRecentFailed, 'recent-failed@example.com', 'sensitive-recent-failed', 'live-token-link', 'ContainsLiveSecret', @recent, @recent, @recent),
+            (@normalOldFailed, 'normal-failed@example.com', 'normal-old-failed', 'normal-body', 'Normal', @old, @old, @old);
+
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at) VALUES
+            (@pending, 'pending@example.com', 'sensitive-pending', 'live-token-link', 'ContainsLiveSecret', @veryOld, @veryOld);
+
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, locked_until, locked_by) VALUES
+            (@locked, 'locked@example.com', 'sensitive-locked', 'live-token-link', 'ContainsLiveSecret', @veryOld, @veryOld, @future, 'worker');
+            """, new
+        {
+            sensitiveOldSent = Guid.NewGuid(),
+            sensitiveRecentSent = Guid.NewGuid(),
+            normalOldSent = Guid.NewGuid(),
+            sensitiveOldFailed = Guid.NewGuid(),
+            sensitiveRecentFailed = Guid.NewGuid(),
+            normalOldFailed = Guid.NewGuid(),
+            pending = Guid.NewGuid(),
+            locked = Guid.NewGuid(),
+            old = Now.AddHours(-2),
+            recent = Now.AddMinutes(-30),
+            veryOld = Now.AddDays(-30),
+            future = Now.AddMinutes(5)
+        });
+    }
+
     protected override async Task<int> CountRowsAsync(string tableName)
     {
         await using var connection = await OpenConnectionAsync();
         return await connection.ExecuteScalarAsync<int>($"SELECT count(*) FROM {tableName}");
+    }
+
+    protected override async Task<int> CountEmailRowsBySubjectAsync(string subject)
+    {
+        await using var connection = await OpenConnectionAsync();
+        return await connection.ExecuteScalarAsync<int>(
+            "SELECT count(*) FROM ashlar_email_outbox WHERE subject = @subject",
+            new { subject });
     }
 
     protected override async Task<AshlarCleanupResult> RunCleanupWithNullAuditRetentionAsync()

@@ -48,20 +48,24 @@ internal sealed class DiagnosticResultTests
         var oldestFailedAt = checkedAt.AddHours(-1);
 
         var result = new EmailOutboxDiagnosticResult(
-            AshlarDiagnosticStatus.Degraded,
-            "Sqlite",
-            "old failed mail exists",
-            checkedAt,
-            10,
-            3,
-            2,
-            1,
-            5,
-            oldestPendingAt,
-            oldestFailedAt,
-            8,
-            TimeSpan.FromSeconds(15),
-            25);
+            Status: AshlarDiagnosticStatus.Degraded,
+            ProviderName: "Sqlite",
+            Reason: "old failed mail exists",
+            CheckedAt: checkedAt,
+            PendingCount: 10,
+            ScheduledCount: 3,
+            LockedCount: 2,
+            ExpiredLockCount: 1,
+            FailedCount: 5,
+            SensitivePendingCount: 4,
+            SensitiveScheduledCount: 2,
+            SensitiveLockedCount: 1,
+            SensitiveFailedCount: 3,
+            OldestPendingAt: oldestPendingAt,
+            OldestFailedAt: oldestFailedAt,
+            MaxAttempts: 8,
+            PollingInterval: TimeSpan.FromSeconds(15),
+            BatchSize: 25);
 
         using (Assert.EnterMultipleScope())
         {
@@ -74,6 +78,10 @@ internal sealed class DiagnosticResultTests
             Assert.That(result.LockedCount, Is.EqualTo(2));
             Assert.That(result.ExpiredLockCount, Is.EqualTo(1));
             Assert.That(result.FailedCount, Is.EqualTo(5));
+            Assert.That(result.SensitivePendingCount, Is.EqualTo(4));
+            Assert.That(result.SensitiveScheduledCount, Is.EqualTo(2));
+            Assert.That(result.SensitiveLockedCount, Is.EqualTo(1));
+            Assert.That(result.SensitiveFailedCount, Is.EqualTo(3));
             Assert.That(result.OldestPendingAt, Is.EqualTo(oldestPendingAt));
             Assert.That(result.OldestFailedAt, Is.EqualTo(oldestFailedAt));
             Assert.That(result.MaxAttempts, Is.EqualTo(8));
@@ -95,6 +103,10 @@ internal sealed class DiagnosticResultTests
             LockedCount = 2,
             ExpiredLockCount = 1,
             FailedCount = 5,
+            SensitivePendingCount = 4,
+            SensitiveScheduledCount = 2,
+            SensitiveLockedCount = 1,
+            SensitiveFailedCount = 3,
             OldestPendingAt = oldestPendingAt,
             OldestFailedAt = oldestFailedAt
         };
@@ -106,6 +118,10 @@ internal sealed class DiagnosticResultTests
             Assert.That(snapshot.LockedCount, Is.EqualTo(2));
             Assert.That(snapshot.ExpiredLockCount, Is.EqualTo(1));
             Assert.That(snapshot.FailedCount, Is.EqualTo(5));
+            Assert.That(snapshot.SensitivePendingCount, Is.EqualTo(4));
+            Assert.That(snapshot.SensitiveScheduledCount, Is.EqualTo(2));
+            Assert.That(snapshot.SensitiveLockedCount, Is.EqualTo(1));
+            Assert.That(snapshot.SensitiveFailedCount, Is.EqualTo(3));
             Assert.That(snapshot.OldestPendingAt, Is.EqualTo(oldestPendingAt));
             Assert.That(snapshot.OldestFailedAt, Is.EqualTo(oldestFailedAt));
         }

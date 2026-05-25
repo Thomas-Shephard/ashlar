@@ -33,7 +33,7 @@ internal sealed class AshlarCleanupDiagnosticsRunnerTests
             Assert.That(result.BatchSize, Is.EqualTo(100));
             Assert.That(result.MaxBatchesPerRun, Is.EqualTo(3));
             Assert.That(result.DisabledCategoryCount, Is.EqualTo(1));
-            Assert.That(result.EnabledCategoryCount, Is.EqualTo(17));
+            Assert.That(result.EnabledCategoryCount, Is.EqualTo(19));
         }
     }
 
@@ -52,7 +52,7 @@ internal sealed class AshlarCleanupDiagnosticsRunnerTests
             Assert.That(result.Configured, Is.True);
             Assert.That(result.OptionsValid, Is.False);
             Assert.That(result.BatchSize, Is.Zero);
-            Assert.That(result.EnabledCategoryCount, Is.EqualTo(17));
+            Assert.That(result.EnabledCategoryCount, Is.EqualTo(19));
             Assert.That(result.DisabledCategoryCount, Is.EqualTo(1));
         }
     }
@@ -72,7 +72,7 @@ internal sealed class AshlarCleanupDiagnosticsRunnerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.EnabledCategoryCount, Is.EqualTo(16));
+            Assert.That(result.EnabledCategoryCount, Is.EqualTo(18));
             Assert.That(result.DisabledCategoryCount, Is.EqualTo(2));
         }
     }

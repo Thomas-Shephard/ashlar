@@ -111,6 +111,16 @@ public sealed class AshlarCleanupOptions
     public TimeSpan? RemoveFailedEmailsAfter { get; set; } = TimeSpan.FromDays(30);
 
     /// <summary>
+    /// Retention period after sensitive email messages containing live secrets are sent. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes sent rows on the next cleanup run.
+    /// </summary>
+    public TimeSpan? RemoveSentSensitiveEmailsAfter { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// Retention period after sensitive email messages containing live secrets are marked as failed (all attempts exhausted). <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes failed rows on the next cleanup run.
+    /// </summary>
+    public TimeSpan? RemoveFailedSensitiveEmailsAfter { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>
     /// Performs the validate operation and returns the result.
     /// </summary>
     /// <param name="options">The options value.</param>
@@ -141,7 +151,9 @@ public sealed class AshlarCleanupOptions
             && IsValid(options.RemoveConsumedPasskeyChallengesAfter)
             && IsValid(options.RemoveAuditEventsAfter)
             && IsValid(options.RemoveSentEmailsAfter)
-            && IsValid(options.RemoveFailedEmailsAfter);
+            && IsValid(options.RemoveFailedEmailsAfter)
+            && IsValid(options.RemoveSentSensitiveEmailsAfter)
+            && IsValid(options.RemoveFailedSensitiveEmailsAfter);
     }
 
     private static bool IsValid(TimeSpan? value) => value == null || value.Value >= TimeSpan.Zero;

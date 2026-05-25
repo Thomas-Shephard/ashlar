@@ -26,6 +26,10 @@ internal sealed class AshlarEmailOutboxDiagnosticsRunnerTests
                     LockedCount = 3,
                     ExpiredLockCount = 4,
                     FailedCount = 5,
+                    SensitivePendingCount = 6,
+                    SensitiveScheduledCount = 7,
+                    SensitiveLockedCount = 8,
+                    SensitiveFailedCount = 9,
                     OldestPendingAt = oldestPendingAt,
                     OldestFailedAt = oldestFailedAt
                 }),
@@ -43,6 +47,10 @@ internal sealed class AshlarEmailOutboxDiagnosticsRunnerTests
             Assert.That(result.LockedCount, Is.EqualTo(3));
             Assert.That(result.ExpiredLockCount, Is.EqualTo(4));
             Assert.That(result.FailedCount, Is.EqualTo(5));
+            Assert.That(result.SensitivePendingCount, Is.EqualTo(6));
+            Assert.That(result.SensitiveScheduledCount, Is.EqualTo(7));
+            Assert.That(result.SensitiveLockedCount, Is.EqualTo(8));
+            Assert.That(result.SensitiveFailedCount, Is.EqualTo(9));
             Assert.That(result.OldestPendingAt, Is.EqualTo(oldestPendingAt));
             Assert.That(result.OldestFailedAt, Is.EqualTo(oldestFailedAt));
             Assert.That(result.MaxAttempts, Is.EqualTo(6));
