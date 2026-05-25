@@ -16,6 +16,8 @@ internal sealed class SqliteEmailOutboxContractTests : EmailOutboxContractTests
         {
             services.AddSingleton<TimeProvider>(_timeProvider);
             services.AddSingleton<RecordingEmailTransport>();
+            services.AddSingleton<RecordingSecretProtector>();
+            services.AddSingleton<Ashlar.Security.Encryption.ISecretProtector>(provider => provider.GetRequiredService<RecordingSecretProtector>());
             services.AddAshlarSqliteEmailOutboxDispatcher<RecordingEmailTransport>(options =>
             {
                 options.BatchSize = 2;

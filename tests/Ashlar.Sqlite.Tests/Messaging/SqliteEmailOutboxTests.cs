@@ -1,4 +1,5 @@
 using Ashlar.Messaging;
+using Ashlar.Security.Encryption;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -25,6 +26,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
         services.AddAshlarSqlite(GetConnectionString());
         services.AddAshlarSqliteEmailOutboxSender();
         services.AddSingleton<TimeProvider>(_timeProvider);
+        services.AddSingleton<ISecretProtector, FakeSecretProtector>();
         _serviceProvider = services.BuildServiceProvider();
         await _serviceProvider.InitializeAshlarSqliteSchemaAsync();
     }
@@ -67,8 +69,8 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxSender(null!, _timeProvider));
-            Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxSender(provider, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxSender(null!, _timeProvider, null));
+            Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxSender(provider, null!, null));
             Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxDispatcher<TestTransport>(null!, _timeProvider, options));
             Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxDispatcher<TestTransport>(services, null!, options));
             Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxDispatcher<TestTransport>(services, _timeProvider, null!));
@@ -103,6 +105,8 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             {
                 From = "from@example.com",
                 ReplyTo = "reply@example.com",
+                Cc = "cc@example.com",
+                Bcc = "bcc@example.com",
                 Headers = new Dictionary<string, string> { ["X-Test"] = "Header" },
                 Metadata = new Dictionary<string, string> { ["Trace"] = "Metadata" },
                 Sensitivity = EmailMessageSensitivity.ContainsLiveSecret
@@ -114,15 +118,73 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             Assert.That(row.ToAddress, Is.EqualTo("to@example.com"));
             Assert.That(row.FromAddress, Is.EqualTo("from@example.com"));
             Assert.That(row.ReplyToAddress, Is.EqualTo("reply@example.com"));
+            Assert.That(row.CcAddress, Is.EqualTo("cc@example.com"));
+            Assert.That(row.BccAddress, Is.EqualTo("bcc@example.com"));
             Assert.That(row.Subject, Is.EqualTo("Subject"));
-            Assert.That(row.TextBody, Is.EqualTo("Text"));
-            Assert.That(row.HtmlBody, Is.EqualTo("<p>Html</p>"));
+            Assert.That(row.TextBody, Is.Not.EqualTo("Text"));
+            Assert.That(row.TextBody, Does.Not.Contain("Text"));
+            Assert.That(row.HtmlBody, Is.Not.EqualTo("<p>Html</p>"));
+            Assert.That(row.HtmlBody, Does.Not.Contain("Html"));
             Assert.That(row.Headers, Does.Contain("\"X-Test\":\"Header\""));
             Assert.That(row.Metadata, Does.Contain("\"Trace\":\"Metadata\""));
             Assert.That(row.Sensitivity, Is.EqualTo(nameof(EmailMessageSensitivity.ContainsLiveSecret)));
+            Assert.That(row.BodyProtection, Is.EqualTo(nameof(EmailOutboxBodyProtection.SecretProtector)));
             Assert.That(row.CreatedAt, Is.EqualTo(_now));
             Assert.That(row.AvailableAt, Is.EqualTo(_now));
         }
+    }
+
+    [Test]
+    public async Task SenderStoresNormalBodyPlaintext()
+    {
+        var sender = _serviceProvider.GetRequiredService<IEmailSender>();
+        await sender.SendAsync(new EmailMessage("to@example.com", "Subject", "Normal body"));
+
+        var row = await QuerySingleOutboxRowAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(row.TextBody, Is.EqualTo("Normal body"));
+            Assert.That(row.BodyProtection, Is.EqualTo(nameof(EmailOutboxBodyProtection.None)));
+        }
+    }
+
+    [Test]
+    public async Task SchemaRejectsSensitiveMessageWithoutProtectedBodies()
+    {
+        var exception = Assert.CatchAsync<Exception>(() => ExecuteAsync(
+            """
+            INSERT INTO ashlar_email_outbox (
+                id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at
+            ) VALUES (
+                $id, 'mismatch@example.com', 'Subject', 'Plain secret', 'ContainsLiveSecret', 'None', $now, $now
+            )
+            """,
+            command =>
+            {
+                command.AddGuidParameter("$id", Guid.NewGuid());
+                command.AddDateTimeOffsetParameter("$now", _timeProvider.GetUtcNow());
+            }));
+
+        Assert.That(exception!.Message, Does.Contain("ck_ashlar_email_outbox_sensitive_body_protection"));
+    }
+
+    [Test]
+    public void SenderThrowsForSensitiveMessageWithoutSecretProtector()
+    {
+        var sender = new SqliteEmailOutboxSender(
+            _serviceProvider.GetRequiredService<ISqliteConnectionProvider>(),
+            _timeProvider);
+
+        var message = new EmailMessage(
+            "to@example.com",
+            "Subject",
+            "Body",
+            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+
+        var exception = Assert.ThrowsAsync<InvalidOperationException>(() => sender.SendAsync(message));
+
+        Assert.That(exception!.Message, Does.Contain("ISecretProtector"));
     }
 
     [Test]
@@ -165,6 +227,103 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             Assert.That(transport.DeliveredCount, Is.EqualTo(1));
             Assert.That(row.SentAt, Is.EqualTo(_now));
             Assert.That(row.AttemptCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task DispatcherUnprotectsSensitiveBodies()
+    {
+        var protector = _serviceProvider.GetRequiredService<ISecretProtector>();
+        var transport = new TestTransport();
+        var dispatcher = BuildDispatcher(transport, secretProtector: protector);
+        await ExecuteAsync(
+            """
+            INSERT INTO ashlar_email_outbox (
+                id, to_address, subject, text_body, html_body, sensitivity, body_protection, created_at, available_at
+            ) VALUES (
+                $id, 'protected@example.com', 'Subject', $textBody, $htmlBody, 'ContainsLiveSecret', 'SecretProtector', $now, $now
+            )
+            """,
+            command =>
+            {
+                command.AddGuidParameter("$id", Guid.NewGuid());
+                command.AddParameter("$textBody", protector.Protect("Secret text"));
+                command.AddParameter("$htmlBody", protector.Protect("<p>Secret html</p>"));
+                command.AddDateTimeOffsetParameter("$now", _timeProvider.GetUtcNow());
+            });
+
+        await dispatcher.ProcessBatchAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Messages.Single().TextBody, Is.EqualTo("Secret text"));
+            Assert.That(transport.Messages.Single().HtmlBody, Is.EqualTo("<p>Secret html</p>"));
+            Assert.That(transport.Messages.Single().Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
+        }
+    }
+
+    [Test]
+    public async Task DispatcherDoesNotDispatchUnknownBodyProtectionAsPlaintext()
+    {
+        var transport = new TestTransport();
+        var dispatcher = BuildDispatcher(transport);
+        await ExecuteAsync(
+            """
+            PRAGMA ignore_check_constraints = ON;
+            INSERT INTO ashlar_email_outbox (
+                id, to_address, subject, text_body, body_protection, created_at, available_at
+            ) VALUES (
+                $id, 'unknown-protection@example.com', 'Subject', 'Plain secret', 'Unknown', $now, $now
+            );
+            PRAGMA ignore_check_constraints = OFF;
+            """,
+            command =>
+            {
+                command.AddGuidParameter("$id", Guid.NewGuid());
+                command.AddDateTimeOffsetParameter("$now", _timeProvider.GetUtcNow());
+            });
+
+        await dispatcher.ProcessBatchAsync();
+
+        var row = await QuerySingleOutboxRowAsync();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.DeliveredCount, Is.Zero);
+            Assert.That(row.AttemptCount, Is.EqualTo(1));
+            Assert.That(row.LastError, Does.Contain("suppressed"));
+            Assert.That(row.LastError, Does.Not.Contain("Plain secret"));
+        }
+    }
+
+    [Test]
+    public async Task DispatcherSuppressesSensitiveFailureDetails()
+    {
+        var protector = _serviceProvider.GetRequiredService<ISecretProtector>();
+        var transport = new TestTransport { OnDeliver = (message, _) => throw new InvalidOperationException(message.TextBody) };
+        var dispatcher = BuildDispatcher(transport, secretProtector: protector);
+        await ExecuteAsync(
+            """
+            INSERT INTO ashlar_email_outbox (
+                id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at
+            ) VALUES (
+                $id, 'protected-failure@example.com', 'Subject', $textBody, 'ContainsLiveSecret', 'SecretProtector', $now, $now
+            )
+            """,
+            command =>
+            {
+                command.AddGuidParameter("$id", Guid.NewGuid());
+                command.AddParameter("$textBody", protector.Protect("live-token-link"));
+                command.AddDateTimeOffsetParameter("$now", _timeProvider.GetUtcNow());
+            });
+
+        await dispatcher.ProcessBatchAsync();
+
+        var row = await QuerySingleOutboxRowAsync();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.DeliveredCount, Is.EqualTo(1));
+            Assert.That(row.LastError, Does.Contain("suppressed"));
+            Assert.That(row.LastError, Does.Not.Contain("live-token-link"));
         }
     }
 
@@ -285,25 +444,31 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     [Test]
     public void MapToEmailMessageHandlesOptionalFields()
     {
+        ISecretProtector protector = new FakeSecretProtector();
         var message = EmailOutboxDispatch.MapToEmailMessage(new EmailOutboxEntry
         {
             Id = Guid.NewGuid(),
             ToAddress = "to@example.com",
             FromAddress = "from@example.com",
             ReplyToAddress = "reply@example.com",
+            CcAddress = "cc@example.com",
+            BccAddress = "bcc@example.com",
             Subject = "Subject",
-            TextBody = "Text",
-            HtmlBody = "Html",
+            TextBody = protector.Protect("Text"),
+            HtmlBody = protector.Protect("Html"),
             Sensitivity = EmailMessageSensitivity.ContainsLiveSecret,
+            BodyProtection = EmailOutboxBodyProtection.SecretProtector,
             Headers = "{\"X-Test\":\"Header\"}",
             Metadata = "{\"Trace\":\"Metadata\"}"
-        });
+        }, protector);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(message.To, Is.EqualTo("to@example.com"));
             Assert.That(message.From, Is.EqualTo("from@example.com"));
             Assert.That(message.ReplyTo, Is.EqualTo("reply@example.com"));
+            Assert.That(message.Cc, Is.EqualTo("cc@example.com"));
+            Assert.That(message.Bcc, Is.EqualTo("bcc@example.com"));
             Assert.That(message.Headers, Does.ContainKey("X-Test").WithValue("Header"));
             Assert.That(message.Metadata, Does.ContainKey("Trace").WithValue("Metadata"));
             Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
@@ -402,9 +567,10 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
 
     private SqliteEmailOutboxDispatcher<TestTransport> BuildDispatcher(
         TestTransport transport,
-        SqliteEmailOutboxOptions? options = null)
+        SqliteEmailOutboxOptions? options = null,
+        ISecretProtector? secretProtector = null)
     {
-        var provider = BuildDispatcherProvider(transport, options);
+        var provider = BuildDispatcherProvider(transport, options, secretProtector: secretProtector);
         return new SqliteEmailOutboxDispatcher<TestTransport>(
             provider,
             _timeProvider,
@@ -414,12 +580,18 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     private ServiceProvider BuildDispatcherProvider(
         TestTransport transport,
         SqliteEmailOutboxOptions? options = null,
-        bool trackForTearDown = true)
+        bool trackForTearDown = true,
+        ISecretProtector? secretProtector = null)
     {
         var services = new ServiceCollection();
         services.AddAshlarSqlite(GetConnectionString());
         services.AddSingleton(transport);
         services.AddSingleton<TimeProvider>(_timeProvider);
+        if (secretProtector != null)
+        {
+            services.AddSingleton(secretProtector);
+        }
+
         services.AddAshlarSqliteEmailOutboxDispatcher<TestTransport>(_ =>
         {
             if (options != null)
@@ -474,8 +646,8 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
         await using var connection = await OpenConnectionAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT to_address, from_address, reply_to_address, subject, text_body, html_body,
-                   sensitivity, headers, metadata, created_at, available_at, attempt_count, sent_at,
+            SELECT to_address, from_address, reply_to_address, cc_address, bcc_address, subject, text_body, html_body,
+                   sensitivity, body_protection, headers, metadata, created_at, available_at, attempt_count, sent_at,
                    failed_at, last_error, last_attempt_at
             FROM ashlar_email_outbox
             ORDER BY created_at, id
@@ -488,10 +660,13 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             ToAddress = reader.GetString(reader.GetOrdinal("to_address")),
             FromAddress = reader.GetNullableString("from_address"),
             ReplyToAddress = reader.GetNullableString("reply_to_address"),
+            CcAddress = reader.GetNullableString("cc_address"),
+            BccAddress = reader.GetNullableString("bcc_address"),
             Subject = reader.GetString(reader.GetOrdinal("subject")),
             TextBody = reader.GetNullableString("text_body"),
             HtmlBody = reader.GetNullableString("html_body"),
             Sensitivity = reader.GetString(reader.GetOrdinal("sensitivity")),
+            BodyProtection = reader.GetString(reader.GetOrdinal("body_protection")),
             Headers = reader.GetNullableString("headers"),
             Metadata = reader.GetNullableString("metadata"),
             CreatedAt = reader.GetDateTimeOffsetFromText("created_at"),
@@ -507,14 +682,39 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     private sealed class TestTransport : IEmailTransport
     {
         private int _deliveredCount;
+        private readonly List<EmailMessage> _messages = [];
 
         public Func<EmailMessage, CancellationToken, Task> OnDeliver { get; set; } = (_, _) => Task.CompletedTask;
         public int DeliveredCount => _deliveredCount;
+        public IReadOnlyList<EmailMessage> Messages => _messages;
 
         public Task DeliverAsync(EmailMessage message, CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref _deliveredCount);
+            _messages.Add(message);
             return OnDeliver(message, cancellationToken);
+        }
+    }
+
+    private sealed class FakeSecretProtector : ISecretProtector
+    {
+        private static readonly byte[] Prefix = "protected:"u8.ToArray();
+
+        public byte[] Protect(byte[] data)
+        {
+            ArgumentNullException.ThrowIfNull(data);
+
+            var protectedData = new byte[Prefix.Length + data.Length];
+            Buffer.BlockCopy(Prefix, 0, protectedData, 0, Prefix.Length);
+            Buffer.BlockCopy(data, 0, protectedData, Prefix.Length, data.Length);
+            return protectedData;
+        }
+
+        public byte[] Unprotect(byte[] data)
+        {
+            ArgumentNullException.ThrowIfNull(data);
+
+            return data.Skip(Prefix.Length).ToArray();
         }
     }
 
@@ -523,10 +723,13 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
         public required string ToAddress { get; init; }
         public string? FromAddress { get; init; }
         public string? ReplyToAddress { get; init; }
+        public string? CcAddress { get; init; }
+        public string? BccAddress { get; init; }
         public required string Subject { get; init; }
         public string? TextBody { get; init; }
         public string? HtmlBody { get; init; }
         public required string Sensitivity { get; init; }
+        public required string BodyProtection { get; init; }
         public string? Headers { get; init; }
         public string? Metadata { get; init; }
         public DateTimeOffset CreatedAt { get; init; }

@@ -1,3 +1,5 @@
+using Ashlar.Messaging;
+
 namespace Ashlar.Operational;
 
 /// <summary>
@@ -50,6 +52,8 @@ public static class AshlarCleanupPlan
     private const string ConsumedAtColumn = "consumed_at";
     private const string SentAtColumn = "sent_at";
     private const string FailedAtColumn = "failed_at";
+    private const string NormalEmailSensitivity = nameof(EmailMessageSensitivity.Normal);
+    private const string SensitiveEmailSensitivity = nameof(EmailMessageSensitivity.ContainsLiveSecret);
     private const string CutoffToken = "{cutoff}";
     private const string TrueToken = "{true}";
     private const string FalseToken = "{false}";
@@ -68,10 +72,10 @@ public static class AshlarCleanupPlan
         new("revoked_handshakes", HandshakesTable, $"is_revoked = {TrueToken} AND revoked_at IS NOT NULL AND revoked_at < {CutoffToken}", RevokedAtColumn, options => options.RemoveRevokedHandshakesAfter, result => result.RevokedHandshakes, (result, count) => result with { RevokedHandshakes = result.RevokedHandshakes + count }),
         new("expired_rate_limits", RateLimitsTable, $"expires_at < {CutoffToken}", ExpiresAtColumn, options => options.RemoveExpiredRateLimitsAfter, result => result.ExpiredRateLimits, (result, count) => result with { ExpiredRateLimits = result.ExpiredRateLimits + count }),
         new("audit_events", SecurityEventsTable, $"occurred_at < {CutoffToken}", OccurredAtColumn, options => options.RemoveAuditEventsAfter, result => result.AuditEvents, (result, count) => result with { AuditEvents = result.AuditEvents + count }),
-        new("sent_emails", EmailOutboxTable, $"sensitivity = 'Normal' AND sent_at IS NOT NULL AND sent_at < {CutoffToken}", SentAtColumn, options => options.RemoveSentEmailsAfter, result => result.SentEmails, (result, count) => result with { SentEmails = result.SentEmails + count }),
-        new("failed_emails", EmailOutboxTable, $"sensitivity = 'Normal' AND failed_at IS NOT NULL AND failed_at < {CutoffToken}", FailedAtColumn, options => options.RemoveFailedEmailsAfter, result => result.FailedEmails, (result, count) => result with { FailedEmails = result.FailedEmails + count }),
-        new("sent_sensitive_emails", EmailOutboxTable, $"sensitivity = 'ContainsLiveSecret' AND sent_at IS NOT NULL AND sent_at < {CutoffToken}", SentAtColumn, options => options.RemoveSentSensitiveEmailsAfter, result => result.SentSensitiveEmails, (result, count) => result with { SentSensitiveEmails = result.SentSensitiveEmails + count }),
-        new("failed_sensitive_emails", EmailOutboxTable, $"sensitivity = 'ContainsLiveSecret' AND failed_at IS NOT NULL AND failed_at < {CutoffToken}", FailedAtColumn, options => options.RemoveFailedSensitiveEmailsAfter, result => result.FailedSensitiveEmails, (result, count) => result with { FailedSensitiveEmails = result.FailedSensitiveEmails + count }),
+        new("sent_emails", EmailOutboxTable, $"sensitivity = '{NormalEmailSensitivity}' AND sent_at IS NOT NULL AND sent_at < {CutoffToken}", SentAtColumn, options => options.RemoveSentEmailsAfter, result => result.SentEmails, (result, count) => result with { SentEmails = result.SentEmails + count }),
+        new("failed_emails", EmailOutboxTable, $"sensitivity = '{NormalEmailSensitivity}' AND failed_at IS NOT NULL AND failed_at < {CutoffToken}", FailedAtColumn, options => options.RemoveFailedEmailsAfter, result => result.FailedEmails, (result, count) => result with { FailedEmails = result.FailedEmails + count }),
+        new("sent_sensitive_emails", EmailOutboxTable, $"sensitivity = '{SensitiveEmailSensitivity}' AND sent_at IS NOT NULL AND sent_at < {CutoffToken}", SentAtColumn, options => options.RemoveSentSensitiveEmailsAfter, result => result.SentSensitiveEmails, (result, count) => result with { SentSensitiveEmails = result.SentSensitiveEmails + count }),
+        new("failed_sensitive_emails", EmailOutboxTable, $"sensitivity = '{SensitiveEmailSensitivity}' AND failed_at IS NOT NULL AND failed_at < {CutoffToken}", FailedAtColumn, options => options.RemoveFailedSensitiveEmailsAfter, result => result.FailedSensitiveEmails, (result, count) => result with { FailedSensitiveEmails = result.FailedSensitiveEmails + count }),
         new("expired_authorization_grants", AuthorizationGrantsTable, $"expires_at IS NOT NULL AND expires_at < {CutoffToken} AND revoked_at IS NULL", ExpiresAtColumn, options => options.RemoveExpiredAuthorizationGrantsAfter, result => result.ExpiredAuthorizationGrants, (result, count) => result with { ExpiredAuthorizationGrants = result.ExpiredAuthorizationGrants + count }),
         new("revoked_authorization_grants", AuthorizationGrantsTable, $"revoked_at IS NOT NULL AND revoked_at < {CutoffToken}", RevokedAtColumn, options => options.RemoveRevokedAuthorizationGrantsAfter, result => result.RevokedAuthorizationGrants, (result, count) => result with { RevokedAuthorizationGrants = result.RevokedAuthorizationGrants + count }),
         new("expired_passkey_challenges", PasskeyChallengesTable, $"expires_at < {CutoffToken} AND consumed_at IS NULL", ExpiresAtColumn, options => options.RemoveExpiredPasskeyChallengesAfter, result => result.ExpiredPasskeyChallenges, (result, count) => result with { ExpiredPasskeyChallenges = result.ExpiredPasskeyChallenges + count }),

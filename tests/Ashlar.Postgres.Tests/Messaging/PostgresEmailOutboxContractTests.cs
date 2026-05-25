@@ -16,6 +16,8 @@ internal sealed class PostgresEmailOutboxContractTests : EmailOutboxContractTest
         {
             services.AddSingleton<TimeProvider>(_timeProvider);
             services.AddSingleton<RecordingEmailTransport>();
+            services.AddSingleton<RecordingSecretProtector>();
+            services.AddSingleton<Ashlar.Security.Encryption.ISecretProtector>(provider => provider.GetRequiredService<RecordingSecretProtector>());
             services.AddAshlarPostgresEmailOutboxDispatcher<RecordingEmailTransport>(options =>
             {
                 options.BatchSize = 2;

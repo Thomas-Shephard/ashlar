@@ -1,4 +1,5 @@
 using Ashlar.Messaging;
+using Ashlar.Security.Encryption;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -33,7 +34,7 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
             WHERE sent_at IS NULL
               AND failed_at IS NULL
               AND available_at <= $now
-              AND (locked_until IS NULL OR locked_until < $now)
+              AND (locked_until IS NULL OR locked_until <= $now)
             ORDER BY available_at, id
             LIMIT $batchSize
         )
@@ -99,8 +100,8 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
         await using var command = connectionHandle.Connection.CreateCommand();
         command.Transaction = connectionHandle.Transaction;
         command.CommandText = """
-            SELECT id, to_address, from_address, reply_to_address, subject,
-                   text_body, html_body, sensitivity, headers, metadata, attempt_count
+            SELECT id, to_address, from_address, reply_to_address, cc_address, bcc_address, subject,
+                   text_body, html_body, sensitivity, body_protection, headers, metadata, attempt_count
             FROM ashlar_email_outbox
             WHERE locked_by = $lockedBy
               AND sent_at IS NULL
@@ -111,21 +112,39 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
 
         var entries = new List<EmailOutboxEntry>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var idOrdinal = reader.GetOrdinal("id");
+        var toAddressOrdinal = reader.GetOrdinal("to_address");
+        var fromAddressOrdinal = reader.GetOrdinal("from_address");
+        var replyToAddressOrdinal = reader.GetOrdinal("reply_to_address");
+        var ccAddressOrdinal = reader.GetOrdinal("cc_address");
+        var bccAddressOrdinal = reader.GetOrdinal("bcc_address");
+        var subjectOrdinal = reader.GetOrdinal("subject");
+        var textBodyOrdinal = reader.GetOrdinal("text_body");
+        var htmlBodyOrdinal = reader.GetOrdinal("html_body");
+        var sensitivityOrdinal = reader.GetOrdinal("sensitivity");
+        var bodyProtectionOrdinal = reader.GetOrdinal("body_protection");
+        var headersOrdinal = reader.GetOrdinal("headers");
+        var metadataOrdinal = reader.GetOrdinal("metadata");
+        var attemptCountOrdinal = reader.GetOrdinal("attempt_count");
+
         while (await reader.ReadAsync(cancellationToken))
         {
             entries.Add(new EmailOutboxEntry
             {
-                Id = reader.GetGuidFromText("id"),
-                ToAddress = reader.GetString(reader.GetOrdinal("to_address")),
-                FromAddress = reader.GetNullableString("from_address"),
-                ReplyToAddress = reader.GetNullableString("reply_to_address"),
-                Subject = reader.GetString(reader.GetOrdinal("subject")),
-                TextBody = reader.GetNullableString("text_body"),
-                HtmlBody = reader.GetNullableString("html_body"),
-                Sensitivity = EmailOutboxDispatch.ParseSensitivity(reader.GetNullableString("sensitivity")),
-                Headers = reader.GetNullableString("headers"),
-                Metadata = reader.GetNullableString("metadata"),
-                AttemptCount = reader.GetInt32ByName("attempt_count")
+                Id = Guid.Parse(reader.GetString(idOrdinal)),
+                ToAddress = reader.GetString(toAddressOrdinal),
+                FromAddress = reader.GetValue(fromAddressOrdinal) as string,
+                ReplyToAddress = reader.GetValue(replyToAddressOrdinal) as string,
+                CcAddress = reader.GetValue(ccAddressOrdinal) as string,
+                BccAddress = reader.GetValue(bccAddressOrdinal) as string,
+                Subject = reader.GetString(subjectOrdinal),
+                TextBody = reader.GetValue(textBodyOrdinal) as string,
+                HtmlBody = reader.GetValue(htmlBodyOrdinal) as string,
+                Sensitivity = EmailOutboxDispatch.ParseSensitivity(reader.GetString(sensitivityOrdinal)),
+                BodyProtection = EmailOutboxDispatch.ParseBodyProtection(reader.GetString(bodyProtectionOrdinal)),
+                Headers = reader.GetValue(headersOrdinal) as string,
+                Metadata = reader.GetValue(metadataOrdinal) as string,
+                AttemptCount = reader.GetInt32(attemptCountOrdinal)
             });
         }
 
@@ -134,24 +153,17 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
 
     private async Task ProcessEntryAsync(EmailOutboxEntry entry, IServiceProvider provider, CancellationToken cancellationToken)
     {
-        var transport = provider.GetRequiredService<TTransport>();
-
-        try
-        {
-            var message = EmailOutboxDispatch.MapToEmailMessage(entry);
-            await transport.DeliverAsync(message, cancellationToken);
-            await MarkAsSentAsync(entry.Id, provider, CancellationToken.None);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var attemptCount = entry.AttemptCount + 1;
-            SqliteEmailOutboxDispatcherLog.EmailOutboxDeliveryFailed(_logger, entry.Id, attemptCount, attemptCount >= _options.MaxAttempts, ex);
-            await MarkAsFailedAsync(entry, ex, provider, CancellationToken.None);
-        }
+        await EmailOutboxDispatch.DispatchAsync(
+            entry,
+            new EmailOutboxDispatchContext(
+                provider.GetRequiredService<TTransport>(),
+                _options.MaxAttempts,
+                (id, token) => MarkAsSentAsync(id, provider, token),
+                (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, token),
+                (id, attemptCount, finalFailure, exception) =>
+                    SqliteEmailOutboxDispatcherLog.EmailOutboxDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
+                provider.GetService<ISecretProtector>()),
+            cancellationToken);
     }
 
     private async Task MarkAsSentAsync(Guid id, IServiceProvider provider, CancellationToken cancellationToken)
@@ -170,7 +182,8 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
             _options.MaxAttempts,
             _options.InitialRetryDelay,
             now,
-            exception);
+            exception,
+            EmailOutboxDispatch.ShouldSuppressFailureDetails(entry));
 
         await SqliteOutboxDispatch.MarkAsFailedAsync(
             new SqliteOutboxFailedUpdateContext(provider, MarkAsFailedSql, _lockId, now),

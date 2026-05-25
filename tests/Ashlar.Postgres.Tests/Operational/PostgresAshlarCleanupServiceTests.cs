@@ -137,10 +137,10 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
     {
         await using var connection = await GetDataSource().OpenConnectionAsync();
         await connection.ExecuteAsync("""
-            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, sent_at) VALUES
-            (@sensitiveOld, 'old-secret@example.com', 'sensitive-old-sent', 'live-token-link', 'ContainsLiveSecret', @old, @old, @old),
-            (@sensitiveRecent, 'recent-secret@example.com', 'sensitive-recent-sent', 'live-token-link', 'ContainsLiveSecret', @recent, @recent, @recent),
-            (@normalOld, 'normal@example.com', 'normal-old-sent', 'normal-body', 'Normal', @old, @old, @old);
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at, sent_at) VALUES
+            (@sensitiveOld, 'old-secret@example.com', 'sensitive-old-sent', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', @old, @old, @old),
+            (@sensitiveRecent, 'recent-secret@example.com', 'sensitive-recent-sent', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', @recent, @recent, @recent),
+            (@normalOld, 'normal@example.com', 'normal-old-sent', 'normal-body', 'Normal', 'None', @old, @old, @old);
             """, new
         {
             sensitiveOld = Guid.NewGuid(),
@@ -168,10 +168,10 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
     {
         await using var connection = await GetDataSource().OpenConnectionAsync();
         await connection.ExecuteAsync("""
-            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, failed_at) VALUES
-            (@sensitiveOld, 'old-secret@example.com', 'sensitive-old-failed', 'live-token-link', 'ContainsLiveSecret', @old, @old, @old),
-            (@sensitiveRecent, 'recent-secret@example.com', 'sensitive-recent-failed', 'live-token-link', 'ContainsLiveSecret', @recent, @recent, @recent),
-            (@normalOld, 'normal@example.com', 'normal-old-failed', 'normal-body', 'Normal', @old, @old, @old);
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at, failed_at) VALUES
+            (@sensitiveOld, 'old-secret@example.com', 'sensitive-old-failed', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', @old, @old, @old),
+            (@sensitiveRecent, 'recent-secret@example.com', 'sensitive-recent-failed', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', @recent, @recent, @recent),
+            (@normalOld, 'normal@example.com', 'normal-old-failed', 'normal-body', 'Normal', 'None', @old, @old, @old);
             """, new
         {
             sensitiveOld = Guid.NewGuid(),
@@ -199,11 +199,11 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
     {
         await using var connection = await GetDataSource().OpenConnectionAsync();
         await connection.ExecuteAsync("""
-            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at) VALUES
-            (@pending, 'pending-secret@example.com', 'sensitive-pending', 'live-token-link', 'ContainsLiveSecret', @old, @old);
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at) VALUES
+            (@pending, 'pending-secret@example.com', 'sensitive-pending', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', @old, @old);
 
-            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, locked_until, locked_by) VALUES
-            (@locked, 'locked-secret@example.com', 'sensitive-locked', 'live-token-link', 'ContainsLiveSecret', @old, @old, @lockedUntil, 'worker');
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at, locked_until, locked_by) VALUES
+            (@locked, 'locked-secret@example.com', 'sensitive-locked', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', @old, @old, @lockedUntil, 'worker');
             """, new
         {
             pending = Guid.NewGuid(),

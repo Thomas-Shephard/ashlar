@@ -83,18 +83,18 @@ internal sealed class SqliteEmailOutboxDiagnosticsTests : SqliteTestBase
         var newestFailed = CheckedAt.AddDays(-1);
 
         await ExecuteAsync("""
-            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, headers, metadata, created_at, available_at)
-            VALUES ($id1, 'pending-old@example.com', 'Subject', 'live-token-link', 'ContainsLiveSecret', '{"X-Token":"secret-header"}', '{"token_hash":"secret-hash"}', $oldPending, $oldPending),
-                   ($id2, 'pending-new@example.com', 'Subject', 'Body', 'Normal', '{}', '{}', $newPending, $newPending),
-                   ($id3, 'scheduled@example.com', 'Subject', 'secret-scheduled', 'ContainsLiveSecret', '{}', '{}', $scheduled, $scheduled);
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, body_protection, headers, metadata, created_at, available_at)
+            VALUES ($id1, 'pending-old@example.com', 'Subject', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', '{"X-Token":"secret-header"}', '{"token_hash":"secret-hash"}', $oldPending, $oldPending),
+                   ($id2, 'pending-new@example.com', 'Subject', 'Body', 'Normal', 'None', '{}', '{}', $newPending, $newPending),
+                   ($id3, 'scheduled@example.com', 'Subject', 'secret-scheduled', 'ContainsLiveSecret', 'SecretProtector', '{}', '{}', $scheduled, $scheduled);
 
-            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, locked_until, locked_by)
-            VALUES ($id4, 'locked@example.com', 'Subject', 'secret-locked', 'ContainsLiveSecret', $oldPending, $oldPending, $lockedUntil, 'worker'),
-                   ($id5, 'expired@example.com', 'Subject', 'Body', 'Normal', $oldPending, $oldPending, $expiredLock, 'worker');
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at, locked_until, locked_by)
+            VALUES ($id4, 'locked@example.com', 'Subject', 'secret-locked', 'ContainsLiveSecret', 'SecretProtector', $oldPending, $oldPending, $lockedUntil, 'worker'),
+                   ($id5, 'expired@example.com', 'Subject', 'Body', 'Normal', 'None', $oldPending, $oldPending, $expiredLock, 'worker');
 
-            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, failed_at)
-            VALUES ($id6, 'failed-old@example.com', 'Subject', 'secret-failed', 'ContainsLiveSecret', $oldPending, $oldPending, $oldestFailed),
-                   ($id7, 'failed-new@example.com', 'Subject', 'Body', 'Normal', $oldPending, $oldPending, $newestFailed);
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at, failed_at)
+            VALUES ($id6, 'failed-old@example.com', 'Subject', 'secret-failed', 'ContainsLiveSecret', 'SecretProtector', $oldPending, $oldPending, $oldestFailed),
+                   ($id7, 'failed-new@example.com', 'Subject', 'Body', 'Normal', 'None', $oldPending, $oldPending, $newestFailed);
             """, command =>
         {
             command.AddGuidParameter("$id1", Guid.NewGuid());

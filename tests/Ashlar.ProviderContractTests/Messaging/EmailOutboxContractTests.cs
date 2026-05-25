@@ -184,6 +184,8 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
             {
                 From = "from@example.com",
                 ReplyTo = "reply@example.com",
+                Cc = "cc@example.com",
+                Bcc = "bcc@example.com",
                 Headers = new Dictionary<string, string> { ["X-Test"] = "Header" },
                 Metadata = new Dictionary<string, string> { ["Trace"] = "Metadata" },
                 Sensitivity = EmailMessageSensitivity.ContainsLiveSecret
@@ -197,6 +199,8 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
             Assert.That(actual.To, Is.EqualTo(expected.To));
             Assert.That(actual.From, Is.EqualTo(expected.From));
             Assert.That(actual.ReplyTo, Is.EqualTo(expected.ReplyTo));
+            Assert.That(actual.Cc, Is.EqualTo(expected.Cc));
+            Assert.That(actual.Bcc, Is.EqualTo(expected.Bcc));
             Assert.That(actual.Subject, Is.EqualTo(expected.Subject));
             Assert.That(actual.TextBody, Is.EqualTo(expected.TextBody));
             Assert.That(actual.HtmlBody, Is.EqualTo(expected.HtmlBody));
