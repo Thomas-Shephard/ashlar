@@ -289,19 +289,6 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
         return CreateAuditProperties(grant.Id, grant);
     }
 
-    private Task RecordRevokeFailureAsync(RevokeAuthorizationGrantRequest request, string failureReason, CancellationToken cancellationToken)
-    {
-        return _securityEvents.RecordAsync(new SecurityEventDescriptor
-        {
-            EventType = AshlarSecurityEventTypes.AuthorizationGrantRevoked,
-            Outcome = SecurityEventOutcomes.Failure,
-            TenantId = request.TenantId,
-            Audit = request.Audit,
-            FailureReason = failureReason,
-            Properties = CreateAuditProperties(request.GrantId, null)
-        }, cancellationToken);
-    }
-
     private static Dictionary<string, string> CreateAuditProperties(Guid grantId, AuthorizationGrant? grant)
     {
         var properties = new Dictionary<string, string> { ["grant_id"] = grantId.ToString("D") };
@@ -317,5 +304,21 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
         }
 
         return properties;
+    }
+
+    /// <summary>
+    /// Records a revocation failure security event.
+    /// </summary>
+    private Task RecordRevokeFailureAsync(RevokeAuthorizationGrantRequest request, string failureReason, CancellationToken cancellationToken)
+    {
+        return _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.AuthorizationGrantRevoked,
+            Outcome = SecurityEventOutcomes.Failure,
+            TenantId = request.TenantId,
+            Audit = request.Audit,
+            FailureReason = failureReason,
+            Properties = CreateAuditProperties(request.GrantId, null)
+        }, cancellationToken);
     }
 }
