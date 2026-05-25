@@ -250,6 +250,19 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     }
 
     [Test]
+    public void SenderObserverFailureDoesNotBreakDelivery()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var sender = new AshlarSecurityEventWebhookSender(
+            new TestHttpClientFactory(transport),
+            observer: new ThrowingDeliveryObserver());
+
+        Assert.DoesNotThrowAsync(() => sender.SendAsync(CreateDelivery()));
+
+        Assert.That(transport.Requests, Has.Count.EqualTo(1));
+    }
+
+    [Test]
     public void SenderObserverRecordsBestEffortTimeoutFailure()
     {
         var observer = new RecordingDeliveryObserver();
@@ -668,6 +681,40 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     }
 
     [Test]
+    public async Task SharedOutboxDispatchObserverFailureDoesNotBreakDelivery()
+    {
+        var sent = new List<Guid>();
+        var failed = new List<Guid>();
+        var context = new AshlarSecurityEventWebhookOutboxDispatchContext(
+            new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, new QueueingHttpMessageHandler(
+                _ => new HttpResponseMessage(HttpStatusCode.Accepted),
+                _ => new HttpResponseMessage(HttpStatusCode.BadGateway))),
+            AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
+            3,
+            (id, _) =>
+            {
+                sent.Add(id);
+                return Task.CompletedTask;
+            },
+            (entry, _, _) =>
+            {
+                failed.Add(entry.Id);
+                return Task.CompletedTask;
+            },
+            (_, _, _, _) => { },
+            new ThrowingDeliveryObserver());
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sent, Has.Count.EqualTo(1));
+            Assert.That(failed, Has.Count.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void SharedOutboxDispatchObserverRecordsDurableCallerCancellation()
     {
         using var cancellation = new CancellationTokenSource();
@@ -785,6 +832,14 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         public void RecordDeliveryAttempt(AshlarSecurityEventWebhookDeliveryTelemetry telemetry)
         {
             Attempts.Add(telemetry);
+        }
+    }
+
+    private sealed class ThrowingDeliveryObserver : IAshlarSecurityEventWebhookDeliveryObserver
+    {
+        public void RecordDeliveryAttempt(AshlarSecurityEventWebhookDeliveryTelemetry telemetry)
+        {
+            throw new InvalidOperationException("Observer failed.");
         }
     }
 

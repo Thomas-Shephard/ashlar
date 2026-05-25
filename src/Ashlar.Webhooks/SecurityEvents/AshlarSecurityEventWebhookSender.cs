@@ -140,12 +140,19 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
 
     private void Record(AshlarSecurityEventWebhookDelivery delivery, long start, string outcome, string? failureKind)
     {
-        _observer.RecordDeliveryAttempt(new AshlarSecurityEventWebhookDeliveryTelemetry(
-            AshlarSecurityEventWebhookDeliveryTelemetry.BestEffortDeliveryMode,
-            delivery.Payload.EventType,
-            delivery.EndpointName,
-            outcome,
-            failureKind,
-            Stopwatch.GetElapsedTime(start)));
+        try
+        {
+            _observer.RecordDeliveryAttempt(new AshlarSecurityEventWebhookDeliveryTelemetry(
+                AshlarSecurityEventWebhookDeliveryTelemetry.BestEffortDeliveryMode,
+                delivery.Payload.EventType,
+                delivery.EndpointName,
+                outcome,
+                failureKind,
+                Stopwatch.GetElapsedTime(start)));
+        }
+        catch (Exception)
+        {
+            // Telemetry is best-effort and must never change webhook delivery behavior.
+        }
     }
 }

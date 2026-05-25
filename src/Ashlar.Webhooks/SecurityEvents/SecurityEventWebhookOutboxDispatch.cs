@@ -88,9 +88,9 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
 
         if (headers != null)
         {
-            foreach (var header in headers.Where(header => ShouldAddAsContentHeader(request, header)))
+            foreach (var header in headers)
             {
-                request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                AddHeader(request, header);
             }
         }
 
@@ -163,6 +163,14 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         return !request.Headers.TryAddWithoutValidation(header.Key, header.Value);
     }
 
+    private static void AddHeader(HttpRequestMessage request, KeyValuePair<string, string> header)
+    {
+        if (ShouldAddAsContentHeader(request, header))
+        {
+            request.Content!.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+    }
+
     private static async Task MarkAsFailedAsync(
         AshlarSecurityEventWebhookOutboxEntry entry,
         AshlarSecurityEventWebhookOutboxDispatchContext context,
@@ -197,14 +205,21 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         string? failureKind,
         Dictionary<string, string>? headers)
     {
-        var observer = context.DeliveryObserver ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
-        observer.RecordDeliveryAttempt(new AshlarSecurityEventWebhookDeliveryTelemetry(
-            AshlarSecurityEventWebhookDeliveryTelemetry.DurableOutboxDeliveryMode,
-            GetHeaderValue(headers, "X-Ashlar-Event-Type"),
-            GetHeaderValue(headers, "X-Ashlar-Webhook-Endpoint"),
-            outcome,
-            failureKind,
-            Stopwatch.GetElapsedTime(start)));
+        try
+        {
+            var observer = context.DeliveryObserver ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
+            observer.RecordDeliveryAttempt(new AshlarSecurityEventWebhookDeliveryTelemetry(
+                AshlarSecurityEventWebhookDeliveryTelemetry.DurableOutboxDeliveryMode,
+                GetHeaderValue(headers, "X-Ashlar-Event-Type"),
+                GetHeaderValue(headers, "X-Ashlar-Webhook-Endpoint"),
+                outcome,
+                failureKind,
+                Stopwatch.GetElapsedTime(start)));
+        }
+        catch (Exception)
+        {
+            // Telemetry is best-effort and must never change webhook delivery behavior.
+        }
     }
 
     private static string? GetHeaderValue(Dictionary<string, string>? headers, string headerName)
