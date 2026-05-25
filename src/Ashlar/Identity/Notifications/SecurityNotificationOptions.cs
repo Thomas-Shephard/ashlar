@@ -95,6 +95,11 @@ public sealed class SecurityNotificationOptions
             Subject = "Email verification completed",
             Body = "Your email address has been successfully verified at {OccurredAt} from IP {IpAddress}."
         },
+        [SecurityNotificationType.PasswordResetCompleted] = new SecurityNotificationTemplate
+        {
+            Subject = "Your password has been reset",
+            Body = "The password for your account was reset at {OccurredAt} from IP {IpAddress}."
+        },
         [SecurityNotificationType.SuspiciousAuthenticationAttempt] = new SecurityNotificationTemplate
         {
             Subject = "Suspicious authentication attempt",
@@ -115,6 +120,7 @@ public sealed class SecurityNotificationOptions
         [SecurityNotificationType.BootstrapCompleted] = TimeSpan.FromMinutes(15),
         [SecurityNotificationType.EmailChanged] = TimeSpan.FromMinutes(15),
         [SecurityNotificationType.EmailVerificationCompleted] = TimeSpan.FromMinutes(15),
+        [SecurityNotificationType.PasswordResetCompleted] = TimeSpan.FromMinutes(15),
         [SecurityNotificationType.SuspiciousAuthenticationAttempt] = TimeSpan.FromHours(1)
     };
 }

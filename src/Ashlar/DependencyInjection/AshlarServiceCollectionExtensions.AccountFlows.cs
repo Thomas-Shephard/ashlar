@@ -5,6 +5,7 @@ namespace Microsoft.Extensions.DependencyInjection;
 
 using Ashlar.Identity.Notifications;
 using Ashlar.Security.Encryption;
+using Ashlar.Security.Hashing;
 using Ashlar.Security.Tokens;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -125,6 +126,39 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<ISecretProtector>(),
             provider.GetRequiredService<IdentityAuditContext>()));
         services.TryAddScoped<IEmailChangeService, EmailChangeService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers Ashlar's local password reset services.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional password reset configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarPasswordReset(
+        this IServiceCollection services,
+        Action<PasswordResetOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.AddOptions<PasswordResetOptions>()
+            .Validate(PasswordResetOptions.Validate, "Password reset options are invalid.");
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IPasswordHasher, PasswordHasherV1>());
+        services.TryAddScoped(provider => new PasswordResetDependencies(
+            provider.GetRequiredService<IdentityContext>(),
+            provider.GetRequiredService<SecureTokenContext>(),
+            provider.GetRequiredService<IdentityInfrastructureContext>(),
+            provider.GetRequiredService<IAuthenticationSessionRepository>(),
+            provider.GetRequiredService<PasswordHasherSelector>(),
+            provider.GetRequiredService<IdentityAuditContext>()));
+        services.TryAddScoped<IPasswordResetService, PasswordResetService>();
 
         return services;
     }

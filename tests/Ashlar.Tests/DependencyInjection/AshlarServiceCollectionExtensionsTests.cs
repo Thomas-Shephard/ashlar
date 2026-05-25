@@ -80,11 +80,14 @@ internal sealed class AshlarServiceCollectionExtensionsTests
 
         services.AddAshlarEmailCodeSignIn();
         services.AddAshlarRecoveryCodes();
+        services.AddAshlarPasswordReset();
 
         Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
             descriptor.ServiceType == typeof(IEmailCodeSignInService)));
         Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
             descriptor.ServiceType == typeof(IRecoveryCodeService)));
+        Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
+            descriptor.ServiceType == typeof(IPasswordResetService)));
     }
 
     [Test]
@@ -137,6 +140,53 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         var service = scope.ServiceProvider.GetRequiredService<IIdentityService>();
 
         Assert.That(service, Is.TypeOf<IdentityService>());
+    }
+
+    [Test]
+    public void AddAshlarPasswordResetRegistersServiceAndOptions()
+    {
+        var services = new ServiceCollection();
+        var expiration = TimeSpan.FromMinutes(20);
+
+        services.AddAshlarPasswordReset(options => options.Expiration = expiration);
+
+        using var provider = services.BuildServiceProvider();
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertDescriptor<IPasswordResetService, PasswordResetService>(services, ServiceLifetime.Scoped);
+            Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(IPasswordHasher) && descriptor.ImplementationType == typeof(PasswordHasherV1)), Is.True);
+            Assert.That(provider.GetRequiredService<IOptions<PasswordResetOptions>>().Value.Expiration, Is.EqualTo(expiration));
+        }
+    }
+
+    [Test]
+    public void AddAshlarPasswordResetValidatesOptions()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarPasswordReset(options => options.MinimumRequestDuration = TimeSpan.FromTicks(-1));
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Throws<OptionsValidationException>(() => _ = provider.GetRequiredService<IOptions<PasswordResetOptions>>().Value);
+    }
+
+    [Test]
+    public void AddAshlarPasswordResetResolvesWhenRequiredRepositoriesArePresent()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddSingleton(Mock.Of<ISecretProtector>());
+
+        services.AddAshlarPasswordReset();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        Assert.That(scope.ServiceProvider.GetRequiredService<IPasswordResetService>(), Is.TypeOf<PasswordResetService>());
     }
 
     [Test]
