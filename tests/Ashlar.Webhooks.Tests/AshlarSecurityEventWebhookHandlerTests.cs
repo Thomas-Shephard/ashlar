@@ -212,6 +212,83 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     }
 
     [Test]
+    public async Task SenderObserverRecordsSuccessfulBestEffortDelivery()
+    {
+        var observer = new RecordingDeliveryObserver();
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var sender = new AshlarSecurityEventWebhookSender(new TestHttpClientFactory(transport), observer: observer);
+
+        await sender.SendAsync(CreateDelivery());
+
+        var telemetry = observer.Attempts.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(telemetry.DeliveryMode, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.BestEffortDeliveryMode));
+            Assert.That(telemetry.EventType, Is.EqualTo("ashlar.sign_in.failed"));
+            Assert.That(telemetry.EndpointName, Is.EqualTo("audit"));
+            Assert.That(telemetry.Outcome, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.SuccessOutcome));
+            Assert.That(telemetry.FailureKind, Is.Null);
+            Assert.That(telemetry.Duration, Is.GreaterThanOrEqualTo(TimeSpan.Zero));
+        }
+    }
+
+    [Test]
+    public async Task SenderObserverRecordsBestEffortHttpStatusFailure()
+    {
+        var observer = new RecordingDeliveryObserver();
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.BadGateway);
+        var sender = new AshlarSecurityEventWebhookSender(new TestHttpClientFactory(transport), observer: observer);
+
+        await sender.SendAsync(CreateDelivery());
+
+        var telemetry = observer.Attempts.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(telemetry.Outcome, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.FailureOutcome));
+            Assert.That(telemetry.FailureKind, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.HttpStatusFailureKind));
+        }
+    }
+
+    [Test]
+    public void SenderObserverRecordsBestEffortTimeoutFailure()
+    {
+        var observer = new RecordingDeliveryObserver();
+        var transport = new QueueingHttpMessageHandler(_ => throw new OperationCanceledException());
+        var sender = new AshlarSecurityEventWebhookSender(new TestHttpClientFactory(transport), observer: observer);
+
+        Assert.ThrowsAsync<OperationCanceledException>(() => sender.SendAsync(CreateDelivery()));
+
+        Assert.That(observer.Attempts.Single().FailureKind, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.TimeoutFailureKind));
+    }
+
+    [Test]
+    public void SenderObserverRecordsBestEffortCallerCancellation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var observer = new RecordingDeliveryObserver();
+        var transport = new ImmediateThrowHttpMessageHandler(_ => new OperationCanceledException(cancellation.Token));
+        var sender = new AshlarSecurityEventWebhookSender(new TestHttpClientFactory(transport), observer: observer);
+
+        cancellation.Cancel();
+
+        Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(), () => sender.SendAsync(CreateDelivery(), cancellation.Token));
+
+        Assert.That(observer.Attempts.Single().FailureKind, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.CanceledFailureKind));
+    }
+
+    [Test]
+    public void SenderObserverRecordsBestEffortExceptionFailure()
+    {
+        var observer = new RecordingDeliveryObserver();
+        var transport = new QueueingHttpMessageHandler(_ => throw new InvalidOperationException("transport failed"));
+        var sender = new AshlarSecurityEventWebhookSender(new TestHttpClientFactory(transport), observer: observer);
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => sender.SendAsync(CreateDelivery()));
+
+        Assert.That(observer.Attempts.Single().FailureKind, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.ExceptionFailureKind));
+    }
+
+    [Test]
     public void HandleAsyncRespectsCallerCancellation()
     {
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
@@ -381,6 +458,36 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             payload);
     }
 
+    private const string AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName = "Ashlar.Webhooks.Tests.Outbox";
+
+    private static AshlarSecurityEventWebhookOutboxEntry CreateOutboxEntry(string? headers = null)
+    {
+        var delivery = CreateDelivery();
+        return new AshlarSecurityEventWebhookOutboxEntry
+        {
+            Id = Guid.NewGuid(),
+            Uri = delivery.Uri.ToString(),
+            Body = delivery.Body.ToArray(),
+            Headers = headers ?? JsonSerializer.Serialize(delivery.Headers),
+            TimeoutMs = (long)delivery.Timeout.TotalMilliseconds,
+            AttemptCount = 0
+        };
+    }
+
+    private static AshlarSecurityEventWebhookOutboxDispatchContext CreateOutboxDispatchContext(
+        HttpMessageHandler transport,
+        IAshlarSecurityEventWebhookDeliveryObserver? observer)
+    {
+        return new AshlarSecurityEventWebhookOutboxDispatchContext(
+            new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
+            AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
+            3,
+            (_, _) => Task.CompletedTask,
+            (_, _, _) => Task.CompletedTask,
+            (_, _, _, _) => { },
+            observer);
+    }
+
     private static AshlarSecurityEventWebhookPayload CreatePayload()
     {
         return AshlarSecurityEventWebhookDeliveryFactory.CreatePayload(CreateEvent());
@@ -511,6 +618,150 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         Assert.That(AshlarSecurityEventWebhookHeaderValues.IsSafe(null), Is.False);
     }
 
+    [Test]
+    public void NoOpObserverThrowsForNullTelemetry()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance.RecordDeliveryAttempt(null!));
+
+        Assert.That(exception?.ParamName, Is.EqualTo("telemetry"));
+    }
+
+    [Test]
+    public async Task SharedOutboxDispatchObserverRecordsDurableSuccessAndFailure()
+    {
+        var observer = new RecordingDeliveryObserver();
+        var sent = new List<Guid>();
+        var failed = new List<Guid>();
+        var context = new AshlarSecurityEventWebhookOutboxDispatchContext(
+            new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, new QueueingHttpMessageHandler(
+                _ => new HttpResponseMessage(HttpStatusCode.Accepted),
+                _ => new HttpResponseMessage(HttpStatusCode.BadGateway))),
+            AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
+            3,
+            (id, _) =>
+            {
+                sent.Add(id);
+                return Task.CompletedTask;
+            },
+            (entry, _, _) =>
+            {
+                failed.Add(entry.Id);
+                return Task.CompletedTask;
+            },
+            (_, _, _, _) => { },
+            observer);
+        var entry = CreateOutboxEntry();
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, context, CancellationToken.None);
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, context, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sent, Has.Count.EqualTo(1));
+            Assert.That(failed, Has.Count.EqualTo(1));
+            Assert.That(observer.Attempts[0].DeliveryMode, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.DurableOutboxDeliveryMode));
+            Assert.That(observer.Attempts[0].Outcome, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.SuccessOutcome));
+            Assert.That(observer.Attempts[1].FailureKind, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.HttpStatusFailureKind));
+            Assert.That(observer.Attempts[1].EventType, Is.EqualTo("ashlar.sign_in.failed"));
+            Assert.That(observer.Attempts[1].EndpointName, Is.EqualTo("audit"));
+        }
+    }
+
+    [Test]
+    public void SharedOutboxDispatchObserverRecordsDurableCallerCancellation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var observer = new RecordingDeliveryObserver();
+        var context = CreateOutboxDispatchContext(
+            new ImmediateThrowHttpMessageHandler(_ => new OperationCanceledException(cancellation.Token)),
+            observer);
+
+        cancellation.Cancel();
+
+        Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(), () => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, cancellation.Token));
+
+        Assert.That(observer.Attempts.Single().FailureKind, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.CanceledFailureKind));
+    }
+
+    [Test]
+    public async Task SharedOutboxDispatchObserverRecordsDurableTimeoutAndExceptionFailures()
+    {
+        var observer = new RecordingDeliveryObserver();
+        var failed = new List<Exception>();
+        var context = new AshlarSecurityEventWebhookOutboxDispatchContext(
+            new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, new QueueingHttpMessageHandler(
+                _ => throw new OperationCanceledException(),
+                _ => throw new InvalidOperationException("transport failed"))),
+            AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
+            3,
+            (_, _) => Task.CompletedTask,
+            (_, exception, _) =>
+            {
+                failed.Add(exception);
+                return Task.CompletedTask;
+            },
+            (_, _, _, _) => { },
+            observer);
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failed, Has.Count.EqualTo(2));
+            Assert.That(observer.Attempts[0].FailureKind, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.TimeoutFailureKind));
+            Assert.That(observer.Attempts[1].FailureKind, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.ExceptionFailureKind));
+        }
+    }
+
+    [Test]
+    public async Task SharedOutboxDispatchHandlesNoObserverAndMissingHeaders()
+    {
+        var observer = new RecordingDeliveryObserver();
+        var missingHeaders = CreateOutboxEntry("{}");
+        var nullHeaders = CreateOutboxEntry("null");
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
+            missingHeaders,
+            CreateOutboxDispatchContext(new RecordingHttpMessageHandler(HttpStatusCode.Accepted), observer),
+            CancellationToken.None);
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
+            nullHeaders,
+            CreateOutboxDispatchContext(new RecordingHttpMessageHandler(HttpStatusCode.Accepted), observer),
+            CancellationToken.None);
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
+            CreateOutboxEntry(),
+            CreateOutboxDispatchContext(new RecordingHttpMessageHandler(HttpStatusCode.Accepted), null),
+            CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observer.Attempts, Has.Count.EqualTo(2));
+            Assert.That(observer.Attempts[0].EventType, Is.Null);
+            Assert.That(observer.Attempts[0].EndpointName, Is.Null);
+            Assert.That(observer.Attempts[1].EventType, Is.Null);
+            Assert.That(observer.Attempts[1].EndpointName, Is.Null);
+        }
+    }
+
+    [Test]
+    public void SharedOutboxDispatchRejectsInvalidContext()
+    {
+        var entry = CreateOutboxEntry();
+        var valid = CreateOutboxDispatchContext(new RecordingHttpMessageHandler(HttpStatusCode.Accepted), new RecordingDeliveryObserver());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(null!, valid, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, null!, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, valid with { HttpClientFactory = null! }, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, valid with { HttpClientName = " " }, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, valid with { MarkAsSentAsync = null! }, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, valid with { MarkAsFailedAsync = null! }, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, valid with { LogDeliveryFailed = null! }, CancellationToken.None));
+        }
+    }
+
     private sealed class TestWebhookSender : IAshlarSecurityEventWebhookSender
     {
         public Task SendAsync(AshlarSecurityEventWebhookDelivery delivery, CancellationToken cancellationToken = default)
@@ -524,6 +775,25 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         public Task EnqueueAsync(AshlarSecurityEventWebhookDelivery delivery, CancellationToken cancellationToken = default)
         {
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingDeliveryObserver : IAshlarSecurityEventWebhookDeliveryObserver
+    {
+        public List<AshlarSecurityEventWebhookDeliveryTelemetry> Attempts { get; } = [];
+
+        public void RecordDeliveryAttempt(AshlarSecurityEventWebhookDeliveryTelemetry telemetry)
+        {
+            Attempts.Add(telemetry);
+        }
+    }
+
+    private sealed class NamedHttpClientFactory(string expectedName, HttpMessageHandler transport) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name)
+        {
+            Assert.That(name, Is.EqualTo(expectedName));
+            return new HttpClient(transport, disposeHandler: false);
         }
     }
 
@@ -548,6 +818,14 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         {
             Requests.Add(await RecordedRequest.CreateAsync(request, cancellationToken));
             return _responses.Dequeue()(request);
+        }
+    }
+
+    private sealed class ImmediateThrowHttpMessageHandler(Func<HttpRequestMessage, Exception> exceptionFactory) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            throw exceptionFactory(request);
         }
     }
 

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
@@ -48,13 +49,15 @@ public sealed class AshlarSecurityEventWebhookOutboxEntry
 /// <param name="MarkAsSentAsync">The callback that persists successful delivery state.</param>
 /// <param name="MarkAsFailedAsync">The callback that persists failed delivery state.</param>
 /// <param name="LogDeliveryFailed">The callback that logs failed delivery attempts.</param>
+/// <param name="DeliveryObserver">The provider-neutral delivery observer.</param>
 public sealed record AshlarSecurityEventWebhookOutboxDispatchContext(
     IHttpClientFactory HttpClientFactory,
     string HttpClientName,
     int MaxAttempts,
     Func<Guid, CancellationToken, Task> MarkAsSentAsync,
     Func<AshlarSecurityEventWebhookOutboxEntry, Exception, CancellationToken, Task> MarkAsFailedAsync,
-    Action<Guid, int, bool, Exception> LogDeliveryFailed);
+    Action<Guid, int, bool, Exception> LogDeliveryFailed,
+    IAshlarSecurityEventWebhookDeliveryObserver? DeliveryObserver = null);
 
 /// <summary>
 /// Provides shared helpers for dispatching durable security event webhook outbox entries.
@@ -72,17 +75,23 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
     {
         ArgumentNullException.ThrowIfNull(entry);
 
+        return MapToHttpRequest(entry, DeserializeHeaders(entry.Headers));
+    }
+
+    private static HttpRequestMessage MapToHttpRequest(
+        AshlarSecurityEventWebhookOutboxEntry entry,
+        Dictionary<string, string>? headers)
+    {
         var request = new HttpRequestMessage(HttpMethod.Post, entry.Uri);
         request.Content = new ReadOnlyMemoryContent(entry.Body);
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
-        var headers = JsonSerializer.Deserialize<Dictionary<string, string>>(entry.Headers);
         if (headers != null)
         {
-            headers
-                .Where(header => ShouldAddAsContentHeader(request, header))
-                .ToList()
-                .ForEach(header => request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value));
+            foreach (var header in headers.Where(header => ShouldAddAsContentHeader(request, header)))
+            {
+                request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
         }
 
         return request;
@@ -108,27 +117,41 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         ArgumentNullException.ThrowIfNull(context.MarkAsFailedAsync);
         ArgumentNullException.ThrowIfNull(context.LogDeliveryFailed);
 
+        var start = Stopwatch.GetTimestamp();
+        Dictionary<string, string>? headers = null;
         try
         {
-            using var request = MapToHttpRequest(entry);
+            headers = DeserializeHeaders(entry.Headers);
+            using var request = MapToHttpRequest(entry, headers);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromMilliseconds(entry.TimeoutMs));
             var client = context.HttpClientFactory.CreateClient(context.HttpClientName);
             using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw new HttpRequestException($"Webhook endpoint returned HTTP {(int)response.StatusCode}.");
+                var exception = new HttpRequestException($"Webhook endpoint returned HTTP {(int)response.StatusCode}.");
+                RecordFailure(context, start, AshlarSecurityEventWebhookDeliveryTelemetry.HttpStatusFailureKind, headers);
+                await MarkAsFailedAsync(entry, context, exception).ConfigureAwait(false);
+                return;
             }
+
+            RecordSuccess(context, start, headers);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            RecordFailure(context, start, AshlarSecurityEventWebhookDeliveryTelemetry.CanceledFailureKind, headers);
             throw;
+        }
+        catch (OperationCanceledException exception)
+        {
+            RecordFailure(context, start, AshlarSecurityEventWebhookDeliveryTelemetry.TimeoutFailureKind, headers);
+            await MarkAsFailedAsync(entry, context, exception).ConfigureAwait(false);
+            return;
         }
         catch (Exception exception)
         {
-            var attemptCount = entry.AttemptCount + 1;
-            context.LogDeliveryFailed(entry.Id, attemptCount, attemptCount >= context.MaxAttempts, exception);
-            await context.MarkAsFailedAsync(entry, exception, CancellationToken.None).ConfigureAwait(false);
+            RecordFailure(context, start, AshlarSecurityEventWebhookDeliveryTelemetry.ExceptionFailureKind, headers);
+            await MarkAsFailedAsync(entry, context, exception).ConfigureAwait(false);
             return;
         }
 
@@ -138,6 +161,60 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
     private static bool ShouldAddAsContentHeader(HttpRequestMessage request, KeyValuePair<string, string> header)
     {
         return !request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+    }
+
+    private static async Task MarkAsFailedAsync(
+        AshlarSecurityEventWebhookOutboxEntry entry,
+        AshlarSecurityEventWebhookOutboxDispatchContext context,
+        Exception exception)
+    {
+        var attemptCount = entry.AttemptCount + 1;
+        context.LogDeliveryFailed(entry.Id, attemptCount, attemptCount >= context.MaxAttempts, exception);
+        await context.MarkAsFailedAsync(entry, exception, CancellationToken.None).ConfigureAwait(false);
+    }
+
+    private static void RecordSuccess(
+        AshlarSecurityEventWebhookOutboxDispatchContext context,
+        long start,
+        Dictionary<string, string>? headers)
+    {
+        Record(context, start, AshlarSecurityEventWebhookDeliveryTelemetry.SuccessOutcome, null, headers);
+    }
+
+    private static void RecordFailure(
+        AshlarSecurityEventWebhookOutboxDispatchContext context,
+        long start,
+        string failureKind,
+        Dictionary<string, string>? headers)
+    {
+        Record(context, start, AshlarSecurityEventWebhookDeliveryTelemetry.FailureOutcome, failureKind, headers);
+    }
+
+    private static void Record(
+        AshlarSecurityEventWebhookOutboxDispatchContext context,
+        long start,
+        string outcome,
+        string? failureKind,
+        Dictionary<string, string>? headers)
+    {
+        var observer = context.DeliveryObserver ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
+        observer.RecordDeliveryAttempt(new AshlarSecurityEventWebhookDeliveryTelemetry(
+            AshlarSecurityEventWebhookDeliveryTelemetry.DurableOutboxDeliveryMode,
+            GetHeaderValue(headers, "X-Ashlar-Event-Type"),
+            GetHeaderValue(headers, "X-Ashlar-Webhook-Endpoint"),
+            outcome,
+            failureKind,
+            Stopwatch.GetElapsedTime(start)));
+    }
+
+    private static string? GetHeaderValue(Dictionary<string, string>? headers, string headerName)
+    {
+        return headers != null && headers.TryGetValue(headerName, out var value) ? value : null;
+    }
+
+    private static Dictionary<string, string>? DeserializeHeaders(string headers)
+    {
+        return JsonSerializer.Deserialize<Dictionary<string, string>>(headers);
     }
 
     /// <summary>

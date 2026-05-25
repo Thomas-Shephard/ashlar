@@ -143,6 +143,40 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     }
 
     [Test]
+    public async Task DispatcherReportsDeliveryObserver()
+    {
+        var observer = new RecordingDeliveryObserver();
+        await EnqueueAsync(CreateDelivery());
+
+        await CreateDispatcher(new RecordingHttpMessageHandler(HttpStatusCode.Accepted), observer: observer).ProcessBatchAsync();
+
+        var telemetry = observer.Attempts.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(telemetry.DeliveryMode, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.DurableOutboxDeliveryMode));
+            Assert.That(telemetry.Outcome, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.SuccessOutcome));
+            Assert.That(telemetry.EventType, Is.EqualTo("ashlar.sign_in.failed"));
+            Assert.That(telemetry.EndpointName, Is.EqualTo("audit"));
+        }
+    }
+
+    [Test]
+    public async Task DispatcherReportsDeliveryObserverFailures()
+    {
+        var observer = new RecordingDeliveryObserver();
+        await EnqueueAsync(CreateDelivery());
+
+        await CreateDispatcher(new RecordingHttpMessageHandler(HttpStatusCode.BadGateway), observer: observer).ProcessBatchAsync();
+
+        var telemetry = observer.Attempts.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(telemetry.Outcome, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.FailureOutcome));
+            Assert.That(telemetry.FailureKind, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.HttpStatusFailureKind));
+        }
+    }
+
+    [Test]
     public async Task DispatcherRetriesFailedSends()
     {
         await EnqueueAsync(CreateDelivery());
@@ -518,13 +552,15 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
 
     private SqliteSecurityEventWebhookOutboxDispatcher CreateDispatcher(
         HttpMessageHandler transport,
-        SqliteSecurityEventWebhookOutboxOptions? options = null)
+        SqliteSecurityEventWebhookOutboxOptions? options = null,
+        IAshlarSecurityEventWebhookDeliveryObserver? observer = null)
     {
         return new SqliteSecurityEventWebhookOutboxDispatcher(
             CreateDispatcherProvider(),
             _timeProvider,
             Options.Create(options ?? new SqliteSecurityEventWebhookOutboxOptions()),
-            new TestHttpClientFactory(transport));
+            new TestHttpClientFactory(transport),
+            deliveryObserver: observer);
     }
 
     private ServiceProvider CreateDispatcherProvider()
@@ -708,6 +744,16 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             }
 
             return await inner.GetConnectionAsync(cancellationToken);
+        }
+    }
+
+    private sealed class RecordingDeliveryObserver : IAshlarSecurityEventWebhookDeliveryObserver
+    {
+        public List<AshlarSecurityEventWebhookDeliveryTelemetry> Attempts { get; } = [];
+
+        public void RecordDeliveryAttempt(AshlarSecurityEventWebhookDeliveryTelemetry telemetry)
+        {
+            Attempts.Add(telemetry);
         }
     }
 

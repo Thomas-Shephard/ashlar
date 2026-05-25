@@ -39,6 +39,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
             Assert.That(provider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
             Assert.That(provider.GetServices<ISecurityEventHandler>().Single(), Is.TypeOf<AshlarSecurityEventWebhookHandler>());
             Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookSender>(), Is.TypeOf<AshlarSecurityEventWebhookSender>());
+            Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>(), Is.TypeOf<NoOpAshlarSecurityEventWebhookDeliveryObserver>());
             Assert.That(provider.GetRequiredService<AshlarSecurityEventWebhookDeliveryFactory>(), Is.Not.Null);
             Assert.That(provider.GetRequiredService<IOptions<AshlarSecurityEventWebhookOptions>>().Value.Endpoints.Single().Name, Is.EqualTo("audit"));
             Assert.That(configuredHttpClient, Is.True);
@@ -142,6 +143,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         {
             Assert.That(handler, Is.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
             Assert.That(provider.GetRequiredService<AshlarSecurityEventWebhookDeliveryFactory>(), Is.Not.Null);
+            Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>(), Is.TypeOf<NoOpAshlarSecurityEventWebhookDeliveryObserver>());
             Assert.That(enqueuer.Deliveries, Has.Count.EqualTo(1));
             Assert.That(enqueuer.Deliveries.Single().Headers, Does.ContainKey(AshlarSecurityEventWebhookSender.SignatureHeaderName));
         }

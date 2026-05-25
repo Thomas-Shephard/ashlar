@@ -179,6 +179,40 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     }
 
     [Test]
+    public async Task DispatcherReportsDeliveryObserver()
+    {
+        var observer = new RecordingDeliveryObserver();
+        await EnqueueAsync(CreateDelivery());
+
+        await CreateDispatcher(new RecordingHttpMessageHandler(HttpStatusCode.Accepted), observer: observer).ProcessBatchAsync();
+
+        var telemetry = observer.Attempts.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(telemetry.DeliveryMode, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.DurableOutboxDeliveryMode));
+            Assert.That(telemetry.Outcome, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.SuccessOutcome));
+            Assert.That(telemetry.EventType, Is.EqualTo("ashlar.sign_in.failed"));
+            Assert.That(telemetry.EndpointName, Is.EqualTo("audit"));
+        }
+    }
+
+    [Test]
+    public async Task DispatcherReportsDeliveryObserverFailures()
+    {
+        var observer = new RecordingDeliveryObserver();
+        await EnqueueAsync(CreateDelivery());
+
+        await CreateDispatcher(new RecordingHttpMessageHandler(HttpStatusCode.BadGateway), observer: observer).ProcessBatchAsync();
+
+        var telemetry = observer.Attempts.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(telemetry.Outcome, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.FailureOutcome));
+            Assert.That(telemetry.FailureKind, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.HttpStatusFailureKind));
+        }
+    }
+
+    [Test]
     public async Task DispatcherRetriesFailedSendsAndMarksFinalFailure()
     {
         await EnqueueAsync(CreateDelivery());
@@ -535,13 +569,15 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
 
     private PostgresSecurityEventWebhookOutboxDispatcher CreateDispatcher(
         HttpMessageHandler transport,
-        PostgresSecurityEventWebhookOutboxOptions? options = null)
+        PostgresSecurityEventWebhookOutboxOptions? options = null,
+        IAshlarSecurityEventWebhookDeliveryObserver? observer = null)
     {
         return new PostgresSecurityEventWebhookOutboxDispatcher(
             _serviceProvider,
             _timeProvider,
             Options.Create(options ?? new PostgresSecurityEventWebhookOutboxOptions()),
-            new TestHttpClientFactory(transport));
+            new TestHttpClientFactory(transport),
+            deliveryObserver: observer);
     }
 
     private ServiceProvider CreateHostedServiceProvider(HttpMessageHandler transport)
@@ -643,6 +679,16 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             }
 
             return await inner.GetConnectionAsync(cancellationToken);
+        }
+    }
+
+    private sealed class RecordingDeliveryObserver : IAshlarSecurityEventWebhookDeliveryObserver
+    {
+        public List<AshlarSecurityEventWebhookDeliveryTelemetry> Attempts { get; } = [];
+
+        public void RecordDeliveryAttempt(AshlarSecurityEventWebhookDeliveryTelemetry telemetry)
+        {
+            Attempts.Add(telemetry);
         }
     }
 

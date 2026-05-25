@@ -37,6 +37,7 @@ public static class AshlarWebhooksServiceCollectionExtensions
 
         services.TryAddSingleton<AshlarSecurityEventWebhookDeliveryFactory>();
         services.TryAddSingleton<IAshlarSecurityEventWebhookSender, AshlarSecurityEventWebhookSender>();
+        services.TryAddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(_ => NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance);
         services.AddAshlarSecurityEventHandler<AshlarSecurityEventWebhookHandler>();
 
         return services;
@@ -63,6 +64,7 @@ public static class AshlarWebhooksServiceCollectionExtensions
         }
 
         services.TryAddSingleton<AshlarSecurityEventWebhookDeliveryFactory>();
+        services.TryAddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(_ => NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance);
         services.AddAshlarSecurityEventHandler<AshlarSecurityEventWebhookOutboxHandler>();
 
         return services;

@@ -1,6 +1,7 @@
 using System.Diagnostics.Metrics;
 using Ashlar.Auditing;
 using Ashlar.Observability.SecurityEvents;
+using Ashlar.Webhooks.SecurityEvents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -69,6 +70,53 @@ internal sealed class AshlarObservabilityServiceCollectionExtensionsTests
     public void AddAshlarSecurityEventMetricsRejectsNullServices()
     {
         var exception = Assert.Throws<ArgumentNullException>(() => AshlarObservabilityServiceCollectionExtensions.AddAshlarSecurityEventMetrics(null!));
+
+        Assert.That(exception?.ParamName, Is.EqualTo("services"));
+    }
+
+    [Test]
+    public void AddAshlarSecurityEventWebhookMetricsRegistersObserverAndOptions()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarSecurityEventWebhookMetrics(options =>
+        {
+            options.MeterName = "Custom.Webhook.Meter";
+            options.IncludeEndpointName = true;
+            options.EmitDurationHistogram = false;
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<AshlarSecurityEventWebhookMetricsOptions>>().Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>(), Is.TypeOf<AshlarSecurityEventWebhookMetricsObserver>());
+            Assert.That(options.MeterName, Is.EqualTo("Custom.Webhook.Meter"));
+            Assert.That(options.IncludeEndpointName, Is.True);
+            Assert.That(options.EmitDurationHistogram, Is.False);
+        }
+    }
+
+    [Test]
+    public void AddAshlarSecurityEventWebhookMetricsIsIdempotentAndCanReplaceNoOpObserver()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarSecurityEventWebhooks();
+
+        services
+            .AddAshlarSecurityEventWebhookMetrics()
+            .AddAshlarSecurityEventWebhookMetrics();
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetServices<IAshlarSecurityEventWebhookDeliveryObserver>().OfType<AshlarSecurityEventWebhookMetricsObserver>(), Has.Exactly(1).Items);
+    }
+
+    [Test]
+    public void AddAshlarSecurityEventWebhookMetricsRejectsNullServices()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => AshlarObservabilityServiceCollectionExtensions.AddAshlarSecurityEventWebhookMetrics(null!));
 
         Assert.That(exception?.ParamName, Is.EqualTo("services"));
     }
