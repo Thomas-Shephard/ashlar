@@ -20,70 +20,70 @@ internal static class AshlarHealthCheckData
 
     public static Dictionary<string, object> ForEmailOutbox(EmailOutboxDiagnosticResult result)
     {
-        return ForOutbox(
-            result.Status,
-            result.ProviderName,
-            result.Reason,
-            result.CheckedAt,
-            result.PendingCount,
-            result.ScheduledCount,
-            result.LockedCount,
-            result.ExpiredLockCount,
-            result.FailedCount,
-            result.OldestPendingAt,
-            result.OldestFailedAt,
-            result.MaxAttempts,
-            result.PollingInterval,
-            result.BatchSize);
+        return ForOutbox(ToOutboxMetrics(result));
     }
 
     public static Dictionary<string, object> ForSecurityEventWebhookOutbox(SecurityEventWebhookOutboxDiagnosticResult result)
     {
-        return ForOutbox(
-            result.Status,
-            result.ProviderName,
-            result.Reason,
-            result.CheckedAt,
-            result.PendingCount,
-            result.ScheduledCount,
-            result.LockedCount,
-            result.ExpiredLockCount,
-            result.FailedCount,
-            result.OldestPendingAt,
-            result.OldestFailedAt,
-            result.MaxAttempts,
-            result.PollingInterval,
-            result.BatchSize);
+        return ForOutbox(ToOutboxMetrics(result));
     }
 
-    private static Dictionary<string, object> ForOutbox(
-        AshlarDiagnosticStatus status,
-        string providerName,
-        string? reason,
-        DateTimeOffset checkedAt,
-        long? pendingCount,
-        long? scheduledCount,
-        long? lockedCount,
-        long? expiredLockCount,
-        long? failedCount,
-        DateTimeOffset? oldestPendingAt,
-        DateTimeOffset? oldestFailedAt,
-        int? maxAttempts,
-        TimeSpan? pollingInterval,
-        int? batchSize)
+    public static AshlarOutboxHealthCheckMetrics ToOutboxMetrics(EmailOutboxDiagnosticResult result)
     {
-        var data = Common(status, providerName, reason, checkedAt);
-        Add(data, "pending_count", pendingCount);
-        Add(data, "scheduled_count", scheduledCount);
-        Add(data, "locked_count", lockedCount);
-        Add(data, "expired_lock_count", expiredLockCount);
-        Add(data, "failed_count", failedCount);
-        Add(data, "oldest_pending_at", oldestPendingAt);
-        Add(data, "oldest_failed_at", oldestFailedAt);
-        Add(data, "oldest_pending_age_seconds", oldestPendingAt.HasValue ? Math.Max(0, (checkedAt - oldestPendingAt.Value).TotalSeconds) : null);
-        Add(data, "max_attempts", maxAttempts);
-        Add(data, "polling_interval_seconds", pollingInterval?.TotalSeconds);
-        Add(data, "batch_size", batchSize);
+        return new AshlarOutboxHealthCheckMetrics
+        {
+            Status = result.Status,
+            ProviderName = result.ProviderName,
+            Reason = result.Reason,
+            CheckedAt = result.CheckedAt,
+            PendingCount = result.PendingCount,
+            ScheduledCount = result.ScheduledCount,
+            LockedCount = result.LockedCount,
+            ExpiredLockCount = result.ExpiredLockCount,
+            FailedCount = result.FailedCount,
+            OldestPendingAt = result.OldestPendingAt,
+            OldestFailedAt = result.OldestFailedAt,
+            MaxAttempts = result.MaxAttempts,
+            PollingInterval = result.PollingInterval,
+            BatchSize = result.BatchSize
+        };
+    }
+
+    public static AshlarOutboxHealthCheckMetrics ToOutboxMetrics(SecurityEventWebhookOutboxDiagnosticResult result)
+    {
+        return new AshlarOutboxHealthCheckMetrics
+        {
+            Status = result.Status,
+            ProviderName = result.ProviderName,
+            Reason = result.Reason,
+            CheckedAt = result.CheckedAt,
+            PendingCount = result.PendingCount,
+            ScheduledCount = result.ScheduledCount,
+            LockedCount = result.LockedCount,
+            ExpiredLockCount = result.ExpiredLockCount,
+            FailedCount = result.FailedCount,
+            OldestPendingAt = result.OldestPendingAt,
+            OldestFailedAt = result.OldestFailedAt,
+            MaxAttempts = result.MaxAttempts,
+            PollingInterval = result.PollingInterval,
+            BatchSize = result.BatchSize
+        };
+    }
+
+    private static Dictionary<string, object> ForOutbox(AshlarOutboxHealthCheckMetrics metrics)
+    {
+        var data = Common(metrics.Status, metrics.ProviderName, metrics.Reason, metrics.CheckedAt);
+        Add(data, "pending_count", metrics.PendingCount);
+        Add(data, "scheduled_count", metrics.ScheduledCount);
+        Add(data, "locked_count", metrics.LockedCount);
+        Add(data, "expired_lock_count", metrics.ExpiredLockCount);
+        Add(data, "failed_count", metrics.FailedCount);
+        Add(data, "oldest_pending_at", metrics.OldestPendingAt);
+        Add(data, "oldest_failed_at", metrics.OldestFailedAt);
+        Add(data, "oldest_pending_age_seconds", metrics.OldestPendingAt.HasValue ? Math.Max(0, (metrics.CheckedAt - metrics.OldestPendingAt.Value).TotalSeconds) : null);
+        Add(data, "max_attempts", metrics.MaxAttempts);
+        Add(data, "polling_interval_seconds", metrics.PollingInterval?.TotalSeconds);
+        Add(data, "batch_size", metrics.BatchSize);
         return data;
     }
 

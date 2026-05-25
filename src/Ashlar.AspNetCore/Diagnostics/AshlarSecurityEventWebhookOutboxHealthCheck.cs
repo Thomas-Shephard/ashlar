@@ -45,14 +45,13 @@ public sealed class AshlarSecurityEventWebhookOutboxHealthCheck(
     private bool ThresholdExceeded(SecurityEventWebhookOutboxDiagnosticResult result)
     {
         return AshlarOutboxHealthCheck.ThresholdExceeded(
-            result.FailedCount,
-            _options.FailedCountThreshold,
-            result.ExpiredLockCount,
-            _options.ExpiredLockCountThreshold,
-            result.PendingCount,
-            _options.PendingCountThreshold,
-            result.CheckedAt,
-            result.OldestPendingAt,
-            _options.OldestPendingAgeThreshold);
+            AshlarHealthCheckData.ToOutboxMetrics(result),
+            new AshlarOutboxHealthCheckThresholds
+            {
+                FailedCountThreshold = _options.FailedCountThreshold,
+                ExpiredLockCountThreshold = _options.ExpiredLockCountThreshold,
+                PendingCountThreshold = _options.PendingCountThreshold,
+                OldestPendingAgeThreshold = _options.OldestPendingAgeThreshold
+            });
     }
 }

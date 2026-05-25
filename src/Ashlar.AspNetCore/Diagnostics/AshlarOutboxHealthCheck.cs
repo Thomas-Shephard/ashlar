@@ -23,30 +23,25 @@ internal static class AshlarOutboxHealthCheck
     }
 
     public static bool ThresholdExceeded(
-        long? failedCount,
-        long? failedCountThreshold,
-        long? expiredLockCount,
-        long? expiredLockCountThreshold,
-        long? pendingCount,
-        long? pendingCountThreshold,
-        DateTimeOffset checkedAt,
-        DateTimeOffset? oldestPendingAt,
-        TimeSpan? oldestPendingAgeThreshold)
+        AshlarOutboxHealthCheckMetrics metrics,
+        AshlarOutboxHealthCheckThresholds thresholds)
     {
-        return Exceeds(failedCount, failedCountThreshold)
-            || Exceeds(expiredLockCount, expiredLockCountThreshold)
-            || Exceeds(pendingCount, pendingCountThreshold)
-            || ExceedsOldestPendingAge(checkedAt, oldestPendingAt, oldestPendingAgeThreshold);
+        ArgumentNullException.ThrowIfNull(metrics);
+        ArgumentNullException.ThrowIfNull(thresholds);
+
+        return Exceeds(metrics.FailedCount, thresholds.FailedCountThreshold)
+            || Exceeds(metrics.ExpiredLockCount, thresholds.ExpiredLockCountThreshold)
+            || Exceeds(metrics.PendingCount, thresholds.PendingCountThreshold)
+            || ExceedsOldestPendingAge(metrics, thresholds);
     }
 
     private static bool ExceedsOldestPendingAge(
-        DateTimeOffset checkedAt,
-        DateTimeOffset? oldestPendingAt,
-        TimeSpan? oldestPendingAgeThreshold)
+        AshlarOutboxHealthCheckMetrics metrics,
+        AshlarOutboxHealthCheckThresholds thresholds)
     {
-        return oldestPendingAgeThreshold.HasValue
-            && oldestPendingAt.HasValue
-            && checkedAt - oldestPendingAt.Value > oldestPendingAgeThreshold.Value;
+        return thresholds.OldestPendingAgeThreshold.HasValue
+            && metrics.OldestPendingAt.HasValue
+            && metrics.CheckedAt - metrics.OldestPendingAt.Value > thresholds.OldestPendingAgeThreshold.Value;
     }
 
     private static bool Exceeds(long? value, long? threshold)
