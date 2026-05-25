@@ -1,3 +1,4 @@
+using Ashlar.Webhooks.SecurityEvents;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -84,7 +85,7 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
         var now = _timeProvider.GetUtcNow();
         var lockedUntil = now.Add(_options.LockDuration);
 
-        List<SecurityEventWebhookOutboxEntry> entries;
+        List<AshlarSecurityEventWebhookOutboxEntry> entries;
         await using (var scope = _serviceProvider.CreateAsyncScope())
         {
             var connectionProvider = scope.ServiceProvider.GetRequiredService<IPostgresConnectionProvider>();
@@ -99,7 +100,7 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
                     _options.BatchSize
                 }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
 
-                entries = (await connectionHandle.Connection.QueryAsync<SecurityEventWebhookOutboxEntry>(command).ConfigureAwait(false)).ToList();
+                entries = (await connectionHandle.Connection.QueryAsync<AshlarSecurityEventWebhookOutboxEntry>(command).ConfigureAwait(false)).ToList();
             }
         }
 
@@ -112,33 +113,18 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
         return entries.Count;
     }
 
-    private async Task ProcessEntryAsync(SecurityEventWebhookOutboxEntry entry, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task ProcessEntryAsync(AshlarSecurityEventWebhookOutboxEntry entry, IServiceProvider provider, CancellationToken cancellationToken)
     {
-        try
-        {
-            using var request = SecurityEventWebhookOutboxDispatch.MapToHttpRequest(entry);
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromMilliseconds(entry.TimeoutMs));
-            var client = _httpClientFactory.CreateClient(HttpClientName);
-            using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new HttpRequestException($"Webhook endpoint returned HTTP {(int)response.StatusCode}.");
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            var attemptCount = entry.AttemptCount + 1;
-            PostgresSecurityEventWebhookOutboxDispatcherLog.WebhookDeliveryFailed(_logger, entry.Id, attemptCount, attemptCount >= _options.MaxAttempts, exception);
-            await MarkAsFailedAsync(entry, exception, provider, CancellationToken.None).ConfigureAwait(false);
-            return;
-        }
-
-        await MarkAsSentAsync(entry.Id, provider, CancellationToken.None).ConfigureAwait(false);
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
+            entry,
+            new AshlarSecurityEventWebhookOutboxDispatchContext(
+                _httpClientFactory,
+                HttpClientName,
+                _options.MaxAttempts,
+                (id, token) => MarkAsSentAsync(id, provider, token),
+                (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, token),
+                (id, attemptCount, finalFailure, exception) => PostgresSecurityEventWebhookOutboxDispatcherLog.WebhookDeliveryFailed(_logger, id, attemptCount, finalFailure, exception)),
+            cancellationToken).ConfigureAwait(false);
     }
 
     private async Task MarkAsSentAsync(Guid id, IServiceProvider provider, CancellationToken cancellationToken)
@@ -163,10 +149,10 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
         }
     }
 
-    private async Task MarkAsFailedAsync(SecurityEventWebhookOutboxEntry entry, Exception exception, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task MarkAsFailedAsync(AshlarSecurityEventWebhookOutboxEntry entry, Exception exception, IServiceProvider provider, CancellationToken cancellationToken)
     {
         var now = _timeProvider.GetUtcNow();
-        var failure = SecurityEventWebhookOutboxDispatch.CreateFailureUpdate(
+        var failure = AshlarSecurityEventWebhookOutboxDispatch.CreateFailureUpdate(
             entry.AttemptCount,
             _options.MaxAttempts,
             _options.InitialRetryDelay,

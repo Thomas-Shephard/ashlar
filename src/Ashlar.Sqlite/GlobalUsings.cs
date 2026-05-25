@@ -6,6 +6,7 @@ global using Ashlar.Sqlite.Messaging;
 global using Ashlar.Sqlite.Operational;
 global using Ashlar.Sqlite.RateLimiting;
 global using Ashlar.Sqlite.Transactions;
+global using Ashlar.Sqlite.Webhooks;
 
 global using Ashlar.Auditing;
 global using Ashlar.Identity.Abstractions.Repositories;

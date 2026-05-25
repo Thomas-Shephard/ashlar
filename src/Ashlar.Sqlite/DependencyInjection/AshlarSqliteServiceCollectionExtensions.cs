@@ -4,6 +4,7 @@ using Ashlar.Messaging;
 using Ashlar.Operational;
 using Ashlar.Operational.Diagnostics;
 using Ashlar.Sqlite.Schema;
+using Ashlar.Webhooks.SecurityEvents;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
@@ -215,6 +216,74 @@ public static class AshlarSqliteServiceCollectionExtensions
 
         services.AddAshlarSqliteEmailOutboxDispatcher<TTransport>(configure);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, SqliteEmailOutboxHostedService<TTransport>>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar SQLite-backed security event webhook outbox enqueuer.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional webhook outbox configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarSqliteSecurityEventWebhookOutbox(
+        this IServiceCollection services,
+        Action<SqliteSecurityEventWebhookOutboxOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddOptions<SqliteSecurityEventWebhookOutboxOptions>()
+            .Validate(SqliteSecurityEventWebhookOutboxOptions.Validate, "Security event webhook outbox options are invalid.");
+
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddScoped<IAshlarSecurityEventWebhookEnqueuer, SqliteSecurityEventWebhookEnqueuer>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar SQLite-backed security event webhook outbox enqueuer and dispatcher.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional webhook outbox configuration.</param>
+    /// <param name="configureHttpClient">Optional HTTP client builder configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarSqliteSecurityEventWebhookDispatcher(
+        this IServiceCollection services,
+        Action<SqliteSecurityEventWebhookOutboxOptions>? configure = null,
+        Action<IHttpClientBuilder>? configureHttpClient = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarSqliteSecurityEventWebhookOutbox(configure);
+        var httpClientBuilder = services.AddHttpClient(SqliteSecurityEventWebhookOutboxDispatcher.HttpClientName);
+        configureHttpClient?.Invoke(httpClientBuilder);
+        services.TryAddScoped<SqliteSecurityEventWebhookOutboxDispatcher>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Ashlar SQLite-backed security event webhook outbox dispatcher as a hosted service.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional webhook outbox configuration.</param>
+    /// <param name="configureHttpClient">Optional HTTP client builder configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarSqliteSecurityEventWebhookHostedService(
+        this IServiceCollection services,
+        Action<SqliteSecurityEventWebhookOutboxOptions>? configure = null,
+        Action<IHttpClientBuilder>? configureHttpClient = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarSqliteSecurityEventWebhookDispatcher(configure, configureHttpClient);
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, SqliteSecurityEventWebhookOutboxHostedService>());
 
         return services;
     }

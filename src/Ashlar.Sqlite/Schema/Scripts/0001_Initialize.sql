@@ -259,6 +259,39 @@ CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_locked_until ON ashlar_email_o
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_sent_at ON ashlar_email_outbox (sent_at) WHERE sent_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_failed_at ON ashlar_email_outbox (failed_at) WHERE failed_at IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS ashlar_security_event_webhook_outbox (
+    id TEXT PRIMARY KEY,
+    endpoint_name TEXT NOT NULL,
+    uri TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    timeout_ms INTEGER NOT NULL CHECK (timeout_ms > 0),
+    body BLOB NOT NULL,
+    headers TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    available_at TEXT NOT NULL,
+    locked_until TEXT,
+    locked_by TEXT,
+    sent_at TEXT,
+    failed_at TEXT,
+    last_attempt_at TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    last_error TEXT,
+    CONSTRAINT ck_ashlar_security_event_webhook_outbox_terminal_state CHECK (sent_at IS NULL OR failed_at IS NULL),
+    CONSTRAINT ck_ashlar_security_event_webhook_outbox_lock_state CHECK (
+        (locked_until IS NULL AND locked_by IS NULL) OR (locked_until IS NOT NULL AND locked_by IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_pending ON ashlar_security_event_webhook_outbox (available_at, id)
+WHERE sent_at IS NULL AND failed_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_created_at ON ashlar_security_event_webhook_outbox (created_at);
+CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_locked_until ON ashlar_security_event_webhook_outbox (locked_until) WHERE locked_until IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_sent_at ON ashlar_security_event_webhook_outbox (sent_at) WHERE sent_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_failed_at ON ashlar_security_event_webhook_outbox (failed_at) WHERE failed_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_event ON ashlar_security_event_webhook_outbox (event_id, event_type);
+
 CREATE TABLE IF NOT EXISTS ashlar_bootstrap_state (
     id INTEGER PRIMARY KEY DEFAULT 1,
     is_initialized INTEGER NOT NULL DEFAULT 0 CHECK (is_initialized IN (0, 1)),
