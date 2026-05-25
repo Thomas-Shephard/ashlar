@@ -15,11 +15,11 @@ public interface IMagicLinkSignInService
     Task RequestLinkAsync(string email, Uri callbackBaseUri, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Verifies a raw magic-link token and returns the authentication result.
+    /// Verifies a raw magic-link token and returns the MFA-aware authentication result.
     /// </summary>
     /// <param name="token">The raw token from the callback URL.</param>
     /// <param name="context">Optional request context for auditing and rate limiting.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
-    /// <returns>The authentication response.</returns>
-    Task<AuthenticationResponse> VerifyLinkAsync(string token, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
+    /// <returns>The MFA-aware authentication result. Issue an application session only when the status is <see cref="MfaAuthenticationStatus.Succeeded" />.</returns>
+    Task<MfaAuthenticationResult> VerifyLinkAsync(string token, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 }

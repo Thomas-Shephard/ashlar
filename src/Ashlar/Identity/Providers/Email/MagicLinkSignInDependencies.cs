@@ -12,12 +12,14 @@ namespace Ashlar.Identity.Providers.Email;
 /// <param name="tokenContext">Secure token generation and hashing dependencies.</param>
 /// <param name="infrastructure">Email, rate-limit, and callback validation dependencies.</param>
 /// <param name="provider">Authentication provider that owns issued magic-link credentials.</param>
+/// <param name="authenticationOrchestrator">Completes sign-in through MFA-aware orchestration.</param>
 /// <param name="audit">Time and security-event dependencies.</param>
 internal sealed class MagicLinkSignInDependencies(
     IdentityContext identityContext,
     SecureTokenContext tokenContext,
     IdentityInfrastructureContext infrastructure,
     MagicLinkAuthenticationProvider provider,
+    IAuthenticationOrchestrator authenticationOrchestrator,
     IdentityAuditContext audit)
 {
     private readonly IdentityContext _identityContext = identityContext ?? throw new ArgumentNullException(nameof(identityContext));
@@ -25,10 +27,6 @@ internal sealed class MagicLinkSignInDependencies(
     private readonly IdentityInfrastructureContext _infrastructure = infrastructure ?? throw new ArgumentNullException(nameof(infrastructure));
     private readonly IdentityAuditContext _audit = audit ?? throw new ArgumentNullException(nameof(audit));
 
-    /// <summary>
-    /// Gets the identity service used to materialize sign-in results.
-    /// </summary>
-    public IIdentityService IdentityService => _identityContext.IdentityService;
     /// <summary>
     /// Gets the user repository used for email lookup.
     /// </summary>
@@ -53,6 +51,10 @@ internal sealed class MagicLinkSignInDependencies(
     /// Gets the authentication provider that owns issued magic-link credentials.
     /// </summary>
     public MagicLinkAuthenticationProvider Provider { get; } = provider ?? throw new ArgumentNullException(nameof(provider));
+    /// <summary>
+    /// Gets the orchestrator used to complete sign-in while enforcing MFA policy.
+    /// </summary>
+    public IAuthenticationOrchestrator AuthenticationOrchestrator { get; } = authenticationOrchestrator ?? throw new ArgumentNullException(nameof(authenticationOrchestrator));
     /// <summary>
     /// Gets the sender used for magic-link messages.
     /// </summary>

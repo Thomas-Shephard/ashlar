@@ -139,7 +139,7 @@ services.AddAshlarMagicLinkSignIn(options =>
 });
 ```
 
-Request a link for an active user, then verify the raw token from the callback URL:
+Request a link for an active user, then verify the raw token from the callback URL. Verification is MFA-aware; issue an application session only after `MfaAuthenticationStatus.Succeeded`:
 
 ```csharp
 var magicLinks = httpContext.RequestServices.GetRequiredService<IMagicLinkSignInService>();
@@ -157,9 +157,26 @@ var authenticationResult = await magicLinks.VerifyLinkAsync(
     new AuthenticationContext(
         IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
         UserAgent: httpContext.Request.Headers.UserAgent.ToString()));
+
+if (authenticationResult.Status == MfaAuthenticationStatus.MfaRequired)
+{
+    return Results.Ok(new
+    {
+        token = authenticationResult.HandshakeToken,
+        factors = authenticationResult.RequiredFactors
+    });
+}
+
+if (authenticationResult.Status == MfaAuthenticationStatus.Succeeded && authenticationResult.User != null)
+{
+    await signInManager.SignInAsync(httpContext, authenticationResult.User.Id);
+    return Results.Ok();
+}
+
+return Results.BadRequest();
 ```
 
-`RequestLinkAsync` does not reveal whether an email address belongs to an active user. Generated links are stored as hashed credentials, expire according to `LinkLifetime`, and the default request and verification rate limits can be changed through `MagicLinkSignInOptions`. Successful magic-link and email-code assertions consume their backing credential so the same token or code cannot be replayed.
+`RequestLinkAsync` does not reveal whether an email address belongs to an active user. Generated links are stored as hashed credentials, expire according to `LinkLifetime`, and the default request and verification rate limits can be changed through `MagicLinkSignInOptions`. Successful magic-link and email-code assertions consume their backing credential so the same token or code cannot be replayed. `VerifyLinkAsync` returns `MfaAuthenticationResult`: `Succeeded` means session issuance is safe from an MFA-policy perspective, and `MfaRequired` includes the `HandshakeToken` and required factors to continue verification.
 
 Magic-link and one-time-code emails are classified as `EmailMessageSensitivity.ContainsLiveSecret`.
 
@@ -170,7 +187,26 @@ services.AddAshlarEmailCodeSignIn();
 
 await emailCodes.RequestCodeAsync(email, context);
 var authenticationResult = await emailCodes.VerifyCodeAsync(email, code, context);
+
+if (authenticationResult.Status == MfaAuthenticationStatus.MfaRequired)
+{
+    return Results.Ok(new
+    {
+        token = authenticationResult.HandshakeToken,
+        factors = authenticationResult.RequiredFactors
+    });
+}
+
+if (authenticationResult.Status == MfaAuthenticationStatus.Succeeded && authenticationResult.User != null)
+{
+    await signInManager.SignInAsync(httpContext, authenticationResult.User.Id);
+    return Results.Ok();
+}
+
+return Results.BadRequest();
 ```
+
+`VerifyCodeAsync` also returns `MfaAuthenticationResult`; handle `MfaRequired` the same way as magic-link sign-in and create the application session only after `Succeeded`.
 
 ## Email Verification
 Ashlar includes services for verifying user email addresses. This is typically used during onboarding or after an email change.

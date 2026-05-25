@@ -145,11 +145,60 @@ internal sealed class MagicLinkSignInTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Succeeded, Is.True);
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
             Assert.That(response.User?.Id, Is.EqualTo(_user.Id));
             Assert.That(fixture.Repository.Credentials, Is.Empty);
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.AuthenticationSucceeded), Is.True);
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.CredentialConsumed), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task VerifyLinkReturnsMfaRequiredWhenPolicyRequiresMfa()
+    {
+        var fixture = CreateFixture(_user, requireMfa: true);
+        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"));
+        var token = ExtractToken(fixture.EmailSender.Messages.Single().TextBody);
+
+        var response = await fixture.Service.VerifyLinkAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.MfaRequired));
+            Assert.That(response.User?.Id, Is.EqualTo(_user.Id));
+            Assert.That(response.HandshakeToken, Is.EqualTo("mfa-token"));
+            Assert.That(response.RequiredFactors, Is.EquivalentTo(RequiredMfaFactors));
+        }
+    }
+
+    [Test]
+    public async Task VerifyLinkUsesOrchestratorInsteadOfIdentityService()
+    {
+        var orchestrator = new Mock<IAuthenticationOrchestrator>();
+        orchestrator
+            .Setup(o => o.AuthenticateAsync(
+                It.IsAny<AuthenticationContext>(),
+                It.IsAny<MagicLinkAssertion>(),
+                null,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, _user));
+        var identity = new Mock<IIdentityService>(MockBehavior.Strict);
+        var fixture = CreateFixture(_user, authenticationOrchestrator: orchestrator.Object, identityService: identity.Object);
+
+        var response = await fixture.Service.VerifyLinkAsync("token");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
+            orchestrator.Verify(o => o.AuthenticateAsync(
+                It.IsAny<AuthenticationContext>(),
+                It.IsAny<MagicLinkAssertion>(),
+                null,
+                It.IsAny<CancellationToken>()), Times.Once);
+            identity.Verify(i => i.LoginAsync(
+                It.IsAny<AuthenticationContext>(),
+                It.IsAny<IAuthenticationAssertion>(),
+                It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
@@ -175,11 +224,11 @@ internal sealed class MagicLinkSignInTests
 
             // First token should fail (already revoked)
             var response1 = await fixture.Service.VerifyLinkAsync(firstToken);
-            Assert.That(response1.Succeeded, Is.False);
+            Assert.That(response1.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
 
             // Second token should succeed
             var response2 = await fixture.Service.VerifyLinkAsync(secondToken);
-            Assert.That(response2.Succeeded, Is.True);
+            Assert.That(response2.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
         }
     }
 
@@ -193,7 +242,7 @@ internal sealed class MagicLinkSignInTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
             Assert.That(fixture.Repository.Credentials, Has.Count.EqualTo(1));
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.AuthenticationFailed), Is.True);
         }
@@ -209,7 +258,7 @@ internal sealed class MagicLinkSignInTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
             Assert.That(fixture.RateLimiter.Attempts, Is.Empty);
             Assert.That(fixture.Audit.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationFailed));
         }
@@ -228,20 +277,26 @@ internal sealed class MagicLinkSignInTests
 
         var response = await fixture.Service.VerifyLinkAsync(token);
 
-        Assert.That(response.Succeeded, Is.False);
+        Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
     }
 
     [Test]
     public async Task VerifyRateLimitBlocksVerification()
     {
-        var fixture = CreateFixture(_user, verifyAllowed: false);
+        var orchestrator = new Mock<IAuthenticationOrchestrator>(MockBehavior.Strict);
+        var fixture = CreateFixture(_user, verifyAllowed: false, authenticationOrchestrator: orchestrator.Object);
 
         var response = await fixture.Service.VerifyLinkAsync("any-token");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
             Assert.That(fixture.Audit.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.MagicLinkVerificationRateLimited));
+            orchestrator.Verify(o => o.AuthenticateAsync(
+                It.IsAny<AuthenticationContext>(),
+                It.IsAny<IAuthenticationAssertion>(),
+                null,
+                It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
@@ -382,7 +437,7 @@ internal sealed class MagicLinkSignInTests
         var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());
         var infrastructure = new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator);
         var audit = new IdentityAuditContext(TimeProvider.System, Mock.Of<ISecurityEventSink>());
-        var dependencies = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, provider, audit);
+        var dependencies = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, provider, Mock.Of<IAuthenticationOrchestrator>(), audit);
 
         using (Assert.EnterMultipleScope())
         {
@@ -406,11 +461,12 @@ internal sealed class MagicLinkSignInTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(null!, tokenContext, infrastructure, provider, audit));
-            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, null!, infrastructure, provider, audit));
-            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, tokenContext, null!, provider, audit));
-            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, null!, audit));
-            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, provider, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(null!, tokenContext, infrastructure, provider, Mock.Of<IAuthenticationOrchestrator>(), audit));
+            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, null!, infrastructure, provider, Mock.Of<IAuthenticationOrchestrator>(), audit));
+            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, tokenContext, null!, provider, Mock.Of<IAuthenticationOrchestrator>(), audit));
+            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, null!, Mock.Of<IAuthenticationOrchestrator>(), audit));
+            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, provider, null!, audit));
+            Assert.Throws<ArgumentNullException>(() => _ = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, provider, Mock.Of<IAuthenticationOrchestrator>(), null!));
         }
     }
 
@@ -433,6 +489,7 @@ internal sealed class MagicLinkSignInTests
         var repository = new InMemoryUserCredentialStore(_user);
         services.AddSingleton<IUserRepository>(repository);
         services.AddSingleton<ICredentialRepository>(repository);
+        services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton<IEmailSender, RecordingEmailSender>();
         services.AddAshlarMagicLinkSignIn(options => options.EmailSubject = "Modified");
@@ -462,10 +519,50 @@ internal sealed class MagicLinkSignInTests
         Assert.That(options.CodeDigits, Is.EqualTo(5));
     }
 
+    [Test]
+    public void MagicLinkOptionsValidateSupportedValues()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MagicLinkSignInOptions.Validate(new MagicLinkSignInOptions()), Is.True);
+            Assert.That(MagicLinkSignInOptions.Validate(null), Is.False);
+            Assert.That(MagicLinkSignInOptions.Validate(new MagicLinkSignInOptions { LinkLifetime = TimeSpan.Zero }), Is.False);
+            Assert.That(MagicLinkSignInOptions.Validate(new MagicLinkSignInOptions { RequestRateLimit = new RateLimitRule { PermitLimit = 0, Window = TimeSpan.FromMinutes(1) } }), Is.False);
+            Assert.That(MagicLinkSignInOptions.Validate(new MagicLinkSignInOptions { VerificationRateLimit = new RateLimitRule { PermitLimit = 0, Window = TimeSpan.FromMinutes(1) } }), Is.False);
+            Assert.That(MagicLinkSignInOptions.Validate(new MagicLinkSignInOptions { RequestRateLimit = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.Zero } }), Is.False);
+            Assert.That(MagicLinkSignInOptions.Validate(new MagicLinkSignInOptions { VerificationRateLimit = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.Zero } }), Is.False);
+            Assert.That(MagicLinkSignInOptions.Validate(new MagicLinkSignInOptions { EmailSubject = " " }), Is.False);
+            Assert.That(MagicLinkSignInOptions.Validate(new MagicLinkSignInOptions { EmailTextTemplate = " " }), Is.False);
+            Assert.That(MagicLinkSignInOptions.Validate(new MagicLinkSignInOptions { LinkTokenParameterName = " " }), Is.False);
+        }
+    }
+
+    [Test]
+    public void AddAshlarMagicLinkSignInRegistersOptionsValidation()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarMagicLinkSignIn(options => options.LinkTokenParameterName = " ");
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<MagicLinkSignInOptions>>();
+
+        Assert.Throws<OptionsValidationException>(() => _ = options.Value);
+    }
+
     private static readonly string[] SendBeforeCommitEvents = ["send", "commit"];
     private static readonly string[] CommitBeforeSendEvents = ["commit", "send"];
+    private static readonly string[] RequiredMfaFactors = ["totp"];
 
-    private static Fixture CreateFixture(User? user = null, bool requestAllowed = true, bool verifyAllowed = true, MagicLinkSignInOptions? options = null, bool callbackAllowed = true, bool transactionalEmailSender = false)
+    private static Fixture CreateFixture(
+        User? user = null,
+        bool requestAllowed = true,
+        bool verifyAllowed = true,
+        MagicLinkSignInOptions? options = null,
+        bool callbackAllowed = true,
+        bool transactionalEmailSender = false,
+        bool requireMfa = false,
+        IAuthenticationOrchestrator? authenticationOrchestrator = null,
+        IIdentityService? identityService = null)
     {
         var repository = new InMemoryUserCredentialStore(user);
         var audit = new RecordingSecurityEventSink();
@@ -483,7 +580,8 @@ internal sealed class MagicLinkSignInTests
             transactionProvider,
             new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: audit));
         var pipeline = new AuthenticationPipeline(registry, credentialService, transactionProvider, audit, time);
-        var identity = new IdentityService(repository, registry, credentialService, pipeline, transactionProvider, audit, time);
+        var identity = identityService ?? new IdentityService(repository, registry, credentialService, pipeline, transactionProvider, audit, time);
+        var orchestrator = authenticationOrchestrator ?? CreateOrchestrator(pipeline, user, requireMfa);
         var core = new IdentityContext(repository, repository, identity, transactionProvider);
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), tokenHasher);
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed, time);
@@ -498,9 +596,36 @@ internal sealed class MagicLinkSignInTests
         var infrastructure = new IdentityInfrastructureContext(emailSender, rateLimiter, uriValidator.Object);
         var auditContext = new IdentityAuditContext(time, audit);
 
-        var dependencies = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, provider, auditContext);
+        var dependencies = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, provider, orchestrator, auditContext);
         var service = new MagicLinkSignInService(dependencies, Options.Create(options ?? new MagicLinkSignInOptions()));
         return new Fixture(service, repository, emailSender, audit, time, tokenHasher, rateLimiter, events);
+    }
+
+    private static AuthenticationOrchestrator CreateOrchestrator(IAuthenticationPipeline pipeline, User? user, bool requireMfa)
+    {
+        var policy = new StaticMfaPolicyEvaluator(requireMfa);
+        var handshakes = new Mock<IAuthenticationHandshakeService>();
+        if (requireMfa && user != null)
+        {
+            handshakes
+                .Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((CreateAuthenticationHandshakeRequest request, CancellationToken _) =>
+                {
+                    var handshake = new AuthenticationHandshake(
+                        Guid.NewGuid(),
+                        user.Id,
+                        "hash",
+                        DateTimeOffset.UtcNow,
+                        DateTimeOffset.UtcNow.AddMinutes(5),
+                        false,
+                        false,
+                        request.RequiredFactors.ToHashSet(StringComparer.OrdinalIgnoreCase),
+                        new HashSet<string>());
+                    return Result.Success(new AuthenticationHandshakeCreated(handshake, "mfa-token"));
+                });
+        }
+
+        return new AuthenticationOrchestrator(pipeline, handshakes.Object, policy);
     }
 
     private static string ExtractToken(string? body)
@@ -527,6 +652,17 @@ internal sealed class MagicLinkSignInTests
                 Remaining = allowed ? 1 : 0,
                 WindowResetAt = timeProvider.GetUtcNow().Add(rule.Window)
             });
+        }
+    }
+
+    private sealed class StaticMfaPolicyEvaluator(bool requireMfa) : IMfaPolicyEvaluator
+    {
+        public Task<MfaPolicyEvaluation> EvaluateAsync(IUser user, AuthenticationContext context, CancellationToken cancellationToken = default)
+        {
+            var evaluation = requireMfa
+                ? new MfaPolicyEvaluation(true, new MfaRequirement(RequiredMfaFactors))
+                : new MfaPolicyEvaluation(false);
+            return Task.FromResult(evaluation);
         }
     }
 

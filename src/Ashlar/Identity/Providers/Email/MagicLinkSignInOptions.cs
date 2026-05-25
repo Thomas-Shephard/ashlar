@@ -33,4 +33,24 @@ public sealed class MagicLinkSignInOptions
     /// Gets or sets the link token parameter name value.
     /// </summary>
     public string LinkTokenParameterName { get; set; } = "token";
+
+    /// <summary>
+    /// Validates magic-link sign-in options.
+    /// </summary>
+    /// <param name="options">The options value.</param>
+    /// <returns><see langword="true" /> when options are valid.</returns>
+    public static bool Validate(MagicLinkSignInOptions? options)
+    {
+        return options is
+        {
+            RequestRateLimit.PermitLimit: > 0,
+            VerificationRateLimit.PermitLimit: > 0
+        }
+        && options.LinkLifetime > TimeSpan.Zero
+        && options.RequestRateLimit.Window > TimeSpan.Zero
+        && options.VerificationRateLimit.Window > TimeSpan.Zero
+        && !string.IsNullOrWhiteSpace(options.EmailSubject)
+        && !string.IsNullOrWhiteSpace(options.EmailTextTemplate)
+        && !string.IsNullOrWhiteSpace(options.LinkTokenParameterName);
+    }
 }

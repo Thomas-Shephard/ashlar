@@ -11,6 +11,7 @@ namespace Ashlar.Identity.Providers.Email;
 /// <param name="emailSender">Sends email-code messages.</param>
 /// <param name="rateLimiter">Applies request and verification rate limits.</param>
 /// <param name="provider">Authentication provider that owns the generated credentials.</param>
+/// <param name="authenticationOrchestrator">Completes sign-in through MFA-aware orchestration.</param>
 /// <param name="timeProvider">Supplies the current time for expiration checks.</param>
 /// <param name="securityEventSink">Optional sink for security events.</param>
 internal sealed class EmailCodeSignInDependencies(
@@ -18,6 +19,7 @@ internal sealed class EmailCodeSignInDependencies(
     IEmailSender emailSender,
     IAuthenticationRateLimiter rateLimiter,
     EmailCodeAuthenticationProvider provider,
+    IAuthenticationOrchestrator authenticationOrchestrator,
     TimeProvider timeProvider,
     ISecurityEventSink? securityEventSink = null)
 {
@@ -30,10 +32,6 @@ internal sealed class EmailCodeSignInDependencies(
     /// Gets the credential repository used for email-code credentials.
     /// </summary>
     public ICredentialRepository CredentialRepository => _identityContext.CredentialRepository;
-    /// <summary>
-    /// Gets the identity service used to materialize sign-in results.
-    /// </summary>
-    public IIdentityService IdentityService => _identityContext.IdentityService;
     /// <summary>
     /// Gets the transaction provider used to persist code issuance atomically.
     /// </summary>
@@ -50,6 +48,10 @@ internal sealed class EmailCodeSignInDependencies(
     /// Gets the authentication provider that owns issued email-code credentials.
     /// </summary>
     public EmailCodeAuthenticationProvider Provider { get; } = provider ?? throw new ArgumentNullException(nameof(provider));
+    /// <summary>
+    /// Gets the orchestrator used to complete sign-in while enforcing MFA policy.
+    /// </summary>
+    public IAuthenticationOrchestrator AuthenticationOrchestrator { get; } = authenticationOrchestrator ?? throw new ArgumentNullException(nameof(authenticationOrchestrator));
     /// <summary>
     /// Gets the time provider used for code lifetime checks.
     /// </summary>
