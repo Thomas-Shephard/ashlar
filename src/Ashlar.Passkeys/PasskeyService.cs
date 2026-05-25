@@ -198,6 +198,11 @@ public sealed class PasskeyService(
             return Result.Failure<PasskeyCeremonyOptions>(AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
+        if (!SecureTokenHashing.TryHashToken(_tokenHasher, request.HandshakeToken, out var handshakeTokenHash))
+        {
+            return Result.Failure<PasskeyCeremonyOptions>(AshlarFailureCodes.PasskeyChallengeInvalid);
+        }
+
         var handshake = await _handshakeService.GetHandshakeAsync(request.HandshakeToken, cancellationToken);
         if (handshake == null
             || handshake.IsRevoked
@@ -216,11 +221,6 @@ public sealed class PasskeyService(
         if (credentials.Count == 0)
         {
             return Result.Failure<PasskeyCeremonyOptions>(AshlarFailureCodes.PasskeyCredentialNotFound);
-        }
-
-        if (!SecureTokenHashing.TryHashToken(_tokenHasher, request.HandshakeToken, out var handshakeTokenHash))
-        {
-            return Result.Failure<PasskeyCeremonyOptions>(AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
         var challengeValue = CreateChallenge();
@@ -250,12 +250,12 @@ public sealed class PasskeyService(
             return new PasskeyAuthenticationResult(false, null, null, AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
-        var challenge = await GetChallengeAsync(request.ChallengeId, AuthenticationPurpose, cancellationToken);
         if (!SecureTokenHashing.TryHashToken(_tokenHasher, request.HandshakeToken, out var handshakeTokenHash))
         {
             return new PasskeyAuthenticationResult(false, null, null, AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
+        var challenge = await GetChallengeAsync(request.ChallengeId, AuthenticationPurpose, cancellationToken);
         if (challenge == null
             || !challenge.UserId.HasValue
             || !string.Equals(challenge.HandshakeTokenHash, handshakeTokenHash, StringComparison.Ordinal)

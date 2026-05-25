@@ -17,6 +17,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
     private const string VerifyPurpose = "email-verification-verify";
     private const string CredentialPurpose = "email-verification";
     private const string ProviderName = "email-verification";
+    private const string InvalidOrExpiredTokenMessage = "Invalid or expired token.";
     private readonly IdentityContext _identityContext;
     private readonly SecureTokenContext _tokenContext;
     private readonly IEmailSender _emailSender;
@@ -208,7 +209,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.InvalidOrExpiredToken.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, "Invalid or expired token.");
+            return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, InvalidOrExpiredTokenMessage);
         }
 
         var credential = await _identityContext.CredentialRepository.GetCredentialForUserAsync(userId, ProviderType.Internal, ProviderName, tokenHash, cancellationToken);
@@ -224,7 +225,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.InvalidOrExpiredToken.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, "Invalid or expired token.");
+            return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, InvalidOrExpiredTokenMessage);
         }
 
         await using var transaction = await _identityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
@@ -240,7 +241,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.TokenConsumptionFailed.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.TokenConsumptionFailed, "Invalid or expired token.");
+            return Result.Failure(AshlarFailureCodes.TokenConsumptionFailed, InvalidOrExpiredTokenMessage);
         }
 
         var user = await _identityContext.UserRepository.GetUserByIdAsync(userId, cancellationToken);
@@ -254,7 +255,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.UserNotFoundOrInactive.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.UserNotFoundOrInactive, "Invalid or expired token.");
+            return Result.Failure(AshlarFailureCodes.UserNotFoundOrInactive, InvalidOrExpiredTokenMessage);
         }
 
         var updatedUser = new UpdatedUserWrapper(user, now);
