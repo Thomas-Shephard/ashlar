@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Diagnostics;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -26,20 +27,24 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<AshlarSecurityEventWebhookSender> _logger;
+    private readonly IAshlarSecurityEventWebhookDeliveryObserver _observer;
 
     /// <summary>
     /// Initializes a new instance of the webhook sender class.
     /// </summary>
     /// <param name="httpClientFactory">The HTTP client factory.</param>
-    /// <param name="logger">The logger value.</param>
+    /// <param name="logger">The logger.</param>
+    /// <param name="observer">The delivery observer.</param>
     public AshlarSecurityEventWebhookSender(
         IHttpClientFactory httpClientFactory,
-        ILogger<AshlarSecurityEventWebhookSender>? logger = null)
+        ILogger<AshlarSecurityEventWebhookSender>? logger = null,
+        IAshlarSecurityEventWebhookDeliveryObserver? observer = null)
     {
         ArgumentNullException.ThrowIfNull(httpClientFactory);
 
         _httpClientFactory = httpClientFactory;
         _logger = logger ?? NullLogger<AshlarSecurityEventWebhookSender>.Instance;
+        _observer = observer ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
     }
 
     /// <inheritdoc />
@@ -51,12 +56,35 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(delivery.Timeout);
 
+        var start = Stopwatch.GetTimestamp();
         var client = _httpClientFactory.CreateClient(HttpClientName);
-        using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
+        try
         {
-            LogEndpointNonSuccess(delivery, response);
+            using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                LogEndpointNonSuccess(delivery, response);
+                RecordFailure(delivery, start, AshlarSecurityEventWebhookDeliveryTelemetry.HttpStatusFailureKind);
+                return;
+            }
+
+            RecordSuccess(delivery, start);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            RecordFailure(delivery, start, AshlarSecurityEventWebhookDeliveryTelemetry.TimeoutFailureKind);
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            RecordFailure(delivery, start, AshlarSecurityEventWebhookDeliveryTelemetry.CanceledFailureKind);
+            throw;
+        }
+        catch
+        {
+            RecordFailure(delivery, start, AshlarSecurityEventWebhookDeliveryTelemetry.ExceptionFailureKind);
+            throw;
         }
     }
 
@@ -98,5 +126,33 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
             delivery.Payload.EventType,
             (int)response.StatusCode,
             null);
+    }
+
+    private void RecordSuccess(AshlarSecurityEventWebhookDelivery delivery, long start)
+    {
+        Record(delivery, start, AshlarSecurityEventWebhookDeliveryTelemetry.SuccessOutcome, null);
+    }
+
+    private void RecordFailure(AshlarSecurityEventWebhookDelivery delivery, long start, string failureKind)
+    {
+        Record(delivery, start, AshlarSecurityEventWebhookDeliveryTelemetry.FailureOutcome, failureKind);
+    }
+
+    private void Record(AshlarSecurityEventWebhookDelivery delivery, long start, string outcome, string? failureKind)
+    {
+        try
+        {
+            _observer.RecordDeliveryAttempt(new AshlarSecurityEventWebhookDeliveryTelemetry(
+                AshlarSecurityEventWebhookDeliveryTelemetry.BestEffortDeliveryMode,
+                delivery.Payload.EventType,
+                delivery.EndpointName,
+                outcome,
+                failureKind,
+                Stopwatch.GetElapsedTime(start)));
+        }
+        catch (Exception)
+        {
+            // Telemetry is best-effort and must never change webhook delivery behavior.
+        }
     }
 }

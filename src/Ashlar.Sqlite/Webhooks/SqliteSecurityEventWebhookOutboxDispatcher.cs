@@ -57,6 +57,7 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
     private readonly SqliteSecurityEventWebhookOutboxOptions _options;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<SqliteSecurityEventWebhookOutboxDispatcher> _logger;
+    private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver;
     private readonly string _lockId = Guid.NewGuid().ToString("D");
 
     /// <summary>
@@ -67,12 +68,14 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
     /// <param name="options">The options value.</param>
     /// <param name="httpClientFactory">The HTTP client factory value.</param>
     /// <param name="logger">The logger value.</param>
+    /// <param name="deliveryObserver">The delivery observer.</param>
     public SqliteSecurityEventWebhookOutboxDispatcher(
         IServiceProvider serviceProvider,
         TimeProvider timeProvider,
         IOptions<SqliteSecurityEventWebhookOutboxOptions> options,
         IHttpClientFactory httpClientFactory,
-        ILogger<SqliteSecurityEventWebhookOutboxDispatcher>? logger = null)
+        ILogger<SqliteSecurityEventWebhookOutboxDispatcher>? logger = null,
+        IAshlarSecurityEventWebhookDeliveryObserver? deliveryObserver = null)
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -84,6 +87,7 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
         _options = options.Value;
         _httpClientFactory = httpClientFactory;
         _logger = logger ?? NullLogger<SqliteSecurityEventWebhookOutboxDispatcher>.Instance;
+        _deliveryObserver = deliveryObserver ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
     }
 
     /// <summary>
@@ -158,7 +162,8 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
                 _options.MaxAttempts,
                 (id, token) => MarkAsSentAsync(id, provider, token),
                 (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, token),
-                (id, attemptCount, finalFailure, exception) => SqliteSecurityEventWebhookOutboxDispatcherLog.WebhookDeliveryFailed(_logger, id, attemptCount, finalFailure, exception)),
+                (id, attemptCount, finalFailure, exception) => SqliteSecurityEventWebhookOutboxDispatcherLog.WebhookDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
+                _deliveryObserver),
             cancellationToken);
     }
 
