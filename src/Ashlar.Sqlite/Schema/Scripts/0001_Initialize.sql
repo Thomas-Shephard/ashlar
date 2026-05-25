@@ -260,6 +260,10 @@ CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_created_at ON ashlar_email_out
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_locked_until ON ashlar_email_outbox (locked_until) WHERE locked_until IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_sent_at ON ashlar_email_outbox (sent_at) WHERE sent_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_failed_at ON ashlar_email_outbox (failed_at) WHERE failed_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_sensitive_sent_at ON ashlar_email_outbox (sent_at, id)
+WHERE sensitivity = 'ContainsLiveSecret' AND sent_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_sensitive_failed_at ON ashlar_email_outbox (failed_at, id)
+WHERE sensitivity = 'ContainsLiveSecret' AND failed_at IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS ashlar_security_event_webhook_outbox (
     id TEXT PRIMARY KEY,

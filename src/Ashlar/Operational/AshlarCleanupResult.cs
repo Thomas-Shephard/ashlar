@@ -21,6 +21,8 @@ namespace Ashlar.Operational;
 /// <param name="RevokedAuthorizationGrants">The revoked authorization grants value.</param>
 /// <param name="ExpiredPasskeyChallenges">The expired passkey challenges value.</param>
 /// <param name="ConsumedPasskeyChallenges">The consumed passkey challenges value.</param>
+/// <param name="SentSensitiveEmails">The sent sensitive emails value.</param>
+/// <param name="FailedSensitiveEmails">The failed sensitive emails value.</param>
 public sealed record AshlarCleanupResult(
     int ExpiredSessions,
     int RevokedSessions,
@@ -39,12 +41,34 @@ public sealed record AshlarCleanupResult(
     int ExpiredAuthorizationGrants = 0,
     int RevokedAuthorizationGrants = 0,
     int ExpiredPasskeyChallenges = 0,
-    int ConsumedPasskeyChallenges = 0)
+    int ConsumedPasskeyChallenges = 0,
+    int SentSensitiveEmails = 0,
+    int FailedSensitiveEmails = 0)
 {
     /// <summary>
     /// Executes the new operation.
     /// </summary>
-    public static AshlarCleanupResult Empty { get; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    public static AshlarCleanupResult Empty { get; } = new(
+        ExpiredSessions: 0,
+        RevokedSessions: 0,
+        ExpiredCredentials: 0,
+        RevokedCredentials: 0,
+        ExpiredInvitations: 0,
+        AcceptedInvitations: 0,
+        RevokedInvitations: 0,
+        ExpiredHandshakes: 0,
+        CompletedHandshakes: 0,
+        RevokedHandshakes: 0,
+        ExpiredRateLimits: 0,
+        AuditEvents: 0,
+        SentEmails: 0,
+        FailedEmails: 0,
+        ExpiredAuthorizationGrants: 0,
+        RevokedAuthorizationGrants: 0,
+        ExpiredPasskeyChallenges: 0,
+        ConsumedPasskeyChallenges: 0,
+        SentSensitiveEmails: 0,
+        FailedSensitiveEmails: 0);
 
     /// <summary>
     /// Gets or sets the total value.
@@ -66,6 +90,8 @@ public sealed record AshlarCleanupResult(
         + AuditEvents
         + SentEmails
         + FailedEmails
+        + SentSensitiveEmails
+        + FailedSensitiveEmails
         + ExpiredPasskeyChallenges
         + ConsumedPasskeyChallenges;
 
@@ -96,6 +122,8 @@ public sealed record AshlarCleanupResult(
             ExpiredAuthorizationGrants + other.ExpiredAuthorizationGrants,
             RevokedAuthorizationGrants + other.RevokedAuthorizationGrants,
             ExpiredPasskeyChallenges + other.ExpiredPasskeyChallenges,
-            ConsumedPasskeyChallenges + other.ConsumedPasskeyChallenges);
+            ConsumedPasskeyChallenges + other.ConsumedPasskeyChallenges,
+            SentSensitiveEmails + other.SentSensitiveEmails,
+            FailedSensitiveEmails + other.FailedSensitiveEmails);
     }
 }

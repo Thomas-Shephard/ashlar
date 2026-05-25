@@ -620,6 +620,10 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
                 null)));
             services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(new SecurityEventWebhookOutboxDiagnosticResult(
                 AshlarDiagnosticStatus.NotSupported,
@@ -875,6 +879,10 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
             0,
             expiredLockCount,
             failedCount,
+            0,
+            0,
+            0,
+            0,
             oldestPendingAt,
             null,
             3,

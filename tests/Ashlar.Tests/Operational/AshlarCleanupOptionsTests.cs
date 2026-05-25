@@ -7,7 +7,16 @@ internal sealed class AshlarCleanupOptionsTests
     [Test]
     public void ValidateAcceptsDefaults()
     {
-        Assert.That(AshlarCleanupOptions.Validate(new AshlarCleanupOptions()), Is.True);
+        var options = new AshlarCleanupOptions();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AshlarCleanupOptions.Validate(options), Is.True);
+            Assert.That(options.RemoveSentSensitiveEmailsAfter, Is.EqualTo(TimeSpan.FromHours(1)));
+            Assert.That(options.RemoveFailedSensitiveEmailsAfter, Is.EqualTo(TimeSpan.FromHours(1)));
+            Assert.That(options.RemoveSentEmailsAfter, Is.EqualTo(TimeSpan.FromDays(7)));
+            Assert.That(options.RemoveFailedEmailsAfter, Is.EqualTo(TimeSpan.FromDays(30)));
+        }
     }
 
     [Test]
@@ -41,6 +50,16 @@ internal sealed class AshlarCleanupOptionsTests
         {
             Assert.That(AshlarCleanupOptions.Validate(new AshlarCleanupOptions { RemoveExpiredAuthorizationGrantsAfter = TimeSpan.FromTicks(-1) }), Is.False);
             Assert.That(AshlarCleanupOptions.Validate(new AshlarCleanupOptions { RemoveRevokedAuthorizationGrantsAfter = TimeSpan.FromTicks(-1) }), Is.False);
+        }
+    }
+
+    [Test]
+    public void ValidateRejectsNegativeSensitiveEmailRetention()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AshlarCleanupOptions.Validate(new AshlarCleanupOptions { RemoveSentSensitiveEmailsAfter = TimeSpan.FromTicks(-1) }), Is.False);
+            Assert.That(AshlarCleanupOptions.Validate(new AshlarCleanupOptions { RemoveFailedSensitiveEmailsAfter = TimeSpan.FromTicks(-1) }), Is.False);
         }
     }
 

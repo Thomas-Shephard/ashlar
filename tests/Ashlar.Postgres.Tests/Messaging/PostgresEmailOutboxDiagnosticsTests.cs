@@ -97,18 +97,18 @@ internal sealed class PostgresEmailOutboxDiagnosticsTests : PostgresTestBase
         await using (var connection = await GetDataSource().OpenConnectionAsync())
         {
             await connection.ExecuteAsync("""
-                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, created_at, available_at)
-                VALUES (@id1, 'pending-old@example.com', 'Subject', 'Body', @oldPending, @oldPending),
-                       (@id2, 'pending-new@example.com', 'Subject', 'Body', @newPending, @newPending),
-                       (@id3, 'scheduled@example.com', 'Subject', 'Body', @scheduled, @scheduled);
+                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, headers, metadata, created_at, available_at)
+                VALUES (@id1, 'pending-old@example.com', 'Subject', 'live-token-link', 'ContainsLiveSecret', '{"X-Token":"secret-header"}'::jsonb, '{"token_hash":"secret-hash"}'::jsonb, @oldPending, @oldPending),
+                       (@id2, 'pending-new@example.com', 'Subject', 'Body', 'Normal', '{}'::jsonb, '{}'::jsonb, @newPending, @newPending),
+                       (@id3, 'scheduled@example.com', 'Subject', 'secret-scheduled', 'ContainsLiveSecret', '{}'::jsonb, '{}'::jsonb, @scheduled, @scheduled);
 
-                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, created_at, available_at, locked_until, locked_by)
-                VALUES (@id4, 'locked@example.com', 'Subject', 'Body', @oldPending, @oldPending, @lockedUntil, 'worker'),
-                       (@id5, 'expired@example.com', 'Subject', 'Body', @oldPending, @oldPending, @expiredLock, 'worker');
+                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, locked_until, locked_by)
+                VALUES (@id4, 'locked@example.com', 'Subject', 'secret-locked', 'ContainsLiveSecret', @oldPending, @oldPending, @lockedUntil, 'worker'),
+                       (@id5, 'expired@example.com', 'Subject', 'Body', 'Normal', @oldPending, @oldPending, @expiredLock, 'worker');
 
-                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, created_at, available_at, failed_at)
-                VALUES (@id6, 'failed-old@example.com', 'Subject', 'Body', @oldPending, @oldPending, @oldestFailed),
-                       (@id7, 'failed-new@example.com', 'Subject', 'Body', @oldPending, @oldPending, @newestFailed);
+                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, failed_at)
+                VALUES (@id6, 'failed-old@example.com', 'Subject', 'secret-failed', 'ContainsLiveSecret', @oldPending, @oldPending, @oldestFailed),
+                       (@id7, 'failed-new@example.com', 'Subject', 'Body', 'Normal', @oldPending, @oldPending, @newestFailed);
                 """, new
             {
                 id1 = Guid.NewGuid(),
@@ -138,8 +138,15 @@ internal sealed class PostgresEmailOutboxDiagnosticsTests : PostgresTestBase
             Assert.That(result.LockedCount, Is.EqualTo(1));
             Assert.That(result.ExpiredLockCount, Is.EqualTo(1));
             Assert.That(result.FailedCount, Is.EqualTo(2));
+            Assert.That(result.SensitivePendingCount, Is.EqualTo(1));
+            Assert.That(result.SensitiveScheduledCount, Is.EqualTo(1));
+            Assert.That(result.SensitiveLockedCount, Is.EqualTo(1));
+            Assert.That(result.SensitiveFailedCount, Is.EqualTo(1));
             Assert.That(result.OldestPendingAt, Is.EqualTo(oldPending));
             Assert.That(result.OldestFailedAt, Is.EqualTo(oldestFailed));
+            Assert.That(result.ToString(), Does.Not.Contain("live-token-link"));
+            Assert.That(result.ToString(), Does.Not.Contain("secret-header"));
+            Assert.That(result.ToString(), Does.Not.Contain("secret-hash"));
         }
     }
 

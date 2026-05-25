@@ -10,7 +10,11 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
 
     protected abstract Task SeedOldAuditEventAsync();
 
+    protected abstract Task SeedSensitiveEmailCleanupRowsAsync();
+
     protected abstract Task<int> CountRowsAsync(string tableName);
+
+    protected abstract Task<int> CountEmailRowsBySubjectAsync(string subject);
 
     protected abstract Task<AshlarCleanupResult> RunCleanupWithNullAuditRetentionAsync();
 
@@ -98,6 +102,32 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
             Assert.That(await CountRowsAsync("ashlar_security_events"), Is.EqualTo(1));
         }
     }
+
+    [Test]
+    public async Task CleanupAsyncUsesSeparateRetentionForSensitiveTerminalEmailRows()
+    {
+        await SeedSensitiveEmailCleanupRowsAsync();
+        await using var scope = CreateAsyncScope();
+
+        var result = await GetCleanupService(scope.ServiceProvider).CleanupAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.SentSensitiveEmails, Is.EqualTo(1));
+            Assert.That(result.FailedSensitiveEmails, Is.EqualTo(1));
+            Assert.That(result.SentEmails, Is.Zero);
+            Assert.That(result.FailedEmails, Is.Zero);
+            Assert.That(await CountEmailRowsBySubjectAsync("sensitive-old-sent"), Is.Zero);
+            Assert.That(await CountEmailRowsBySubjectAsync("sensitive-old-failed"), Is.Zero);
+            Assert.That(await CountEmailRowsBySubjectAsync("sensitive-recent-sent"), Is.EqualTo(1));
+            Assert.That(await CountEmailRowsBySubjectAsync("sensitive-recent-failed"), Is.EqualTo(1));
+            Assert.That(await CountEmailRowsBySubjectAsync("normal-old-sent"), Is.EqualTo(1));
+            Assert.That(await CountEmailRowsBySubjectAsync("normal-old-failed"), Is.EqualTo(1));
+            Assert.That(await CountEmailRowsBySubjectAsync("sensitive-pending"), Is.EqualTo(1));
+            Assert.That(await CountEmailRowsBySubjectAsync("sensitive-locked"), Is.EqualTo(1));
+        }
+    }
+
 
     [Test]
     public async Task CleanupAsyncRollsBackWhenProviderImplementationParticipatesInAshlarTransactions()

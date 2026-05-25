@@ -121,11 +121,55 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
             });
     }
 
+    protected override Task SeedSensitiveEmailCleanupRowsAsync()
+    {
+        return ExecuteAsync("""
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, sent_at) VALUES
+            ($sensitiveOldSent, 'old-sent@example.com', 'sensitive-old-sent', 'live-token-link', 'ContainsLiveSecret', $old, $old, $old),
+            ($sensitiveRecentSent, 'recent-sent@example.com', 'sensitive-recent-sent', 'live-token-link', 'ContainsLiveSecret', $recent, $recent, $recent),
+            ($normalOldSent, 'normal-sent@example.com', 'normal-old-sent', 'normal-body', 'Normal', $old, $old, $old);
+
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, failed_at) VALUES
+            ($sensitiveOldFailed, 'old-failed@example.com', 'sensitive-old-failed', 'live-token-link', 'ContainsLiveSecret', $old, $old, $old),
+            ($sensitiveRecentFailed, 'recent-failed@example.com', 'sensitive-recent-failed', 'live-token-link', 'ContainsLiveSecret', $recent, $recent, $recent),
+            ($normalOldFailed, 'normal-failed@example.com', 'normal-old-failed', 'normal-body', 'Normal', $old, $old, $old);
+
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at) VALUES
+            ($pending, 'pending@example.com', 'sensitive-pending', 'live-token-link', 'ContainsLiveSecret', $veryOld, $veryOld);
+
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, locked_until, locked_by) VALUES
+            ($locked, 'locked@example.com', 'sensitive-locked', 'live-token-link', 'ContainsLiveSecret', $veryOld, $veryOld, $future, 'worker');
+            """, command =>
+        {
+            command.AddGuidParameter("$sensitiveOldSent", Guid.NewGuid());
+            command.AddGuidParameter("$sensitiveRecentSent", Guid.NewGuid());
+            command.AddGuidParameter("$normalOldSent", Guid.NewGuid());
+            command.AddGuidParameter("$sensitiveOldFailed", Guid.NewGuid());
+            command.AddGuidParameter("$sensitiveRecentFailed", Guid.NewGuid());
+            command.AddGuidParameter("$normalOldFailed", Guid.NewGuid());
+            command.AddGuidParameter("$pending", Guid.NewGuid());
+            command.AddGuidParameter("$locked", Guid.NewGuid());
+            command.AddDateTimeOffsetParameter("$old", Now.AddHours(-2));
+            command.AddDateTimeOffsetParameter("$recent", Now.AddMinutes(-30));
+            command.AddDateTimeOffsetParameter("$veryOld", Now.AddDays(-30));
+            command.AddDateTimeOffsetParameter("$future", Now.AddMinutes(5));
+        });
+    }
+
     protected override async Task<int> CountRowsAsync(string tableName)
     {
         await using var connection = await OpenConnectionAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = $"SELECT count(*) FROM {tableName};";
+        return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
+    }
+
+    protected override async Task<int> CountEmailRowsBySubjectAsync(string subject)
+    {
+        await using var connection = await OpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT count(*) FROM ashlar_email_outbox WHERE subject = $subject;";
+        command.AddParameter("$subject", subject);
         return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
     }
 

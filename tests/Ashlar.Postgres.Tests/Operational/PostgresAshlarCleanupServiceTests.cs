@@ -48,7 +48,7 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
     {
         await using var connection = await GetDataSource().OpenConnectionAsync();
         await connection.ExecuteAsync("""
-            TRUNCATE ashlar_security_events, ashlar_rate_limits, ashlar_passkey_challenges, ashlar_mfa_handshakes, ashlar_invitations, ashlar_sessions, ashlar_credentials, ashlar_authorization_grants, ashlar_users CASCADE;
+            TRUNCATE ashlar_email_outbox, ashlar_security_events, ashlar_rate_limits, ashlar_passkey_challenges, ashlar_mfa_handshakes, ashlar_invitations, ashlar_sessions, ashlar_credentials, ashlar_authorization_grants, ashlar_users CASCADE;
             """);
     }
 
@@ -129,6 +129,98 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
             Assert.That(first.ExpiredSessions, Is.EqualTo(2));
             Assert.That(second.ExpiredSessions, Is.EqualTo(1));
             Assert.That(third.ExpiredSessions, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task CleanupAsyncRemovesSensitiveSentRowsUsingSensitiveRetention()
+    {
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        await connection.ExecuteAsync("""
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, sent_at) VALUES
+            (@sensitiveOld, 'old-secret@example.com', 'sensitive-old-sent', 'live-token-link', 'ContainsLiveSecret', @old, @old, @old),
+            (@sensitiveRecent, 'recent-secret@example.com', 'sensitive-recent-sent', 'live-token-link', 'ContainsLiveSecret', @recent, @recent, @recent),
+            (@normalOld, 'normal@example.com', 'normal-old-sent', 'normal-body', 'Normal', @old, @old, @old);
+            """, new
+        {
+            sensitiveOld = Guid.NewGuid(),
+            sensitiveRecent = Guid.NewGuid(),
+            normalOld = Guid.NewGuid(),
+            old = _now.AddHours(-2),
+            recent = _now.AddMinutes(-30)
+        });
+
+        using var cleanup = CreateCleanupService();
+        var result = await cleanup.Service.CleanupAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.SentSensitiveEmails, Is.EqualTo(1));
+            Assert.That(result.SentEmails, Is.Zero);
+            Assert.That(await CountEmailSubjectAsync(connection, "sensitive-old-sent"), Is.Zero);
+            Assert.That(await CountEmailSubjectAsync(connection, "sensitive-recent-sent"), Is.EqualTo(1));
+            Assert.That(await CountEmailSubjectAsync(connection, "normal-old-sent"), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task CleanupAsyncRemovesSensitiveTerminalFailedRowsUsingSensitiveRetention()
+    {
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        await connection.ExecuteAsync("""
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, failed_at) VALUES
+            (@sensitiveOld, 'old-secret@example.com', 'sensitive-old-failed', 'live-token-link', 'ContainsLiveSecret', @old, @old, @old),
+            (@sensitiveRecent, 'recent-secret@example.com', 'sensitive-recent-failed', 'live-token-link', 'ContainsLiveSecret', @recent, @recent, @recent),
+            (@normalOld, 'normal@example.com', 'normal-old-failed', 'normal-body', 'Normal', @old, @old, @old);
+            """, new
+        {
+            sensitiveOld = Guid.NewGuid(),
+            sensitiveRecent = Guid.NewGuid(),
+            normalOld = Guid.NewGuid(),
+            old = _now.AddHours(-2),
+            recent = _now.AddMinutes(-30)
+        });
+
+        using var cleanup = CreateCleanupService();
+        var result = await cleanup.Service.CleanupAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailedSensitiveEmails, Is.EqualTo(1));
+            Assert.That(result.FailedEmails, Is.Zero);
+            Assert.That(await CountEmailSubjectAsync(connection, "sensitive-old-failed"), Is.Zero);
+            Assert.That(await CountEmailSubjectAsync(connection, "sensitive-recent-failed"), Is.EqualTo(1));
+            Assert.That(await CountEmailSubjectAsync(connection, "normal-old-failed"), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task CleanupAsyncDoesNotRemovePendingOrLockedSensitiveRows()
+    {
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        await connection.ExecuteAsync("""
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at) VALUES
+            (@pending, 'pending-secret@example.com', 'sensitive-pending', 'live-token-link', 'ContainsLiveSecret', @old, @old);
+
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, locked_until, locked_by) VALUES
+            (@locked, 'locked-secret@example.com', 'sensitive-locked', 'live-token-link', 'ContainsLiveSecret', @old, @old, @lockedUntil, 'worker');
+            """, new
+        {
+            pending = Guid.NewGuid(),
+            locked = Guid.NewGuid(),
+            old = _now.AddDays(-30),
+            lockedUntil = _now.AddMinutes(5)
+        });
+
+        using var cleanup = CreateCleanupService();
+        var result = await cleanup.Service.CleanupAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.SentSensitiveEmails, Is.Zero);
+            Assert.That(result.FailedSensitiveEmails, Is.Zero);
+            Assert.That(await CountEmailSubjectAsync(connection, "sensitive-pending"), Is.EqualTo(1));
+            Assert.That(await CountEmailSubjectAsync(connection, "sensitive-locked"), Is.EqualTo(1));
         }
     }
 
@@ -381,5 +473,10 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
     private static Task<int> CountAsync(System.Data.IDbConnection connection, string tableName)
     {
         return connection.ExecuteScalarAsync<int>($"SELECT count(*) FROM {tableName}");
+    }
+
+    private static Task<int> CountEmailSubjectAsync(System.Data.IDbConnection connection, string subject)
+    {
+        return connection.ExecuteScalarAsync<int>("SELECT count(*) FROM ashlar_email_outbox WHERE subject = @subject", new { subject });
     }
 }

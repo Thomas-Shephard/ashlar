@@ -67,6 +67,10 @@ internal sealed class SqliteEmailOutboxDiagnostics(
                 COALESCE(SUM(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND locked_until > $now THEN 1 ELSE 0 END), 0) AS locked_count,
                 COALESCE(SUM(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND locked_until IS NOT NULL AND locked_until <= $now THEN 1 ELSE 0 END), 0) AS expired_lock_count,
                 COALESCE(SUM(CASE WHEN failed_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS failed_count,
+                COALESCE(SUM(CASE WHEN sensitivity = 'ContainsLiveSecret' AND sent_at IS NULL AND failed_at IS NULL AND available_at <= $now AND (locked_until IS NULL OR locked_until <= $now) THEN 1 ELSE 0 END), 0) AS sensitive_pending_count,
+                COALESCE(SUM(CASE WHEN sensitivity = 'ContainsLiveSecret' AND sent_at IS NULL AND failed_at IS NULL AND available_at > $now THEN 1 ELSE 0 END), 0) AS sensitive_scheduled_count,
+                COALESCE(SUM(CASE WHEN sensitivity = 'ContainsLiveSecret' AND sent_at IS NULL AND failed_at IS NULL AND locked_until > $now THEN 1 ELSE 0 END), 0) AS sensitive_locked_count,
+                COALESCE(SUM(CASE WHEN sensitivity = 'ContainsLiveSecret' AND failed_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS sensitive_failed_count,
                 MIN(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND available_at <= $now AND (locked_until IS NULL OR locked_until <= $now) THEN available_at END) AS oldest_pending_at,
                 MIN(CASE WHEN failed_at IS NOT NULL THEN failed_at END) AS oldest_failed_at
             FROM ashlar_email_outbox;
@@ -82,6 +86,10 @@ internal sealed class SqliteEmailOutboxDiagnostics(
             LockedCount = reader.GetInt64(reader.GetOrdinal("locked_count")),
             ExpiredLockCount = reader.GetInt64(reader.GetOrdinal("expired_lock_count")),
             FailedCount = reader.GetInt64(reader.GetOrdinal("failed_count")),
+            SensitivePendingCount = reader.GetInt64(reader.GetOrdinal("sensitive_pending_count")),
+            SensitiveScheduledCount = reader.GetInt64(reader.GetOrdinal("sensitive_scheduled_count")),
+            SensitiveLockedCount = reader.GetInt64(reader.GetOrdinal("sensitive_locked_count")),
+            SensitiveFailedCount = reader.GetInt64(reader.GetOrdinal("sensitive_failed_count")),
             OldestPendingAt = reader.GetNullableDateTimeOffsetFromText("oldest_pending_at"),
             OldestFailedAt = reader.GetNullableDateTimeOffsetFromText("oldest_failed_at")
         };

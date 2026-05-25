@@ -24,6 +24,10 @@ public sealed class NotSupportedEmailOutboxDiagnostics(string providerName, Time
             null,
             null,
             null,
+            null,
+            null,
+            null,
+            null,
             null));
     }
 }
