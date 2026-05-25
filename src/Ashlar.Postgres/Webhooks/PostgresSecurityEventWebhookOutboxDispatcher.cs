@@ -117,12 +117,13 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
     {
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
             entry,
-            _httpClientFactory,
-            HttpClientName,
-            _options.MaxAttempts,
-            (id, token) => MarkAsSentAsync(id, provider, token),
-            (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, token),
-            (id, attemptCount, finalFailure, exception) => PostgresSecurityEventWebhookOutboxDispatcherLog.WebhookDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
+            new AshlarSecurityEventWebhookOutboxDispatchContext(
+                _httpClientFactory,
+                HttpClientName,
+                _options.MaxAttempts,
+                (id, token) => MarkAsSentAsync(id, provider, token),
+                (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, token),
+                (id, attemptCount, finalFailure, exception) => PostgresSecurityEventWebhookOutboxDispatcherLog.WebhookDeliveryFailed(_logger, id, attemptCount, finalFailure, exception)),
             cancellationToken).ConfigureAwait(false);
     }
 

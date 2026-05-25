@@ -22,8 +22,42 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
     : IEmailOutboxDispatcher
     where TTransport : IEmailTransport
 {
-    private const string TableName = "ashlar_email_outbox";
     private const string LockedByParameter = "$lockedBy";
+    private const string ClaimSql = """
+        UPDATE ashlar_email_outbox
+        SET locked_until = $lockedUntil,
+            locked_by = $lockedBy
+        WHERE id IN (
+            SELECT id
+            FROM ashlar_email_outbox
+            WHERE sent_at IS NULL
+              AND failed_at IS NULL
+              AND available_at <= $now
+              AND (locked_until IS NULL OR locked_until < $now)
+            ORDER BY available_at, id
+            LIMIT $batchSize
+        )
+        """;
+    private const string MarkAsSentSql = """
+        UPDATE ashlar_email_outbox
+        SET sent_at = $now,
+            locked_until = NULL,
+            locked_by = NULL,
+            last_attempt_at = $now,
+            attempt_count = attempt_count + 1
+        WHERE id = $id AND locked_by = $lockedBy
+        """;
+    private const string MarkAsFailedSql = """
+        UPDATE ashlar_email_outbox
+        SET failed_at = $failedAt,
+            last_error = $lastError,
+            available_at = $availableAt,
+            locked_until = NULL,
+            locked_by = NULL,
+            last_attempt_at = $now,
+            attempt_count = $attemptCount
+        WHERE id = $id AND locked_by = $lockedBy
+        """;
     private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     private readonly SqliteEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
@@ -43,14 +77,15 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
         }
 
         return await SqliteOutboxDispatch.ProcessBatchAsync(
-            _serviceProvider,
-            TableName,
-            _lockId,
-            _timeProvider,
-            _options.LockDuration,
-            _options.BatchSize,
-            LoadClaimedEntriesAsync,
-            ProcessEntryAsync,
+            new SqliteOutboxProcessContext<EmailOutboxEntry>(
+                _serviceProvider,
+                ClaimSql,
+                _lockId,
+                _timeProvider,
+                _options.LockDuration,
+                _options.BatchSize,
+                LoadClaimedEntriesAsync,
+                ProcessEntryAsync),
             cancellationToken);
     }
 
@@ -120,7 +155,10 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
 
     private async Task MarkAsSentAsync(Guid id, IServiceProvider provider, CancellationToken cancellationToken)
     {
-        await SqliteOutboxDispatch.MarkAsSentAsync(provider, TableName, id, _lockId, _timeProvider.GetUtcNow(), cancellationToken);
+        await SqliteOutboxDispatch.MarkAsSentAsync(
+            new SqliteOutboxSentUpdateContext(provider, MarkAsSentSql, _lockId, _timeProvider.GetUtcNow()),
+            id,
+            cancellationToken);
     }
 
     private async Task MarkAsFailedAsync(EmailOutboxEntry entry, Exception exception, IServiceProvider provider, CancellationToken cancellationToken)
@@ -134,11 +172,8 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
             exception);
 
         await SqliteOutboxDispatch.MarkAsFailedAsync(
-            provider,
-            TableName,
+            new SqliteOutboxFailedUpdateContext(provider, MarkAsFailedSql, _lockId, now),
             entry.Id,
-            _lockId,
-            now,
             new SqliteOutboxFailureUpdate(failure.AttemptCount, failure.FailedAt, failure.AvailableAt, failure.LastError),
             cancellationToken);
     }

@@ -40,6 +40,23 @@ public sealed class AshlarSecurityEventWebhookOutboxEntry
 }
 
 /// <summary>
+/// Provides callbacks and options for dispatching a durable security event webhook outbox entry.
+/// </summary>
+/// <param name="HttpClientFactory">The HTTP client factory.</param>
+/// <param name="HttpClientName">The named HTTP client to use.</param>
+/// <param name="MaxAttempts">The maximum configured delivery attempts.</param>
+/// <param name="MarkAsSentAsync">The callback that persists successful delivery state.</param>
+/// <param name="MarkAsFailedAsync">The callback that persists failed delivery state.</param>
+/// <param name="LogDeliveryFailed">The callback that logs failed delivery attempts.</param>
+public sealed record AshlarSecurityEventWebhookOutboxDispatchContext(
+    IHttpClientFactory HttpClientFactory,
+    string HttpClientName,
+    int MaxAttempts,
+    Func<Guid, CancellationToken, Task> MarkAsSentAsync,
+    Func<AshlarSecurityEventWebhookOutboxEntry, Exception, CancellationToken, Task> MarkAsFailedAsync,
+    Action<Guid, int, bool, Exception> LogDeliveryFailed);
+
+/// <summary>
 /// Provides shared helpers for dispatching durable security event webhook outbox entries.
 /// </summary>
 public static class AshlarSecurityEventWebhookOutboxDispatch
@@ -75,37 +92,28 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
     /// Sends a durable outbox entry and applies the provided success or failure persistence callbacks.
     /// </summary>
     /// <param name="entry">The durable outbox entry.</param>
-    /// <param name="httpClientFactory">The HTTP client factory.</param>
-    /// <param name="httpClientName">The named HTTP client to use.</param>
-    /// <param name="maxAttempts">The maximum configured delivery attempts.</param>
-    /// <param name="markAsSentAsync">The callback that persists successful delivery state.</param>
-    /// <param name="markAsFailedAsync">The callback that persists failed delivery state.</param>
-    /// <param name="logDeliveryFailed">The callback that logs failed delivery attempts.</param>
+    /// <param name="context">The dispatch context.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>A task that represents the asynchronous dispatch operation.</returns>
     public static async Task DispatchAsync(
         AshlarSecurityEventWebhookOutboxEntry entry,
-        IHttpClientFactory httpClientFactory,
-        string httpClientName,
-        int maxAttempts,
-        Func<Guid, CancellationToken, Task> markAsSentAsync,
-        Func<AshlarSecurityEventWebhookOutboxEntry, Exception, CancellationToken, Task> markAsFailedAsync,
-        Action<Guid, int, bool, Exception> logDeliveryFailed,
+        AshlarSecurityEventWebhookOutboxDispatchContext context,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        ArgumentNullException.ThrowIfNull(httpClientFactory);
-        ArgumentException.ThrowIfNullOrWhiteSpace(httpClientName);
-        ArgumentNullException.ThrowIfNull(markAsSentAsync);
-        ArgumentNullException.ThrowIfNull(markAsFailedAsync);
-        ArgumentNullException.ThrowIfNull(logDeliveryFailed);
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(context.HttpClientFactory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(context.HttpClientName);
+        ArgumentNullException.ThrowIfNull(context.MarkAsSentAsync);
+        ArgumentNullException.ThrowIfNull(context.MarkAsFailedAsync);
+        ArgumentNullException.ThrowIfNull(context.LogDeliveryFailed);
 
         try
         {
             using var request = MapToHttpRequest(entry);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromMilliseconds(entry.TimeoutMs));
-            var client = httpClientFactory.CreateClient(httpClientName);
+            var client = context.HttpClientFactory.CreateClient(context.HttpClientName);
             using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
@@ -119,12 +127,12 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         catch (Exception exception)
         {
             var attemptCount = entry.AttemptCount + 1;
-            logDeliveryFailed(entry.Id, attemptCount, attemptCount >= maxAttempts, exception);
-            await markAsFailedAsync(entry, exception, CancellationToken.None).ConfigureAwait(false);
+            context.LogDeliveryFailed(entry.Id, attemptCount, attemptCount >= context.MaxAttempts, exception);
+            await context.MarkAsFailedAsync(entry, exception, CancellationToken.None).ConfigureAwait(false);
             return;
         }
 
-        await markAsSentAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
+        await context.MarkAsSentAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
     }
 
     private static bool ShouldAddAsContentHeader(HttpRequestMessage request, KeyValuePair<string, string> header)
