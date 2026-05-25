@@ -2,6 +2,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
+using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -229,7 +230,19 @@ internal sealed class EmailChangeService(
             return Result.Failure(AshlarFailureCodes.RateLimited, "Too many attempts.");
         }
 
-        var tokenHash = _dependencies.TokenContext.Hasher.HashToken(request.Token);
+        if (!SecureTokenHashing.TryHashToken(_dependencies.TokenContext.Hasher, request.Token, out var tokenHash))
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailChangeFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = request.UserId,
+                Audit = request.Audit,
+                FailureReason = AshlarFailureCodes.InvalidOrExpiredToken.Value
+            }, cancellationToken);
+            return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, "Invalid or expired token.");
+        }
+
         var credential = await _dependencies.IdentityContext.CredentialRepository.GetCredentialForUserAsync(request.UserId, ProviderType.Internal, ProviderName, tokenHash, cancellationToken);
 
         var now = _dependencies.TimeProvider.GetUtcNow();

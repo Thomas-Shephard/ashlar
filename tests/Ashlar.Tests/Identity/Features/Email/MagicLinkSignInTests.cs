@@ -274,7 +274,7 @@ internal sealed class MagicLinkSignInTests
     }
 
     [Test]
-    public async Task VerifyLinkFailsForOverlongTokenWithoutHashing()
+    public async Task VerifyLinkFailsForOverlongTokenWithoutRateLimiting()
     {
         var fixture = CreateFixture(_user);
         var token = new string('a', 257);
@@ -404,6 +404,24 @@ internal sealed class MagicLinkSignInTests
         var result = await provider.AuthenticateAsync(assertion, wrongPurpose);
 
         Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
+    }
+
+    [Test]
+    public async Task ProviderTreatsOverlongTokenAsUnlinked()
+    {
+        var tokenHasher = new Sha256TokenHasher();
+        var provider = new MagicLinkAuthenticationProvider(tokenHasher);
+        var assertion = new MagicLinkAssertion(new string('a', 257));
+        var repository = new InMemoryUserCredentialStore(_user);
+
+        var providerKey = provider.GetProviderKey(assertion, _user.Id);
+        var user = await provider.FindUserAsync(assertion, new AuthenticationContext(), repository);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(providerKey, Is.Empty);
+            Assert.That(user, Is.Null);
+        }
     }
 
     [Test]

@@ -198,7 +198,19 @@ internal sealed class EmailVerificationService : IEmailVerificationService
             return Result.Failure(AshlarFailureCodes.RateLimited, "Too many attempts.");
         }
 
-        var tokenHash = _tokenContext.Hasher.HashToken(token);
+        if (!SecureTokenHashing.TryHashToken(_tokenContext.Hasher, token, out var tokenHash))
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailVerificationFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Audit = request.Audit,
+                FailureReason = AshlarFailureCodes.InvalidOrExpiredToken.Value
+            }, cancellationToken);
+            return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, "Invalid or expired token.");
+        }
+
         var credential = await _identityContext.CredentialRepository.GetCredentialForUserAsync(userId, ProviderType.Internal, ProviderName, tokenHash, cancellationToken);
 
         var now = _timeProvider.GetUtcNow();

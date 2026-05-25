@@ -683,6 +683,24 @@ internal sealed class InvitationServiceTests
     }
 
     [Test]
+    public async Task AcceptInvitationReturnsInvalidInvitationForOverlongTokenWithoutMutatingState()
+    {
+        var fixture = CreateFixture();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com" }, new Uri("https://myapp.com/join"));
+        var invitation = fixture.InvitationRepository.Invitations.Single();
+
+        var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = new string('a', 257), UserName = "New User" });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(invitation.AcceptedAt, Is.Null);
+            Assert.That(fixture.UserRepository.Users, Is.Empty);
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationAccepted).FailureReason, Is.EqualTo(AshlarFailureCodes.InvalidInvitation.Value));
+        }
+    }
+
+    [Test]
     public async Task GetInvitationAcceptancePreviewReturnsAvailableInvitationEmailAndTenant()
     {
         var fixture = CreateFixture();
@@ -783,6 +801,35 @@ internal sealed class InvitationServiceTests
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
             Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationPreviewed).TenantId, Is.EqualTo(tenantId));
             Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationPreviewed).Properties?["operation"], Is.EqualTo("preview"));
+        }
+    }
+
+    [Test]
+    public async Task GetInvitationAcceptancePreviewReturnsInvalidInvitationForOverlongToken()
+    {
+        var fixture = CreateFixture();
+
+        var result = await fixture.Service.GetInvitationAcceptancePreviewAsync(new string('a', 257));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationPreviewed).FailureReason, Is.EqualTo(AshlarFailureCodes.InvalidInvitation.Value));
+        }
+    }
+
+    [Test]
+    public async Task GetInvitationAcceptancePreviewUsesContextTenantForOverlongToken()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+
+        var result = await fixture.Service.GetInvitationAcceptancePreviewAsync(new string('a', 257), new AuthenticationContext(TenantId: tenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationPreviewed).TenantId, Is.EqualTo(tenantId));
         }
     }
 

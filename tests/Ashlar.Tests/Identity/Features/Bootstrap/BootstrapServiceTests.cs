@@ -276,6 +276,54 @@ internal sealed class BootstrapServiceTests
     }
 
     [Test]
+    public async Task AcceptBootstrapInvitationAsyncReturnsInvalidInvitationForOverlongTokenWithoutMutatingState()
+    {
+        var overlongToken = new string('a', 257);
+        var contextTenantId = Guid.NewGuid();
+        _tokenHasher.Setup(h => h.HashToken(overlongToken)).Throws(new ArgumentException("Token exceeds maximum allowed length.", "token"));
+
+        var result = await _service.AcceptBootstrapInvitationAsync(
+            new AcceptInvitationRequest { Token = overlongToken },
+            new AuthenticationContext(TenantId: contextTenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+        }
+
+        _invitationRepository.Verify(r => r.GetInvitationByTokenHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _invitationService.Verify(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext>(), It.IsAny<CancellationToken>()), Times.Never);
+        _stateRepository.Verify(r => r.MarkAsInitializedAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.BootstrapCompleted &&
+            e.Outcome == SecurityEventOutcomes.Failure &&
+            e.FailureReason == AshlarFailureCodes.InvalidInvitation.Value &&
+            e.TenantId == contextTenantId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task AcceptBootstrapInvitationAsyncUsesNullTenantForOverlongTokenWithoutContext()
+    {
+        var overlongToken = new string('a', 257);
+        _tokenHasher.Setup(h => h.HashToken(overlongToken)).Throws(new ArgumentException("Token exceeds maximum allowed length.", "token"));
+
+        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = overlongToken });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+        }
+
+        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.BootstrapCompleted &&
+            e.Outcome == SecurityEventOutcomes.Failure &&
+            e.FailureReason == AshlarFailureCodes.InvalidInvitation.Value &&
+            e.TenantId == null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
     public async Task AcceptBootstrapInvitationAsyncFailsIfInvitationNotFoundWithoutContext()
     {
         _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");

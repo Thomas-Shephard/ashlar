@@ -42,7 +42,9 @@ public sealed class MagicLinkAuthenticationProvider(ISecureTokenHasher tokenHash
             return string.Empty;
         }
 
-        return _tokenHasher.HashToken(magicLinkAssertion.Token);
+        return SecureTokenHashing.TryHashToken(_tokenHasher, magicLinkAssertion.Token, out var providerKey)
+            ? providerKey
+            : string.Empty;
     }
 
     /// <summary>
@@ -71,7 +73,11 @@ public sealed class MagicLinkAuthenticationProvider(ISecureTokenHasher tokenHash
             return null;
         }
 
-        var providerKey = _tokenHasher.HashToken(magicLinkAssertion.Token);
+        if (!SecureTokenHashing.TryHashToken(_tokenHasher, magicLinkAssertion.Token, out var providerKey))
+        {
+            return null;
+        }
+
         return await repository.GetUserByProviderKeyAsync(Key.Type, Key.Name, providerKey, cancellationToken);
     }
 

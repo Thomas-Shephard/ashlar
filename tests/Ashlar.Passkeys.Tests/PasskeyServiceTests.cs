@@ -655,6 +655,25 @@ internal sealed class PasskeyServiceTests
     }
 
     [Test]
+    public async Task StartFactorAsyncShouldRejectOverlongHandshakeTokenWithoutCreatingChallenge()
+    {
+        var overlongToken = new string('a', 257);
+        var userId = Guid.NewGuid();
+        var handshakes = new Mock<IAuthenticationHandshakeService>();
+        var credentials = new Mock<ICredentialRepository>();
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        handshakes.Setup(h => h.GetHandshakeAsync(overlongToken, It.IsAny<CancellationToken>())).ReturnsAsync(CreateHandshake(userId));
+        credentials.Setup(r => r.ListCredentialsForUserAsync(userId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([CreatePasskeyCredential(userId, "cred", DateTimeOffset.UtcNow)]);
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, credentials.Object, challenges.Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: handshakes.Object, tokenHasher: new TestTokenHasher()));
+
+        var result = await service.StartFactorAsync(new StartPasskeyFactorRequest(overlongToken));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
+        challenges.Verify(r => r.CreateAsync(It.IsAny<PasskeyChallenge>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public async Task StartFactorAsyncShouldRejectInvalidHandshakeStates()
     {
         var userId = Guid.NewGuid();
@@ -911,6 +930,25 @@ internal sealed class PasskeyServiceTests
         var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, "token"));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
+        validator.Verify(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), It.IsAny<PasskeyChallenge>(), It.IsAny<UserCredential>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()), Times.Never);
+        orchestrator.Verify(o => o.VerifyFactorAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task CompleteFactorAsyncShouldRejectOverlongHandshakeTokenWithoutConsumingChallenge()
+    {
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var challenge = CreateAuthenticationChallenge(now, Guid.NewGuid(), "hashed:token", "passkey");
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var validator = new Mock<IPasskeyCeremonyValidator>();
+        var orchestrator = new Mock<IAuthenticationOrchestrator>();
+        challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+
+        var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, new string('a', 257)));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
+        challenges.Verify(r => r.ConsumeAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
         validator.Verify(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), It.IsAny<PasskeyChallenge>(), It.IsAny<UserCredential>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()), Times.Never);
         orchestrator.Verify(o => o.VerifyFactorAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -1189,6 +1227,11 @@ internal sealed class TestTokenHasher : ISecureTokenHasher
 {
     public string HashToken(string token)
     {
+        if (token.Length > 256)
+        {
+            throw new ArgumentException("Token exceeds maximum allowed length.", nameof(token));
+        }
+
         return $"hashed:{token}";
     }
 }
