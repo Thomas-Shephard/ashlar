@@ -131,7 +131,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         await repository.CreateGrantAsync(active);
         await repository.CreateGrantAsync(revoked);
         await repository.CreateGrantAsync(expired);
-        await repository.RevokeGrantAsync(revoked.Id, Now.AddMinutes(1));
+        await repository.RevokeGrantAsync(revoked.Id, revoked.TenantId, Now.AddMinutes(1));
 
         var activeOnly = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(user.Id, ActiveOnly: true));
         var all = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(user.Id, ActiveOnly: false));
@@ -149,13 +149,13 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         await using var scope = CreateAsyncScope();
         var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
         var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
-        var grant = CreateGrant(user.Id, permission: "revoke");
+        var grant = CreateGrant(user.Id, Guid.NewGuid(), permission: "revoke");
         var firstRevokedAt = Now.AddMinutes(1);
         var secondRevokedAt = Now.AddMinutes(2);
         await repository.CreateGrantAsync(grant);
 
-        var first = await repository.RevokeGrantAsync(grant.Id, firstRevokedAt);
-        var second = await repository.RevokeGrantAsync(grant.Id, secondRevokedAt);
+        var first = await repository.RevokeGrantAsync(grant.Id, grant.TenantId, firstRevokedAt);
+        var second = await repository.RevokeGrantAsync(grant.Id, grant.TenantId, secondRevokedAt);
         var fetched = await repository.GetGrantAsync(grant.Id);
 
         using (Assert.EnterMultipleScope())
@@ -167,12 +167,76 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
     }
 
     [Test]
+    public async Task RevokeGrantMatchesGlobalGrantOnlyWithNullTenant()
+    {
+        await using var scope = CreateAsyncScope();
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
+        var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
+        var global = CreateGrant(user.Id, permission: "global.revoke");
+        var requestedTenantId = Guid.NewGuid();
+        var revokedAt = Now.AddMinutes(2);
+        await repository.CreateGrantAsync(global);
+
+        var wrongTenant = await repository.RevokeGrantAsync(global.Id, requestedTenantId, Now.AddMinutes(1));
+        var nullTenant = await repository.RevokeGrantAsync(global.Id, null, revokedAt);
+        var fetched = await repository.GetGrantAsync(global.Id);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrongTenant, Is.False);
+            Assert.That(nullTenant, Is.True);
+            Assert.That(fetched!.RevokedAt, Is.EqualTo(revokedAt));
+        }
+    }
+
+    [Test]
+    public async Task RevokeGrantDoesNotCrossTenantBoundary()
+    {
+        await using var scope = CreateAsyncScope();
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
+        var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
+        var grant = CreateGrant(user.Id, Guid.NewGuid(), permission: "tenant.revoke");
+        await repository.CreateGrantAsync(grant);
+
+        var wrongTenant = await repository.RevokeGrantAsync(grant.Id, Guid.NewGuid(), Now.AddMinutes(1));
+        var nullTenant = await repository.RevokeGrantAsync(grant.Id, null, Now.AddMinutes(2));
+        var fetched = await repository.GetGrantAsync(grant.Id);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrongTenant, Is.False);
+            Assert.That(nullTenant, Is.False);
+            Assert.That(fetched!.RevokedAt, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task RevokeGrantMatchesTenantScopedGrant()
+    {
+        await using var scope = CreateAsyncScope();
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
+        var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
+        var grant = CreateGrant(user.Id, Guid.NewGuid(), permission: "tenant.revoke");
+        var revokedAt = Now.AddMinutes(1);
+        await repository.CreateGrantAsync(grant);
+
+        var revoked = await repository.RevokeGrantAsync(grant.Id, grant.TenantId, revokedAt);
+        var fetched = await repository.GetGrantAsync(grant.Id);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revoked, Is.True);
+            Assert.That(fetched!.RevokedAt, Is.EqualTo(revokedAt));
+        }
+    }
+
+    [Test]
     public async Task RevokeMissingGrantReturnsFalse()
     {
         await using var scope = CreateAsyncScope();
         var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
 
-        Assert.That(await repository.RevokeGrantAsync(Guid.NewGuid(), Now), Is.False);
+        Assert.That(await repository.RevokeGrantAsync(Guid.NewGuid(), Guid.NewGuid(), Now), Is.False);
     }
 
     [Test]

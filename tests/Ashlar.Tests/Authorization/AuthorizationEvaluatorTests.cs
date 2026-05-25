@@ -213,6 +213,6 @@ internal sealed class AuthorizationEvaluatorTests
 
         public Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, CancellationToken cancellationToken = default) => Task.FromResult<AuthorizationGrant?>(null);
 
-        public Task<bool> RevokeGrantAsync(Guid grantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default) => Task.FromResult(false);
+        public Task<bool> RevokeGrantAsync(Guid grantId, Guid? tenantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default) => Task.FromResult(false);
     }
 }

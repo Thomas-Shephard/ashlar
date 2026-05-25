@@ -35,8 +35,9 @@ public interface IAuthorizationGrantRepository
     /// Performs the revoke grant <see langword="async" /> operation and returns the result.
     /// </summary>
     /// <param name="grantId">The grant id value.</param>
+    /// <param name="tenantId">The tenant id value. A <see langword="null" /> value matches only global grants.</param>
     /// <param name="revokedAt">The revoked at value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    Task<bool> RevokeGrantAsync(Guid grantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default);
+    Task<bool> RevokeGrantAsync(Guid grantId, Guid? tenantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default);
 }

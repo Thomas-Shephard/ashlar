@@ -938,6 +938,8 @@ if (!result.Succeeded)
 
 Scope matching is explicit. A scoped grant applies only when the evaluation request uses the same tenant, scope type, and scope id. A global grant is represented by omitting tenant and scope values.
 
+Grant revocation is tenant-scoped. Callers must pass the tenant context they are authorized to administer; a null tenant revokes only global grants and does not match tenant grants.
+
 ### ASP.NET Core Authorization
 Use **Ashlar.AspNetCore** to integrate Ashlar grants with standard ASP.NET Core authorization policies:
 
