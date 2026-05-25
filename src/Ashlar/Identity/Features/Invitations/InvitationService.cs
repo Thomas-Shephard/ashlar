@@ -3,6 +3,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
+using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Features.Invitations;
@@ -255,7 +256,12 @@ internal sealed class InvitationService(
         AuthenticationContext? context,
         CancellationToken cancellationToken)
     {
-        var tokenHash = _dependencies.TokenHasher.HashToken(token);
+        if (!SecureTokenHashing.TryHashToken(_dependencies.TokenHasher, token, out var tokenHash))
+        {
+            var failedAt = _dependencies.TimeProvider.GetUtcNow();
+            return (null, context?.TenantId, failedAt);
+        }
+
         var invitation = await _dependencies.InvitationRepository.GetInvitationByTokenHashAsync(tokenHash, cancellationToken);
         var now = _dependencies.TimeProvider.GetUtcNow();
         var contextTenantId = context?.TenantId;

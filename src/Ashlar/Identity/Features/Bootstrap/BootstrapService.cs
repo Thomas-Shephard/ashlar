@@ -2,6 +2,7 @@ using Ashlar.Auditing;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.Identity.Notifications;
+using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
 
@@ -159,7 +160,19 @@ internal sealed class BootstrapService(
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var tokenHash = _invitationDependencies.TokenHasher.HashToken(request.Token);
+        if (!SecureTokenHashing.TryHashToken(_invitationDependencies.TokenHasher, request.Token, out var tokenHash))
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.BootstrapCompleted,
+                Outcome = SecurityEventOutcomes.Failure,
+                TenantId = context?.TenantId,
+                FailureReason = AshlarFailureCodes.InvalidInvitation.Value,
+                Context = context
+            }, cancellationToken);
+            return Result.Failure<Guid>(AshlarFailureCodes.InvalidInvitation);
+        }
+
         var invitation = await _invitationDependencies.InvitationRepository.GetInvitationByTokenHashAsync(tokenHash, cancellationToken);
 
         if (invitation == null || !invitation.IsAvailable(_invitationDependencies.TimeProvider.GetUtcNow()))

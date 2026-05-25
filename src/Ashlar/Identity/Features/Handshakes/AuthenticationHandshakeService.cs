@@ -154,7 +154,17 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
             return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.EmptyToken);
         }
 
-        var tokenHash = _tokenHasher.HashToken(request.HandshakeToken);
+        if (!SecureTokenHashing.TryHashToken(_tokenHasher, request.HandshakeToken, out var tokenHash))
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.AuthenticationHandshakeFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                Context = request.Context,
+                FailureReason = AshlarFailureCodes.HandshakeNotFound.Value
+            }, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeNotFound);
+        }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
@@ -267,7 +277,11 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
     public async Task<AuthenticationHandshake?> GetHandshakeAsync(string handshakeToken, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(handshakeToken)) return null;
-        var tokenHash = _tokenHasher.HashToken(handshakeToken);
+        if (!SecureTokenHashing.TryHashToken(_tokenHasher, handshakeToken, out var tokenHash))
+        {
+            return null;
+        }
+
         return await _repository.FindByTokenHashAsync(tokenHash, cancellationToken: cancellationToken);
     }
 
@@ -281,7 +295,10 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
     public async Task<Result> RevokeHandshakeAsync(string handshakeToken, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(handshakeToken)) return Result.Failure(AshlarFailureCodes.EmptyToken);
-        var tokenHash = _tokenHasher.HashToken(handshakeToken);
+        if (!SecureTokenHashing.TryHashToken(_tokenHasher, handshakeToken, out var tokenHash))
+        {
+            return Result.Failure(AshlarFailureCodes.HandshakeNotFound);
+        }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 

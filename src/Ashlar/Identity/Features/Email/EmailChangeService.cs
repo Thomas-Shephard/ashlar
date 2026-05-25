@@ -2,6 +2,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
+using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -30,6 +31,7 @@ internal sealed class EmailChangeService(
     private const string VerifyPurpose = "email-change-verify";
     private const string CredentialPurpose = "email-change";
     private const string ProviderName = "email-change";
+    private const string InvalidOrExpiredTokenMessage = "Invalid or expired token.";
     private readonly EmailChangeDependencies _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
     private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider);
     private readonly IOptions<EmailChangeOptions> _options = options ?? Options.Create(new EmailChangeOptions());
@@ -229,7 +231,19 @@ internal sealed class EmailChangeService(
             return Result.Failure(AshlarFailureCodes.RateLimited, "Too many attempts.");
         }
 
-        var tokenHash = _dependencies.TokenContext.Hasher.HashToken(request.Token);
+        if (!SecureTokenHashing.TryHashToken(_dependencies.TokenContext.Hasher, request.Token, out var tokenHash))
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailChangeFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = request.UserId,
+                Audit = request.Audit,
+                FailureReason = AshlarFailureCodes.InvalidOrExpiredToken.Value
+            }, cancellationToken);
+            return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, InvalidOrExpiredTokenMessage);
+        }
+
         var credential = await _dependencies.IdentityContext.CredentialRepository.GetCredentialForUserAsync(request.UserId, ProviderType.Internal, ProviderName, tokenHash, cancellationToken);
 
         var now = _dependencies.TimeProvider.GetUtcNow();
@@ -243,7 +257,7 @@ internal sealed class EmailChangeService(
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.InvalidOrExpiredToken.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, "Invalid or expired token.");
+            return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, InvalidOrExpiredTokenMessage);
         }
 
         string newEmail;
@@ -280,7 +294,7 @@ internal sealed class EmailChangeService(
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.UserNotFoundOrInactive.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.UserNotFoundOrInactive, "Invalid or expired token.");
+            return Result.Failure(AshlarFailureCodes.UserNotFoundOrInactive, InvalidOrExpiredTokenMessage);
         }
 
         var consumed = await _dependencies.IdentityContext.CredentialRepository.ConsumeCredentialAsync(credential.Id, credential.Version, cancellationToken);
@@ -294,7 +308,7 @@ internal sealed class EmailChangeService(
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.TokenConsumptionFailed.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.TokenConsumptionFailed, "Invalid or expired token.");
+            return Result.Failure(AshlarFailureCodes.TokenConsumptionFailed, InvalidOrExpiredTokenMessage);
         }
 
         var existingUser = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(normalizedNewEmail, (user as ITenantUser)?.TenantId, cancellationToken);

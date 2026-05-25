@@ -165,12 +165,7 @@ public sealed class AuthenticationSessionService(
             return ValidateAuthenticationSessionResult.Failed;
         }
 
-        string tokenHash;
-        try
-        {
-            tokenHash = _tokenHasher.HashToken(token);
-        }
-        catch (ArgumentException)
+        if (!SecureTokenHashing.TryHashToken(_tokenHasher, token, out var tokenHash))
         {
             await RecordSessionValidationFailedAsync(
                 AuthenticationSessionValidationStatus.Failed,

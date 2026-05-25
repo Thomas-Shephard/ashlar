@@ -1,6 +1,7 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
+using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Providers.Email;
@@ -12,7 +13,6 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
 {
     private const string RequestPurpose = "magic-link-request";
     private const string VerifyPurpose = "magic-link-verify";
-    private const int MaxVerificationTokenLength = 256;
     private readonly MagicLinkSignInDependencies _dependencies;
     private readonly IOptions<MagicLinkSignInOptions> _options;
     private readonly SecurityEventEmitter _securityEvents;
@@ -119,14 +119,14 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
 
         context ??= new AuthenticationContext();
 
-        if (token.Length > MaxVerificationTokenLength)
+        if (!SecureTokenHashing.TryHashToken(_dependencies.TokenHasher, token, out var tokenHash))
         {
             await RecordAsync(AshlarSecurityEventTypes.AuthenticationFailed, SecurityEventOutcomes.Failure, context, null, "invalid_token", cancellationToken);
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Authentication failed.");
         }
 
         // Rate limit by IP address to prevent brute forcing.
-        var rateLimit = await CheckRateLimitAsync(GetVerificationRateLimitKey(token, context), VerifyPurpose, context, _options.Value.VerificationRateLimit, cancellationToken);
+        var rateLimit = await CheckRateLimitAsync(GetVerificationRateLimitKey(tokenHash, context), VerifyPurpose, context, _options.Value.VerificationRateLimit, cancellationToken);
         if (!rateLimit.IsAllowed)
         {
             await RecordAsync(AshlarSecurityEventTypes.MagicLinkVerificationRateLimited, SecurityEventOutcomes.Failure, context, null, "rate_limited", cancellationToken);
@@ -161,7 +161,7 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
         }, cancellationToken);
     }
 
-    private string GetVerificationRateLimitKey(string token, AuthenticationContext context)
+    private static string GetVerificationRateLimitKey(string tokenHash, AuthenticationContext context)
     {
         if (!string.IsNullOrWhiteSpace(context.IpAddress))
         {
@@ -173,6 +173,6 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
             return $"correlation:{context.CorrelationId}";
         }
 
-        return $"token:{_dependencies.TokenHasher.HashToken(token)}";
+        return $"token:{tokenHash}";
     }
 }

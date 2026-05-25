@@ -198,6 +198,11 @@ public sealed class PasskeyService(
             return Result.Failure<PasskeyCeremonyOptions>(AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
+        if (!SecureTokenHashing.TryHashToken(_tokenHasher, request.HandshakeToken, out var handshakeTokenHash))
+        {
+            return Result.Failure<PasskeyCeremonyOptions>(AshlarFailureCodes.PasskeyChallengeInvalid);
+        }
+
         var handshake = await _handshakeService.GetHandshakeAsync(request.HandshakeToken, cancellationToken);
         if (handshake == null
             || handshake.IsRevoked
@@ -225,7 +230,7 @@ public sealed class PasskeyService(
             challengeValue,
             optionsJson,
             handshake.UserId,
-            _tokenHasher.HashToken(request.HandshakeToken),
+            handshakeTokenHash,
             factorType);
         await _challengeRepository.CreateAsync(challenge, cancellationToken);
         await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationStarted, SecurityEventOutcomes.Success, handshake.UserId, null, request.Audit, cancellationToken);
@@ -245,10 +250,15 @@ public sealed class PasskeyService(
             return new PasskeyAuthenticationResult(false, null, null, AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
+        if (!SecureTokenHashing.TryHashToken(_tokenHasher, request.HandshakeToken, out var handshakeTokenHash))
+        {
+            return new PasskeyAuthenticationResult(false, null, null, AshlarFailureCodes.PasskeyChallengeInvalid);
+        }
+
         var challenge = await GetChallengeAsync(request.ChallengeId, AuthenticationPurpose, cancellationToken);
         if (challenge == null
             || !challenge.UserId.HasValue
-            || !string.Equals(challenge.HandshakeTokenHash, _tokenHasher.HashToken(request.HandshakeToken), StringComparison.Ordinal)
+            || !string.Equals(challenge.HandshakeTokenHash, handshakeTokenHash, StringComparison.Ordinal)
             || !string.Equals(challenge.FactorType, factorType, StringComparison.Ordinal))
         {
             return new PasskeyAuthenticationResult(false, null, null, AshlarFailureCodes.PasskeyChallengeInvalid);

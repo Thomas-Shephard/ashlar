@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Ashlar.Security.Tokens;
 
 namespace Ashlar.Tests.Security;
@@ -64,5 +65,54 @@ internal sealed class Sha256TokenHasherTests
         var token = new string('a', 257);
 
         Assert.Throws<ArgumentException>(() => hasher.HashToken(token));
+    }
+
+    [Test]
+    public void TryHashTokenShouldReturnHashForValidToken()
+    {
+        var hasher = new Sha256TokenHasher();
+
+        var hashed = SecureTokenHashing.TryHashToken(hasher, "security-token-value", out var tokenHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hashed, Is.True);
+            Assert.That(tokenHash, Does.StartWith("sha256:"));
+        }
+    }
+
+    [Test]
+    public void TryHashTokenShouldReturnFalseForInvalidToken()
+    {
+        var hasher = new Sha256TokenHasher();
+
+        var hashed = SecureTokenHashing.TryHashToken(hasher, new string('a', 257), out var tokenHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hashed, Is.False);
+            Assert.That(tokenHash, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void TryHashTokenShouldReturnFalseForBlankToken()
+    {
+        var hasher = new Sha256TokenHasher();
+
+        var hashed = SecureTokenHashing.TryHashToken(hasher, " ", out var tokenHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hashed, Is.False);
+            Assert.That(tokenHash, Is.Empty);
+        }
+    }
+
+    [Test]
+    [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
+    public void TryHashTokenShouldRejectNullHasher()
+    {
+        Assert.Throws<ArgumentNullException>(() => SecureTokenHashing.TryHashToken(null!, "token", out _));
     }
 }
