@@ -282,6 +282,73 @@ if (result.Succeeded)
 
 Email change requests are automatically throttled, and the process ensures that the new email is not already in use by another user in the same tenant.
 
+## Password Reset
+Ashlar supports first-class password reset for local password credentials through `AddAshlarPasswordReset()` and `IPasswordResetService`.
+
+Register password reset with core identity, a local password hasher, callback URI validation, an email sender, and persistence for users, credentials, and sessions:
+
+```csharp
+services.AddAshlarPostgres(connectionString);
+services.AddSingleton<IEmailSender, MyEmailSender>();
+
+services.Configure<UriValidationOptions>(options =>
+{
+    options.AllowedCallbackUris.Add("https://app.example.com/account/reset-password");
+});
+
+services
+    .AddAshlarIdentity()
+    .AddAuthenticationProvider<LocalPasswordProvider>()
+    .AddPasswordHasher<PasswordHasherV1>();
+
+services.AddAshlarPasswordReset(options =>
+{
+    options.Expiration = TimeSpan.FromHours(2);
+    options.RevokeSessions = true;
+    options.MinimumRequestDuration = TimeSpan.FromMilliseconds(250);
+});
+```
+
+`AddAshlarIdentity()` registers the default `IUriValidator`, in-memory `IAuthenticationRateLimiter`, secure token generator/hasher, and null email sender. Production applications should replace the null email sender and use durable/distributed persistence and rate limiting when running more than one instance. Password reset also requires `IUserRepository`, `ICredentialRepository`, and `IAuthenticationSessionRepository`; official persistence packages provide these repositories.
+
+Request a reset email without revealing whether the address exists, is disabled, or has a local password:
+
+```csharp
+var passwordReset = httpContext.RequestServices.GetRequiredService<IPasswordResetService>();
+
+await passwordReset.RequestPasswordResetAsync(
+    email,
+    new Uri("https://app.example.com/account/reset-password"),
+    new AuthenticationContext(
+        TenantId: tenantId,
+        IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
+        UserAgent: httpContext.Request.Headers.UserAgent.ToString(),
+        CorrelationId: httpContext.TraceIdentifier));
+```
+
+Complete the reset with the raw token from the callback URL and the replacement password:
+
+```csharp
+var result = await passwordReset.ResetPasswordAsync(
+    new PasswordResetRequest
+    {
+        Token = tokenFromUrl,
+        NewPassword = newPassword
+    },
+    new AuthenticationContext(
+        TenantId: tenantId,
+        IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
+        UserAgent: httpContext.Request.Headers.UserAgent.ToString(),
+        CorrelationId: httpContext.TraceIdentifier));
+
+if (!result.Succeeded && result.FailureCode == AshlarFailureCodes.InvalidOrExpiredToken)
+{
+    return Results.BadRequest(new { error = "The reset link is invalid or expired." });
+}
+```
+
+Reset tokens are high-entropy generated tokens stored only as `ISecureTokenHasher` hashes in internal password-reset credentials. The new password is stored through the normal local password hashing path. Successful reset consumes the reset token, replaces existing local password credentials, revokes existing sessions by default, emits security audit events, and sends a post-reset security notification when security notifications are configured.
+
 ## TOTP Authenticator
 Ashlar includes a framework-neutral service for managing and verifying TOTP (Time-based One-Time Password) authenticator factors. These are standard RFC 6238 codes compatible with apps like Google Authenticator, Microsoft Authenticator, and 1Password.
 

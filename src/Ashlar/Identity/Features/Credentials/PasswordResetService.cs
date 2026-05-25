@@ -21,6 +21,19 @@ internal sealed class PasswordResetService : IPasswordResetService
     private const string VerifyPurpose = "password-reset-verify";
     private const int MaxResetTokenLength = 256;
     private const string SessionRevocationReason = "Password reset";
+    private const string EmailRequiredMessage = "Email is required.";
+    private const string TooManyRequestsMessage = "Too many requests.";
+    private const string TokenRequiredMessage = "Token is required.";
+    private const string PasswordRequiredMessage = "Password is required.";
+    private const string TooManyAttemptsMessage = "Too many attempts.";
+    private const string InvalidOrExpiredTokenMessage = "Invalid or expired token.";
+    private const string RequestSuppressedReason = "request_suppressed";
+    private const string DeliveryFailedReason = "delivery_failed";
+    private const string EmailRateLimitPrefix = "email:";
+    private const string TokenRateLimitPrefix = "token:";
+    private const string SourceIpRateLimitPrefix = "source:ip:";
+    private const string AnonymousSourceRateLimitKey = "source:anonymous";
+    private const string ResetTokenLabel = "Reset token";
 
     private readonly PasswordResetDependencies _dependencies;
     private readonly IOptions<PasswordResetOptions> _options;
@@ -53,7 +66,7 @@ internal sealed class PasswordResetService : IPasswordResetService
 
         if (string.IsNullOrWhiteSpace(email))
         {
-            return Result.Failure(AshlarFailureCodes.ValidationError, "Email is required.");
+            return Result.Failure(AshlarFailureCodes.ValidationError, EmailRequiredMessage);
         }
 
         var startedAt = _dependencies.TimeProvider.GetTimestamp();
@@ -90,11 +103,11 @@ internal sealed class PasswordResetService : IPasswordResetService
                 AshlarFailureCodes.RateLimited.Value,
                 cancellationToken);
 
-            return Result.Failure(AshlarFailureCodes.RateLimited, "Too many requests.");
+            return Result.Failure(AshlarFailureCodes.RateLimited, TooManyRequestsMessage);
         }
 
         var rateLimit = await CheckRateLimitAsync(
-            $"email:{normalizedEmail}",
+            $"{EmailRateLimitPrefix}{normalizedEmail}",
             RequestPurpose,
             context,
             _options.Value.RequestRateLimit,
@@ -110,7 +123,7 @@ internal sealed class PasswordResetService : IPasswordResetService
                 AshlarFailureCodes.RateLimited.Value,
                 cancellationToken);
 
-            return Result.Failure(AshlarFailureCodes.RateLimited, "Too many requests.");
+            return Result.Failure(AshlarFailureCodes.RateLimited, TooManyRequestsMessage);
         }
 
         var user = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(normalizedEmail, context.TenantId, cancellationToken);
@@ -123,7 +136,7 @@ internal sealed class PasswordResetService : IPasswordResetService
                 SecurityEventOutcomes.Success,
                 context,
                 userId: null,
-                "request_suppressed",
+                RequestSuppressedReason,
                 cancellationToken);
 
             await DelayUntilMinimumRequestDurationAsync(startedAt, cancellationToken);
@@ -154,7 +167,7 @@ internal sealed class PasswordResetService : IPasswordResetService
         await _dependencies.IdentityContext.CredentialRepository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
 
         var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(callbackBaseUri, _options.Value.TokenParameterName, token);
-        var message = IdentityUrlHelper.FormatEmailBody(_options.Value.EmailTextTemplate, callbackUrl, "Reset token", token);
+        var message = IdentityUrlHelper.FormatEmailBody(_options.Value.EmailTextTemplate, callbackUrl, ResetTokenLabel, token);
 
         transaction.OnCommitted(async ct =>
         {
@@ -186,13 +199,13 @@ internal sealed class PasswordResetService : IPasswordResetService
         if (string.IsNullOrWhiteSpace(request.Token))
         {
             await RecordFailureAsync(context, null, AshlarFailureCodes.EmptyToken.Value, cancellationToken);
-            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.EmptyToken, "Token is required.");
+            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.EmptyToken, TokenRequiredMessage);
         }
 
         if (string.IsNullOrWhiteSpace(request.NewPassword))
         {
             await RecordFailureAsync(context, null, AshlarFailureCodes.InvalidSecret.Value, cancellationToken);
-            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.InvalidSecret, "Password is required.");
+            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.InvalidSecret, PasswordRequiredMessage);
         }
 
         if (request.Token.Length > MaxResetTokenLength)
@@ -208,11 +221,11 @@ internal sealed class PasswordResetService : IPasswordResetService
                     AshlarFailureCodes.RateLimited.Value,
                     cancellationToken);
 
-                return Result.Failure<PasswordResetResult>(AshlarFailureCodes.RateLimited, "Too many attempts.");
+                return Result.Failure<PasswordResetResult>(AshlarFailureCodes.RateLimited, TooManyAttemptsMessage);
             }
 
             await RecordFailureAsync(context, null, AshlarFailureCodes.InvalidOrExpiredToken.Value, cancellationToken);
-            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.InvalidOrExpiredToken, "Invalid or expired token.");
+            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.InvalidOrExpiredToken, InvalidOrExpiredTokenMessage);
         }
 
         var rateLimit = await CheckRateLimitAsync(
@@ -232,12 +245,12 @@ internal sealed class PasswordResetService : IPasswordResetService
                 AshlarFailureCodes.RateLimited.Value,
                 cancellationToken);
 
-            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.RateLimited, "Too many attempts.");
+            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.RateLimited, TooManyAttemptsMessage);
         }
 
         var tokenHash = _dependencies.TokenContext.Hasher.HashToken(request.Token);
         var tokenRateLimit = await CheckRateLimitAsync(
-            $"token:{tokenHash}",
+            $"{TokenRateLimitPrefix}{tokenHash}",
             VerifyPurpose,
             context,
             _options.Value.VerificationRateLimit,
@@ -253,14 +266,14 @@ internal sealed class PasswordResetService : IPasswordResetService
                 AshlarFailureCodes.RateLimited.Value,
                 cancellationToken);
 
-            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.RateLimited, "Too many attempts.");
+            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.RateLimited, TooManyAttemptsMessage);
         }
 
         var user = await _dependencies.IdentityContext.UserRepository.GetUserByProviderKeyAsync(ProviderType.Internal, ProviderName, tokenHash, cancellationToken);
         if (user is not { IsActive: true } || !IsInRequestedTenant(user, context))
         {
             await RecordFailureAsync(context, user?.Id, AshlarFailureCodes.InvalidOrExpiredToken.Value, cancellationToken);
-            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.InvalidOrExpiredToken, "Invalid or expired token.");
+            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.InvalidOrExpiredToken, InvalidOrExpiredTokenMessage);
         }
 
         var credential = await _dependencies.IdentityContext.CredentialRepository.GetCredentialForUserAsync(user.Id, ProviderType.Internal, ProviderName, tokenHash, cancellationToken);
@@ -268,7 +281,7 @@ internal sealed class PasswordResetService : IPasswordResetService
         if (credential == null || credential.Purpose != CredentialPurpose || !credential.IsAvailable(now))
         {
             await RecordFailureAsync(context, user.Id, AshlarFailureCodes.InvalidOrExpiredToken.Value, cancellationToken);
-            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.InvalidOrExpiredToken, "Invalid or expired token.");
+            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.InvalidOrExpiredToken, InvalidOrExpiredTokenMessage);
         }
 
         await using var transaction = await _dependencies.IdentityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
@@ -277,7 +290,7 @@ internal sealed class PasswordResetService : IPasswordResetService
         if (!consumed)
         {
             await RecordFailureAsync(context, user.Id, AshlarFailureCodes.TokenConsumptionFailed.Value, cancellationToken);
-            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.TokenConsumptionFailed, "Invalid or expired token.");
+            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.TokenConsumptionFailed, InvalidOrExpiredTokenMessage);
         }
 
         var hashedPassword = PasswordCredentialHashing.HashToBase64(_dependencies.PasswordHasherSelector, request.NewPassword);
@@ -394,7 +407,7 @@ internal sealed class PasswordResetService : IPasswordResetService
                 SecurityEventOutcomes.Failure,
                 context,
                 user.Id,
-                "delivery_failed",
+                DeliveryFailedReason,
                 cancellationToken);
         }
     }
@@ -440,10 +453,10 @@ internal sealed class PasswordResetService : IPasswordResetService
     {
         if (!string.IsNullOrWhiteSpace(context.IpAddress))
         {
-            return $"source:ip:{context.IpAddress}";
+            return $"{SourceIpRateLimitPrefix}{context.IpAddress}";
         }
 
-        return "source:anonymous";
+        return AnonymousSourceRateLimitKey;
     }
 }
 
