@@ -343,7 +343,7 @@ public sealed class AuthenticationSessionService(
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         var now = _timeProvider.GetUtcNow();
-        var revoked = await _repository.RevokeSessionsForUserAsync(userId, now, reason, cancellationToken);
+        var revoked = await _repository.RevokeSessionsForUserAsync(userId, now, reason, tenant, cancellationToken);
         var properties = new Dictionary<string, string> { ["count"] = revoked.ToString(CultureInfo.InvariantCulture) };
         if (reason != null)
         {
@@ -415,7 +415,7 @@ public sealed class AuthenticationSessionService(
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         var now = _timeProvider.GetUtcNow();
-        var revoked = await _repository.RevokeSessionByIdAsync(request.SessionId, userId, now, request.Reason, cancellationToken);
+        var revoked = await _repository.RevokeSessionByIdAsync(request.SessionId, userId, now, request.Reason, request.Tenant, cancellationToken);
         transaction.OnCommitted(async ct =>
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -436,7 +436,7 @@ public sealed class AuthenticationSessionService(
                 var user = await _userRepository.GetUserByIdAsync(userId, ct);
                 if (user != null)
                 {
-                    await _notifications.NotifyAsync(SecurityNotificationType.SessionRevoked, user, now, sessionId: request.SessionId, context: ToNotificationContext(request.Audit), metadata: request.Reason == null ? null : new Dictionary<string, string> { ["reason"] = request.Reason }, cancellationToken: ct);
+                    await _notifications.NotifyAsync(SecurityNotificationType.SessionRevoked, user, now, sessionId: request.SessionId, context: ToNotificationContext(request.Audit, request.Tenant), metadata: request.Reason == null ? null : new Dictionary<string, string> { ["reason"] = request.Reason }, cancellationToken: ct);
                 }
             }
         });
@@ -458,7 +458,7 @@ public sealed class AuthenticationSessionService(
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         var now = _timeProvider.GetUtcNow();
-        var revoked = await _repository.RevokeOtherSessionsForUserAsync(userId, request.CurrentSessionId, now, request.Reason, cancellationToken);
+        var revoked = await _repository.RevokeOtherSessionsForUserAsync(userId, request.CurrentSessionId, now, request.Reason, request.Tenant, cancellationToken);
         var properties = new Dictionary<string, string>
         {
             ["count"] = revoked.ToString(CultureInfo.InvariantCulture),
@@ -486,7 +486,7 @@ public sealed class AuthenticationSessionService(
                 var user = await _userRepository.GetUserByIdAsync(userId, ct);
                 if (user != null)
                 {
-                    await _notifications.NotifyAsync(SecurityNotificationType.AllOtherSessionsRevoked, user, now, sessionId: request.CurrentSessionId, context: ToNotificationContext(request.Audit), metadata: properties, cancellationToken: ct);
+                    await _notifications.NotifyAsync(SecurityNotificationType.AllOtherSessionsRevoked, user, now, sessionId: request.CurrentSessionId, context: ToNotificationContext(request.Audit, request.Tenant), metadata: properties, cancellationToken: ct);
                 }
             }
         });

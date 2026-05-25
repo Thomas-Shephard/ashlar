@@ -63,6 +63,7 @@ internal static class HttpContextExtensions
 
     public static CreateAuthenticationSessionRequest ToSessionRequest(
         this HttpContext httpContext,
+        IUser? user = null,
         AuthenticationProviderKey? primaryProvider = null,
         AuthenticationProviderKey? additionalVerificationProvider = null,
         string? additionalVerificationFactor = null)
@@ -71,7 +72,7 @@ internal static class HttpContextExtensions
             IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
             UserAgent: httpContext.Request.Headers.UserAgent.ToString(),
             CorrelationId: httpContext.TraceIdentifier,
-            TenantId: httpContext.GetAshlarTenantId(),
+            TenantId: (user as ITenantUser)?.TenantId,
             PrimaryProvider: primaryProvider,
             AdditionalVerificationAt: additionalVerificationProvider.HasValue
                 ? httpContext.RequestServices.GetService<TimeProvider>()?.GetUtcNow() ?? DateTimeOffset.UtcNow

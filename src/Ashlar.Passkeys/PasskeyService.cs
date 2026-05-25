@@ -154,7 +154,7 @@ public sealed class PasskeyService(
 
         try
         {
-            var response = await _authenticationOrchestrator.AuthenticateAsync(new AuthenticationContext(UserId: ceremony.User.Id), ceremony.ToAssertion(_options.ProviderKey), cancellationToken: cancellationToken);
+            var response = await _authenticationOrchestrator.AuthenticateAsync(new AuthenticationContext(TenantId: request.TenantId, UserId: ceremony.User.Id), ceremony.ToAssertion(_options.ProviderKey), cancellationToken: cancellationToken);
             var succeeded = response.Status == MfaAuthenticationStatus.Succeeded;
             var mfaRequired = response.Status == MfaAuthenticationStatus.MfaRequired;
             var failureCode = succeeded || mfaRequired ? (AshlarFailureCode?)null : AshlarFailureCodes.PasskeyValidationFailed;
@@ -265,7 +265,7 @@ public sealed class PasskeyService(
             var response = await _authenticationOrchestrator.VerifyFactorAsync(
                 request.HandshakeToken,
                 factorType,
-                new AuthenticationContext(UserId: ceremony.User.Id),
+                new AuthenticationContext(TenantId: request.TenantId, UserId: ceremony.User.Id),
                 ceremony.ToAssertion(_options.ProviderKey),
                 cancellationToken);
 

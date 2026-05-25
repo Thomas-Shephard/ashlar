@@ -291,7 +291,7 @@ internal sealed class PasswordResetService : IPasswordResetService
         }
 
         var user = await _dependencies.IdentityContext.UserRepository.GetUserByProviderKeyAsync(ProviderType.Internal, ProviderName, tokenHash, cancellationToken);
-        if (user is not { IsActive: true } || !IsInRequestedTenant(user, context))
+        if (user is not { IsActive: true } || !AuthenticationTenantConsistency.Matches(context, user))
         {
             await RecordFailureAsync(context, user?.Id, AshlarFailureCodes.InvalidOrExpiredToken.Value, cancellationToken);
             return Result.Failure<PasswordResetResult>(AshlarFailureCodes.InvalidOrExpiredToken, InvalidOrExpiredTokenMessage);
@@ -335,7 +335,7 @@ internal sealed class PasswordResetService : IPasswordResetService
         var sessionsRevoked = 0;
         if (_options.Value.RevokeSessions)
         {
-            sessionsRevoked = await _dependencies.SessionRepository.RevokeSessionsForUserAsync(user.Id, now, SessionRevocationReason, cancellationToken);
+            sessionsRevoked = await _dependencies.SessionRepository.RevokeSessionsForUserAsync(user.Id, now, SessionRevocationReason, cancellationToken: cancellationToken);
         }
 
         var result = new PasswordResetResult(user.Id, sessionsRevoked);
@@ -446,26 +446,6 @@ internal sealed class PasswordResetService : IPasswordResetService
         }
 
         await Task.Delay(minimumDuration - elapsed, _dependencies.TimeProvider, cancellationToken);
-    }
-
-    private static bool IsInRequestedTenant(IUser user, AuthenticationContext context)
-    {
-        if (context.TenantId == null)
-        {
-            return true;
-        }
-
-        if (user is not ITenantUser tenantUser)
-        {
-            return false;
-        }
-
-        if (!tenantUser.TenantId.HasValue)
-        {
-            return false;
-        }
-
-        return tenantUser.TenantId.Value == context.TenantId.Value;
     }
 
     private static string GetSourceRateLimitKey(AuthenticationContext context)

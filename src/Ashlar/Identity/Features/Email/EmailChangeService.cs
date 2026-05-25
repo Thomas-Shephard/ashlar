@@ -325,7 +325,7 @@ internal sealed class EmailChangeService(
 
         if (_options.Value.RevokeSessions)
         {
-            await _dependencies.SessionRepository.RevokeSessionsForUserAsync(user.Id, now, "Email changed", cancellationToken);
+            await _dependencies.SessionRepository.RevokeSessionsForUserAsync(user.Id, now, "Email changed", cancellationToken: cancellationToken);
         }
 
         transaction.OnCommitted(async ct =>

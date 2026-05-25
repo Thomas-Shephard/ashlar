@@ -102,11 +102,6 @@ public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
             return Task.FromResult<IUser?>(null);
         }
 
-        if (context.UserId.HasValue)
-        {
-            return repository.GetUserByIdAsync(context.UserId.Value, cancellationToken);
-        }
-
         var email = context.Email;
         if (string.IsNullOrWhiteSpace(email))
         {

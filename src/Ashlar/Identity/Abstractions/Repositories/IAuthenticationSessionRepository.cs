@@ -87,12 +87,14 @@ public interface IAuthenticationSessionRepository
     /// <param name="userId">The user id value.</param>
     /// <param name="revokedAt">The revoked at value.</param>
     /// <param name="reason">The reason value.</param>
+    /// <param name="tenant">The tenant scope value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
     /// <remarks>
     /// Implementations should not overwrite revocation data for sessions that were already revoked.
+    /// A <see langword="null" /> tenant means unrestricted; an explicit <see cref="TenantContext.Global" /> means global sessions only.
     /// </remarks>
-    Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default);
+    Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Lists sessions for a user.
@@ -111,9 +113,10 @@ public interface IAuthenticationSessionRepository
     /// <param name="userId">The user id value.</param>
     /// <param name="revokedAt">The revoked at value.</param>
     /// <param name="reason">The reason value.</param>
+    /// <param name="tenant">The tenant scope value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default);
+    Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Revokes all currently unrevoked sessions for a user except the specified session.
@@ -122,7 +125,8 @@ public interface IAuthenticationSessionRepository
     /// <param name="excludedSessionId">The excluded session id value.</param>
     /// <param name="revokedAt">The revoked at value.</param>
     /// <param name="reason">The reason value.</param>
+    /// <param name="tenant">The tenant scope value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default);
+    Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default);
 }

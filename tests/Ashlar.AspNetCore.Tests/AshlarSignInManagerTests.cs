@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Ashlar.Auditing;
 using Ashlar.AspNetCore.Authentication;
 using Ashlar.AspNetCore.Sessions;
+using Ashlar.Identity.Models.Tenants;
 using Ashlar.Security.Tokens;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -705,7 +706,7 @@ internal sealed class AshlarSignInManagerTests
             return Task.FromResult(true);
         }
 
-        public Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
+        public Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
         {
             RevokedUserId = userId;
             RevocationReason = reason;
@@ -719,7 +720,7 @@ internal sealed class AshlarSignInManagerTests
             return Task.FromResult((IReadOnlyList<AuthenticationSession>)new List<AuthenticationSession>().AsReadOnly());
         }
 
-        public Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
+        public Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
         {
             RevokedSessionId = sessionId;
             RevokedUserId = userId;
@@ -727,7 +728,7 @@ internal sealed class AshlarSignInManagerTests
             return Task.FromResult(true);
         }
 
-        public Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
+        public Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
         {
             RevokedUserId = userId;
             ExcludedSessionId = excludedSessionId;

@@ -901,7 +901,7 @@ internal sealed class TotpTests
     }
 
     [Test]
-    public async Task ProviderFindUserAsyncReturnsUserByUserId()
+    public async Task ProviderFindUserAsyncReturnsNullForUserIdBecauseCredentialServiceOwnsFallback()
     {
         var provider = CreateProvider();
         var userId = Guid.NewGuid();
@@ -913,8 +913,8 @@ internal sealed class TotpTests
 
         var found = await provider.FindUserAsync(new TotpAssertion("123456"), context, _repository.Object);
 
-        Assert.That(found, Is.Not.Null);
-        Assert.That(found.Id, Is.EqualTo(userId));
+        Assert.That(found, Is.Null);
+        _repository.Verify(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]

@@ -69,34 +69,7 @@ public abstract class ExternalAuthenticationProvider(ProviderType supportedType,
             return null;
         }
 
-        var user = await repository.GetUserByProviderKeyAsync(Key.Type, Key.Name, externalAssertion.ProviderKey, cancellationToken);
-
-        switch (user)
-        {
-            case null:
-                return null;
-            case ITenantUser tenantUser:
-                {
-                    if (tenantUser.TenantId != context.TenantId)
-                    {
-                        return null;
-                    }
-
-                    break;
-                }
-            default:
-                {
-                    if (context.TenantId.HasValue)
-                    {
-                        // User is a global user (not ITenantUser), but a specific tenant was requested.
-                        return null;
-                    }
-
-                    break;
-                }
-        }
-
-        return user;
+        return await repository.GetUserByProviderKeyAsync(Key.Type, Key.Name, externalAssertion.ProviderKey, cancellationToken);
     }
 
     /// <summary>

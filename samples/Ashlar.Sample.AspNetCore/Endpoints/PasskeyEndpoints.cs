@@ -41,7 +41,7 @@ internal static class PasskeyEndpoints
 
     private static async Task<IResult> CompleteAuthenticationAsync(PasskeyCompleteAuthenticationSampleRequest request, IPasskeyService passkeys, IAshlarSignInManager signIn, HttpContext httpContext, CancellationToken cancellationToken)
     {
-        var result = await passkeys.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(request.ChallengeId, request.AssertionResponse, httpContext.ToAuditContext()), cancellationToken);
+        var result = await passkeys.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(request.ChallengeId, request.AssertionResponse, httpContext.GetAshlarTenantId(), httpContext.ToAuditContext()), cancellationToken);
         if (result.Status == MfaAuthenticationStatus.MfaRequired)
         {
             return Results.Ok(new
@@ -57,7 +57,7 @@ internal static class PasskeyEndpoints
             return Results.BadRequest(new { error = result.FailureCode?.Value ?? "passkey_validation_failed" });
         }
 
-        await signIn.SignInAsync(httpContext, result.User.Id, httpContext.ToSessionRequest(AuthenticationProviderKey.Passkey), cancellationToken);
+        await signIn.SignInAsync(httpContext, result.User.Id, httpContext.ToSessionRequest(result.User, AuthenticationProviderKey.Passkey), cancellationToken);
         return Results.Ok(new { status = "signed_in" });
     }
 
@@ -71,7 +71,7 @@ internal static class PasskeyEndpoints
 
     private static async Task<IResult> CompleteFactorAsync(PasskeyCompleteFactorSampleRequest request, IPasskeyService passkeys, IAshlarSignInManager signIn, HttpContext httpContext, CancellationToken cancellationToken)
     {
-        var result = await passkeys.CompleteFactorAsync(new CompletePasskeyFactorRequest(request.ChallengeId, request.AssertionResponse, request.HandshakeToken, request.FactorType ?? "passkey", httpContext.ToAuditContext()), cancellationToken);
+        var result = await passkeys.CompleteFactorAsync(new CompletePasskeyFactorRequest(request.ChallengeId, request.AssertionResponse, request.HandshakeToken, request.FactorType ?? "passkey", httpContext.GetAshlarTenantId(), httpContext.ToAuditContext()), cancellationToken);
         if (result.Status == MfaAuthenticationStatus.HandshakeIncomplete)
         {
             return Results.Ok(new
@@ -88,6 +88,7 @@ internal static class PasskeyEndpoints
         }
 
         await signIn.SignInAsync(httpContext, result.User.Id, httpContext.ToSessionRequest(
+            result.User,
             additionalVerificationProvider: AuthenticationProviderKey.Passkey,
             additionalVerificationFactor: request.FactorType ?? "passkey"), cancellationToken);
         return Results.Ok(new { status = "signed_in" });

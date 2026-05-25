@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Ashlar.Identity.Models.Tenants;
 using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Identity;
@@ -35,6 +36,10 @@ public sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionProvi
     private const string UserAgentParameter = "$userAgent";
     private const string MetadataParameter = "$metadata";
     private const string ReasonParameter = "$reason";
+    private const string TenantFilterParameter = "$tenantFilter";
+    private const string TenantRevocationFilterSql = """
+              AND ($tenantFilter = 0 OR (($tenantId IS NULL AND tenant_id IS NULL) OR tenant_id = $tenantId))
+            """;
 
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
@@ -187,20 +192,22 @@ public sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionProvi
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
-    public async Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
+    public async Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
     {
         const string sql = """
             UPDATE ashlar_sessions
             SET revoked_at = $revokedAt,
                 revocation_reason = $reason
-            WHERE user_id = $userId AND revoked_at IS NULL;
+            WHERE user_id = $userId
+              AND revoked_at IS NULL
             """;
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
-        command.CommandText = sql;
+        command.CommandText = sql + TenantRevocationFilterSql + ";";
         command.AddGuidParameter(UserIdParameter, userId);
+        AddTenantFilterParameters(command, tenant);
         AddRevocationParameters(command, revokedAt, reason);
 
         return await command.ExecuteNonQueryAsync(cancellationToken);
@@ -238,41 +245,47 @@ public sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionProvi
         return sessions.AsReadOnly();
     }
 
-    public async Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
+    public async Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
     {
         const string sql = """
             UPDATE ashlar_sessions
             SET revoked_at = $revokedAt,
                 revocation_reason = $reason
-            WHERE id = $id AND user_id = $userId AND revoked_at IS NULL;
+            WHERE id = $id
+              AND user_id = $userId
+              AND revoked_at IS NULL
             """;
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
-        command.CommandText = sql;
+        command.CommandText = sql + TenantRevocationFilterSql + ";";
         command.AddGuidParameter(IdParameter, sessionId);
         command.AddGuidParameter(UserIdParameter, userId);
+        AddTenantFilterParameters(command, tenant);
         AddRevocationParameters(command, revokedAt, reason);
 
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
-    public async Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
+    public async Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
     {
         const string sql = """
             UPDATE ashlar_sessions
             SET revoked_at = $revokedAt,
                 revocation_reason = $reason
-            WHERE user_id = $userId AND id <> $excludedSessionId AND revoked_at IS NULL;
+            WHERE user_id = $userId
+              AND id <> $excludedSessionId
+              AND revoked_at IS NULL
             """;
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
-        command.CommandText = sql;
+        command.CommandText = sql + TenantRevocationFilterSql + ";";
         command.AddGuidParameter(UserIdParameter, userId);
         command.AddGuidParameter(ExcludedSessionIdParameter, excludedSessionId);
+        AddTenantFilterParameters(command, tenant);
         AddRevocationParameters(command, revokedAt, reason);
 
         return await command.ExecuteNonQueryAsync(cancellationToken);
@@ -289,6 +302,12 @@ public sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionProvi
     {
         command.AddDateTimeOffsetParameter(RevokedAtParameter, revokedAt);
         command.AddParameter(ReasonParameter, reason);
+    }
+
+    private static void AddTenantFilterParameters(SqliteCommand command, TenantContext? tenant)
+    {
+        command.AddParameter(TenantFilterParameter, tenant == null ? 0 : 1);
+        command.AddNullableGuidParameter(TenantIdParameter, tenant?.TenantId);
     }
 
     private static void AddParameters(SqliteCommand command, AuthenticationSession session)

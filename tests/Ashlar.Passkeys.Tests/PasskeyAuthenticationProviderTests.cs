@@ -162,17 +162,16 @@ internal sealed class PasskeyAuthenticationProviderTests
     }
 
     [Test]
-    public async Task FindUserAsyncShouldRespectScopedUserContext()
+    public async Task FindUserAsyncShouldReturnNullForScopedUserContext()
     {
         var provider = new PasskeyAuthenticationProvider(Options.Create(new PasskeyOptions()));
-        var expectedUserId = Guid.NewGuid();
-        var user = new TestUser(expectedUserId, "test@example.com");
+        var userId = Guid.NewGuid();
         var repository = new Mock<IUserRepository>();
-        repository.Setup(r => r.GetUserByIdAsync(expectedUserId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
 
-        var result = await provider.FindUserAsync(new PasskeyAssertion("cred", 1), new AuthenticationContext(UserId: expectedUserId), repository.Object);
+        var result = await provider.FindUserAsync(new PasskeyAssertion("cred", 1), new AuthenticationContext(UserId: userId), repository.Object);
 
-        Assert.That(result, Is.EqualTo(user));
+        Assert.That(result, Is.Null);
+        repository.Verify(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         repository.Verify(r => r.GetUserByProviderKeyAsync(It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -202,6 +201,15 @@ internal sealed class PasskeyAuthenticationProviderTests
             Assert.That(await provider.FindUserAsync(new Mock<IAuthenticationAssertion>().Object, new AuthenticationContext(), repository.Object), Is.Null);
             Assert.That(await provider.FindUserAsync(new PasskeyAssertion("cred", 1), new AuthenticationContext(UserId: userId), repository.Object), Is.Null);
         }
+    }
+
+    [Test]
+    public void FindUserAsyncShouldThrowOnNullArguments()
+    {
+        var provider = new PasskeyAuthenticationProvider(Options.Create(new PasskeyOptions()));
+
+        Assert.ThrowsAsync<ArgumentNullException>(() => provider.FindUserAsync(new PasskeyAssertion("cred", 1), null!, new Mock<IUserRepository>().Object));
+        Assert.ThrowsAsync<ArgumentNullException>(() => provider.FindUserAsync(new PasskeyAssertion("cred", 1), new AuthenticationContext(), null!));
     }
 
     private static UserCredential CreateCredential(long signCount)

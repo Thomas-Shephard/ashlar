@@ -53,6 +53,9 @@ public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> optio
     /// <returns>The user when a matching credential exists.</returns>
     public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(repository);
+
         if (assertion is not PasskeyAssertion passkey)
         {
             return null;
@@ -60,7 +63,7 @@ public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> optio
 
         if (context.UserId.HasValue)
         {
-            return await repository.GetUserByIdAsync(context.UserId.Value, cancellationToken);
+            return null;
         }
 
         return await repository.GetUserByProviderKeyAsync(Key.Type, Key.Name, passkey.CredentialId, cancellationToken);

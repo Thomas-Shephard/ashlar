@@ -5,6 +5,7 @@ using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.Providers.RecoveryCode;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
+using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -624,6 +625,45 @@ internal sealed class RecoveryCodeTests
     }
 
     [Test]
+    public async Task PipelineShouldFailGenericallyWhenRecoveryCodeUserIdResolvesWrongTenant()
+    {
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var user = new User { Id = userId, Email = "test@example.com", TenantId = otherTenantId };
+        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
+        var rateLimiter = new Mock<IAuthenticationRateLimiter>();
+        rateLimiter.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Allowed, Remaining = 5, WindowResetAt = DateTimeOffset.UtcNow.AddMinutes(5) });
+        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, rateLimiter.Object, Options.Create(new RecoveryCodeOptions()));
+        var registry = new AuthenticationProviderRegistry([provider]);
+        var repository = new Mock<IUserRepository>();
+        var credentialRepository = new Mock<ICredentialRepository>();
+        var events = new RecordingSecurityEventSink();
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        var transactionProvider = new NullTransactionProvider();
+        var credentialService = new CredentialService(
+            repository.Object,
+            credentialRepository.Object,
+            Mock.Of<ISecretProtector>(),
+            transactionProvider);
+        var pipeline = new AuthenticationPipeline(registry, credentialService, transactionProvider, events);
+        var context = new AuthenticationContext(TenantId: tenantId, UserId: userId);
+
+        var response = await pipeline.LoginAsync(context, new RecoveryCodeAssertion("ABCD-EFGH-IJKL"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.User, Is.Null);
+            Assert.That(events.Events.Single().FailureReason, Is.EqualTo(SecurityEventFailureReasons.InvalidCredentials));
+            Assert.That(events.Events.Single().UserId, Is.Null);
+        }
+        credentialRepository.Verify(r => r.GetCredentialForUserAsync(userId, It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public void DiRegistrationResolvesServices()
     {
         var services = new ServiceCollection();
@@ -710,7 +750,7 @@ internal sealed class RecoveryCodeTests
     }
 
     [Test]
-    public async Task ProviderFindUserAsyncReturnsUserByUserId()
+    public async Task ProviderFindUserAsyncReturnsNullForUserIdBecauseCredentialServiceOwnsFallback()
     {
         var repository = new Mock<IUserRepository>();
         var credentialRepository = new Mock<ICredentialRepository>();
@@ -724,8 +764,8 @@ internal sealed class RecoveryCodeTests
 
         var found = await provider.FindUserAsync(new RecoveryCodeAssertion("CODE"), context, repository.Object);
 
-        Assert.That(found, Is.Not.Null);
-        Assert.That(found.Id, Is.EqualTo(userId));
+        Assert.That(found, Is.Null);
+        repository.Verify(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -914,5 +954,16 @@ internal sealed class RecoveryCodeTests
         public string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue) => rawValue;
         public Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(null);
         public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default) => Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
+    }
+
+    private sealed class RecordingSecurityEventSink : ISecurityEventSink
+    {
+        public List<AshlarSecurityEvent> Events { get; } = [];
+
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            Events.Add(securityEvent);
+            return Task.CompletedTask;
+        }
     }
 }
