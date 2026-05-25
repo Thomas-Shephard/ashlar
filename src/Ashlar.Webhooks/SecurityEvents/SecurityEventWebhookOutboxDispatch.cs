@@ -71,6 +71,62 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         return request;
     }
 
+    /// <summary>
+    /// Sends a durable outbox entry and applies the provided success or failure persistence callbacks.
+    /// </summary>
+    /// <param name="entry">The durable outbox entry.</param>
+    /// <param name="httpClientFactory">The HTTP client factory.</param>
+    /// <param name="httpClientName">The named HTTP client to use.</param>
+    /// <param name="maxAttempts">The maximum configured delivery attempts.</param>
+    /// <param name="markAsSentAsync">The callback that persists successful delivery state.</param>
+    /// <param name="markAsFailedAsync">The callback that persists failed delivery state.</param>
+    /// <param name="logDeliveryFailed">The callback that logs failed delivery attempts.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>A task that represents the asynchronous dispatch operation.</returns>
+    public static async Task DispatchAsync(
+        AshlarSecurityEventWebhookOutboxEntry entry,
+        IHttpClientFactory httpClientFactory,
+        string httpClientName,
+        int maxAttempts,
+        Func<Guid, CancellationToken, Task> markAsSentAsync,
+        Func<AshlarSecurityEventWebhookOutboxEntry, Exception, CancellationToken, Task> markAsFailedAsync,
+        Action<Guid, int, bool, Exception> logDeliveryFailed,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(httpClientFactory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(httpClientName);
+        ArgumentNullException.ThrowIfNull(markAsSentAsync);
+        ArgumentNullException.ThrowIfNull(markAsFailedAsync);
+        ArgumentNullException.ThrowIfNull(logDeliveryFailed);
+
+        try
+        {
+            using var request = MapToHttpRequest(entry);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromMilliseconds(entry.TimeoutMs));
+            var client = httpClientFactory.CreateClient(httpClientName);
+            using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException($"Webhook endpoint returned HTTP {(int)response.StatusCode}.");
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            var attemptCount = entry.AttemptCount + 1;
+            logDeliveryFailed(entry.Id, attemptCount, attemptCount >= maxAttempts, exception);
+            await markAsFailedAsync(entry, exception, CancellationToken.None).ConfigureAwait(false);
+            return;
+        }
+
+        await markAsSentAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
+    }
+
     private static bool ShouldAddAsContentHeader(HttpRequestMessage request, KeyValuePair<string, string> header)
     {
         return !request.Headers.TryAddWithoutValidation(header.Key, header.Value);

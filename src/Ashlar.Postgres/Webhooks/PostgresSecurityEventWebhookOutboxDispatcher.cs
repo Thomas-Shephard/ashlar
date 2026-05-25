@@ -115,31 +115,15 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
 
     private async Task ProcessEntryAsync(AshlarSecurityEventWebhookOutboxEntry entry, IServiceProvider provider, CancellationToken cancellationToken)
     {
-        try
-        {
-            using var request = AshlarSecurityEventWebhookOutboxDispatch.MapToHttpRequest(entry);
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromMilliseconds(entry.TimeoutMs));
-            var client = _httpClientFactory.CreateClient(HttpClientName);
-            using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new HttpRequestException($"Webhook endpoint returned HTTP {(int)response.StatusCode}.");
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            var attemptCount = entry.AttemptCount + 1;
-            PostgresSecurityEventWebhookOutboxDispatcherLog.WebhookDeliveryFailed(_logger, entry.Id, attemptCount, attemptCount >= _options.MaxAttempts, exception);
-            await MarkAsFailedAsync(entry, exception, provider, CancellationToken.None).ConfigureAwait(false);
-            return;
-        }
-
-        await MarkAsSentAsync(entry.Id, provider, CancellationToken.None).ConfigureAwait(false);
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
+            entry,
+            _httpClientFactory,
+            HttpClientName,
+            _options.MaxAttempts,
+            (id, token) => MarkAsSentAsync(id, provider, token),
+            (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, token),
+            (id, attemptCount, finalFailure, exception) => PostgresSecurityEventWebhookOutboxDispatcherLog.WebhookDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
+            cancellationToken).ConfigureAwait(false);
     }
 
     private async Task MarkAsSentAsync(Guid id, IServiceProvider provider, CancellationToken cancellationToken)

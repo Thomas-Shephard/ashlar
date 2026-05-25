@@ -16,10 +16,8 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
     /// </summary>
     public const string HttpClientName = "Ashlar.Sqlite.SecurityEventWebhookOutbox";
 
-    private const string IdParameter = "$id";
+    private const string TableName = "ashlar_security_event_webhook_outbox";
     private const string LockedByParameter = "$lockedBy";
-    private const string NowParameter = "$now";
-    private const string AttemptCountParameter = "$attemptCount";
     private readonly IServiceProvider _serviceProvider;
     private readonly TimeProvider _timeProvider;
     private readonly SqliteSecurityEventWebhookOutboxOptions _options;
@@ -66,51 +64,16 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
             throw new InvalidOperationException("Security event webhook outbox options are invalid.");
         }
 
-        var now = _timeProvider.GetUtcNow();
-        var lockedUntil = now.Add(_options.LockDuration);
-
-        await using var scope = _serviceProvider.CreateAsyncScope();
-        var connectionProvider = scope.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>();
-        await using (var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken))
-        {
-            await using var command = connectionHandle.Connection.CreateCommand();
-            command.Transaction = connectionHandle.Transaction;
-            command.CommandText = """
-                UPDATE ashlar_security_event_webhook_outbox
-                SET locked_until = $lockedUntil,
-                    locked_by = $lockedBy
-                WHERE id IN (
-                    SELECT id
-                    FROM ashlar_security_event_webhook_outbox
-                    WHERE sent_at IS NULL
-                      AND failed_at IS NULL
-                      AND available_at <= $now
-                      AND (locked_until IS NULL OR locked_until < $now)
-                    ORDER BY available_at, id
-                    LIMIT $batchSize
-                )
-                """;
-            command.AddDateTimeOffsetParameter("$lockedUntil", lockedUntil);
-            command.AddParameter(LockedByParameter, _lockId);
-            command.AddDateTimeOffsetParameter(NowParameter, now);
-            command.AddParameter("$batchSize", _options.BatchSize);
-
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        var entries = await LoadClaimedEntriesAsync(scope.ServiceProvider, _lockId, cancellationToken);
-        if (entries.Count == 0)
-        {
-            return 0;
-        }
-
-        foreach (var entry in entries)
-        {
-            await using var entryScope = _serviceProvider.CreateAsyncScope();
-            await ProcessEntryAsync(entry, entryScope.ServiceProvider, cancellationToken);
-        }
-
-        return entries.Count;
+        return await SqliteOutboxDispatch.ProcessBatchAsync(
+            _serviceProvider,
+            TableName,
+            _lockId,
+            _timeProvider,
+            _options.LockDuration,
+            _options.BatchSize,
+            LoadClaimedEntriesAsync,
+            ProcessEntryAsync,
+            cancellationToken);
     }
 
     private static async Task<List<AshlarSecurityEventWebhookOutboxEntry>> LoadClaimedEntriesAsync(
@@ -152,54 +115,20 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
 
     private async Task ProcessEntryAsync(AshlarSecurityEventWebhookOutboxEntry entry, IServiceProvider provider, CancellationToken cancellationToken)
     {
-        try
-        {
-            using var request = AshlarSecurityEventWebhookOutboxDispatch.MapToHttpRequest(entry);
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromMilliseconds(entry.TimeoutMs));
-            var client = _httpClientFactory.CreateClient(HttpClientName);
-            using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new HttpRequestException($"Webhook endpoint returned HTTP {(int)response.StatusCode}.");
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            var attemptCount = entry.AttemptCount + 1;
-            SqliteSecurityEventWebhookOutboxDispatcherLog.WebhookDeliveryFailed(_logger, entry.Id, attemptCount, attemptCount >= _options.MaxAttempts, exception);
-            await MarkAsFailedAsync(entry, exception, provider, CancellationToken.None);
-            return;
-        }
-
-        await MarkAsSentAsync(entry.Id, provider, CancellationToken.None);
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
+            entry,
+            _httpClientFactory,
+            HttpClientName,
+            _options.MaxAttempts,
+            (id, token) => MarkAsSentAsync(id, provider, token),
+            (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, token),
+            (id, attemptCount, finalFailure, exception) => SqliteSecurityEventWebhookOutboxDispatcherLog.WebhookDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
+            cancellationToken);
     }
 
     private async Task MarkAsSentAsync(Guid id, IServiceProvider provider, CancellationToken cancellationToken)
     {
-        var now = _timeProvider.GetUtcNow();
-        var connectionProvider = provider.GetRequiredService<ISqliteConnectionProvider>();
-        await using var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken);
-        await using var command = connectionHandle.Connection.CreateCommand();
-        command.Transaction = connectionHandle.Transaction;
-        command.CommandText = """
-            UPDATE ashlar_security_event_webhook_outbox
-            SET sent_at = $now,
-                locked_until = NULL,
-                locked_by = NULL,
-                last_attempt_at = $now,
-                attempt_count = attempt_count + 1
-            WHERE id = $id AND locked_by = $lockedBy
-            """;
-        command.AddDateTimeOffsetParameter(NowParameter, now);
-        command.AddGuidParameter(IdParameter, id);
-        command.AddParameter(LockedByParameter, _lockId);
-
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await SqliteOutboxDispatch.MarkAsSentAsync(provider, TableName, id, _lockId, _timeProvider.GetUtcNow(), cancellationToken);
     }
 
     private async Task MarkAsFailedAsync(AshlarSecurityEventWebhookOutboxEntry entry, Exception exception, IServiceProvider provider, CancellationToken cancellationToken)
@@ -212,30 +141,14 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
             now,
             exception);
 
-        var connectionProvider = provider.GetRequiredService<ISqliteConnectionProvider>();
-        await using var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken);
-        await using var command = connectionHandle.Connection.CreateCommand();
-        command.Transaction = connectionHandle.Transaction;
-        command.CommandText = """
-            UPDATE ashlar_security_event_webhook_outbox
-            SET failed_at = $failedAt,
-                last_error = $lastError,
-                available_at = $availableAt,
-                locked_until = NULL,
-                locked_by = NULL,
-                last_attempt_at = $now,
-                attempt_count = $attemptCount
-            WHERE id = $id AND locked_by = $lockedBy
-            """;
-        command.AddNullableDateTimeOffsetParameter("$failedAt", failure.FailedAt);
-        command.AddParameter("$lastError", failure.LastError);
-        command.AddDateTimeOffsetParameter("$availableAt", failure.AvailableAt);
-        command.AddDateTimeOffsetParameter(NowParameter, now);
-        command.AddParameter(AttemptCountParameter, failure.AttemptCount);
-        command.AddGuidParameter(IdParameter, entry.Id);
-        command.AddParameter(LockedByParameter, _lockId);
-
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await SqliteOutboxDispatch.MarkAsFailedAsync(
+            provider,
+            TableName,
+            entry.Id,
+            _lockId,
+            now,
+            new SqliteOutboxFailureUpdate(failure.AttemptCount, failure.FailedAt, failure.AvailableAt, failure.LastError),
+            cancellationToken);
     }
 }
 
