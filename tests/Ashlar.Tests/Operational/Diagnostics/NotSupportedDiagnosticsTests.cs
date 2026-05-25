@@ -42,6 +42,23 @@ internal sealed class NotSupportedDiagnosticsTests
     }
 
     [Test]
+    public async Task NotSupportedSecurityEventWebhookOutboxDiagnosticsReturnsNotSupportedResult()
+    {
+        var diagnostics = new NotSupportedSecurityEventWebhookOutboxDiagnostics("None", new FakeTimeProvider(CheckedAt));
+
+        var result = await diagnostics.CheckAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.NotSupported));
+            Assert.That(result.ProviderName, Is.EqualTo("None"));
+            Assert.That(result.CheckedAt, Is.EqualTo(CheckedAt));
+            Assert.That(result.PendingCount, Is.Null);
+            Assert.That(result.Reason, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task NotSupportedAshlarCleanupDiagnosticsReturnsNotSupportedResult()
     {
         var diagnostics = new NotSupportedAshlarCleanupDiagnostics("None", new FakeTimeProvider(CheckedAt));

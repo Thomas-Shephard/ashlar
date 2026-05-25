@@ -39,6 +39,20 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
     }
 
     [Test]
+    public async Task AddAshlarSecurityEventWebhookOutboxShouldRegisterHealthCheck()
+    {
+        using var provider = BuildProvider(services =>
+        {
+            services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult()));
+            services.AddHealthChecks().AddAshlarSecurityEventWebhookOutbox();
+        });
+
+        var report = await CheckAsync(provider);
+
+        Assert.That(report.Entries.Keys, Contains.Item(AshlarHealthCheckNames.SecurityEventWebhookOutbox));
+    }
+
+    [Test]
     public async Task AddAshlarCleanupShouldRegisterHealthCheck()
     {
         using var provider = BuildProvider(services =>
@@ -73,11 +87,13 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
         {
             services.AddSingleton<IAshlarSchemaDiagnostics>(_ => new SchemaDiagnostics(SchemaResult()));
             services.AddSingleton<IEmailOutboxDiagnostics>(_ => new EmailOutboxDiagnostics(EmailOutboxResult()));
+            services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult()));
             services.AddSingleton<IAshlarCleanupDiagnostics>(_ => new CleanupDiagnostics(CleanupResult()));
             services.AddSingleton<IAuthenticationRateLimiterDiagnostics>(_ => new RateLimiterDiagnostics(RateLimiterResult()));
             services.AddHealthChecks()
                 .AddAshlarSchema()
                 .AddAshlarEmailOutbox()
+                .AddAshlarSecurityEventWebhookOutbox()
                 .AddAshlarCleanup()
                 .AddAshlarRateLimiter();
         });
@@ -94,11 +110,13 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
         {
             services.AddSingleton<IAshlarSchemaDiagnostics>(_ => new SchemaDiagnostics(SchemaResult(AshlarDiagnosticStatus.Unknown, AshlarSchemaStatus.Unknown)));
             services.AddSingleton<IEmailOutboxDiagnostics>(_ => new EmailOutboxDiagnostics(EmailOutboxResult(AshlarDiagnosticStatus.Unknown)));
+            services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult(AshlarDiagnosticStatus.Unknown)));
             services.AddSingleton<IAshlarCleanupDiagnostics>(_ => new CleanupDiagnostics(CleanupResult(AshlarDiagnosticStatus.Unknown)));
             services.AddSingleton<IAuthenticationRateLimiterDiagnostics>(_ => new RateLimiterDiagnostics(RateLimiterResult(AshlarDiagnosticStatus.Unknown)));
             services.AddHealthChecks()
                 .AddAshlarSchema()
                 .AddAshlarEmailOutbox()
+                .AddAshlarSecurityEventWebhookOutbox()
                 .AddAshlarCleanup()
                 .AddAshlarRateLimiter();
         });
@@ -109,6 +127,7 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
         {
             Assert.That(report.Entries[AshlarHealthCheckNames.Schema].Status, Is.EqualTo(HealthStatus.Degraded));
             Assert.That(report.Entries[AshlarHealthCheckNames.EmailOutbox].Status, Is.EqualTo(HealthStatus.Unhealthy));
+            Assert.That(report.Entries[AshlarHealthCheckNames.SecurityEventWebhookOutbox].Status, Is.EqualTo(HealthStatus.Unhealthy));
             Assert.That(report.Entries[AshlarHealthCheckNames.Cleanup].Status, Is.EqualTo(HealthStatus.Unhealthy));
             Assert.That(report.Entries[AshlarHealthCheckNames.RateLimiter].Status, Is.EqualTo(HealthStatus.Unhealthy));
         }
@@ -120,11 +139,13 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
         using var provider = BuildProvider(services =>
         {
             services.AddSingleton<IEmailOutboxDiagnostics>(_ => new EmailOutboxDiagnostics(EmailOutboxResult(AshlarDiagnosticStatus.Degraded)));
+            services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult(AshlarDiagnosticStatus.Degraded)));
             services.AddSingleton<IAuthenticationRateLimiterDiagnostics>(_ => new RateLimiterDiagnostics(RateLimiterResult(AshlarDiagnosticStatus.Unhealthy)));
             services.AddSingleton<IAshlarSchemaDiagnostics>(_ => new SchemaDiagnostics(SchemaResult(AshlarDiagnosticStatus.Degraded, AshlarSchemaStatus.Unknown)));
             services.AddSingleton<IAshlarCleanupDiagnostics>(_ => new CleanupDiagnostics(CleanupResult(AshlarDiagnosticStatus.Degraded)));
             services.AddHealthChecks()
                 .AddAshlarEmailOutbox()
+                .AddAshlarSecurityEventWebhookOutbox()
                 .AddAshlarRateLimiter()
                 .AddAshlarSchema()
                 .AddAshlarCleanup();
@@ -135,6 +156,7 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(report.Entries[AshlarHealthCheckNames.EmailOutbox].Status, Is.EqualTo(HealthStatus.Degraded));
+            Assert.That(report.Entries[AshlarHealthCheckNames.SecurityEventWebhookOutbox].Status, Is.EqualTo(HealthStatus.Degraded));
             Assert.That(report.Entries[AshlarHealthCheckNames.RateLimiter].Status, Is.EqualTo(HealthStatus.Unhealthy));
             Assert.That(report.Entries[AshlarHealthCheckNames.Schema].Status, Is.EqualTo(HealthStatus.Degraded));
             Assert.That(report.Entries[AshlarHealthCheckNames.Cleanup].Status, Is.EqualTo(HealthStatus.Degraded));
@@ -148,6 +170,7 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
         {
             services.AddSingleton<IAshlarSchemaDiagnostics>(_ => new SchemaDiagnostics(SchemaResult(AshlarDiagnosticStatus.NotSupported, AshlarSchemaStatus.Unknown)));
             services.AddSingleton<IEmailOutboxDiagnostics>(_ => new EmailOutboxDiagnostics(EmailOutboxResult(AshlarDiagnosticStatus.NotSupported)));
+            services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult(AshlarDiagnosticStatus.NotSupported)));
             services.AddSingleton<IAshlarCleanupDiagnostics>(_ => new CleanupDiagnostics(CleanupResult(AshlarDiagnosticStatus.NotSupported, configured: false, optionsValid: false)));
             services.AddSingleton<IAuthenticationRateLimiterDiagnostics>(_ => new RateLimiterDiagnostics(RateLimiterResult(AshlarDiagnosticStatus.NotSupported)));
             services.AddHealthChecks().AddAshlarHealthChecks();
@@ -165,11 +188,13 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
         {
             services.AddSingleton<IAshlarSchemaDiagnostics>(_ => new SchemaDiagnostics(SchemaResult(AshlarDiagnosticStatus.NotSupported, AshlarSchemaStatus.Unknown)));
             services.AddSingleton<IEmailOutboxDiagnostics>(_ => new EmailOutboxDiagnostics(EmailOutboxResult(AshlarDiagnosticStatus.NotSupported)));
+            services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult(AshlarDiagnosticStatus.NotSupported)));
             services.AddSingleton<IAshlarCleanupDiagnostics>(_ => new CleanupDiagnostics(CleanupResult(AshlarDiagnosticStatus.NotSupported, configured: false, optionsValid: false)));
             services.AddSingleton<IAuthenticationRateLimiterDiagnostics>(_ => new RateLimiterDiagnostics(RateLimiterResult(AshlarDiagnosticStatus.NotSupported)));
             services.AddHealthChecks()
                 .AddAshlarSchema(options => options.NotSupportedStatus = HealthStatus.Healthy)
                 .AddAshlarEmailOutbox(options => options.NotSupportedStatus = HealthStatus.Healthy)
+                .AddAshlarSecurityEventWebhookOutbox(options => options.NotSupportedStatus = HealthStatus.Healthy)
                 .AddAshlarCleanup(options => options.NotSupportedStatus = HealthStatus.Healthy)
                 .AddAshlarRateLimiter(options => options.NotSupportedStatus = HealthStatus.Healthy);
         });
@@ -257,6 +282,96 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
     }
 
     [Test]
+    public async Task SecurityEventWebhookOutboxThresholdBreachesShouldDegradeHealth()
+    {
+        using var provider = BuildProvider(services =>
+        {
+            services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult(
+                pendingCount: 10,
+                expiredLockCount: 2,
+                failedCount: 3,
+                oldestPendingAt: Now.AddMinutes(-10))));
+            services.AddHealthChecks().AddAshlarSecurityEventWebhookOutbox(options =>
+            {
+                options.PendingCountThreshold = 5;
+                options.ExpiredLockCountThreshold = 1;
+                options.FailedCountThreshold = 2;
+                options.OldestPendingAgeThreshold = TimeSpan.FromMinutes(5);
+            });
+        });
+
+        var report = await CheckAsync(provider);
+
+        Assert.That(report.Entries[AshlarHealthCheckNames.SecurityEventWebhookOutbox].Status, Is.EqualTo(HealthStatus.Degraded));
+    }
+
+    [Test]
+    public async Task SecurityEventWebhookOutboxThresholdsShouldOnlyBreachWhenValuesExceedConfiguredLimits()
+    {
+        using var provider = BuildProvider(services =>
+        {
+            services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult(
+                pendingCount: 5,
+                expiredLockCount: 1,
+                failedCount: 2,
+                oldestPendingAt: Now.AddMinutes(-5))));
+            services.AddHealthChecks().AddAshlarSecurityEventWebhookOutbox(options =>
+            {
+                options.PendingCountThreshold = 5;
+                options.ExpiredLockCountThreshold = 1;
+                options.FailedCountThreshold = 2;
+                options.OldestPendingAgeThreshold = TimeSpan.FromMinutes(5);
+            });
+        });
+
+        var report = await CheckAsync(provider);
+
+        Assert.That(report.Entries[AshlarHealthCheckNames.SecurityEventWebhookOutbox].Status, Is.EqualTo(HealthStatus.Healthy));
+    }
+
+    [Test]
+    public void SecurityEventWebhookOutboxThresholdOptionsShouldRejectInvalidThresholds()
+    {
+        using var provider = BuildProvider(services =>
+        {
+            services.AddHealthChecks().AddAshlarSecurityEventWebhookOutbox(options =>
+            {
+                options.PendingCountThreshold = -1;
+                options.ExpiredLockCountThreshold = -1;
+                options.FailedCountThreshold = -1;
+                options.OldestPendingAgeThreshold = TimeSpan.Zero;
+            });
+        });
+
+        Assert.Throws<OptionsValidationException>(() => _ = provider.GetRequiredService<IOptions<AshlarSecurityEventWebhookOutboxHealthCheckOptions>>().Value);
+    }
+
+    [Test]
+    public void SecurityEventWebhookOutboxThresholdOptionsShouldAcceptZeroCountThresholdsAndPositiveAgeThreshold()
+    {
+        using var provider = BuildProvider(services =>
+        {
+            services.AddHealthChecks().AddAshlarSecurityEventWebhookOutbox(options =>
+            {
+                options.PendingCountThreshold = 0;
+                options.ExpiredLockCountThreshold = 0;
+                options.FailedCountThreshold = 0;
+                options.OldestPendingAgeThreshold = TimeSpan.FromTicks(1);
+            });
+        });
+
+        var options = provider.GetRequiredService<IOptions<AshlarSecurityEventWebhookOutboxHealthCheckOptions>>().Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.PendingCountThreshold, Is.Zero);
+            Assert.That(options.ExpiredLockCountThreshold, Is.Zero);
+            Assert.That(options.FailedCountThreshold, Is.Zero);
+            Assert.That(options.OldestPendingAgeThreshold, Is.EqualTo(TimeSpan.FromTicks(1)));
+        }
+    }
+
+    [Test]
     public void EmailOutboxThresholdOptionsShouldRejectInvalidThresholds()
     {
         using var provider = BuildProvider(services =>
@@ -313,16 +428,32 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
     }
 
     [Test]
+    public async Task SecurityEventWebhookOutboxFallbackStatusesShouldMapToUnhealthy()
+    {
+        using var provider = BuildProvider(services =>
+        {
+            services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult((AshlarDiagnosticStatus)99)));
+            services.AddHealthChecks().AddAshlarSecurityEventWebhookOutbox();
+        });
+
+        var report = await CheckAsync(provider);
+
+        Assert.That(report.Entries[AshlarHealthCheckNames.SecurityEventWebhookOutbox].Status, Is.EqualTo(HealthStatus.Unhealthy));
+    }
+
+    [Test]
     public async Task RemainingStatusBranchesShouldMapPredictably()
     {
         using var provider = BuildProvider(services =>
         {
             services.AddSingleton<IEmailOutboxDiagnostics>(_ => new EmailOutboxDiagnostics(EmailOutboxResult(AshlarDiagnosticStatus.Unhealthy)));
+            services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult(AshlarDiagnosticStatus.Unhealthy)));
             services.AddSingleton<IAshlarSchemaDiagnostics>(_ => new SchemaDiagnostics(SchemaResult(AshlarDiagnosticStatus.Unhealthy, AshlarSchemaStatus.Current)));
             services.AddSingleton<IAshlarCleanupDiagnostics>(_ => new CleanupDiagnostics(CleanupResult(AshlarDiagnosticStatus.Unhealthy)));
             services.AddSingleton<IAuthenticationRateLimiterDiagnostics>(_ => new RateLimiterDiagnostics(RateLimiterResult(AshlarDiagnosticStatus.Degraded)));
             services.AddHealthChecks()
                 .AddAshlarEmailOutbox()
+                .AddAshlarSecurityEventWebhookOutbox()
                 .AddAshlarSchema()
                 .AddAshlarCleanup()
                 .AddAshlarRateLimiter();
@@ -334,6 +465,7 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
         {
             Assert.That(report.Entries[AshlarHealthCheckNames.Schema].Status, Is.EqualTo(HealthStatus.Unhealthy));
             Assert.That(report.Entries[AshlarHealthCheckNames.EmailOutbox].Status, Is.EqualTo(HealthStatus.Unhealthy));
+            Assert.That(report.Entries[AshlarHealthCheckNames.SecurityEventWebhookOutbox].Status, Is.EqualTo(HealthStatus.Unhealthy));
             Assert.That(report.Entries[AshlarHealthCheckNames.Cleanup].Status, Is.EqualTo(HealthStatus.Unhealthy));
             Assert.That(report.Entries[AshlarHealthCheckNames.RateLimiter].Status, Is.EqualTo(HealthStatus.Degraded));
         }
@@ -430,11 +562,66 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
     }
 
     [Test]
+    public async Task SecurityEventWebhookOutboxHealthCheckDataShouldContainOnlySafeDiagnosticFields()
+    {
+        using var provider = BuildProvider(services =>
+        {
+            services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult(
+                pendingCount: 3,
+                scheduledCount: 2,
+                lockedCount: 1,
+                expiredLockCount: 4,
+                failedCount: 5,
+                oldestPendingAt: Now.AddMinutes(-2),
+                oldestFailedAt: Now.AddHours(-1))));
+            services.AddHealthChecks().AddAshlarSecurityEventWebhookOutbox();
+        });
+
+        var report = await CheckAsync(provider);
+        var data = report.Entries[AshlarHealthCheckNames.SecurityEventWebhookOutbox].Data;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(data.Keys, Does.Contain("diagnostic_status"));
+            Assert.That(data.Keys, Does.Contain("provider_name"));
+            Assert.That(data.Keys, Does.Contain("pending_count"));
+            Assert.That(data.Keys, Does.Contain("scheduled_count"));
+            Assert.That(data.Keys, Does.Contain("locked_count"));
+            Assert.That(data.Keys, Does.Contain("expired_lock_count"));
+            Assert.That(data.Keys, Does.Contain("failed_count"));
+            Assert.That(data.Keys, Does.Contain("oldest_pending_age_seconds"));
+            Assert.That(data.Keys, Does.Not.Contain("endpoint_secret"));
+            Assert.That(data.Keys, Does.Not.Contain("request_body"));
+            Assert.That(data.Keys, Does.Not.Contain("headers"));
+            Assert.That(data.Keys, Does.Not.Contain("lock_owner"));
+            Assert.That(data.Keys, Does.Not.Contain("last_error"));
+            Assert.That(data.Keys, Does.Not.Contain("event_payload"));
+        }
+
+        Assert.That(data.Values, Is.All.Matches<object>(value => value is string or int or long or bool or double or DateTimeOffset));
+    }
+
+    [Test]
     public async Task HealthCheckDataShouldSkipNullOptionalValues()
     {
         using var provider = BuildProvider(services =>
         {
             services.AddSingleton<IEmailOutboxDiagnostics>(_ => new EmailOutboxDiagnostics(new EmailOutboxDiagnosticResult(
+                AshlarDiagnosticStatus.NotSupported,
+                "Test",
+                null,
+                Now,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null)));
+            services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(new SecurityEventWebhookOutboxDiagnosticResult(
                 AshlarDiagnosticStatus.NotSupported,
                 "Test",
                 null,
@@ -477,6 +664,7 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
                 null)));
             services.AddHealthChecks()
                 .AddAshlarEmailOutbox()
+                .AddAshlarSecurityEventWebhookOutbox()
                 .AddAshlarCleanup()
                 .AddAshlarRateLimiter();
         });
@@ -487,6 +675,8 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
         {
             Assert.That(report.Entries[AshlarHealthCheckNames.EmailOutbox].Data.Keys, Does.Not.Contain("oldest_pending_age_seconds"));
             Assert.That(report.Entries[AshlarHealthCheckNames.EmailOutbox].Data.Keys, Does.Not.Contain("polling_interval_seconds"));
+            Assert.That(report.Entries[AshlarHealthCheckNames.SecurityEventWebhookOutbox].Data.Keys, Does.Not.Contain("oldest_pending_age_seconds"));
+            Assert.That(report.Entries[AshlarHealthCheckNames.SecurityEventWebhookOutbox].Data.Keys, Does.Not.Contain("polling_interval_seconds"));
             Assert.That(report.Entries[AshlarHealthCheckNames.Cleanup].Data.Keys, Does.Not.Contain("cleanup_interval_seconds"));
             Assert.That(report.Entries[AshlarHealthCheckNames.RateLimiter].Data.Keys, Does.Not.Contain("cleanup_interval_seconds"));
         }
@@ -503,6 +693,9 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
             Assert.Throws<ArgumentNullException>(() => new AshlarEmailOutboxHealthCheck(null!, Options.Create(new AshlarEmailOutboxHealthCheckOptions())));
             Assert.Throws<ArgumentNullException>(() => new AshlarEmailOutboxHealthCheck([new EmailOutboxDiagnostics(EmailOutboxResult())], null!));
             Assert.Throws<ArgumentNullException>(() => new AshlarEmailOutboxHealthCheck([new EmailOutboxDiagnostics(EmailOutboxResult())], Options.Create<AshlarEmailOutboxHealthCheckOptions>(null!)));
+            Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookOutboxHealthCheck(null!, Options.Create(new AshlarSecurityEventWebhookOutboxHealthCheckOptions())));
+            Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookOutboxHealthCheck([new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult())], null!));
+            Assert.Throws<ArgumentNullException>(() => new AshlarSecurityEventWebhookOutboxHealthCheck([new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult())], Options.Create<AshlarSecurityEventWebhookOutboxHealthCheckOptions>(null!)));
             Assert.Throws<ArgumentNullException>(() => new AshlarCleanupHealthCheck(null!, Options.Create(new AshlarCleanupHealthCheckOptions())));
             Assert.Throws<ArgumentNullException>(() => new AshlarCleanupHealthCheck([new CleanupDiagnostics(CleanupResult())], null!));
             Assert.Throws<ArgumentNullException>(() => new AshlarCleanupHealthCheck([new CleanupDiagnostics(CleanupResult())], Options.Create<AshlarCleanupHealthCheckOptions>(null!)));
@@ -528,6 +721,7 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
             Assert.That(report.Entries.Keys, Contains.Item(AshlarHealthCheckNames.Schema));
             Assert.That(report.Entries[AshlarHealthCheckNames.Schema].Status, Is.EqualTo(HealthStatus.Healthy));
             Assert.That(report.Entries[AshlarHealthCheckNames.EmailOutbox].Status, Is.EqualTo(HealthStatus.Degraded));
+            Assert.That(report.Entries[AshlarHealthCheckNames.SecurityEventWebhookOutbox].Status, Is.EqualTo(HealthStatus.Degraded));
             Assert.That(report.Entries[AshlarHealthCheckNames.Cleanup].Status, Is.EqualTo(HealthStatus.Degraded));
             Assert.That(report.Entries[AshlarHealthCheckNames.RateLimiter].Status, Is.EqualTo(HealthStatus.Degraded));
         }
@@ -546,6 +740,7 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
             {
                 AshlarHealthCheckNames.Schema,
                 AshlarHealthCheckNames.EmailOutbox,
+                AshlarHealthCheckNames.SecurityEventWebhookOutbox,
                 AshlarHealthCheckNames.Cleanup,
                 AshlarHealthCheckNames.RateLimiter
             }));
@@ -576,6 +771,7 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
             services.AddHealthChecks().AddAshlarHealthChecks(
                 configureSchema: options => options.NotSupportedStatus = HealthStatus.Healthy,
                 configureEmailOutbox: options => options.NotSupportedStatus = HealthStatus.Healthy,
+                configureSecurityEventWebhookOutbox: options => options.NotSupportedStatus = HealthStatus.Healthy,
                 configureCleanup: options => options.NotSupportedStatus = HealthStatus.Healthy,
                 configureRateLimiter: options => options.NotSupportedStatus = HealthStatus.Healthy);
         });
@@ -592,18 +788,20 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
         {
             services.AddSingleton<IAshlarSchemaDiagnostics>(_ => new SchemaDiagnostics(SchemaResult()));
             services.AddSingleton<IEmailOutboxDiagnostics>(_ => new EmailOutboxDiagnostics(EmailOutboxResult()));
+            services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult()));
             services.AddSingleton<IAshlarCleanupDiagnostics>(_ => new CleanupDiagnostics(CleanupResult()));
             services.AddSingleton<IAuthenticationRateLimiterDiagnostics>(_ => new RateLimiterDiagnostics(RateLimiterResult()));
             services.AddHealthChecks()
                 .AddAshlarSchema(tags: ["ashlar"])
                 .AddAshlarEmailOutbox(tags: ["ashlar"])
+                .AddAshlarSecurityEventWebhookOutbox(tags: ["ashlar"])
                 .AddAshlarCleanup(tags: ["ashlar"])
                 .AddAshlarRateLimiter(tags: ["ashlar"]);
         });
 
         var report = await CheckAsync(provider);
 
-        Assert.That(report.Entries, Has.Count.EqualTo(4));
+        Assert.That(report.Entries, Has.Count.EqualTo(5));
     }
 
     [Test]
@@ -619,6 +817,8 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
             Assert.Throws<ArgumentException>(() => builder.AddAshlarSchema(name: ""));
             Assert.Throws<ArgumentNullException>(() => AshlarHealthChecksBuilderExtensions.AddAshlarEmailOutbox(null!));
             Assert.Throws<ArgumentException>(() => builder.AddAshlarEmailOutbox(name: ""));
+            Assert.Throws<ArgumentNullException>(() => AshlarHealthChecksBuilderExtensions.AddAshlarSecurityEventWebhookOutbox(null!));
+            Assert.Throws<ArgumentException>(() => builder.AddAshlarSecurityEventWebhookOutbox(name: ""));
             Assert.Throws<ArgumentNullException>(() => AshlarHealthChecksBuilderExtensions.AddAshlarCleanup(null!));
             Assert.Throws<ArgumentException>(() => builder.AddAshlarCleanup(name: ""));
             Assert.Throws<ArgumentNullException>(() => AshlarHealthChecksBuilderExtensions.AddAshlarRateLimiter(null!));
@@ -682,6 +882,33 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
             10);
     }
 
+    private static SecurityEventWebhookOutboxDiagnosticResult SecurityEventWebhookOutboxResult(
+        AshlarDiagnosticStatus status = AshlarDiagnosticStatus.Healthy,
+        long pendingCount = 0,
+        long scheduledCount = 0,
+        long lockedCount = 0,
+        long expiredLockCount = 0,
+        long failedCount = 0,
+        DateTimeOffset? oldestPendingAt = null,
+        DateTimeOffset? oldestFailedAt = null)
+    {
+        return new SecurityEventWebhookOutboxDiagnosticResult(
+            status,
+            "Test",
+            null,
+            Now,
+            pendingCount,
+            scheduledCount,
+            lockedCount,
+            expiredLockCount,
+            failedCount,
+            oldestPendingAt,
+            oldestFailedAt,
+            3,
+            TimeSpan.FromSeconds(30),
+            10);
+    }
+
     private static AshlarCleanupDiagnosticResult CleanupResult(
         AshlarDiagnosticStatus status = AshlarDiagnosticStatus.Healthy,
         bool configured = true,
@@ -733,6 +960,14 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
     private sealed class EmailOutboxDiagnostics(EmailOutboxDiagnosticResult result) : IEmailOutboxDiagnostics
     {
         public Task<EmailOutboxDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(result);
+        }
+    }
+
+    private sealed class SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxDiagnosticResult result) : ISecurityEventWebhookOutboxDiagnostics
+    {
+        public Task<SecurityEventWebhookOutboxDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default)
         {
             return Task.FromResult(result);
         }

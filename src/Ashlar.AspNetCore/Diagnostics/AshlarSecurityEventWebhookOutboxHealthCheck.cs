@@ -5,20 +5,20 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.AspNetCore.Diagnostics;
 
 /// <summary>
-/// Adapts Ashlar email outbox diagnostics to ASP.NET Core health checks.
+/// Adapts Ashlar security event webhook outbox diagnostics to ASP.NET Core health checks.
 /// </summary>
-/// <param name="diagnostics">The email outbox diagnostics services.</param>
-/// <param name="options">The email outbox health check options.</param>
-public sealed class AshlarEmailOutboxHealthCheck(
-    IEnumerable<IEmailOutboxDiagnostics> diagnostics,
-    IOptions<AshlarEmailOutboxHealthCheckOptions> options) : IHealthCheck
+/// <param name="diagnostics">The security event webhook outbox diagnostics services.</param>
+/// <param name="options">The security event webhook outbox health check options.</param>
+public sealed class AshlarSecurityEventWebhookOutboxHealthCheck(
+    IEnumerable<ISecurityEventWebhookOutboxDiagnostics> diagnostics,
+    IOptions<AshlarSecurityEventWebhookOutboxHealthCheckOptions> options) : IHealthCheck
 {
-    private const string MissingDiagnosticsDescription = "Ashlar email outbox diagnostics are not registered.";
-    private readonly IEmailOutboxDiagnostics? _diagnostics = (diagnostics ?? throw new ArgumentNullException(nameof(diagnostics))).FirstOrDefault();
-    private readonly AshlarEmailOutboxHealthCheckOptions _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+    private const string MissingDiagnosticsDescription = "Ashlar security event webhook outbox diagnostics are not registered.";
+    private readonly ISecurityEventWebhookOutboxDiagnostics? _diagnostics = (diagnostics ?? throw new ArgumentNullException(nameof(diagnostics))).FirstOrDefault();
+    private readonly AshlarSecurityEventWebhookOutboxHealthCheckOptions _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
 
     /// <summary>
-    /// Runs the Ashlar email outbox health check.
+    /// Runs the Ashlar security event webhook outbox health check.
     /// </summary>
     /// <param name="context">The health check context.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
@@ -39,10 +39,10 @@ public sealed class AshlarEmailOutboxHealthCheck(
             _options.NotSupportedStatus,
             _options.ThresholdExceededStatus);
 
-        return new HealthCheckResult(status, result.Reason, data: AshlarHealthCheckData.ForEmailOutbox(result));
+        return new HealthCheckResult(status, result.Reason, data: AshlarHealthCheckData.ForSecurityEventWebhookOutbox(result));
     }
 
-    private bool ThresholdExceeded(EmailOutboxDiagnosticResult result)
+    private bool ThresholdExceeded(SecurityEventWebhookOutboxDiagnosticResult result)
     {
         return AshlarOutboxHealthCheck.ThresholdExceeded(
             AshlarHealthCheckData.ToOutboxMetrics(result),

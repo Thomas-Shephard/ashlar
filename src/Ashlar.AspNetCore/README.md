@@ -109,10 +109,11 @@ services.AddHealthChecks()
     .AddAshlarHealthChecks();
 ```
 
-The convenience registration adds four checks with stable names:
+The convenience registration adds five checks with stable names:
 
 - `ashlar_schema`
 - `ashlar_email_outbox`
+- `ashlar_security_event_webhook_outbox`
 - `ashlar_cleanup`
 - `ashlar_rate_limiter`
 
@@ -128,6 +129,13 @@ services.AddHealthChecks()
         options.ExpiredLockCountThreshold = 5;
         options.OldestPendingAgeThreshold = TimeSpan.FromMinutes(15);
     }, tags: ["ashlar", "messaging"])
+    .AddAshlarSecurityEventWebhookOutbox(options =>
+    {
+        options.PendingCountThreshold = 1_000;
+        options.FailedCountThreshold = 10;
+        options.ExpiredLockCountThreshold = 5;
+        options.OldestPendingAgeThreshold = TimeSpan.FromMinutes(15);
+    }, tags: ["ashlar", "webhooks"])
     .AddAshlarCleanup(options =>
     {
         options.NotSupportedStatus = HealthStatus.Healthy;
