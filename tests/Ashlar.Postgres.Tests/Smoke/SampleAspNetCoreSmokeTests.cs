@@ -5,6 +5,8 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Ashlar.Identity.Providers.External;
+using Ashlar.Messaging;
+using Ashlar.Security.Encryption;
 using Dapper;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Builder;
@@ -602,8 +604,8 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     private async Task<string> LatestOutboxBodyAsync(string toAddress, string subject)
     {
         await using var connection = new NpgsqlConnection(GetConnectionString());
-        var body = await connection.QueryFirstOrDefaultAsync<string?>("""
-            SELECT text_body
+        var row = await connection.QueryFirstOrDefaultAsync<OutboxBodyRow>("""
+            SELECT text_body AS TextBody, body_protection AS BodyProtection
             FROM ashlar_email_outbox
             WHERE lower(to_address) = lower(@ToAddress)
               AND subject = @Subject
@@ -617,8 +619,19 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             ORDER BY created_at, id
             """);
 
-        Assert.That(body, Is.Not.Null.And.Not.Empty, $"Expected email to {toAddress} with subject '{subject}'. Observed: {string.Join(", ", observed)}");
-        return body!;
+        Assert.That(row?.TextBody, Is.Not.Null.And.Not.Empty, $"Expected email to {toAddress} with subject '{subject}'. Observed: {string.Join(", ", observed)}");
+        return row!.BodyProtection switch
+        {
+            nameof(EmailOutboxBodyProtection.None) => row.TextBody!,
+            nameof(EmailOutboxBodyProtection.SecretProtector) => UnprotectOutboxBody(row.TextBody!),
+            _ => throw new InvalidOperationException("Unexpected email outbox body protection value.")
+        };
+    }
+
+    private string UnprotectOutboxBody(string textBody)
+    {
+        using var scope = _factory!.Services.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<ISecretProtector>().Unprotect(textBody);
     }
 
     private static string ExtractQueryValue(string text, string name)
@@ -764,5 +777,11 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
                 next(app);
             };
         }
+    }
+
+    private sealed class OutboxBodyRow
+    {
+        public string? TextBody { get; init; }
+        public string? BodyProtection { get; init; }
     }
 }

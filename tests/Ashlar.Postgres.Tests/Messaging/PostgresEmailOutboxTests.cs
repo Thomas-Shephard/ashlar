@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Ashlar.Messaging;
 using Ashlar.Operational;
+using Ashlar.Security.Encryption;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -26,6 +27,7 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
         services.AddAshlarPostgresEmailOutboxSender();
         services.AddAshlarPostgresCleanup();
         services.AddSingleton<TimeProvider>(_timeProvider);
+        services.AddSingleton<ISecretProtector, FakeSecretProtector>();
         _serviceProvider = services.BuildServiceProvider();
 
         await _serviceProvider.InitializeAshlarPostgresSchemaAsync();
@@ -88,8 +90,8 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
         var provider = _serviceProvider.GetRequiredService<IPostgresConnectionProvider>();
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new PostgresEmailOutboxSender(null!, _timeProvider));
-            Assert.Throws<ArgumentNullException>(() => _ = new PostgresEmailOutboxSender(provider, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresEmailOutboxSender(null!, _timeProvider, null));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresEmailOutboxSender(provider, null!, null));
         }
     }
 
@@ -127,20 +129,37 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
     {
         var sender = new PostgresEmailOutboxSender(
             _serviceProvider.GetRequiredService<IPostgresConnectionProvider>(),
-            _timeProvider);
+            _timeProvider,
+            _serviceProvider.GetRequiredService<ISecretProtector>());
 
-        var message = new EmailMessage("to@example.com", "Subject", "Body");
+        var message = new EmailMessage(
+            "to@example.com",
+            "Subject",
+            "Body",
+            options: new EmailMessageOptions
+            {
+                From = "from@example.com",
+                ReplyTo = "reply@example.com",
+                Cc = "cc@example.com",
+                Bcc = "bcc@example.com"
+            });
 
         await sender.SendAsync(message);
 
         await using var connection = await GetDataSource().OpenConnectionAsync();
         var row = await connection.QuerySingleAsync<RawOutboxRow>("""
-            SELECT created_at AS CreatedAt, available_at AS AvailableAt
+            SELECT from_address AS FromAddress, reply_to_address AS ReplyToAddress,
+                   cc_address AS CcAddress, bcc_address AS BccAddress,
+                   created_at AS CreatedAt, available_at AS AvailableAt
             FROM ashlar_email_outbox
             """);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(row.FromAddress, Is.EqualTo("from@example.com"));
+            Assert.That(row.ReplyToAddress, Is.EqualTo("reply@example.com"));
+            Assert.That(row.CcAddress, Is.EqualTo("cc@example.com"));
+            Assert.That(row.BccAddress, Is.EqualTo("bcc@example.com"));
             Assert.That(row.CreatedAt, Is.EqualTo(_now));
             Assert.That(row.AvailableAt, Is.EqualTo(_now));
         }
@@ -151,7 +170,8 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
     {
         var sender = new PostgresEmailOutboxSender(
             _serviceProvider.GetRequiredService<IPostgresConnectionProvider>(),
-            _timeProvider);
+            _timeProvider,
+            _serviceProvider.GetRequiredService<ISecretProtector>());
 
         var message = new EmailMessage(
             "to@example.com",
@@ -183,7 +203,8 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
     {
         var sender = new PostgresEmailOutboxSender(
             _serviceProvider.GetRequiredService<IPostgresConnectionProvider>(),
-            _timeProvider);
+            _timeProvider,
+            _serviceProvider.GetRequiredService<ISecretProtector>());
 
         await sender.SendAsync(new EmailMessage(
             "to@example.com",
@@ -192,9 +213,71 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
             options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret }));
 
         await using var connection = await GetDataSource().OpenConnectionAsync();
-        var sensitivity = await connection.ExecuteScalarAsync<string>("SELECT sensitivity FROM ashlar_email_outbox");
+        var row = await connection.QuerySingleAsync<RawOutboxRow>("SELECT sensitivity AS Sensitivity, body_protection AS BodyProtection, text_body AS TextBody FROM ashlar_email_outbox");
 
-        Assert.That(sensitivity, Is.EqualTo(nameof(EmailMessageSensitivity.ContainsLiveSecret)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(row.Sensitivity, Is.EqualTo(nameof(EmailMessageSensitivity.ContainsLiveSecret)));
+            Assert.That(row.BodyProtection, Is.EqualTo(nameof(EmailOutboxBodyProtection.SecretProtector)));
+            Assert.That(row.TextBody, Is.Not.EqualTo("Body"));
+            Assert.That(row.TextBody, Does.Not.Contain("Body"));
+        }
+    }
+
+    [Test]
+    public async Task SenderSendAsyncStoresNormalBodyPlaintext()
+    {
+        var sender = new PostgresEmailOutboxSender(
+            _serviceProvider.GetRequiredService<IPostgresConnectionProvider>(),
+            _timeProvider,
+            _serviceProvider.GetRequiredService<ISecretProtector>());
+
+        await sender.SendAsync(new EmailMessage("to@example.com", "Subject", "Normal body"));
+
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        var row = await connection.QuerySingleAsync<RawOutboxRow>("SELECT body_protection AS BodyProtection, text_body AS TextBody FROM ashlar_email_outbox");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(row.BodyProtection, Is.EqualTo(nameof(EmailOutboxBodyProtection.None)));
+            Assert.That(row.TextBody, Is.EqualTo("Normal body"));
+        }
+    }
+
+    [Test]
+    public async Task SchemaRejectsSensitiveMessageWithoutProtectedBodies()
+    {
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+
+        var exception = Assert.CatchAsync<Exception>(async () => await connection.ExecuteAsync(
+            """
+            INSERT INTO ashlar_email_outbox (
+                id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at
+            ) VALUES (
+                @id, 'mismatch@example.com', 'Subject', 'Plain secret', 'ContainsLiveSecret', 'None', @now, @now
+            )
+            """,
+            new { id = Guid.NewGuid(), now = _timeProvider.GetUtcNow() }));
+
+        Assert.That(exception!.Message, Does.Contain("ck_ashlar_email_outbox_sensitive_body_protection"));
+    }
+
+    [Test]
+    public void SenderSendAsyncThrowsForSensitiveMessageWithoutSecretProtector()
+    {
+        var sender = new PostgresEmailOutboxSender(
+            _serviceProvider.GetRequiredService<IPostgresConnectionProvider>(),
+            _timeProvider);
+
+        var message = new EmailMessage(
+            "to@example.com",
+            "Subject",
+            "Body",
+            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+
+        var exception = Assert.ThrowsAsync<InvalidOperationException>(() => sender.SendAsync(message));
+
+        Assert.That(exception!.Message, Does.Contain("ISecretProtector"));
     }
 
     [Test]
@@ -263,6 +346,136 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
         {
             Assert.That(row.SentAt, Is.EqualTo(_now));
             Assert.That(row.AttemptCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task DispatcherProcessBatchAsyncUnprotectsSensitiveBodies()
+    {
+        var protector = _serviceProvider.GetRequiredService<ISecretProtector>();
+        var transport = new TestTransport();
+        var services = new ServiceCollection();
+        services.AddSingleton(transport);
+        services.AddSingleton(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>());
+        services.AddSingleton(protector);
+        var dispatcherProvider = services.BuildServiceProvider();
+
+        await using (var connection = await GetDataSource().OpenConnectionAsync())
+        {
+            await connection.ExecuteAsync(
+                """
+                INSERT INTO ashlar_email_outbox (
+                    id, to_address, subject, text_body, html_body, sensitivity, body_protection, created_at, available_at
+                ) VALUES (
+                    @id, 'protected@example.com', 'Subject', @textBody, @htmlBody, 'ContainsLiveSecret', 'SecretProtector', @now, @now
+                )
+                """,
+                new { id = Guid.NewGuid(), textBody = protector.Protect("Secret text"), htmlBody = protector.Protect("<p>Secret html</p>"), now = _timeProvider.GetUtcNow() });
+        }
+
+        var dispatcher = new PostgresEmailOutboxDispatcher<TestTransport>(
+            dispatcherProvider,
+            _timeProvider,
+            Options.Create(new PostgresEmailOutboxOptions()));
+
+        await dispatcher.ProcessBatchAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Messages.Single().TextBody, Is.EqualTo("Secret text"));
+            Assert.That(transport.Messages.Single().HtmlBody, Is.EqualTo("<p>Secret html</p>"));
+            Assert.That(transport.Messages.Single().Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
+        }
+    }
+
+    [Test]
+    public async Task DispatcherProcessBatchAsyncDoesNotDispatchUnknownBodyProtectionAsPlaintext()
+    {
+        var transport = new TestTransport();
+        var services = new ServiceCollection();
+        services.AddSingleton(transport);
+        services.AddSingleton(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>());
+        var dispatcherProvider = services.BuildServiceProvider();
+
+        await using (var connection = await GetDataSource().OpenConnectionAsync())
+        {
+            await connection.ExecuteAsync("ALTER TABLE ashlar_email_outbox DROP CONSTRAINT ck_ashlar_email_outbox_body_protection;");
+            await connection.ExecuteAsync(
+                """
+                INSERT INTO ashlar_email_outbox (
+                    id, to_address, subject, text_body, body_protection, created_at, available_at
+                ) VALUES (
+                    @id, 'unknown-protection@example.com', 'Subject', 'Plain secret', 'Unknown', @now, @now
+                )
+                """,
+                new { id = Guid.NewGuid(), now = _timeProvider.GetUtcNow() });
+        }
+
+        var dispatcher = new PostgresEmailOutboxDispatcher<TestTransport>(
+            dispatcherProvider,
+            _timeProvider,
+            Options.Create(new PostgresEmailOutboxOptions()));
+
+        try
+        {
+            await dispatcher.ProcessBatchAsync(CancellationToken.None);
+
+            await using var verifyConnection = await GetDataSource().OpenConnectionAsync();
+            var row = await verifyConnection.QuerySingleAsync<RawOutboxRow>("SELECT attempt_count AS AttemptCount, last_error AS LastError FROM ashlar_email_outbox");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(transport.DeliveredCount, Is.Zero);
+                Assert.That(row.AttemptCount, Is.EqualTo(1));
+                Assert.That(row.LastError, Does.Contain("suppressed"));
+                Assert.That(row.LastError, Does.Not.Contain("Plain secret"));
+            }
+        }
+        finally
+        {
+            await using var connection = await GetDataSource().OpenConnectionAsync();
+            await connection.ExecuteAsync("UPDATE ashlar_email_outbox SET body_protection = 'None' WHERE body_protection = 'Unknown';");
+            await connection.ExecuteAsync("ALTER TABLE ashlar_email_outbox ADD CONSTRAINT ck_ashlar_email_outbox_body_protection CHECK (body_protection IN ('None', 'SecretProtector'));");
+        }
+    }
+
+    [Test]
+    public async Task DispatcherProcessBatchAsyncSuppressesSensitiveFailureDetails()
+    {
+        var protector = _serviceProvider.GetRequiredService<ISecretProtector>();
+        var transport = new TestTransport { OnDeliver = (message, _) => throw new InvalidOperationException(message.TextBody) };
+        var services = new ServiceCollection();
+        services.AddSingleton(transport);
+        services.AddSingleton(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>());
+        services.AddSingleton(protector);
+        var dispatcherProvider = services.BuildServiceProvider();
+
+        await using (var connection = await GetDataSource().OpenConnectionAsync())
+        {
+            await connection.ExecuteAsync(
+                """
+                INSERT INTO ashlar_email_outbox (
+                    id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at
+                ) VALUES (
+                    @id, 'protected-failure@example.com', 'Subject', @textBody, 'ContainsLiveSecret', 'SecretProtector', @now, @now
+                )
+                """,
+                new { id = Guid.NewGuid(), textBody = protector.Protect("live-token-link"), now = _timeProvider.GetUtcNow() });
+        }
+
+        var dispatcher = new PostgresEmailOutboxDispatcher<TestTransport>(
+            dispatcherProvider,
+            _timeProvider,
+            Options.Create(new PostgresEmailOutboxOptions()));
+
+        await dispatcher.ProcessBatchAsync(CancellationToken.None);
+
+        await using var verifyConnection = await GetDataSource().OpenConnectionAsync();
+        var row = await verifyConnection.QuerySingleAsync<RawOutboxRow>("SELECT last_error AS LastError FROM ashlar_email_outbox");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.DeliveredCount, Is.EqualTo(1));
+            Assert.That(row.LastError, Does.Contain("suppressed"));
+            Assert.That(row.LastError, Does.Not.Contain("live-token-link"));
         }
     }
 
@@ -475,6 +688,10 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
         {
             Id = Guid.NewGuid(),
             ToAddress = "to@example.com",
+            FromAddress = "from@example.com",
+            ReplyToAddress = "reply@example.com",
+            CcAddress = "cc@example.com",
+            BccAddress = "bcc@example.com",
             Subject = "Sub",
             TextBody = "Body",
             Headers = null,
@@ -487,6 +704,10 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(message.To, Is.EqualTo("to@example.com"));
+            Assert.That(message.From, Is.EqualTo("from@example.com"));
+            Assert.That(message.ReplyTo, Is.EqualTo("reply@example.com"));
+            Assert.That(message.Cc, Is.EqualTo("cc@example.com"));
+            Assert.That(message.Bcc, Is.EqualTo("bcc@example.com"));
             Assert.That(message.Headers, Is.Null);
             Assert.That(message.Metadata, Is.Null);
         }
@@ -495,18 +716,20 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
     [Test]
     public void MapToEmailMessageHandlesValidHeadersAndMetadata()
     {
+        ISecretProtector protector = new FakeSecretProtector();
         var entry = new EmailOutboxEntry
         {
             Id = Guid.NewGuid(),
             ToAddress = "to@example.com",
             Subject = "Sub",
-            TextBody = "Body",
+            TextBody = protector.Protect("Body"),
             Headers = "{\"X-Test\": \"Header\"}",
             Metadata = "{\"Test\": \"Metadata\"}",
-            Sensitivity = EmailMessageSensitivity.ContainsLiveSecret
+            Sensitivity = EmailMessageSensitivity.ContainsLiveSecret,
+            BodyProtection = EmailOutboxBodyProtection.SecretProtector
         };
 
-        var message = EmailOutboxDispatch.MapToEmailMessage(entry);
+        var message = EmailOutboxDispatch.MapToEmailMessage(entry, protector);
 
         using (Assert.EnterMultipleScope())
         {
@@ -788,14 +1011,39 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
     private sealed class TestTransport : IEmailTransport
     {
         private int _deliveredCount;
+        private readonly List<EmailMessage> _messages = new();
 
         public Func<EmailMessage, CancellationToken, Task> OnDeliver { get; set; } = (_, _) => Task.CompletedTask;
         public int DeliveredCount => _deliveredCount;
+        public IReadOnlyList<EmailMessage> Messages => _messages;
 
         public Task DeliverAsync(EmailMessage message, CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref _deliveredCount);
+            _messages.Add(message);
             return OnDeliver(message, cancellationToken);
+        }
+    }
+
+    private sealed class FakeSecretProtector : ISecretProtector
+    {
+        private static readonly byte[] Prefix = "protected:"u8.ToArray();
+
+        public byte[] Protect(byte[] data)
+        {
+            ArgumentNullException.ThrowIfNull(data);
+
+            var protectedData = new byte[Prefix.Length + data.Length];
+            Buffer.BlockCopy(Prefix, 0, protectedData, 0, Prefix.Length);
+            Buffer.BlockCopy(data, 0, protectedData, Prefix.Length, data.Length);
+            return protectedData;
+        }
+
+        public byte[] Unprotect(byte[] data)
+        {
+            ArgumentNullException.ThrowIfNull(data);
+
+            return data.Skip(Prefix.Length).ToArray();
         }
     }
 
@@ -805,9 +1053,13 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
         public required string ToAddress { get; set; }
         public string? FromAddress { get; set; }
         public string? ReplyToAddress { get; set; }
+        public string? CcAddress { get; set; }
+        public string? BccAddress { get; set; }
         public required string Subject { get; set; }
         public string? TextBody { get; set; }
         public string? HtmlBody { get; set; }
+        public string? Sensitivity { get; set; }
+        public string? BodyProtection { get; set; }
         public string? Headers { get; set; }
         public string? Metadata { get; set; }
         public int AttemptCount { get; set; }

@@ -1,4 +1,5 @@
 using Ashlar.Messaging;
+using Ashlar.Security.Encryption;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -50,15 +51,16 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
                 WHERE sent_at IS NULL
                   AND failed_at IS NULL
                   AND available_at <= @Now
-                  AND (locked_until IS NULL OR locked_until < @Now)
+                  AND (locked_until IS NULL OR locked_until <= @Now)
                 ORDER BY available_at, id
                 LIMIT @BatchSize
                 FOR UPDATE SKIP LOCKED
             )
             RETURNING id AS Id, to_address AS ToAddress, from_address AS FromAddress,
-                      reply_to_address AS ReplyToAddress, subject AS Subject,
+                      reply_to_address AS ReplyToAddress, cc_address AS CcAddress,
+                      bcc_address AS BccAddress, subject AS Subject,
                       text_body AS TextBody, html_body AS HtmlBody,
-                      sensitivity AS Sensitivity,
+                      sensitivity AS Sensitivity, body_protection AS BodyProtection,
                       headers AS Headers, metadata AS Metadata,
                       attempt_count AS AttemptCount
             """;
@@ -107,7 +109,8 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
 
         try
         {
-            var message = EmailOutboxDispatch.MapToEmailMessage(entry);
+            var secretProtector = provider.GetService<ISecretProtector>();
+            var message = EmailOutboxDispatch.MapToEmailMessage(entry, secretProtector);
             await transport.DeliverAsync(message, cancellationToken);
             await MarkAsSentAsync(entry.Id, provider, CancellationToken.None);
         }
@@ -118,7 +121,8 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
         catch (Exception ex)
         {
             var attemptCount = entry.AttemptCount + 1;
-            PostgresEmailOutboxDispatcherLog.EmailOutboxDeliveryFailed(_logger, entry.Id, attemptCount, attemptCount >= _options.MaxAttempts, ex);
+            var suppressFailureDetails = EmailOutboxDispatch.ShouldSuppressFailureDetails(entry);
+            PostgresEmailOutboxDispatcherLog.EmailOutboxDeliveryFailed(_logger, entry.Id, attemptCount, attemptCount >= _options.MaxAttempts, suppressFailureDetails ? null : ex);
             await MarkAsFailedAsync(entry, ex, provider, CancellationToken.None);
         }
     }
@@ -153,7 +157,8 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
             _options.MaxAttempts,
             _options.InitialRetryDelay,
             now,
-            exception);
+            exception,
+            EmailOutboxDispatch.ShouldSuppressFailureDetails(entry));
 
         const string sql = """
             UPDATE ashlar_email_outbox
@@ -194,10 +199,13 @@ internal sealed class PostgresEmailOutboxEntry
     public required string ToAddress { get; init; }
     public string? FromAddress { get; init; }
     public string? ReplyToAddress { get; init; }
+    public string? CcAddress { get; init; }
+    public string? BccAddress { get; init; }
     public required string Subject { get; init; }
     public string? TextBody { get; init; }
     public string? HtmlBody { get; init; }
     public string? Sensitivity { get; init; }
+    public string? BodyProtection { get; init; }
     public string? Headers { get; init; }
     public string? Metadata { get; init; }
     public int AttemptCount { get; init; }
@@ -210,10 +218,13 @@ internal sealed class PostgresEmailOutboxEntry
             ToAddress = ToAddress,
             FromAddress = FromAddress,
             ReplyToAddress = ReplyToAddress,
+            CcAddress = CcAddress,
+            BccAddress = BccAddress,
             Subject = Subject,
             TextBody = TextBody,
             HtmlBody = HtmlBody,
             Sensitivity = EmailOutboxDispatch.ParseSensitivity(Sensitivity),
+            BodyProtection = EmailOutboxDispatch.ParseBodyProtection(BodyProtection),
             Headers = Headers,
             Metadata = Metadata,
             AttemptCount = AttemptCount

@@ -232,10 +232,13 @@ CREATE TABLE IF NOT EXISTS ashlar_email_outbox (
     to_address TEXT NOT NULL,
     from_address TEXT,
     reply_to_address TEXT,
+    cc_address TEXT,
+    bcc_address TEXT,
     subject TEXT NOT NULL,
     text_body TEXT,
     html_body TEXT,
     sensitivity TEXT NOT NULL DEFAULT 'Normal',
+    body_protection TEXT NOT NULL DEFAULT 'None',
     headers TEXT,
     metadata TEXT,
     created_at TEXT NOT NULL,
@@ -248,6 +251,10 @@ CREATE TABLE IF NOT EXISTS ashlar_email_outbox (
     failed_at TEXT,
     last_error TEXT,
     CONSTRAINT ck_ashlar_email_outbox_sensitivity CHECK (sensitivity IN ('Normal', 'ContainsLiveSecret')),
+    CONSTRAINT ck_ashlar_email_outbox_body_protection CHECK (body_protection IN ('None', 'SecretProtector')),
+    CONSTRAINT ck_ashlar_email_outbox_sensitive_body_protection CHECK (
+        sensitivity <> 'ContainsLiveSecret' OR body_protection = 'SecretProtector'
+    ),
     CONSTRAINT ck_ashlar_email_outbox_terminal_state CHECK (sent_at IS NULL OR failed_at IS NULL),
     CONSTRAINT ck_ashlar_email_outbox_lock_state CHECK (
         (locked_until IS NULL AND locked_by IS NULL) OR (locked_until IS NOT NULL AND locked_by IS NOT NULL)

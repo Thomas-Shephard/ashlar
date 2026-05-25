@@ -97,18 +97,18 @@ internal sealed class PostgresEmailOutboxDiagnosticsTests : PostgresTestBase
         await using (var connection = await GetDataSource().OpenConnectionAsync())
         {
             await connection.ExecuteAsync("""
-                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, headers, metadata, created_at, available_at)
-                VALUES (@id1, 'pending-old@example.com', 'Subject', 'live-token-link', 'ContainsLiveSecret', '{"X-Token":"secret-header"}'::jsonb, '{"token_hash":"secret-hash"}'::jsonb, @oldPending, @oldPending),
-                       (@id2, 'pending-new@example.com', 'Subject', 'Body', 'Normal', '{}'::jsonb, '{}'::jsonb, @newPending, @newPending),
-                       (@id3, 'scheduled@example.com', 'Subject', 'secret-scheduled', 'ContainsLiveSecret', '{}'::jsonb, '{}'::jsonb, @scheduled, @scheduled);
+                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, body_protection, headers, metadata, created_at, available_at)
+                VALUES (@id1, 'pending-old@example.com', 'Subject', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', '{"X-Token":"secret-header"}'::jsonb, '{"token_hash":"secret-hash"}'::jsonb, @oldPending, @oldPending),
+                       (@id2, 'pending-new@example.com', 'Subject', 'Body', 'Normal', 'None', '{}'::jsonb, '{}'::jsonb, @newPending, @newPending),
+                       (@id3, 'scheduled@example.com', 'Subject', 'secret-scheduled', 'ContainsLiveSecret', 'SecretProtector', '{}'::jsonb, '{}'::jsonb, @scheduled, @scheduled);
 
-                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, locked_until, locked_by)
-                VALUES (@id4, 'locked@example.com', 'Subject', 'secret-locked', 'ContainsLiveSecret', @oldPending, @oldPending, @lockedUntil, 'worker'),
-                       (@id5, 'expired@example.com', 'Subject', 'Body', 'Normal', @oldPending, @oldPending, @expiredLock, 'worker');
+                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at, locked_until, locked_by)
+                VALUES (@id4, 'locked@example.com', 'Subject', 'secret-locked', 'ContainsLiveSecret', 'SecretProtector', @oldPending, @oldPending, @lockedUntil, 'worker'),
+                       (@id5, 'expired@example.com', 'Subject', 'Body', 'Normal', 'None', @oldPending, @oldPending, @expiredLock, 'worker');
 
-                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, created_at, available_at, failed_at)
-                VALUES (@id6, 'failed-old@example.com', 'Subject', 'secret-failed', 'ContainsLiveSecret', @oldPending, @oldPending, @oldestFailed),
-                       (@id7, 'failed-new@example.com', 'Subject', 'Body', 'Normal', @oldPending, @oldPending, @newestFailed);
+                INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at, failed_at)
+                VALUES (@id6, 'failed-old@example.com', 'Subject', 'secret-failed', 'ContainsLiveSecret', 'SecretProtector', @oldPending, @oldPending, @oldestFailed),
+                       (@id7, 'failed-new@example.com', 'Subject', 'Body', 'Normal', 'None', @oldPending, @oldPending, @newestFailed);
                 """, new
             {
                 id1 = Guid.NewGuid(),
