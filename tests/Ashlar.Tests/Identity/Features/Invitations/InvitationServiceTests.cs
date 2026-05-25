@@ -351,6 +351,26 @@ internal sealed class InvitationServiceTests
     }
 
     [Test]
+    public async Task AcceptInvitationUsesInvitationTenantForExpiredInvitationFailure()
+    {
+        var fixture = CreateFixture();
+        var invitationTenantId = Guid.NewGuid();
+        var contextTenantId = Guid.NewGuid();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = invitationTenantId }, new Uri("https://myapp.com/join"));
+        var token = ExtractToken(fixture.EmailSender.Messages.First());
+        fixture.Time.Advance(TimeSpan.FromDays(8));
+
+        fixture.Audit.Events.Clear();
+        var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token }, new AuthenticationContext(TenantId: contextTenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationAccepted).TenantId, Is.EqualTo(invitationTenantId));
+        }
+    }
+
+    [Test]
     public async Task AcceptInvitationFailsForRevokedToken()
     {
         var fixture = CreateFixture();
@@ -389,6 +409,86 @@ internal sealed class InvitationServiceTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(fixture.Audit.Events.First().TenantId, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task AcceptInvitationFailsWhenContextTenantDiffersFromInvitationTenant()
+    {
+        var fixture = CreateFixture(asynchronousAudit: true);
+        var invitationTenantId = Guid.NewGuid();
+        var contextTenantId = Guid.NewGuid();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = invitationTenantId }, new Uri("https://myapp.com/join"));
+        var token = ExtractToken(fixture.EmailSender.Messages.First());
+
+        fixture.Audit.Events.Clear();
+        var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token }, new AuthenticationContext(TenantId: contextTenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(fixture.InvitationRepository.Invitations.Single().AcceptedAt, Is.Null);
+            Assert.That(fixture.InvitationRepository.UpdateCount, Is.Zero);
+            Assert.That(fixture.UserRepository.Users, Is.Empty);
+            var auditEvent = fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationAccepted);
+            Assert.That(auditEvent.Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+            Assert.That(auditEvent.FailureReason, Is.EqualTo(AshlarFailureCodes.InvalidInvitation.Value));
+            Assert.That(auditEvent.TenantId, Is.EqualTo(contextTenantId));
+        }
+    }
+
+    [Test]
+    public async Task AcceptInvitationFailsWhenContextTenantUsesGlobalInvitation()
+    {
+        var fixture = CreateFixture();
+        var contextTenantId = Guid.NewGuid();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com" }, new Uri("https://myapp.com/join"));
+        var token = ExtractToken(fixture.EmailSender.Messages.First());
+
+        fixture.Audit.Events.Clear();
+        var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token }, new AuthenticationContext(TenantId: contextTenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(fixture.InvitationRepository.Invitations.Single().AcceptedAt, Is.Null);
+            Assert.That(fixture.InvitationRepository.UpdateCount, Is.Zero);
+            Assert.That(fixture.UserRepository.Users, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task AcceptInvitationSucceedsWhenContextTenantMatchesInvitationTenant()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = tenantId }, new Uri("https://myapp.com/join"));
+        var token = ExtractToken(fixture.EmailSender.Messages.First());
+
+        var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token }, new AuthenticationContext(TenantId: tenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixture.InvitationRepository.Invitations.Single().AcceptedAt, Is.Not.Null);
+            Assert.That(fixture.UserRepository.Users.Single().TenantId, Is.EqualTo(tenantId));
+        }
+    }
+
+    [Test]
+    public async Task AcceptInvitationWithoutContextTenantUsesInvitationTenant()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = tenantId }, new Uri("https://myapp.com/join"));
+        var token = ExtractToken(fixture.EmailSender.Messages.First());
+
+        var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixture.UserRepository.Users.Single().TenantId, Is.EqualTo(tenantId));
         }
     }
 
@@ -601,6 +701,76 @@ internal sealed class InvitationServiceTests
     }
 
     [Test]
+    public async Task GetInvitationAcceptancePreviewFailsWhenContextTenantDiffersFromInvitationTenant()
+    {
+        var fixture = CreateFixture(asynchronousAudit: true);
+        var invitationTenantId = Guid.NewGuid();
+        var contextTenantId = Guid.NewGuid();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = invitationTenantId }, new Uri("https://myapp.com/join"));
+        var token = ExtractToken(fixture.EmailSender.Messages.First());
+
+        fixture.Audit.Events.Clear();
+        var result = await fixture.Service.GetInvitationAcceptancePreviewAsync(token, new AuthenticationContext(TenantId: contextTenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            var auditEvent = fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationPreviewed);
+            Assert.That(auditEvent.Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+            Assert.That(auditEvent.FailureReason, Is.EqualTo(AshlarFailureCodes.InvalidInvitation.Value));
+            Assert.That(auditEvent.TenantId, Is.EqualTo(contextTenantId));
+            Assert.That(auditEvent.Properties?["operation"], Is.EqualTo("preview"));
+        }
+    }
+
+    [Test]
+    public async Task GetInvitationAcceptancePreviewFailsWhenContextTenantUsesGlobalInvitation()
+    {
+        var fixture = CreateFixture();
+        var contextTenantId = Guid.NewGuid();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com" }, new Uri("https://myapp.com/join"));
+        var token = ExtractToken(fixture.EmailSender.Messages.First());
+
+        var result = await fixture.Service.GetInvitationAcceptancePreviewAsync(token, new AuthenticationContext(TenantId: contextTenantId));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+    }
+
+    [Test]
+    public async Task GetInvitationAcceptancePreviewSucceedsWhenContextTenantMatchesInvitationTenant()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = tenantId }, new Uri("https://myapp.com/join"));
+        var token = ExtractToken(fixture.EmailSender.Messages.First());
+
+        var result = await fixture.Service.GetInvitationAcceptancePreviewAsync(token, new AuthenticationContext(TenantId: tenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value?.TenantId, Is.EqualTo(tenantId));
+        }
+    }
+
+    [Test]
+    public async Task GetInvitationAcceptancePreviewWithoutContextTenantUsesInvitationTenant()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = tenantId }, new Uri("https://myapp.com/join"));
+        var token = ExtractToken(fixture.EmailSender.Messages.First());
+
+        var result = await fixture.Service.GetInvitationAcceptancePreviewAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value?.TenantId, Is.EqualTo(tenantId));
+        }
+    }
+
+    [Test]
     public async Task GetInvitationAcceptancePreviewFailsForMissingInvitation()
     {
         var fixture = CreateFixture();
@@ -613,6 +783,20 @@ internal sealed class InvitationServiceTests
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
             Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationPreviewed).TenantId, Is.EqualTo(tenantId));
             Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationPreviewed).Properties?["operation"], Is.EqualTo("preview"));
+        }
+    }
+
+    [Test]
+    public async Task GetInvitationAcceptancePreviewFailsForMissingInvitationWithoutContext()
+    {
+        var fixture = CreateFixture();
+
+        var result = await fixture.Service.GetInvitationAcceptancePreviewAsync("missing");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.InvitationPreviewed).TenantId, Is.Null);
         }
     }
 
@@ -753,12 +937,12 @@ internal sealed class InvitationServiceTests
         }
     }
 
-    private static Fixture CreateFixture(User? user = null, bool creationAllowed = true, bool acceptanceAllowed = true, bool previewAllowed = true, Action<InvitationOptions>? configureOptions = null, bool callbackAllowed = true)
+    private static Fixture CreateFixture(User? user = null, bool creationAllowed = true, bool acceptanceAllowed = true, bool previewAllowed = true, Action<InvitationOptions>? configureOptions = null, bool callbackAllowed = true, bool asynchronousAudit = false)
     {
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 5, 3, 12, 0, 0, TimeSpan.Zero));
         var UserRepository = new InMemoryUserRepository(user);
         var invitationRepository = new InMemoryInvitationRepository(time);
-        var audit = new RecordingSecurityEventSink();
+        var audit = asynchronousAudit ? new AsyncRecordingSecurityEventSink() : new RecordingSecurityEventSink();
         var emailSender = new RecordingEmailSender();
         var tokenHasher = new Sha256TokenHasher();
         var tokenGenerator = new SecureTokenGenerator();
@@ -893,13 +1077,23 @@ internal sealed class InvitationServiceTests
         }
     }
 
-    private sealed class RecordingSecurityEventSink : ISecurityEventSink
+    private class RecordingSecurityEventSink : ISecurityEventSink
     {
         public List<AshlarSecurityEvent> Events { get; } = [];
-        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        public virtual Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
         {
             Events.Add(securityEvent);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class AsyncRecordingSecurityEventSink : RecordingSecurityEventSink
+    {
+        public override async Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            cancellationToken.ThrowIfCancellationRequested();
+            await base.RecordAsync(securityEvent, cancellationToken);
         }
     }
 
@@ -944,6 +1138,7 @@ internal sealed class InvitationServiceTests
         public List<UserInvitation> Invitations { get; } = [];
         public bool SimulateConflict { get; set; }
         public int LookupCount { get; private set; }
+        public int UpdateCount { get; private set; }
 
         public Task CreateInvitationAsync(UserInvitation invitation, CancellationToken cancellationToken = default)
         {
@@ -959,6 +1154,7 @@ internal sealed class InvitationServiceTests
 
         public Task<bool> UpdateInvitationAsync(UserInvitation invitation, string expectedVersion, CancellationToken cancellationToken = default)
         {
+            UpdateCount++;
             if (SimulateConflict) return Task.FromResult(false);
 
             var existing = Invitations.FirstOrDefault(i => i.Id == invitation.Id && i.Version == expectedVersion);
