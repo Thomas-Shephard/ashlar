@@ -707,6 +707,7 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(cookieOptions.Cookie.HttpOnly, Is.True);
+            Assert.That(cookieOptions.Cookie.SecurePolicy, Is.EqualTo(CookieSecurePolicy.Always));
             Assert.That(cookieOptions.Cookie.SameSite, Is.EqualTo(SameSiteMode.Lax));
             Assert.That(cookieOptions.ExpireTimeSpan, Is.EqualTo(TimeSpan.FromMinutes(5)));
             Assert.That(cookieOptions.SlidingExpiration, Is.False);
