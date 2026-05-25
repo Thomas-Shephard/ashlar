@@ -163,19 +163,128 @@ internal sealed class AuthorizationGrantServiceTests
     }
 
     [Test]
-    public async Task RevokeGrantAsyncShouldBeIdempotent()
+    public async Task RevokeGrantAsyncShouldRevokeWhenGrantIdAndTenantMatch()
+    {
+        var tenantId = Guid.NewGuid();
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), tenantId, Permission: "read"));
+        var grant = result.Value!;
+
+        var revoked = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, tenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revoked, Is.True);
+            Assert.That(grant.RevokedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
+            Assert.That(_repository.LastRevokedTenantId, Is.EqualTo(tenantId));
+        }
+    }
+
+    [Test]
+    public async Task RevokeGrantAsyncShouldRevokeGlobalGrantWhenRequestedTenantIsNull()
     {
         var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), Permission: "read"));
         var grant = result.Value!;
 
-        var first = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id));
-        var second = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id));
+        var revoked = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, TenantId: null));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revoked, Is.True);
+            Assert.That(grant.RevokedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
+            Assert.That(_repository.LastRevokedTenantId, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task RevokeGrantAsyncShouldNotRevokeTenantGrantWhenRequestedTenantIsNull()
+    {
+        var tenantId = Guid.NewGuid();
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), tenantId, Permission: "read"));
+        var grant = result.Value!;
+
+        var revoked = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, TenantId: null));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revoked, Is.False);
+            Assert.That(grant.RevokedAt, Is.Null);
+            Assert.That(_repository.RevokeCalls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task RevokeGrantAsyncShouldNotRevokeGlobalGrantWhenRequestedTenantIsNonNull()
+    {
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), Permission: "read"));
+        var grant = result.Value!;
+
+        var revoked = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, Guid.NewGuid()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revoked, Is.False);
+            Assert.That(grant.RevokedAt, Is.Null);
+            Assert.That(_repository.RevokeCalls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task RevokeGrantAsyncShouldNotRevokeWhenRequestedTenantDiffers()
+    {
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), Guid.NewGuid(), Permission: "read"));
+        var grant = result.Value!;
+
+        var revoked = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, Guid.NewGuid()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revoked, Is.False);
+            Assert.That(grant.RevokedAt, Is.Null);
+            Assert.That(_repository.RevokeCalls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task RevokeGrantAsyncShouldBeIdempotentWithinTenantScope()
+    {
+        var tenantId = Guid.NewGuid();
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), tenantId, Permission: "read"));
+        var grant = result.Value!;
+
+        var first = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, tenantId));
+        var second = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, tenantId));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first, Is.True);
             Assert.That(second, Is.False);
             Assert.That(grant.RevokedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
+        }
+    }
+
+    [Test]
+    public async Task RevokeGrantAsyncShouldAuditVerifiedGrantDetailsWhenRepositoryDoesNotRevoke()
+    {
+        var auditSink = new RecordingSecurityEventSink();
+        var service = new AuthorizationGrantService(_repository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var tenantId = Guid.NewGuid();
+        var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), tenantId, Permission: "read"));
+        var grant = result.Value!;
+        await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, tenantId));
+
+        var revokedAgain = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, tenantId));
+
+        var failedRevokedEvent = auditSink.Events
+            .Where(securityEvent => securityEvent.EventType == AshlarSecurityEventTypes.AuthorizationGrantRevoked)
+            .Single(securityEvent => securityEvent.Outcome == SecurityEventOutcomes.Failure);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revokedAgain, Is.False);
+            Assert.That(failedRevokedEvent.UserId, Is.EqualTo(grant.UserId));
+            Assert.That(failedRevokedEvent.TenantId, Is.EqualTo(tenantId));
+            Assert.That(failedRevokedEvent.Properties?["grant_id"], Is.EqualTo(grant.Id.ToString("D")));
+            Assert.That(failedRevokedEvent.Properties?["grant_type"], Is.EqualTo("permission"));
+            Assert.That(failedRevokedEvent.Properties?["grant_value"], Is.EqualTo("read"));
         }
     }
 
@@ -217,20 +326,47 @@ internal sealed class AuthorizationGrantServiceTests
     }
 
     [Test]
-    public async Task RevokeGrantAsyncShouldAuditWhenGrantContextIsUnavailable()
+    public async Task RevokeGrantAsyncShouldReturnFalseAndAuditWhenGrantContextIsUnavailable()
     {
         var auditSink = new RecordingSecurityEventSink();
         var service = new AuthorizationGrantService(new RevokesMissingGrantRepository(), timeProvider: _timeProvider, securityEventSink: auditSink);
         var grantId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
 
-        var revoked = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grantId));
+        var revoked = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grantId, tenantId));
 
         var revokedEvent = auditSink.Events.Single();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(revoked, Is.True);
+            Assert.That(revoked, Is.False);
             Assert.That(revokedEvent.UserId, Is.Null);
+            Assert.That(revokedEvent.TenantId, Is.EqualTo(tenantId));
             Assert.That(revokedEvent.Properties?["grant_id"], Is.EqualTo(grantId.ToString("D")));
+        }
+    }
+
+    [Test]
+    public async Task RevokeGrantAsyncShouldAuditTenantMismatchWithoutGrantDetails()
+    {
+        var auditSink = new RecordingSecurityEventSink();
+        var service = new AuthorizationGrantService(_repository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var grantTenantId = Guid.NewGuid();
+        var requestedTenantId = Guid.NewGuid();
+        var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), grantTenantId, Permission: "read"));
+        var grant = result.Value!;
+
+        var revoked = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, requestedTenantId));
+
+        var revokedEvent = auditSink.Events.Single(securityEvent => securityEvent.EventType == AshlarSecurityEventTypes.AuthorizationGrantRevoked);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revoked, Is.False);
+            Assert.That(revokedEvent.UserId, Is.Null);
+            Assert.That(revokedEvent.TenantId, Is.EqualTo(requestedTenantId));
+            Assert.That(revokedEvent.FailureReason, Is.EqualTo("tenant_mismatch"));
+            Assert.That(revokedEvent.Properties?["grant_id"], Is.EqualTo(grant.Id.ToString("D")));
+            Assert.That(revokedEvent.Properties?.ContainsKey("grant_type"), Is.False);
+            Assert.That(revokedEvent.Properties?.ContainsKey("grant_value"), Is.False);
         }
     }
 
@@ -303,6 +439,8 @@ internal sealed class AuthorizationGrantServiceTests
     {
         public List<AuthorizationGrant> Grants { get; } = [];
         public ListAuthorizationGrantsRequest? LastListRequest { get; private set; }
+        public Guid? LastRevokedTenantId { get; private set; }
+        public int RevokeCalls { get; private set; }
 
         public Task CreateGrantAsync(AuthorizationGrant grant, CancellationToken cancellationToken = default)
         {
@@ -321,9 +459,11 @@ internal sealed class AuthorizationGrantServiceTests
             return Task.FromResult(Grants.FirstOrDefault(grant => grant.Id == grantId));
         }
 
-        public Task<bool> RevokeGrantAsync(Guid grantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default)
+        public Task<bool> RevokeGrantAsync(Guid grantId, Guid? tenantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default)
         {
-            var grant = Grants.FirstOrDefault(item => item.Id == grantId);
+            LastRevokedTenantId = tenantId;
+            RevokeCalls++;
+            var grant = Grants.FirstOrDefault(item => item.Id == grantId && item.TenantId == tenantId);
             if (grant?.RevokedAt != null || grant == null)
             {
                 return Task.FromResult(false);
@@ -362,7 +502,7 @@ internal sealed class AuthorizationGrantServiceTests
             return Task.FromResult<AuthorizationGrant?>(null);
         }
 
-        public Task<bool> RevokeGrantAsync(Guid grantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default)
+        public Task<bool> RevokeGrantAsync(Guid grantId, Guid? tenantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(true);
         }

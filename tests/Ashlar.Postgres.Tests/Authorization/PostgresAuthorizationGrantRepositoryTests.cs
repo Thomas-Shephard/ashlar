@@ -43,8 +43,8 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
         await _repository.CreateGrantAsync(grant);
         var listed = await _repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(UserId, ActiveOnly: true));
         var fetched = await _repository.GetGrantAsync(grant.Id);
-        var revoked = await _repository.RevokeGrantAsync(grant.Id, _now.AddMinutes(1));
-        var revokedAgain = await _repository.RevokeGrantAsync(grant.Id, _now.AddMinutes(2));
+        var revoked = await _repository.RevokeGrantAsync(grant.Id, grant.TenantId, _now.AddMinutes(1));
+        var revokedAgain = await _repository.RevokeGrantAsync(grant.Id, grant.TenantId, _now.AddMinutes(2));
         var activeAfterRevoke = await _repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(UserId, ActiveOnly: true));
 
         using (Assert.EnterMultipleScope())

@@ -113,21 +113,23 @@ public sealed class PostgresAuthorizationGrantRepository(IPostgresConnectionProv
     /// Performs the revoke grant <see langword="async" /> operation and returns the result.
     /// </summary>
     /// <param name="grantId">The grant id value.</param>
+    /// <param name="tenantId">The tenant id value. A <see langword="null" /> value matches only global grants.</param>
     /// <param name="revokedAt">The revoked at value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public async Task<bool> RevokeGrantAsync(Guid grantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default)
+    public async Task<bool> RevokeGrantAsync(Guid grantId, Guid? tenantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default)
     {
         const string sql = """
             UPDATE ashlar_authorization_grants
             SET revoked_at = @RevokedAt
             WHERE id = @Id AND revoked_at IS NULL
+              AND tenant_id IS NOT DISTINCT FROM @TenantId
             """;
 
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, new { Id = grantId, RevokedAt = revokedAt }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql, new { Id = grantId, TenantId = tenantId, RevokedAt = revokedAt }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             return await connectionHandle.Connection.ExecuteAsync(command) > 0;
         }
     }

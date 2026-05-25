@@ -186,16 +186,28 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
         }
 
         var grant = await _repository.GetGrantAsync(request.GrantId, cancellationToken);
-        var revoked = await _repository.RevokeGrantAsync(request.GrantId, _timeProvider.GetUtcNow(), cancellationToken);
+        if (grant == null)
+        {
+            await RecordRevokeFailureAsync(request, "grant_not_found", cancellationToken);
+            return false;
+        }
+
+        if (grant.TenantId != request.TenantId)
+        {
+            await RecordRevokeFailureAsync(request, "tenant_mismatch", cancellationToken);
+            return false;
+        }
+
+        var revoked = await _repository.RevokeGrantAsync(request.GrantId, request.TenantId, _timeProvider.GetUtcNow(), cancellationToken);
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.AuthorizationGrantRevoked,
             Outcome = revoked ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
-            UserId = grant?.UserId,
-            TenantId = grant?.TenantId,
+            UserId = grant.UserId,
+            TenantId = request.TenantId,
             Audit = request.Audit,
             FailureReason = revoked ? null : "grant_not_revoked",
-            Properties = CreateAuditProperties(request.GrantId, grant)
+            Properties = CreateAuditProperties(grant)
         }, cancellationToken);
 
         return revoked;
@@ -275,6 +287,19 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
     private static Dictionary<string, string> CreateAuditProperties(AuthorizationGrant grant)
     {
         return CreateAuditProperties(grant.Id, grant);
+    }
+
+    private Task RecordRevokeFailureAsync(RevokeAuthorizationGrantRequest request, string failureReason, CancellationToken cancellationToken)
+    {
+        return _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.AuthorizationGrantRevoked,
+            Outcome = SecurityEventOutcomes.Failure,
+            TenantId = request.TenantId,
+            Audit = request.Audit,
+            FailureReason = failureReason,
+            Properties = CreateAuditProperties(request.GrantId, null)
+        }, cancellationToken);
     }
 
     private static Dictionary<string, string> CreateAuditProperties(Guid grantId, AuthorizationGrant? grant)

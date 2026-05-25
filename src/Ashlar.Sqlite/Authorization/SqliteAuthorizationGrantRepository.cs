@@ -104,12 +104,13 @@ public sealed class SqliteAuthorizationGrantRepository(ISqliteConnectionProvider
         return await reader.ReadAsync(cancellationToken) ? ReadGrant(reader) : null;
     }
 
-    public async Task<bool> RevokeGrantAsync(Guid grantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default)
+    public async Task<bool> RevokeGrantAsync(Guid grantId, Guid? tenantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default)
     {
         const string sql = """
             UPDATE ashlar_authorization_grants
             SET revoked_at = $revokedAt
-            WHERE id = $id AND revoked_at IS NULL;
+            WHERE id = $id AND revoked_at IS NULL
+              AND (($tenantId IS NULL AND tenant_id IS NULL) OR tenant_id = $tenantId);
             """;
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -117,6 +118,7 @@ public sealed class SqliteAuthorizationGrantRepository(ISqliteConnectionProvider
         command.Transaction = handle.Transaction;
         command.CommandText = sql;
         command.AddGuidParameter(IdParameter, grantId);
+        command.AddNullableGuidParameter(TenantIdParameter, tenantId);
         command.AddDateTimeOffsetParameter(RevokedAtParameter, revokedAt);
 
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;

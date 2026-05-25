@@ -36,8 +36,8 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
         await repository.CreateGrantAsync(grant);
         var listed = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(_userId, ActiveOnly: true));
         var fetched = await repository.GetGrantAsync(grant.Id);
-        var revoked = await repository.RevokeGrantAsync(grant.Id, Now.AddMinutes(1));
-        var revokedAgain = await repository.RevokeGrantAsync(grant.Id, Now.AddMinutes(2));
+        var revoked = await repository.RevokeGrantAsync(grant.Id, grant.TenantId, Now.AddMinutes(1));
+        var revokedAgain = await repository.RevokeGrantAsync(grant.Id, grant.TenantId, Now.AddMinutes(2));
         var activeAfterRevoke = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(_userId, ActiveOnly: true));
         var fetchedRevoked = await repository.GetGrantAsync(grant.Id);
 
@@ -64,7 +64,7 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
         await repository.CreateGrantAsync(CreateGrant(permission: "expired", expiresAt: Now.AddSeconds(-1)));
         var revoked = CreateGrant(permission: "revoked");
         await repository.CreateGrantAsync(revoked);
-        await repository.RevokeGrantAsync(revoked.Id, Now.AddSeconds(1));
+        await repository.RevokeGrantAsync(revoked.Id, revoked.TenantId, Now.AddSeconds(1));
 
         var scoped = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(_userId, tenantId, "project", "abc", ActiveOnly: true));
         var permissionGlobal = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(_userId, ActiveOnly: true, ExactMatch: true));
