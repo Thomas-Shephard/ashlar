@@ -71,7 +71,7 @@ internal static class GoogleOidcEndpoints
             await signInManager.SignInAsync(
                 httpContext,
                 mfaResult.User.Id,
-                httpContext.ToSessionRequest(new AuthenticationProviderKey(ProviderType.Oidc, SampleGoogleOidc.ProviderName)),
+                httpContext.ToSessionRequest(mfaResult.User, new AuthenticationProviderKey(ProviderType.Oidc, SampleGoogleOidc.ProviderName)),
                 cancellationToken);
             return Results.Redirect("/?signedInWith=google");
         }
@@ -142,6 +142,7 @@ internal static class GoogleOidcEndpoints
 
         var registration = services.GetRequiredService<AshlarOidcInvitationRegistrationService>();
         var signInManager = services.GetRequiredService<IAshlarSignInManager>();
+        var users = services.GetRequiredService<IUserRepository>();
         ticket.Properties.Items.TryGetValue(SampleGoogleOidc.InvitationDisplayNameProperty, out var displayName);
         if (displayName == null && ticket.Principal != null)
         {
@@ -158,10 +159,11 @@ internal static class GoogleOidcEndpoints
 
         if (result.Registered && result.UserId is { } userId)
         {
+            var user = await users.GetUserByIdAsync(userId, cancellationToken);
             await signInManager.SignInAsync(
                 httpContext,
                 userId,
-                httpContext.ToSessionRequest(new AuthenticationProviderKey(ProviderType.Oidc, SampleGoogleOidc.ProviderName)),
+                httpContext.ToSessionRequest(user, new AuthenticationProviderKey(ProviderType.Oidc, SampleGoogleOidc.ProviderName)),
                 cancellationToken);
             return Results.Redirect("/");
         }

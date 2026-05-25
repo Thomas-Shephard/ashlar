@@ -70,8 +70,8 @@ public sealed class AccountSecurityService : IAccountSecurityService
         request = RequireAudit(request);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
-        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
-        if (user == null || !IsInRequestedTenant(user, request.Tenant))
+        var user = await GetUserInRequestedTenantAsync(userId, request.Tenant, cancellationToken);
+        if (user == null)
         {
             await RecordFailureAsync(AshlarSecurityEventTypes.UserDisabled, userId, request, AshlarFailureCodes.UserNotFound.Value, cancellationToken);
             return Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound);
@@ -105,8 +105,8 @@ public sealed class AccountSecurityService : IAccountSecurityService
         request = RequireAudit(request);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
-        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
-        if (user == null || !IsInRequestedTenant(user, request.Tenant))
+        var user = await GetUserInRequestedTenantAsync(userId, request.Tenant, cancellationToken);
+        if (user == null)
         {
             await RecordFailureAsync(AshlarSecurityEventTypes.UserReactivated, userId, request, AshlarFailureCodes.UserNotFound.Value, cancellationToken);
             return Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound);
@@ -130,8 +130,8 @@ public sealed class AccountSecurityService : IAccountSecurityService
     {
         ValidateUserId(userId);
         request = RequireAudit(request);
-        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
-        if (user == null || !IsInRequestedTenant(user, request.Tenant))
+        var user = await GetUserInRequestedTenantAsync(userId, request.Tenant, cancellationToken);
+        if (user == null)
         {
             await RecordFailureAsync(AshlarSecurityEventTypes.SessionsRevokedForUser, userId, request, AshlarFailureCodes.UserNotFound.Value, cancellationToken);
             return Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound);
@@ -148,8 +148,8 @@ public sealed class AccountSecurityService : IAccountSecurityService
         ValidateProvider(provider);
         request = RequireAudit(request);
 
-        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
-        if (user == null || !IsInRequestedTenant(user, request.Tenant))
+        var user = await GetUserInRequestedTenantAsync(userId, request.Tenant, cancellationToken);
+        if (user == null)
         {
             await RecordFailureAsync(AshlarSecurityEventTypes.UserCredentialsRevoked, userId, request, AshlarFailureCodes.UserNotFound.Value, cancellationToken, provider);
             return Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound);
@@ -170,8 +170,8 @@ public sealed class AccountSecurityService : IAccountSecurityService
         ValidateUserId(userId);
         request = RequireAudit(request);
 
-        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
-        if (user == null || !IsInRequestedTenant(user, request.Tenant))
+        var user = await GetUserInRequestedTenantAsync(userId, request.Tenant, cancellationToken);
+        if (user == null)
         {
             await RecordFailureAsync(AshlarSecurityEventTypes.UserMfaReset, userId, request, AshlarFailureCodes.UserNotFound.Value, cancellationToken);
             return Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound);
@@ -193,8 +193,8 @@ public sealed class AccountSecurityService : IAccountSecurityService
         ValidateUserId(userId);
         request ??= new UserSecurityPostureRequest();
 
-        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
-        if (user == null || !IsInRequestedTenant(user, request.Tenant))
+        var user = await GetUserInRequestedTenantAsync(userId, request.Tenant, cancellationToken);
+        if (user == null)
         {
             return Result.Failure<UserSecurityPosture>(AshlarFailureCodes.UserNotFound);
         }
@@ -279,6 +279,12 @@ public sealed class AccountSecurityService : IAccountSecurityService
         }
 
         return tenantUser.TenantId == tenant.TenantId;
+    }
+
+    private async Task<IUser?> GetUserInRequestedTenantAsync(Guid userId, TenantContext? tenant, CancellationToken cancellationToken)
+    {
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
+        return user != null && IsInRequestedTenant(user, tenant) ? user : null;
     }
 
     private CredentialPostureItem ClassifyCredential(UserCredential credential)

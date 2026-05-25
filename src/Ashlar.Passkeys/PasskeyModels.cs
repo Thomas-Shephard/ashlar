@@ -30,8 +30,9 @@ public sealed record StartPasskeyAuthenticationRequest(Guid? UserId = null, Audi
 /// </summary>
 /// <param name="ChallengeId">The challenge id.</param>
 /// <param name="AssertionResponse">The browser assertion response.</param>
+/// <param name="TenantId">The optional tenant constraint for authentication.</param>
 /// <param name="Audit">The optional audit context.</param>
-public sealed record CompletePasskeyAuthenticationRequest(Guid ChallengeId, JsonElement AssertionResponse, AuditContext? Audit = null);
+public sealed record CompletePasskeyAuthenticationRequest(Guid ChallengeId, JsonElement AssertionResponse, Guid? TenantId = null, AuditContext? Audit = null);
 /// <summary>
 /// Represents a request to start passkey MFA factor verification.
 /// </summary>
@@ -46,8 +47,9 @@ public sealed record StartPasskeyFactorRequest(string HandshakeToken, string Fac
 /// <param name="AssertionResponse">The browser assertion response.</param>
 /// <param name="HandshakeToken">The MFA handshake token.</param>
 /// <param name="FactorType">The requested factor type.</param>
+/// <param name="TenantId">The optional tenant constraint for factor authentication.</param>
 /// <param name="Audit">The optional audit context.</param>
-public sealed record CompletePasskeyFactorRequest(Guid ChallengeId, JsonElement AssertionResponse, string HandshakeToken, string FactorType = "passkey", AuditContext? Audit = null);
+public sealed record CompletePasskeyFactorRequest(Guid ChallengeId, JsonElement AssertionResponse, string HandshakeToken, string FactorType = "passkey", Guid? TenantId = null, AuditContext? Audit = null);
 /// <summary>
 /// Represents a request to rename a passkey.
 /// </summary>

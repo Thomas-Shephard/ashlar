@@ -10,6 +10,7 @@ namespace Ashlar.Postgres.Identity;
 /// <param name="timeProvider">Supplies timestamps for created and updated users.</param>
 public sealed class PostgresUserRepository(IPostgresConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IUserRepository
 {
+    private const string ExactTenantFilterSql = "((@TenantId IS NULL AND tenant_id IS NULL) OR tenant_id = @TenantId)";
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
@@ -20,14 +21,14 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
         const string sql = """
             SELECT id, email, name, is_active AS IsActive, tenant_id AS TenantId, email_verified_at AS EmailVerifiedAt, created_at AS CreatedAt, updated_at AS UpdatedAt
             FROM ashlar_users
-            WHERE normalized_email = @NormalizedEmail AND ((@TenantId IS NULL AND tenant_id IS NULL) OR tenant_id = @TenantId)
+            WHERE normalized_email = @NormalizedEmail AND 
             """;
 
         var parameters = new { NormalizedEmail = IdentityNormalization.NormalizeEmail(email), TenantId = tenantId };
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql + ExactTenantFilterSql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             return await connectionHandle.Connection.QueryFirstOrDefaultAsync<AshlarPostgresUser>(command);
         }
     }
@@ -111,7 +112,7 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
         const string sql = """
             UPDATE ashlar_users
             SET email = @Email, normalized_email = @NormalizedEmail, name = @Name, is_active = @IsActive, email_verified_at = @EmailVerifiedAt, updated_at = @UpdatedAt
-            WHERE id = @Id AND ((@TenantId IS NULL AND tenant_id IS NULL) OR tenant_id = @TenantId)
+            WHERE id = @Id AND 
             """;
 
         var now = _timeProvider.GetUtcNow();
@@ -132,7 +133,7 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql + ExactTenantFilterSql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             var rowsAffected = await connectionHandle.Connection.ExecuteAsync(command);
 
             if (rowsAffected > 0 && user is IHasAuditMetadata auditMetadata)

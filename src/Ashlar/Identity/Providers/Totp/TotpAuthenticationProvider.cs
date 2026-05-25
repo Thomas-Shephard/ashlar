@@ -65,11 +65,6 @@ public sealed class TotpAuthenticationProvider : IAuthenticationProvider
             return Task.FromResult<IUser?>(null);
         }
 
-        if (context.UserId.HasValue)
-        {
-            return repository.GetUserByIdAsync(context.UserId.Value, cancellationToken);
-        }
-
         return Task.FromResult<IUser?>(null);
     }
 

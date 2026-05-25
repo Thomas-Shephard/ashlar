@@ -1,4 +1,5 @@
 using Dapper;
+using Ashlar.Identity.Models.Tenants;
 using System.Text.Json;
 
 namespace Ashlar.Postgres.Identity;
@@ -9,6 +10,8 @@ namespace Ashlar.Postgres.Identity;
 /// <param name="connectionProvider">The connection provider value.</param>
 public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionProvider connectionProvider) : IAuthenticationSessionRepository
 {
+    private const string UserIdParameterName = "UserId";
+    private const string TenantRevocationFilterSql = " AND (@TenantFilter = FALSE OR tenant_id IS NOT DISTINCT FROM @TenantId)";
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
     /// <summary>
@@ -221,9 +224,10 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
     /// <param name="userId">The user id value.</param>
     /// <param name="revokedAt">The revoked at value.</param>
     /// <param name="reason">The reason value.</param>
+    /// <param name="tenant">The tenant scope value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public async Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
+    public async Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
     {
         const string sql = """
             UPDATE ashlar_sessions
@@ -234,7 +238,9 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, new { UserId = userId, RevokedAt = revokedAt, Reason = reason }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            var parameters = CreateRevocationParameters(revokedAt, reason, tenant);
+            parameters.Add(UserIdParameterName, userId);
+            var command = new CommandDefinition(sql + TenantRevocationFilterSql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             return await connectionHandle.Connection.ExecuteAsync(command);
         }
     }
@@ -283,9 +289,10 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
     /// <param name="userId">The user id value.</param>
     /// <param name="revokedAt">The revoked at value.</param>
     /// <param name="reason">The reason value.</param>
+    /// <param name="tenant">The tenant scope value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public async Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
+    public async Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
     {
         const string sql = """
             UPDATE ashlar_sessions
@@ -296,7 +303,10 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, new { Id = sessionId, UserId = userId, RevokedAt = revokedAt, Reason = reason }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            var parameters = CreateRevocationParameters(revokedAt, reason, tenant);
+            parameters.Add("Id", sessionId);
+            parameters.Add(UserIdParameterName, userId);
+            var command = new CommandDefinition(sql + TenantRevocationFilterSql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             var rowsAffected = await connectionHandle.Connection.ExecuteAsync(command);
             return rowsAffected > 0;
         }
@@ -309,9 +319,10 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
     /// <param name="excludedSessionId">The excluded session id value.</param>
     /// <param name="revokedAt">The revoked at value.</param>
     /// <param name="reason">The reason value.</param>
+    /// <param name="tenant">The tenant scope value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public async Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
+    public async Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
     {
         const string sql = """
             UPDATE ashlar_sessions
@@ -322,9 +333,22 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, new { UserId = userId, ExcludedSessionId = excludedSessionId, RevokedAt = revokedAt, Reason = reason }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            var parameters = CreateRevocationParameters(revokedAt, reason, tenant);
+            parameters.Add(UserIdParameterName, userId);
+            parameters.Add("ExcludedSessionId", excludedSessionId);
+            var command = new CommandDefinition(sql + TenantRevocationFilterSql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             return await connectionHandle.Connection.ExecuteAsync(command);
         }
+    }
+
+    private static DynamicParameters CreateRevocationParameters(DateTimeOffset revokedAt, string? reason, TenantContext? tenant)
+    {
+        var parameters = new DynamicParameters();
+        parameters.Add("RevokedAt", revokedAt);
+        parameters.Add("Reason", reason);
+        parameters.Add("TenantFilter", tenant != null);
+        parameters.Add("TenantId", tenant?.TenantId);
+        return parameters;
     }
 
     private static void ValidateMetadata(string? metadata)
@@ -381,7 +405,7 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         return new AuthenticationSession
         {
             Id = (Guid)values["Id"]!,
-            UserId = (Guid)values["UserId"]!,
+            UserId = GetRequiredGuid(values, UserIdParameterName),
             TenantId = ToNullableGuid(values["TenantId"]),
             TokenHash = (string)values["TokenHash"]!,
             CreatedAt = ToDateTimeOffset(values["CreatedAt"]!),
@@ -398,6 +422,13 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
             UserAgent = ToNullableString(values["UserAgent"]),
             Metadata = ToNullableString(values["Metadata"])
         };
+    }
+
+    private static Guid GetRequiredGuid(Dictionary<string, object?> values, string name)
+    {
+        var value = values[name];
+        ArgumentNullException.ThrowIfNull(value);
+        return (Guid)value;
     }
 
     private static DateTimeOffset ToDateTimeOffset(object value)

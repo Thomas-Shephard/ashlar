@@ -382,7 +382,7 @@ internal sealed class SecurityAuditEventTests
         var sink = new RecordingSecurityEventSink();
         var service = CreateSessionService(sink, out var repository, out var timeProvider);
         var userId = Guid.NewGuid();
-        repository.Setup(r => r.RevokeSessionsForUserAsync(userId, timeProvider.GetUtcNow(), "password-reset", It.IsAny<CancellationToken>()))
+        repository.Setup(r => r.RevokeSessionsForUserAsync(userId, timeProvider.GetUtcNow(), "password-reset", null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(0);
 
         var revoked = await service.RevokeSessionsForUserAsync(userId, "password-reset");

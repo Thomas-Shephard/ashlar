@@ -249,6 +249,31 @@ internal sealed class MagicLinkSignInTests
     }
 
     [Test]
+    public async Task VerifyLinkFailsGenericallyWhenTokenResolvesUserFromDifferentTenant()
+    {
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var user = new User { Id = _user.Id, Email = _user.Email, IsActive = _user.IsActive, TenantId = tenantId };
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestLinkAsync(user.Email, new Uri("https://myapp.com/verify"), new AuthenticationContext(TenantId: tenantId));
+        var token = ExtractToken(fixture.EmailSender.Messages.Single().TextBody);
+
+        var response = await fixture.Service.VerifyLinkAsync(token, new AuthenticationContext(TenantId: otherTenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
+            Assert.That(response.User, Is.Null);
+            Assert.That(response.ErrorMessage, Is.EqualTo("Authentication failed."));
+            Assert.That(fixture.Repository.Credentials, Has.Count.EqualTo(1));
+            Assert.That(fixture.Audit.Events.Any(e =>
+                e.EventType == AshlarSecurityEventTypes.AuthenticationFailed &&
+                e.FailureReason == SecurityEventFailureReasons.InvalidCredentials &&
+                e.UserId == null), Is.True);
+        }
+    }
+
+    [Test]
     public async Task VerifyLinkFailsForOverlongTokenWithoutHashing()
     {
         var fixture = CreateFixture(_user);

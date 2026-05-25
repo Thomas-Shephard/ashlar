@@ -146,21 +146,10 @@ internal sealed class InvitationService(
             return Result.Failure<Guid>(AshlarFailureCodes.RateLimited);
         }
 
-        var tokenHash = _dependencies.TokenHasher.HashToken(request.Token);
-        var invitation = await _dependencies.InvitationRepository.GetInvitationByTokenHashAsync(tokenHash, cancellationToken);
-        var now = _dependencies.TimeProvider.GetUtcNow();
-        var contextTenantId = context?.TenantId;
-        var availableInvitation = invitation is { } candidate && candidate.IsAvailable(now)
-            ? candidate
-            : null;
-        var tenantMismatch = availableInvitation != null && HasTenantContextMismatch(contextTenantId, availableInvitation);
+        var (availableInvitation, auditTenantId, now) = await ResolveAvailableInvitationAsync(request.Token, context, cancellationToken);
 
-        if (availableInvitation == null || tenantMismatch)
+        if (availableInvitation == null)
         {
-            var auditTenantId = tenantMismatch
-                ? contextTenantId
-                : invitation?.TenantId ?? contextTenantId;
-
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.InvitationAccepted,
@@ -240,19 +229,10 @@ internal sealed class InvitationService(
             return Result.Failure<InvitationAcceptancePreview>(AshlarFailureCodes.RateLimited);
         }
 
-        var tokenHash = _dependencies.TokenHasher.HashToken(token);
-        var invitation = await _dependencies.InvitationRepository.GetInvitationByTokenHashAsync(tokenHash, cancellationToken);
-        var contextTenantId = context?.TenantId;
-        var availableInvitation = invitation is { } candidate && candidate.IsAvailable(_dependencies.TimeProvider.GetUtcNow())
-            ? candidate
-            : null;
-        var tenantMismatch = availableInvitation != null && HasTenantContextMismatch(contextTenantId, availableInvitation);
+        var (availableInvitation, auditTenantId, _) = await ResolveAvailableInvitationAsync(token, context, cancellationToken);
 
-        if (availableInvitation == null || tenantMismatch)
+        if (availableInvitation == null)
         {
-            var auditTenantId = tenantMismatch
-                ? contextTenantId
-                : invitation?.TenantId ?? contextTenantId;
             var descriptor = new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.InvitationPreviewed,
@@ -268,6 +248,26 @@ internal sealed class InvitationService(
         }
 
         return Result.Success(new InvitationAcceptancePreview(availableInvitation.Email, availableInvitation.TenantId));
+    }
+
+    private async Task<(UserInvitation? AvailableInvitation, Guid? AuditTenantId, DateTimeOffset Now)> ResolveAvailableInvitationAsync(
+        string token,
+        AuthenticationContext? context,
+        CancellationToken cancellationToken)
+    {
+        var tokenHash = _dependencies.TokenHasher.HashToken(token);
+        var invitation = await _dependencies.InvitationRepository.GetInvitationByTokenHashAsync(tokenHash, cancellationToken);
+        var now = _dependencies.TimeProvider.GetUtcNow();
+        var contextTenantId = context?.TenantId;
+        var availableInvitation = invitation is { } candidate && candidate.IsAvailable(now)
+            ? candidate
+            : null;
+        var tenantMismatch = availableInvitation != null && HasTenantContextMismatch(contextTenantId, availableInvitation);
+        var auditTenantId = tenantMismatch
+            ? contextTenantId
+            : invitation?.TenantId ?? contextTenantId;
+
+        return (tenantMismatch ? null : availableInvitation, auditTenantId, now);
     }
 
     private static bool HasTenantContextMismatch(Guid? contextTenantId, UserInvitation invitation)

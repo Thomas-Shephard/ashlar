@@ -115,17 +115,27 @@ public sealed class CredentialService(
         ArgumentNullException.ThrowIfNull(assertion);
         ArgumentNullException.ThrowIfNull(provider);
 
-        var user = await provider.FindUserAsync(assertion, context, _userRepository, cancellationToken);
+        var user = await ResolveTenantConsistentUserAsync(
+            () => provider.FindUserAsync(assertion, context, _userRepository, cancellationToken));
 
         if (user == null && context.UserId.HasValue)
         {
-            user = await _userRepository.GetUserByIdAsync(context.UserId.Value, cancellationToken);
+            user = await ResolveTenantConsistentUserAsync(
+                () => _userRepository.GetUserByIdAsync(context.UserId.Value, cancellationToken));
         }
 
         var userId = user?.Id ?? Guid.NewGuid();
 
         var (unprotectedCredential, credential, unprotectFailed) = await ResolveCredentialCoreAsync(userId, assertion, provider, context, cancellationToken);
         return (user, unprotectedCredential, credential, unprotectFailed);
+
+        async Task<IUser?> ResolveTenantConsistentUserAsync(Func<Task<IUser?>> resolveUserAsync)
+        {
+            var resolvedUser = await resolveUserAsync();
+            return resolvedUser != null && AuthenticationTenantConsistency.Matches(context, resolvedUser)
+                ? resolvedUser
+                : null;
+        }
     }
     /// <inheritdoc />
     public async Task<(IUser? User, UserCredential? Credential, UserCredential? OriginalCredential, bool UnprotectFailed)> ResolveAsync(

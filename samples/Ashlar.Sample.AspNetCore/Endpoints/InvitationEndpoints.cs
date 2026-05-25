@@ -31,6 +31,7 @@ internal static class InvitationEndpoints
         app.MapPost("/api/invitations/accept", async Task<IResult> (
             AcceptInvitationRequest request,
             IInvitationService invitations,
+            IUserRepository users,
             IAshlarSignInManager signInManager,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
@@ -41,7 +42,8 @@ internal static class InvitationEndpoints
                 return Results.BadRequest(SampleResultErrors.From(result));
             }
 
-            await signInManager.SignInAsync(httpContext, result.Value, httpContext.ToSessionRequest(), cancellationToken);
+            var user = await users.GetUserByIdAsync(result.Value, cancellationToken);
+            await signInManager.SignInAsync(httpContext, result.Value, httpContext.ToSessionRequest(user), cancellationToken);
 
             return Results.Ok(new { userId = result.Value });
         });

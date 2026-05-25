@@ -19,6 +19,7 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
     private const string ProviderNameParameter = "$providerName";
     private const string ProviderKeyParameter = "$providerKey";
     private const string ActiveStatusParameter = "$activeStatus";
+    private const string ExactTenantFilterSql = "(($tenantId IS NULL AND tenant_id IS NULL) OR tenant_id = $tenantId)";
 
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
@@ -30,13 +31,13 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
         const string sql = """
             SELECT id, email, name, is_active, tenant_id, email_verified_at, created_at, updated_at
             FROM ashlar_users
-            WHERE normalized_email = $normalizedEmail AND (($tenantId IS NULL AND tenant_id IS NULL) OR tenant_id = $tenantId);
+            WHERE normalized_email = $normalizedEmail AND 
             """;
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
-        command.CommandText = sql;
+        command.CommandText = sql + ExactTenantFilterSql + ";";
         command.AddParameter(NormalizedEmailParameter, IdentityNormalization.NormalizeEmail(email));
         command.AddNullableGuidParameter(TenantIdParameter, tenantId);
 
@@ -115,7 +116,7 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
             UPDATE ashlar_users
             SET email = $email, normalized_email = $normalizedEmail, name = $name, is_active = $isActive,
                 email_verified_at = $emailVerifiedAt, updated_at = $updatedAt
-            WHERE id = $id AND (($tenantId IS NULL AND tenant_id IS NULL) OR tenant_id = $tenantId);
+            WHERE id = $id AND 
             """;
 
         var now = _timeProvider.GetUtcNow();
@@ -123,7 +124,7 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
-        command.CommandText = sql;
+        command.CommandText = sql + ExactTenantFilterSql + ";";
         AddUserParameters(command, user, includeUpdatedAt: true, updatedAt: now);
         var rowsAffected = await command.ExecuteNonQueryAsync(cancellationToken);
 

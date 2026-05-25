@@ -16,6 +16,7 @@ internal static class BootstrapEndpoints
         app.MapPost("/api/bootstrap/invitations", async Task<IResult> (
             HttpRequest httpRequest,
             IBootstrapService bootstrap,
+            IUserRepository users,
             IAshlarSignInManager signInManager,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
@@ -47,7 +48,8 @@ internal static class BootstrapEndpoints
                 return Results.BadRequest(SampleResultErrors.From(acceptResult));
             }
 
-            await signInManager.SignInAsync(httpContext, acceptResult.Value, httpContext.ToSessionRequest(), cancellationToken);
+            var user = await users.GetUserByIdAsync(acceptResult.Value, cancellationToken);
+            await signInManager.SignInAsync(httpContext, acceptResult.Value, httpContext.ToSessionRequest(user), cancellationToken);
 
             return Results.Ok(new { userId = acceptResult.Value });
         });
