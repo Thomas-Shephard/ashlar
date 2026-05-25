@@ -105,26 +105,17 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
 
     private async Task ProcessEntryAsync(EmailOutboxEntry entry, IServiceProvider provider, CancellationToken cancellationToken)
     {
-        var transport = provider.GetRequiredService<TTransport>();
-
-        try
-        {
-            var secretProtector = provider.GetService<ISecretProtector>();
-            var message = EmailOutboxDispatch.MapToEmailMessage(entry, secretProtector);
-            await transport.DeliverAsync(message, cancellationToken);
-            await MarkAsSentAsync(entry.Id, provider, CancellationToken.None);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var attemptCount = entry.AttemptCount + 1;
-            var suppressFailureDetails = EmailOutboxDispatch.ShouldSuppressFailureDetails(entry);
-            PostgresEmailOutboxDispatcherLog.EmailOutboxDeliveryFailed(_logger, entry.Id, attemptCount, attemptCount >= _options.MaxAttempts, suppressFailureDetails ? null : ex);
-            await MarkAsFailedAsync(entry, ex, provider, CancellationToken.None);
-        }
+        await EmailOutboxDispatch.DispatchAsync(
+            entry,
+            new EmailOutboxDispatchContext(
+                provider.GetRequiredService<TTransport>(),
+                _options.MaxAttempts,
+                (id, token) => MarkAsSentAsync(id, provider, token),
+                (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, token),
+                (id, attemptCount, finalFailure, exception) =>
+                    PostgresEmailOutboxDispatcherLog.EmailOutboxDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
+                provider.GetService<ISecretProtector>()),
+            cancellationToken);
     }
 
     private async Task MarkAsSentAsync(Guid id, IServiceProvider provider, CancellationToken cancellationToken)

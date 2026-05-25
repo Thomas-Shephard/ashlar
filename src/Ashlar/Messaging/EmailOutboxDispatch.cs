@@ -104,6 +104,23 @@ public sealed record EmailOutboxStoredBodies(
     EmailOutboxBodyProtection BodyProtection);
 
 /// <summary>
+/// Provides callbacks and services for dispatching a durable email outbox entry.
+/// </summary>
+/// <param name="Transport">The email transport.</param>
+/// <param name="MaxAttempts">The maximum configured delivery attempts.</param>
+/// <param name="MarkAsSentAsync">The callback that persists successful delivery state.</param>
+/// <param name="MarkAsFailedAsync">The callback that persists failed delivery state.</param>
+/// <param name="LogDeliveryFailed">The callback that logs failed delivery attempts.</param>
+/// <param name="SecretProtector">The optional secret protector used to unprotect protected bodies.</param>
+public sealed record EmailOutboxDispatchContext(
+    IEmailTransport Transport,
+    int MaxAttempts,
+    Func<Guid, CancellationToken, Task> MarkAsSentAsync,
+    Func<EmailOutboxEntry, Exception, CancellationToken, Task> MarkAsFailedAsync,
+    Action<Guid, int, bool, Exception?> LogDeliveryFailed,
+    ISecretProtector? SecretProtector = null);
+
+/// <summary>
 /// Defines the protection applied to persisted email outbox body columns.
 /// </summary>
 public enum EmailOutboxBodyProtection
@@ -132,6 +149,41 @@ public static class EmailOutboxDispatch
     private const int MaxLastErrorLength = 1000;
     private const string SafeLastError = "Email outbox delivery failed. Error details were suppressed because the message may contain sensitive content.";
     private const string MissingSecretProtectorMessage = "Email outbox body protection requires an ISecretProtector.";
+
+    /// <summary>
+    /// Sends a durable outbox entry and applies the provided success or failure persistence callbacks.
+    /// </summary>
+    /// <param name="entry">The outbox entry.</param>
+    /// <param name="context">The dispatch context.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>A task that represents the asynchronous dispatch operation.</returns>
+    public static async Task DispatchAsync(
+        EmailOutboxEntry entry,
+        EmailOutboxDispatchContext context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(context.Transport);
+        ArgumentNullException.ThrowIfNull(context.MarkAsSentAsync);
+        ArgumentNullException.ThrowIfNull(context.MarkAsFailedAsync);
+        ArgumentNullException.ThrowIfNull(context.LogDeliveryFailed);
+
+        try
+        {
+            var message = MapToEmailMessage(entry, context.SecretProtector);
+            await context.Transport.DeliverAsync(message, cancellationToken).ConfigureAwait(false);
+            await context.MarkAsSentAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            await MarkAsFailedAsync(entry, context, exception).ConfigureAwait(false);
+        }
+    }
 
     /// <summary>
     /// Computes the provider-specific values used to mark a failed delivery attempt.
@@ -282,6 +334,17 @@ public static class EmailOutboxDispatch
     private static string? ProtectBody(string? body, ISecretProtector secretProtector)
     {
         return body == null ? null : secretProtector.Protect(body);
+    }
+
+    private static async Task MarkAsFailedAsync(
+        EmailOutboxEntry entry,
+        EmailOutboxDispatchContext context,
+        Exception exception)
+    {
+        var attemptCount = entry.AttemptCount + 1;
+        var suppressFailureDetails = ShouldSuppressFailureDetails(entry);
+        context.LogDeliveryFailed(entry.Id, attemptCount, attemptCount >= context.MaxAttempts, suppressFailureDetails ? null : exception);
+        await context.MarkAsFailedAsync(entry, exception, CancellationToken.None).ConfigureAwait(false);
     }
 
     private static void ValidateBodyProtection(EmailOutboxEntry entry)
