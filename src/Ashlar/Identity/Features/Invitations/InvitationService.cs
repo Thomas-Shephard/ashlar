@@ -149,15 +149,24 @@ internal sealed class InvitationService(
         var tokenHash = _dependencies.TokenHasher.HashToken(request.Token);
         var invitation = await _dependencies.InvitationRepository.GetInvitationByTokenHashAsync(tokenHash, cancellationToken);
         var now = _dependencies.TimeProvider.GetUtcNow();
+        var contextTenantId = context?.TenantId;
+        var availableInvitation = invitation is { } candidate && candidate.IsAvailable(now)
+            ? candidate
+            : null;
+        var tenantMismatch = availableInvitation != null && HasTenantContextMismatch(contextTenantId, availableInvitation);
 
-        if (invitation == null || !invitation.IsAvailable(now))
+        if (availableInvitation == null || tenantMismatch)
         {
+            var auditTenantId = tenantMismatch
+                ? contextTenantId
+                : invitation?.TenantId ?? contextTenantId;
+
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.InvitationAccepted,
                 Outcome = SecurityEventOutcomes.Failure,
                 FailureReason = AshlarFailureCodes.InvalidInvitation.Value,
-                TenantId = context?.TenantId,
+                TenantId = auditTenantId,
                 Context = context
             }, cancellationToken);
             return Result.Failure<Guid>(AshlarFailureCodes.InvalidInvitation);
@@ -165,9 +174,9 @@ internal sealed class InvitationService(
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
-        invitation.AcceptedAt = now;
-        invitation.UpdatedAt = now;
-        var updated = await _dependencies.InvitationRepository.UpdateInvitationAsync(invitation, invitation.Version, cancellationToken);
+        availableInvitation.AcceptedAt = now;
+        availableInvitation.UpdatedAt = now;
+        var updated = await _dependencies.InvitationRepository.UpdateInvitationAsync(availableInvitation, availableInvitation.Version, cancellationToken);
 
         if (!updated)
         {
@@ -176,14 +185,14 @@ internal sealed class InvitationService(
                 EventType = AshlarSecurityEventTypes.InvitationAccepted,
                 Outcome = SecurityEventOutcomes.Failure,
                 FailureReason = AshlarFailureCodes.ConcurrencyConflict.Value,
-                TenantId = invitation.TenantId,
-                Properties = new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() },
+                TenantId = availableInvitation.TenantId,
+                Properties = new Dictionary<string, string> { [InvitationIdProperty] = availableInvitation.Id.ToString() },
                 Context = context
             }, cancellationToken);
             return Result.Failure<Guid>(AshlarFailureCodes.ConcurrencyConflict);
         }
 
-        var acceptedUser = await AcceptInvitationUserAsync(invitation, request.UserName, now, cancellationToken);
+        var acceptedUser = await AcceptInvitationUserAsync(availableInvitation, request.UserName, now, cancellationToken);
 
         transaction.OnCommitted(async ct =>
         {
@@ -194,7 +203,7 @@ internal sealed class InvitationService(
                     EventType = AshlarSecurityEventTypes.UserCreated,
                     Outcome = SecurityEventOutcomes.Success,
                     UserId = acceptedUser.UserId,
-                    TenantId = invitation.TenantId,
+                    TenantId = availableInvitation.TenantId,
                     Context = context
                 }, ct);
             }
@@ -204,15 +213,15 @@ internal sealed class InvitationService(
                 EventType = AshlarSecurityEventTypes.InvitationAccepted,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = acceptedUser.UserId,
-                TenantId = invitation.TenantId,
-                Properties = new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() },
+                TenantId = availableInvitation.TenantId,
+                Properties = new Dictionary<string, string> { [InvitationIdProperty] = availableInvitation.Id.ToString() },
                 Context = context
             }, ct);
 
             var notifiedUser = await _dependencies.UserRepository.GetUserByIdAsync(acceptedUser.UserId, ct);
             if (notifiedUser != null)
             {
-                await _notifications.NotifyAsync(SecurityNotificationType.InvitationAccepted, notifiedUser, now, context: context, metadata: new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() }, cancellationToken: ct);
+                await _notifications.NotifyAsync(SecurityNotificationType.InvitationAccepted, notifiedUser, now, context: context, metadata: new Dictionary<string, string> { [InvitationIdProperty] = availableInvitation.Id.ToString() }, cancellationToken: ct);
             }
         });
 
@@ -233,21 +242,37 @@ internal sealed class InvitationService(
 
         var tokenHash = _dependencies.TokenHasher.HashToken(token);
         var invitation = await _dependencies.InvitationRepository.GetInvitationByTokenHashAsync(tokenHash, cancellationToken);
-        if (invitation == null || !invitation.IsAvailable(_dependencies.TimeProvider.GetUtcNow()))
+        var contextTenantId = context?.TenantId;
+        var availableInvitation = invitation is { } candidate && candidate.IsAvailable(_dependencies.TimeProvider.GetUtcNow())
+            ? candidate
+            : null;
+        var tenantMismatch = availableInvitation != null && HasTenantContextMismatch(contextTenantId, availableInvitation);
+
+        if (availableInvitation == null || tenantMismatch)
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            var auditTenantId = tenantMismatch
+                ? contextTenantId
+                : invitation?.TenantId ?? contextTenantId;
+            var descriptor = new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.InvitationPreviewed,
                 Outcome = SecurityEventOutcomes.Failure,
                 FailureReason = AshlarFailureCodes.InvalidInvitation.Value,
-                TenantId = invitation?.TenantId ?? context?.TenantId,
+                TenantId = auditTenantId,
                 Properties = new Dictionary<string, string> { ["operation"] = "preview" },
                 Context = context
-            }, cancellationToken);
+            };
+
+            await _securityEvents.RecordAsync(descriptor, cancellationToken);
             return Result.Failure<InvitationAcceptancePreview>(AshlarFailureCodes.InvalidInvitation);
         }
 
-        return Result.Success(new InvitationAcceptancePreview(invitation.Email, invitation.TenantId));
+        return Result.Success(new InvitationAcceptancePreview(availableInvitation.Email, availableInvitation.TenantId));
+    }
+
+    private static bool HasTenantContextMismatch(Guid? contextTenantId, UserInvitation invitation)
+    {
+        return contextTenantId is Guid tenantId && invitation.TenantId != tenantId;
     }
 
     private async Task<bool> CheckInvitationRateLimitAsync(string operation, RateLimitRule rule, AuthenticationContext? context, CancellationToken cancellationToken)
