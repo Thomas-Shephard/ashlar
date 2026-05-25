@@ -348,7 +348,7 @@ internal sealed class EmailOutboxDispatchTests
         var entry = CreateEntry();
         var context = CreateDispatchContext(new RecordingEmailTransport());
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxDispatch.DispatchAsync(null!, context, CancellationToken.None));
             Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxDispatch.DispatchAsync(entry, null!, CancellationToken.None));
@@ -356,7 +356,7 @@ internal sealed class EmailOutboxDispatchTests
             Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxDispatch.DispatchAsync(entry, context with { MarkAsSentAsync = null! }, CancellationToken.None));
             Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxDispatch.DispatchAsync(entry, context with { MarkAsFailedAsync = null! }, CancellationToken.None));
             Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxDispatch.DispatchAsync(entry, context with { LogDeliveryFailed = null! }, CancellationToken.None));
-        });
+        }
     }
 
     [Test]

@@ -1011,7 +1011,7 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
     private sealed class TestTransport : IEmailTransport
     {
         private int _deliveredCount;
-        private readonly List<EmailMessage> _messages = new();
+        private readonly List<EmailMessage> _messages = [];
 
         public Func<EmailMessage, CancellationToken, Task> OnDeliver { get; set; } = (_, _) => Task.CompletedTask;
         public int DeliveredCount => _deliveredCount;
