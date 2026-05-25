@@ -10,6 +10,7 @@ namespace Ashlar.Postgres.Identity;
 /// <param name="connectionProvider">The connection provider value.</param>
 public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionProvider connectionProvider) : IAuthenticationSessionRepository
 {
+    private const string UserIdParameterName = "UserId";
     private const string TenantRevocationFilterSql = " AND (@TenantFilter = FALSE OR tenant_id IS NOT DISTINCT FROM @TenantId)";
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
@@ -238,7 +239,7 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         await using (connectionHandle)
         {
             var parameters = CreateRevocationParameters(revokedAt, reason, tenant);
-            parameters.Add("UserId", userId);
+            parameters.Add(UserIdParameterName, userId);
             var command = new CommandDefinition(sql + TenantRevocationFilterSql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             return await connectionHandle.Connection.ExecuteAsync(command);
         }
@@ -304,7 +305,7 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         {
             var parameters = CreateRevocationParameters(revokedAt, reason, tenant);
             parameters.Add("Id", sessionId);
-            parameters.Add("UserId", userId);
+            parameters.Add(UserIdParameterName, userId);
             var command = new CommandDefinition(sql + TenantRevocationFilterSql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             var rowsAffected = await connectionHandle.Connection.ExecuteAsync(command);
             return rowsAffected > 0;
@@ -333,7 +334,7 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         await using (connectionHandle)
         {
             var parameters = CreateRevocationParameters(revokedAt, reason, tenant);
-            parameters.Add("UserId", userId);
+            parameters.Add(UserIdParameterName, userId);
             parameters.Add("ExcludedSessionId", excludedSessionId);
             var command = new CommandDefinition(sql + TenantRevocationFilterSql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             return await connectionHandle.Connection.ExecuteAsync(command);
@@ -404,7 +405,7 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         return new AuthenticationSession
         {
             Id = (Guid)values["Id"]!,
-            UserId = (Guid)values["UserId"]!,
+            UserId = GetRequired<Guid>(values, UserIdParameterName),
             TenantId = ToNullableGuid(values["TenantId"]),
             TokenHash = (string)values["TokenHash"]!,
             CreatedAt = ToDateTimeOffset(values["CreatedAt"]!),
@@ -421,6 +422,11 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
             UserAgent = ToNullableString(values["UserAgent"]),
             Metadata = ToNullableString(values["Metadata"])
         };
+    }
+
+    private static T GetRequired<T>(Dictionary<string, object?> values, string name)
+    {
+        return values[name] is T value ? value : throw new InvalidOperationException($"Column '{name}' was null or had an unexpected type.");
     }
 
     private static DateTimeOffset ToDateTimeOffset(object value)
