@@ -100,7 +100,22 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     }
 
     [Test]
-    public async Task HandleAsyncShouldSucceedFromClaimsWhenCurrentSessionItemIsMissing()
+    public async Task HandleAsyncShouldMatchSessionTimeClaimsAtSerializedUnixSecondPrecision()
+    {
+        var session = CreateSession();
+        session.AuthenticatedAt = Now.AddHours(-1).AddMilliseconds(123);
+        session.AdditionalVerificationAt = Now.AddMinutes(-2).AddMilliseconds(456);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var context = CreateContext(session, new AshlarStepUpRequirement(TimeSpan.FromMinutes(5)));
+
+        await CreateHandler(session).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.True);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldFailFromClaimsWhenCurrentSessionItemIsMissing()
     {
         var session = CreateSession();
         session.AdditionalVerificationAt = Now.AddMinutes(-2);
@@ -110,7 +125,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
 
         await CreateHandler().HandleAsync(context);
 
-        Assert.That(context.HasSucceeded, Is.True);
+        Assert.That(context.HasSucceeded, Is.False);
     }
 
     [Test]
@@ -123,6 +138,39 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var context = CreateContext(session, new AshlarStepUpRequirement(TimeSpan.FromMinutes(5)));
 
         await CreateHandler(session).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldFailForNonAshlarPrincipalWithAshlarClaimsWhenCurrentSessionItemIsMissing()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(CreateClaims(session), "ExternalOidc"));
+        var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
+
+        await CreateHandler().HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldFailWhenHttpContextHasNoCurrentSessionItem()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var httpContextAccessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext() };
+        var handler = new AshlarStepUpAuthorizationHandler(
+            new StepUpAuthenticationService(new FixedTimeProvider(Now)),
+            httpContextAccessor);
+        var context = CreateContext(session, new AshlarStepUpRequirement(TimeSpan.FromMinutes(5)));
+
+        await handler.HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -268,6 +316,24 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     }
 
     [Test]
+    public async Task HandleAsyncShouldTreatUnusableEligibleFactorAsUnavailableForConditionalPolicy()
+    {
+        var session = CreateSession();
+        var context = CreateContext(
+            session,
+            new AshlarStepUpRequirement(
+                TimeSpan.FromMinutes(5),
+                allowedFactors: [AuthenticationFactorTypes.Totp],
+                mode: AshlarStepUpMode.IfAvailable));
+
+        await CreateHandler(
+            session,
+            CreateAccountSecurityService(session.UserId, [CreateFactor(AuthenticationFactorTypes.Totp, isUsable: false)])).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.True);
+    }
+
+    [Test]
     public async Task HandleAsyncShouldRequireFreshPasskeyWhenPasskeyIsAllowedForConditionalPolicy()
     {
         var session = CreateSession();
@@ -394,10 +460,10 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     }
 
     [Test]
-    public async Task HandleAsyncShouldPassTenantClaimToConditionalPostureLookup()
+    public async Task HandleAsyncShouldPassSessionTenantToConditionalPostureLookup()
     {
-        var session = CreateSession();
         var tenantId = Guid.NewGuid();
+        var session = CreateSession(tenantId);
         var accountSecurity = new Mock<IAccountSecurityService>(MockBehavior.Strict);
         accountSecurity
             .Setup(service => service.GetUserSecurityPostureAsync(
@@ -415,15 +481,12 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
                 CredentialInventory: [],
                 ActiveSessionCount: 1,
                 RecentSecurityEventCount: null)));
-        var claims = CreateClaims(session);
-        claims.Add(new Claim(AshlarClaimTypes.TenantId, tenantId.ToString("D")));
-        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext(
             [new AshlarStepUpRequirement(
                 TimeSpan.FromMinutes(5),
                 allowedFactors: [AuthenticationFactorTypes.Totp],
                 mode: AshlarStepUpMode.IfAvailable)],
-            principal,
+            new ClaimsPrincipal(new ClaimsIdentity(CreateClaims(session), "TestAuth")),
             null);
 
         await CreateHandler(session, accountSecurity.Object).HandleAsync(context);
@@ -432,7 +495,26 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     }
 
     [Test]
-    public async Task HandleAsyncShouldEvaluateConditionalPolicyWithoutHttpContext()
+    public async Task HandleAsyncShouldFailForConditionalPolicyWhenCurrentSessionItemIsMissing()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var context = CreateContext(
+            session,
+            new AshlarStepUpRequirement(
+                TimeSpan.FromMinutes(5),
+                allowedFactors: [AuthenticationFactorTypes.Totp],
+                mode: AshlarStepUpMode.IfAvailable));
+
+        await CreateHandler(accountSecurity: CreateAccountSecurityService(session.UserId, [CreateFactor(AuthenticationFactorTypes.Totp)])).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldFailConditionalPolicyWithoutHttpContext()
     {
         var session = CreateSession();
         var context = CreateContext(
@@ -445,7 +527,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         await CreateHandler(
             accountSecurity: CreateAccountSecurityService(session.UserId)).HandleAsync(context);
 
-        Assert.That(context.HasSucceeded, Is.True);
+        Assert.That(context.HasSucceeded, Is.False);
     }
 
     [Test]
@@ -507,7 +589,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var requirement = new AshlarStepUpRequirement(TimeSpan.FromMinutes(5));
         var context = new AuthorizationHandlerContext([requirement], principal, null);
 
-        await CreateHandler().HandleAsync(context);
+        await CreateHandler(session).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -585,7 +667,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 
-        await CreateHandler().HandleAsync(context);
+        await CreateHandler(session).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -602,7 +684,24 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 
-        await CreateHandler().HandleAsync(context);
+        await CreateHandler(session).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldFailSafelyForTimeClaimBeforeUnixTimeRange()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var claims = CreateClaims(session).Where(c => c.Type != AshlarClaimTypes.AuthenticatedAt).ToList();
+        claims.Add(new Claim(AshlarClaimTypes.AuthenticatedAt, long.MinValue.ToString(CultureInfo.InvariantCulture)));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
+        var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
+
+        await CreateHandler(session).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -619,7 +718,95 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
 
-        await CreateHandler().HandleAsync(context);
+        await CreateHandler(session).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldFailWhenTenantClaimConflictsWithCurrentSession()
+    {
+        var session = CreateSession(Guid.NewGuid());
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var claims = CreateClaims(session).Where(c => c.Type != AshlarClaimTypes.TenantId).ToList();
+        claims.Add(new Claim(AshlarClaimTypes.TenantId, Guid.NewGuid().ToString("D")));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
+        var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
+
+        await CreateHandler(session).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldFailWhenTenantClaimIsMalformed()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var claims = CreateClaims(session);
+        claims.Add(new Claim(AshlarClaimTypes.TenantId, "not-a-tenant"));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
+        var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
+
+        await CreateHandler(session).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldFailWhenTenantClaimExistsForGlobalSession()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var claims = CreateClaims(session);
+        claims.Add(new Claim(AshlarClaimTypes.TenantId, Guid.NewGuid().ToString("D")));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
+        var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
+
+        await CreateHandler(session).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldFailWhenTimeClaimExistsForMissingSessionTime()
+    {
+        var session = CreateSession();
+        session.AuthenticatedAt = null;
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var claims = CreateClaims(session);
+        claims.Add(new Claim(AshlarClaimTypes.AuthenticatedAt, Now.AddHours(-1).ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
+        var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
+
+        await CreateHandler(session).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
+    public async Task HandleAsyncShouldFailWhenProviderClaimsExistForMissingSessionProvider()
+    {
+        var session = CreateSession();
+        session.PrimaryProvider = null;
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var claims = CreateClaims(session);
+        claims.Add(new Claim(AshlarClaimTypes.PrimaryProviderType, ProviderType.EmailCode.Value));
+        claims.Add(new Claim(AshlarClaimTypes.PrimaryProviderName, "EmailCode"));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
+        var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
+
+        await CreateHandler(session).HandleAsync(context);
 
         Assert.That(context.HasSucceeded, Is.False);
     }
@@ -830,6 +1017,11 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
             new(ClaimTypes.NameIdentifier, session.UserId.ToString("D")),
             new(AshlarClaimTypes.SessionId, session.Id.ToString("D"))
         };
+        if (session.TenantId.HasValue)
+        {
+            claims.Add(new Claim(AshlarClaimTypes.TenantId, session.TenantId.Value.ToString("D")));
+        }
+
         if (session.AuthenticatedAt.HasValue)
         {
             claims.Add(new Claim(
@@ -864,12 +1056,13 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         return claims;
     }
 
-    private static AuthenticationSession CreateSession()
+    private static AuthenticationSession CreateSession(Guid? tenantId = null)
     {
         return new AuthenticationSession
         {
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid(),
+            TenantId = tenantId,
             TokenHash = "hash",
             CreatedAt = Now.AddHours(-1),
             AuthenticatedAt = Now.AddHours(-1),
@@ -910,13 +1103,13 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         return accountSecurity.Object;
     }
 
-    private static AdditionalVerificationFactorPosture CreateFactor(string factorType)
+    private static AdditionalVerificationFactorPosture CreateFactor(string factorType, bool isUsable = true)
     {
         return new AdditionalVerificationFactorPosture(
             factorType,
             factorType,
             IsConfigured: true,
-            IsUsable: true,
+            IsUsable: isUsable,
             Providers: []);
     }
 

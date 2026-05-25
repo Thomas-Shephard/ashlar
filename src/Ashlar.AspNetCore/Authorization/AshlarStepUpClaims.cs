@@ -6,45 +6,79 @@ namespace Ashlar.AspNetCore.Authorization;
 
 internal static class AshlarStepUpClaims
 {
-    public static AuthenticationSession? ToSession(ClaimsPrincipal user)
+    public static bool MatchesSession(ClaimsPrincipal user, AuthenticationSession session)
     {
-        if (!TryGetGuid(user, AshlarClaimTypes.SessionId, out var sessionId) ||
-            !TryGetGuid(user, ClaimTypes.NameIdentifier, out var userId))
+        if (!ClaimMatches(user, AshlarClaimTypes.SessionId, session.Id))
         {
-            return null;
+            return false;
         }
 
-        var session = new AuthenticationSession
+        if (!ClaimMatches(user, ClaimTypes.NameIdentifier, session.UserId))
         {
-            Id = sessionId,
-            UserId = userId,
-            TokenHash = "not-exposed-to-claims",
-            CreatedAt = DateTimeOffset.UnixEpoch,
-            ExpiresAt = DateTimeOffset.MaxValue
-        };
-
-        if (!TrySetOptionalTime(user, AshlarClaimTypes.AuthenticatedAt, value => session.AuthenticatedAt = value) ||
-            !TrySetOptionalTime(user, AshlarClaimTypes.AdditionalVerificationAt, value => session.AdditionalVerificationAt = value))
-        {
-            return null;
+            return false;
         }
 
-        if (!TrySetOptionalProvider(user, AshlarClaimTypes.PrimaryProviderType, AshlarClaimTypes.PrimaryProviderName, value => session.PrimaryProvider = value) ||
-            !TrySetOptionalProvider(user, AshlarClaimTypes.AdditionalVerificationProviderType, AshlarClaimTypes.AdditionalVerificationProviderName, value => session.AdditionalVerificationProvider = value))
+        if (!OptionalClaimMatches(user, AshlarClaimTypes.TenantId, session.TenantId))
         {
-            return null;
+            return false;
         }
 
-        session.AdditionalVerificationFactor = user.FindFirst(AshlarClaimTypes.AdditionalVerificationFactor)?.Value;
-        return session;
+        if (!OptionalClaimMatches(user, AshlarClaimTypes.AuthenticatedAt, session.AuthenticatedAt))
+        {
+            return false;
+        }
+
+        if (!OptionalClaimMatches(user, AshlarClaimTypes.AdditionalVerificationAt, session.AdditionalVerificationAt))
+        {
+            return false;
+        }
+
+        if (!OptionalProviderClaimsMatch(user, AshlarClaimTypes.PrimaryProviderType, AshlarClaimTypes.PrimaryProviderName, session.PrimaryProvider))
+        {
+            return false;
+        }
+
+        if (!OptionalProviderClaimsMatch(user, AshlarClaimTypes.AdditionalVerificationProviderType, AshlarClaimTypes.AdditionalVerificationProviderName, session.AdditionalVerificationProvider))
+        {
+            return false;
+        }
+
+        var factorClaim = user.FindFirst(AshlarClaimTypes.AdditionalVerificationFactor)?.Value;
+        if (string.IsNullOrWhiteSpace(factorClaim))
+        {
+            return true;
+        }
+
+        return string.Equals(factorClaim, session.AdditionalVerificationFactor, StringComparison.Ordinal);
     }
 
-    private static bool TryGetGuid(ClaimsPrincipal user, string claimType, out Guid value)
+    private static bool ClaimMatches(ClaimsPrincipal user, string claimType, Guid expected)
     {
-        return Guid.TryParse(user.FindFirst(claimType)?.Value, out value);
+        if (!Guid.TryParse(user.FindFirst(claimType)?.Value, out var actual))
+        {
+            return false;
+        }
+
+        return actual == expected;
     }
 
-    private static bool TrySetOptionalTime(ClaimsPrincipal user, string claimType, Action<DateTimeOffset> setValue)
+    private static bool OptionalClaimMatches(ClaimsPrincipal user, string claimType, Guid? expected)
+    {
+        var claimValue = user.FindFirst(claimType)?.Value;
+        if (string.IsNullOrWhiteSpace(claimValue))
+        {
+            return true;
+        }
+
+        if (!Guid.TryParse(claimValue, out var actual))
+        {
+            return false;
+        }
+
+        return expected == actual;
+    }
+
+    private static bool OptionalClaimMatches(ClaimsPrincipal user, string claimType, DateTimeOffset? expected)
     {
         var claimValue = user.FindFirst(claimType)?.Value;
         if (string.IsNullOrWhiteSpace(claimValue))
@@ -57,36 +91,38 @@ internal static class AshlarStepUpClaims
             return false;
         }
 
-        try
-        {
-            setValue(DateTimeOffset.FromUnixTimeSeconds(seconds));
-            return true;
-        }
-        catch (ArgumentOutOfRangeException)
+        if (!IsUnixTimeSecondsInRange(seconds))
         {
             return false;
         }
+
+        return expected.HasValue && expected.Value.ToUnixTimeSeconds() == seconds;
     }
 
-    private static bool TrySetOptionalProvider(
+    private static bool OptionalProviderClaimsMatch(
         ClaimsPrincipal user,
         string typeClaim,
         string nameClaim,
-        Action<AuthenticationProviderKey> setValue)
+        AuthenticationProviderKey? expected)
     {
         var type = user.FindFirst(typeClaim)?.Value;
         var name = user.FindFirst(nameClaim)?.Value;
-        if (string.IsNullOrWhiteSpace(type) && string.IsNullOrWhiteSpace(name))
+        if (string.IsNullOrWhiteSpace(type))
         {
-            return true;
+            return string.IsNullOrWhiteSpace(name);
         }
 
-        if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(name))
+        if (string.IsNullOrWhiteSpace(name))
         {
             return false;
         }
 
-        setValue(new AuthenticationProviderKey(type, name));
-        return true;
+        return expected == new AuthenticationProviderKey(type, name);
+    }
+
+    private static bool IsUnixTimeSecondsInRange(long seconds)
+    {
+        return seconds >= DateTimeOffset.MinValue.ToUnixTimeSeconds() &&
+            seconds <= DateTimeOffset.MaxValue.ToUnixTimeSeconds();
     }
 }

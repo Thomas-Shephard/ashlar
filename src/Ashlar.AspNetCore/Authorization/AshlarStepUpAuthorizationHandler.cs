@@ -34,15 +34,15 @@ public sealed class AshlarStepUpAuthorizationHandler(
             return;
         }
 
-        var session = GetCurrentSession(context.User);
-        if (session == null)
+        var currentSession = GetCurrentSession(context.User);
+        if (currentSession == null)
         {
             return;
         }
 
         if (requirement.Mode == AshlarStepUpMode.IfAvailable)
         {
-            var requiresStepUp = await TryRequiresConditionalStepUpAsync(context.User, session, requirement);
+            var requiresStepUp = await TryRequiresConditionalStepUpAsync(currentSession.HttpContext, currentSession.Session, requirement);
             if (!requiresStepUp.HasValue)
             {
                 return;
@@ -60,61 +60,82 @@ public sealed class AshlarStepUpAuthorizationHandler(
             requirement.AllowedProviders,
             requirement.AllowedFactors);
 
-        var result = _stepUpAuthentication.Evaluate(new StepUpEvaluationRequest(session, stepUpRequirement));
+        var result = _stepUpAuthentication.Evaluate(new StepUpEvaluationRequest(currentSession.Session, stepUpRequirement));
         if (result.Succeeded)
         {
             context.Succeed(requirement);
         }
     }
 
-    private AuthenticationSession? GetCurrentSession(System.Security.Claims.ClaimsPrincipal user)
+    private CurrentSessionContext? GetCurrentSession(System.Security.Claims.ClaimsPrincipal user)
     {
-        var claimedSession = AshlarStepUpClaims.ToSession(user);
-        if (claimedSession == null)
+        if (_httpContextAccessor.HttpContext is not { } currentHttpContext)
         {
             return null;
         }
 
-        if (_httpContextAccessor.HttpContext?.Items[AshlarHttpContextItems.AuthenticationSession] is not AuthenticationSession currentSession)
+        if (currentHttpContext.Items[AshlarHttpContextItems.AuthenticationSession] is not AuthenticationSession currentSession)
         {
-            return claimedSession;
+            return null;
         }
 
-        return currentSession.Id == claimedSession.Id && currentSession.UserId == claimedSession.UserId
-            ? currentSession
-            : null;
+        if (!AshlarStepUpClaims.MatchesSession(user, currentSession))
+        {
+            return null;
+        }
+
+        return new CurrentSessionContext(currentSession, currentHttpContext);
     }
 
     private async Task<bool?> TryRequiresConditionalStepUpAsync(
-        System.Security.Claims.ClaimsPrincipal user,
+        HttpContext httpContext,
         AuthenticationSession session,
         AshlarStepUpRequirement requirement)
     {
-        var requestServices = _httpContextAccessor.HttpContext?.RequestServices;
-        var accountSecurityService = _accountSecurity ?? requestServices?.GetService<IAccountSecurityService>();
+        var accountSecurityService = _accountSecurity;
+        if (accountSecurityService == null && httpContext.RequestServices != null)
+        {
+            accountSecurityService = httpContext.RequestServices.GetService<IAccountSecurityService>();
+        }
+
         if (accountSecurityService == null)
         {
             return null;
         }
 
+        var postureRequest = new UserSecurityPostureRequest(GetTenant(session));
         var posture = await accountSecurityService.GetUserSecurityPostureAsync(
             session.UserId,
-            new UserSecurityPostureRequest(GetTenant(user)),
-            _httpContextAccessor.HttpContext?.RequestAborted ?? default);
+            postureRequest,
+            httpContext.RequestAborted);
 
         if (!posture.Succeeded || posture.Value == null)
         {
             return null;
         }
 
-        return posture.Value.AdditionalVerificationFactors.Any(factor =>
-            factor.IsUsable &&
-            requirement.AllowedFactors.Contains(factor.FactorType, StringComparer.OrdinalIgnoreCase));
+        return posture.Value.AdditionalVerificationFactors.Any(factor => IsEligibleFactor(factor, requirement));
     }
 
-    private static TenantContext? GetTenant(System.Security.Claims.ClaimsPrincipal user)
+    private static TenantContext? GetTenant(AuthenticationSession session)
     {
-        var tenantClaim = user.FindFirst(AshlarClaimTypes.TenantId)?.Value;
-        return Guid.TryParse(tenantClaim, out var tenantId) ? new TenantContext(tenantId) : null;
+        if (!session.TenantId.HasValue)
+        {
+            return null;
+        }
+
+        return new TenantContext(session.TenantId.Value);
     }
+
+    private static bool IsEligibleFactor(AdditionalVerificationFactorPosture factor, AshlarStepUpRequirement requirement)
+    {
+        if (!factor.IsUsable)
+        {
+            return false;
+        }
+
+        return requirement.AllowedFactors.Contains(factor.FactorType, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed record CurrentSessionContext(AuthenticationSession Session, HttpContext HttpContext);
 }
