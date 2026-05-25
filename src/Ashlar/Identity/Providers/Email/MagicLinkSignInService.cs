@@ -107,13 +107,13 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
     }
 
     /// <summary>
-    /// Performs the verify link <see langword="async" /> operation and returns the result.
+    /// Performs the verify link <see langword="async" /> operation through MFA-aware orchestration and returns the result.
     /// </summary>
     /// <param name="token">The token value.</param>
     /// <param name="context">The context value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public async Task<AuthenticationResponse> VerifyLinkAsync(string token, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
+    public async Task<MfaAuthenticationResult> VerifyLinkAsync(string token, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
 
@@ -122,7 +122,7 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
         if (token.Length > MaxVerificationTokenLength)
         {
             await RecordAsync(AshlarSecurityEventTypes.AuthenticationFailed, SecurityEventOutcomes.Failure, context, null, "invalid_token", cancellationToken);
-            return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Authentication failed.");
         }
 
         // Rate limit by IP address to prevent brute forcing.
@@ -130,10 +130,10 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
         if (!rateLimit.IsAllowed)
         {
             await RecordAsync(AshlarSecurityEventTypes.MagicLinkVerificationRateLimited, SecurityEventOutcomes.Failure, context, null, "rate_limited", cancellationToken);
-            return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Authentication failed.");
         }
 
-        return await _dependencies.IdentityService.LoginAsync(context, new MagicLinkAssertion(token), cancellationToken);
+        return await _dependencies.AuthenticationOrchestrator.AuthenticateAsync(context, new MagicLinkAssertion(token), cancellationToken: cancellationToken);
     }
 
     private Task<RateLimitDecision> CheckRateLimitAsync(string key, string purpose, AuthenticationContext context, RateLimitRule rule, CancellationToken cancellationToken)

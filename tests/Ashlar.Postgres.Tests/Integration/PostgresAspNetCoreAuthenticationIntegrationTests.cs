@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Ashlar.AspNetCore.Authentication;
 using Ashlar.AspNetCore.Sessions;
+using Ashlar.Identity.Models.Mfa;
 using Ashlar.Identity.Providers.Email;
 using Ashlar.Messaging;
 using Ashlar.Postgres.Models;
@@ -77,7 +78,7 @@ internal sealed class PostgresAspNetCoreAuthenticationIntegrationTests : Postgre
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Succeeded, Is.True);
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
             Assert.That(response.User?.Id, Is.EqualTo(user.Id));
         }
 

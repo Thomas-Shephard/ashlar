@@ -14,12 +14,12 @@ public interface IEmailCodeSignInService
     Task RequestCodeAsync(string email, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Verifies a submitted code and returns the authentication result.
+    /// Verifies a submitted code and returns the MFA-aware authentication result.
     /// </summary>
     /// <param name="email">The email address associated with the code.</param>
     /// <param name="code">The one-time code supplied by the user.</param>
     /// <param name="context">Optional request context for auditing and rate limiting.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
-    /// <returns>The authentication response.</returns>
-    Task<AuthenticationResponse> VerifyCodeAsync(string email, string code, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
+    /// <returns>The MFA-aware authentication result. Issue an application session only when the status is <see cref="MfaAuthenticationStatus.Succeeded" />.</returns>
+    Task<MfaAuthenticationResult> VerifyCodeAsync(string email, string code, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 }

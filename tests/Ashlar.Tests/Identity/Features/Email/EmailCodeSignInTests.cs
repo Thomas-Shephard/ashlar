@@ -17,6 +17,7 @@ namespace Ashlar.Tests.Identity.Features.Email;
 internal sealed class EmailCodeSignInTests
 {
     private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Email = "user@example.com", IsActive = true };
+    private static readonly string[] RequiredMfaFactors = ["totp"];
 
     [Test]
     public async Task RequestCodeSendsEmailAndStoresHashedCredentialForActiveUser()
@@ -104,11 +105,60 @@ internal sealed class EmailCodeSignInTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Succeeded, Is.True);
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
             Assert.That(response.User?.Id, Is.EqualTo(_user.Id));
             Assert.That(fixture.Repository.Credentials, Is.Empty);
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.AuthenticationSucceeded), Is.True);
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.CredentialConsumed), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task VerifyCodeReturnsMfaRequiredWhenPolicyRequiresMfa()
+    {
+        var fixture = CreateFixture(_user, requireMfa: true);
+        await fixture.Service.RequestCodeAsync(_user.Email);
+        var code = ExtractCode(GetTextBody(fixture.EmailSender.Messages.Single()));
+
+        var response = await fixture.Service.VerifyCodeAsync(_user.Email, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.MfaRequired));
+            Assert.That(response.User?.Id, Is.EqualTo(_user.Id));
+            Assert.That(response.HandshakeToken, Is.EqualTo("mfa-token"));
+            Assert.That(response.RequiredFactors, Is.EquivalentTo(RequiredMfaFactors));
+        }
+    }
+
+    [Test]
+    public async Task VerifyCodeUsesOrchestratorInsteadOfIdentityService()
+    {
+        var orchestrator = new Mock<IAuthenticationOrchestrator>();
+        orchestrator
+            .Setup(o => o.AuthenticateAsync(
+                It.Is<AuthenticationContext>(context => string.Equals(context.Email, _user.Email, StringComparison.OrdinalIgnoreCase)),
+                It.IsAny<EmailCodeAssertion>(),
+                null,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, _user));
+        var identity = new Mock<IIdentityService>(MockBehavior.Strict);
+        var fixture = CreateFixture(_user, authenticationOrchestrator: orchestrator.Object, identityService: identity.Object);
+
+        var response = await fixture.Service.VerifyCodeAsync(_user.Email, "123456");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
+            orchestrator.Verify(o => o.AuthenticateAsync(
+                It.Is<AuthenticationContext>(context => string.Equals(context.Email, _user.Email, StringComparison.OrdinalIgnoreCase)),
+                It.IsAny<EmailCodeAssertion>(),
+                null,
+                It.IsAny<CancellationToken>()), Times.Once);
+            identity.Verify(i => i.LoginAsync(
+                It.IsAny<AuthenticationContext>(),
+                It.IsAny<IAuthenticationAssertion>(),
+                It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
@@ -122,7 +172,7 @@ internal sealed class EmailCodeSignInTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
             Assert.That(fixture.Repository.Credentials, Has.Count.EqualTo(1));
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.AuthenticationFailed), Is.True);
         }
@@ -138,20 +188,26 @@ internal sealed class EmailCodeSignInTests
 
         var response = await fixture.Service.VerifyCodeAsync(_user.Email, code);
 
-        Assert.That(response.Succeeded, Is.False);
+        Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
     }
 
     [Test]
     public async Task VerifyRateLimitBlocksVerification()
     {
-        var fixture = CreateFixture(_user, verifyAllowed: false);
+        var orchestrator = new Mock<IAuthenticationOrchestrator>(MockBehavior.Strict);
+        var fixture = CreateFixture(_user, verifyAllowed: false, authenticationOrchestrator: orchestrator.Object);
 
         var response = await fixture.Service.VerifyCodeAsync(_user.Email, "123456");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
             Assert.That(fixture.Audit.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.EmailCodeVerificationRateLimited));
+            orchestrator.Verify(o => o.AuthenticateAsync(
+                It.IsAny<AuthenticationContext>(),
+                It.IsAny<IAuthenticationAssertion>(),
+                null,
+                It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
@@ -280,6 +336,25 @@ internal sealed class EmailCodeSignInTests
     }
 
     [Test]
+    public void EmailCodeOptionsValidateSupportedValues()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EmailCodeSignInOptions.Validate(new EmailCodeSignInOptions()), Is.True);
+            Assert.That(EmailCodeSignInOptions.Validate(null), Is.False);
+            Assert.That(EmailCodeSignInOptions.Validate(new EmailCodeSignInOptions { CodeLength = 0 }), Is.False);
+            Assert.That(EmailCodeSignInOptions.Validate(new EmailCodeSignInOptions { CodeLength = 10 }), Is.False);
+            Assert.That(EmailCodeSignInOptions.Validate(new EmailCodeSignInOptions { CodeLifetime = TimeSpan.Zero }), Is.False);
+            Assert.That(EmailCodeSignInOptions.Validate(new EmailCodeSignInOptions { RequestRateLimit = new RateLimitRule { PermitLimit = 0, Window = TimeSpan.FromMinutes(1) } }), Is.False);
+            Assert.That(EmailCodeSignInOptions.Validate(new EmailCodeSignInOptions { VerificationRateLimit = new RateLimitRule { PermitLimit = 0, Window = TimeSpan.FromMinutes(1) } }), Is.False);
+            Assert.That(EmailCodeSignInOptions.Validate(new EmailCodeSignInOptions { RequestRateLimit = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.Zero } }), Is.False);
+            Assert.That(EmailCodeSignInOptions.Validate(new EmailCodeSignInOptions { VerificationRateLimit = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.Zero } }), Is.False);
+            Assert.That(EmailCodeSignInOptions.Validate(new EmailCodeSignInOptions { EmailSubject = " " }), Is.False);
+            Assert.That(EmailCodeSignInOptions.Validate(new EmailCodeSignInOptions { EmailTextTemplate = " " }), Is.False);
+        }
+    }
+
+    [Test]
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void ServiceConstructorRequiresDependenciesAndDependencyBundleValidatesRequiredServices()
     {
@@ -289,17 +364,18 @@ internal sealed class EmailCodeSignInTests
         var rateLimiter = new StubRateLimiter(true, true, TimeProvider.System);
         var provider = CreateProvider();
         var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());
-        var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, TimeProvider.System);
+        var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, Mock.Of<IAuthenticationOrchestrator>(), TimeProvider.System);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.DoesNotThrow(() => _ = new EmailCodeSignInService(dependencies));
             Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInService(null!));
-            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(null!, emailSender, rateLimiter, provider, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, null!, rateLimiter, provider, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, emailSender, null!, provider, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, null!, TimeProvider.System));
-            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(null!, emailSender, rateLimiter, provider, Mock.Of<IAuthenticationOrchestrator>(), TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, null!, rateLimiter, provider, Mock.Of<IAuthenticationOrchestrator>(), TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, emailSender, null!, provider, Mock.Of<IAuthenticationOrchestrator>(), TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, null!, Mock.Of<IAuthenticationOrchestrator>(), TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, null!, TimeProvider.System));
+            Assert.Throws<ArgumentNullException>(() => _ = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, Mock.Of<IAuthenticationOrchestrator>(), null!));
         }
     }
 
@@ -310,6 +386,7 @@ internal sealed class EmailCodeSignInTests
         var repository = new InMemoryUserCredentialStore(_user);
         services.AddSingleton<IUserRepository>(repository);
         services.AddSingleton<ICredentialRepository>(repository);
+        services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton<IEmailSender, RecordingEmailSender>();
         services.AddAshlarEmailCodeSignIn(options => options.CodeLength = 6);
@@ -324,7 +401,26 @@ internal sealed class EmailCodeSignInTests
         }
     }
 
-    private static Fixture CreateFixture(User? user = null, bool requestAllowed = true, bool verifyAllowed = true, EmailCodeSignInOptions? options = null)
+    [Test]
+    public void AddAshlarEmailCodeSignInRegistersOptionsValidation()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarEmailCodeSignIn(options => options.CodeLength = EmailCodeSignInOptions.MaximumCodeLength + 1);
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<EmailCodeSignInOptions>>();
+
+        Assert.Throws<OptionsValidationException>(() => _ = options.Value);
+    }
+
+    private static Fixture CreateFixture(
+        User? user = null,
+        bool requestAllowed = true,
+        bool verifyAllowed = true,
+        EmailCodeSignInOptions? options = null,
+        bool requireMfa = false,
+        IAuthenticationOrchestrator? authenticationOrchestrator = null,
+        IIdentityService? identityService = null)
     {
         var repository = new InMemoryUserCredentialStore(user);
         var audit = new RecordingSecurityEventSink();
@@ -339,12 +435,40 @@ internal sealed class EmailCodeSignInTests
             new NullTransactionProvider(),
             new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: audit));
         var pipeline = new AuthenticationPipeline(registry, credentialService, new NullTransactionProvider(), audit, time);
-        var identity = new IdentityService(repository, registry, credentialService, pipeline, new NullTransactionProvider(), audit, time);
+        var identity = identityService ?? new IdentityService(repository, registry, credentialService, pipeline, new NullTransactionProvider(), audit, time);
+        var orchestrator = authenticationOrchestrator ?? CreateOrchestrator(pipeline, user, requireMfa);
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed, time);
         var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());
-        var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, time, audit);
+        var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, orchestrator, time, audit);
         var service = new EmailCodeSignInService(dependencies, Options.Create(options ?? new EmailCodeSignInOptions()));
         return new Fixture(service, repository, emailSender, audit, time);
+    }
+
+    private static AuthenticationOrchestrator CreateOrchestrator(IAuthenticationPipeline pipeline, User? user, bool requireMfa)
+    {
+        var policy = new StaticMfaPolicyEvaluator(requireMfa);
+        var handshakes = new Mock<IAuthenticationHandshakeService>();
+        if (requireMfa && user != null)
+        {
+            handshakes
+                .Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((CreateAuthenticationHandshakeRequest request, CancellationToken _) =>
+                {
+                    var handshake = new AuthenticationHandshake(
+                        Guid.NewGuid(),
+                        user.Id,
+                        "hash",
+                        DateTimeOffset.UtcNow,
+                        DateTimeOffset.UtcNow.AddMinutes(5),
+                        false,
+                        false,
+                        request.RequiredFactors.ToHashSet(StringComparer.OrdinalIgnoreCase),
+                        new HashSet<string>());
+                    return Result.Success(new AuthenticationHandshakeCreated(handshake, "mfa-token"));
+                });
+        }
+
+        return new AuthenticationOrchestrator(pipeline, handshakes.Object, policy);
     }
 
     private static EmailCodeAuthenticationProvider CreateProvider()
@@ -413,6 +537,17 @@ internal sealed class EmailCodeSignInTests
                 Remaining = allowed ? 1 : 0,
                 WindowResetAt = timeProvider.GetUtcNow().Add(rule.Window)
             });
+        }
+    }
+
+    private sealed class StaticMfaPolicyEvaluator(bool requireMfa) : IMfaPolicyEvaluator
+    {
+        public Task<MfaPolicyEvaluation> EvaluateAsync(IUser user, AuthenticationContext context, CancellationToken cancellationToken = default)
+        {
+            var evaluation = requireMfa
+                ? new MfaPolicyEvaluation(true, new MfaRequirement(RequiredMfaFactors))
+                : new MfaPolicyEvaluation(false);
+            return Task.FromResult(evaluation);
         }
     }
 

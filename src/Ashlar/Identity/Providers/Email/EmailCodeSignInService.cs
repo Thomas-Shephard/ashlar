@@ -14,6 +14,7 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
 {
     private const string RequestPurpose = "email-code-request";
     private const string VerifyPurpose = "email-code-verify";
+    private static readonly int[] PowersOfTen = [1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000];
     private readonly EmailCodeSignInDependencies _dependencies;
     private readonly IOptions<EmailCodeSignInOptions> _options;
     private readonly SecurityEventEmitter _securityEvents;
@@ -82,7 +83,8 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
 
         await _dependencies.CredentialRepository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
 
-        var message = string.Format(CultureInfo.InvariantCulture, signInOptions.EmailTextTemplate, code, Math.Ceiling(signInOptions.CodeLifetime.TotalMinutes));
+        var lifetimeMinutes = (int)Math.Ceiling(signInOptions.CodeLifetime.TotalMinutes);
+        var message = string.Format(CultureInfo.InvariantCulture, signInOptions.EmailTextTemplate, code, lifetimeMinutes);
         var emailMessage = new EmailMessage(
             normalizedEmail,
             signInOptions.EmailSubject,
@@ -99,14 +101,14 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
     }
 
     /// <summary>
-    /// Performs the verify code <see langword="async" /> operation and returns the result.
+    /// Performs the verify code <see langword="async" /> operation through MFA-aware orchestration and returns the result.
     /// </summary>
     /// <param name="email">The email value.</param>
     /// <param name="code">The code value.</param>
     /// <param name="context">The context value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public Task<AuthenticationResponse> VerifyCodeAsync(string email, string code, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
+    public Task<MfaAuthenticationResult> VerifyCodeAsync(string email, string code, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
@@ -115,16 +117,16 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
         return VerifyCodeCoreAsync(normalizedEmail, code, context, cancellationToken);
     }
 
-    private async Task<AuthenticationResponse> VerifyCodeCoreAsync(string normalizedEmail, string code, AuthenticationContext context, CancellationToken cancellationToken)
+    private async Task<MfaAuthenticationResult> VerifyCodeCoreAsync(string normalizedEmail, string code, AuthenticationContext context, CancellationToken cancellationToken)
     {
         var rateLimit = await CheckRateLimitAsync(normalizedEmail, VerifyPurpose, context, _options.Value.VerificationRateLimit, cancellationToken);
         if (!rateLimit.IsAllowed)
         {
             await RecordAsync(AshlarSecurityEventTypes.EmailCodeVerificationRateLimited, SecurityEventOutcomes.Failure, context, null, "rate_limited", cancellationToken);
-            return new AuthenticationResponse(false, Status: AuthenticationStatus.Failed);
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Authentication failed.");
         }
 
-        return await _dependencies.IdentityService.LoginAsync(context, new EmailCodeAssertion(code), cancellationToken);
+        return await _dependencies.AuthenticationOrchestrator.AuthenticateAsync(context, new EmailCodeAssertion(code), cancellationToken: cancellationToken);
     }
 
     private Task<RateLimitDecision> CheckRateLimitAsync(string email, string purpose, AuthenticationContext context, RateLimitRule rule, CancellationToken cancellationToken)
@@ -159,17 +161,12 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
 
     private static string GenerateCode(int length)
     {
-        if (length is <= 0 or > 9)
+        if (length is < EmailCodeSignInOptions.MinimumCodeLength or > EmailCodeSignInOptions.MaximumCodeLength)
         {
-            throw new ArgumentOutOfRangeException(nameof(length), "Email code length must be between 1 and 9.");
+            throw new ArgumentOutOfRangeException(nameof(length), $"Email code length must be between {EmailCodeSignInOptions.MinimumCodeLength} and {EmailCodeSignInOptions.MaximumCodeLength}.");
         }
 
-        var max = 1;
-        for (var i = 0; i < length; i++)
-        {
-            max *= 10;
-        }
-
+        var max = PowersOfTen[length];
         return RandomNumberGenerator.GetInt32(0, max).ToString(new string('0', length), CultureInfo.InvariantCulture);
     }
 }
