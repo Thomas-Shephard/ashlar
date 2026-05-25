@@ -7,6 +7,7 @@ global using Ashlar.Sqlite.Operational;
 global using Ashlar.Sqlite.RateLimiting;
 global using Ashlar.Sqlite.Tests.Connections;
 global using Ashlar.Sqlite.Transactions;
+global using Ashlar.Sqlite.Webhooks;
 
 global using Ashlar.Identity.Abstractions.Repositories;
 global using Ashlar.Identity.Abstractions.Tenancy;

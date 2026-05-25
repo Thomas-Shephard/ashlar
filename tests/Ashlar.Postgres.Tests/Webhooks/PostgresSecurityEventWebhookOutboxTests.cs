@@ -358,7 +358,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     [Test]
     public void FailureUpdateTruncatesLargeErrors()
     {
-        var failure = SecurityEventWebhookOutboxDispatch.CreateFailureUpdate(
+        var failure = AshlarSecurityEventWebhookOutboxDispatch.CreateFailureUpdate(
             0,
             5,
             TimeSpan.FromSeconds(1),
@@ -371,7 +371,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     [Test]
     public void MapToHttpRequestFallsBackToContentHeaders()
     {
-        using var request = SecurityEventWebhookOutboxDispatch.MapToHttpRequest(new SecurityEventWebhookOutboxEntry
+        using var request = AshlarSecurityEventWebhookOutboxDispatch.MapToHttpRequest(new AshlarSecurityEventWebhookOutboxEntry
         {
             Id = Guid.NewGuid(),
             Uri = "https://example.test/security-events",
@@ -392,7 +392,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     [Test]
     public void MapToHttpRequestAddsRequestHeaders()
     {
-        using var request = SecurityEventWebhookOutboxDispatch.MapToHttpRequest(new SecurityEventWebhookOutboxEntry
+        using var request = AshlarSecurityEventWebhookOutboxDispatch.MapToHttpRequest(new AshlarSecurityEventWebhookOutboxEntry
         {
             Id = Guid.NewGuid(),
             Uri = "https://example.test/security-events",
@@ -413,7 +413,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     [Test]
     public void MapToHttpRequestHandlesEmptyHeaders()
     {
-        using var request = SecurityEventWebhookOutboxDispatch.MapToHttpRequest(new SecurityEventWebhookOutboxEntry
+        using var request = AshlarSecurityEventWebhookOutboxDispatch.MapToHttpRequest(new AshlarSecurityEventWebhookOutboxEntry
         {
             Id = Guid.NewGuid(),
             Uri = "https://example.test/security-events",
@@ -433,7 +433,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     [Test]
     public void MapToHttpRequestHandlesNullHeadersJson()
     {
-        using var request = SecurityEventWebhookOutboxDispatch.MapToHttpRequest(new SecurityEventWebhookOutboxEntry
+        using var request = AshlarSecurityEventWebhookOutboxDispatch.MapToHttpRequest(new AshlarSecurityEventWebhookOutboxEntry
         {
             Id = Guid.NewGuid(),
             Uri = "https://example.test/security-events",
