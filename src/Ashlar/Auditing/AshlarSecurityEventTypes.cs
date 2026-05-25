@@ -269,4 +269,28 @@ public static class AshlarSecurityEventTypes
     /// Defines the email change verification rate limited value.
     /// </summary>
     public const string EmailChangeVerificationRateLimited = "ashlar.email_change.verification_rate_limited";
+    /// <summary>
+    /// Defines the password reset requested value.
+    /// </summary>
+    public const string PasswordResetRequested = "ashlar.password_reset.requested";
+    /// <summary>
+    /// Defines the password reset request suppressed value.
+    /// </summary>
+    public const string PasswordResetRequestSuppressed = "ashlar.password_reset.request_suppressed";
+    /// <summary>
+    /// Defines the password reset request rate limited value.
+    /// </summary>
+    public const string PasswordResetRequestRateLimited = "ashlar.password_reset.request_rate_limited";
+    /// <summary>
+    /// Defines the password reset completed value.
+    /// </summary>
+    public const string PasswordResetCompleted = "ashlar.password_reset.completed";
+    /// <summary>
+    /// Defines the password reset failed value.
+    /// </summary>
+    public const string PasswordResetFailed = "ashlar.password_reset.failed";
+    /// <summary>
+    /// Defines the password reset verification rate limited value.
+    /// </summary>
+    public const string PasswordResetVerificationRateLimited = "ashlar.password_reset.verification_rate_limited";
 }

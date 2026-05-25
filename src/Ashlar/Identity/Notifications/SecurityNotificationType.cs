@@ -50,6 +50,10 @@ public enum SecurityNotificationType
     /// </summary>
     EmailVerificationCompleted,
     /// <summary>
+    /// Represents the password reset completed value.
+    /// </summary>
+    PasswordResetCompleted,
+    /// <summary>
     /// Represents the suspicious authentication attempt value.
     /// </summary>
     SuspiciousAuthenticationAttempt
