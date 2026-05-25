@@ -235,18 +235,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     {
         var firstDeliveryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseFirstDelivery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var deliveryCount = 0;
-        var transport = new TestTransport
-        {
-            OnDeliver = async (_, _) =>
-            {
-                if (Interlocked.Increment(ref deliveryCount) == 1)
-                {
-                    firstDeliveryStarted.SetResult();
-                    await releaseFirstDelivery.Task;
-                }
-            }
-        };
+        var transport = new BlockingFirstEmailTransport(firstDeliveryStarted, releaseFirstDelivery);
         var dispatcher = BuildDispatcher(transport);
         await SeedMessageAsync("overlap@example.com");
 
@@ -604,23 +593,25 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     private CancellationTokenSource? _hostedCancellation;
     private int _hostedDeliveredCount;
 
-    private SqliteEmailOutboxDispatcher<TestTransport> BuildDispatcher(
-        TestTransport transport,
+    private SqliteEmailOutboxDispatcher<TTransport> BuildDispatcher<TTransport>(
+        TTransport transport,
         SqliteEmailOutboxOptions? options = null,
         ISecretProtector? secretProtector = null)
+        where TTransport : class, IEmailTransport
     {
         var provider = BuildDispatcherProvider(transport, options, secretProtector: secretProtector);
-        return new SqliteEmailOutboxDispatcher<TestTransport>(
+        return new SqliteEmailOutboxDispatcher<TTransport>(
             provider,
             _timeProvider,
             Options.Create(options ?? new SqliteEmailOutboxOptions()));
     }
 
-    private ServiceProvider BuildDispatcherProvider(
-        TestTransport transport,
+    private ServiceProvider BuildDispatcherProvider<TTransport>(
+        TTransport transport,
         SqliteEmailOutboxOptions? options = null,
         bool trackForTearDown = true,
         ISecretProtector? secretProtector = null)
+        where TTransport : class, IEmailTransport
     {
         var services = new ServiceCollection();
         services.AddAshlarSqlite(GetConnectionString());
@@ -631,7 +622,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             services.AddSingleton(secretProtector);
         }
 
-        services.AddAshlarSqliteEmailOutboxDispatcher<TestTransport>(_ =>
+        services.AddAshlarSqliteEmailOutboxDispatcher<TTransport>(_ =>
         {
             if (options != null)
             {
@@ -732,6 +723,25 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             Interlocked.Increment(ref _deliveredCount);
             _messages.Add(message);
             return OnDeliver(message, cancellationToken);
+        }
+    }
+
+    private sealed class BlockingFirstEmailTransport(
+        TaskCompletionSource firstDeliveryStarted,
+        TaskCompletionSource releaseFirstDelivery)
+        : IEmailTransport
+    {
+        private int _deliveredCount;
+
+        public int DeliveredCount => _deliveredCount;
+
+        public async Task DeliverAsync(EmailMessage message, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _deliveredCount) == 1)
+            {
+                firstDeliveryStarted.TrySetResult();
+                await releaseFirstDelivery.Task;
+            }
         }
     }
 

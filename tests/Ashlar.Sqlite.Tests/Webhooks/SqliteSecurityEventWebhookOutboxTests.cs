@@ -748,14 +748,32 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         TaskCompletionSource releaseFirstSend)
         : HttpMessageHandler
     {
-        public List<RecordedRequest> Requests { get; } = [];
+        private readonly object _requestsGate = new();
+        private int _requestCount;
+        private readonly List<RecordedRequest> _requests = [];
+
+        public IReadOnlyList<RecordedRequest> Requests
+        {
+            get
+            {
+                lock (_requestsGate)
+                {
+                    return _requests.ToArray();
+                }
+            }
+        }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            Requests.Add(await RecordedRequest.CreateAsync(request, cancellationToken));
-            if (Requests.Count == 1)
+            var recordedRequest = await RecordedRequest.CreateAsync(request, cancellationToken);
+            lock (_requestsGate)
             {
-                firstSendStarted.SetResult();
+                _requests.Add(recordedRequest);
+            }
+
+            if (Interlocked.Increment(ref _requestCount) == 1)
+            {
+                firstSendStarted.TrySetResult();
                 await releaseFirstSend.Task;
             }
 
