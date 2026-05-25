@@ -231,6 +231,45 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     }
 
     [Test]
+    public async Task DispatcherConcurrentCallsOnSameInstanceDoNotDeliverSameMessageTwice()
+    {
+        var firstDeliveryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstDelivery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var deliveryCount = 0;
+        var transport = new TestTransport
+        {
+            OnDeliver = async (_, _) =>
+            {
+                if (Interlocked.Increment(ref deliveryCount) == 1)
+                {
+                    firstDeliveryStarted.SetResult();
+                    await releaseFirstDelivery.Task;
+                }
+            }
+        };
+        var dispatcher = BuildDispatcher(transport);
+        await SeedMessageAsync("overlap@example.com");
+
+        var first = dispatcher.ProcessBatchAsync();
+        await firstDeliveryStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var second = await dispatcher.ProcessBatchAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+        releaseFirstDelivery.SetResult();
+        var firstCount = await first.WaitAsync(TimeSpan.FromSeconds(5));
+        var row = await QuerySingleOutboxRowAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstCount, Is.EqualTo(1));
+            Assert.That(second, Is.Zero);
+            Assert.That(firstCount + second, Is.EqualTo(1));
+            Assert.That(transport.DeliveredCount, Is.EqualTo(1));
+            Assert.That(row.SentAt, Is.EqualTo(_now));
+            Assert.That(row.AttemptCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task DispatcherUnprotectsSensitiveBodies()
     {
         var protector = _serviceProvider.GetRequiredService<ISecretProtector>();

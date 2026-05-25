@@ -143,7 +143,7 @@ SQLite does not provide PostgreSQL equivalents for `FOR UPDATE SKIP LOCKED`, adv
 
 SQLite rate limiting persists fixed-window state in `ashlar_rate_limits` and uses Ashlar's scoped transaction infrastructure so standalone checks run through SQLite's `BEGIN IMMEDIATE` write path. This is intended for single-process deployments, not distributed rate limiting across application instances.
 
-SQLite email outbox dispatch is single-instance best effort. It claims pending rows with SQLite-compatible compare-and-set updates on `locked_until` and `locked_by`, then loads rows claimed by the dispatcher instance. It does not emulate PostgreSQL `FOR UPDATE SKIP LOCKED` and should not be used as a distributed multi-worker outbox coordinator.
+SQLite email outbox dispatch is single-instance best effort. It claims pending rows with SQLite-compatible compare-and-set updates on `locked_until` and `locked_by`, then loads rows claimed by the current dispatch batch. It does not emulate PostgreSQL `FOR UPDATE SKIP LOCKED` and should not be used as a distributed multi-worker outbox coordinator.
 
 SQLite cleanup deletes bounded batches with SQLite-compatible `rowid` subqueries. It is single-instance best effort and does not provide PostgreSQL-style multi-worker coordination with `SKIP LOCKED`.
 
