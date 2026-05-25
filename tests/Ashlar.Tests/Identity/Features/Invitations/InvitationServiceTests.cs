@@ -1091,7 +1091,8 @@ internal sealed class InvitationServiceTests
     {
         public override async Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
         {
-            await Task.Delay(1, cancellationToken);
+            await Task.Yield();
+            cancellationToken.ThrowIfCancellationRequested();
             await base.RecordAsync(securityEvent, cancellationToken);
         }
     }
