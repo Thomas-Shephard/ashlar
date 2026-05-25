@@ -28,6 +28,11 @@ public sealed class AshlarSecurityEventWebhookOutboxHealthCheckOptions
     public long? ExpiredLockCountThreshold { get; set; }
 
     /// <summary>
+    /// Gets or sets the pending delivery count threshold.
+    /// </summary>
+    public long? PendingCountThreshold { get; set; }
+
+    /// <summary>
     /// Gets or sets the oldest pending delivery age threshold.
     /// </summary>
     public TimeSpan? OldestPendingAgeThreshold { get; set; }
@@ -38,6 +43,7 @@ public sealed class AshlarSecurityEventWebhookOutboxHealthCheckOptions
 
         return NonNegative(options.FailedCountThreshold)
             && NonNegative(options.ExpiredLockCountThreshold)
+            && NonNegative(options.PendingCountThreshold)
             && (!options.OldestPendingAgeThreshold.HasValue || options.OldestPendingAgeThreshold.Value > TimeSpan.Zero);
     }
 

@@ -18,7 +18,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxDiagnostics(
     private static readonly Action<ILogger, Exception?> WebhookOutboxDiagnosticsFailed =
         LoggerMessage.Define(
             LogLevel.Error,
-            new EventId(1005, nameof(WebhookOutboxDiagnosticsFailed)),
+            new EventId(1006, nameof(WebhookOutboxDiagnosticsFailed)),
             "SQLite security event webhook outbox diagnostics failed.");
 
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));

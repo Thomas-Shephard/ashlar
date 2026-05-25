@@ -33,35 +33,26 @@ public sealed class AshlarSecurityEventWebhookOutboxHealthCheck(
         }
 
         var result = await _diagnostics.CheckAsync(cancellationToken);
-        var status = result.Status switch
-        {
-            AshlarDiagnosticStatus.Healthy => ThresholdExceeded(result) ? _options.ThresholdExceededStatus : HealthStatus.Healthy,
-            AshlarDiagnosticStatus.NotSupported => _options.NotSupportedStatus,
-            AshlarDiagnosticStatus.Unknown => HealthStatus.Unhealthy,
-            AshlarDiagnosticStatus.Degraded => HealthStatus.Degraded,
-            AshlarDiagnosticStatus.Unhealthy => HealthStatus.Unhealthy,
-            _ => HealthStatus.Unhealthy
-        };
+        var status = AshlarOutboxHealthCheck.MapStatus(
+            result.Status,
+            ThresholdExceeded(result),
+            _options.NotSupportedStatus,
+            _options.ThresholdExceededStatus);
 
         return new HealthCheckResult(status, result.Reason, data: AshlarHealthCheckData.ForSecurityEventWebhookOutbox(result));
     }
 
     private bool ThresholdExceeded(SecurityEventWebhookOutboxDiagnosticResult result)
     {
-        return Exceeds(result.FailedCount, _options.FailedCountThreshold)
-            || Exceeds(result.ExpiredLockCount, _options.ExpiredLockCountThreshold)
-            || ExceedsOldestPendingAge(result);
-    }
-
-    private bool ExceedsOldestPendingAge(SecurityEventWebhookOutboxDiagnosticResult result)
-    {
-        return _options.OldestPendingAgeThreshold.HasValue
-            && result.OldestPendingAt.HasValue
-            && result.CheckedAt - result.OldestPendingAt.Value > _options.OldestPendingAgeThreshold.Value;
-    }
-
-    private static bool Exceeds(long? value, long? threshold)
-    {
-        return value.HasValue && threshold.HasValue && value.Value > threshold.Value;
+        return AshlarOutboxHealthCheck.ThresholdExceeded(
+            result.FailedCount,
+            _options.FailedCountThreshold,
+            result.ExpiredLockCount,
+            _options.ExpiredLockCountThreshold,
+            result.PendingCount,
+            _options.PendingCountThreshold,
+            result.CheckedAt,
+            result.OldestPendingAt,
+            _options.OldestPendingAgeThreshold);
     }
 }

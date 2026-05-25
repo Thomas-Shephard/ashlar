@@ -287,11 +287,13 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
         using var provider = BuildProvider(services =>
         {
             services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult(
+                pendingCount: 10,
                 expiredLockCount: 2,
                 failedCount: 3,
                 oldestPendingAt: Now.AddMinutes(-10))));
             services.AddHealthChecks().AddAshlarSecurityEventWebhookOutbox(options =>
             {
+                options.PendingCountThreshold = 5;
                 options.ExpiredLockCountThreshold = 1;
                 options.FailedCountThreshold = 2;
                 options.OldestPendingAgeThreshold = TimeSpan.FromMinutes(5);
@@ -309,11 +311,13 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
         using var provider = BuildProvider(services =>
         {
             services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult(
+                pendingCount: 5,
                 expiredLockCount: 1,
                 failedCount: 2,
                 oldestPendingAt: Now.AddMinutes(-5))));
             services.AddHealthChecks().AddAshlarSecurityEventWebhookOutbox(options =>
             {
+                options.PendingCountThreshold = 5;
                 options.ExpiredLockCountThreshold = 1;
                 options.FailedCountThreshold = 2;
                 options.OldestPendingAgeThreshold = TimeSpan.FromMinutes(5);
@@ -332,6 +336,7 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
         {
             services.AddHealthChecks().AddAshlarSecurityEventWebhookOutbox(options =>
             {
+                options.PendingCountThreshold = -1;
                 options.ExpiredLockCountThreshold = -1;
                 options.FailedCountThreshold = -1;
                 options.OldestPendingAgeThreshold = TimeSpan.Zero;
@@ -348,6 +353,7 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
         {
             services.AddHealthChecks().AddAshlarSecurityEventWebhookOutbox(options =>
             {
+                options.PendingCountThreshold = 0;
                 options.ExpiredLockCountThreshold = 0;
                 options.FailedCountThreshold = 0;
                 options.OldestPendingAgeThreshold = TimeSpan.FromTicks(1);
@@ -358,6 +364,7 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(options.PendingCountThreshold, Is.Zero);
             Assert.That(options.ExpiredLockCountThreshold, Is.Zero);
             Assert.That(options.FailedCountThreshold, Is.Zero);
             Assert.That(options.OldestPendingAgeThreshold, Is.EqualTo(TimeSpan.FromTicks(1)));

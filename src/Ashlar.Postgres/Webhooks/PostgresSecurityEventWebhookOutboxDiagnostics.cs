@@ -18,7 +18,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxDiagnostics(
     private static readonly Action<ILogger, Exception?> WebhookOutboxDiagnosticsFailed =
         LoggerMessage.Define(
             LogLevel.Error,
-            new EventId(1007, nameof(WebhookOutboxDiagnosticsFailed)),
+            new EventId(1008, nameof(WebhookOutboxDiagnosticsFailed)),
             "PostgreSQL security event webhook outbox diagnostics failed.");
 
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));

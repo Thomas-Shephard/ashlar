@@ -20,35 +20,70 @@ internal static class AshlarHealthCheckData
 
     public static Dictionary<string, object> ForEmailOutbox(EmailOutboxDiagnosticResult result)
     {
-        var data = Common(result.Status, result.ProviderName, result.Reason, result.CheckedAt);
-        Add(data, "pending_count", result.PendingCount);
-        Add(data, "scheduled_count", result.ScheduledCount);
-        Add(data, "locked_count", result.LockedCount);
-        Add(data, "expired_lock_count", result.ExpiredLockCount);
-        Add(data, "failed_count", result.FailedCount);
-        Add(data, "oldest_pending_at", result.OldestPendingAt);
-        Add(data, "oldest_failed_at", result.OldestFailedAt);
-        Add(data, "oldest_pending_age_seconds", result.OldestPendingAt.HasValue ? Math.Max(0, (result.CheckedAt - result.OldestPendingAt.Value).TotalSeconds) : null);
-        Add(data, "max_attempts", result.MaxAttempts);
-        Add(data, "polling_interval_seconds", result.PollingInterval?.TotalSeconds);
-        Add(data, "batch_size", result.BatchSize);
-        return data;
+        return ForOutbox(
+            result.Status,
+            result.ProviderName,
+            result.Reason,
+            result.CheckedAt,
+            result.PendingCount,
+            result.ScheduledCount,
+            result.LockedCount,
+            result.ExpiredLockCount,
+            result.FailedCount,
+            result.OldestPendingAt,
+            result.OldestFailedAt,
+            result.MaxAttempts,
+            result.PollingInterval,
+            result.BatchSize);
     }
 
     public static Dictionary<string, object> ForSecurityEventWebhookOutbox(SecurityEventWebhookOutboxDiagnosticResult result)
     {
-        var data = Common(result.Status, result.ProviderName, result.Reason, result.CheckedAt);
-        Add(data, "pending_count", result.PendingCount);
-        Add(data, "scheduled_count", result.ScheduledCount);
-        Add(data, "locked_count", result.LockedCount);
-        Add(data, "expired_lock_count", result.ExpiredLockCount);
-        Add(data, "failed_count", result.FailedCount);
-        Add(data, "oldest_pending_at", result.OldestPendingAt);
-        Add(data, "oldest_failed_at", result.OldestFailedAt);
-        Add(data, "oldest_pending_age_seconds", result.OldestPendingAt.HasValue ? Math.Max(0, (result.CheckedAt - result.OldestPendingAt.Value).TotalSeconds) : null);
-        Add(data, "max_attempts", result.MaxAttempts);
-        Add(data, "polling_interval_seconds", result.PollingInterval?.TotalSeconds);
-        Add(data, "batch_size", result.BatchSize);
+        return ForOutbox(
+            result.Status,
+            result.ProviderName,
+            result.Reason,
+            result.CheckedAt,
+            result.PendingCount,
+            result.ScheduledCount,
+            result.LockedCount,
+            result.ExpiredLockCount,
+            result.FailedCount,
+            result.OldestPendingAt,
+            result.OldestFailedAt,
+            result.MaxAttempts,
+            result.PollingInterval,
+            result.BatchSize);
+    }
+
+    private static Dictionary<string, object> ForOutbox(
+        AshlarDiagnosticStatus status,
+        string providerName,
+        string? reason,
+        DateTimeOffset checkedAt,
+        long? pendingCount,
+        long? scheduledCount,
+        long? lockedCount,
+        long? expiredLockCount,
+        long? failedCount,
+        DateTimeOffset? oldestPendingAt,
+        DateTimeOffset? oldestFailedAt,
+        int? maxAttempts,
+        TimeSpan? pollingInterval,
+        int? batchSize)
+    {
+        var data = Common(status, providerName, reason, checkedAt);
+        Add(data, "pending_count", pendingCount);
+        Add(data, "scheduled_count", scheduledCount);
+        Add(data, "locked_count", lockedCount);
+        Add(data, "expired_lock_count", expiredLockCount);
+        Add(data, "failed_count", failedCount);
+        Add(data, "oldest_pending_at", oldestPendingAt);
+        Add(data, "oldest_failed_at", oldestFailedAt);
+        Add(data, "oldest_pending_age_seconds", oldestPendingAt.HasValue ? Math.Max(0, (checkedAt - oldestPendingAt.Value).TotalSeconds) : null);
+        Add(data, "max_attempts", maxAttempts);
+        Add(data, "polling_interval_seconds", pollingInterval?.TotalSeconds);
+        Add(data, "batch_size", batchSize);
         return data;
     }
 
