@@ -100,6 +100,7 @@ services.AddAshlarSqliteEmailOutboxHostedService<SmtpEmailTransport>();
 ```
 
 The sender participates in Ashlar SQLite transactions through `ISqliteConnectionProvider`, so queued emails commit or roll back with the surrounding Ashlar transaction.
+It implements `ITransactionalEmailOutboxSender`, which lets token-bearing Ashlar flows enqueue durable emails before committing the token credential. The outbox persists `EmailMessage.Sensitivity` as `Normal` or `ContainsLiveSecret` and restores it before dispatch.
 
 ## Current Status
 

@@ -106,10 +106,15 @@ internal sealed class InvitationService(
 
         var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(callbackBaseUri, invitationOptions.TokenParameterName, token);
         var message = IdentityUrlHelper.FormatEmailBody(invitationOptions.EmailTextTemplate, callbackUrl);
+        var emailMessage = new EmailMessage(
+            email,
+            invitationOptions.EmailSubject,
+            message,
+            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+        await TransactionalEmailDelivery.SendOrRegisterPostCommitAsync(_dependencies.EmailSender, transaction, emailMessage, cancellationToken);
 
         transaction.OnCommitted(async ct =>
         {
-            await _dependencies.EmailSender.SendAsync(new EmailMessage(email, invitationOptions.EmailSubject, message), ct);
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.InvitationCreated,

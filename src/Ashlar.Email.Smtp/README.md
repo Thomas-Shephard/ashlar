@@ -13,6 +13,7 @@ dotnet add package Ashlar.Email.Smtp
 ### Direct SMTP Sender
 
 Use this if you want to send emails immediately through SMTP without an outbox.
+The direct SMTP sender implements `IEmailSender` only. Ashlar token-bearing flows therefore invoke it after their credential transaction commits.
 
 ```csharp
 services.AddAshlarSmtpEmailSender(options =>

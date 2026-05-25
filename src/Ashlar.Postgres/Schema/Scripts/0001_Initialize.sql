@@ -239,6 +239,7 @@ CREATE TABLE IF NOT EXISTS ashlar_email_outbox (
     subject TEXT NOT NULL,
     text_body TEXT,
     html_body TEXT,
+    sensitivity TEXT NOT NULL DEFAULT 'Normal',
     headers JSONB,
     metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL,
@@ -250,6 +251,7 @@ CREATE TABLE IF NOT EXISTS ashlar_email_outbox (
     sent_at TIMESTAMPTZ,
     failed_at TIMESTAMPTZ,
     last_error TEXT,
+    CONSTRAINT ck_ashlar_email_outbox_sensitivity CHECK (sensitivity IN ('Normal', 'ContainsLiveSecret')),
     CONSTRAINT ck_ashlar_email_outbox_attempt_count_non_negative CHECK (attempt_count >= 0),
     CONSTRAINT ck_ashlar_email_outbox_terminal_state CHECK (sent_at IS NULL OR failed_at IS NULL),
     CONSTRAINT ck_ashlar_email_outbox_lock_state CHECK (

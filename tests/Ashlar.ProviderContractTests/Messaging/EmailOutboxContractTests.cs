@@ -27,6 +27,31 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
     }
 
     [Test]
+    public async Task SendAsyncEnqueuesSensitivityThatDispatcherRestores()
+    {
+        await using var scope = CreateAsyncScope();
+        var transport = GetRecordingEmailTransport(scope.ServiceProvider);
+        var message = new EmailMessage(
+            "contract-sensitive@example.com",
+            "Subject",
+            "Secret text",
+            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+
+        await GetEmailSender(scope.ServiceProvider).SendAsync(message);
+        await GetEmailOutboxDispatcher(scope.ServiceProvider).ProcessBatchAsync();
+
+        Assert.That(transport.Messages.Single().Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
+    }
+
+    [Test]
+    public async Task EmailOutboxSenderAdvertisesTransactionalDurableOutbox()
+    {
+        await using var scope = CreateAsyncScope();
+
+        Assert.That(GetEmailSender(scope.ServiceProvider), Is.InstanceOf<ITransactionalEmailOutboxSender>());
+    }
+
+    [Test]
     public async Task ProcessBatchAsyncReturnsZeroWhenThereIsNoWork()
     {
         await using var scope = CreateAsyncScope();
@@ -160,7 +185,8 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
                 From = "from@example.com",
                 ReplyTo = "reply@example.com",
                 Headers = new Dictionary<string, string> { ["X-Test"] = "Header" },
-                Metadata = new Dictionary<string, string> { ["Trace"] = "Metadata" }
+                Metadata = new Dictionary<string, string> { ["Trace"] = "Metadata" },
+                Sensitivity = EmailMessageSensitivity.ContainsLiveSecret
             });
     }
 
@@ -178,6 +204,7 @@ internal abstract class EmailOutboxContractTests : ProviderContractFixture
             Assert.That(actual.Headers, Does.ContainKey("X-Test").WithValue("Header"));
             Assert.That(actual.Metadata, Is.Not.Null);
             Assert.That(actual.Metadata, Does.ContainKey("Trace").WithValue("Metadata"));
+            Assert.That(actual.Sensitivity, Is.EqualTo(expected.Sensitivity));
         }
     }
 }

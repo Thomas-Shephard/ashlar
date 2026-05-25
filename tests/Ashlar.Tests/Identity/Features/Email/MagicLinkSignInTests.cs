@@ -45,7 +45,28 @@ internal sealed class MagicLinkSignInTests
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.MagicLinkRequested), Is.True);
             Assert.That(message.TextBody, Does.Contain($"token={token}"));
             Assert.That(message.TextBody, Does.Not.Contain("USER@EXAMPLE.COM"));
+            Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
         }
+    }
+
+    [Test]
+    public async Task RequestLinkEnqueuesTransactionalOutboxBeforeCommit()
+    {
+        var fixture = CreateFixture(_user, transactionalEmailSender: true);
+
+        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"));
+
+        Assert.That(fixture.Events, Is.EqualTo(SendBeforeCommitEvents));
+    }
+
+    [Test]
+    public async Task RequestLinkSendsNonTransactionalEmailAfterCommit()
+    {
+        var fixture = CreateFixture(_user);
+
+        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"));
+
+        Assert.That(fixture.Events, Is.EqualTo(CommitBeforeSendEvents));
     }
 
     [Test]
@@ -441,16 +462,20 @@ internal sealed class MagicLinkSignInTests
         Assert.That(options.CodeDigits, Is.EqualTo(5));
     }
 
-    private static Fixture CreateFixture(User? user = null, bool requestAllowed = true, bool verifyAllowed = true, MagicLinkSignInOptions? options = null, bool callbackAllowed = true)
+    private static readonly string[] SendBeforeCommitEvents = ["send", "commit"];
+    private static readonly string[] CommitBeforeSendEvents = ["commit", "send"];
+
+    private static Fixture CreateFixture(User? user = null, bool requestAllowed = true, bool verifyAllowed = true, MagicLinkSignInOptions? options = null, bool callbackAllowed = true, bool transactionalEmailSender = false)
     {
         var repository = new InMemoryUserCredentialStore(user);
         var audit = new RecordingSecurityEventSink();
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 5, 3, 12, 0, 0, TimeSpan.Zero));
-        var emailSender = new RecordingEmailSender();
+        var events = new List<string>();
+        RecordingEmailSender emailSender = transactionalEmailSender ? new RecordingTransactionalEmailSender(events) : new RecordingEmailSender(events);
         var tokenHasher = new Sha256TokenHasher();
         var provider = new MagicLinkAuthenticationProvider(tokenHasher);
         var registry = new AuthenticationProviderRegistry([provider]);
-        var transactionProvider = new NullTransactionProvider();
+        var transactionProvider = new RecordingTransactionProvider(events);
         var credentialService = new CredentialService(
             repository,
             repository,
@@ -475,7 +500,7 @@ internal sealed class MagicLinkSignInTests
 
         var dependencies = new MagicLinkSignInDependencies(core, tokenContext, infrastructure, provider, auditContext);
         var service = new MagicLinkSignInService(dependencies, Options.Create(options ?? new MagicLinkSignInOptions()));
-        return new Fixture(service, repository, emailSender, audit, time, tokenHasher, rateLimiter);
+        return new Fixture(service, repository, emailSender, audit, time, tokenHasher, rateLimiter, events);
     }
 
     private static string ExtractToken(string? body)
@@ -486,7 +511,7 @@ internal sealed class MagicLinkSignInTests
         return query["token"] ?? throw new AssertionException("Token not found in email body.");
     }
 
-    private sealed record Fixture(MagicLinkSignInService Service, InMemoryUserCredentialStore Repository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, ISecureTokenHasher TokenHasher, StubRateLimiter RateLimiter);
+    private sealed record Fixture(MagicLinkSignInService Service, InMemoryUserCredentialStore Repository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, ISecureTokenHasher TokenHasher, StubRateLimiter RateLimiter, List<string> Events);
 
     private sealed class StubRateLimiter(bool requestAllowed, bool verifyAllowed, TimeProvider timeProvider) : IAuthenticationRateLimiter
     {
@@ -505,13 +530,54 @@ internal sealed class MagicLinkSignInTests
         }
     }
 
-    private sealed class RecordingEmailSender : IEmailSender
+    private class RecordingEmailSender(List<string>? events = null) : IEmailSender
     {
         public List<EmailMessage> Messages { get; } = [];
         public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
         {
+            events?.Add("send");
             Messages.Add(message);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingTransactionalEmailSender(List<string> events) : RecordingEmailSender(events), ITransactionalEmailOutboxSender;
+
+    private sealed class RecordingTransactionProvider(List<string> events) : IAshlarTransactionProvider
+    {
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IAshlarTransaction>(new RecordingTransaction(events));
+        }
+    }
+
+    private sealed class RecordingTransaction(List<string> events) : IAshlarTransaction
+    {
+        private readonly List<Func<CancellationToken, Task>> _hooks = [];
+
+        public async Task CommitAsync(CancellationToken cancellationToken = default)
+        {
+            events.Add("commit");
+            foreach (var hook in _hooks)
+            {
+                await hook(cancellationToken);
+            }
+        }
+
+        public Task RollbackAsync(CancellationToken cancellationToken = default)
+        {
+            _hooks.Clear();
+            return Task.CompletedTask;
+        }
+
+        public void OnCommitted(Func<CancellationToken, Task> action)
+        {
+            _hooks.Add(action);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
         }
     }
 

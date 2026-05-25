@@ -38,6 +38,7 @@ internal sealed class InvitationServiceTests
             Assert.That(invitation.ExpiresAt, Is.EqualTo(fixture.Time.GetUtcNow().AddDays(7)));
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.InvitationCreated), Is.True);
             Assert.That(GetProperties(fixture.Audit.Events.First(e => e.EventType == AshlarSecurityEventTypes.InvitationCreated))["email"], Is.EqualTo("INVITEE@EXAMPLE.COM"));
+            Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
         }
     }
 

@@ -100,7 +100,7 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
         command.Transaction = connectionHandle.Transaction;
         command.CommandText = """
             SELECT id, to_address, from_address, reply_to_address, subject,
-                   text_body, html_body, headers, metadata, attempt_count
+                   text_body, html_body, sensitivity, headers, metadata, attempt_count
             FROM ashlar_email_outbox
             WHERE locked_by = $lockedBy
               AND sent_at IS NULL
@@ -122,6 +122,7 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
                 Subject = reader.GetString(reader.GetOrdinal("subject")),
                 TextBody = reader.GetNullableString("text_body"),
                 HtmlBody = reader.GetNullableString("html_body"),
+                Sensitivity = EmailOutboxDispatch.ParseSensitivity(reader.GetNullableString("sensitivity")),
                 Headers = reader.GetNullableString("headers"),
                 Metadata = reader.GetNullableString("metadata"),
                 AttemptCount = reader.GetInt32ByName("attempt_count")

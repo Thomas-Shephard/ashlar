@@ -141,15 +141,19 @@ internal sealed class EmailChangeService(
 
         var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(request.CallbackBaseUri, _options.Value.TokenParameterName, token, user.Id, _options.Value.UserIdParameterName);
         var message = IdentityUrlHelper.FormatEmailBody(_options.Value.EmailTextTemplate, callbackUrl, "Confirmation token", token);
+        var emailMessage = new EmailMessage(
+            newEmail,
+            _options.Value.Subject,
+            message,
+            options: new EmailMessageOptions
+            {
+                From = _options.Value.FromAddress,
+                Sensitivity = EmailMessageSensitivity.ContainsLiveSecret
+            });
+        await TransactionalEmailDelivery.SendOrRegisterPostCommitAsync(_dependencies.EmailSender, transaction, emailMessage, cancellationToken);
 
         transaction.OnCommitted(async ct =>
         {
-            await _dependencies.EmailSender.SendAsync(new EmailMessage(
-                newEmail,
-                _options.Value.Subject,
-                message,
-                options: new EmailMessageOptions { From = _options.Value.FromAddress }), ct);
-
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.EmailChangeRequested,
@@ -169,14 +173,16 @@ internal sealed class EmailChangeService(
     private async Task<Result> SuppressEmailChangeRequestAsync(string newEmail, IUser user, AuditContext? audit, CancellationToken cancellationToken)
     {
         await using var suppressionTransaction = await _dependencies.IdentityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
+        var suppressionMessage = new EmailMessage(
+            newEmail,
+            _options.Value.Subject,
+            "An attempt was made to change another account's email address to this one. No changes were made, and no further action is required.",
+            options: new EmailMessageOptions { From = _options.Value.FromAddress });
+
+        await TransactionalEmailDelivery.SendOrRegisterPostCommitAsync(_dependencies.EmailSender, suppressionTransaction, suppressionMessage, cancellationToken);
+
         suppressionTransaction.OnCommitted(async ct =>
         {
-            await _dependencies.EmailSender.SendAsync(new EmailMessage(
-                newEmail,
-                _options.Value.Subject,
-                "An attempt was made to change another account's email address to this one. No changes were made, and no further action is required.",
-                options: new EmailMessageOptions { From = _options.Value.FromAddress }), ct);
-
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.EmailChangeRequestSuppressed,

@@ -137,15 +137,19 @@ internal sealed class EmailVerificationService : IEmailVerificationService
 
         var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(request.CallbackBaseUri, _options.Value.TokenParameterName, token, user.Id, _options.Value.UserIdParameterName);
         var message = IdentityUrlHelper.FormatEmailBody(_options.Value.EmailTextTemplate, callbackUrl, "Verification token", token);
+        var emailMessage = new EmailMessage(
+            user.Email,
+            _options.Value.Subject,
+            message,
+            options: new EmailMessageOptions
+            {
+                From = _options.Value.FromAddress,
+                Sensitivity = EmailMessageSensitivity.ContainsLiveSecret
+            });
+        await TransactionalEmailDelivery.SendOrRegisterPostCommitAsync(_emailSender, transaction, emailMessage, cancellationToken);
 
         transaction.OnCommitted(async ct =>
         {
-            await _emailSender.SendAsync(new EmailMessage(
-                user.Email,
-                _options.Value.Subject,
-                message,
-                options: new EmailMessageOptions { From = _options.Value.FromAddress }), ct);
-
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.EmailVerificationRequested,

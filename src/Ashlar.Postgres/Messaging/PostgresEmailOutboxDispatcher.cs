@@ -10,7 +10,7 @@ namespace Ashlar.Postgres.Messaging;
 /// <summary>
 /// A PostgreSQL-backed implementation of <see cref="IEmailOutboxDispatcher"/> that dispatches pending email messages.
 /// </summary>
-/// <typeparam name="TTransport">The ttransport type.</typeparam>
+/// <typeparam name="TTransport">The transport type.</typeparam>
 /// <param name="serviceProvider">The service provider value.</param>
 /// <param name="timeProvider">The time provider value.</param>
 /// <param name="options">The options value.</param>
@@ -58,6 +58,7 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
             RETURNING id AS Id, to_address AS ToAddress, from_address AS FromAddress,
                       reply_to_address AS ReplyToAddress, subject AS Subject,
                       text_body AS TextBody, html_body AS HtmlBody,
+                      sensitivity AS Sensitivity,
                       headers AS Headers, metadata AS Metadata,
                       attempt_count AS AttemptCount
             """;
@@ -80,7 +81,9 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
                     _options.BatchSize
                 }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
 
-                entries = (await connectionHandle.Connection.QueryAsync<EmailOutboxEntry>(command)).ToList();
+                entries = (await connectionHandle.Connection.QueryAsync<PostgresEmailOutboxEntry>(command))
+                    .Select(entry => entry.ToEmailOutboxEntry())
+                    .ToList();
             }
         }
 
@@ -183,6 +186,39 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
         }
     }
 
+}
+
+internal sealed class PostgresEmailOutboxEntry
+{
+    public Guid Id { get; init; }
+    public required string ToAddress { get; init; }
+    public string? FromAddress { get; init; }
+    public string? ReplyToAddress { get; init; }
+    public required string Subject { get; init; }
+    public string? TextBody { get; init; }
+    public string? HtmlBody { get; init; }
+    public string? Sensitivity { get; init; }
+    public string? Headers { get; init; }
+    public string? Metadata { get; init; }
+    public int AttemptCount { get; init; }
+
+    public EmailOutboxEntry ToEmailOutboxEntry()
+    {
+        return new EmailOutboxEntry
+        {
+            Id = Id,
+            ToAddress = ToAddress,
+            FromAddress = FromAddress,
+            ReplyToAddress = ReplyToAddress,
+            Subject = Subject,
+            TextBody = TextBody,
+            HtmlBody = HtmlBody,
+            Sensitivity = EmailOutboxDispatch.ParseSensitivity(Sensitivity),
+            Headers = Headers,
+            Metadata = Metadata,
+            AttemptCount = AttemptCount
+        };
+    }
 }
 
 internal static class PostgresEmailOutboxDispatcherLog

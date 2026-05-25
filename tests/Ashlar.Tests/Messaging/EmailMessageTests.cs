@@ -20,7 +20,20 @@ internal sealed class EmailMessageTests
             Assert.That(message.ReplyTo, Is.Null);
             Assert.That(message.Headers, Is.Null);
             Assert.That(message.Metadata, Is.Null);
+            Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.Normal));
         }
+    }
+
+    [Test]
+    public void EmailMessageCopiesSensitivityFromOptions()
+    {
+        var message = new EmailMessage(
+            "user@example.com",
+            "Sign in",
+            "Use this link.",
+            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+
+        Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
     }
 
     [Test]
@@ -243,5 +256,21 @@ internal sealed class EmailMessageTests
             to: "recipient@example.com\r\nBcc: victim@example.com",
             subject: "Subject",
             textBody: "Hello"));
+    }
+
+    [Test]
+    public void EmailMessageRejectsCcAndBccInjection()
+    {
+        Assert.Throws<ArgumentException>(() => _ = new EmailMessage(
+            to: "recipient@example.com",
+            subject: "Subject",
+            textBody: "Hello",
+            options: new EmailMessageOptions { Cc = "cc@example.com\r\nBcc: victim@example.com" }));
+
+        Assert.Throws<ArgumentException>(() => _ = new EmailMessage(
+            to: "recipient@example.com",
+            subject: "Subject",
+            textBody: "Hello",
+            options: new EmailMessageOptions { Bcc = "bcc@example.com\nCc: victim@example.com" }));
     }
 }

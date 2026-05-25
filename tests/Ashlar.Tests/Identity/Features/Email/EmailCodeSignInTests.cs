@@ -43,6 +43,7 @@ internal sealed class EmailCodeSignInTests
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailCodeRequested), Is.True);
             Assert.That(AllAuditText(fixture), Does.Not.Contain(code));
             Assert.That(AllAuditText(fixture), Does.Not.Contain("USER@EXAMPLE.COM"));
+            Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
         }
     }
 

@@ -82,9 +82,16 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
 
         await _dependencies.CredentialRepository.CreateOrReplaceCredentialAsync(credential, cancellationToken);
 
+        var message = string.Format(CultureInfo.InvariantCulture, signInOptions.EmailTextTemplate, code, Math.Ceiling(signInOptions.CodeLifetime.TotalMinutes));
+        var emailMessage = new EmailMessage(
+            normalizedEmail,
+            signInOptions.EmailSubject,
+            message,
+            options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
+        await TransactionalEmailDelivery.SendOrRegisterPostCommitAsync(_dependencies.EmailSender, transaction, emailMessage, cancellationToken);
+
         transaction.OnCommitted(async (ct) =>
         {
-            await _dependencies.EmailSender.SendAsync(new EmailMessage(normalizedEmail, signInOptions.EmailSubject, string.Format(CultureInfo.InvariantCulture, signInOptions.EmailTextTemplate, code, Math.Ceiling(signInOptions.CodeLifetime.TotalMinutes))), ct);
             await RecordAsync(AshlarSecurityEventTypes.EmailCodeRequested, SecurityEventOutcomes.Success, context, user.Id, null, ct);
         });
 
@@ -99,12 +106,17 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
     /// <param name="context">The context value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public async Task<AuthenticationResponse> VerifyCodeAsync(string email, string code, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
+    public Task<AuthenticationResponse> VerifyCodeAsync(string email, string code, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         context = WithEmail(context, normalizedEmail);
 
+        return VerifyCodeCoreAsync(normalizedEmail, code, context, cancellationToken);
+    }
+
+    private async Task<AuthenticationResponse> VerifyCodeCoreAsync(string normalizedEmail, string code, AuthenticationContext context, CancellationToken cancellationToken)
+    {
         var rateLimit = await CheckRateLimitAsync(normalizedEmail, VerifyPurpose, context, _options.Value.VerificationRateLimit, cancellationToken);
         if (!rateLimit.IsAllowed)
         {
