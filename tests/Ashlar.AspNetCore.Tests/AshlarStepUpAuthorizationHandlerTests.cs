@@ -690,6 +690,23 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     }
 
     [Test]
+    public async Task HandleAsyncShouldFailSafelyForTimeClaimBeforeUnixTimeRange()
+    {
+        var session = CreateSession();
+        session.AdditionalVerificationAt = Now.AddMinutes(-2);
+        session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
+        session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
+        var claims = CreateClaims(session).Where(c => c.Type != AshlarClaimTypes.AuthenticatedAt).ToList();
+        claims.Add(new Claim(AshlarClaimTypes.AuthenticatedAt, long.MinValue.ToString(CultureInfo.InvariantCulture)));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
+        var context = new AuthorizationHandlerContext([new AshlarStepUpRequirement(TimeSpan.FromMinutes(5))], principal, null);
+
+        await CreateHandler(session).HandleAsync(context);
+
+        Assert.That(context.HasSucceeded, Is.False);
+    }
+
+    [Test]
     public async Task HandleAsyncShouldFailSafelyForInvalidProviderClaim()
     {
         var session = CreateSession();
