@@ -16,6 +16,11 @@ public static class AshlarHealthCheckNames
     public const string EmailOutbox = "ashlar_email_outbox";
 
     /// <summary>
+    /// The Ashlar security event webhook outbox health check name.
+    /// </summary>
+    public const string SecurityEventWebhookOutbox = "ashlar_security_event_webhook_outbox";
+
+    /// <summary>
     /// The Ashlar cleanup health check name.
     /// </summary>
     public const string Cleanup = "ashlar_cleanup";

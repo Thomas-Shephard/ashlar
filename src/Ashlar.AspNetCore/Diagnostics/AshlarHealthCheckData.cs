@@ -35,6 +35,23 @@ internal static class AshlarHealthCheckData
         return data;
     }
 
+    public static Dictionary<string, object> ForSecurityEventWebhookOutbox(SecurityEventWebhookOutboxDiagnosticResult result)
+    {
+        var data = Common(result.Status, result.ProviderName, result.Reason, result.CheckedAt);
+        Add(data, "pending_count", result.PendingCount);
+        Add(data, "scheduled_count", result.ScheduledCount);
+        Add(data, "locked_count", result.LockedCount);
+        Add(data, "expired_lock_count", result.ExpiredLockCount);
+        Add(data, "failed_count", result.FailedCount);
+        Add(data, "oldest_pending_at", result.OldestPendingAt);
+        Add(data, "oldest_failed_at", result.OldestFailedAt);
+        Add(data, "oldest_pending_age_seconds", result.OldestPendingAt.HasValue ? Math.Max(0, (result.CheckedAt - result.OldestPendingAt.Value).TotalSeconds) : null);
+        Add(data, "max_attempts", result.MaxAttempts);
+        Add(data, "polling_interval_seconds", result.PollingInterval?.TotalSeconds);
+        Add(data, "batch_size", result.BatchSize);
+        return data;
+    }
+
     public static Dictionary<string, object> ForCleanup(AshlarCleanupDiagnosticResult result)
     {
         var data = Common(result.Status, result.ProviderName, result.Reason, result.CheckedAt);

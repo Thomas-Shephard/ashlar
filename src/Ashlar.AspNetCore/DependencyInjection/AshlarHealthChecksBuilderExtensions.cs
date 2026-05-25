@@ -16,6 +16,7 @@ public static class AshlarHealthChecksBuilderExtensions
     /// <param name="builder">The health checks builder.</param>
     /// <param name="configureSchema">The optional schema health check options callback.</param>
     /// <param name="configureEmailOutbox">The optional email outbox health check options callback.</param>
+    /// <param name="configureSecurityEventWebhookOutbox">The optional security event webhook outbox health check options callback.</param>
     /// <param name="configureCleanup">The optional cleanup health check options callback.</param>
     /// <param name="configureRateLimiter">The optional rate limiter health check options callback.</param>
     /// <returns>The health checks builder.</returns>
@@ -23,6 +24,7 @@ public static class AshlarHealthChecksBuilderExtensions
         this IHealthChecksBuilder builder,
         Action<AshlarSchemaHealthCheckOptions>? configureSchema = null,
         Action<AshlarEmailOutboxHealthCheckOptions>? configureEmailOutbox = null,
+        Action<AshlarSecurityEventWebhookOutboxHealthCheckOptions>? configureSecurityEventWebhookOutbox = null,
         Action<AshlarCleanupHealthCheckOptions>? configureCleanup = null,
         Action<AshlarRateLimiterHealthCheckOptions>? configureRateLimiter = null)
     {
@@ -30,6 +32,7 @@ public static class AshlarHealthChecksBuilderExtensions
 
         builder.AddAshlarSchema(configureSchema);
         builder.AddAshlarEmailOutbox(configureEmailOutbox);
+        builder.AddAshlarSecurityEventWebhookOutbox(configureSecurityEventWebhookOutbox);
         builder.AddAshlarCleanup(configureCleanup);
         builder.AddAshlarRateLimiter(configureRateLimiter);
 
@@ -93,6 +96,38 @@ public static class AshlarHealthChecksBuilderExtensions
             "Ashlar email outbox health check thresholds must be non-negative, and the oldest pending age threshold must be positive.");
 
         return builder.AddCheck<AshlarEmailOutboxHealthCheck>(name, failureStatus, tags ?? []);
+    }
+
+    /// <summary>
+    /// Adds the Ashlar security event webhook outbox health check.
+    /// </summary>
+    /// <param name="builder">The health checks builder.</param>
+    /// <param name="configure">The optional security event webhook outbox health check options callback.</param>
+    /// <param name="name">The health check registration name.</param>
+    /// <param name="failureStatus">The optional failure status override.</param>
+    /// <param name="tags">The optional health check tags.</param>
+    /// <returns>The health checks builder.</returns>
+    public static IHealthChecksBuilder AddAshlarSecurityEventWebhookOutbox(
+        this IHealthChecksBuilder builder,
+        Action<AshlarSecurityEventWebhookOutboxHealthCheckOptions>? configure = null,
+        string name = AshlarHealthCheckNames.SecurityEventWebhookOutbox,
+        HealthStatus? failureStatus = null,
+        IEnumerable<string>? tags = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        var optionsBuilder = builder.Services.AddOptions<AshlarSecurityEventWebhookOutboxHealthCheckOptions>();
+        if (configure is not null)
+        {
+            optionsBuilder.Configure(configure);
+        }
+
+        optionsBuilder.Validate(
+            AshlarSecurityEventWebhookOutboxHealthCheckOptions.Validate,
+            "Ashlar security event webhook outbox health check thresholds must be non-negative, and the oldest pending age threshold must be positive.");
+
+        return builder.AddCheck<AshlarSecurityEventWebhookOutboxHealthCheck>(name, failureStatus, tags ?? []);
     }
 
     /// <summary>
