@@ -231,6 +231,34 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     }
 
     [Test]
+    public async Task DispatcherConcurrentCallsOnSameInstanceDoNotDeliverSameMessageTwice()
+    {
+        var firstDeliveryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstDelivery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var transport = new BlockingFirstEmailTransport(firstDeliveryStarted, releaseFirstDelivery);
+        var dispatcher = BuildDispatcher(transport);
+        await SeedMessageAsync("overlap@example.com");
+
+        var first = dispatcher.ProcessBatchAsync();
+        await firstDeliveryStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var second = await dispatcher.ProcessBatchAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+        releaseFirstDelivery.SetResult();
+        var firstCount = await first.WaitAsync(TimeSpan.FromSeconds(5));
+        var row = await QuerySingleOutboxRowAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstCount, Is.EqualTo(1));
+            Assert.That(second, Is.Zero);
+            Assert.That(firstCount + second, Is.EqualTo(1));
+            Assert.That(transport.DeliveredCount, Is.EqualTo(1));
+            Assert.That(row.SentAt, Is.EqualTo(_now));
+            Assert.That(row.AttemptCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task DispatcherUnprotectsSensitiveBodies()
     {
         var protector = _serviceProvider.GetRequiredService<ISecretProtector>();
@@ -565,23 +593,25 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     private CancellationTokenSource? _hostedCancellation;
     private int _hostedDeliveredCount;
 
-    private SqliteEmailOutboxDispatcher<TestTransport> BuildDispatcher(
-        TestTransport transport,
+    private SqliteEmailOutboxDispatcher<TTransport> BuildDispatcher<TTransport>(
+        TTransport transport,
         SqliteEmailOutboxOptions? options = null,
         ISecretProtector? secretProtector = null)
+        where TTransport : class, IEmailTransport
     {
         var provider = BuildDispatcherProvider(transport, options, secretProtector: secretProtector);
-        return new SqliteEmailOutboxDispatcher<TestTransport>(
+        return new SqliteEmailOutboxDispatcher<TTransport>(
             provider,
             _timeProvider,
             Options.Create(options ?? new SqliteEmailOutboxOptions()));
     }
 
-    private ServiceProvider BuildDispatcherProvider(
-        TestTransport transport,
+    private ServiceProvider BuildDispatcherProvider<TTransport>(
+        TTransport transport,
         SqliteEmailOutboxOptions? options = null,
         bool trackForTearDown = true,
         ISecretProtector? secretProtector = null)
+        where TTransport : class, IEmailTransport
     {
         var services = new ServiceCollection();
         services.AddAshlarSqlite(GetConnectionString());
@@ -592,7 +622,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             services.AddSingleton(secretProtector);
         }
 
-        services.AddAshlarSqliteEmailOutboxDispatcher<TestTransport>(_ =>
+        services.AddAshlarSqliteEmailOutboxDispatcher<TTransport>(_ =>
         {
             if (options != null)
             {
@@ -693,6 +723,25 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             Interlocked.Increment(ref _deliveredCount);
             _messages.Add(message);
             return OnDeliver(message, cancellationToken);
+        }
+    }
+
+    private sealed class BlockingFirstEmailTransport(
+        TaskCompletionSource firstDeliveryStarted,
+        TaskCompletionSource releaseFirstDelivery)
+        : IEmailTransport
+    {
+        private int _deliveredCount;
+
+        public int DeliveredCount => _deliveredCount;
+
+        public async Task DeliverAsync(EmailMessage message, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _deliveredCount) == 1)
+            {
+                firstDeliveryStarted.TrySetResult();
+                await releaseFirstDelivery.Task;
+            }
         }
     }
 

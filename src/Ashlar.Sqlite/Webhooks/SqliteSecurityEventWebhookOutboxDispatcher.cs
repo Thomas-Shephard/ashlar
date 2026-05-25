@@ -58,7 +58,6 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<SqliteSecurityEventWebhookOutboxDispatcher> _logger;
     private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver;
-    private readonly string _lockId = Guid.NewGuid().ToString("D");
 
     /// <summary>
     /// Initializes a new instance of the dispatcher class.
@@ -102,16 +101,17 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
             throw new InvalidOperationException("Security event webhook outbox options are invalid.");
         }
 
+        var lockId = Guid.NewGuid().ToString("D");
         return await SqliteOutboxDispatch.ProcessBatchAsync(
             new SqliteOutboxProcessContext<AshlarSecurityEventWebhookOutboxEntry>(
                 _serviceProvider,
                 ClaimSql,
-                _lockId,
+                lockId,
                 _timeProvider,
                 _options.LockDuration,
                 _options.BatchSize,
                 LoadClaimedEntriesAsync,
-                ProcessEntryAsync),
+                (entry, provider, token) => ProcessEntryAsync(entry, provider, lockId, token)),
             cancellationToken);
     }
 
@@ -152,7 +152,7 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
         return entries;
     }
 
-    private async Task ProcessEntryAsync(AshlarSecurityEventWebhookOutboxEntry entry, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task ProcessEntryAsync(AshlarSecurityEventWebhookOutboxEntry entry, IServiceProvider provider, string lockId, CancellationToken cancellationToken)
     {
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
             entry,
@@ -160,22 +160,22 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
                 _httpClientFactory,
                 HttpClientName,
                 _options.MaxAttempts,
-                (id, token) => MarkAsSentAsync(id, provider, token),
-                (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, token),
+                (id, token) => MarkAsSentAsync(id, provider, lockId, token),
+                (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, lockId, token),
                 (id, attemptCount, finalFailure, exception) => SqliteSecurityEventWebhookOutboxDispatcherLog.WebhookDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
                 _deliveryObserver),
             cancellationToken);
     }
 
-    private async Task MarkAsSentAsync(Guid id, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task MarkAsSentAsync(Guid id, IServiceProvider provider, string lockId, CancellationToken cancellationToken)
     {
         await SqliteOutboxDispatch.MarkAsSentAsync(
-            new SqliteOutboxSentUpdateContext(provider, MarkAsSentSql, _lockId, _timeProvider.GetUtcNow()),
+            new SqliteOutboxSentUpdateContext(provider, MarkAsSentSql, lockId, _timeProvider.GetUtcNow()),
             id,
             cancellationToken);
     }
 
-    private async Task MarkAsFailedAsync(AshlarSecurityEventWebhookOutboxEntry entry, Exception exception, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task MarkAsFailedAsync(AshlarSecurityEventWebhookOutboxEntry entry, Exception exception, IServiceProvider provider, string lockId, CancellationToken cancellationToken)
     {
         var now = _timeProvider.GetUtcNow();
         var failure = AshlarSecurityEventWebhookOutboxDispatch.CreateFailureUpdate(
@@ -186,7 +186,7 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
             exception);
 
         await SqliteOutboxDispatch.MarkAsFailedAsync(
-            new SqliteOutboxFailedUpdateContext(provider, MarkAsFailedSql, _lockId, now),
+            new SqliteOutboxFailedUpdateContext(provider, MarkAsFailedSql, lockId, now),
             entry.Id,
             new SqliteOutboxFailureUpdate(failure.AttemptCount, failure.FailedAt, failure.AvailableAt, failure.LastError),
             cancellationToken);

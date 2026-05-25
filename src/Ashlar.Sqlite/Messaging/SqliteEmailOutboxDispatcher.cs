@@ -63,7 +63,6 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     private readonly SqliteEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
     private readonly ILogger<SqliteEmailOutboxDispatcher<TTransport>> _logger = logger ?? NullLogger<SqliteEmailOutboxDispatcher<TTransport>>.Instance;
-    private readonly string _lockId = Guid.NewGuid().ToString("D");
 
     /// <summary>
     /// Processes a single batch of pending email messages.
@@ -77,16 +76,17 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
             throw new InvalidOperationException("Email outbox options are invalid.");
         }
 
+        var lockId = Guid.NewGuid().ToString("D");
         return await SqliteOutboxDispatch.ProcessBatchAsync(
             new SqliteOutboxProcessContext<EmailOutboxEntry>(
                 _serviceProvider,
                 ClaimSql,
-                _lockId,
+                lockId,
                 _timeProvider,
                 _options.LockDuration,
                 _options.BatchSize,
                 LoadClaimedEntriesAsync,
-                ProcessEntryAsync),
+                (entry, provider, token) => ProcessEntryAsync(entry, provider, lockId, token)),
             cancellationToken);
     }
 
@@ -151,30 +151,30 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
         return entries;
     }
 
-    private async Task ProcessEntryAsync(EmailOutboxEntry entry, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task ProcessEntryAsync(EmailOutboxEntry entry, IServiceProvider provider, string lockId, CancellationToken cancellationToken)
     {
         await EmailOutboxDispatch.DispatchAsync(
             entry,
             new EmailOutboxDispatchContext(
                 provider.GetRequiredService<TTransport>(),
                 _options.MaxAttempts,
-                (id, token) => MarkAsSentAsync(id, provider, token),
-                (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, token),
+                (id, token) => MarkAsSentAsync(id, provider, lockId, token),
+                (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, lockId, token),
                 (id, attemptCount, finalFailure, exception) =>
                     SqliteEmailOutboxDispatcherLog.EmailOutboxDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
                 provider.GetService<ISecretProtector>()),
             cancellationToken);
     }
 
-    private async Task MarkAsSentAsync(Guid id, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task MarkAsSentAsync(Guid id, IServiceProvider provider, string lockId, CancellationToken cancellationToken)
     {
         await SqliteOutboxDispatch.MarkAsSentAsync(
-            new SqliteOutboxSentUpdateContext(provider, MarkAsSentSql, _lockId, _timeProvider.GetUtcNow()),
+            new SqliteOutboxSentUpdateContext(provider, MarkAsSentSql, lockId, _timeProvider.GetUtcNow()),
             id,
             cancellationToken);
     }
 
-    private async Task MarkAsFailedAsync(EmailOutboxEntry entry, Exception exception, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task MarkAsFailedAsync(EmailOutboxEntry entry, Exception exception, IServiceProvider provider, string lockId, CancellationToken cancellationToken)
     {
         var now = _timeProvider.GetUtcNow();
         var failure = EmailOutboxDispatch.CreateFailureUpdate(
@@ -186,7 +186,7 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
             EmailOutboxDispatch.ShouldSuppressFailureDetails(entry));
 
         await SqliteOutboxDispatch.MarkAsFailedAsync(
-            new SqliteOutboxFailedUpdateContext(provider, MarkAsFailedSql, _lockId, now),
+            new SqliteOutboxFailedUpdateContext(provider, MarkAsFailedSql, lockId, now),
             entry.Id,
             new SqliteOutboxFailureUpdate(failure.AttemptCount, failure.FailedAt, failure.AvailableAt, failure.LastError),
             cancellationToken);

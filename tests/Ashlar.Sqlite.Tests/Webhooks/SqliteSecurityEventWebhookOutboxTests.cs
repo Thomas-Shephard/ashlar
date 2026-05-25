@@ -143,6 +143,35 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     }
 
     [Test]
+    public async Task DispatcherConcurrentCallsOnSameInstanceDoNotSendSameWebhookTwice()
+    {
+        var firstSendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstSend = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var transport = new BlockingFirstHttpMessageHandler(firstSendStarted, releaseFirstSend);
+        await EnqueueAsync(CreateDelivery());
+        var dispatcher = CreateDispatcher(transport);
+
+        var first = dispatcher.ProcessBatchAsync();
+        await firstSendStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var second = await dispatcher.ProcessBatchAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+        releaseFirstSend.SetResult();
+        var firstCount = await first.WaitAsync(TimeSpan.FromSeconds(5));
+        var row = await QuerySingleOutboxRowAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstCount, Is.EqualTo(1));
+            Assert.That(second, Is.Zero);
+            Assert.That(firstCount + second, Is.EqualTo(1));
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+            Assert.That(row.SentAt, Is.EqualTo(_now));
+            Assert.That(row.AttemptCount, Is.EqualTo(1));
+            Assert.That(row.LockedBy, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task DispatcherReportsDeliveryObserver()
     {
         var observer = new RecordingDeliveryObserver();
@@ -711,6 +740,44 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Requests.Add(await RecordedRequest.CreateAsync(request, cancellationToken));
             OnRequest?.Invoke();
             return new HttpResponseMessage(statusCode);
+        }
+    }
+
+    private sealed class BlockingFirstHttpMessageHandler(
+        TaskCompletionSource firstSendStarted,
+        TaskCompletionSource releaseFirstSend)
+        : HttpMessageHandler
+    {
+        private readonly object _requestsGate = new();
+        private int _requestCount;
+        private readonly List<RecordedRequest> _requests = [];
+
+        public IReadOnlyList<RecordedRequest> Requests
+        {
+            get
+            {
+                lock (_requestsGate)
+                {
+                    return _requests.ToArray();
+                }
+            }
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var recordedRequest = await RecordedRequest.CreateAsync(request, cancellationToken);
+            lock (_requestsGate)
+            {
+                _requests.Add(recordedRequest);
+            }
+
+            if (Interlocked.Increment(ref _requestCount) == 1)
+            {
+                firstSendStarted.TrySetResult();
+                await releaseFirstSend.Task;
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.Accepted);
         }
     }
 
