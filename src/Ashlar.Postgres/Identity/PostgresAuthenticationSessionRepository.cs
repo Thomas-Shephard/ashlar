@@ -405,7 +405,7 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         return new AuthenticationSession
         {
             Id = (Guid)values["Id"]!,
-            UserId = GetRequired<Guid>(values, UserIdParameterName),
+            UserId = GetRequiredGuid(values, UserIdParameterName),
             TenantId = ToNullableGuid(values["TenantId"]),
             TokenHash = (string)values["TokenHash"]!,
             CreatedAt = ToDateTimeOffset(values["CreatedAt"]!),
@@ -424,9 +424,11 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         };
     }
 
-    private static T GetRequired<T>(Dictionary<string, object?> values, string name)
+    private static Guid GetRequiredGuid(Dictionary<string, object?> values, string name)
     {
-        return values[name] is T value ? value : throw new InvalidOperationException($"Column '{name}' was null or had an unexpected type.");
+        var value = values[name];
+        ArgumentNullException.ThrowIfNull(value);
+        return (Guid)value;
     }
 
     private static DateTimeOffset ToDateTimeOffset(object value)
