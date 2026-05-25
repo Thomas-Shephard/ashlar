@@ -141,6 +141,8 @@ By default, provider callback paths are:
 For example, register `https://localhost:5001/signin-oidc/Google` with Google for local development.
 For GitHub, register `https://localhost:5001/signin-oauth/GitHub`.
 
+The temporary external OAuth/OIDC cookie that carries callback tickets is secure-only. Real provider callbacks, including local development callbacks, should use HTTPS URLs like the examples above.
+
 Start an external OIDC challenge with the provider scheme:
 
 ```csharp

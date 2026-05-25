@@ -57,6 +57,7 @@ public static class AshlarOAuthServiceCollectionExtensions
         authenticationBuilder.AddCookie(options.ExternalSignInScheme, cookieOptions =>
         {
             cookieOptions.Cookie.HttpOnly = true;
+            cookieOptions.Cookie.SecurePolicy = CookieSecurePolicy.Always;
             cookieOptions.Cookie.SameSite = SameSiteMode.Lax;
             cookieOptions.ExpireTimeSpan = TimeSpan.FromMinutes(5);
             cookieOptions.SlidingExpiration = false;
