@@ -21,11 +21,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-        run: |
-          auto_merge_enabled="$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')"
-
-          if [[ "$auto_merge_enabled" == "true" ]]; then
-            exit 0
-          fi
-
-          gh pr merge "$PR_URL" --auto --squash
+        run: gh pr merge "$PR_URL" --auto --squash
