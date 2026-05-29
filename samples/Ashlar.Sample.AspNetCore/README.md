@@ -143,15 +143,33 @@ The sample calls `InitializeAshlarPostgresSchemaAsync()` at startup. When using 
 
 ## Running
 
+Configure a local bootstrap setup secret before starting the app. The sample project includes a `UserSecretsId`, so this writes to your local profile and does not modify repository files:
+
 ```bash
+dotnet user-secrets set "Ashlar:Bootstrap:SetupSecret" "<local-setup-secret>" --project samples/Ashlar.Sample.AspNetCore/Ashlar.Sample.AspNetCore.csproj
+```
+
+Then run the sample:
+
+```powershell
 dotnet run --project samples/Ashlar.Sample.AspNetCore/Ashlar.Sample.AspNetCore.csproj
 ```
+
+Ashlar hashes this secret for bootstrap authorization and the sample never returns or logs it.
+
+Equivalent environment variables are:
+
+```text
+Ashlar__Bootstrap__SetupSecret=<local-setup-secret>
+```
+
+The sample fails fast at startup if `Ashlar:Bootstrap:SetupSecret` is not configured, because first-admin bootstrap intentionally has no insecure fallback.
 
 ## Walkthrough
 
 Navigate to `http://localhost:5000` in your browser.
 
-1. **Bootstrap**: Since the system starts uninitialized, you will see a bootstrap form. Enter an email and username to initialize the system and automatically sign in as the first administrator.
+1. **Bootstrap**: Since the system starts uninitialized, you will see a bootstrap form. Enter an email, username, and the configured setup secret to initialize the system and automatically sign in as the first administrator.
 2. **Dashboard**: Once signed in, you can view your project access and navigate to account or administration tasks.
 3. **Authenticator app**: Go to Account → Security to enroll in TOTP. A QR code will be generated for your authenticator app. After verifying your first code, you can also generate recovery codes. When the sample asks for additional verification after magic-link sign-in, the current policy accepts an authenticator app code or recovery code.
 4. **Step-up verification**: Sensitive account operations require fresh MFA. When a protected action needs step-up, the sample opens a modal for an authenticator app code or recovery code. Successful verification marks only the current Ashlar session fresh.

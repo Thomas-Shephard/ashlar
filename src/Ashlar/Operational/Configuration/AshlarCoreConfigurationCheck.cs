@@ -8,6 +8,7 @@ using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Ashlar.Operational.Configuration;
 
@@ -123,7 +124,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             issues,
             AshlarConfigurationIssueCodes.InvitationRepositoryMissing,
             "Invitation persistence is not configured.",
-            "Register an IInvitationRepository implementation before using Ashlar invitations or bootstrap flows.",
+            "Register an IInvitationRepository implementation before using Ashlar invitations.",
             "Invitation persistence",
             typeof(IInvitationService));
 
@@ -150,7 +151,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             issues,
             AshlarConfigurationIssueCodes.AuthorizationGrantRepositoryMissing,
             "Authorization grant persistence is not configured.",
-            "Register an IAuthorizationGrantRepository implementation before using Ashlar authorization grants or bootstrap flows.",
+            "Register an IAuthorizationGrantRepository implementation before using Ashlar authorization grants, including bootstrap grant assignment.",
             "Authorization persistence",
             typeof(IAuthorizationGrantService),
             typeof(IAuthorizationEvaluator));
@@ -175,6 +176,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
         AddInMemoryRateLimiterIssue(serviceProvider, issues);
         AddInMemorySecurityNotificationSuppressionStoreIssue(serviceProvider, issues);
         AddNullTransactionProviderIssue(serviceProvider, issues);
+        AddBootstrapOptionIssues(serviceProvider, issues);
     }
 
     private static void AddMissingServiceIssue<TService>(
@@ -305,6 +307,58 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
                 ? "Register a durable IAshlarTransactionProvider that coordinates the configured repositories."
                 : "No durable repository setup was detected. Review this before using Ashlar with persistent data.",
             "Transactions"));
+    }
+
+    private static void AddBootstrapOptionIssues(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
+    {
+        if (!serviceProvider.IsServiceRegistered<IBootstrapService>())
+        {
+            return;
+        }
+
+        var options = GetBootstrapOptions(serviceProvider, issues);
+        if (options is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(options.SetupSecret))
+        {
+            issues.Add(new AshlarConfigurationIssue(
+                AshlarConfigurationIssueCodes.BootstrapSetupAuthorizationMissing,
+                AshlarConfigurationIssueSeverity.Error,
+                "Bootstrap setup authorization is required but no setup secret is configured.",
+                "Configure BootstrapOptions.SetupSecret with an operator-controlled setup secret.",
+                "Bootstrap authorization"));
+        }
+
+        if (options.Grants.Count > 0 && !serviceProvider.IsServiceRegistered<IAuthorizationGrantService>())
+        {
+            issues.Add(new AshlarConfigurationIssue(
+                AshlarConfigurationIssueCodes.BootstrapGrantServiceMissing,
+                AshlarConfigurationIssueSeverity.Error,
+                "Bootstrap grants are configured but authorization services are not registered.",
+                "Register Ashlar authorization services before assigning grants during bootstrap, or remove BootstrapOptions.Grants.",
+                "Bootstrap authorization"));
+        }
+    }
+
+    private static BootstrapOptions? GetBootstrapOptions(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
+    {
+        try
+        {
+            return serviceProvider.GetService<IOptions<BootstrapOptions>>()?.Value ?? new BootstrapOptions();
+        }
+        catch (OptionsValidationException)
+        {
+            issues.Add(new AshlarConfigurationIssue(
+                AshlarConfigurationIssueCodes.BootstrapOptionsInvalid,
+                AshlarConfigurationIssueSeverity.Error,
+                "Bootstrap options are invalid.",
+                "Fix BootstrapOptions so each grant has exactly one role or permission and complete scope settings.",
+                "Bootstrap authorization"));
+            return null;
+        }
     }
 }
 

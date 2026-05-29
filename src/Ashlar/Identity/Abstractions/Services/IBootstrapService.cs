@@ -13,19 +13,11 @@ public interface IBootstrapService
     Task<BootstrapStatus> GetStatusAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Creates the one-time bootstrap invitation token.
+    /// Bootstraps the first administrator and marks the installation initialized.
     /// </summary>
-    /// <param name="request">The bootstrap invitation details.</param>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
-    /// <returns>The raw bootstrap invitation token when creation succeeds.</returns>
-    Task<Result<string>> CreateBootstrapInvitationAsync(CreateBootstrapInvitationRequest request, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Accepts the bootstrap invitation and marks the installation initialized.
-    /// </summary>
-    /// <param name="request">The invitation acceptance details.</param>
+    /// <param name="request">The first-admin bootstrap details.</param>
     /// <param name="context">Optional request context for auditing and notifications.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>The created user ID when bootstrap succeeds.</returns>
-    Task<Result<Guid>> AcceptBootstrapInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
+    Task<Result<Guid>> BootstrapFirstAdminAsync(BootstrapFirstAdminRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 }

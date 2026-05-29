@@ -57,6 +57,25 @@ internal sealed class RateLimitedOptionsValidationTests
     }
 
     [Test]
+    public void BootstrapOptionsValidateAllInvalidShapes()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BootstrapOptions.Validate(new BootstrapOptions()), Is.True);
+            Assert.That(BootstrapOptions.Validate(null), Is.False);
+            Assert.That(BootstrapOptions.Validate(new BootstrapOptions { Grants = null! }), Is.False);
+            Assert.That(BootstrapOptions.Validate(new BootstrapOptions { AttemptRateLimit = null! }), Is.False);
+            Assert.That(BootstrapOptions.Validate(new BootstrapOptions { AttemptRateLimit = InvalidRule() }), Is.False);
+            Assert.That(BootstrapOptions.Validate(new BootstrapOptions { Grants = [null!] }), Is.False);
+            Assert.That(BootstrapOptions.Validate(new BootstrapOptions { Grants = [new BootstrapGrantTemplate()] }), Is.False);
+            Assert.That(BootstrapOptions.Validate(new BootstrapOptions { Grants = [new BootstrapGrantTemplate { Role = "admin", Permission = "manage" }] }), Is.False);
+            Assert.That(BootstrapOptions.Validate(new BootstrapOptions { Grants = [new BootstrapGrantTemplate { Role = "admin", ScopeType = "project" }] }), Is.False);
+            Assert.That(BootstrapOptions.Validate(new BootstrapOptions { Grants = [new BootstrapGrantTemplate { Permission = "manage", ScopeId = "alpha" }] }), Is.False);
+            Assert.That(BootstrapOptions.Validate(new BootstrapOptions { Grants = [new BootstrapGrantTemplate { Role = "admin", ScopeType = "project", ScopeId = "alpha" }] }), Is.True);
+        }
+    }
+
+    [Test]
     public void RecoveryCodeOptionsValidateAllInvalidShapes()
     {
         using (Assert.EnterMultipleScope())

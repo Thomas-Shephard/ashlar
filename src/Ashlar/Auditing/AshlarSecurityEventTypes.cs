@@ -214,9 +214,9 @@ public static class AshlarSecurityEventTypes
     /// </summary>
     public const string PasskeyRevoked = "ashlar.passkey.revoked";
     /// <summary>
-    /// Defines the bootstrap invitation created value.
+    /// Defines the bootstrap first-admin setup requested value.
     /// </summary>
-    public const string BootstrapInvitationCreated = "ashlar.bootstrap.invitation.created";
+    public const string BootstrapRequested = "ashlar.bootstrap.requested";
     /// <summary>
     /// Defines the bootstrap completed value.
     /// </summary>

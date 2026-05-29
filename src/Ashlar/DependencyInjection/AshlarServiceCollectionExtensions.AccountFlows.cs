@@ -57,9 +57,8 @@ public static partial class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarIdentity();
-        services.AddAshlarInvitations();
-        services.AddAshlarAuthorization();
-        services.AddOptions();
+        services.AddOptions<BootstrapOptions>()
+            .Validate(BootstrapOptions.Validate, "Bootstrap options are invalid.");
         if (configure != null)
         {
             services.Configure(configure);

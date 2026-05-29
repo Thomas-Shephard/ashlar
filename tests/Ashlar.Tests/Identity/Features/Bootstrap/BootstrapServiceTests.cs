@@ -2,6 +2,9 @@ using System.Diagnostics.CodeAnalysis;
 using Ashlar.Auditing;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
+using Ashlar.Identity.Notifications;
+using Ashlar.Identity.RateLimiting.Abstractions;
+using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
@@ -12,62 +15,55 @@ namespace Ashlar.Tests.Identity.Features.Bootstrap;
 [TestFixture]
 internal sealed class BootstrapServiceTests
 {
+    private const string SetupSecret = "operator-setup-secret";
+    private const string SetupSecretHash = "sha256:setup-secret-hash";
+    private const string WrongSetupSecret = "wrong-setup-secret";
+
     private Mock<IBootstrapStateRepository> _stateRepository;
-    private Mock<IInvitationService> _invitationService;
-    private Mock<IInvitationRepository> _invitationRepository;
     private Mock<IUserRepository> _userRepository;
     private Mock<IAshlarTransactionProvider> _transactionProvider;
     private Mock<IAuthorizationGrantService> _grantService;
+    private Mock<IAuthenticationRateLimiter> _rateLimiter;
     private Mock<ISecureTokenGenerator> _tokenGenerator;
     private Mock<ISecureTokenHasher> _tokenHasher;
-    private Mock<IUriValidator> _uriValidator;
     private FakeTimeProvider _timeProvider;
     private Mock<ISecurityEventSink> _securityEventSink;
     private BootstrapOptions _options;
-    private InvitationDependencies _dependencies;
+    private SecureTokenContext _tokenContext;
+    private IdentityAuditContext _auditContext;
     private BootstrapService _service;
 
     [SetUp]
     public void SetUp()
     {
         _stateRepository = new Mock<IBootstrapStateRepository>();
-        _invitationService = new Mock<IInvitationService>();
-        _invitationRepository = new Mock<IInvitationRepository>();
         _userRepository = new Mock<IUserRepository>();
         _transactionProvider = new Mock<IAshlarTransactionProvider>();
         _grantService = new Mock<IAuthorizationGrantService>();
+        _rateLimiter = new Mock<IAuthenticationRateLimiter>();
         _tokenGenerator = new Mock<ISecureTokenGenerator>();
         _tokenHasher = new Mock<ISecureTokenHasher>();
-        _uriValidator = new Mock<IUriValidator>();
         _timeProvider = new FakeTimeProvider();
         _securityEventSink = new Mock<ISecurityEventSink>();
-        _options = new BootstrapOptions();
+        _options = new BootstrapOptions { SetupSecret = SetupSecret };
 
-        var infrastructure = new IdentityInfrastructureContext(
-            Mock.Of<Ashlar.Messaging.IEmailSender>(),
-            Mock.Of<Ashlar.Identity.RateLimiting.Abstractions.IAuthenticationRateLimiter>(),
-            _uriValidator.Object);
-        var audit = new IdentityAuditContext(_timeProvider, _securityEventSink.Object);
+        _tokenHasher.Setup(h => h.HashToken(SetupSecret)).Returns(SetupSecretHash);
+        _tokenHasher.Setup(h => h.HashToken(WrongSetupSecret)).Returns("sha256:wrong");
+        _tokenHasher.Setup(h => h.HashToken(string.Empty)).Throws(new ArgumentException("Token is required.", "token"));
 
-        _dependencies = new InvitationDependencies(
-            new InvitationStoreContext(_invitationRepository.Object, _userRepository.Object, _transactionProvider.Object),
-            new SecureTokenContext(_tokenGenerator.Object, _tokenHasher.Object),
-            infrastructure,
-            audit);
+        _tokenContext = new SecureTokenContext(_tokenGenerator.Object, _tokenHasher.Object);
+        _auditContext = new IdentityAuditContext(_timeProvider, _securityEventSink.Object);
 
-        _service = new BootstrapService(
-            _stateRepository.Object,
-            _invitationService.Object,
-            _dependencies,
-            _grantService.Object,
-            Options.Create(_options));
+        _service = CreateService();
     }
 
     [Test]
     public async Task GetStatusAsyncReturnsStatusFromRepository()
     {
         _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Initialized);
+
         var status = await _service.GetStatusAsync();
+
         Assert.That(status, Is.EqualTo(BootstrapStatus.Initialized));
     }
 
@@ -79,410 +75,302 @@ internal sealed class BootstrapServiceTests
         {
             Assert.Throws<ArgumentNullException>(() => _ = new BootstrapService(
                 null!,
-                _invitationService.Object,
-                _dependencies,
+                _userRepository.Object,
+                _transactionProvider.Object,
+                _tokenContext,
+                _auditContext,
                 _grantService.Object,
                 Options.Create(_options)));
             Assert.Throws<ArgumentNullException>(() => _ = new BootstrapService(
                 _stateRepository.Object,
                 null!,
-                _dependencies,
+                _transactionProvider.Object,
+                _tokenContext,
+                _auditContext,
                 _grantService.Object,
                 Options.Create(_options)));
             Assert.Throws<ArgumentNullException>(() => _ = new BootstrapService(
                 _stateRepository.Object,
-                _invitationService.Object,
+                _userRepository.Object,
                 null!,
+                _tokenContext,
+                _auditContext,
                 _grantService.Object,
                 Options.Create(_options)));
             Assert.Throws<ArgumentNullException>(() => _ = new BootstrapService(
                 _stateRepository.Object,
-                _invitationService.Object,
-                _dependencies,
+                _userRepository.Object,
+                _transactionProvider.Object,
                 null!,
+                _auditContext,
+                _grantService.Object,
+                Options.Create(_options)));
+            Assert.Throws<ArgumentNullException>(() => _ = new BootstrapService(
+                _stateRepository.Object,
+                _userRepository.Object,
+                _transactionProvider.Object,
+                _tokenContext,
+                null!,
+                _grantService.Object,
                 Options.Create(_options)));
         }
     }
 
     [Test]
-    public async Task ConstructorUsesDefaultOptionsWhenOptionsAreNull()
+    public void ConstructorThrowsWhenBootstrapGrantsRequireGrantService()
+    {
+        _options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
+
+        var exception = Assert.Throws<InvalidOperationException>(() => _ = CreateService(includeGrantService: false));
+
+        Assert.That(exception?.Message, Does.Contain(nameof(IAuthorizationGrantService)));
+    }
+
+    [Test]
+    public async Task BootstrapFirstAdminAsyncFailsClosedWithDefaultOptions()
     {
         var service = new BootstrapService(
             _stateRepository.Object,
-            _invitationService.Object,
-            _dependencies,
+            _userRepository.Object,
+            _transactionProvider.Object,
+            _tokenContext,
+            _auditContext,
             _grantService.Object);
+        ArrangeBootstrapStatus(BootstrapStatus.Uninitialized);
 
-        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Uninitialized);
-        _tokenGenerator.Setup(g => g.GenerateToken()).Returns("raw-token");
-        _tokenHasher.Setup(h => h.HashToken("raw-token")).Returns("hashed-token");
+        var result = await service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest { Email = "admin@example.com" });
 
-        var transaction = new Mock<IAshlarTransaction>();
-        _transactionProvider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidSecret));
+        }
 
-        var result = await service.CreateBootstrapInvitationAsync(new CreateBootstrapInvitationRequest { Email = "admin@example.com" });
-
-        Assert.That(result.Succeeded, Is.True);
+        _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
-    public async Task CreateBootstrapInvitationAsyncFailsIfAlreadyInitialized()
+    public async Task BootstrapFirstAdminAsyncFailsIfAlreadyInitializedBeforeCreatingUser()
     {
-        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Initialized);
-        var result = await _service.CreateBootstrapInvitationAsync(new CreateBootstrapInvitationRequest { Email = "admin@example.com" });
+        ArrangeBootstrapStatus(BootstrapStatus.Initialized);
+
+        var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest { Email = "admin@example.com", SetupSecret = SetupSecret });
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.AlreadyInitialized));
         }
+
+        _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
+        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.BootstrapRequested &&
+            e.FailureReason == AshlarFailureCodes.AlreadyInitialized.Value), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task CreateBootstrapInvitationAsyncSucceedsAndReturnsToken()
+    public async Task BootstrapFirstAdminAsyncDoesNotStoreAlreadyInitializedEmailInAuditWhenDisabled()
     {
-        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Uninitialized);
-        _tokenGenerator.Setup(g => g.GenerateToken()).Returns("raw-token");
-        _tokenHasher.Setup(h => h.HashToken("raw-token")).Returns("hashed-token");
+        _options.StoreEmailInAudit = false;
+        ArrangeBootstrapStatus(BootstrapStatus.Initialized);
 
-        var transaction = new Mock<IAshlarTransaction>();
-        _transactionProvider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
-
-        var request = new CreateBootstrapInvitationRequest { Email = "admin@example.com", Metadata = "{\"existing\":\"data\"}" };
-        var result = await _service.CreateBootstrapInvitationAsync(request);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value, Is.EqualTo("raw-token"));
-        }
-
-        _invitationRepository.Verify(r => r.CreateInvitationAsync(It.Is<UserInvitation>(i =>
-            i.Email == "admin@example.com" &&
-            i.TokenHash == "hashed-token" &&
-            i.Metadata != null &&
-            i.Metadata.Contains("ashlar.bootstrap") &&
-            i.Metadata.Contains("existing")), It.IsAny<CancellationToken>()), Times.Once);
-
-        transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Test]
-    public void CreateBootstrapInvitationAsyncRejectsEmailWithLineBreaks()
-    {
-        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Uninitialized);
-
-        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateBootstrapInvitationAsync(new CreateBootstrapInvitationRequest
-        {
-            Email = "admin@example.com\r\nBcc: attacker@example.com"
-        }));
-
-        _invitationRepository.Verify(r => r.CreateInvitationAsync(It.IsAny<UserInvitation>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Test]
-    public async Task CreateBootstrapInvitationAsyncUsesRequestedExpiry()
-    {
-        _timeProvider.SetUtcNow(new DateTimeOffset(2026, 5, 9, 10, 0, 0, TimeSpan.Zero));
-        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Uninitialized);
-        _tokenGenerator.Setup(g => g.GenerateToken()).Returns("raw-token");
-        _tokenHasher.Setup(h => h.HashToken("raw-token")).Returns("hashed-token");
-
-        var transaction = new Mock<IAshlarTransaction>();
-        _transactionProvider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
-
-        var requestedExpiry = TimeSpan.FromHours(2);
-        await _service.CreateBootstrapInvitationAsync(new CreateBootstrapInvitationRequest
+        await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
         {
             Email = "admin@example.com",
-            Expiry = requestedExpiry
+            SetupSecret = SetupSecret
         });
 
-        _invitationRepository.Verify(r => r.CreateInvitationAsync(It.Is<UserInvitation>(i =>
-            i.ExpiresAt == _timeProvider.GetUtcNow().Add(requestedExpiry)), It.IsAny<CancellationToken>()), Times.Once);
+        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.BootstrapRequested &&
+            e.Properties != null &&
+            !e.Properties.ContainsKey("email")), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task CreateBootstrapInvitationAsyncFailsWithInvalidExistingMetadata()
+    public async Task BootstrapFirstAdminAsyncStoresAlreadyInitializedEmailInAuditByDefault()
     {
-        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Uninitialized);
-        _tokenGenerator.Setup(g => g.GenerateToken()).Returns("raw-token");
-        _tokenHasher.Setup(h => h.HashToken("raw-token")).Returns("hashed-token");
+        ArrangeBootstrapStatus(BootstrapStatus.Initialized);
 
-        var request = new CreateBootstrapInvitationRequest { Email = "admin@example.com", Metadata = "invalid-json" };
-        var result = await _service.CreateBootstrapInvitationAsync(request);
+        await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "Admin@Example.com",
+            SetupSecret = SetupSecret
+        });
+
+        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.BootstrapRequested &&
+            e.Properties != null &&
+            e.Properties.ContainsKey("email") &&
+            e.Properties["email"] == "Admin@Example.com"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task BootstrapFirstAdminAsyncFailsWithMissingSetupAuthorizationWithoutMutatingUsers()
+    {
+        ArrangeBootstrapStatus(BootstrapStatus.Uninitialized);
+
+        var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com"
+        });
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidMetadataFormat));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidSecret));
         }
-        _transactionProvider.Verify(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
-        _invitationRepository.Verify(r => r.CreateInvitationAsync(It.IsAny<UserInvitation>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
+        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.BootstrapRequested &&
+            e.FailureReason == SecurityEventFailureReasons.BootstrapSetupAuthorizationInvalid), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task AcceptBootstrapInvitationAsyncFailsWithInvalidMetadataJson()
+    public async Task BootstrapFirstAdminAsyncFailsWhenConfiguredSetupSecretIsBlankEvenIfSuppliedSecretIsBlank()
     {
-        var invitation = new UserInvitation
+        _options.SetupSecret = string.Empty;
+        _tokenHasher.Setup(h => h.HashToken(string.Empty)).Returns("sha256:empty");
+        ArrangeBootstrapStatus(BootstrapStatus.Uninitialized);
+
+        var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
         {
-            Id = Guid.NewGuid(),
             Email = "admin@example.com",
-            TokenHash = "hashed",
-            CreatedAt = _timeProvider.GetUtcNow(),
-            ExpiresAt = _timeProvider.GetUtcNow().AddDays(1),
-            Version = "1",
-            Metadata = "not-json"
-        };
-        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
-        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
-
-        var actorUserId = Guid.NewGuid();
-        var context = new AuthenticationContext(
-            UserId: actorUserId,
-            IpAddress: "203.0.113.10",
-            UserAgent: "bootstrap-agent",
-            CorrelationId: "bootstrap-correlation");
-
-        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" }, context);
+            SetupSecret = string.Empty
+        });
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.NotBootstrapInvitation));
-        }
-    }
-
-    [Test]
-    public async Task AcceptBootstrapInvitationAsyncFailsIfInvitationNotFound()
-    {
-        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
-        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync((UserInvitation?)null);
-        var contextTenantId = Guid.NewGuid();
-
-        var result = await _service.AcceptBootstrapInvitationAsync(
-            new AcceptInvitationRequest { Token = "token" },
-            new AuthenticationContext(TenantId: contextTenantId));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidSecret));
         }
 
+        _tokenHasher.Verify(h => h.HashToken(string.Empty), Times.Never);
+        _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
         _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
-            e.EventType == AshlarSecurityEventTypes.BootstrapCompleted &&
-            e.Outcome == SecurityEventOutcomes.Failure &&
-            e.TenantId == contextTenantId), It.IsAny<CancellationToken>()), Times.Once);
+            e.EventType == AshlarSecurityEventTypes.BootstrapRequested &&
+            e.FailureReason == SecurityEventFailureReasons.BootstrapSetupAuthorizationMissing), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task AcceptBootstrapInvitationAsyncReturnsInvalidInvitationForOverlongTokenWithoutMutatingState()
+    public async Task BootstrapFirstAdminAsyncFailsWithWrongSetupAuthorizationWithoutMutatingUsers()
     {
-        var overlongToken = new string('a', 257);
-        var contextTenantId = Guid.NewGuid();
-        _tokenHasher.Setup(h => h.HashToken(overlongToken)).Throws(new ArgumentException("Token exceeds maximum allowed length.", "token"));
+        ArrangeBootstrapStatus(BootstrapStatus.Uninitialized);
 
-        var result = await _service.AcceptBootstrapInvitationAsync(
-            new AcceptInvitationRequest { Token = overlongToken },
-            new AuthenticationContext(TenantId: contextTenantId));
+        var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            SetupSecret = WrongSetupSecret
+        });
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidSecret));
         }
 
-        _invitationRepository.Verify(r => r.GetInvitationByTokenHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        _invitationService.Verify(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext>(), It.IsAny<CancellationToken>()), Times.Never);
-        _stateRepository.Verify(r => r.MarkAsInitializedAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
         _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
-            e.EventType == AshlarSecurityEventTypes.BootstrapCompleted &&
-            e.Outcome == SecurityEventOutcomes.Failure &&
-            e.FailureReason == AshlarFailureCodes.InvalidInvitation.Value &&
-            e.TenantId == contextTenantId), It.IsAny<CancellationToken>()), Times.Once);
+            e.EventType == AshlarSecurityEventTypes.BootstrapRequested &&
+            e.FailureReason == SecurityEventFailureReasons.BootstrapSetupAuthorizationInvalid), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task AcceptBootstrapInvitationAsyncUsesNullTenantForOverlongTokenWithoutContext()
+    public async Task BootstrapFirstAdminAsyncFailsBeforeSetupAuthorizationWhenRateLimited()
     {
-        var overlongToken = new string('a', 257);
-        _tokenHasher.Setup(h => h.HashToken(overlongToken)).Throws(new ArgumentException("Token exceeds maximum allowed length.", "token"));
+        ArrangeBootstrapStatus(BootstrapStatus.Uninitialized);
+        _rateLimiter
+            .Setup(l => l.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RateLimitDecision
+            {
+                Status = RateLimitStatus.Blocked,
+                Remaining = 0,
+                WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(15)
+            });
+        var service = CreateService(rateLimiter: _rateLimiter.Object);
 
-        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = overlongToken });
+        var result = await service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            SetupSecret = SetupSecret
+        }, new AuthenticationContext(IpAddress: "203.0.113.10"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.RateLimited));
         }
 
+        _tokenHasher.Verify(h => h.HashToken(SetupSecret), Times.Never);
+        _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
         _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
-            e.EventType == AshlarSecurityEventTypes.BootstrapCompleted &&
-            e.Outcome == SecurityEventOutcomes.Failure &&
-            e.FailureReason == AshlarFailureCodes.InvalidInvitation.Value &&
-            e.TenantId == null), It.IsAny<CancellationToken>()), Times.Once);
+            e.EventType == AshlarSecurityEventTypes.BootstrapRequested &&
+            e.FailureReason == AshlarFailureCodes.RateLimited.Value), It.IsAny<CancellationToken>()), Times.Once);
+        _rateLimiter.Verify(l => l.CheckAsync(It.Is<RateLimitAttempt>(a =>
+            a.Purpose == "bootstrap-first-admin" &&
+            a.IpAddress == "203.0.113.10" &&
+            !string.IsNullOrWhiteSpace(a.Key)), It.Is<RateLimitRule>(r => r.PermitLimit == 5), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task AcceptBootstrapInvitationAsyncFailsIfInvitationNotFoundWithoutContext()
+    public async Task BootstrapFirstAdminAsyncChecksSetupAuthorizationWhenRateLimitAllowsAttempt()
     {
-        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
-        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync((UserInvitation?)null);
+        ArrangeBootstrapStatus(BootstrapStatus.Uninitialized);
+        _rateLimiter
+            .Setup(l => l.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RateLimitDecision.Allow());
+        var service = CreateService(rateLimiter: _rateLimiter.Object);
 
-        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" });
+        var result = await service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            SetupSecret = WrongSetupSecret
+        });
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidSecret));
         }
 
-        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
-            e.EventType == AshlarSecurityEventTypes.BootstrapCompleted &&
-            e.Outcome == SecurityEventOutcomes.Failure &&
-            e.TenantId == null), It.IsAny<CancellationToken>()), Times.Once);
+        _rateLimiter.Verify(l => l.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()), Times.Once);
+        _tokenHasher.Verify(h => h.HashToken(WrongSetupSecret), Times.Once);
     }
 
     [Test]
-    public async Task AcceptBootstrapInvitationAsyncUsesInvitationTenantForExpiredInvitationFailure()
+    public void BootstrapFirstAdminAsyncRejectsEmailWithLineBreaks()
+    {
+        ArrangeBootstrapStatus(BootstrapStatus.Uninitialized);
+
+        Assert.ThrowsAsync<ArgumentException>(() => _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com\r\nBcc: attacker@example.com",
+            SetupSecret = SetupSecret
+        }));
+
+        _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public void BootstrapFirstAdminAsyncRejectsEmailWithLineBreaksBeforeInitializedAudit()
+    {
+        ArrangeBootstrapStatus(BootstrapStatus.Initialized);
+
+        Assert.ThrowsAsync<ArgumentException>(() => _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com\r\nBcc: attacker@example.com",
+            SetupSecret = SetupSecret
+        }));
+
+        _securityEventSink.Verify(s => s.RecordAsync(It.IsAny<AshlarSecurityEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task BootstrapFirstAdminAsyncCreatesUserAssignsGrantsAndMarksInitialized()
     {
         var tenantId = Guid.NewGuid();
-        var contextTenantId = Guid.NewGuid();
-        var invitation = new UserInvitation
-        {
-            Id = Guid.NewGuid(),
-            Email = "admin@example.com",
-            TokenHash = "hashed",
-            TenantId = tenantId,
-            CreatedAt = _timeProvider.GetUtcNow().AddDays(-2),
-            ExpiresAt = _timeProvider.GetUtcNow().AddDays(-1),
-            Version = "1",
-            Metadata = "{\"ashlar.bootstrap\": true}"
-        };
-        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
-        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
-
-        var result = await _service.AcceptBootstrapInvitationAsync(
-            new AcceptInvitationRequest { Token = "token" },
-            new AuthenticationContext(TenantId: contextTenantId));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidInvitation));
-        }
-
-        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
-            e.EventType == AshlarSecurityEventTypes.BootstrapCompleted &&
-            e.Outcome == SecurityEventOutcomes.Failure &&
-            e.TenantId == tenantId), It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Test]
-    public async Task AcceptBootstrapInvitationAsyncFailsIfNotBootstrapInvitation()
-    {
-        var invitation = new UserInvitation
-        {
-            Id = Guid.NewGuid(),
-            Email = "test@example.com",
-            TokenHash = "hashed",
-            CreatedAt = _timeProvider.GetUtcNow(),
-            ExpiresAt = _timeProvider.GetUtcNow().AddDays(1),
-            Version = "1",
-            Metadata = "{}"
-        };
-        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
-        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
-
-        var actorUserId = Guid.NewGuid();
-        var context = new AuthenticationContext(
-            UserId: actorUserId,
-            IpAddress: "203.0.113.10",
-            UserAgent: "bootstrap-agent",
-            CorrelationId: "bootstrap-correlation");
-
-        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" }, context);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.NotBootstrapInvitation));
-        }
-    }
-
-    [Test]
-    public async Task AcceptBootstrapInvitationAsyncFailsIfMetadataIsBlank()
-    {
-        var invitation = new UserInvitation
-        {
-            Id = Guid.NewGuid(),
-            Email = "test@example.com",
-            TokenHash = "hashed",
-            CreatedAt = _timeProvider.GetUtcNow(),
-            ExpiresAt = _timeProvider.GetUtcNow().AddDays(1),
-            Version = "1",
-            Metadata = " "
-        };
-        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
-        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
-
-        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" });
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.NotBootstrapInvitation));
-        }
-    }
-
-    [Test]
-    public async Task AcceptBootstrapInvitationAsyncFailsIfAlreadyInitialized()
-    {
-        var invitation = new UserInvitation
-        {
-            Id = Guid.NewGuid(),
-            Email = "test@example.com",
-            TokenHash = "hashed",
-            CreatedAt = _timeProvider.GetUtcNow(),
-            ExpiresAt = _timeProvider.GetUtcNow().AddDays(1),
-            Version = "1",
-            Metadata = "{\"ashlar.bootstrap\": true}"
-        };
-        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
-        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
-        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Initialized);
-
-        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" });
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.AlreadyInitialized));
-        }
-    }
-
-    [Test]
-    public async Task AcceptBootstrapInvitationAsyncSucceedsAndAssignsGrants()
-    {
-        var invitation = new UserInvitation
-        {
-            Id = Guid.NewGuid(),
-            Email = "admin@example.com",
-            TokenHash = "hashed",
-            CreatedAt = _timeProvider.GetUtcNow(),
-            ExpiresAt = _timeProvider.GetUtcNow().AddDays(1),
-            Version = "1",
-            Metadata = "{\"ashlar.bootstrap\": true}"
-        };
-        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
-        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
-        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Uninitialized);
-
-        var userId = Guid.NewGuid();
-        _invitationService.Setup(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(userId));
-
-        _options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
+        var transaction = ArrangeSuccessfulBootstrap();
+        _options.Grants.Add(new BootstrapGrantTemplate { TenantId = tenantId, Role = "admin" });
         _grantService.Setup(s => s.CreateGrantAsync(It.IsAny<CreateAuthorizationGrantRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((CreateAuthorizationGrantRequest request, CancellationToken _) => Result.Success(new AuthorizationGrant
             {
@@ -495,19 +383,113 @@ internal sealed class BootstrapServiceTests
                 Permission = request.Permission,
                 CreatedAt = _timeProvider.GetUtcNow()
             }));
-        _stateRepository.Setup(r => r.MarkAsInitializedAsync(userId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
-
-        var transaction = new Mock<IAshlarTransaction>();
-        _transactionProvider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
-
-        var actorUserId = Guid.NewGuid();
         var context = new AuthenticationContext(
-            UserId: actorUserId,
+            UserId: Guid.NewGuid(),
             IpAddress: "203.0.113.10",
             UserAgent: "bootstrap-agent",
             CorrelationId: "bootstrap-correlation");
 
-        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" }, context);
+        var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "Admin@Example.com",
+            UserName = "Admin",
+            TenantId = tenantId,
+            SetupSecret = SetupSecret
+        }, context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value, Is.Not.EqualTo(Guid.Empty));
+        }
+
+        _userRepository.Verify(r => r.GetUserByEmailAsync("ADMIN@EXAMPLE.COM", tenantId, It.IsAny<CancellationToken>()), Times.Once);
+        _userRepository.Verify(r => r.CreateUserAsync(It.Is<IUser>(u =>
+            u.Id == result.Value &&
+            u.Email == "Admin@Example.com" &&
+            u.Name == "Admin" &&
+            u.IsActive &&
+            HasTenant(u, tenantId) &&
+            u.EmailVerifiedAt == _timeProvider.GetUtcNow()), It.IsAny<CancellationToken>()), Times.Once);
+        _grantService.Verify(s => s.CreateGrantAsync(It.Is<CreateAuthorizationGrantRequest>(r =>
+            r.UserId == result.Value &&
+            r.TenantId == tenantId &&
+            r.Role == "admin" &&
+            r.Audit != null &&
+            r.Audit.ActorUserId == context.UserId &&
+            r.Audit.IpAddress == context.IpAddress &&
+            r.Audit.UserAgent == context.UserAgent &&
+            r.Audit.CorrelationId == context.CorrelationId), It.IsAny<CancellationToken>()), Times.Once);
+        _stateRepository.Verify(r => r.MarkAsInitializedAsync(result.Value, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
+        transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task BootstrapFirstAdminAsyncCreatesUserWithoutGrantServiceWhenNoGrantsAreConfigured()
+    {
+        var transaction = ArrangeSuccessfulBootstrap();
+        var service = CreateService(includeGrantService: false);
+
+        var result = await service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            SetupSecret = SetupSecret
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value, Is.Not.EqualTo(Guid.Empty));
+        }
+
+        _grantService.Verify(s => s.CreateGrantAsync(It.IsAny<CreateAuthorizationGrantRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task BootstrapFirstAdminAsyncFailsBeforeCreatingUserWhenGrantsAreAddedAfterConstructionWithoutGrantService()
+    {
+        ArrangeBootstrapStatus(BootstrapStatus.Uninitialized);
+        var service = CreateService(includeGrantService: false);
+        _options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
+
+        var result = await service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            SetupSecret = SetupSecret
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidConfiguration));
+        }
+
+        _transactionProvider.Verify(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
+        _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
+        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.BootstrapCompleted &&
+            e.FailureReason == AshlarFailureCodes.InvalidConfiguration.Value), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task BootstrapFirstAdminAsyncActivatesExistingInactiveUser()
+    {
+        var userId = Guid.NewGuid();
+        ArrangeSuccessfulBootstrap(userId, existingUser: new AshlarUser
+        {
+            Id = userId,
+            Email = "admin@example.com",
+            Name = "Old Name",
+            IsActive = false
+        });
+
+        var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            UserName = "Admin",
+            SetupSecret = SetupSecret
+        });
 
         using (Assert.EnterMultipleScope())
         {
@@ -515,84 +497,167 @@ internal sealed class BootstrapServiceTests
             Assert.That(result.Value, Is.EqualTo(userId));
         }
 
-        _grantService.Verify(s => s.CreateGrantAsync(It.Is<CreateAuthorizationGrantRequest>(r =>
-            r.UserId == userId &&
-            r.Role == "admin" &&
-            r.Audit != null &&
-            r.Audit.ActorUserId == actorUserId &&
-            r.Audit.IpAddress == "203.0.113.10" &&
-            r.Audit.UserAgent == "bootstrap-agent" &&
-            r.Audit.CorrelationId == "bootstrap-correlation"), It.IsAny<CancellationToken>()), Times.Once);
-
-        _stateRepository.Verify(r => r.MarkAsInitializedAsync(userId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
-        transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
+        _userRepository.Verify(r => r.UpdateUserAsync(It.Is<IUser>(u =>
+            u.Id == userId &&
+            u.Name == "Admin" &&
+            u.IsActive &&
+            u.EmailVerifiedAt == _timeProvider.GetUtcNow()), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task AcceptBootstrapInvitationAsyncFailsIfConcurrencyConflictOnMarkAsInitialized()
+    public async Task BootstrapFirstAdminAsyncVerifiesExistingActiveUnverifiedUser()
     {
-        var invitation = new UserInvitation
-        {
-            Id = Guid.NewGuid(),
-            Email = "admin@example.com",
-            TokenHash = "hashed",
-            CreatedAt = _timeProvider.GetUtcNow(),
-            ExpiresAt = _timeProvider.GetUtcNow().AddDays(1),
-            Version = "1",
-            Metadata = "{\"ashlar.bootstrap\": true}"
-        };
-        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
-        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
-        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Uninitialized);
-
         var userId = Guid.NewGuid();
-        _invitationService.Setup(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(userId));
+        ArrangeSuccessfulBootstrap(userId, existingUser: new AshlarUser
+        {
+            Id = userId,
+            Email = "admin@example.com",
+            Name = "Existing Admin",
+            IsActive = true
+        });
 
-        _stateRepository.Setup(r => r.MarkAsInitializedAsync(userId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            SetupSecret = SetupSecret
+        });
 
-        var transaction = new Mock<IAshlarTransaction>();
-        _transactionProvider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
+        _userRepository.Verify(r => r.UpdateUserAsync(It.Is<IUser>(u =>
+            u.Id == userId &&
+            u.Name == "Existing Admin" &&
+            u.IsActive &&
+            u.EmailVerifiedAt == _timeProvider.GetUtcNow()), It.IsAny<CancellationToken>()), Times.Once);
+    }
 
-        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" });
+    [Test]
+    public async Task BootstrapFirstAdminAsyncUsesExistingActiveVerifiedUserWithoutUpdating()
+    {
+        var userId = Guid.NewGuid();
+        ArrangeSuccessfulBootstrap(userId, existingUser: new AshlarUser
+        {
+            Id = userId,
+            Email = "admin@example.com",
+            Name = "Existing Admin",
+            IsActive = true,
+            EmailVerifiedAt = _timeProvider.GetUtcNow().AddDays(-1)
+        }, executeCommitCallbacks: true);
+
+        var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            UserName = "Ignored",
+            SetupSecret = SetupSecret
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value, Is.EqualTo(userId));
+        }
+
+        _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
+        _userRepository.Verify(r => r.UpdateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
+        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.UserCreated), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task BootstrapFirstAdminAsyncDoesNotStoreSetupSecretInAuditProperties()
+    {
+        ArrangeSuccessfulBootstrap(executeCommitCallbacks: true);
+
+        await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            SetupSecret = SetupSecret
+        });
+
+        var auditText = string.Join("|", _securityEventSink.Invocations
+            .Select(invocation => invocation.Arguments[0])
+            .OfType<AshlarSecurityEvent>()
+            .SelectMany(e => (e.Properties?.Values ?? []).Concat([e.FailureReason ?? string.Empty])));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(auditText, Does.Not.Contain(SetupSecret));
+            Assert.That(auditText, Does.Not.Contain(SetupSecretHash));
+        }
+    }
+
+    [Test]
+    public async Task BootstrapFirstAdminAsyncFailsIfInitializedAfterSetupAuthorization()
+    {
+        var requestTenantId = Guid.NewGuid();
+        var contextTenantId = Guid.NewGuid();
+        var actorUserId = Guid.NewGuid();
+        _stateRepository
+            .SetupSequence(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(BootstrapStatus.Uninitialized)
+            .ReturnsAsync(BootstrapStatus.Initialized);
+
+        var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            TenantId = requestTenantId,
+            Audit = new AuditContext(ActorUserId: actorUserId, IpAddress: "203.0.113.1", UserAgent: "audit-agent", CorrelationId: "audit-correlation"),
+            SetupSecret = SetupSecret
+        }, new AuthenticationContext(TenantId: contextTenantId, UserId: Guid.NewGuid(), IpAddress: "198.51.100.2", UserAgent: "context-agent", CorrelationId: "context-correlation"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.AlreadyInitialized));
         }
-        transaction.Verify(t => t.RollbackAsync(It.IsAny<CancellationToken>()), Times.Once);
+
+        _userRepository.Verify(s => s.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
+        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.BootstrapCompleted &&
+            e.FailureReason == AshlarFailureCodes.AlreadyInitialized.Value &&
+            e.TenantId == requestTenantId &&
+            e.ActorUserId == actorUserId &&
+            e.IpAddress == "203.0.113.1" &&
+            e.UserAgent == "audit-agent" &&
+            e.CorrelationId == "audit-correlation"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task AcceptBootstrapInvitationAsyncFailsIfGrantCreationFails()
+    public async Task BootstrapFirstAdminAsyncAwaitsInitializedFailureAudit()
     {
-        var invitation = new UserInvitation
-        {
-            Id = Guid.NewGuid(),
-            Email = "admin@example.com",
-            TokenHash = "hashed",
-            CreatedAt = _timeProvider.GetUtcNow(),
-            ExpiresAt = _timeProvider.GetUtcNow().AddDays(1),
-            Version = "1",
-            Metadata = "{\"ashlar.bootstrap\": true}"
-        };
-        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
-        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
-        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Uninitialized);
+        _stateRepository
+            .SetupSequence(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(BootstrapStatus.Uninitialized)
+            .ReturnsAsync(BootstrapStatus.Initialized);
+        _securityEventSink
+            .Setup(s => s.RecordAsync(It.IsAny<AshlarSecurityEvent>(), It.IsAny<CancellationToken>()))
+            .Returns(async () => await Task.Yield());
 
-        var userId = Guid.NewGuid();
-        _invitationService.Setup(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(userId));
+        var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            SetupSecret = SetupSecret
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.AlreadyInitialized));
+        }
+    }
+
+    [Test]
+    public async Task BootstrapFirstAdminAsyncFailsIfGrantCreationFails()
+    {
+        var transaction = ArrangeSuccessfulBootstrap();
+        _options.Grants.Add(new BootstrapGrantTemplate { Role = "admin", Permission = "manage" });
         _grantService.Setup(s => s.CreateGrantAsync(It.IsAny<CreateAuthorizationGrantRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Failure<AuthorizationGrant>(AshlarFailureCodes.InvalidGrantShape));
 
-        _options.Grants.Add(new BootstrapGrantTemplate { Role = "admin", Permission = "manage" });
-
-        var transaction = new Mock<IAshlarTransaction>();
-        _transactionProvider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
-
-        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" });
+        var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            SetupSecret = SetupSecret
+        });
 
         using (Assert.EnterMultipleScope())
         {
@@ -602,80 +667,140 @@ internal sealed class BootstrapServiceTests
 
         _stateRepository.Verify(r => r.MarkAsInitializedAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
         transaction.Verify(t => t.RollbackAsync(It.IsAny<CancellationToken>()), Times.Once);
-        transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
-    public async Task AcceptBootstrapInvitationAsyncUsesDefaultFailureWhenGrantCreationFailsWithoutReason()
+    public async Task BootstrapFirstAdminAsyncUsesDefaultFailureWhenGrantCreationFailsWithoutReason()
     {
-        var invitation = new UserInvitation
-        {
-            Id = Guid.NewGuid(),
-            Email = "admin@example.com",
-            TokenHash = "hashed",
-            CreatedAt = _timeProvider.GetUtcNow(),
-            ExpiresAt = _timeProvider.GetUtcNow().AddDays(1),
-            Version = "1",
-            Metadata = "{\"ashlar.bootstrap\": true}"
-        };
-        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
-        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
-        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Uninitialized);
-
-        var userId = Guid.NewGuid();
-        _invitationService.Setup(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(userId));
+        ArrangeSuccessfulBootstrap();
+        _options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
         _grantService.Setup(s => s.CreateGrantAsync(It.IsAny<CreateAuthorizationGrantRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Result<AuthorizationGrant>(false));
 
-        _options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
-
-        var transaction = new Mock<IAshlarTransaction>();
-        _transactionProvider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
-
-        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" });
+        var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            SetupSecret = SetupSecret
+        });
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.GrantCreationFailed));
         }
+    }
+
+    [Test]
+    public async Task BootstrapFirstAdminAsyncFailsIfConcurrencyConflictOnMarkAsInitialized()
+    {
+        var transaction = ArrangeSuccessfulBootstrap(markInitialized: false);
+
+        var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            SetupSecret = SetupSecret
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.AlreadyInitialized));
+        }
 
         transaction.Verify(t => t.RollbackAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task AcceptBootstrapInvitationAsyncReturnsFailureIfInvitationAcceptanceFails()
+    public async Task BootstrapFirstAdminAsyncSendsNotificationWhenCommittedUserCanBeLoaded()
     {
-        var invitation = new UserInvitation
+        var userId = Guid.NewGuid();
+        ArrangeSuccessfulBootstrap(executeCommitCallbacks: true);
+        _userRepository.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, CancellationToken _) => new AshlarUser { Id = id, Email = "admin@example.com", IsActive = true });
+        var notificationService = new Mock<ISecurityNotificationService>();
+        notificationService.Setup(s => s.NotifyAsync(It.IsAny<SecurityNotification>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SecurityNotificationResult.Success());
+        var service = CreateService(notificationService.Object);
+
+        var result = await service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
         {
-            Id = Guid.NewGuid(),
             Email = "admin@example.com",
-            TokenHash = "hashed",
-            CreatedAt = _timeProvider.GetUtcNow(),
-            ExpiresAt = _timeProvider.GetUtcNow().AddDays(1),
-            Version = "1",
-            Metadata = "{\"ashlar.bootstrap\": true}"
-        };
-        _tokenHasher.Setup(h => h.HashToken("token")).Returns("hashed");
-        _invitationRepository.Setup(r => r.GetInvitationByTokenHashAsync("hashed", It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
-        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(BootstrapStatus.Uninitialized);
-        _invitationService.Setup(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Failure<Guid>(new AshlarFailureCode("email_mismatch")));
-
-        var transaction = new Mock<IAshlarTransaction>();
-        _transactionProvider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
-
-        var result = await _service.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest { Token = "token" });
+            SetupSecret = SetupSecret
+        });
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(new AshlarFailureCode("email_mismatch")));
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value, Is.Not.EqualTo(Guid.Empty));
         }
 
-        _grantService.Verify(s => s.CreateGrantAsync(It.IsAny<CreateAuthorizationGrantRequest>(), It.IsAny<CancellationToken>()), Times.Never);
-        _stateRepository.Verify(r => r.MarkAsInitializedAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
-        transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Never);
+        notificationService.Verify(s => s.NotifyAsync(It.Is<SecurityNotification>(n =>
+            n.Type == SecurityNotificationType.BootstrapCompleted &&
+            n.RecipientEmail == "admin@example.com"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private BootstrapService CreateService(ISecurityNotificationService? notificationService = null, bool includeGrantService = true, IAuthenticationRateLimiter? rateLimiter = null)
+    {
+        return new BootstrapService(
+            _stateRepository.Object,
+            _userRepository.Object,
+            _transactionProvider.Object,
+            _tokenContext,
+            _auditContext,
+            includeGrantService ? _grantService.Object : null,
+            Options.Create(_options),
+            notificationService,
+            rateLimiter);
+    }
+
+    private void ArrangeBootstrapStatus(BootstrapStatus status)
+    {
+        _stateRepository.Setup(r => r.GetBootstrapStatusAsync(It.IsAny<CancellationToken>())).ReturnsAsync(status);
+    }
+
+    private Mock<IAshlarTransaction> ArrangeTransaction(bool executeCommitCallbacks = false)
+    {
+        var transaction = new Mock<IAshlarTransaction>();
+        if (executeCommitCallbacks)
+        {
+            transaction
+                .Setup(t => t.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()))
+                .Callback<Func<CancellationToken, Task>>(action => action(CancellationToken.None).GetAwaiter().GetResult());
+        }
+
+        _transactionProvider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
+        return transaction;
+    }
+
+    private Mock<IAshlarTransaction> ArrangeSuccessfulBootstrap(
+        Guid? userId = null,
+        bool markInitialized = true,
+        bool executeCommitCallbacks = false,
+        AshlarUser? existingUser = null)
+    {
+        ArrangeBootstrapStatus(BootstrapStatus.Uninitialized);
+        var transaction = ArrangeTransaction(executeCommitCallbacks);
+        _userRepository
+            .Setup(r => r.GetUserByEmailAsync(It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingUser);
+        _userRepository.Setup(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _userRepository.Setup(r => r.UpdateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        if (existingUser != null)
+        {
+            _stateRepository.Setup(r => r.MarkAsInitializedAsync(userId ?? existingUser.Id, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(markInitialized);
+        }
+        else
+        {
+            _stateRepository.Setup(r => r.MarkAsInitializedAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(markInitialized);
+        }
+
+        return transaction;
+    }
+
+    private static bool HasTenant(IUser user, Guid? tenantId)
+    {
+        return user is ITenantUser tenantUser && tenantUser.TenantId == tenantId;
     }
 }
