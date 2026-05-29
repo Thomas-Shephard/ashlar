@@ -216,14 +216,14 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     }
 
     [Test]
-    public async Task RegisterShouldReturnFailedWhenPreviewIsRateLimited()
+    public async Task RegisterShouldReturnRateLimitedWhenPreviewIsRateLimited()
     {
         var invitations = CreateInvitations(preview: Result.Failure<InvitationAcceptancePreview>(AshlarFailureCodes.RateLimited));
         var service = CreateService(invitations.Object);
 
         var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
 
-        Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Failed));
+        Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.RateLimited));
     }
 
     [Test]
@@ -508,7 +508,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     }
 
     [TestCase(AshlarFailureCodes.InvalidInvitationValue, AshlarOidcInvitationRegistrationStatus.InvalidInvitation)]
-    [TestCase(AshlarFailureCodes.RateLimitedValue, AshlarOidcInvitationRegistrationStatus.Failed)]
+    [TestCase(AshlarFailureCodes.RateLimitedValue, AshlarOidcInvitationRegistrationStatus.RateLimited)]
     public async Task RegisterShouldMapInvitationAcceptanceFailure(string failureCode, AshlarOidcInvitationRegistrationStatus expected)
     {
         var invitations = CreateInvitations(acceptance: Result.Failure<Guid>(new AshlarFailureCode(failureCode)));
@@ -632,6 +632,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var failed = await service.RegisterOidcInvitationAsync("token", "Google", AuthenticateResult.Fail("failed"));
         var mismatch = await service.RegisterOidcInvitationAsync("token", "Google", CreateTicket("Microsoft", "Microsoft", "subject"));
         var wrongProviderType = await service.RegisterOidcInvitationAsync("token", "Google", CreateTicket("Google", "Google", "subject", ProviderType.OAuth));
+        var missingProviderType = await service.RegisterOidcInvitationAsync("token", "Google", CreateTicket("Google", "Google", "subject", includeProviderType: false));
         var missingProvider = await service.RegisterOidcInvitationAsync("token", "Microsoft", CreateTicket("Microsoft", "Microsoft", "subject"));
         var matched = await service.RegisterOidcInvitationAsync("token", "Google", CreateTicket("Google", "Google", "subject"));
         var matchedWithProviderType = await service.RegisterOidcInvitationAsync("token", "Google", CreateTicket("Google", "Google", "subject", ProviderType.Oidc));
@@ -641,6 +642,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
             Assert.That(failed.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.AuthenticationFailed));
             Assert.That(mismatch.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.ProviderMismatch));
             Assert.That(wrongProviderType.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.ProviderMismatch));
+            Assert.That(missingProviderType.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.ProviderMismatch));
             Assert.That(missingProvider.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.UnsupportedProvider));
             Assert.That(matched.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidInvitation));
             Assert.That(matchedWithProviderType.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidInvitation));
@@ -691,6 +693,27 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
             Assert.That(failedAuth.SignOutCount, Is.EqualTo(1));
             Assert.That(mismatchAuth.SignOutCount, Is.EqualTo(1));
             Assert.That(wrongProviderTypeAuth.SignOutCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task CompleteShouldClearUnsupportedProviderTicketWhenRequestIsCanceled()
+    {
+        var service = CreateService();
+        var auth = new TestAuthenticationService(AuthenticateResult.NoResult());
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        var result = await service.CompleteOidcInvitationRegistrationAsync(
+            CreateHttpContext(auth),
+            "token",
+            "Microsoft",
+            cancellationToken: cts.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.UnsupportedProvider));
+            Assert.That(auth.SignOutCount, Is.EqualTo(1));
         }
     }
 
@@ -796,14 +819,14 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         return string.Concat("oidc-sha256:", Convert.ToHexString(hash));
     }
 
-    private static AuthenticateResult CreateTicket(string providerName, string schemeName, string subject, ProviderType? providerType = null)
+    private static AuthenticateResult CreateTicket(string providerName, string schemeName, string subject, ProviderType? providerType = null, bool includeProviderType = true)
     {
         var properties = new AuthenticationProperties();
         properties.Items[AshlarOAuthAuthenticationProperties.ProviderName] = providerName;
         properties.Items[AshlarOAuthAuthenticationProperties.SchemeName] = schemeName;
-        if (providerType != null)
+        if (includeProviderType)
         {
-            properties.Items[AshlarOAuthAuthenticationProperties.ProviderType] = providerType.Value.Value;
+            properties.Items[AshlarOAuthAuthenticationProperties.ProviderType] = (providerType ?? ProviderType.Oidc).Value;
         }
 
         return AuthenticateResult.Success(new AuthenticationTicket(

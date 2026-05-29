@@ -1,6 +1,7 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Providers;
+using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
@@ -28,16 +29,13 @@ internal sealed class PasswordResetService : IPasswordResetService
     private const string InvalidOrExpiredTokenMessage = "Invalid or expired token.";
     private const string RequestSuppressedReason = "request_suppressed";
     private const string DeliveryFailedReason = "delivery_failed";
-    private const string EmailRateLimitPrefix = "email:";
-    private const string TokenRateLimitPrefix = "token:";
-    private const string SourceIpRateLimitPrefix = "source:ip:";
-    private const string AnonymousSourceRateLimitKey = "source:anonymous";
     private const string ResetTokenLabel = "Reset token";
 
     private readonly PasswordResetDependencies _dependencies;
     private readonly IOptions<PasswordResetOptions> _options;
     private readonly SecurityEventEmitter _securityEvents;
     private readonly SecurityNotificationEmitter _notifications;
+    private readonly AuthenticationRateLimitChecker _rateLimitChecker;
 
     /// <summary>
     /// Initializes a configured password reset service.
@@ -52,6 +50,7 @@ internal sealed class PasswordResetService : IPasswordResetService
         _options = options ?? Options.Create(new PasswordResetOptions());
         _securityEvents = new SecurityEventEmitter(_dependencies.SecurityEventSink, _dependencies.TimeProvider);
         _notifications = new SecurityNotificationEmitter(_dependencies.NotificationService);
+        _rateLimitChecker = new AuthenticationRateLimitChecker(_dependencies.RateLimiter);
     }
 
     /// <inheritdoc />
@@ -86,7 +85,7 @@ internal sealed class PasswordResetService : IPasswordResetService
         }
 
         var sourceRateLimit = await CheckRateLimitAsync(
-            GetSourceRateLimitKey(context),
+            AuthenticationRateLimitDimensions.Source(context),
             RequestPurpose,
             context,
             _options.Value.RequestRateLimit,
@@ -106,7 +105,7 @@ internal sealed class PasswordResetService : IPasswordResetService
         }
 
         var rateLimit = await CheckRateLimitAsync(
-            $"{EmailRateLimitPrefix}{normalizedEmail}",
+            AuthenticationRateLimitDimensions.Email(normalizedEmail),
             RequestPurpose,
             context,
             _options.Value.RequestRateLimit,
@@ -229,7 +228,7 @@ internal sealed class PasswordResetService : IPasswordResetService
         }
 
         var rateLimit = await CheckRateLimitAsync(
-            GetSourceRateLimitKey(context),
+            AuthenticationRateLimitDimensions.Source(context),
             VerifyPurpose,
             context,
             _options.Value.VerificationRateLimit,
@@ -255,7 +254,7 @@ internal sealed class PasswordResetService : IPasswordResetService
         }
 
         var tokenRateLimit = await CheckRateLimitAsync(
-            $"{TokenRateLimitPrefix}{tokenHash}",
+            AuthenticationRateLimitDimensions.TokenHash(tokenHash),
             VerifyPurpose,
             context,
             _options.Value.VerificationRateLimit,
@@ -359,15 +358,11 @@ internal sealed class PasswordResetService : IPasswordResetService
         RateLimitRule rule,
         CancellationToken cancellationToken)
     {
-        return _dependencies.RateLimiter.CheckAsync(new RateLimitAttempt
+        return _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(purpose, AuthenticationRateLimitDimensions.DimensionName(key), key, rule)
         {
-            Key = $"{purpose}:{key}",
-            Purpose = purpose,
-            Email = context.Email,
-            UserId = context.UserId?.ToString(),
-            IpAddress = context.IpAddress,
-            CorrelationId = context.CorrelationId
-        }, rule, cancellationToken);
+            ProviderKey = AuthenticationProviderKey.Local,
+            Context = context
+        }, cancellationToken);
     }
 
     private Task RecordFailureAsync(AuthenticationContext context, Guid? userId, string failureReason, CancellationToken cancellationToken)
@@ -430,16 +425,6 @@ internal sealed class PasswordResetService : IPasswordResetService
         }
 
         await Task.Delay(minimumDuration - elapsed, _dependencies.TimeProvider, cancellationToken);
-    }
-
-    private static string GetSourceRateLimitKey(AuthenticationContext context)
-    {
-        if (!string.IsNullOrWhiteSpace(context.IpAddress))
-        {
-            return $"{SourceIpRateLimitPrefix}{context.IpAddress}";
-        }
-
-        return AnonymousSourceRateLimitKey;
     }
 }
 

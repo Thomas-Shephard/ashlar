@@ -7,6 +7,9 @@ using Ashlar.Identity.Providers.Email;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.Providers.Local;
 using Ashlar.Identity.Providers.RecoveryCode;
+using Ashlar.Identity.RateLimiting;
+using Ashlar.Identity.RateLimiting.Abstractions;
+using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
@@ -29,7 +32,10 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             AssertDescriptor<IIdentityService>(services, ServiceLifetime.Scoped);
-            AssertDescriptor<IAuthenticationPipeline, AuthenticationPipeline>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<AuthenticationPipeline>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IAuthenticationPipeline>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IAuthenticationFactorPipeline>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IPrimaryAuthenticationRateLimiter, PrimaryAuthenticationRateLimiter>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialService, CredentialService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialAdministrationService, CredentialAdministrationService>(services, ServiceLifetime.Scoped);
@@ -74,6 +80,43 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarIdentityResolvesPrimaryAndFactorPipelinesToSameScopedImplementation()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped(_ => Mock.Of<IAuthenticationProviderRegistry>());
+        services.AddScoped(_ => Mock.Of<ICredentialService>());
+        services.AddAshlarIdentity();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var primary = scope.ServiceProvider.GetRequiredService<IAuthenticationPipeline>();
+        var factor = scope.ServiceProvider.GetRequiredService<IAuthenticationFactorPipeline>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(primary, Is.InstanceOf<AuthenticationPipeline>());
+            Assert.That(factor, Is.SameAs(primary));
+        }
+    }
+
+    [Test]
+    public void AddAshlarIdentityConfiguresPrimaryAuthenticationRateLimitOptions()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarIdentity();
+        services.Configure<PrimaryAuthenticationRateLimitOptions>(options =>
+        {
+            options.DefaultRule = new RateLimitRule { PermitLimit = 7, Window = TimeSpan.FromMinutes(8) };
+        });
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetRequiredService<IOptions<PrimaryAuthenticationRateLimitOptions>>().Value.DefaultRule.PermitLimit, Is.EqualTo(7));
+    }
+
+    [Test]
     public void OptionalProviderRegistrationsAcceptNullConfiguration()
     {
         var services = new ServiceCollection();
@@ -88,6 +131,34 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             descriptor.ServiceType == typeof(IRecoveryCodeService)));
         Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
             descriptor.ServiceType == typeof(IPasswordResetService)));
+    }
+
+    [Test]
+    public void AddAshlarEmailCodeSignInRegistersOptionsValidation()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarEmailCodeSignIn(options => options.RequestRateLimit = new RateLimitRule { PermitLimit = 0, Window = TimeSpan.FromMinutes(1) });
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<EmailCodeSignInOptions>>();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => _ = options.Value);
+        Assert.That(exception.Failures, Does.Contain("Email code sign-in options are invalid."));
+    }
+
+    [Test]
+    public void AddAshlarMagicLinkSignInRegistersOptionsValidation()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarMagicLinkSignIn(options => options.VerificationRateLimit = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.Zero });
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<MagicLinkSignInOptions>>();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => _ = options.Value);
+        Assert.That(exception.Failures, Does.Contain("Magic-link sign-in options are invalid."));
     }
 
     [Test]
@@ -547,6 +618,20 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarEmailVerificationRegistersOptionsValidation()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarEmailVerification(options => options.RequestRateLimit = new RateLimitRule { PermitLimit = 0, Window = TimeSpan.FromMinutes(1) });
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<EmailVerificationOptions>>();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => _ = options.Value);
+        Assert.That(exception.Failures, Does.Contain("Email verification options are invalid."));
+    }
+
+    [Test]
     public void AddAshlarEmailChangeRegistersService()
     {
         var services = new ServiceCollection();
@@ -574,6 +659,20 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<IOptions<EmailChangeOptions>>().Value.Subject, Is.EqualTo("Change custom"));
+    }
+
+    [Test]
+    public void AddAshlarEmailChangeRegistersOptionsValidation()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarEmailChange(options => options.VerificationRateLimit = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.Zero });
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<EmailChangeOptions>>();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => _ = options.Value);
+        Assert.That(exception.Failures, Does.Contain("Email change options are invalid."));
     }
 
     [Test]

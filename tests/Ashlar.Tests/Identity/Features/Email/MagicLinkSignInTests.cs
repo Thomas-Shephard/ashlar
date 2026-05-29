@@ -3,6 +3,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Models.Totp;
 using Ashlar.Identity.Providers.Email;
 using Ashlar.Identity.Providers.Local;
+using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
@@ -46,6 +47,7 @@ internal sealed class MagicLinkSignInTests
             Assert.That(message.TextBody, Does.Contain($"token={token}"));
             Assert.That(message.TextBody, Does.Not.Contain("USER@EXAMPLE.COM"));
             Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
+            Assert.That(fixture.RateLimiter.Attempts.Single(a => a.Purpose == "magic-link-request").Key, Is.EqualTo(ExpectedRateLimitKey("magic-link-request", "email", "email:USER@EXAMPLE.COM")));
         }
     }
 
@@ -274,7 +276,7 @@ internal sealed class MagicLinkSignInTests
     }
 
     [Test]
-    public async Task VerifyLinkFailsForOverlongTokenWithoutRateLimiting()
+    public async Task VerifyLinkFailsForOverlongTokenAfterSourceRateLimitCheck()
     {
         var fixture = CreateFixture(_user);
         var token = new string('a', 257);
@@ -284,7 +286,8 @@ internal sealed class MagicLinkSignInTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
-            Assert.That(fixture.RateLimiter.Attempts, Is.Empty);
+            Assert.That(fixture.RateLimiter.Attempts.Single().Purpose, Is.EqualTo("magic-link-verify"));
+            Assert.That(fixture.RateLimiter.Attempts.Single().Key, Is.EqualTo(ExpectedRateLimitKey("magic-link-verify", "source", "source:anonymous")));
             Assert.That(fixture.Audit.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationFailed));
         }
     }
@@ -315,8 +318,31 @@ internal sealed class MagicLinkSignInTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.RateLimited));
             Assert.That(fixture.Audit.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.MagicLinkVerificationRateLimited));
+            orchestrator.Verify(o => o.AuthenticateAsync(
+                It.IsAny<AuthenticationContext>(),
+                It.IsAny<IAuthenticationAssertion>(),
+                null,
+                It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task VerifyRateLimitBlocksVerificationWhenTokenBucketIsBlocked()
+    {
+        var orchestrator = new Mock<IAuthenticationOrchestrator>(MockBehavior.Strict);
+        var fixture = CreateFixture(_user, authenticationOrchestrator: orchestrator.Object);
+        var tokenHash = fixture.TokenHasher.HashToken("any-token");
+        fixture.RateLimiter.BlockedKeys.Add(ExpectedRateLimitKey("magic-link-verify", "token-hash", $"token:{tokenHash}"));
+
+        var response = await fixture.Service.VerifyLinkAsync("any-token", new AuthenticationContext(IpAddress: "203.0.113.90"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.RateLimited));
+            Assert.That(fixture.Audit.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.MagicLinkVerificationRateLimited));
+            Assert.That(fixture.RateLimiter.Attempts.Count(a => a.Purpose == "magic-link-verify"), Is.EqualTo(2));
             orchestrator.Verify(o => o.AuthenticateAsync(
                 It.IsAny<AuthenticationContext>(),
                 It.IsAny<IAuthenticationAssertion>(),
@@ -332,29 +358,47 @@ internal sealed class MagicLinkSignInTests
 
         await fixture.Service.VerifyLinkAsync("attempt-token");
 
-        Assert.That(fixture.RateLimiter.Attempts.Single(a => a.Purpose == "magic-link-verify").Key, Is.EqualTo($"magic-link-verify:token:{fixture.TokenHasher.HashToken("attempt-token")}"));
+        var attempts = fixture.RateLimiter.Attempts.Where(a => a.Purpose == "magic-link-verify").ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attempts, Has.Length.EqualTo(2));
+            Assert.That(attempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("magic-link-verify", "source", "source:anonymous")));
+            Assert.That(attempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("magic-link-verify", "token-hash", $"token:{fixture.TokenHasher.HashToken("attempt-token")}")));
+        }
     }
 
     [Test]
-    public async Task VerifyLinkWithIpUsesIpScopedRateLimitKey()
+    public async Task VerifyLinkWithIpUsesLayeredSourceAndTokenScopedRateLimitKeys()
     {
         var fixture = CreateFixture(_user);
         var context = new AuthenticationContext(IpAddress: "127.0.0.1", CorrelationId: "corr");
 
         await fixture.Service.VerifyLinkAsync("attempt-token", context);
 
-        Assert.That(fixture.RateLimiter.Attempts.Single(a => a.Purpose == "magic-link-verify").Key, Is.EqualTo("magic-link-verify:127.0.0.1"));
+        var attempts = fixture.RateLimiter.Attempts.Where(a => a.Purpose == "magic-link-verify").ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attempts, Has.Length.EqualTo(2));
+            Assert.That(attempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("magic-link-verify", "source", "source:ip:127.0.0.1")));
+            Assert.That(attempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("magic-link-verify", "token-hash", $"token:{fixture.TokenHasher.HashToken("attempt-token")}")));
+        }
     }
 
     [Test]
-    public async Task VerifyLinkWithoutIpUsesCorrelationScopedRateLimitKey()
+    public async Task VerifyLinkWithoutIpUsesAnonymousSourceAndTokenScopedRateLimitKeys()
     {
         var fixture = CreateFixture(_user);
         var context = new AuthenticationContext(CorrelationId: "corr");
 
         await fixture.Service.VerifyLinkAsync("attempt-token", context);
 
-        Assert.That(fixture.RateLimiter.Attempts.Single(a => a.Purpose == "magic-link-verify").Key, Is.EqualTo("magic-link-verify:correlation:corr"));
+        var attempts = fixture.RateLimiter.Attempts.Where(a => a.Purpose == "magic-link-verify").ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attempts, Has.Length.EqualTo(2));
+            Assert.That(attempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("magic-link-verify", "source", "source:anonymous")));
+            Assert.That(attempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("magic-link-verify", "token-hash", $"token:{fixture.TokenHasher.HashToken("attempt-token")}")));
+        }
     }
 
     [Test]
@@ -622,7 +666,7 @@ internal sealed class MagicLinkSignInTests
             Mock.Of<ISecretProtector>(),
             transactionProvider,
             new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: audit));
-        var pipeline = new AuthenticationPipeline(registry, credentialService, transactionProvider, audit, time);
+        var pipeline = new AuthenticationPipeline(registry, credentialService, transactionProvider, AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, audit, time);
         var identity = identityService ?? new IdentityService(repository, registry, credentialService, pipeline, transactionProvider, audit, time);
         var orchestrator = authenticationOrchestrator ?? CreateOrchestrator(pipeline, user, requireMfa);
         var core = new IdentityContext(repository, repository, identity, transactionProvider);
@@ -668,7 +712,7 @@ internal sealed class MagicLinkSignInTests
                 });
         }
 
-        return new AuthenticationOrchestrator(pipeline, handshakes.Object, policy);
+        return new AuthenticationOrchestrator(pipeline, Mock.Of<IAuthenticationFactorPipeline>(), handshakes.Object, policy, Mock.Of<IAuthenticationProviderRegistry>());
     }
 
     private static string ExtractToken(string? body)
@@ -681,14 +725,29 @@ internal sealed class MagicLinkSignInTests
 
     private sealed record Fixture(MagicLinkSignInService Service, InMemoryUserCredentialStore Repository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, ISecureTokenHasher TokenHasher, StubRateLimiter RateLimiter, List<string> Events);
 
+    private static string ExpectedRateLimitKey(string purpose, string dimensionName, string dimensionValue)
+    {
+        var composed = string.Join('|',
+            EncodeRateLimitKeySegment(purpose),
+            EncodeRateLimitKeySegment(AuthenticationRateLimitKeyBuilder.NormalizeProviderSelector(AuthenticationProviderKey.MagicLink)),
+            EncodeRateLimitKeySegment("global"),
+            EncodeRateLimitKeySegment(dimensionName),
+            EncodeRateLimitKeySegment(dimensionValue));
+        return AuthenticationRateLimitKeyBuilder.HashKey(composed);
+    }
+
+    private static string EncodeRateLimitKeySegment(string value) => $"{value.Length}:{value}";
+
     private sealed class StubRateLimiter(bool requestAllowed, bool verifyAllowed, TimeProvider timeProvider) : IAuthenticationRateLimiter
     {
         public List<RateLimitAttempt> Attempts { get; } = [];
+        public HashSet<string> BlockedKeys { get; } = [];
 
         public Task<RateLimitDecision> CheckAsync(RateLimitAttempt attempt, RateLimitRule rule, CancellationToken cancellationToken = default)
         {
             Attempts.Add(attempt);
-            var allowed = attempt.Purpose == "magic-link-request" ? requestAllowed : verifyAllowed;
+            var allowed = (attempt.Purpose == "magic-link-request" ? requestAllowed : verifyAllowed)
+                && !BlockedKeys.Contains(attempt.Key);
             return Task.FromResult(new RateLimitDecision
             {
                 Status = allowed ? RateLimitStatus.Allowed : RateLimitStatus.Blocked,

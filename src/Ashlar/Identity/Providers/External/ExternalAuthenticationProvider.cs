@@ -5,7 +5,7 @@ namespace Ashlar.Identity.Providers.External;
 /// </summary>
 /// <param name="supportedType">The supported type value.</param>
 /// <param name="providerName">The provider name value.</param>
-public abstract class ExternalAuthenticationProvider(ProviderType supportedType, string providerName) : IAuthenticationProvider
+public abstract class ExternalAuthenticationProvider(ProviderType supportedType, string providerName) : IPrimaryAuthenticationProvider
 {
     /// <summary>
     /// Executes the new operation.

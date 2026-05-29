@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using Ashlar.Auditing;
+using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
 using Microsoft.Extensions.Options;
@@ -18,6 +19,7 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
     private readonly EmailCodeSignInDependencies _dependencies;
     private readonly IOptions<EmailCodeSignInOptions> _options;
     private readonly SecurityEventEmitter _securityEvents;
+    private readonly AuthenticationRateLimitChecker _rateLimitChecker;
 
     /// <summary>
     /// Initializes a configured service instance.
@@ -31,6 +33,7 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
         _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
         _options = options ?? Options.Create(new EmailCodeSignInOptions());
         _securityEvents = new SecurityEventEmitter(_dependencies.SecurityEventSink, _dependencies.TimeProvider);
+        _rateLimitChecker = new AuthenticationRateLimitChecker(_dependencies.RateLimiter);
     }
 
     /// <summary>
@@ -123,7 +126,7 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
         if (!rateLimit.IsAllowed)
         {
             await RecordAsync(AshlarSecurityEventTypes.EmailCodeVerificationRateLimited, SecurityEventOutcomes.Failure, context, null, "rate_limited", cancellationToken);
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Authentication failed.");
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.RateLimited, ErrorMessage: "Authentication failed.");
         }
 
         return await _dependencies.AuthenticationOrchestrator.AuthenticateAsync(context, new EmailCodeAssertion(code), cancellationToken: cancellationToken);
@@ -131,14 +134,13 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
 
     private Task<RateLimitDecision> CheckRateLimitAsync(string email, string purpose, AuthenticationContext context, RateLimitRule rule, CancellationToken cancellationToken)
     {
-        return _dependencies.RateLimiter.CheckAsync(new RateLimitAttempt
+        var emailBucket = AuthenticationRateLimitDimensions.Email(email);
+        return _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(purpose, AuthenticationRateLimitDimensions.DimensionName(emailBucket), emailBucket, rule)
         {
-            Key = $"{purpose}:{email}",
-            Purpose = purpose,
-            Email = email,
-            IpAddress = context.IpAddress,
-            CorrelationId = context.CorrelationId
-        }, rule, cancellationToken);
+            ProviderKey = _dependencies.Provider.Key,
+            Context = context,
+            Email = email
+        }, cancellationToken);
     }
 
     private Task RecordAsync(string eventType, string outcome, AuthenticationContext context, Guid? userId, string? failureReason, CancellationToken cancellationToken)

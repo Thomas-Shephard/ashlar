@@ -40,7 +40,7 @@ internal sealed class AccountSecurityServiceTests
             sessionService,
             new NullTransactionProvider(),
             new AllowAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
+            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, ProviderRegistry: CreateDefaultProviderRegistry()));
     }
 
     [Test]
@@ -757,6 +757,103 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
+    public async Task GetUserSecurityPostureAsyncShouldNotClassifyUnregisteredBuiltInPrimaryProvider()
+    {
+        var service = CreateService(providerRegistry: new AuthenticationProviderRegistry([]));
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "", IsActive = true };
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+        var item = result.Value!.CredentialInventory.Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(item.Purpose, Is.EqualTo(CredentialPosturePurpose.Unknown));
+            Assert.That(item.IsPrimaryCredential, Is.False);
+            Assert.That(result.Value.PrimaryCredentials, Is.Empty);
+            Assert.That(result.Value.CanSignIn, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldNotClassifyBuiltInProviderWhenRegistryIsMissing()
+    {
+        var service = new AccountSecurityService(
+            _userRepository,
+            _userRepository,
+            Mock.Of<IAuthenticationSessionService>(s => s.ListSessionsForUserAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<ListAuthenticationSessionsRequest>(),
+                It.IsAny<CancellationToken>()) == Task.FromResult<IReadOnlyList<AuthenticationSessionSummary>>(Array.Empty<AuthenticationSessionSummary>())),
+            new NullTransactionProvider(),
+            new AllowAccountSecurityGuard(),
+            new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "", IsActive = true };
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Passkey));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+        var item = result.Value!.CredentialInventory.Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(item.Purpose, Is.EqualTo(CredentialPosturePurpose.Unknown));
+            Assert.That(item.FactorType, Is.Null);
+            Assert.That(item.IsPrimaryCredential, Is.False);
+            Assert.That(item.IsAdditionalVerificationFactor, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldClassifyRegisteredCustomPrimaryProvider()
+    {
+        var providerKey = new AuthenticationProviderKey("Custom", "HardwareThing");
+        var provider = new Mock<IPrimaryAuthenticationProvider>();
+        provider.SetupGet(item => item.Key).Returns(providerKey);
+        var registry = new AuthenticationProviderRegistry([provider.Object]);
+        var service = CreateService(providerRegistry: registry);
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "", IsActive = true };
+        _userRepository.Credentials.Add(CreateCredential(_userId, providerKey));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+        var item = result.Value!.CredentialInventory.Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(item.Purpose, Is.EqualTo(CredentialPosturePurpose.Primary));
+            Assert.That(item.IsPrimaryCredential, Is.True);
+            Assert.That(item.DisplayName, Is.EqualTo("HardwareThing"));
+            Assert.That(result.Value.PrimaryCredentials.Single(), Is.SameAs(item));
+            Assert.That(result.Value.CanSignIn, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldClassifyRegisteredCustomSecondaryProvider()
+    {
+        var providerKey = new AuthenticationProviderKey("Custom", "StepUpThing");
+        var provider = new Mock<ISecondaryAuthenticationFactorProvider>();
+        provider.SetupGet(item => item.Key).Returns(providerKey);
+        provider.SetupGet(item => item.FactorType).Returns("custom_step_up");
+        var registry = new AuthenticationProviderRegistry([provider.Object]);
+        var service = CreateService(providerRegistry: registry);
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "", IsActive = true };
+        _userRepository.Credentials.Add(CreateCredential(_userId, providerKey));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+        var item = result.Value!.CredentialInventory.Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(item.Purpose, Is.EqualTo(CredentialPosturePurpose.AdditionalVerification));
+            Assert.That(item.FactorType, Is.EqualTo("custom_step_up"));
+            Assert.That(item.IsPrimaryCredential, Is.False);
+            Assert.That(item.IsAdditionalVerificationFactor, Is.True);
+            Assert.That(result.Value.PrimaryCredentials, Is.Empty);
+            Assert.That(result.Value.AdditionalVerificationFactors.Single().FactorType, Is.EqualTo("custom_step_up"));
+        }
+    }
+
+    [Test]
     public async Task GetUserSecurityPostureAsyncShouldUseExternalProviderFriendlyNames()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
@@ -812,9 +909,14 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task GetUserSecurityPostureAsyncShouldClassifyConfiguredTotpProviderAndFallbackTotpName()
+    public async Task GetUserSecurityPostureAsyncShouldClassifyRegisteredTotpProviderMetadata()
     {
         var configuredTotp = new AuthenticationProviderKey(ProviderType.Mfa, "authenticator");
+        var registry = new AuthenticationProviderRegistry(
+        [
+            CreateSecondaryProvider(configuredTotp, AuthenticationFactorTypes.Totp).Object,
+            CreateSecondaryProvider(new AuthenticationProviderKey(ProviderType.Mfa, "totp"), AuthenticationFactorTypes.Totp).Object
+        ]);
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
         _userRepository.Credentials.Add(CreateCredential(_userId, configuredTotp));
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
@@ -831,7 +933,8 @@ internal sealed class AccountSecurityServiceTests
                 _timeProvider,
                 _events,
                 _events,
-                Options.Create(new TotpOptions { ProviderKey = configuredTotp })));
+                Options.Create(new TotpOptions { ProviderKey = configuredTotp }),
+                ProviderRegistry: registry));
 
         var result = await service.GetUserSecurityPostureAsync(_userId);
 
@@ -922,7 +1025,7 @@ internal sealed class AccountSecurityServiceTests
             sessionService.Object,
             new NullTransactionProvider(),
             new AllowAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events));
+            new AccountSecurityServiceDependencies(_timeProvider, _events, ProviderRegistry: CreateDefaultProviderRegistry()));
 
         var result = await service.GetUserSecurityPostureAsync(_userId);
 
@@ -982,7 +1085,9 @@ internal sealed class AccountSecurityServiceTests
         };
     }
 
-    private AccountSecurityService CreateService(IMfaPolicyEvaluator? mfaPolicyEvaluator = null)
+    private AccountSecurityService CreateService(
+        IMfaPolicyEvaluator? mfaPolicyEvaluator = null,
+        IAuthenticationProviderRegistry? providerRegistry = null)
     {
         return new AccountSecurityService(
             _userRepository,
@@ -993,7 +1098,51 @@ internal sealed class AccountSecurityServiceTests
                 It.IsAny<CancellationToken>()) == Task.FromResult<IReadOnlyList<AuthenticationSessionSummary>>(Array.Empty<AuthenticationSessionSummary>())),
             new NullTransactionProvider(),
             new AllowAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, MfaPolicyEvaluator: mfaPolicyEvaluator));
+            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, MfaPolicyEvaluator: mfaPolicyEvaluator, ProviderRegistry: providerRegistry ?? CreateDefaultProviderRegistry()));
+    }
+
+    private static AuthenticationProviderRegistry CreateDefaultProviderRegistry()
+    {
+        return new AuthenticationProviderRegistry(
+        [
+            CreatePrimaryProvider(AuthenticationProviderKey.Local).Object,
+            CreatePrimaryProvider(AuthenticationProviderKey.EmailCode).Object,
+            CreatePrimaryProvider(AuthenticationProviderKey.MagicLink).Object,
+            CreatePrimaryProvider(new AuthenticationProviderKey(ProviderType.OAuth, "github")).Object,
+            CreatePrimaryProvider(new AuthenticationProviderKey(ProviderType.Oidc, "OIDC")).Object,
+            CreatePrimaryProvider(new AuthenticationProviderKey(ProviderType.Saml2, "enterprise-sso")).Object,
+            CreateSecondaryProvider(new AuthenticationProviderKey(ProviderType.Mfa, "totp"), AuthenticationFactorTypes.Totp).Object,
+            CreateSecondaryProvider(new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode"), AuthenticationFactorTypes.RecoveryCode).Object,
+            CreatePasskeyProvider().Object
+        ]);
+    }
+
+    private static Mock<IPrimaryAuthenticationProvider> CreatePrimaryProvider(AuthenticationProviderKey providerKey)
+    {
+        var provider = new Mock<IPrimaryAuthenticationProvider>();
+        provider.SetupGet(item => item.Key).Returns(providerKey);
+        return provider;
+    }
+
+    private static Mock<IPrimaryAuthenticationProvider> CreatePasskeyProvider()
+    {
+        var provider = new Mock<IPrimaryAuthenticationProvider>();
+        provider.SetupGet(item => item.Key).Returns(AuthenticationProviderKey.Passkey);
+        provider.As<ISecondaryAuthenticationFactorProvider>()
+            .SetupGet(item => item.Key)
+            .Returns(AuthenticationProviderKey.Passkey);
+        provider.As<ISecondaryAuthenticationFactorProvider>()
+            .SetupGet(item => item.FactorType)
+            .Returns(AuthenticationFactorTypes.Passkey);
+        return provider;
+    }
+
+    private static Mock<ISecondaryAuthenticationFactorProvider> CreateSecondaryProvider(AuthenticationProviderKey providerKey, string factorType)
+    {
+        var provider = new Mock<ISecondaryAuthenticationFactorProvider>();
+        provider.SetupGet(item => item.Key).Returns(providerKey);
+        provider.SetupGet(item => item.FactorType).Returns(factorType);
+        return provider;
     }
 
     private UserCredential CreateCredential(Guid userId, AuthenticationProviderKey provider)

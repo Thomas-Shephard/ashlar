@@ -44,7 +44,7 @@ internal static class GitHubOAuthEndpoints
         var externalCredentialAuthentication = services.GetRequiredService<AshlarExternalCredentialAuthenticationService>();
         var orchestrator = services.GetRequiredService<IAuthenticationOrchestrator>();
         var signInManager = services.GetRequiredService<IAshlarSignInManager>();
-        var result = await externalCredentialAuthentication.CompleteExternalAssertionAsync(httpContext, SampleGitHubOAuth.ProviderName);
+        var result = await externalCredentialAuthentication.CompleteExternalAssertionAsync(httpContext, SampleGitHubOAuth.ProviderName, cancellationToken);
         if (result.Succeeded && result.Assertion != null)
         {
             var mfaResult = await orchestrator.AuthenticateAsync(
@@ -55,6 +55,13 @@ internal static class GitHubOAuthEndpoints
             if (mfaResult.Status == MfaAuthenticationStatus.MfaRequired && mfaResult.HandshakeToken != null)
             {
                 return AppViews.RenderExternalProviderMfaCallback("GitHub", "github", mfaResult.HandshakeToken, mfaResult.RequiredFactors ?? []);
+            }
+
+            if (mfaResult.Status == MfaAuthenticationStatus.RateLimited)
+            {
+                return AppViews.RenderExternalProviderResult(
+                    GitHubSignInFailedTitle,
+                    "Too many GitHub sign-in attempts were made. Wait a few minutes and try again.");
             }
 
             if (mfaResult.Status != MfaAuthenticationStatus.Succeeded || mfaResult.User == null)
@@ -77,6 +84,13 @@ internal static class GitHubOAuthEndpoints
             return AppViews.RenderExternalProviderResult(
                 GitHubSignInFailedTitle,
                 "GitHub sign-in was not completed. Try again, or use another sign-in method.");
+        }
+
+        if (result.Status == AshlarExternalAssertionStatus.RateLimited)
+        {
+            return AppViews.RenderExternalProviderResult(
+                GitHubSignInFailedTitle,
+                "Too many GitHub sign-in attempts were made. Wait a few minutes and try again.");
         }
 
         if (result.Status == AshlarExternalAssertionStatus.InvalidPrincipal)

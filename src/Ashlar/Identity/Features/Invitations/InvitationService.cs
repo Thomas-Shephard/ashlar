@@ -1,6 +1,7 @@
 using System.Globalization;
 using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
+using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
 using Ashlar.Security.Tokens;
@@ -23,6 +24,7 @@ internal sealed class InvitationService(
     private readonly IOptions<InvitationOptions> _options = options ?? Options.Create(new InvitationOptions());
     private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider);
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
+    private readonly AuthenticationRateLimitChecker _rateLimitChecker = new(dependencies.RateLimiter);
 
     /// <summary>
     /// Performs the create invitation <see langword="async" /> operation and returns the result.
@@ -44,15 +46,13 @@ internal sealed class InvitationService(
         var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
         var invitationOptions = _options.Value;
 
-        var rateLimitKey = $"invitation-create:{normalizedEmail}";
-        var rateLimit = await _dependencies.RateLimiter.CheckAsync(new RateLimitAttempt
+        var emailBucket = AuthenticationRateLimitDimensions.Email(normalizedEmail);
+        var rateLimit = await _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck("invitation-create", AuthenticationRateLimitDimensions.DimensionName(emailBucket), emailBucket, invitationOptions.CreationRateLimit)
         {
-            Key = rateLimitKey,
-            Purpose = "invitation-create",
             Email = normalizedEmail,
-            IpAddress = context?.IpAddress,
-            CorrelationId = context?.CorrelationId
-        }, invitationOptions.CreationRateLimit, cancellationToken);
+            TenantId = request.TenantId,
+            Context = context
+        }, cancellationToken);
 
         if (!rateLimit.IsAllowed)
         {
@@ -283,15 +283,11 @@ internal sealed class InvitationService(
 
     private async Task<bool> CheckInvitationRateLimitAsync(string operation, RateLimitRule rule, AuthenticationContext? context, CancellationToken cancellationToken)
     {
-        var ipAddress = string.IsNullOrWhiteSpace(context?.IpAddress) ? "unknown-ip" : context.IpAddress;
-        var rateLimitKey = $"invitation-{operation}:{ipAddress}";
-        var rateLimit = await _dependencies.RateLimiter.CheckAsync(new RateLimitAttempt
+        var sourceBucket = AuthenticationRateLimitDimensions.Source(context);
+        var rateLimit = await _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck($"invitation-{operation}", AuthenticationRateLimitDimensions.DimensionName(sourceBucket), sourceBucket, rule)
         {
-            Key = rateLimitKey,
-            Purpose = $"invitation-{operation}",
-            IpAddress = ipAddress,
-            CorrelationId = context?.CorrelationId
-        }, rule, cancellationToken);
+            Context = context
+        }, cancellationToken);
 
         if (rateLimit.IsAllowed)
         {

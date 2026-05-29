@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Ashlar.Auditing;
+using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
@@ -134,7 +135,7 @@ internal sealed class InvitationServiceTests
         var rateLimitAttempt = fixture.RateLimiter.GetLastAttempt();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rateLimitAttempt.Key, Is.EqualTo("invitation-create:TEST@EXAMPLE.COM"));
+            Assert.That(rateLimitAttempt.Key, Is.EqualTo(ExpectedRateLimitKey("invitation-create", "email", "email:TEST@EXAMPLE.COM")));
             Assert.That(rateLimitAttempt.IpAddress, Is.EqualTo("1.2.3.4"));
             Assert.That(rateLimitAttempt.CorrelationId, Is.EqualTo("corr-123"));
         }
@@ -937,7 +938,7 @@ internal sealed class InvitationServiceTests
         var rateLimitAttempt = fixture.RateLimiter.GetLastAttempt();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rateLimitAttempt.Key, Is.EqualTo("invitation-accept:1.2.3.4"));
+            Assert.That(rateLimitAttempt.Key, Is.EqualTo(ExpectedRateLimitKey("invitation-accept", "source", "source:ip:1.2.3.4")));
             Assert.That(rateLimitAttempt.Purpose, Is.EqualTo("invitation-accept"));
             Assert.That(rateLimitAttempt.IpAddress, Is.EqualTo("1.2.3.4"));
             Assert.That(rateLimitAttempt.CorrelationId, Is.EqualTo("corr-123"));
@@ -957,7 +958,7 @@ internal sealed class InvitationServiceTests
         var rateLimitAttempt = fixture.RateLimiter.GetLastAttempt();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rateLimitAttempt.Key, Is.EqualTo("invitation-preview:1.2.3.4"));
+            Assert.That(rateLimitAttempt.Key, Is.EqualTo(ExpectedRateLimitKey("invitation-preview", "source", "source:ip:1.2.3.4")));
             Assert.That(rateLimitAttempt.Purpose, Is.EqualTo("invitation-preview"));
             Assert.That(rateLimitAttempt.IpAddress, Is.EqualTo("1.2.3.4"));
             Assert.That(rateLimitAttempt.CorrelationId, Is.EqualTo("corr-123"));
@@ -977,9 +978,9 @@ internal sealed class InvitationServiceTests
         var rateLimitAttempt = fixture.RateLimiter.GetLastAttempt();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rateLimitAttempt.Key, Is.EqualTo("invitation-preview:unknown-ip"));
+            Assert.That(rateLimitAttempt.Key, Is.EqualTo(ExpectedRateLimitKey("invitation-preview", "source", "source:anonymous")));
             Assert.That(rateLimitAttempt.Purpose, Is.EqualTo("invitation-preview"));
-            Assert.That(rateLimitAttempt.IpAddress, Is.EqualTo("unknown-ip"));
+            Assert.That(rateLimitAttempt.IpAddress, Is.Null);
             Assert.That(rateLimitAttempt.CorrelationId, Is.EqualTo("corr-123"));
         }
     }
@@ -1082,6 +1083,19 @@ internal sealed class InvitationServiceTests
     }
 
     private sealed record Fixture(InvitationService Service, InMemoryInvitationRepository InvitationRepository, InMemoryUserRepository UserRepository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, ISecureTokenHasher TokenHasher, StubRateLimiter RateLimiter);
+
+    private static string ExpectedRateLimitKey(string purpose, string dimensionName, string dimensionValue)
+    {
+        var composed = string.Join('|',
+            EncodeRateLimitKeySegment(purpose),
+            EncodeRateLimitKeySegment("none"),
+            EncodeRateLimitKeySegment("global"),
+            EncodeRateLimitKeySegment(dimensionName),
+            EncodeRateLimitKeySegment(dimensionValue));
+        return AuthenticationRateLimitKeyBuilder.HashKey(composed);
+    }
+
+    private static string EncodeRateLimitKeySegment(string value) => $"{value.Length}:{value}";
 
     private sealed class StubRateLimiter(bool creationAllowed, bool acceptanceAllowed, bool previewAllowed, TimeProvider timeProvider) : IAuthenticationRateLimiter
     {

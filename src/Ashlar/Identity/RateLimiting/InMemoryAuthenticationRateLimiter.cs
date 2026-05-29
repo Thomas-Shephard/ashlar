@@ -113,7 +113,7 @@ public sealed class InMemoryAuthenticationRateLimiter : IAuthenticationRateLimit
         /// </summary>
         public RateLimitState State { get; } = state;
         /// <summary>
-        /// Gets or sets the expires at value.
+        /// Gets or sets the cache entry expiration tracked by the memory cache.
         /// </summary>
         public DateTimeOffset? ExpiresAt { get; set; }
     }

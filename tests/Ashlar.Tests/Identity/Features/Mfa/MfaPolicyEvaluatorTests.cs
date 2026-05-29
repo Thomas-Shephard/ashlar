@@ -274,12 +274,13 @@ internal sealed class MfaPolicyEvaluatorTests
         var user = CreateUser();
         var assertion = new Mock<IAuthenticationAssertion>();
         var pipeline = new Mock<IAuthenticationPipeline>();
+        var factorPipeline = new Mock<IAuthenticationFactorPipeline>();
         var handshakeService = new Mock<IAuthenticationHandshakeService>();
         var policy = new CompositeMfaPolicyEvaluator([
             new MfaPolicyEvaluatorComponent<StaticMfaPolicyEvaluator>(new StaticMfaPolicyEvaluator(new MfaPolicyEvaluation(false))),
             new MfaPolicyEvaluatorComponent<StaticMfaPolicyEvaluator>(new StaticMfaPolicyEvaluator(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"]))))
         ]);
-        var orchestrator = new AuthenticationOrchestrator(pipeline.Object, handshakeService.Object, policy);
+        var orchestrator = new AuthenticationOrchestrator(pipeline.Object, factorPipeline.Object, handshakeService.Object, policy, Mock.Of<IAuthenticationProviderRegistry>());
         pipeline.Setup(p => p.LoginAsync(_context, assertion.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResponse(true, user.Object, AuthenticationStatus.Success));
         var handshake = new AuthenticationHandshake(

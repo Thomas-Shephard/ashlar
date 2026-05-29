@@ -14,20 +14,28 @@ public interface IAuthenticationHandshakeService
     Task<Result<AuthenticationHandshakeCreated>> CreateHandshakeAsync(CreateAuthenticationHandshakeRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Marks one factor as verified and returns the updated handshake state.
+    /// Validates that a factor challenge may be issued without consuming a factor verification attempt.
+    /// </summary>
+    /// <param name="request">The factor verification details.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>The current handshake when a factor challenge may be issued.</returns>
+    Task<Result<AuthenticationHandshake>> BeginFactorChallengeAsync(VerifyAuthenticationHandshakeRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Validates and consumes a factor verification attempt before the factor credential is checked.
+    /// </summary>
+    /// <param name="request">The factor verification details.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>The current handshake when verification may proceed.</returns>
+    Task<Result<AuthenticationHandshake>> BeginFactorVerificationAsync(VerifyAuthenticationHandshakeRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks one previously authenticated factor as verified and returns the updated handshake state.
     /// </summary>
     /// <param name="request">The factor verification details.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>The updated handshake when verification succeeds.</returns>
-    Task<Result<AuthenticationHandshake>> VerifyFactorAsync(VerifyAuthenticationHandshakeRequest request, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Looks up an active handshake by its raw handshake token.
-    /// </summary>
-    /// <param name="handshakeToken">The raw handshake token.</param>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
-    /// <returns>The matching handshake, or <see langword="null" /> when no active handshake exists.</returns>
-    Task<AuthenticationHandshake?> GetHandshakeAsync(string handshakeToken, CancellationToken cancellationToken = default);
+    Task<Result<AuthenticationHandshake>> CompleteFactorVerificationAsync(VerifyAuthenticationHandshakeRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Revokes a handshake so it can no longer complete authentication.

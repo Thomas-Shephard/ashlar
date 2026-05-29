@@ -1,4 +1,7 @@
 using Moq;
+using Ashlar.Auditing;
+using Ashlar.Identity.RateLimiting.Abstractions;
+using Ashlar.Identity.RateLimiting.Models;
 
 namespace Ashlar.Tests.Identity.Features.Authentication;
 
@@ -6,7 +9,9 @@ internal sealed class AuthenticationPipelineTests
 {
     private Mock<IAuthenticationProviderRegistry> _providerRegistryMock;
     private Mock<ICredentialService> _credentialServiceMock;
-    private Mock<IAuthenticationProvider> _providerMock;
+    private Mock<IPrimaryAuthenticationProvider> _providerMock;
+    private Mock<IPrimaryAuthenticationRateLimiter> _primaryRateLimiterMock;
+    private Mock<IAuthenticationFactorRateLimiter> _factorRateLimiterMock;
     private AuthenticationPipeline _pipeline;
 
     [SetUp]
@@ -14,29 +19,45 @@ internal sealed class AuthenticationPipelineTests
     {
         _providerRegistryMock = new Mock<IAuthenticationProviderRegistry>();
         _credentialServiceMock = new Mock<ICredentialService>();
-        _providerMock = new Mock<IAuthenticationProvider>();
-        _pipeline = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialServiceMock.Object, new NullTransactionProvider());
+        _providerMock = new Mock<IPrimaryAuthenticationProvider>();
+        _primaryRateLimiterMock = CreateAllowingPrimaryRateLimiter();
+        _factorRateLimiterMock = CreateAllowingFactorRateLimiter();
+        _pipeline = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialServiceMock.Object, new NullTransactionProvider(), _primaryRateLimiterMock.Object, _factorRateLimiterMock.Object);
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullProviderRegistry()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(null!, _credentialServiceMock.Object, new NullTransactionProvider()));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(null!, _credentialServiceMock.Object, new NullTransactionProvider(), _primaryRateLimiterMock.Object, _factorRateLimiterMock.Object));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullCredentialService()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(_providerRegistryMock.Object, null!, new NullTransactionProvider()));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(_providerRegistryMock.Object, null!, new NullTransactionProvider(), _primaryRateLimiterMock.Object, _factorRateLimiterMock.Object));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullTransactionProvider()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialServiceMock.Object, null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialServiceMock.Object, null!, _primaryRateLimiterMock.Object, _factorRateLimiterMock.Object));
+    }
+
+    [Test]
+    public void ConstructorShouldThrowOnNullPrimaryRateLimiter()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialServiceMock.Object, new NullTransactionProvider(), null!, _factorRateLimiterMock.Object));
+    }
+
+    [Test]
+    public void ConstructorShouldThrowOnNullFactorRateLimiter()
+    {
+        // ReSharper disable once NullableWarningSuppressionIsUsed
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialServiceMock.Object, new NullTransactionProvider(), _primaryRateLimiterMock.Object, null!));
     }
 
     [Test]
@@ -46,6 +67,8 @@ internal sealed class AuthenticationPipelineTests
             _providerRegistryMock.Object,
             _credentialServiceMock.Object,
             new NullTransactionProvider(),
+            _primaryRateLimiterMock.Object,
+            _factorRateLimiterMock.Object,
             logger: Mock.Of<Microsoft.Extensions.Logging.ILogger<AuthenticationPipeline>>());
 
         Assert.That(pipeline, Is.Not.Null);
@@ -68,6 +91,416 @@ internal sealed class AuthenticationPipelineTests
         _credentialServiceMock.Verify(
             s => s.ResolveAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Test]
+    public async Task LoginAsyncWithAllowedPrimaryAttemptShouldCheckRateLimitAndCallProvider()
+    {
+        var context = new AuthenticationContext("test@example.com", IpAddress: "203.0.113.10");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var credential = CreateCredential(user.Id);
+        var primaryRateLimiter = new Mock<IPrimaryAuthenticationRateLimiter>();
+        primaryRateLimiter.Setup(l => l.CheckAsync(context, assertion, AuthenticationProviderKey.Local, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RateLimitDecision.Allow());
+        _pipeline = new AuthenticationPipeline(
+            _providerRegistryMock.Object,
+            _credentialServiceMock.Object,
+            new NullTransactionProvider(),
+            primaryRateLimiter.Object,
+            _factorRateLimiterMock.Object);
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Failed));
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+            primaryRateLimiter.Verify(l => l.CheckAsync(context, assertion, AuthenticationProviderKey.Local, It.IsAny<CancellationToken>()), Times.Once);
+            _providerMock.Verify(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
+    public async Task LoginAsyncWithPrimaryRateLimiterFailureShouldFailOpenAndCallProvider()
+    {
+        var context = new AuthenticationContext("test@example.com", IpAddress: "203.0.113.10");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var credential = CreateCredential(user.Id);
+        var primaryRateLimiter = new Mock<IPrimaryAuthenticationRateLimiter>();
+        primaryRateLimiter.Setup(l => l.CheckAsync(context, assertion, AuthenticationProviderKey.Local, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("limiter unavailable"));
+        _pipeline = new AuthenticationPipeline(
+            _providerRegistryMock.Object,
+            _credentialServiceMock.Object,
+            new NullTransactionProvider(),
+            primaryRateLimiter.Object,
+            _factorRateLimiterMock.Object);
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Failed));
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+            _providerMock.Verify(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
+    public void LoginAsyncWithPrimaryRateLimiterCancellationShouldPropagate()
+    {
+        var context = new AuthenticationContext("test@example.com", IpAddress: "203.0.113.10");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        ConfigureProviderResolution(assertion);
+        var primaryRateLimiter = new Mock<IPrimaryAuthenticationRateLimiter>();
+        primaryRateLimiter.Setup(l => l.CheckAsync(context, assertion, AuthenticationProviderKey.Local, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException());
+        _pipeline = new AuthenticationPipeline(
+            _providerRegistryMock.Object,
+            _credentialServiceMock.Object,
+            new NullTransactionProvider(),
+            primaryRateLimiter.Object,
+            _factorRateLimiterMock.Object);
+
+        Assert.ThrowsAsync<OperationCanceledException>(() => _pipeline.LoginAsync(context, assertion));
+    }
+
+    [Test]
+    public async Task LoginAsyncWithBlockedPrimaryAttemptShouldNotResolveCredentialOrAuthenticate()
+    {
+        var context = new AuthenticationContext("test@example.com", IpAddress: "203.0.113.10");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        ConfigureProviderResolution(assertion);
+        var audit = new RecordingSecurityEventSink();
+        var primaryRateLimiter = new Mock<IPrimaryAuthenticationRateLimiter>();
+        primaryRateLimiter.Setup(l => l.CheckAsync(context, assertion, AuthenticationProviderKey.Local, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(BlockedDecision());
+        _pipeline = new AuthenticationPipeline(
+            _providerRegistryMock.Object,
+            _credentialServiceMock.Object,
+            new NullTransactionProvider(),
+            primaryRateLimiter.Object,
+            _factorRateLimiterMock.Object,
+            audit,
+            timeProvider: null);
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.RateLimited));
+            Assert.That(response.User, Is.Null);
+            Assert.That(audit.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationRateLimited));
+            Assert.That(audit.Events.Single().FailureReason, Is.EqualTo(SecurityEventFailureReasons.RateLimited));
+            _credentialServiceMock.Verify(
+                s => s.ResolveAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            _providerMock.Verify(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task LoginAsyncWithBlockedUnsupportedProviderShouldReturnRateLimitedBeforeUnsupportedFailure()
+    {
+        var context = new AuthenticationContext("test@example.com");
+        var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Oidc, "Contoso"));
+        var audit = new RecordingSecurityEventSink();
+        var primaryRateLimiter = new Mock<IPrimaryAuthenticationRateLimiter>();
+        primaryRateLimiter.Setup(l => l.CheckAsync(context, assertion, assertion.ProviderIdentity, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(BlockedDecision());
+        _pipeline = new AuthenticationPipeline(
+            _providerRegistryMock.Object,
+            _credentialServiceMock.Object,
+            new NullTransactionProvider(),
+            primaryRateLimiter.Object,
+            _factorRateLimiterMock.Object,
+            audit,
+            timeProvider: null);
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.RateLimited));
+            Assert.That(audit.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationRateLimited));
+            Assert.That(audit.Events.Single().FailureReason, Is.EqualTo(SecurityEventFailureReasons.RateLimited));
+        }
+    }
+
+    [Test]
+    public async Task LoginAsyncWithUnprotectFailureAndNoUserShouldFailBeforeProviderAuthentication()
+    {
+        var context = new AuthenticationContext("ghost@example.com");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
+        var audit = new RecordingSecurityEventSink();
+        _pipeline = new AuthenticationPipeline(
+            _providerRegistryMock.Object,
+            _credentialServiceMock.Object,
+            new NullTransactionProvider(),
+            _primaryRateLimiterMock.Object,
+            _factorRateLimiterMock.Object,
+            audit);
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(((IUser?)null, (UserCredential?)null, (UserCredential?)null, true));
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(audit.Events.Single().FailureReason, Is.EqualTo(SecurityEventFailureReasons.UnprotectFailed));
+            _providerMock.Verify(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task VerifyFactorAsyncShouldNotUsePrimaryRateLimiterForAllowedSecondaryFactor()
+    {
+        var userId = Guid.NewGuid();
+        var context = new AuthenticationContext("test@example.com", UserId: userId);
+        var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Mfa, "totp"));
+        var providerMock = new Mock<ISecondaryAuthenticationFactorProvider>();
+        providerMock.SetupGet(p => p.Key).Returns(assertion.ProviderIdentity);
+        IAuthenticationProvider? provider = providerMock.Object;
+        _providerRegistryMock.Setup(r => r.TryGetProvider(assertion, out provider))
+            .Returns(true);
+        var user = new User { Id = userId, Email = "test@example.com" };
+        var credential = CreateCredential(user.Id);
+        var primaryRateLimiter = new Mock<IPrimaryAuthenticationRateLimiter>(MockBehavior.Strict);
+        _pipeline = new AuthenticationPipeline(
+            _providerRegistryMock.Object,
+            _credentialServiceMock.Object,
+            new NullTransactionProvider(),
+            primaryRateLimiter.Object,
+            _factorRateLimiterMock.Object);
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Failed));
+
+        var response = await _pipeline.VerifyFactorAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            primaryRateLimiter.VerifyNoOtherCalls();
+            _factorRateLimiterMock.Verify(l => l.CheckAsync(context, assertion.ProviderIdentity, It.IsAny<CancellationToken>()), Times.Once);
+            providerMock.Verify(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
+    public async Task VerifyFactorAsyncWithFactorRateLimiterFailureShouldFailOpenAndCallProvider()
+    {
+        var userId = Guid.NewGuid();
+        var context = new AuthenticationContext("test@example.com", UserId: userId);
+        var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Mfa, "totp"));
+        var providerMock = new Mock<ISecondaryAuthenticationFactorProvider>();
+        providerMock.SetupGet(p => p.Key).Returns(assertion.ProviderIdentity);
+        IAuthenticationProvider? provider = providerMock.Object;
+        _providerRegistryMock.Setup(r => r.TryGetProvider(assertion, out provider))
+            .Returns(true);
+        var user = new User { Id = userId, Email = "test@example.com" };
+        var credential = CreateCredential(user.Id);
+        var factorRateLimiter = new Mock<IAuthenticationFactorRateLimiter>();
+        factorRateLimiter.Setup(l => l.CheckAsync(context, assertion.ProviderIdentity, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("limiter unavailable"));
+        _pipeline = new AuthenticationPipeline(
+            _providerRegistryMock.Object,
+            _credentialServiceMock.Object,
+            new NullTransactionProvider(),
+            _primaryRateLimiterMock.Object,
+            factorRateLimiter.Object);
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Failed));
+
+        var response = await _pipeline.VerifyFactorAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+            providerMock.Verify(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
+    public async Task VerifyFactorAsyncWithBlockedGenericFactorAttemptShouldNotResolveCredentialOrAuthenticate()
+    {
+        var userId = Guid.NewGuid();
+        var context = new AuthenticationContext("test@example.com", IpAddress: "203.0.113.22", UserId: userId);
+        var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Passkey, "Passkey"));
+        var providerMock = new Mock<ISecondaryAuthenticationFactorProvider>();
+        providerMock.SetupGet(p => p.Key).Returns(assertion.ProviderIdentity);
+        IAuthenticationProvider? provider = providerMock.Object;
+        _providerRegistryMock.Setup(r => r.TryGetProvider(assertion, out provider))
+            .Returns(true);
+        var factorRateLimiter = new Mock<IAuthenticationFactorRateLimiter>();
+        factorRateLimiter.Setup(l => l.CheckAsync(context, assertion.ProviderIdentity, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(BlockedDecision());
+        var audit = new RecordingSecurityEventSink();
+        _pipeline = new AuthenticationPipeline(
+            _providerRegistryMock.Object,
+            _credentialServiceMock.Object,
+            new NullTransactionProvider(),
+            _primaryRateLimiterMock.Object,
+            factorRateLimiter.Object,
+            audit);
+
+        var response = await _pipeline.VerifyFactorAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.RateLimited));
+            Assert.That(audit.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationRateLimited));
+            Assert.That(audit.Events.Single().UserId, Is.EqualTo(userId));
+            _credentialServiceMock.Verify(
+                s => s.ResolveAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            providerMock.Verify(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task VerifyFactorAsyncShouldRejectPrimaryProviderWithoutCallingProvider()
+    {
+        var userId = Guid.NewGuid();
+        var context = new AuthenticationContext("test@example.com", UserId: userId);
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        ConfigureProviderResolution(assertion);
+
+        var response = await _pipeline.VerifyFactorAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+            _factorRateLimiterMock.Verify(l => l.CheckAsync(context, assertion.ProviderIdentity, It.IsAny<CancellationToken>()), Times.Once);
+            _credentialServiceMock.Verify(
+                s => s.ResolveAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            _providerMock.Verify(
+                p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential?>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task VerifyFactorAsyncShouldRejectSecondaryFactorWithoutUserId()
+    {
+        var context = new AuthenticationContext("test@example.com");
+        var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Mfa, "totp"));
+
+        var response = await _pipeline.VerifyFactorAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+            _providerRegistryMock.VerifyNoOtherCalls();
+            _credentialServiceMock.Verify(
+                s => s.ResolveAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task VerifyFactorAsyncShouldRejectUnsupportedFactorProvider()
+    {
+        var userId = Guid.NewGuid();
+        var context = new AuthenticationContext("test@example.com", UserId: userId);
+        var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Mfa, "missing"));
+
+        var response = await _pipeline.VerifyFactorAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+            _factorRateLimiterMock.Verify(l => l.CheckAsync(context, assertion.ProviderIdentity, It.IsAny<CancellationToken>()), Times.Once);
+            _credentialServiceMock.Verify(
+                s => s.ResolveAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task VerifyFactorAsyncWithBlockedUnsupportedFactorProviderShouldReturnRateLimited()
+    {
+        var userId = Guid.NewGuid();
+        var context = new AuthenticationContext("test@example.com", IpAddress: "203.0.113.44", UserId: userId);
+        var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Mfa, "missing"));
+        var audit = new RecordingSecurityEventSink();
+        var factorRateLimiter = new Mock<IAuthenticationFactorRateLimiter>();
+        factorRateLimiter.Setup(l => l.CheckAsync(context, assertion.ProviderIdentity, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(BlockedDecision());
+        _pipeline = new AuthenticationPipeline(
+            _providerRegistryMock.Object,
+            _credentialServiceMock.Object,
+            new NullTransactionProvider(),
+            _primaryRateLimiterMock.Object,
+            factorRateLimiter.Object,
+            audit);
+
+        var response = await _pipeline.VerifyFactorAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.RateLimited));
+            Assert.That(audit.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationRateLimited));
+            Assert.That(audit.Events.Single().UserId, Is.EqualTo(userId));
+            _credentialServiceMock.Verify(
+                s => s.ResolveAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task LoginAsyncShouldRejectFactorOnlyProviderAfterPrimaryRateLimitCheck()
+    {
+        var context = new AuthenticationContext("test@example.com", UserId: Guid.NewGuid());
+        var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Mfa, "totp"));
+        var providerMock = new Mock<ISecondaryAuthenticationFactorProvider>();
+        providerMock.SetupGet(p => p.Key).Returns(assertion.ProviderIdentity);
+        IAuthenticationProvider? provider = providerMock.Object;
+        _providerRegistryMock.Setup(r => r.TryGetProvider(assertion, out provider))
+            .Returns(true);
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+            _primaryRateLimiterMock.Verify(l => l.CheckAsync(context, assertion, assertion.ProviderIdentity, It.IsAny<CancellationToken>()), Times.Once);
+            _credentialServiceMock.Verify(
+                s => s.ResolveAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            providerMock.Verify(
+                p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential?>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
     }
 
     [Test]
@@ -354,7 +787,7 @@ internal sealed class AuthenticationPipelineTests
     public async Task LoginAsyncWithNestedTransactionRollbackFromBestEffortCredentialUpdateShouldStillReturnSuccess()
     {
         var transactionProvider = new RollbackOnlyTransactionProvider();
-        _pipeline = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialServiceMock.Object, transactionProvider);
+        _pipeline = new AuthenticationPipeline(_providerRegistryMock.Object, _credentialServiceMock.Object, transactionProvider, _primaryRateLimiterMock.Object, _factorRateLimiterMock.Object);
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
@@ -385,10 +818,11 @@ internal sealed class AuthenticationPipelineTests
 
     private IAuthenticationProvider ConfigureProviderResolution(IAuthenticationAssertion assertion)
     {
-        var provider = _providerMock.Object;
+        _providerMock.SetupGet(p => p.Key).Returns(assertion.ProviderIdentity);
+        IAuthenticationProvider? provider = _providerMock.Object;
         _providerRegistryMock.Setup(r => r.TryGetProvider(assertion, out provider))
             .Returns(true);
-        return provider;
+        return provider!;
     }
 
     private static UserCredential CreateCredential(Guid userId)
@@ -406,7 +840,52 @@ internal sealed class AuthenticationPipelineTests
         };
     }
 
+    private static RateLimitDecision BlockedDecision()
+    {
+        return new RateLimitDecision
+        {
+            Status = RateLimitStatus.Blocked,
+            Remaining = 0,
+            WindowResetAt = DateTimeOffset.UtcNow.AddMinutes(1),
+            RetryAfter = DateTimeOffset.UtcNow.AddMinutes(1)
+        };
+    }
+
+    private static Mock<IPrimaryAuthenticationRateLimiter> CreateAllowingPrimaryRateLimiter()
+    {
+        var primaryRateLimiter = new Mock<IPrimaryAuthenticationRateLimiter>();
+        primaryRateLimiter.Setup(l => l.CheckAsync(
+                It.IsAny<AuthenticationContext>(),
+                It.IsAny<IAuthenticationAssertion>(),
+                It.IsAny<AuthenticationProviderKey>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RateLimitDecision.Allow());
+        return primaryRateLimiter;
+    }
+
+    private static Mock<IAuthenticationFactorRateLimiter> CreateAllowingFactorRateLimiter()
+    {
+        var factorRateLimiter = new Mock<IAuthenticationFactorRateLimiter>();
+        factorRateLimiter.Setup(l => l.CheckAsync(
+                It.IsAny<AuthenticationContext>(),
+                It.IsAny<AuthenticationProviderKey>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RateLimitDecision.Allow());
+        return factorRateLimiter;
+    }
+
     private sealed record TestAssertion(AuthenticationProviderKey ProviderIdentity) : IAuthenticationAssertion;
+
+    private sealed class RecordingSecurityEventSink : ISecurityEventSink
+    {
+        public List<AshlarSecurityEvent> Events { get; } = [];
+
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            Events.Add(securityEvent);
+            return Task.CompletedTask;
+        }
+    }
 
     private sealed class RollbackOnlyTransactionProvider : IAshlarTransactionProvider
     {

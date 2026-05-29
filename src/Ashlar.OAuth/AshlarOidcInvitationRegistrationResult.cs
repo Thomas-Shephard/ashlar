@@ -71,6 +71,10 @@ public enum AshlarOidcInvitationRegistrationStatus
     /// </summary>
     LinkFailed,
     /// <summary>
+    /// Invitation registration was blocked by a rate limiter.
+    /// </summary>
+    RateLimited,
+    /// <summary>
     /// Registration failed for another Ashlar service reason.
     /// </summary>
     Failed

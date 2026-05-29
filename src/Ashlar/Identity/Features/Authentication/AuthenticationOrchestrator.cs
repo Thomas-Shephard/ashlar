@@ -9,14 +9,18 @@ namespace Ashlar.Identity.Features.Authentication;
 /// Provides authentication orchestrator behavior.
 /// </summary>
 /// <param name="pipeline">The pipeline value.</param>
+/// <param name="factorPipeline">The factor pipeline value.</param>
 /// <param name="handshakeService">The handshake service value.</param>
 /// <param name="policyEvaluator">The policy evaluator value.</param>
+/// <param name="providerRegistry">The provider registry value.</param>
 /// <param name="globalOptions">The global options value.</param>
 /// <param name="logger">The logger value.</param>
 public sealed class AuthenticationOrchestrator(
     IAuthenticationPipeline pipeline,
+    IAuthenticationFactorPipeline factorPipeline,
     IAuthenticationHandshakeService handshakeService,
     IMfaPolicyEvaluator policyEvaluator,
+    IAuthenticationProviderRegistry providerRegistry,
     IOptions<MfaOrchestrationOptions>? globalOptions = null,
     ILogger<AuthenticationOrchestrator>? logger = null)
     : IAuthenticationOrchestrator
@@ -45,8 +49,10 @@ public sealed class AuthenticationOrchestrator(
             "MFA handshake operation failed. UserId={UserId} FailureReason={FailureReason}");
 
     private readonly IAuthenticationPipeline _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
+    private readonly IAuthenticationFactorPipeline _factorPipeline = factorPipeline ?? throw new ArgumentNullException(nameof(factorPipeline));
     private readonly IAuthenticationHandshakeService _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
     private readonly IMfaPolicyEvaluator _policyEvaluator = policyEvaluator ?? throw new ArgumentNullException(nameof(policyEvaluator));
+    private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
     private readonly MfaOrchestrationOptions _globalOptions = globalOptions?.Value ?? new MfaOrchestrationOptions();
     private readonly ILogger<AuthenticationOrchestrator> _logger = logger ?? NullLogger<AuthenticationOrchestrator>.Instance;
 
@@ -67,6 +73,7 @@ public sealed class AuthenticationOrchestrator(
             return response.Status switch
             {
                 AuthenticationStatus.Disabled => new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: "User is disabled."),
+                AuthenticationStatus.RateLimited => new MfaAuthenticationResult(MfaAuthenticationStatus.RateLimited, response.User, ErrorMessage: "Rate limit exceeded."),
                 _ => new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: "Authentication failed.")
             };
         }
@@ -101,23 +108,19 @@ public sealed class AuthenticationOrchestrator(
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(assertion);
 
-        var handshake = await _handshakeService.GetHandshakeAsync(handshakeToken, cancellationToken);
-        if (handshake == null)
+        var verificationRequest = new VerifyAuthenticationHandshakeRequest(handshakeToken, factorType, Context: context);
+        var beginResult = await _handshakeService.BeginFactorVerificationAsync(verificationRequest, cancellationToken);
+        if (!beginResult.Succeeded || beginResult.Value == null)
         {
-            MfaFactorVerificationRejected(_logger, "handshake_not_found", null);
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Handshake not found.");
+            MfaFactorVerificationRejected(_logger, beginResult.FailureReason ?? "handshake_verification_failed", null);
+            return CreateHandshakeFailureResult(beginResult.FailureCode);
         }
 
+        var handshake = beginResult.Value;
         if (!TryResolveRequiredFactor(handshake, factorType, out var resolvedFactorType))
         {
             MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "invalid_factor_type", null);
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Invalid factor type.");
-        }
-
-        if (handshake.VerifiedFactors.Any(verifiedFactor => FactorsMatch(verifiedFactor, resolvedFactorType)))
-        {
-            MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "factor_already_verified", null);
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Factor already verified.");
         }
 
         if (!IsAssertionAuthorizedForFactor(assertion, resolvedFactorType))
@@ -133,12 +136,22 @@ public sealed class AuthenticationOrchestrator(
         }
 
         var factorContext = context with { UserId = handshake.UserId };
-        var response = await _pipeline.LoginAsync(factorContext, assertion, cancellationToken);
+        verificationRequest = verificationRequest with { FactorType = resolvedFactorType, Context = factorContext };
+
+        var response = await _factorPipeline.VerifyFactorAsync(factorContext, assertion, cancellationToken);
         if (!response.Succeeded || response.User?.Id != handshake.UserId)
         {
             MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "factor_authentication_failed", null);
-            var errorMessage = response.Status == AuthenticationStatus.Disabled ? "User is disabled." : FactorVerificationFailedMessage;
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: errorMessage);
+            var errorMessage = response.Status switch
+            {
+                AuthenticationStatus.Disabled => "User is disabled.",
+                AuthenticationStatus.RateLimited => "Rate limit exceeded.",
+                _ => FactorVerificationFailedMessage
+            };
+            var status = response.Status == AuthenticationStatus.RateLimited
+                ? MfaAuthenticationStatus.RateLimited
+                : MfaAuthenticationStatus.Failed;
+            return new MfaAuthenticationResult(status, ErrorMessage: errorMessage);
         }
 
         // Capture any new claims from this factor
@@ -151,9 +164,7 @@ public sealed class AuthenticationOrchestrator(
             }
         }
 
-        var result = await _handshakeService.VerifyFactorAsync(
-            new VerifyAuthenticationHandshakeRequest(handshakeToken, resolvedFactorType, metadata, factorContext),
-            cancellationToken);
+        var result = await _handshakeService.CompleteFactorVerificationAsync(verificationRequest with { Metadata = metadata }, cancellationToken);
 
         if (!result.Succeeded || result.Value == null)
         {
@@ -162,6 +173,14 @@ public sealed class AuthenticationOrchestrator(
         }
 
         return CreateResultFromHandshake(result.Value, response.User, handshakeToken);
+    }
+
+    private static MfaAuthenticationResult CreateHandshakeFailureResult(AshlarFailureCode? failureCode)
+    {
+        var status = failureCode?.Value == AshlarFailureCodes.RateLimitExceededValue
+            ? MfaAuthenticationStatus.RateLimited
+            : MfaAuthenticationStatus.Failed;
+        return new MfaAuthenticationResult(status, ErrorMessage: GetHandshakeVerificationFailureMessage(failureCode));
     }
 
     private static MfaAuthenticationResult CreateResultFromHandshake(AuthenticationHandshake handshake, IUser user, string handshakeToken)
@@ -181,7 +200,7 @@ public sealed class AuthenticationOrchestrator(
             User: user,
             HandshakeToken: handshakeToken,
             RequiredFactors: handshake.RequiredFactors
-                .Where(requiredFactor => !handshake.VerifiedFactors.Any(verifiedFactor => FactorsMatch(requiredFactor, verifiedFactor)))
+                .Where(requiredFactor => !handshake.VerifiedFactors.Any(verifiedFactor => AuthenticationFactorTypes.Matches(requiredFactor, verifiedFactor)))
                 .ToArray());
     }
 
@@ -303,14 +322,15 @@ public sealed class AuthenticationOrchestrator(
         };
     }
 
-    private static bool IsAssertionAuthorizedForFactor(IAuthenticationAssertion assertion, string factorType)
+    private bool IsAssertionAuthorizedForFactor(IAuthenticationAssertion assertion, string factorType)
     {
-        var normalizedFactorType = NormalizeFactorType(factorType);
-        var providerIdentity = assertion.ProviderIdentity;
+        if (!_providerRegistry.TryGetProvider(assertion, out var provider) ||
+            provider is not ISecondaryAuthenticationFactorProvider factorProvider)
+        {
+            return false;
+        }
 
-        return NormalizeFactorType(providerIdentity.Name) == normalizedFactorType ||
-            NormalizeFactorType(providerIdentity.Type == default ? null : providerIdentity.Type.Value) == normalizedFactorType ||
-            NormalizeFactorType(providerIdentity.ToString()) == normalizedFactorType;
+        return factorProvider.CanSatisfyFactor(factorType);
     }
 
     private static IEnumerable<string> NormalizeRequiredFactors(IEnumerable<string>? factors)
@@ -320,26 +340,12 @@ public sealed class AuthenticationOrchestrator(
 
     private static bool TryResolveRequiredFactor(AuthenticationHandshake handshake, string factorType, out string resolvedFactorType)
     {
-        var requiredFactor = handshake.RequiredFactors.FirstOrDefault(requiredFactor => FactorsMatch(requiredFactor, factorType));
+        var requiredFactor = AuthenticationFactorTypes.Matches(factorType, AuthenticationFactorTypes.RecoveryCode)
+            ? handshake.RequiredFactors.FirstOrDefault(requiredFactor =>
+                !handshake.VerifiedFactors.Any(verifiedFactor => AuthenticationFactorTypes.Matches(requiredFactor, verifiedFactor)))
+            : handshake.RequiredFactors.FirstOrDefault(requiredFactor => AuthenticationFactorTypes.Matches(requiredFactor, factorType));
 
         resolvedFactorType = requiredFactor ?? string.Empty;
         return requiredFactor != null;
-    }
-
-    private static bool FactorsMatch(string left, string right)
-    {
-        return StringComparer.OrdinalIgnoreCase.Equals(left, right) ||
-            NormalizeFactorType(left) == NormalizeFactorType(right);
-    }
-
-    private static string NormalizeFactorType(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return string.Empty;
-        }
-
-        var normalized = string.Concat(value.Where(char.IsLetterOrDigit)).ToUpperInvariant();
-        return string.IsNullOrEmpty(normalized) ? value.ToUpperInvariant() : normalized;
     }
 }

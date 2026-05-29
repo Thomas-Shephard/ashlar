@@ -6,7 +6,7 @@ namespace Ashlar.Identity.Providers;
 /// Provides password hash authentication provider behavior.
 /// </summary>
 /// <param name="hasherSelector">The hasher selector value.</param>
-public abstract class PasswordHashAuthenticationProvider(PasswordHasherSelector hasherSelector) : IAuthenticationProvider
+public abstract class PasswordHashAuthenticationProvider(PasswordHasherSelector hasherSelector) : IPrimaryAuthenticationProvider
 {
     /// <summary>
     /// Gets the configured dependency value.

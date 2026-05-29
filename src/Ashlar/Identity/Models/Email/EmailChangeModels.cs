@@ -1,4 +1,6 @@
 using Ashlar.Auditing;
+using Ashlar.Identity.RateLimiting;
+using Ashlar.Identity.RateLimiting.Models;
 
 namespace Ashlar.Identity.Models.Email;
 
@@ -11,6 +13,14 @@ public sealed class EmailChangeOptions
     /// Gets or sets the expiration value.
     /// </summary>
     public TimeSpan Expiration { get; set; } = TimeSpan.FromHours(2);
+    /// <summary>
+    /// Gets or sets the email change request rate limit.
+    /// </summary>
+    public RateLimitRule RequestRateLimit { get; set; } = new() { PermitLimit = 3, Window = TimeSpan.FromHours(1) };
+    /// <summary>
+    /// Gets or sets the email change confirmation rate limit.
+    /// </summary>
+    public RateLimitRule VerificationRateLimit { get; set; } = new() { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) };
     /// <summary>
     /// Gets or sets the subject value.
     /// </summary>
@@ -35,6 +45,23 @@ public sealed class EmailChangeOptions
     /// Gets or sets the user id parameter name value.
     /// </summary>
     public string UserIdParameterName { get; set; } = "u";
+
+    /// <summary>
+    /// Validates email change options.
+    /// </summary>
+    /// <param name="options">The options value.</param>
+    /// <returns><see langword="true" /> when options are valid.</returns>
+    public static bool Validate(EmailChangeOptions? options)
+    {
+        return options is { RequestRateLimit: { }, VerificationRateLimit: { } }
+            && options.Expiration > TimeSpan.Zero
+            && AuthenticationRateLimitRuleValidator.IsValid(options.RequestRateLimit)
+            && AuthenticationRateLimitRuleValidator.IsValid(options.VerificationRateLimit)
+            && !string.IsNullOrWhiteSpace(options.Subject)
+            && !string.IsNullOrWhiteSpace(options.EmailTextTemplate)
+            && !string.IsNullOrWhiteSpace(options.TokenParameterName)
+            && !string.IsNullOrWhiteSpace(options.UserIdParameterName);
+    }
 }
 
 /// <summary>

@@ -1,6 +1,9 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Ashlar.Auditing;
+using Ashlar.Identity.RateLimiting;
+using Ashlar.Identity.RateLimiting.Abstractions;
+using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Options;
 
@@ -23,6 +26,7 @@ public sealed class PasskeyService(
 {
     private const string RegistrationPurpose = "passkey-registration";
     private const string AuthenticationPurpose = "passkey-authentication";
+    private const string AuthenticationChallengeStartPurpose = "passkey-authentication-start";
     private const string PrimaryProviderTypeMetadataKey = "primary_provider_type";
     private const string PrimaryProviderNameMetadataKey = "primary_provider_name";
     private const string PrimaryCredentialKeyMetadataKey = "primary_credential_key";
@@ -33,6 +37,7 @@ public sealed class PasskeyService(
     private readonly IAuthenticationOrchestrator _authenticationOrchestrator = ValidateDependencies(dependencies).AuthenticationOrchestrator;
     private readonly IAuthenticationHandshakeService _handshakeService = ValidateDependencies(dependencies).HandshakeService;
     private readonly ISecureTokenHasher _tokenHasher = ValidateDependencies(dependencies).TokenHasher;
+    private readonly AuthenticationRateLimitChecker _rateLimitChecker = new(ValidateDependencies(dependencies).RateLimiter);
     private readonly PasskeyOptions _options = ValidateDependencies(dependencies).Options.Value;
     private readonly TimeProvider _timeProvider = ValidateDependencies(dependencies).TimeProvider;
     private readonly ISecurityEventSink? _securityEventSink = ValidateDependencies(dependencies).SecurityEventSink;
@@ -124,8 +129,26 @@ public sealed class PasskeyService(
         return Result.Success();
     }
 
-    public async Task<PasskeyCeremonyOptions> StartAuthenticationAsync(StartPasskeyAuthenticationRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<PasskeyCeremonyOptions>> StartAuthenticationAsync(StartPasskeyAuthenticationRequest request, CancellationToken cancellationToken = default)
     {
+        var context = ToAuthenticationContext(request.Audit);
+        var sourceBucket = AuthenticationRateLimitDimensions.Source(context);
+        var rateLimit = await _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(
+            AuthenticationChallengeStartPurpose,
+            AuthenticationRateLimitDimensions.DimensionName(sourceBucket),
+            sourceBucket,
+            _options.AuthenticationChallengeStartRateLimit)
+        {
+            Context = context,
+            UserId = request.UserId
+        }, cancellationToken);
+
+        if (!rateLimit.IsAllowed)
+        {
+            await RecordAsync(AshlarSecurityEventTypes.AuthenticationRateLimited, SecurityEventOutcomes.Failure, request.UserId, SecurityEventFailureReasons.RateLimited, request.Audit, cancellationToken);
+            return Result.Failure<PasskeyCeremonyOptions>(AshlarFailureCodes.RateLimited);
+        }
+
         Guid? userId = request.UserId;
         var credentials = userId.HasValue
             ? (await _credentialRepository.ListCredentialsForUserAsync(userId.Value, cancellationToken: cancellationToken)).Where(IsPasskey).ToList()
@@ -135,7 +158,7 @@ public sealed class PasskeyService(
         var challenge = CreateChallengeEntity(AuthenticationPurpose, challengeValue, optionsJson, userId);
         await _challengeRepository.CreateAsync(challenge, cancellationToken);
         await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationStarted, SecurityEventOutcomes.Success, userId, null, request.Audit, cancellationToken);
-        return new PasskeyCeremonyOptions(challenge.Id, optionsJson, challenge.ExpiresAt);
+        return Result.Success(new PasskeyCeremonyOptions(challenge.Id, optionsJson, challenge.ExpiresAt));
     }
 
     public async Task<PasskeyAuthenticationResult> CompleteAuthenticationAsync(CompletePasskeyAuthenticationRequest request, CancellationToken cancellationToken = default)
@@ -154,7 +177,7 @@ public sealed class PasskeyService(
 
         try
         {
-            var response = await _authenticationOrchestrator.AuthenticateAsync(new AuthenticationContext(TenantId: request.TenantId, UserId: ceremony.User.Id), ceremony.ToAssertion(_options.ProviderKey), cancellationToken: cancellationToken);
+            var response = await _authenticationOrchestrator.AuthenticateAsync(ToAuthenticationContext(request.Audit) with { TenantId = request.TenantId, UserId = ceremony.User.Id }, ceremony.ToAssertion(_options.ProviderKey), cancellationToken: cancellationToken);
             var succeeded = response.Status == MfaAuthenticationStatus.Succeeded;
             var mfaRequired = response.Status == MfaAuthenticationStatus.MfaRequired;
             var failureCode = succeeded || mfaRequired ? (AshlarFailureCode?)null : AshlarFailureCodes.PasskeyValidationFailed;
@@ -198,18 +221,19 @@ public sealed class PasskeyService(
             return Result.Failure<PasskeyCeremonyOptions>(AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
-        if (!SecureTokenHashing.TryHashToken(_tokenHasher, request.HandshakeToken, out var handshakeTokenHash))
+        var handshakeResult = await _handshakeService.BeginFactorChallengeAsync(
+            new VerifyAuthenticationHandshakeRequest(request.HandshakeToken, factorType, Context: ToAuthenticationContext(request.Audit)),
+            cancellationToken);
+        if (!handshakeResult.Succeeded || handshakeResult.Value == null)
         {
-            return Result.Failure<PasskeyCeremonyOptions>(AshlarFailureCodes.PasskeyChallengeInvalid);
+            var failureCode = handshakeResult.FailureCode == AshlarFailureCodes.RateLimitExceeded
+                ? AshlarFailureCodes.RateLimitExceeded
+                : AshlarFailureCodes.PasskeyChallengeInvalid;
+            return Result.Failure<PasskeyCeremonyOptions>(failureCode);
         }
 
-        var handshake = await _handshakeService.GetHandshakeAsync(request.HandshakeToken, cancellationToken);
-        if (handshake == null
-            || handshake.IsRevoked
-            || handshake.IsCompleted
-            || handshake.ExpiresAt <= _timeProvider.GetUtcNow()
-            || !handshake.RequiredFactors.Any(factor => string.Equals(NormalizeFactorType(factor), factorType, StringComparison.Ordinal))
-            || handshake.VerifiedFactors.Any(factor => string.Equals(NormalizeFactorType(factor), factorType, StringComparison.Ordinal)))
+        var handshake = handshakeResult.Value;
+        if (!SecureTokenHashing.TryHashToken(_tokenHasher, request.HandshakeToken, out var handshakeTokenHash))
         {
             return Result.Failure<PasskeyCeremonyOptions>(AshlarFailureCodes.PasskeyChallengeInvalid);
         }
@@ -275,7 +299,7 @@ public sealed class PasskeyService(
             var response = await _authenticationOrchestrator.VerifyFactorAsync(
                 request.HandshakeToken,
                 factorType,
-                new AuthenticationContext(TenantId: request.TenantId, UserId: ceremony.User.Id),
+                ToAuthenticationContext(request.Audit) with { TenantId = request.TenantId, UserId = ceremony.User.Id },
                 ceremony.ToAssertion(_options.ProviderKey),
                 cancellationToken);
 
@@ -422,6 +446,13 @@ public sealed class PasskeyService(
         return string.Equals(factorType.Trim(), "passkey", StringComparison.OrdinalIgnoreCase) ? "passkey" : null;
     }
 
+    private static AuthenticationContext ToAuthenticationContext(AuditContext? audit)
+    {
+        return audit == null
+            ? new AuthenticationContext()
+            : new AuthenticationContext(IpAddress: audit.IpAddress, UserAgent: audit.UserAgent, CorrelationId: audit.CorrelationId);
+    }
+
     private string CreateChallenge()
     {
         return Base64Url.Encode(RandomNumberGenerator.GetBytes(_options.ChallengeBytes));
@@ -523,6 +554,7 @@ internal sealed record CompletedPasskeyAssertion(
 /// <param name="authenticationOrchestrator">The orchestrator for MFA-aware authentication flows.</param>
 /// <param name="handshakeService">The authentication handshake service.</param>
 /// <param name="tokenHasher">The secure token hasher.</param>
+/// <param name="rateLimiter">The authentication rate limiter.</param>
 /// <param name="timeProvider">The time provider.</param>
 /// <param name="securityEventSink">The security event sink.</param>
 public sealed class PasskeyServiceDependencies(
@@ -530,6 +562,7 @@ public sealed class PasskeyServiceDependencies(
     IAuthenticationOrchestrator authenticationOrchestrator,
     IAuthenticationHandshakeService handshakeService,
     ISecureTokenHasher tokenHasher,
+    IAuthenticationRateLimiter rateLimiter,
     TimeProvider? timeProvider = null,
     ISecurityEventSink? securityEventSink = null)
 {
@@ -549,6 +582,10 @@ public sealed class PasskeyServiceDependencies(
     /// Gets the hasher used for passkey handshake tokens.
     /// </summary>
     public ISecureTokenHasher TokenHasher { get; } = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
+    /// <summary>
+    /// Gets the rate limiter used for passkey ceremony starts.
+    /// </summary>
+    public IAuthenticationRateLimiter RateLimiter { get; } = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
     /// <summary>
     /// Gets the configured time provider.
     /// </summary>

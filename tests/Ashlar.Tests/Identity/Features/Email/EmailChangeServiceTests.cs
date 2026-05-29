@@ -352,6 +352,77 @@ internal sealed class EmailChangeServiceTests
     }
 
     [Test]
+    public async Task ConfirmChangeChecksSourceTokenAndUserBuckets()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+        fixture.RateLimiter.Attempts.Clear();
+
+        var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest
+        {
+            UserId = user.Id,
+            Token = token,
+            Audit = new AuditContext(Guid.NewGuid(), "203.0.113.98", "NUnit", "corr-confirm-change")
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixture.RateLimiter.Attempts, Has.Count.EqualTo(3));
+            Assert.That(fixture.RateLimiter.Attempts.Select(a => a.Purpose), Is.All.EqualTo("email-change-verify"));
+            Assert.That(fixture.RateLimiter.Attempts.Select(a => a.IpAddress), Is.All.EqualTo("203.0.113.98"));
+            Assert.That(fixture.RateLimiter.Attempts.Select(a => a.Key), Is.Unique);
+            Assert.That(string.Join("|", fixture.RateLimiter.Attempts.Select(a => a.Key)), Does.Not.Contain(token));
+        }
+    }
+
+    [Test]
+    public async Task ConfirmChangeStopsWhenTokenBucketIsRateLimited()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+        fixture.RateLimiter.Attempts.Clear();
+        fixture.RateLimiter.BlockedVerifyCallNumber = 2;
+
+        var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.RateLimited));
+            Assert.That(fixture.RateLimiter.Attempts, Has.Count.EqualTo(2));
+            Assert.That(fixture.UserCredentialStore.Credentials.Single().Status, Is.EqualTo(CredentialStatus.Active));
+            Assert.That(fixture.SessionRepository.RevokedUserId, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task ConfirmChangeStopsWhenUserBucketIsRateLimited()
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+        fixture.RateLimiter.Attempts.Clear();
+        fixture.RateLimiter.BlockedVerifyCallNumber = 3;
+
+        var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.RateLimited));
+            Assert.That(fixture.RateLimiter.Attempts, Has.Count.EqualTo(3));
+            Assert.That(fixture.UserCredentialStore.Credentials.Single().Status, Is.EqualTo(CredentialStatus.Active));
+            Assert.That(fixture.SessionRepository.RevokedUserId, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task ConfirmChangeFailsForInvalidToken()
     {
         var user = CreateUser();
@@ -483,22 +554,35 @@ internal sealed class EmailChangeServiceTests
             new IdentityAuditContext(time, audit, notificationService.Object));
         var service = new EmailChangeService(dependencies);
 
-        return new Fixture(service, UserCredentialStore, emailSender, audit, resolvedSecretProtector, sessionRepository, notificationService, uriValidator);
+        return new Fixture(service, UserCredentialStore, emailSender, audit, resolvedSecretProtector, sessionRepository, notificationService, uriValidator, rateLimiter);
     }
 
-    private sealed record Fixture(EmailChangeService Service, InMemoryUserCredentialStore UserCredentialStore, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, ISecretProtector SecretProtector, StubSessionRepository SessionRepository, Mock<ISecurityNotificationService> NotificationService, Mock<IUriValidator> UriValidator);
+    private sealed record Fixture(EmailChangeService Service, InMemoryUserCredentialStore UserCredentialStore, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, ISecretProtector SecretProtector, StubSessionRepository SessionRepository, Mock<ISecurityNotificationService> NotificationService, Mock<IUriValidator> UriValidator, StubRateLimiter RateLimiter);
 
     private sealed class StubRateLimiter(bool requestAllowed, bool verifyAllowed) : IAuthenticationRateLimiter
     {
+        private int _verifyCalls;
+
+        public List<RateLimitAttempt> Attempts { get; } = [];
+
+        public int? BlockedVerifyCallNumber { get; set; }
+
         public Task<RateLimitDecision> CheckAsync(RateLimitAttempt attempt, RateLimitRule rule, CancellationToken cancellationToken = default)
         {
-            var allowed = attempt.Purpose == "email-change-request" ? requestAllowed : verifyAllowed;
+            Attempts.Add(attempt);
+            var allowed = attempt.Purpose == "email-change-request" ? requestAllowed : IsVerifyAllowed();
             return Task.FromResult(new RateLimitDecision
             {
                 Status = allowed ? RateLimitStatus.Allowed : RateLimitStatus.Blocked,
                 Remaining = allowed ? 1 : 0,
                 WindowResetAt = DateTimeOffset.UtcNow.Add(rule.Window)
             });
+        }
+
+        private bool IsVerifyAllowed()
+        {
+            _verifyCalls++;
+            return verifyAllowed && _verifyCalls != BlockedVerifyCallNumber;
         }
     }
 

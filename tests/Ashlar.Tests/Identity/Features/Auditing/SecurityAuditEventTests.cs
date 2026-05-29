@@ -193,7 +193,7 @@ internal sealed class SecurityAuditEventTests
     {
         var sink = new RecordingSecurityEventSink();
         var registry = new Mock<IAuthenticationProviderRegistry>();
-        var pipeline = new AuthenticationPipeline(registry.Object, Mock.Of<ICredentialService>(), new NullTransactionProvider(), sink, new FakeTimeProvider(TestTime));
+        var pipeline = new AuthenticationPipeline(registry.Object, Mock.Of<ICredentialService>(), new NullTransactionProvider(), AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, sink, new FakeTimeProvider(TestTime));
         var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
 
         var response = await pipeline.LoginAsync(CreateContext(), assertion);
@@ -222,7 +222,7 @@ internal sealed class SecurityAuditEventTests
             new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: sink));
         var userId = Guid.NewGuid();
         var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
-        var provider = new Mock<IAuthenticationProvider>();
+        var provider = new Mock<IPrimaryAuthenticationProvider>();
         provider.SetupGet(p => p.Key).Returns(assertion.ProviderIdentity);
         provider.Setup(p => p.GetProviderKey(assertion, userId)).Returns("provider-key");
         provider.Setup(p => p.PrepareCredentialValue(assertion, "raw-secret")).Returns("prepared-secret");
@@ -289,7 +289,7 @@ internal sealed class SecurityAuditEventTests
             new NullTransactionProvider(),
             new CredentialServiceDependencies(TimeProvider: new FakeTimeProvider(TestTime), SecurityEventSink: sink));
         var userId = Guid.NewGuid();
-        var provider = new Mock<IAuthenticationProvider>();
+        var provider = new Mock<IPrimaryAuthenticationProvider>();
         provider.SetupGet(p => p.Key).Returns(AuthenticationProviderKey.Local);
         provider.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), userId)).Returns("missing-key");
         provider.Setup(p => p.ProtectsCredentials).Returns(true);
@@ -458,10 +458,10 @@ internal sealed class SecurityAuditEventTests
         var sink = new ThrowingSecurityEventSink();
         var registry = new Mock<IAuthenticationProviderRegistry>();
         var credentialService = new Mock<ICredentialService>();
-        var providerMock = new Mock<IAuthenticationProvider>();
+        var providerMock = new Mock<IPrimaryAuthenticationProvider>();
         providerMock.SetupGet(p => p.Key).Returns(default(AuthenticationProviderKey));
         var assertion = new TestAssertion(default);
-        var provider = providerMock.Object;
+        IAuthenticationProvider? provider = providerMock.Object;
         registry.Setup(r => r.TryGetProvider(assertion, out provider)).Returns(true);
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
         var credential = CreateCredential(user.Id);
@@ -473,7 +473,7 @@ internal sealed class SecurityAuditEventTests
             .ReturnsAsync(result);
         credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
-        var pipeline = new AuthenticationPipeline(registry.Object, credentialService.Object, new NullTransactionProvider(), sink, new FakeTimeProvider(TestTime));
+        var pipeline = new AuthenticationPipeline(registry.Object, credentialService.Object, new NullTransactionProvider(), AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, sink, new FakeTimeProvider(TestTime));
 
         var login = await pipeline.LoginAsync(context, assertion);
 
@@ -513,14 +513,14 @@ internal sealed class SecurityAuditEventTests
         Assert.That(descriptor.ImplementationType, Is.EqualTo(typeof(SecurityEventFanOutSink)));
     }
 
-    private static (AuthenticationPipeline Pipeline, Mock<IAuthenticationProviderRegistry> Registry, Mock<ICredentialService> CredentialService, Mock<IAuthenticationProvider> ProviderMock, IAuthenticationProvider Provider, TestAssertion Assertion, User User, UserCredential Credential) CreatePipeline(ISecurityEventSink sink)
+    private static (AuthenticationPipeline Pipeline, Mock<IAuthenticationProviderRegistry> Registry, Mock<ICredentialService> CredentialService, Mock<IPrimaryAuthenticationProvider> ProviderMock, IAuthenticationProvider Provider, TestAssertion Assertion, User User, UserCredential Credential) CreatePipeline(ISecurityEventSink sink)
     {
         var registry = new Mock<IAuthenticationProviderRegistry>();
         var credentialService = new Mock<ICredentialService>();
-        var providerMock = new Mock<IAuthenticationProvider>();
+        var providerMock = new Mock<IPrimaryAuthenticationProvider>();
         providerMock.SetupGet(p => p.Key).Returns(AuthenticationProviderKey.Local);
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
-        var provider = providerMock.Object;
+        IAuthenticationProvider? provider = providerMock.Object;
         registry.Setup(r => r.TryGetProvider(assertion, out provider))
             .Returns(true);
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
@@ -536,7 +536,7 @@ internal sealed class SecurityAuditEventTests
             Status = CredentialStatus.Active
         };
 
-        var pipeline = new AuthenticationPipeline(registry.Object, credentialService.Object, new NullTransactionProvider(), sink, new FakeTimeProvider(TestTime));
+        var pipeline = new AuthenticationPipeline(registry.Object, credentialService.Object, new NullTransactionProvider(), AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, sink, new FakeTimeProvider(TestTime));
         return (pipeline, registry, credentialService, providerMock, provider, assertion, user, credential);
     }
 

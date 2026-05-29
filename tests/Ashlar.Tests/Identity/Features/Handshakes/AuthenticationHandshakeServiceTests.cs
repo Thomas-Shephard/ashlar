@@ -12,6 +12,8 @@ namespace Ashlar.Tests.Identity.Features.Handshakes;
 internal sealed class AuthenticationHandshakeServiceTests
 {
     private static readonly string[] ExpectedRequiredFactors = ["totp", "email"];
+    private static readonly string[] ExpectedCompletionTransactionOperations = ["begin", "read", "update", "commit"];
+    private static readonly string[] ExpectedRecoveryCodeVerifiedFactors = ["totp", "passkey"];
 
     private Mock<IAuthenticationHandshakeRepository> _repositoryMock;
     private Mock<ISecureTokenHasher> _tokenHasherMock;
@@ -193,7 +195,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldSucceedAndMarkAsCompletedWhenAllFactorsVerified()
+    public async Task CompleteFactorVerificationAsyncShouldSucceedAndMarkAsCompletedWhenAllFactorsVerified()
     {
         var userId = Guid.NewGuid();
         var handshake = new AuthenticationHandshake(
@@ -210,7 +212,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(handshake);
 
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -221,10 +223,142 @@ internal sealed class AuthenticationHandshakeServiceTests
         }
 
         _repositoryMock.Verify(r => r.UpdateAsync(It.Is<AuthenticationHandshake>(h => h.IsCompleted && h.CompletedAt == _timeProvider.GetUtcNow()), It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.FindByTokenHashAsync("hashed:raw-token", true, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldSucceedWhenRateLimiterIsNotRegistered()
+    public async Task BeginFactorVerificationAsyncShouldAllowRecoveryCodeForNextPendingFactor()
+    {
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(15),
+            false,
+            false,
+            new HashSet<string> { "totp", "passkey" },
+            new HashSet<string> { "totp" });
+
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await _service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", AuthenticationFactorTypes.RecoveryCode));
+
+        Assert.That(result.Succeeded, Is.True);
+    }
+
+    [Test]
+    public async Task BeginFactorVerificationAsyncShouldRejectRecoveryCodeWhenNoFactorsRemain()
+    {
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(15),
+            false,
+            false,
+            new HashSet<string> { "totp" },
+            new HashSet<string> { "totp" });
+
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await _service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", AuthenticationFactorTypes.RecoveryCode));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidFactorType));
+        }
+    }
+
+    [Test]
+    public async Task CompleteFactorVerificationAsyncShouldMarkNextPendingFactorForRecoveryCode()
+    {
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(15),
+            false,
+            false,
+            new HashSet<string> { "totp", "passkey" },
+            new HashSet<string> { "totp" });
+
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", AuthenticationFactorTypes.RecoveryCode));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value?.VerifiedFactors, Is.EquivalentTo(ExpectedRecoveryCodeVerifiedFactors));
+            Assert.That(result.Value?.IsCompleted, Is.True);
+        }
+
+        _repositoryMock.Verify(r => r.UpdateAsync(
+            It.Is<AuthenticationHandshake>(h =>
+                h.VerifiedFactors.Contains("passkey") &&
+                !h.VerifiedFactors.Contains(AuthenticationFactorTypes.RecoveryCode)),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task CompleteFactorVerificationAsyncShouldLoadForUpdateInsideTransaction()
+    {
+        var operations = new List<string>();
+        var transactionProvider = new RecordingTransactionProvider(operations);
+        var service = new AuthenticationHandshakeService(
+            _repositoryMock.Object,
+            new FixedTokenGenerator("raw-token"),
+            _tokenHasherMock.Object,
+            transactionProvider,
+            new AuthenticationHandshakeServiceDependencies(
+                Options.Create(new AuthenticationHandshakeOptions()),
+                _timeProvider,
+                _eventSinkMock.Object,
+                _rateLimiterMock.Object));
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(15),
+            false,
+            false,
+            new HashSet<string> { "totp" },
+            new HashSet<string>());
+
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", true, It.IsAny<CancellationToken>()))
+            .Callback(() =>
+            {
+                Assert.That(transactionProvider.IsActive, Is.True);
+                operations.Add("read");
+            })
+            .ReturnsAsync(handshake);
+        _repositoryMock.Setup(r => r.UpdateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()))
+            .Callback(() =>
+            {
+                Assert.That(transactionProvider.IsActive, Is.True);
+                operations.Add("update");
+            })
+            .Returns(Task.CompletedTask);
+
+        var result = await service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(operations, Is.EqualTo(ExpectedCompletionTransactionOperations));
+        }
+    }
+
+    [Test]
+    public async Task CompleteFactorVerificationAsyncShouldSucceedWhenRateLimiterIsNotRegistered()
     {
         var service = new AuthenticationHandshakeService(
             _repositoryMock.Object,
@@ -249,7 +383,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(handshake);
 
-        var result = await service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+        var result = await service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -261,7 +395,96 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldSucceedAndNotMarkAsCompletedWhenFactorsRemaining()
+    public async Task BeginFactorVerificationAsyncShouldSucceedWhenRateLimiterIsNotRegistered()
+    {
+        var service = new AuthenticationHandshakeService(
+            _repositoryMock.Object,
+            new FixedTokenGenerator("raw-token"),
+            _tokenHasherMock.Object,
+            new NullTransactionProvider(),
+            new AuthenticationHandshakeServiceDependencies(
+                Options.Create(new AuthenticationHandshakeOptions()),
+                _timeProvider,
+                _eventSinkMock.Object));
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(15),
+            false,
+            false,
+            new HashSet<string> { "totp" },
+            new HashSet<string>());
+
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+
+        Assert.That(result.Value, Is.SameAs(handshake));
+        _rateLimiterMock.Verify(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task BeginFactorVerificationAsyncShouldSucceedWhenRateLimitAllowsAttempt()
+    {
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(15),
+            false,
+            false,
+            new HashSet<string> { "totp" },
+            new HashSet<string>());
+
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await _service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+
+        Assert.That(result.Value, Is.SameAs(handshake));
+        _rateLimiterMock.Verify(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()), Times.Exactly(3));
+        _rateLimiterMock.Verify(r => r.CheckAsync(It.Is<RateLimitAttempt>(attempt =>
+            attempt.Purpose == "handshake-lookup" &&
+            attempt.IpAddress == null), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()), Times.Once);
+        _rateLimiterMock.Verify(r => r.CheckAsync(It.Is<RateLimitAttempt>(attempt =>
+            attempt.Purpose == "handshake-verify" &&
+            attempt.IpAddress == null), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        _repositoryMock.Verify(r => r.FindByTokenHashAsync("hashed:raw-token", false, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task BeginFactorChallengeAsyncShouldUseLookupRateLimitOnly()
+    {
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(15),
+            false,
+            false,
+            new HashSet<string> { "passkey" },
+            new HashSet<string>());
+
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await _service.BeginFactorChallengeAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "passkey"));
+
+        Assert.That(result.Value, Is.SameAs(handshake));
+        _rateLimiterMock.Verify(r => r.CheckAsync(It.Is<RateLimitAttempt>(attempt =>
+            attempt.Purpose == "handshake-lookup"), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()), Times.Once);
+        _rateLimiterMock.Verify(r => r.CheckAsync(It.Is<RateLimitAttempt>(attempt =>
+            attempt.Purpose == "handshake-verify"), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.FindByTokenHashAsync("hashed:raw-token", false, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task CompleteFactorVerificationAsyncShouldSucceedAndNotMarkAsCompletedWhenFactorsRemaining()
     {
         var userId = Guid.NewGuid();
         var handshake = new AuthenticationHandshake(
@@ -278,7 +501,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(handshake);
 
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -289,7 +512,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldNotMutateOriginalHandshakeMetadata()
+    public async Task CompleteFactorVerificationAsyncShouldNotMutateOriginalHandshakeMetadata()
     {
         var metadata = new Dictionary<string, string> { ["existing"] = "original" };
         var handshake = new AuthenticationHandshake(
@@ -307,7 +530,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(handshake);
 
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest(
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(
             "raw-token",
             "totp",
             new Dictionary<string, string> { ["existing"] = "updated", ["new"] = "value" }));
@@ -322,7 +545,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldAddRequestMetadataWhenHandshakeMetadataIsNull()
+    public async Task CompleteFactorVerificationAsyncShouldAddRequestMetadataWhenHandshakeMetadataIsNull()
     {
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -338,7 +561,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(handshake);
 
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest(
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(
             "raw-token",
             "totp",
             new Dictionary<string, string> { ["device"] = "trusted" }));
@@ -351,16 +574,16 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public void VerifyFactorAsyncShouldThrowOnNullRequest()
+    public void CompleteFactorVerificationAsyncShouldThrowOnNullRequest()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _service.VerifyFactorAsync(null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => _service.CompleteFactorVerificationAsync(null!));
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldFailWhenTokenMissing()
+    public async Task CompleteFactorVerificationAsyncShouldFailWhenTokenMissing()
     {
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("", "totp"));
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("", "totp"));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
@@ -369,12 +592,12 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldFailWhenHandshakeNotFound()
+    public async Task CompleteFactorVerificationAsyncShouldFailWhenHandshakeNotFound()
     {
         _repositoryMock.Setup(r => r.FindByTokenHashAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                        .ReturnsAsync((AuthenticationHandshake?)null);
 
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("invalid", "totp"));
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("invalid", "totp"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -384,12 +607,12 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldReturnHandshakeNotFoundForOverlongTokenWithoutMutatingState()
+    public async Task CompleteFactorVerificationAsyncShouldReturnHandshakeNotFoundForOverlongTokenWithoutMutatingState()
     {
         var overlongToken = new string('a', 257);
         _tokenHasherMock.Setup(h => h.HashToken(overlongToken)).Throws(new ArgumentException("Token exceeds maximum allowed length.", "token"));
 
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest(overlongToken, "totp"));
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(overlongToken, "totp"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -402,7 +625,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldFailWhenExpired()
+    public async Task CompleteFactorVerificationAsyncShouldFailWhenExpired()
     {
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -418,7 +641,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                        .ReturnsAsync(handshake);
 
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -428,7 +651,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldFailWhenRevoked()
+    public async Task CompleteFactorVerificationAsyncShouldFailWhenRevoked()
     {
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -444,7 +667,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                        .ReturnsAsync(handshake);
 
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -454,7 +677,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldFailWhenAlreadyCompleted()
+    public async Task CompleteFactorVerificationAsyncShouldFailWhenAlreadyCompleted()
     {
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -470,7 +693,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                        .ReturnsAsync(handshake);
 
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -480,7 +703,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldFailWhenRateLimited()
+    public async Task BeginFactorVerificationAsyncShouldFailWhenRateLimited()
     {
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -506,7 +729,7 @@ internal sealed class AuthenticationHandshakeServiceTests
 
         var context = new AuthenticationContext(IpAddress: "203.0.113.80", CorrelationId: "handshake-rate-limit");
 
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp", Context: context));
+        var result = await _service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp", Context: context));
 
         using (Assert.EnterMultipleScope())
         {
@@ -520,7 +743,95 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldRejectOversizedMetadata()
+    public async Task BeginFactorVerificationAsyncShouldFailWhenUserRateLimitIsBlocked()
+    {
+        var userId = Guid.NewGuid();
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            userId,
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(15),
+            false,
+            false,
+            new HashSet<string> { "totp" },
+            new HashSet<string>());
+
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                       .ReturnsAsync(handshake);
+
+        _rateLimiterMock.SetupSequence(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
+                        .ReturnsAsync(new RateLimitDecision
+                        {
+                            Status = RateLimitStatus.Allowed,
+                            Remaining = 5,
+                            WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
+                        })
+                        .ReturnsAsync(new RateLimitDecision
+                        {
+                            Status = RateLimitStatus.Allowed,
+                            Remaining = 5,
+                            WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
+                        })
+                        .ReturnsAsync(new RateLimitDecision
+                        {
+                            Status = RateLimitStatus.Blocked,
+                            Remaining = 0,
+                            WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
+                        });
+
+        var context = new AuthenticationContext(IpAddress: "203.0.113.81", CorrelationId: "handshake-user-rate-limit");
+
+        var result = await _service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp", Context: context));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.RateLimitExceeded));
+        }
+
+        _rateLimiterMock.Verify(r => r.CheckAsync(It.Is<RateLimitAttempt>(attempt =>
+            attempt.Purpose == "handshake-verify" &&
+            attempt.IpAddress == "203.0.113.81" &&
+            attempt.UserId == userId.ToString("D") &&
+            attempt.CorrelationId == "handshake-user-rate-limit"), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        _eventSinkMock.Verify(sink => sink.RecordAsync(It.Is<AshlarSecurityEvent>(securityEvent =>
+            securityEvent.EventType == AshlarSecurityEventTypes.AuthenticationHandshakeVerificationRateLimited &&
+            securityEvent.UserId == userId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task BeginFactorVerificationAsyncShouldRateLimitInvalidTokenLookupBeforeHashing()
+    {
+        _rateLimiterMock.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
+                        .ReturnsAsync(new RateLimitDecision
+                        {
+                            Status = RateLimitStatus.Blocked,
+                            Remaining = 0,
+                            WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
+                        });
+        var context = new AuthenticationContext(IpAddress: "203.0.113.82");
+
+        var result = await _service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("invalid", "totp", Context: context));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.RateLimitExceeded));
+        }
+
+        _rateLimiterMock.Verify(r => r.CheckAsync(It.Is<RateLimitAttempt>(attempt =>
+            attempt.Purpose == "handshake-lookup" &&
+            attempt.IpAddress == "203.0.113.82"), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()), Times.Once);
+        _tokenHasherMock.Verify(h => h.HashToken(It.IsAny<string>()), Times.Never);
+        _repositoryMock.Verify(r => r.FindByTokenHashAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        _eventSinkMock.Verify(sink => sink.RecordAsync(It.Is<AshlarSecurityEvent>(securityEvent =>
+            securityEvent.EventType == AshlarSecurityEventTypes.AuthenticationHandshakeVerificationRateLimited &&
+            securityEvent.FailureReason == SecurityEventFailureReasons.RateLimited), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task CompleteFactorVerificationAsyncShouldRejectOversizedMetadata()
     {
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -538,7 +849,7 @@ internal sealed class AuthenticationHandshakeServiceTests
 
         var metadata = new Dictionary<string, string> { ["device"] = new string('x', 513) };
 
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp", metadata));
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp", metadata));
 
         using (Assert.EnterMultipleScope())
         {
@@ -548,7 +859,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldTreatNullMetadataValueAsEmpty()
+    public async Task CompleteFactorVerificationAsyncShouldTreatNullMetadataValueAsEmpty()
     {
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -564,7 +875,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                        .ReturnsAsync(handshake);
 
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest(
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(
             "raw-token",
             "totp",
             // ReSharper disable once NullableWarningSuppressionIsUsed
@@ -578,7 +889,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldNotTrustHandshakeMetadataContextInSuspiciousAttemptNotification()
+    public async Task BeginFactorVerificationAsyncShouldNotTrustHandshakeMetadataContextInSuspiciousAttemptNotification()
     {
         var userId = Guid.NewGuid();
         var handshake = new AuthenticationHandshake(
@@ -613,7 +924,13 @@ internal sealed class AuthenticationHandshakeServiceTests
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                        .ReturnsAsync(handshake);
-        _rateLimiterMock.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
+        _rateLimiterMock.SetupSequence(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
+                        .ReturnsAsync(new RateLimitDecision
+                        {
+                            Status = RateLimitStatus.Allowed,
+                            Remaining = 5,
+                            WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
+                        })
                         .ReturnsAsync(new RateLimitDecision
                         {
                             Status = RateLimitStatus.Blocked,
@@ -623,7 +940,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         userRepository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
                           .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
 
-        await service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+        await service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
         notificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
             notification.Type == SecurityNotificationType.SuspiciousAuthenticationAttempt &&
@@ -632,7 +949,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldNotTrustRequestMetadataContextInSuspiciousAttemptNotification()
+    public async Task BeginFactorVerificationAsyncShouldNotTrustRequestMetadataContextInSuspiciousAttemptNotification()
     {
         var userId = Guid.NewGuid();
         var handshake = new AuthenticationHandshake(
@@ -667,7 +984,13 @@ internal sealed class AuthenticationHandshakeServiceTests
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                        .ReturnsAsync(handshake);
-        _rateLimiterMock.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
+        _rateLimiterMock.SetupSequence(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
+                        .ReturnsAsync(new RateLimitDecision
+                        {
+                            Status = RateLimitStatus.Allowed,
+                            Remaining = 5,
+                            WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
+                        })
                         .ReturnsAsync(new RateLimitDecision
                         {
                             Status = RateLimitStatus.Blocked,
@@ -677,7 +1000,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         userRepository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
                           .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
 
-        await service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest(
+        await service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(
             "raw-token",
             "totp",
             new Dictionary<string, string>
@@ -693,7 +1016,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldFailForInvalidFactorType()
+    public async Task CompleteFactorVerificationAsyncShouldFailForInvalidFactorType()
     {
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -709,7 +1032,7 @@ internal sealed class AuthenticationHandshakeServiceTests
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                        .ReturnsAsync(handshake);
 
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "invalid"));
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "invalid"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -719,7 +1042,41 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncShouldFailForAlreadyVerifiedFactor()
+    public async Task CompleteFactorVerificationAsyncShouldUseCanonicalRequiredFactorMatching()
+    {
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(15),
+            false,
+            false,
+            new HashSet<string> { "custom_step_up" },
+            new HashSet<string>());
+
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                       .ReturnsAsync(handshake);
+
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "custom-step-up"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value?.VerifiedFactors, Has.Count.EqualTo(1));
+            Assert.That(result.Value?.VerifiedFactors, Does.Contain("custom_step_up"));
+            Assert.That(result.Value?.IsCompleted, Is.True);
+        }
+
+        _repositoryMock.Verify(r => r.UpdateAsync(
+            It.Is<AuthenticationHandshake>(item =>
+                item.VerifiedFactors.Contains("custom_step_up") &&
+                !item.VerifiedFactors.Contains("custom-step-up")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task CompleteFactorVerificationAsyncShouldFailForAlreadyVerifiedFactor()
     {
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -735,54 +1092,13 @@ internal sealed class AuthenticationHandshakeServiceTests
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                        .ReturnsAsync(handshake);
 
-        var result = await _service.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.FactorAlreadyVerified));
         }
-    }
-
-    [Test]
-    public async Task GetHandshakeAsyncShouldReturnHandshake()
-    {
-        var handshake = new AuthenticationHandshake(
-            Guid.NewGuid(),
-            Guid.NewGuid(),
-            "hashed:raw-token",
-            _timeProvider.GetUtcNow(),
-            _timeProvider.GetUtcNow().AddMinutes(15),
-            false,
-            false,
-            new HashSet<string> { "totp" },
-            new HashSet<string>());
-
-        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-                       .ReturnsAsync(handshake);
-
-        var result = await _service.GetHandshakeAsync("raw-token");
-
-        Assert.That(result, Is.EqualTo(handshake));
-    }
-
-    [Test]
-    public async Task GetHandshakeAsyncShouldReturnNullWhenTokenMissing()
-    {
-        var result = await _service.GetHandshakeAsync("");
-        Assert.That(result, Is.Null);
-    }
-
-    [Test]
-    public async Task GetHandshakeAsyncShouldReturnNullForOverlongToken()
-    {
-        var overlongToken = new string('a', 257);
-        _tokenHasherMock.Setup(h => h.HashToken(overlongToken)).Throws(new ArgumentException("Token exceeds maximum allowed length.", "token"));
-
-        var result = await _service.GetHandshakeAsync(overlongToken);
-
-        Assert.That(result, Is.Null);
-        _repositoryMock.Verify(r => r.FindByTokenHashAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -939,5 +1255,72 @@ internal sealed class AuthenticationHandshakeServiceTests
         }
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class RecordingTransactionProvider(List<string> operations) : IAshlarTransactionProvider
+    {
+        public bool IsActive { get; private set; }
+
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.That(IsActive, Is.False);
+            IsActive = true;
+            operations.Add("begin");
+            return Task.FromResult<IAshlarTransaction>(new RecordingTransaction(operations, Complete));
+        }
+
+        private void Complete()
+        {
+            IsActive = false;
+        }
+    }
+
+    private sealed class RecordingTransaction(List<string> operations, Action complete) : IAshlarTransaction
+    {
+        private readonly List<Func<CancellationToken, Task>> _hooks = [];
+        private bool _completed;
+
+        public async Task CommitAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ObjectDisposedException.ThrowIf(_completed, this);
+            operations.Add("commit");
+            _completed = true;
+            complete();
+
+            foreach (var hook in _hooks)
+            {
+                await hook(CancellationToken.None);
+            }
+        }
+
+        public Task RollbackAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ObjectDisposedException.ThrowIf(_completed, this);
+            operations.Add("rollback");
+            _completed = true;
+            complete();
+            return Task.CompletedTask;
+        }
+
+        public void OnCommitted(Func<CancellationToken, Task> action)
+        {
+            ObjectDisposedException.ThrowIf(_completed, this);
+            _hooks.Add(action ?? throw new ArgumentNullException(nameof(action)));
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            if (!_completed)
+            {
+                operations.Add("dispose");
+                _completed = true;
+                complete();
+            }
+
+            return ValueTask.CompletedTask;
+        }
     }
 }

@@ -1,4 +1,6 @@
 using Ashlar.Auditing;
+using Ashlar.Identity.RateLimiting.Abstractions;
+using Ashlar.Identity.RateLimiting.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -10,6 +12,8 @@ namespace Ashlar.Identity.Features.Authentication;
 /// <param name="providerRegistry">The provider registry value.</param>
 /// <param name="credentialService">The credential service value.</param>
 /// <param name="transactionProvider">The transaction provider value.</param>
+/// <param name="primaryRateLimiter">The provider-neutral primary authentication rate limiter.</param>
+/// <param name="factorRateLimiter">The provider-neutral secondary factor verification rate limiter.</param>
 /// <param name="securityEventSink">The security event sink value.</param>
 /// <param name="timeProvider">The time provider value.</param>
 /// <param name="logger">The logger used for operational messages emitted directly by this pipeline.</param>
@@ -22,11 +26,13 @@ public sealed class AuthenticationPipeline(
     IAuthenticationProviderRegistry providerRegistry,
     ICredentialService credentialService,
     IAshlarTransactionProvider transactionProvider,
+    IPrimaryAuthenticationRateLimiter primaryRateLimiter,
+    IAuthenticationFactorRateLimiter factorRateLimiter,
     ISecurityEventSink? securityEventSink = null,
     TimeProvider? timeProvider = null,
     ILogger<AuthenticationPipeline>? logger = null,
     ILoggerFactory? loggerFactory = null)
-    : IAuthenticationPipeline
+    : IAuthenticationPipeline, IAuthenticationFactorPipeline
 {
     private static readonly Action<ILogger, Guid, Guid?, string, string, Exception?> CredentialLifecycleUpdateFailed =
         LoggerMessage.Define<Guid, Guid?, string, string>(
@@ -40,36 +46,133 @@ public sealed class AuthenticationPipeline(
             new EventId(1001, nameof(CriticalCredentialLifecycleUpdateFailed)),
             "Critical credential lifecycle update failed during authentication. UserId={UserId} CredentialId={CredentialId} ProviderType={ProviderType} ProviderName={ProviderName}");
 
+    private static readonly Action<ILogger, string, string, Exception?> RateLimiterCheckFailed =
+        LoggerMessage.Define<string, string>(
+            LogLevel.Error,
+            new EventId(1002, nameof(RateLimiterCheckFailed)),
+            "Authentication rate limiter check failed. Scope={Scope} Provider={Provider}");
+
     private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
     private readonly ICredentialService _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
+    private readonly IPrimaryAuthenticationRateLimiter _primaryRateLimiter = primaryRateLimiter ?? throw new ArgumentNullException(nameof(primaryRateLimiter));
+    private readonly IAuthenticationFactorRateLimiter _factorRateLimiter = factorRateLimiter ?? throw new ArgumentNullException(nameof(factorRateLimiter));
     private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider ?? TimeProvider.System, loggerFactory);
     private readonly ILogger<AuthenticationPipeline> _logger = logger ?? NullLogger<AuthenticationPipeline>.Instance;
 
     /// <summary>
-    /// Performs the login <see langword="async" /> operation and returns the result.
+    /// Performs primary sign-in authentication and returns the result.
     /// </summary>
     /// <param name="context">The context value.</param>
     /// <param name="assertion">The assertion value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public async Task<AuthenticationResponse> LoginAsync(AuthenticationContext context, IAuthenticationAssertion assertion, CancellationToken cancellationToken = default)
+    public Task<AuthenticationResponse> LoginAsync(
+        AuthenticationContext context,
+        IAuthenticationAssertion assertion,
+        CancellationToken cancellationToken = default)
+    {
+        return ExecutePrimaryAsync(context, assertion, cancellationToken);
+    }
+
+    /// <summary>
+    /// Verifies a secondary factor without applying primary sign-in throttles.
+    /// </summary>
+    /// <param name="context">The context value.</param>
+    /// <param name="assertion">The assertion value.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The operation result.</returns>
+    public Task<AuthenticationResponse> VerifyFactorAsync(
+        AuthenticationContext context,
+        IAuthenticationAssertion assertion,
+        CancellationToken cancellationToken = default)
+    {
+        return ExecuteFactorAsync(context, assertion, cancellationToken);
+    }
+
+    private async Task<AuthenticationResponse> ExecutePrimaryAsync(
+        AuthenticationContext context,
+        IAuthenticationAssertion assertion,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(assertion);
 
         if (!_providerRegistry.TryGetProvider(assertion, out var provider))
         {
+            if (!await CheckPrimaryRateLimitAsync(context, assertion, assertion.ProviderIdentity, cancellationToken))
+            {
+                return await RecordRateLimitedAsync(context, assertion.ProviderIdentity, cancellationToken);
+            }
+
             return await RecordFailureAsync(context, assertion.ProviderIdentity, null, SecurityEventFailureReasons.ProviderUnsupported, cancellationToken);
         }
 
+        if (!await CheckPrimaryRateLimitAsync(context, assertion, provider.Key, cancellationToken))
+        {
+            return await RecordRateLimitedAsync(context, provider.Key, cancellationToken);
+        }
+
+        if (!AuthenticationProviderCapabilities.IsPrimary(provider))
+        {
+            return await RecordFailureAsync(context, provider.Key, null, SecurityEventFailureReasons.InvalidCredentials, cancellationToken);
+        }
+
+        return await ExecuteProviderAsync(context, assertion, provider, cancellationToken);
+    }
+
+    private async Task<AuthenticationResponse> ExecuteFactorAsync(
+        AuthenticationContext context,
+        IAuthenticationAssertion assertion,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(assertion);
+
+        if (!context.UserId.HasValue)
+        {
+            return await RecordFailureAsync(context, assertion.ProviderIdentity, null, SecurityEventFailureReasons.InvalidCredentials, cancellationToken);
+        }
+
+        if (!_providerRegistry.TryGetProvider(assertion, out var provider))
+        {
+            if (!await CheckFactorRateLimitAsync(context, assertion.ProviderIdentity, cancellationToken))
+            {
+                return await RecordRateLimitedAsync(context, assertion.ProviderIdentity, cancellationToken);
+            }
+
+            return await RecordFailureAsync(context, assertion.ProviderIdentity, context.UserId, SecurityEventFailureReasons.ProviderUnsupported, cancellationToken);
+        }
+
+        if (!await CheckFactorRateLimitAsync(context, provider.Key, cancellationToken))
+        {
+            return await RecordRateLimitedAsync(context, provider.Key, cancellationToken);
+        }
+
+        if (provider is not ISecondaryAuthenticationFactorProvider)
+        {
+            return await RecordFailureAsync(context, provider.Key, context.UserId, SecurityEventFailureReasons.InvalidCredentials, cancellationToken);
+        }
+
+        return await ExecuteProviderAsync(context, assertion, provider, cancellationToken);
+    }
+
+    private async Task<AuthenticationResponse> ExecuteProviderAsync(
+        AuthenticationContext context,
+        IAuthenticationAssertion assertion,
+        IAuthenticationProvider provider,
+        CancellationToken cancellationToken)
+    {
         var (user, credential, originalCredential, unprotectFailed) = await _credentialService.ResolveAsync(context, assertion, provider, cancellationToken);
+        if (unprotectFailed)
+        {
+            return await RecordFailureAsync(context, provider.Key, user?.Id, SecurityEventFailureReasons.UnprotectFailed, cancellationToken);
+        }
 
         var result = await provider.AuthenticateAsync(assertion, credential, cancellationToken);
-        if (unprotectFailed || result.Status is not (AuthenticationResultStatus.Succeeded or AuthenticationResultStatus.SucceededWithCredentialUpdate or AuthenticationResultStatus.MfaRequired) || user == null)
+        if (result.Status is not (AuthenticationResultStatus.Succeeded or AuthenticationResultStatus.SucceededWithCredentialUpdate or AuthenticationResultStatus.MfaRequired) || user == null)
         {
-            var reason = unprotectFailed ? SecurityEventFailureReasons.UnprotectFailed : SecurityEventFailureReasons.InvalidCredentials;
-            return await RecordFailureAsync(context, provider.Key, user?.Id, reason, cancellationToken);
+            return await RecordFailureAsync(context, provider.Key, user?.Id, SecurityEventFailureReasons.InvalidCredentials, cancellationToken);
         }
 
         if (!user.IsActive)
@@ -87,6 +190,59 @@ public sealed class AuthenticationPipeline(
         return await ProcessCredentialLifecycleAsync(
             new CredentialLifecycleContext(user, credential, originalCredential, result, provider, context, status),
             cancellationToken);
+    }
+
+    private async Task<bool> CheckPrimaryRateLimitAsync(
+        AuthenticationContext context,
+        IAuthenticationAssertion assertion,
+        AuthenticationProviderKey providerKey,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var decision = await _primaryRateLimiter.CheckAsync(context, assertion, providerKey, cancellationToken);
+            return decision.Status != RateLimitStatus.Blocked;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            RateLimiterCheckFailed(_logger, "primary", providerKey.ToString(), ex);
+            return true;
+        }
+    }
+
+    private async Task<bool> CheckFactorRateLimitAsync(
+        AuthenticationContext context,
+        AuthenticationProviderKey providerKey,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var decision = await _factorRateLimiter.CheckAsync(context, providerKey, cancellationToken);
+            return decision.Status != RateLimitStatus.Blocked;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            RateLimiterCheckFailed(_logger, "factor", providerKey.ToString(), ex);
+            return true;
+        }
+    }
+
+    private async Task<AuthenticationResponse> RecordRateLimitedAsync(
+        AuthenticationContext context,
+        AuthenticationProviderKey providerKey,
+        CancellationToken cancellationToken)
+    {
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.AuthenticationRateLimited,
+            Outcome = SecurityEventOutcomes.Failure,
+            UserId = context.UserId,
+            Provider = providerKey,
+            Context = context,
+            FailureReason = SecurityEventFailureReasons.RateLimited
+        }, cancellationToken);
+
+        return new AuthenticationResponse(false, Status: AuthenticationStatus.RateLimited);
     }
 
     private async Task<AuthenticationResponse> ProcessCredentialLifecycleAsync(

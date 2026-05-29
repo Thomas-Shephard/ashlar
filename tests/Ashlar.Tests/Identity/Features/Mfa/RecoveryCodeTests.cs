@@ -3,8 +3,6 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.Providers.RecoveryCode;
-using Ashlar.Identity.RateLimiting.Abstractions;
-using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 using Microsoft.Extensions.DependencyInjection;
@@ -417,25 +415,21 @@ internal sealed class RecoveryCodeTests
     public void ProviderConstructorThrowsOnNull()
     {
         var hasher = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var rateLimiter = new Mock<IAuthenticationRateLimiter>().Object;
         var options = Options.Create(new RecoveryCodeOptions());
 
-        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeAuthenticationProvider(null!, rateLimiter, options));
-        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeAuthenticationProvider(hasher, null!, options));
-        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeAuthenticationProvider(hasher, rateLimiter, null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeAuthenticationProvider(null!, options));
+        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeAuthenticationProvider(hasher, null!));
 
         var optionsMock = new Mock<IOptions<RecoveryCodeOptions>>();
         optionsMock.SetupGet(o => o.Value).Returns((RecoveryCodeOptions)null!);
-        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeAuthenticationProvider(hasher, rateLimiter, optionsMock.Object));
+        Assert.Throws<ArgumentNullException>(() => _ = new RecoveryCodeAuthenticationProvider(hasher, optionsMock.Object));
     }
 
     [Test]
     public async Task ProviderResolveCredentialAsyncReturnsMatchedCredential()
     {
         var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var rateLimiter = new Mock<IAuthenticationRateLimiter>();
         var options = Options.Create(new RecoveryCodeOptions());
-        var repository = new Mock<IUserRepository>();
         var credentialRepository = new Mock<ICredentialRepository>();
         var userId = Guid.NewGuid();
         var providerKey = "code1";
@@ -449,13 +443,10 @@ internal sealed class RecoveryCodeTests
             CreateCredential(userId, "some-other-hash", "code2")
         };
 
-        rateLimiter.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Allowed, Remaining = 5, WindowResetAt = DateTimeOffset.UtcNow });
-
         credentialRepository.Setup(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(credentials[0]);
 
-        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, rateLimiter.Object, options);
+        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, options);
         var assertion = new RecoveryCodeAssertion(rawCode);
         var context = new AuthenticationContext(IpAddress: "1.2.3.4");
 
@@ -463,29 +454,23 @@ internal sealed class RecoveryCodeTests
 
         Assert.That(result, Is.Not.Null);
         Assert.That(result.ProviderKey, Is.EqualTo(providerKey));
-        rateLimiter.Verify(r => r.CheckAsync(It.Is<RateLimitAttempt>(a => a.IpAddress == "1.2.3.4"), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
     public async Task ProviderResolveCredentialAsyncReturnsNullIfNoMatch()
     {
         var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var rateLimiter = new Mock<IAuthenticationRateLimiter>();
         var options = Options.Create(new RecoveryCodeOptions());
-        var repository = new Mock<IUserRepository>();
         var credentialRepository = new Mock<ICredentialRepository>();
         var userId = Guid.NewGuid();
         var providerKey = "code1";
         var secretCode = "WRONG-CODE";
         var rawCode = $"{providerKey}-{secretCode}";
 
-        rateLimiter.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Allowed, Remaining = 5, WindowResetAt = DateTimeOffset.UtcNow });
-
         credentialRepository.Setup(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(CreateCredential(userId, "bad-hash", providerKey));
 
-        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, rateLimiter.Object, options);
+        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, options);
         var assertion = new RecoveryCodeAssertion(rawCode);
 
         var result = await provider.ResolveCredentialAsync(userId, assertion, null, credentialRepository.Object);
@@ -497,20 +482,15 @@ internal sealed class RecoveryCodeTests
     public async Task ProviderResolveCredentialAsyncReturnsNullIfCredentialIsMissing()
     {
         var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var rateLimiter = new Mock<IAuthenticationRateLimiter>();
         var options = Options.Create(new RecoveryCodeOptions());
-        var repository = new Mock<IUserRepository>();
         var credentialRepository = new Mock<ICredentialRepository>();
         var userId = Guid.NewGuid();
         var rawCode = "code1-ABCD-EFGH-IJKL";
 
-        rateLimiter.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Allowed, Remaining = 5, WindowResetAt = DateTimeOffset.UtcNow });
-
         credentialRepository.Setup(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserCredential?)null);
 
-        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, rateLimiter.Object, options);
+        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, options);
         var assertion = new RecoveryCodeAssertion(rawCode);
 
         var result = await provider.ResolveCredentialAsync(userId, assertion, null, credentialRepository.Object);
@@ -522,9 +502,7 @@ internal sealed class RecoveryCodeTests
     public async Task ProviderResolveCredentialAsyncReturnsNullIfExpired()
     {
         var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var rateLimiter = new Mock<IAuthenticationRateLimiter>();
         var options = Options.Create(new RecoveryCodeOptions());
-        var repository = new Mock<IUserRepository>();
         var credentialRepository = new Mock<ICredentialRepository>();
         var userId = Guid.NewGuid();
         var providerKey = "code1";
@@ -535,35 +513,11 @@ internal sealed class RecoveryCodeTests
         var expired = CreateCredential(userId, hashedCode, providerKey);
         expired.ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1);
 
-        rateLimiter.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Allowed, Remaining = 5, WindowResetAt = DateTimeOffset.UtcNow });
-
         credentialRepository.Setup(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(expired);
 
-        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, rateLimiter.Object, options);
+        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, options);
         var assertion = new RecoveryCodeAssertion(rawCode);
-
-        var result = await provider.ResolveCredentialAsync(userId, assertion, null, credentialRepository.Object);
-
-        Assert.That(result, Is.Null);
-    }
-
-    [Test]
-    public async Task ProviderResolveCredentialAsyncReturnsNullIfRateLimited()
-    {
-        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var rateLimiter = new Mock<IAuthenticationRateLimiter>();
-        var options = Options.Create(new RecoveryCodeOptions());
-        var repository = new Mock<IUserRepository>();
-        var credentialRepository = new Mock<ICredentialRepository>();
-        var userId = Guid.NewGuid();
-
-        rateLimiter.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Blocked, Remaining = 0, WindowResetAt = DateTimeOffset.UtcNow });
-
-        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, rateLimiter.Object, options);
-        var assertion = new RecoveryCodeAssertion("SOME-CODE");
 
         var result = await provider.ResolveCredentialAsync(userId, assertion, null, credentialRepository.Object);
 
@@ -573,7 +527,7 @@ internal sealed class RecoveryCodeTests
     [Test]
     public async Task ProviderResolveCredentialAsyncReturnsNullForUnsupportedAssertion()
     {
-        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), new Mock<IAuthenticationRateLimiter>().Object, Options.Create(new RecoveryCodeOptions()));
+        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
 
         var result = await provider.ResolveCredentialAsync(Guid.NewGuid(), new Mock<IAuthenticationAssertion>().Object, null, new Mock<ICredentialRepository>().Object);
 
@@ -584,11 +538,7 @@ internal sealed class RecoveryCodeTests
     public async Task ProviderResolveCredentialAsyncReturnsNullForMalformedCode()
     {
         var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var rateLimiter = new Mock<IAuthenticationRateLimiter>();
-        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, rateLimiter.Object, Options.Create(new RecoveryCodeOptions()));
-
-        rateLimiter.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Allowed, Remaining = 5, WindowResetAt = DateTimeOffset.UtcNow });
+        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, Options.Create(new RecoveryCodeOptions()));
 
         using (Assert.EnterMultipleScope())
         {
@@ -600,7 +550,7 @@ internal sealed class RecoveryCodeTests
     [Test]
     public async Task ProviderAuthenticateAsyncSucceedsIfCredentialNotNull()
     {
-        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), new Mock<IAuthenticationRateLimiter>().Object, Options.Create(new RecoveryCodeOptions()));
+        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
         var assertion = new RecoveryCodeAssertion("SOME-CODE");
         var credential = CreateCredential(Guid.NewGuid(), "hash", "key");
 
@@ -616,7 +566,7 @@ internal sealed class RecoveryCodeTests
     [Test]
     public async Task ProviderAuthenticateAsyncFailsIfCredentialNull()
     {
-        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), new Mock<IAuthenticationRateLimiter>().Object, Options.Create(new RecoveryCodeOptions()));
+        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
         var assertion = new RecoveryCodeAssertion("SOME-CODE");
 
         var result = await provider.AuthenticateAsync(assertion, null);
@@ -632,10 +582,7 @@ internal sealed class RecoveryCodeTests
         var userId = Guid.NewGuid();
         var user = new User { Id = userId, Email = "test@example.com", TenantId = otherTenantId };
         var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var rateLimiter = new Mock<IAuthenticationRateLimiter>();
-        rateLimiter.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Allowed, Remaining = 5, WindowResetAt = DateTimeOffset.UtcNow.AddMinutes(5) });
-        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, rateLimiter.Object, Options.Create(new RecoveryCodeOptions()));
+        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, Options.Create(new RecoveryCodeOptions()));
         var registry = new AuthenticationProviderRegistry([provider]);
         var repository = new Mock<IUserRepository>();
         var credentialRepository = new Mock<ICredentialRepository>();
@@ -648,7 +595,7 @@ internal sealed class RecoveryCodeTests
             credentialRepository.Object,
             Mock.Of<ISecretProtector>(),
             transactionProvider);
-        var pipeline = new AuthenticationPipeline(registry, credentialService, transactionProvider, events);
+        var pipeline = new AuthenticationPipeline(registry, credentialService, transactionProvider, AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, events);
         var context = new AuthenticationContext(TenantId: tenantId, UserId: userId);
 
         var response = await pipeline.LoginAsync(context, new RecoveryCodeAssertion("ABCD-EFGH-IJKL"));
@@ -688,18 +635,21 @@ internal sealed class RecoveryCodeTests
     [Test]
     public void ProviderTypicalCredentialLengthIsExpected()
     {
-        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), new Mock<IAuthenticationRateLimiter>().Object, Options.Create(new RecoveryCodeOptions()));
+        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.TypicalCredentialLength, Is.EqualTo(128));
             Assert.That(provider.ProtectsCredentials, Is.False);
+            Assert.That(provider.FactorType, Is.EqualTo(AuthenticationFactorTypes.RecoveryCode));
+            Assert.That(provider.CanSatisfyFactor(AuthenticationFactorTypes.Totp), Is.True);
+            Assert.That(provider.CanSatisfyFactor(" "), Is.False);
         }
     }
 
     [Test]
     public void ProviderGetProviderKeyReturnsEmpty()
     {
-        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), new Mock<IAuthenticationRateLimiter>().Object, Options.Create(new RecoveryCodeOptions()));
+        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.GetProviderKey(new RecoveryCodeAssertion("CODE"), Guid.NewGuid()), Is.Empty);
@@ -711,7 +661,7 @@ internal sealed class RecoveryCodeTests
     public void ProviderPrepareCredentialValueReturnsHashedValue()
     {
         var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, new Mock<IAuthenticationRateLimiter>().Object, Options.Create(new RecoveryCodeOptions()));
+        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, Options.Create(new RecoveryCodeOptions()));
         var assertion = new RecoveryCodeAssertion("SOME-CODE");
 
         var prepared = provider.PrepareCredentialValue(assertion, "RAW-VALUE");
@@ -723,7 +673,7 @@ internal sealed class RecoveryCodeTests
     [Test]
     public void ProviderPrepareCredentialValueReturnsNullIfEmpty()
     {
-        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), new Mock<IAuthenticationRateLimiter>().Object, Options.Create(new RecoveryCodeOptions()));
+        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.PrepareCredentialValue(new RecoveryCodeAssertion("CODE"), " "), Is.Null);
@@ -736,7 +686,7 @@ internal sealed class RecoveryCodeTests
     {
         var repository = new Mock<IUserRepository>();
         var credentialRepository = new Mock<ICredentialRepository>();
-        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), new Mock<IAuthenticationRateLimiter>().Object, Options.Create(new RecoveryCodeOptions()));
+        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
         var context = new AuthenticationContext(Email: "test@example.com");
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
 
@@ -754,7 +704,7 @@ internal sealed class RecoveryCodeTests
     {
         var repository = new Mock<IUserRepository>();
         var credentialRepository = new Mock<ICredentialRepository>();
-        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), new Mock<IAuthenticationRateLimiter>().Object, Options.Create(new RecoveryCodeOptions()));
+        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
         var userId = Guid.NewGuid();
         var context = new AuthenticationContext(UserId: userId);
         var user = new User { Id = userId, Email = "test@example.com" };
@@ -772,9 +722,7 @@ internal sealed class RecoveryCodeTests
     public async Task ProviderResolveCredentialAsyncResilientToWhitespaceAndCasing()
     {
         var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
-        var rateLimiter = new Mock<IAuthenticationRateLimiter>();
         var options = Options.Create(new RecoveryCodeOptions());
-        var repository = new Mock<IUserRepository>();
         var credentialRepository = new Mock<ICredentialRepository>();
         var userId = Guid.NewGuid();
         var providerKey = "CODE1";
@@ -782,13 +730,10 @@ internal sealed class RecoveryCodeTests
         var rawCode = "  code 1 - abcd - efgh - ijkl  "; // Mixed casing and spaces
         var hashedCode = Convert.ToBase64String(hasherSelector.DefaultHasher.HashPassword(secretCode));
 
-        rateLimiter.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Allowed, Remaining = 5, WindowResetAt = DateTimeOffset.UtcNow });
-
         credentialRepository.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(CreateCredential(userId, hashedCode, providerKey));
 
-        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, rateLimiter.Object, options);
+        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, options);
         var assertion = new RecoveryCodeAssertion(rawCode);
 
         var result = await provider.ResolveCredentialAsync(userId, assertion, null, credentialRepository.Object);
@@ -800,7 +745,7 @@ internal sealed class RecoveryCodeTests
     [Test]
     public async Task ProviderFindUserAsyncReturnsNullOnWrongConditions()
     {
-        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), new Mock<IAuthenticationRateLimiter>().Object, Options.Create(new RecoveryCodeOptions()));
+        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
 
         using (Assert.EnterMultipleScope())
         {
@@ -818,7 +763,7 @@ internal sealed class RecoveryCodeTests
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void ProviderFindUserAsyncThrowsOnNullArguments()
     {
-        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), new Mock<IAuthenticationRateLimiter>().Object, Options.Create(new RecoveryCodeOptions()));
+        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
         Assert.ThrowsAsync<ArgumentNullException>(() => provider.FindUserAsync(new RecoveryCodeAssertion("CODE"), null!, new Mock<IUserRepository>().Object));
         Assert.ThrowsAsync<ArgumentNullException>(() => provider.FindUserAsync(new RecoveryCodeAssertion("CODE"), new AuthenticationContext(), null!));
     }
@@ -826,7 +771,7 @@ internal sealed class RecoveryCodeTests
     [Test]
     public void ProviderAuthenticateAsyncThrowsOnWrongAssertionType()
     {
-        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), new Mock<IAuthenticationRateLimiter>().Object, Options.Create(new RecoveryCodeOptions()));
+        var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
         Assert.That(async () => await provider.AuthenticateAsync(new Mock<IAuthenticationAssertion>().Object, null), Throws.ArgumentException);
     }
 
@@ -854,8 +799,8 @@ internal sealed class RecoveryCodeTests
         var assertion = new RecoveryCodeAssertion("CODE");
         var context = new AuthenticationContext(Email: "test@example.com");
 
-        var provider = new Mock<IAuthenticationProvider>();
-        provider.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode"));
+        var provider = new Mock<IPrimaryAuthenticationProvider>();
+        provider.SetupGet(p => p.Key).Returns(AuthenticationProviderKey.Local);
 
         IAuthenticationProvider? providerObj = provider.Object;
         providerRegistry.Setup(r => r.TryGetProvider(assertion, out providerObj)).Returns(true);
@@ -868,7 +813,7 @@ internal sealed class RecoveryCodeTests
         provider.Setup(p => p.AuthenticateAsync(assertion, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true));
 
-        var pipeline = new AuthenticationPipeline(providerRegistry.Object, credentialService.Object, transProvider.Object, securityEventSink.Object);
+        var pipeline = new AuthenticationPipeline(providerRegistry.Object, credentialService.Object, transProvider.Object, AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, securityEventSink.Object);
 
         var response = await pipeline.LoginAsync(context, assertion);
 

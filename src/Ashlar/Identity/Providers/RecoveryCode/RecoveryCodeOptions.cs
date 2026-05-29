@@ -29,4 +29,34 @@ public sealed record RecoveryCodeOptions
     /// Gets or sets the authentication provider key for recovery codes.
     /// </summary>
     public AuthenticationProviderKey ProviderKey { get; set; } = new(ProviderType.RecoveryCode, "RecoveryCode");
+
+    /// <summary>
+    /// Validates recovery code options.
+    /// </summary>
+    /// <param name="options">The options value.</param>
+    /// <returns><see langword="true" /> when options are valid.</returns>
+    public static bool Validate(RecoveryCodeOptions? options)
+    {
+        if (options == null)
+        {
+            return false;
+        }
+
+        if (options.CodeCount <= 0 || options.CodeLength <= 0 || options.GroupSize <= 0)
+        {
+            return false;
+        }
+
+        if (options.ProviderKey.Type == default)
+        {
+            return false;
+        }
+
+        if (options.ExpiresAfter.HasValue && options.ExpiresAfter.Value <= TimeSpan.Zero)
+        {
+            return false;
+        }
+
+        return true;
+    }
 }

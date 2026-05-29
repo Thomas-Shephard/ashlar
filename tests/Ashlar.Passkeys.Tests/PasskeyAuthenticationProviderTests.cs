@@ -16,6 +16,9 @@ internal sealed class PasskeyAuthenticationProviderTests
             Assert.That(provider.Key, Is.EqualTo(AuthenticationProviderKey.Passkey));
             Assert.That(provider.ProtectsCredentials, Is.False);
             Assert.That(provider.TypicalCredentialLength, Is.Zero);
+            Assert.That(provider.FactorType, Is.EqualTo(AuthenticationFactorTypes.Passkey));
+            Assert.That(provider.CanSatisfyFactor("PASSKEY"), Is.True);
+            Assert.That(provider.CanSatisfyFactor(AuthenticationFactorTypes.Totp), Is.False);
             Assert.That(provider.PrepareCredentialValue(new PasskeyAssertion("cred", 1), "raw"), Is.EqualTo("raw"));
         }
     }

@@ -1,4 +1,5 @@
 using Ashlar.Auditing;
+using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
@@ -21,7 +22,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
     private readonly IdentityContext _identityContext;
     private readonly SecureTokenContext _tokenContext;
     private readonly IEmailSender _emailSender;
-    private readonly IAuthenticationRateLimiter _rateLimiter;
+    private readonly AuthenticationRateLimitChecker _rateLimitChecker;
     private readonly IUriValidator _uriValidator;
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
@@ -39,7 +40,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         _identityContext = dependencies.IdentityContext;
         _tokenContext = dependencies.TokenContext;
         _emailSender = dependencies.EmailSender;
-        _rateLimiter = dependencies.RateLimiter;
+        _rateLimitChecker = new AuthenticationRateLimitChecker(dependencies.RateLimiter);
         _uriValidator = dependencies.UriValidator;
         _timeProvider = dependencies.TimeProvider;
         _securityEvents = new SecurityEventEmitter(dependencies.SecurityEventSink, dependencies.TimeProvider);
@@ -89,15 +90,14 @@ internal sealed class EmailVerificationService : IEmailVerificationService
             return Result.Success();
         }
 
-        var rateLimit = await _rateLimiter.CheckAsync(new RateLimitAttempt
+        var userBucket = AuthenticationRateLimitDimensions.User(user.Id);
+        var rateLimit = await _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(RequestPurpose, AuthenticationRateLimitDimensions.DimensionName(userBucket), userBucket, _options.Value.RequestRateLimit)
         {
-            Key = $"{RequestPurpose}:{user.Id}",
-            Purpose = RequestPurpose,
             Email = user.Email,
-            UserId = user.Id.ToString(),
-            IpAddress = request.Audit?.IpAddress,
-            CorrelationId = request.Audit?.CorrelationId
-        }, new RateLimitRule { PermitLimit = 3, Window = TimeSpan.FromHours(1) }, cancellationToken);
+            UserId = user.Id,
+            TenantId = (user as ITenantUser)?.TenantId,
+            Context = ToAuthenticationContext(request.Audit)
+        }, cancellationToken);
 
         if (!rateLimit.IsAllowed)
         {
@@ -179,12 +179,8 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         var token = request.Token;
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
 
-        var rateLimit = await _rateLimiter.CheckAsync(new RateLimitAttempt
-        {
-            Key = $"{VerifyPurpose}:{userId}",
-            Purpose = VerifyPurpose,
-            UserId = userId.ToString()
-        }, new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) }, cancellationToken);
+        var context = ToAuthenticationContext(request.Audit);
+        var rateLimit = await CheckVerificationRateLimitAsync(AuthenticationRateLimitDimensions.Source(context), userId, context, cancellationToken);
 
         if (!rateLimit.IsAllowed)
         {
@@ -210,6 +206,34 @@ internal sealed class EmailVerificationService : IEmailVerificationService
                 FailureReason = AshlarFailureCodes.InvalidOrExpiredToken.Value
             }, cancellationToken);
             return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, InvalidOrExpiredTokenMessage);
+        }
+
+        var tokenRateLimit = await CheckVerificationRateLimitAsync(AuthenticationRateLimitDimensions.TokenHash(tokenHash), userId, context, cancellationToken);
+        if (!tokenRateLimit.IsAllowed)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailVerificationVerificationRateLimited,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Audit = request.Audit,
+                FailureReason = AshlarFailureCodes.RateLimited.Value
+            }, cancellationToken);
+            return Result.Failure(AshlarFailureCodes.RateLimited, "Too many attempts.");
+        }
+
+        var userRateLimit = await CheckVerificationRateLimitAsync(AuthenticationRateLimitDimensions.User(userId), userId, context, cancellationToken);
+        if (!userRateLimit.IsAllowed)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailVerificationVerificationRateLimited,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                Audit = request.Audit,
+                FailureReason = AshlarFailureCodes.RateLimited.Value
+            }, cancellationToken);
+            return Result.Failure(AshlarFailureCodes.RateLimited, "Too many attempts.");
         }
 
         var credential = await _identityContext.CredentialRepository.GetCredentialForUserAsync(userId, ProviderType.Internal, ProviderName, tokenHash, cancellationToken);
@@ -278,6 +302,22 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         await transaction.CommitAsync(cancellationToken);
 
         return Result.Success();
+    }
+
+    private static AuthenticationContext? ToAuthenticationContext(AuditContext? audit)
+    {
+        return audit == null
+            ? null
+            : new AuthenticationContext { IpAddress = audit.IpAddress, CorrelationId = audit.CorrelationId };
+    }
+
+    private Task<RateLimitDecision> CheckVerificationRateLimitAsync(string key, Guid userId, AuthenticationContext? context, CancellationToken cancellationToken)
+    {
+        return _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(VerifyPurpose, AuthenticationRateLimitDimensions.DimensionName(key), key, _options.Value.VerificationRateLimit)
+        {
+            UserId = userId,
+            Context = context
+        }, cancellationToken);
     }
 
     private sealed class UpdatedUserWrapper(IUser original, DateTimeOffset? emailVerifiedAt) : ITenantUser, IHasAuditMetadata

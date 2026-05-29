@@ -1,4 +1,5 @@
 using Ashlar.Identity.RateLimiting.Models;
+using Ashlar.Identity.RateLimiting;
 
 namespace Ashlar.Identity.Models.Invitations;
 
@@ -49,4 +50,21 @@ public sealed class InvitationOptions
     /// Defaults to <c><see langword="true" /></c>.
     /// </summary>
     public bool VerifyEmailOnAcceptance { get; set; } = true;
+
+    /// <summary>
+    /// Validates invitation options.
+    /// </summary>
+    /// <param name="options">The options value.</param>
+    /// <returns><see langword="true" /> when options are valid.</returns>
+    public static bool Validate(InvitationOptions? options)
+    {
+        return options is { CreationRateLimit: { }, PreviewRateLimit: { }, AcceptanceRateLimit: { } }
+            && options.DefaultExpiry > TimeSpan.Zero
+            && AuthenticationRateLimitRuleValidator.IsValid(options.CreationRateLimit)
+            && AuthenticationRateLimitRuleValidator.IsValid(options.PreviewRateLimit)
+            && AuthenticationRateLimitRuleValidator.IsValid(options.AcceptanceRateLimit)
+            && !string.IsNullOrWhiteSpace(options.EmailSubject)
+            && !string.IsNullOrWhiteSpace(options.EmailTextTemplate)
+            && !string.IsNullOrWhiteSpace(options.TokenParameterName);
+    }
 }

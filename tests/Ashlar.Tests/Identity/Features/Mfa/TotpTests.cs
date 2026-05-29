@@ -3,7 +3,6 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Models.Totp;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Providers.Totp;
-using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Security;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,7 +20,6 @@ internal sealed class TotpTests
     private Mock<ICredentialService> _credentialService;
     private Mock<IAshlarTransactionProvider> _transactionProvider;
     private Mock<IAshlarTransaction> _transaction;
-    private Mock<IAuthenticationRateLimiter> _rateLimiter;
     private Mock<ISecurityEventSink> _securityEvents;
     private FakeTimeProvider _timeProvider;
     private TotpOptions _options;
@@ -35,7 +33,6 @@ internal sealed class TotpTests
         _transactionProvider = new Mock<IAshlarTransactionProvider>();
         _transaction = new Mock<IAshlarTransaction>();
         var onCommitted = new List<Func<CancellationToken, Task>>();
-        _rateLimiter = new Mock<IAuthenticationRateLimiter>();
         _securityEvents = new Mock<ISecurityEventSink>();
         _timeProvider = new FakeTimeProvider();
         _options = new TotpOptions();
@@ -76,10 +73,8 @@ internal sealed class TotpTests
     private TotpAuthenticationProvider CreateProvider()
     {
         return new TotpAuthenticationProvider(
-            _rateLimiter.Object,
             Options.Create(_options),
-            _timeProvider,
-            _securityEvents.Object);
+            _timeProvider);
     }
 
     [Test]
@@ -172,6 +167,7 @@ internal sealed class TotpTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(new TotpAssertion("123456").ProviderIdentity, Is.EqualTo(TotpOptions.DefaultProviderKey));
             Assert.That(new TotpAssertion("123456", providerKey: providerKey).ProviderIdentity, Is.EqualTo(providerKey));
             Assert.That(context.ReturnUrl, Is.EqualTo("/return"));
             Assert.That(context.Items, Contains.Key("key"));
@@ -652,15 +648,14 @@ internal sealed class TotpTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new TotpAuthenticationProvider(null!, Options.Create(_options)));
-            Assert.Throws<ArgumentNullException>(() => _ = new TotpAuthenticationProvider(_rateLimiter.Object, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpAuthenticationProvider(null!));
         }
     }
 
     [Test]
     public void ProviderConstructorAllowsDefaultTimeProvider()
     {
-        Assert.DoesNotThrow(() => _ = new TotpAuthenticationProvider(_rateLimiter.Object, Options.Create(_options)));
+        Assert.DoesNotThrow(() => _ = new TotpAuthenticationProvider(Options.Create(_options)));
     }
 
     [Test]
@@ -674,6 +669,9 @@ internal sealed class TotpTests
         {
             Assert.That(provider.ProtectsCredentials, Is.True);
             Assert.That(provider.TypicalCredentialLength, Is.EqualTo(32));
+            Assert.That(provider.FactorType, Is.EqualTo(AuthenticationFactorTypes.Totp));
+            Assert.That(provider.CanSatisfyFactor("TOTP"), Is.True);
+            Assert.That(provider.CanSatisfyFactor(AuthenticationFactorTypes.RecoveryCode), Is.False);
             Assert.That(provider.GetProviderKey(assertion, userId), Is.EqualTo(userId.ToString("D")));
             Assert.That(provider.PrepareCredentialValue(assertion, "secret"), Is.EqualTo("secret"));
         }
@@ -829,35 +827,9 @@ internal sealed class TotpTests
     }
 
     [Test]
-    public async Task ProviderResolveCredentialAsyncRateLimits()
-    {
-        var provider = CreateProvider();
-        var userId = Guid.NewGuid();
-        var assertion = new TotpAssertion("123456");
-
-        _rateLimiter.Setup(x => x.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Blocked, Remaining = 0, WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(5) });
-
-        var context = new AuthenticationContext(IpAddress: "203.0.113.70", CorrelationId: "totp-rate-limit");
-
-        var result = await provider.ResolveCredentialAsync(userId, assertion, context, _credentialRepository.Object);
-
-        Assert.That(result, Is.Null);
-        _rateLimiter.Verify(x => x.CheckAsync(It.Is<RateLimitAttempt>(attempt =>
-            attempt.IpAddress == "203.0.113.70" &&
-            attempt.CorrelationId == "totp-rate-limit"), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()), Times.Once);
-        _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(d =>
-            d.EventType == AshlarSecurityEventTypes.TotpVerificationRateLimited &&
-            d.IpAddress == "203.0.113.70" &&
-            d.CorrelationId == "totp-rate-limit"), It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Test]
     public async Task ProviderResolveCredentialAsyncReturnsNullOnWrongAssertion()
     {
         var provider = CreateProvider();
-        _rateLimiter.Setup(x => x.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Allowed, Remaining = 5, WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(5) });
 
         var result = await provider.ResolveCredentialAsync(Guid.NewGuid(), new Mock<IAuthenticationAssertion>().Object, null, _credentialRepository.Object);
         Assert.That(result, Is.Null);
@@ -871,8 +843,6 @@ internal sealed class TotpTests
         var assertion = new TotpAssertion("123456");
         var credential = new UserCredential { Id = Guid.NewGuid(), UserId = userId, ProviderType = _options.ProviderKey.Type, ProviderName = _options.ProviderKey.Name, ProviderKey = userId.ToString("D"), Status = CredentialStatus.Active, CreatedAt = DateTimeOffset.UtcNow, Version = "1" };
 
-        _rateLimiter.Setup(x => x.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new RateLimitDecision { Status = RateLimitStatus.Allowed, Remaining = 5, WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(5) });
         _credentialRepository.Setup(x => x.GetCredentialForUserAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, userId.ToString("D"), It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
 
@@ -974,9 +944,17 @@ internal sealed class TotpTests
     {
         // This test proves that the orchestrator uses the pipeline (and thus our provider) for verification.
         var pipeline = new Mock<IAuthenticationPipeline>();
+        var factorPipeline = new Mock<IAuthenticationFactorPipeline>();
         var handshakeService = new Mock<IAuthenticationHandshakeService>();
         var policyEvaluator = new Mock<IMfaPolicyEvaluator>();
-        var orchestrator = new AuthenticationOrchestrator(pipeline.Object, handshakeService.Object, policyEvaluator.Object);
+        var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
+        var provider = new Mock<ISecondaryAuthenticationFactorProvider>();
+        provider.SetupGet(item => item.FactorType).Returns(AuthenticationFactorTypes.Totp);
+        provider.Setup(item => item.CanSatisfyFactor(It.IsAny<string>()))
+            .Returns<string>(factorType => AuthenticationFactorTypes.Matches(AuthenticationFactorTypes.Totp, factorType));
+        IAuthenticationProvider? providerObject = provider.Object;
+        providerRegistry.Setup(item => item.TryGetProvider(It.IsAny<IAuthenticationAssertion>(), out providerObject)).Returns(true);
+        var orchestrator = new AuthenticationOrchestrator(pipeline.Object, factorPipeline.Object, handshakeService.Object, policyEvaluator.Object, providerRegistry.Object);
 
         var userId = Guid.NewGuid();
         var handshakeToken = "handshake-token";
@@ -991,23 +969,28 @@ internal sealed class TotpTests
             RequiredFactors: new HashSet<string> { "totp" },
             VerifiedFactors: new HashSet<string>());
 
-        handshakeService.Setup(x => x.GetHandshakeAsync(handshakeToken, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(handshake);
-
         var assertion = new TotpAssertion("123456");
         var context = new AuthenticationContext();
 
         var responseUser = new Mock<IUser>();
         responseUser.Setup(u => u.Id).Returns(userId);
-        pipeline.Setup(x => x.LoginAsync(It.Is<AuthenticationContext>(c => c.UserId == userId), assertion, It.IsAny<CancellationToken>()))
+        factorPipeline.Setup(x => x.VerifyFactorAsync(
+                It.Is<AuthenticationContext>(c => c.UserId == userId),
+                assertion,
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResponse(true, responseUser.Object, AuthenticationStatus.Success));
 
-        handshakeService.Setup(x => x.VerifyFactorAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        handshakeService.Setup(x => x.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(handshake));
+        handshakeService.Setup(x => x.CompleteFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         var result = await orchestrator.VerifyFactorAsync(handshakeToken, "totp", context, assertion);
 
         Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.HandshakeIncomplete));
-        pipeline.Verify(x => x.LoginAsync(It.Is<AuthenticationContext>(c => c.UserId == userId), assertion, It.IsAny<CancellationToken>()), Times.Once);
+        factorPipeline.Verify(x => x.VerifyFactorAsync(
+            It.Is<AuthenticationContext>(c => c.UserId == userId),
+            assertion,
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

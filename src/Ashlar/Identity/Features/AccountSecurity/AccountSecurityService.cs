@@ -28,6 +28,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
     private readonly SecurityEventEmitter _securityEvents;
     private readonly IUserSecurityEventSummaryRepository? _securityEventSummaryRepository;
     private readonly IMfaPolicyEvaluator _mfaPolicyEvaluator;
+    private readonly IAuthenticationProviderRegistry? _providerRegistry;
     private readonly AuthenticationProviderKey _totpProvider;
     private readonly AuthenticationProviderKey _recoveryCodeProvider;
 
@@ -59,6 +60,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         _securityEvents = new SecurityEventEmitter(dependencies.SecurityEventSink, _timeProvider);
         _securityEventSummaryRepository = dependencies.SecurityEventSummaryRepository;
         _mfaPolicyEvaluator = dependencies.MfaPolicyEvaluator ?? new MfaPolicyEvaluator();
+        _providerRegistry = dependencies.ProviderRegistry;
         _totpProvider = dependencies.TotpOptions?.Value.ProviderKey ?? TotpOptions.DefaultProviderKey;
         _recoveryCodeProvider = dependencies.RecoveryCodeOptions?.Value.ProviderKey ?? new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode");
     }
@@ -290,12 +292,10 @@ public sealed class AccountSecurityService : IAccountSecurityService
     private CredentialPostureItem ClassifyCredential(UserCredential credential)
     {
         var provider = new AuthenticationProviderKey(credential.ProviderType, credential.ProviderName);
-        var factorType = GetFactorType(provider);
-        var isTotp = IsTotpProvider(provider);
-        var isRecoveryCode = IsRecoveryCodeProvider(provider);
-        var isPasskey = provider.Type == ProviderType.Passkey;
-        var isPrimary = IsPrimaryProvider(provider);
-        var isAdditionalVerification = isTotp || isRecoveryCode || isPasskey;
+        var registeredProvider = GetRegisteredProvider(provider);
+        var factorType = GetFactorType(registeredProvider);
+        var isPrimary = registeredProvider != null && AuthenticationProviderCapabilities.IsPrimary(registeredProvider);
+        var isAdditionalVerification = factorType != null;
         var purpose = CredentialPosturePurpose.Unknown;
         if (isPrimary)
         {
@@ -365,15 +365,11 @@ public sealed class AccountSecurityService : IAccountSecurityService
             evaluation.IsMfaRequired && !isReady);
     }
 
-    private static bool IsPrimaryProvider(AuthenticationProviderKey provider)
+    private IAuthenticationProvider? GetRegisteredProvider(AuthenticationProviderKey provider)
     {
-        return provider.Type == ProviderType.Local
-            || provider.Type == ProviderType.OAuth
-            || provider.Type == ProviderType.Oidc
-            || provider.Type == ProviderType.Saml2
-            || provider.Type == ProviderType.Passkey
-            || provider.Type == ProviderType.EmailCode
-            || provider.Type == ProviderType.MagicLink;
+        return _providerRegistry?.TryGetProvider(provider, out var registeredProvider) == true
+            ? registeredProvider
+            : null;
     }
 
     private static void AddEmailSignInIfAvailable(List<CredentialPostureItem> primaryCredentials, IUser user, DateTimeOffset now)
@@ -410,19 +406,14 @@ public sealed class AccountSecurityService : IAccountSecurityService
         return provider == _recoveryCodeProvider || provider.Type == ProviderType.RecoveryCode;
     }
 
-    private string? GetFactorType(AuthenticationProviderKey provider)
+    private static string? GetFactorType(IAuthenticationProvider? provider)
     {
-        if (IsTotpProvider(provider))
+        if (provider is not ISecondaryAuthenticationFactorProvider factorProvider)
         {
-            return AuthenticationFactorTypes.Totp;
+            return null;
         }
 
-        if (IsRecoveryCodeProvider(provider))
-        {
-            return AuthenticationFactorTypes.RecoveryCode;
-        }
-
-        return provider.Type == ProviderType.Passkey ? AuthenticationFactorTypes.Passkey : null;
+        return NormalizeFactorType(factorProvider.FactorType);
     }
 
     private static string GetDisplayName(AuthenticationProviderKey provider, string? factorType)
@@ -550,10 +541,12 @@ public sealed class AccountSecurityService : IAccountSecurityService
 /// <param name="TotpOptions">The TOTP options value.</param>
 /// <param name="RecoveryCodeOptions">The recovery code options value.</param>
 /// <param name="MfaPolicyEvaluator">The MFA policy evaluator value.</param>
+/// <param name="ProviderRegistry">The authentication provider registry.</param>
 public sealed record AccountSecurityServiceDependencies(
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,
     IUserSecurityEventSummaryRepository? SecurityEventSummaryRepository = null,
     IOptions<TotpOptions>? TotpOptions = null,
     IOptions<RecoveryCodeOptions>? RecoveryCodeOptions = null,
-    IMfaPolicyEvaluator? MfaPolicyEvaluator = null);
+    IMfaPolicyEvaluator? MfaPolicyEvaluator = null,
+    IAuthenticationProviderRegistry? ProviderRegistry = null);

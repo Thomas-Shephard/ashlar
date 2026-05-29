@@ -84,6 +84,11 @@ internal static class AuthEndpoints
 
     private static async Task<IResult> HandleAuthResponse(MfaAuthenticationResult response, IAshlarSignInManager signInManager, HttpContext httpContext, AuthenticationProviderKey primaryProvider, CancellationToken cancellationToken)
     {
+        if (response.Status == MfaAuthenticationStatus.RateLimited)
+        {
+            return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+        }
+
         if (response.Status == MfaAuthenticationStatus.Failed || response.User == null)
         {
             return Results.BadRequest(new { error = response.ErrorMessage ?? response.Status.ToString() });

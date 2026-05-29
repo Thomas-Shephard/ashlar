@@ -16,12 +16,20 @@ internal sealed class IdentityServiceAuditingTests
             new OidcAuthenticationProvider("Google")
         };
         var credentialServiceMock = new Mock<ICredentialService>();
+        var transactionProvider = new NullTransactionProvider();
+        var providerRegistry = new AuthenticationProviderRegistry(providers);
+        var pipeline = new AuthenticationPipeline(
+            providerRegistry,
+            credentialServiceMock.Object,
+            transactionProvider,
+            AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, sinkMock.Object);
 
         var service = new IdentityService(
             repositoryMock.Object,
-            providers,
+            providerRegistry,
             credentialServiceMock.Object,
-            new NullTransactionProvider(),
+            pipeline,
+            transactionProvider,
             sinkMock.Object);
 
         var tenantId = Guid.NewGuid();

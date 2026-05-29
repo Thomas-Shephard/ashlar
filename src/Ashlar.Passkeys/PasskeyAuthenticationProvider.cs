@@ -7,7 +7,7 @@ namespace Ashlar.Passkeys;
 /// Authenticates verified passkey assertions against stored Ashlar credentials.
 /// </summary>
 /// <param name="options">The passkey options.</param>
-public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> options) : IAuthenticationProvider
+public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> options) : IPrimaryAuthenticationProvider, ISecondaryAuthenticationFactorProvider
 {
     private readonly PasskeyOptions _options = options.Value;
 
@@ -23,6 +23,17 @@ public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> optio
     /// Gets the expected credential length when one is known.
     /// </summary>
     public int TypicalCredentialLength => 0;
+    /// <summary>
+    /// Gets the factor family represented by passkeys.
+    /// </summary>
+    public string FactorType => AuthenticationFactorTypes.Passkey;
+
+    /// <summary>
+    /// Determines whether this provider can satisfy a pending factor.
+    /// </summary>
+    /// <param name="factorType">The required factor type.</param>
+    /// <returns><see langword="true" /> when the required factor is passkey-compatible.</returns>
+    public bool CanSatisfyFactor(string factorType) => AuthenticationFactorTypes.Matches(FactorType, factorType);
 
     /// <summary>
     /// Gets the credential lookup key from a passkey assertion.

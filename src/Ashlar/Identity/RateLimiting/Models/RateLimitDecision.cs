@@ -6,6 +6,20 @@ namespace Ashlar.Identity.RateLimiting.Models;
 public sealed class RateLimitDecision
 {
     /// <summary>
+    /// Creates an allowed decision for disabled or excluded rate-limit scopes.
+    /// </summary>
+    /// <returns>An allowed rate-limit decision.</returns>
+    public static RateLimitDecision Allow()
+    {
+        return new RateLimitDecision
+        {
+            Status = RateLimitStatus.Allowed,
+            Remaining = int.MaxValue,
+            WindowResetAt = DateTimeOffset.MaxValue
+        };
+    }
+
+    /// <summary>
     /// The status of the attempt.
     /// </summary>
     public required RateLimitStatus Status { get; init; }

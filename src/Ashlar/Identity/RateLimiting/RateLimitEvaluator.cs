@@ -16,7 +16,8 @@ public static class RateLimitEvaluator
     /// <param name="now">The now value.</param>
     /// <returns>The operation result.</returns>
     /// <remarks>
-    /// Implementations should load the state, call this method, then persist the mutated state atomically.
+    /// This method mutates the provided state. Implementations MUST ensure thread-safe access to the state
+    /// object across the load, evaluate, and persist cycle.
     /// </remarks>
     public static RateLimitDecision Evaluate(RateLimitState state, RateLimitRule rule, DateTimeOffset now)
     {

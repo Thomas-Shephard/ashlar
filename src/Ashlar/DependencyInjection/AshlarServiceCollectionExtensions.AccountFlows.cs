@@ -30,7 +30,8 @@ public static partial class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarIdentity();
-        services.AddOptions();
+        services.AddOptions<InvitationOptions>()
+            .Validate(InvitationOptions.Validate, "Invitation options are invalid.");
         if (configure != null)
         {
             services.Configure(configure);
@@ -82,7 +83,8 @@ public static partial class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarIdentity();
-        services.AddOptions();
+        services.AddOptions<EmailVerificationOptions>()
+            .Validate(EmailVerificationOptions.Validate, "Email verification options are invalid.");
         if (configure != null)
         {
             services.Configure(configure);
@@ -112,7 +114,8 @@ public static partial class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarIdentity();
-        services.AddOptions();
+        services.AddOptions<EmailChangeOptions>()
+            .Validate(EmailChangeOptions.Validate, "Email change options are invalid.");
         if (configure != null)
         {
             services.Configure(configure);

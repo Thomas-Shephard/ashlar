@@ -28,7 +28,8 @@ public static partial class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarIdentity();
-        services.AddOptions();
+        services.AddOptions<RecoveryCodeOptions>()
+            .Validate(RecoveryCodeOptions.Validate, "Recovery code options are invalid.");
         if (configure != null)
         {
             services.Configure(configure);
@@ -59,7 +60,6 @@ public static partial class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarIdentity();
-        services.AddOptions();
         services.AddOptions<TotpOptions>()
             .Validate(TotpOptions.Validate, "TOTP options are invalid.");
         if (configure != null)
@@ -91,7 +91,8 @@ public static partial class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarIdentity();
-        services.AddOptions();
+        services.AddOptions<AuthenticationHandshakeOptions>()
+            .Validate(AuthenticationHandshakeOptions.Validate, "Authentication handshake options are invalid.");
         if (configure != null)
         {
             services.Configure(configure);

@@ -1,4 +1,5 @@
 using Ashlar.Auditing;
+using Microsoft.Extensions.Logging;
 
 namespace Ashlar.Identity.Features.Services;
 
@@ -12,6 +13,7 @@ namespace Ashlar.Identity.Features.Services;
 /// <param name="transactionProvider">The transaction provider used to commit multi-step identity operations.</param>
 /// <param name="securityEventSink">Optional sink for identity security events.</param>
 /// <param name="timeProvider">Optional clock used when emitting time-stamped security events.</param>
+/// <param name="loggerFactory">Optional logger factory used for security event sink failures.</param>
 public sealed class IdentityService(
     IUserRepository repository,
     IAuthenticationProviderRegistry providerRegistry,
@@ -19,7 +21,8 @@ public sealed class IdentityService(
     IAuthenticationPipeline authenticationPipeline,
     IAshlarTransactionProvider transactionProvider,
     ISecurityEventSink? securityEventSink = null,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    ILoggerFactory? loggerFactory = null)
     : IIdentityService
 {
     private readonly IUserRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
@@ -27,47 +30,7 @@ public sealed class IdentityService(
     private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
     private readonly IAuthenticationPipeline _authenticationPipeline = authenticationPipeline ?? throw new ArgumentNullException(nameof(authenticationPipeline));
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
-    private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider);
-
-    /// <summary>
-    /// Initializes a configured service instance.
-    /// </summary>
-    /// <param name="repository">The repository used to read and write users.</param>
-    /// <param name="providers">The authentication providers supported by this service.</param>
-    /// <param name="credentialService">The credential service used for credential lifecycle operations.</param>
-    /// <param name="transactionProvider">The transaction provider used to commit multi-step identity operations.</param>
-    /// <param name="securityEventSink">Optional sink for identity security events.</param>
-    /// <param name="timeProvider">Optional clock used when emitting time-stamped security events.</param>
-    public IdentityService(
-        IUserRepository repository,
-        IEnumerable<IAuthenticationProvider> providers,
-        ICredentialService credentialService,
-        IAshlarTransactionProvider transactionProvider,
-        ISecurityEventSink? securityEventSink = null,
-        TimeProvider? timeProvider = null)
-        : this(repository, new AuthenticationProviderRegistry(providers), credentialService, transactionProvider, securityEventSink, timeProvider)
-    {
-    }
-
-    /// <summary>
-    /// Initializes a configured identity service instance.
-    /// </summary>
-    /// <param name="repository">The repository used to read and write users.</param>
-    /// <param name="providerRegistry">The authentication provider registry used for provider lookup.</param>
-    /// <param name="credentialService">The credential service used for credential lifecycle operations.</param>
-    /// <param name="transactionProvider">The transaction provider used to commit multi-step identity operations.</param>
-    /// <param name="securityEventSink">Optional sink for identity security events.</param>
-    /// <param name="timeProvider">Optional clock used when emitting time-stamped security events.</param>
-    public IdentityService(
-        IUserRepository repository,
-        IAuthenticationProviderRegistry providerRegistry,
-        ICredentialService credentialService,
-        IAshlarTransactionProvider transactionProvider,
-        ISecurityEventSink? securityEventSink = null,
-        TimeProvider? timeProvider = null)
-        : this(repository, providerRegistry, credentialService, new AuthenticationPipeline(providerRegistry, credentialService, transactionProvider, securityEventSink, timeProvider), transactionProvider, securityEventSink, timeProvider)
-    {
-    }
+    private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider, loggerFactory);
 
     /// <summary>
     /// Gets the authentication providers supported by this identity service.

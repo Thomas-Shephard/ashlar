@@ -39,24 +39,13 @@ public sealed class TotpOptions
     public int AllowedSkewSteps { get; set; } = 1;
 
     /// <summary>
-    /// The maximum number of failed TOTP attempts allowed within the rate limit window. Defaults to 5.
-    /// </summary>
-    public int RateLimitPermitLimit { get; set; } = 5;
-
-    /// <summary>
-    /// The window of time for the TOTP rate limiter. Defaults to 5 minutes.
-    /// </summary>
-    public TimeSpan RateLimitWindow { get; set; } = TimeSpan.FromMinutes(5);
-
-    /// <summary>
     /// Validates TOTP options that are required by enrollment and authentication.
     /// </summary>
     /// <param name="options">The options value.</param>
     /// <returns>The operation result.</returns>
     public static bool Validate(TotpOptions options)
     {
-        return options is { SecretLengthBytes: > 0, CodeDigits: >= 6 and <= 8, StepSeconds: > 0, AllowedSkewSteps: >= 0, RateLimitPermitLimit: > 0 }
-               && options.RateLimitWindow > TimeSpan.Zero
+        return options is { SecretLengthBytes: > 0, CodeDigits: >= 6 and <= 8, StepSeconds: > 0, AllowedSkewSteps: >= 0 }
                && options.ProviderKey.Type != default
                && !string.IsNullOrWhiteSpace(options.ProviderKey.Name);
     }
@@ -67,7 +56,7 @@ public sealed class TotpOptions
 
         if (!Validate(options))
         {
-            throw new ArgumentException("TOTP options are invalid. SecretLengthBytes, StepSeconds, RateLimitPermitLimit, and RateLimitWindow must be greater than zero; CodeDigits must be between 6 and 8; AllowedSkewSteps cannot be negative; ProviderKey must be initialized.", nameof(options));
+            throw new ArgumentException("TOTP options are invalid. SecretLengthBytes and StepSeconds must be valid; CodeDigits must be between 6 and 8; AllowedSkewSteps cannot be negative; ProviderKey must be initialized.", nameof(options));
         }
     }
 }

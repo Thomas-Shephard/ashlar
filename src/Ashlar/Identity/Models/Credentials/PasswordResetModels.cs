@@ -1,4 +1,5 @@
 using Ashlar.Identity.RateLimiting.Models;
+using Ashlar.Identity.RateLimiting;
 
 namespace Ashlar.Identity.Models.Credentials;
 
@@ -53,10 +54,10 @@ public sealed class PasswordResetOptions
     /// <returns><see langword="true" /> when options are valid.</returns>
     public static bool Validate(PasswordResetOptions options)
     {
-        return options is { RequestRateLimit.PermitLimit: > 0, VerificationRateLimit.PermitLimit: > 0 }
+        return options is { RequestRateLimit: { }, VerificationRateLimit: { } }
         && options.Expiration > TimeSpan.Zero
-        && options.RequestRateLimit.Window > TimeSpan.Zero
-        && options.VerificationRateLimit.Window > TimeSpan.Zero
+        && AuthenticationRateLimitRuleValidator.IsValid(options.RequestRateLimit)
+        && AuthenticationRateLimitRuleValidator.IsValid(options.VerificationRateLimit)
         && options.MinimumRequestDuration >= TimeSpan.Zero
         && options.MinimumRequestDuration <= MaximumMinimumRequestDuration
         && !string.IsNullOrWhiteSpace(options.Subject)
