@@ -566,6 +566,9 @@ internal sealed class SecurityAuditEventTests
         repository = new Mock<IAuthenticationSessionRepository>();
         var hasher = new Mock<ISecureTokenHasher>();
         hasher.Setup(h => h.HashToken(It.IsAny<string>())).Returns<string>(token => $"hashed:{token}");
+        var users = new Mock<IUserRepository>();
+        users.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid userId, CancellationToken _) => new User { Id = userId, Email = "user@example.com" });
         timeProvider = new FakeTimeProvider(TestTime);
 
         return new AuthenticationSessionService(
@@ -575,7 +578,8 @@ internal sealed class SecurityAuditEventTests
             new NullTransactionProvider(),
             new AuthenticationSessionServiceDependencies(
                 TimeProvider: timeProvider,
-                SecurityEventSink: sink));
+                SecurityEventSink: sink,
+                UserRepository: users.Object));
     }
 
     private static AuthenticationSession CreateSession(DateTimeOffset expiresAt)

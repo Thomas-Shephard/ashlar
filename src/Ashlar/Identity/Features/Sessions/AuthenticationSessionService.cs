@@ -37,22 +37,6 @@ public sealed class AuthenticationSessionService(
             new EventId(1001, nameof(SessionLastSeenUpdateFailed)),
             "Authentication session last-seen update failed. SessionId={SessionId} UserId={UserId}");
 
-    /// <summary>
-    /// Initializes a configured service instance.
-    /// </summary>
-    /// <param name="repository">The repository value.</param>
-    /// <param name="tokenHasher">The token hasher value.</param>
-    /// <param name="tokenGenerator">The token generator value.</param>
-    /// <param name="transactionProvider">The transaction provider value.</param>
-    public AuthenticationSessionService(
-        IAuthenticationSessionRepository repository,
-        ISecureTokenHasher tokenHasher,
-        ISecureTokenGenerator tokenGenerator,
-        IAshlarTransactionProvider transactionProvider)
-        : this(repository, tokenHasher, tokenGenerator, transactionProvider, new AuthenticationSessionServiceDependencies())
-    {
-    }
-
     private const int MinimumTokenByteLength = 32;
     private const int MaximumTokenByteLength = 192;
     private const int MaxRevocationReasonLength = 512;
@@ -66,7 +50,7 @@ public sealed class AuthenticationSessionService(
     private readonly TimeProvider _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
     private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider ?? TimeProvider.System, dependencies.LoggerFactory);
     private readonly ILogger<AuthenticationSessionService> _logger = logger ?? dependencies.Logger ?? NullLogger<AuthenticationSessionService>.Instance;
-    private readonly IUserRepository? _userRepository = dependencies.UserRepository;
+    private readonly IUserRepository _userRepository = dependencies.UserRepository ?? throw new ArgumentNullException($"{nameof(dependencies)}.{nameof(dependencies.UserRepository)}");
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
 
     public async Task<CreateAuthenticationSessionResult> CreateSessionAsync(
@@ -83,9 +67,6 @@ public sealed class AuthenticationSessionService(
             throw new ArgumentOutOfRangeException($"{nameof(request)}.{nameof(request.Lifetime)}", request.Lifetime, "Session lifetime must be positive.");
         }
 
-        var token = _tokenGenerator.GenerateToken(_options.TokenByteLength);
-        var tokenHash = _tokenHasher.HashToken(token);
-        var now = _timeProvider.GetUtcNow();
         var additionalVerificationFactor = ValidateOptionalLength(request.AdditionalVerificationFactor, MaxStepUpFactorLength, $"{nameof(request)}.{nameof(request.AdditionalVerificationFactor)}");
 
         var ipAddress = _options.StoreIpAddress
@@ -97,6 +78,28 @@ public sealed class AuthenticationSessionService(
         var metadata = _options.StoreMetadata
             ? ValidateOptionalLength(request.Metadata, _options.MaxMetadataLength, $"{nameof(request)}.{nameof(request.Metadata)}")
             : null;
+
+        var user = await GetUserForTenantValidationAsync(userId, request, ipAddress, userAgent, cancellationToken);
+        if (!UserTenantOwnership.Matches(user, request.TenantId))
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.SessionCreated,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                TenantId = request.TenantId,
+                IpAddress = ipAddress,
+                UserAgent = userAgent,
+                CorrelationId = request.CorrelationId,
+                FailureReason = AshlarFailureCodes.TenantMismatchValue
+            }, cancellationToken);
+
+            throw new AshlarOperationException(AshlarFailureCodes.TenantMismatch, "Session tenant must match the referenced user's tenant.");
+        }
+
+        var token = _tokenGenerator.GenerateToken(_options.TokenByteLength);
+        var tokenHash = _tokenHasher.HashToken(token);
+        var now = _timeProvider.GetUtcNow();
 
         var session = new AuthenticationSession
         {
@@ -136,19 +139,40 @@ public sealed class AuthenticationSessionService(
                 CorrelationId = request.CorrelationId
             }, ct);
 
-            if (_userRepository != null)
-            {
-                var user = await _userRepository.GetUserByIdAsync(userId, ct);
-                if (user != null)
-                {
-                    await _notifications.NotifyAsync(SecurityNotificationType.SignIn, user, now, sessionId: session.Id, context: new AuthenticationContext(TenantId: request.TenantId, IpAddress: ipAddress, UserAgent: userAgent, CorrelationId: request.CorrelationId), cancellationToken: ct);
-                }
-            }
+            await _notifications.NotifyAsync(SecurityNotificationType.SignIn, user, now, sessionId: session.Id, context: new AuthenticationContext(TenantId: request.TenantId, IpAddress: ipAddress, UserAgent: userAgent, CorrelationId: request.CorrelationId), cancellationToken: ct);
         });
 
         await transaction.CommitAsync(cancellationToken);
 
         return new CreateAuthenticationSessionResult(token, session);
+    }
+
+    private async Task<IUser> GetUserForTenantValidationAsync(
+        Guid userId,
+        CreateAuthenticationSessionRequest request,
+        string? ipAddress,
+        string? userAgent,
+        CancellationToken cancellationToken)
+    {
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
+        if (user == null)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.SessionCreated,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                TenantId = request.TenantId,
+                IpAddress = ipAddress,
+                UserAgent = userAgent,
+                CorrelationId = request.CorrelationId,
+                FailureReason = AshlarFailureCodes.UserNotFoundValue
+            }, cancellationToken);
+
+            throw new AshlarOperationException(AshlarFailureCodes.UserNotFound, "Session user was not found.");
+        }
+
+        return user;
     }
 
     public async Task<ValidateAuthenticationSessionResult> ValidateSessionAsync(
@@ -313,7 +337,7 @@ public sealed class AuthenticationSessionService(
             Properties = metadata
         }, cancellationToken);
 
-        if (!revoked || session == null || _userRepository == null)
+        if (!revoked || session == null)
         {
             return;
         }
@@ -357,7 +381,7 @@ public sealed class AuthenticationSessionService(
                 Properties = properties
             }, ct);
 
-            if (revoked > 0 && _userRepository != null)
+            if (revoked > 0)
             {
                 var user = await _userRepository.GetUserByIdAsync(userId, ct);
                 if (user != null)
@@ -426,7 +450,7 @@ public sealed class AuthenticationSessionService(
                     : new Dictionary<string, string> { ["reason"] = request.Reason }
             }, ct);
 
-            if (revoked && _userRepository != null)
+            if (revoked)
             {
                 var user = await _userRepository.GetUserByIdAsync(userId, ct);
                 if (user != null)
@@ -476,7 +500,7 @@ public sealed class AuthenticationSessionService(
                 Properties = properties
             }, ct);
 
-            if (revoked > 0 && _userRepository != null)
+            if (revoked > 0)
             {
                 var user = await _userRepository.GetUserByIdAsync(userId, ct);
                 if (user != null)
@@ -660,18 +684,18 @@ public sealed class AuthenticationSessionService(
 /// <summary>
 /// Represents the authentication session service dependencies data model.
 /// </summary>
+/// <param name="UserRepository">Looks up users for session tenant ownership validation and notification context.</param>
 /// <param name="Options">The options value.</param>
 /// <param name="TimeProvider">The time provider value.</param>
 /// <param name="SecurityEventSink">The security event sink value.</param>
-/// <param name="UserRepository">Looks up users when operations need notification context.</param>
 /// <param name="NotificationService">The notification service value.</param>
 /// <param name="Logger">Receives operational messages emitted directly by the session service.</param>
 /// <param name="LoggerFactory">Creates diagnostics for embedded security event sink failures.</param>
 public sealed record AuthenticationSessionServiceDependencies(
+    IUserRepository UserRepository,
     AuthenticationSessionOptions? Options = null,
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,
-    IUserRepository? UserRepository = null,
     ISecurityNotificationService? NotificationService = null,
     ILogger<AuthenticationSessionService>? Logger = null,
     ILoggerFactory? LoggerFactory = null);

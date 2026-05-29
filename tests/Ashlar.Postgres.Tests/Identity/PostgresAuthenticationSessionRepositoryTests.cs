@@ -45,8 +45,9 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
     {
         var userRepository = GetUserRepository();
         var sessionRepository = GetSessionRepository();
-        var user = await CreateTestUser(userRepository);
-        var session = CreateSession(user.Id, tenantId: Guid.NewGuid());
+        var tenantId = Guid.NewGuid();
+        var user = await CreateTestUser(userRepository, tenantId);
+        var session = CreateSession(user.Id, tenantId: tenantId);
         session.LastSeenAt = new DateTimeOffset(2026, 1, 2, 12, 5, 0, TimeSpan.Zero);
         session.RevokedAt = new DateTimeOffset(2026, 1, 2, 12, 10, 0, TimeSpan.Zero);
         session.RevocationReason = "signed-out";
@@ -574,13 +575,14 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         await command.ExecuteNonQueryAsync();
     }
 
-    private static async Task<AshlarPostgresUser> CreateTestUser(IUserRepository repo)
+    private static async Task<AshlarPostgresUser> CreateTestUser(IUserRepository repo, Guid? tenantId = null)
     {
         var user = new AshlarPostgresUser
         {
             Id = Guid.NewGuid(),
             Email = $"{Guid.NewGuid()}@example.com",
             IsActive = true,
+            TenantId = tenantId,
             CreatedAt = DateTimeOffset.UtcNow
         };
         await repo.CreateUserAsync(user);

@@ -33,7 +33,7 @@ internal sealed class AccountSecurityServiceTests
             Mock.Of<Ashlar.Security.Tokens.ISecureTokenHasher>(h => h.HashToken(It.IsAny<string>()) == "hash"),
             Mock.Of<Ashlar.Security.Tokens.ISecureTokenGenerator>(g => g.GenerateToken(It.IsAny<int>()) == "token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _events));
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: _events, UserRepository: _userRepository));
         _service = new AccountSecurityService(
             _userRepository,
             _userRepository,

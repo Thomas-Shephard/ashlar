@@ -167,8 +167,9 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         await using var scope = CreateAsyncScope();
         var userRepository = GetUserRepository(scope.ServiceProvider);
         var sessionRepository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(userRepository);
-        var session = CreateSession(user.Id, tenantId: Guid.NewGuid());
+        var tenantId = Guid.NewGuid();
+        var user = await CreateUserAsync(userRepository, tenantId: tenantId);
+        var session = CreateSession(user.Id, tenantId: tenantId);
         session.AuthenticatedAt = BaseTime.AddMinutes(1);
         session.PrimaryProvider = AuthenticationProviderKey.Local;
         session.AdditionalVerificationAt = BaseTime.AddMinutes(2);

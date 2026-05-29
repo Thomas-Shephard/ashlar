@@ -15,6 +15,45 @@ CREATE UNIQUE INDEX IF NOT EXISTS ak_ashlar_users_email_tenant ON ashlar_users (
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_users_tenant_id ON ashlar_users (tenant_id);
 
+CREATE OR REPLACE FUNCTION ashlar_prevent_user_tenant_change()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF OLD.tenant_id IS DISTINCT FROM NEW.tenant_id THEN
+        RAISE EXCEPTION 'User tenant cannot be changed.'
+            USING ERRCODE = '23514',
+                  CONSTRAINT = 'ashlar_users_tenant_immutable';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER trg_ashlar_users_tenant_immutable
+BEFORE UPDATE OF tenant_id ON ashlar_users
+FOR EACH ROW EXECUTE FUNCTION ashlar_prevent_user_tenant_change();
+
+CREATE OR REPLACE FUNCTION ashlar_enforce_user_tenant_match()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM ashlar_users
+        WHERE id = NEW.user_id
+          AND tenant_id IS DISTINCT FROM NEW.tenant_id
+    ) THEN
+        RAISE EXCEPTION 'Referenced user tenant does not match row tenant.'
+            USING ERRCODE = '23514',
+                  CONSTRAINT = TG_TABLE_NAME || '_user_tenant_match';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
 CREATE TABLE IF NOT EXISTS ashlar_credentials (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
@@ -81,6 +120,10 @@ WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_expires_at ON ashlar_authorization_grants (expires_at) WHERE expires_at IS NOT NULL AND revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_revoked_at ON ashlar_authorization_grants (revoked_at) WHERE revoked_at IS NOT NULL;
 
+CREATE OR REPLACE TRIGGER trg_ashlar_authorization_grants_user_tenant_match
+BEFORE INSERT OR UPDATE OF user_id, tenant_id ON ashlar_authorization_grants
+FOR EACH ROW EXECUTE FUNCTION ashlar_enforce_user_tenant_match();
+
 CREATE TABLE IF NOT EXISTS ashlar_sessions (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
@@ -110,6 +153,10 @@ CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_user_created ON ashlar_sessions (u
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_expires_at ON ashlar_sessions (expires_at) INCLUDE (id, user_id) WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_active_user_created ON ashlar_sessions (user_id, created_at DESC) WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_revoked_at ON ashlar_sessions (revoked_at) WHERE revoked_at IS NOT NULL;
+
+CREATE OR REPLACE TRIGGER trg_ashlar_sessions_user_tenant_match
+BEFORE INSERT OR UPDATE OF user_id, tenant_id ON ashlar_sessions
+FOR EACH ROW EXECUTE FUNCTION ashlar_enforce_user_tenant_match();
 
 CREATE TABLE IF NOT EXISTS ashlar_rate_limits (
     purpose TEXT NOT NULL,

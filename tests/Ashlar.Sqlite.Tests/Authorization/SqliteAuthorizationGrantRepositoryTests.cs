@@ -58,18 +58,19 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
     {
         var repository = GetRepository();
         var tenantId = Guid.NewGuid();
-        await repository.CreateGrantAsync(CreateGrant(tenantId, "project", "abc", role: "reviewer"));
-        await repository.CreateGrantAsync(CreateGrant(tenantId, "project", "other", role: "operator"));
+        var tenantUser = await CreateUserAsync(tenantId);
+        await repository.CreateGrantAsync(CreateGrantForUser(tenantUser.Id, tenantId, "project", "abc", role: "reviewer"));
+        await repository.CreateGrantAsync(CreateGrantForUser(tenantUser.Id, tenantId, "project", "other", role: "operator"));
         await repository.CreateGrantAsync(CreateGrant(permission: "global.read"));
-        await repository.CreateGrantAsync(CreateGrant(permission: "expired", expiresAt: Now.AddSeconds(-1)));
-        var revoked = CreateGrant(permission: "revoked");
+        await repository.CreateGrantAsync(CreateGrantForUser(tenantUser.Id, tenantId, permission: "expired", expiresAt: Now.AddSeconds(-1)));
+        var revoked = CreateGrantForUser(tenantUser.Id, tenantId, permission: "revoked");
         await repository.CreateGrantAsync(revoked);
         await repository.RevokeGrantAsync(revoked.Id, revoked.TenantId, Now.AddSeconds(1));
 
-        var scoped = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(_userId, tenantId, "project", "abc", ActiveOnly: true));
+        var scoped = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUser.Id, tenantId, "project", "abc", ActiveOnly: true));
         var permissionGlobal = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(_userId, ActiveOnly: true, ExactMatch: true));
-        var active = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(_userId, ActiveOnly: true));
-        var all = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(_userId));
+        var active = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUser.Id, ActiveOnly: true));
+        var all = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUser.Id));
 
         using (Assert.EnterMultipleScope())
         {
@@ -79,7 +80,7 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
             Assert.That(permissionGlobal.Select(grant => grant.Permission), Is.EquivalentTo(GlobalPermissions));
             Assert.That(active.Select(grant => grant.Permission), Does.Not.Contain("expired"));
             Assert.That(active.Select(grant => grant.Permission), Does.Not.Contain("revoked"));
-            Assert.That(all, Has.Count.EqualTo(5));
+            Assert.That(all, Has.Count.EqualTo(4));
         }
     }
 
@@ -87,15 +88,17 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
     public async Task ListGrantsAsyncIsolatesUsersTenantsAndScopes()
     {
         var repository = GetRepository();
-        var otherUser = await CreateUserAsync();
         var tenantId = Guid.NewGuid();
         var otherTenantId = Guid.NewGuid();
-        await repository.CreateGrantAsync(CreateGrant(tenantId, "project", "abc", permission: "matching"));
-        await repository.CreateGrantAsync(CreateGrant(otherTenantId, "project", "abc", permission: "other-tenant"));
-        await repository.CreateGrantAsync(CreateGrant(tenantId, "project", "other", permission: "other-scope"));
+        var tenantUser = await CreateUserAsync(tenantId);
+        var otherTenantUser = await CreateUserAsync(otherTenantId);
+        var otherUser = await CreateUserAsync(tenantId);
+        await repository.CreateGrantAsync(CreateGrantForUser(tenantUser.Id, tenantId, "project", "abc", permission: "matching"));
+        await repository.CreateGrantAsync(CreateGrantForUser(otherTenantUser.Id, otherTenantId, "project", "abc", permission: "other-tenant"));
+        await repository.CreateGrantAsync(CreateGrantForUser(tenantUser.Id, tenantId, "project", "other", permission: "other-scope"));
         await repository.CreateGrantAsync(CreateGrantForUser(otherUser.Id, tenantId, "project", "abc", permission: "other-user"));
 
-        var grants = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(_userId, tenantId, "project", "abc", ActiveOnly: true));
+        var grants = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUser.Id, tenantId, "project", "abc", ActiveOnly: true));
 
         using (Assert.EnterMultipleScope())
         {
@@ -146,13 +149,19 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
         return new SqliteAuthorizationGrantRepository(_serviceProvider.GetRequiredService<ISqliteConnectionProvider>(), new FixedTimeProvider(Now));
     }
 
-    private async Task<AshlarUser> CreateUserAsync()
+    private Task<AshlarUser> CreateUserAsync()
+    {
+        return CreateUserAsync(null);
+    }
+
+    private async Task<AshlarUser> CreateUserAsync(Guid? tenantId)
     {
         var user = new AshlarUser
         {
             Id = Guid.NewGuid(),
             Email = $"{Guid.NewGuid():N}@example.com",
-            IsActive = true
+            IsActive = true,
+            TenantId = tenantId
         };
         await _serviceProvider.GetRequiredService<IUserRepository>().CreateUserAsync(user);
         return user;

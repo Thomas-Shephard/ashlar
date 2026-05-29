@@ -14,19 +14,23 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
     private readonly AuthorizationGrantOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
+    private readonly IUserRepository _userRepository;
 
     /// <summary>Provides documented behavior for this member.</summary>
     /// <param name="repository">The repository value.</param>
+    /// <param name="userRepository">The user repository used to verify tenant ownership.</param>
     /// <param name="options">The options value.</param>
     /// <param name="timeProvider">The time provider value.</param>
     /// <param name="securityEventSink">The security event sink value.</param>
     public AuthorizationGrantService(
         IAuthorizationGrantRepository repository,
+        IUserRepository userRepository,
         AuthorizationGrantOptions? options = null,
         TimeProvider? timeProvider = null,
         ISecurityEventSink? securityEventSink = null)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
         _options = options ?? new AuthorizationGrantOptions();
         if (!AuthorizationGrantOptions.Validate(_options))
         {
@@ -143,6 +147,12 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
             }
         }
 
+        var tenantValidation = await ValidateUserTenantAsync(request.UserId, request.TenantId, request.Audit, cancellationToken);
+        if (!tenantValidation.Succeeded)
+        {
+            return Result.Failure<AuthorizationGrant>(tenantValidation.FailureDetails!);
+        }
+
         var grant = new AuthorizationGrant
         {
             Id = Guid.NewGuid(),
@@ -169,6 +179,42 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
         }, cancellationToken);
 
         return Result<AuthorizationGrant>.Success(grant);
+    }
+
+    private async Task<Result> ValidateUserTenantAsync(Guid userId, Guid? tenantId, AuditContext? audit, CancellationToken cancellationToken)
+    {
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
+        if (user == null)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                TenantId = tenantId,
+                Audit = audit,
+                FailureReason = AshlarFailureCodes.UserNotFoundValue
+            }, cancellationToken);
+
+            return Result.Failure(AshlarFailureCodes.UserNotFound);
+        }
+
+        if (UserTenantOwnership.Matches(user, tenantId))
+        {
+            return Result.Success();
+        }
+
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.AuthorizationGrantCreated,
+            Outcome = SecurityEventOutcomes.Failure,
+            UserId = userId,
+            TenantId = tenantId,
+            Audit = audit,
+            FailureReason = AshlarFailureCodes.TenantMismatchValue
+        }, cancellationToken);
+
+        return Result.Failure(AshlarFailureCodes.TenantMismatch, "Grant tenant must match the referenced user's tenant.");
     }
 
     /// <summary>

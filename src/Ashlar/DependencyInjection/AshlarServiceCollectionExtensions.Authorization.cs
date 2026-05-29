@@ -7,6 +7,7 @@ using Ashlar.Authorization;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.Auditing;
+using Ashlar.Identity.Abstractions.Repositories;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
@@ -39,7 +40,12 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<AuthorizationGrantOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<ISecurityEventSink, SecurityEventFanOutSink>();
-        services.TryAddScoped<IAuthorizationGrantService, AuthorizationGrantService>();
+        services.TryAddScoped<IAuthorizationGrantService>(provider => new AuthorizationGrantService(
+            provider.GetRequiredService<IAuthorizationGrantRepository>(),
+            provider.GetRequiredService<IUserRepository>(),
+            provider.GetService<AuthorizationGrantOptions>(),
+            provider.GetService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>()));
         services.TryAddScoped<IAuthorizationEvaluator, AuthorizationEvaluator>();
 
         return services;

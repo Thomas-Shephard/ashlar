@@ -60,6 +60,46 @@ internal sealed class SqliteSchemaManagerTests : SqliteTestBase
     }
 
     [Test]
+    public async Task SchemaRejectsSessionAndGrantRowsWhenUserTenantDoesNotMatch()
+    {
+        await using var provider = CreateProvider();
+        await provider.InitializeAshlarSqliteSchemaAsync();
+
+        await using var connection = await OpenConnectionAsync();
+        var tenantId = Guid.NewGuid().ToString("D");
+        var otherTenantId = Guid.NewGuid().ToString("D");
+        var now = DateTimeOffset.UtcNow.ToString("O");
+        await InsertUserAsync(connection, "global-user", "global-owner@example.com", null);
+        await InsertUserAsync(connection, "tenant-user", "tenant-owner@example.com", tenantId);
+
+        await ExecuteAsync(connection, "INSERT INTO ashlar_sessions (id, user_id, tenant_id, token_hash, created_at, expires_at) VALUES ('matching-session', 'tenant-user', $tenant_id, 'matching-token', $now, $expires);", tenantId, now);
+        await ExecuteAsync(connection, "INSERT INTO ashlar_authorization_grants (id, user_id, tenant_id, permission, created_at) VALUES ('matching-grant', 'tenant-user', $tenant_id, 'tenant.read', $now);", tenantId, now);
+        await ExecuteAsync(connection, "INSERT INTO ashlar_sessions (id, user_id, token_hash, created_at, expires_at) VALUES ('global-session', 'global-user', 'global-token', $now, $expires);", null, now);
+        await ExecuteAsync(connection, "INSERT INTO ashlar_authorization_grants (id, user_id, permission, created_at) VALUES ('global-grant', 'global-user', 'global.read', $now);", null, now);
+
+        Assert.ThrowsAsync<SqliteException>(async () => await ExecuteAsync(connection, "INSERT INTO ashlar_sessions (id, user_id, tenant_id, token_hash, created_at, expires_at) VALUES ('bad-session-other', 'tenant-user', $tenant_id, 'bad-token-other', $now, $expires);", otherTenantId, now));
+        Assert.ThrowsAsync<SqliteException>(async () => await ExecuteAsync(connection, "INSERT INTO ashlar_authorization_grants (id, user_id, permission, created_at) VALUES ('bad-global-grant', 'tenant-user', 'bad.global', $now);", null, now));
+        Assert.ThrowsAsync<SqliteException>(async () => await ExecuteAsync(connection, "INSERT INTO ashlar_sessions (id, user_id, tenant_id, token_hash, created_at, expires_at) VALUES ('bad-session-tenant', 'global-user', $tenant_id, 'bad-token-tenant', $now, $expires);", tenantId, now));
+        Assert.ThrowsAsync<SqliteException>(async () => await ExecuteAsync(connection, "INSERT INTO ashlar_authorization_grants (id, user_id, tenant_id, permission, created_at) VALUES ('bad-tenant-grant', 'global-user', $tenant_id, 'bad.tenant', $now);", tenantId, now));
+    }
+
+    [Test]
+    public async Task SchemaRejectsUserTenantIdChanges()
+    {
+        await using var provider = CreateProvider();
+        await provider.InitializeAshlarSqliteSchemaAsync();
+
+        await using var connection = await OpenConnectionAsync();
+        var tenantId = Guid.NewGuid().ToString("D");
+        await InsertUserAsync(connection, "immutable-global", "immutable-global@example.com", null);
+        await InsertUserAsync(connection, "immutable-tenant", "immutable-tenant@example.com", tenantId);
+
+        Assert.ThrowsAsync<SqliteException>(async () => await ExecuteAsync(connection, "UPDATE ashlar_users SET tenant_id = $tenant_id WHERE id = 'immutable-global';", tenantId, DateTimeOffset.UtcNow.ToString("O")));
+        Assert.ThrowsAsync<SqliteException>(async () => await ExecuteAsync(connection, "UPDATE ashlar_users SET tenant_id = NULL WHERE id = 'immutable-tenant';", null, DateTimeOffset.UtcNow.ToString("O")));
+        Assert.That(await ExecuteAsync(connection, "UPDATE ashlar_users SET tenant_id = $tenant_id WHERE id = 'immutable-tenant';", tenantId, DateTimeOffset.UtcNow.ToString("O")), Is.EqualTo(1));
+    }
+
+    [Test]
     public void InitializeAsyncWrapsSchemaFailures()
     {
         var databasePath = Path.Combine(GetConnectionString(), "invalid.db");
@@ -123,5 +163,15 @@ internal sealed class SqliteSchemaManagerTests : SqliteTestBase
         command.Parameters.AddWithValue("$tenant_id", tenantId == null ? DBNull.Value : tenantId);
         command.Parameters.AddWithValue("$created_at", DateTimeOffset.UtcNow.ToString("O"));
         await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<int> ExecuteAsync(SqliteConnection connection, string sql, string? tenantId, string now)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("$tenant_id", tenantId == null ? DBNull.Value : tenantId);
+        command.Parameters.AddWithValue("$now", now);
+        command.Parameters.AddWithValue("$expires", DateTimeOffset.Parse(now, System.Globalization.CultureInfo.InvariantCulture).AddHours(1).ToString("O"));
+        return await command.ExecuteNonQueryAsync();
     }
 }
