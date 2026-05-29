@@ -322,12 +322,28 @@ internal sealed class AshlarServiceCollectionExtensionsTests
 
         using (Assert.EnterMultipleScope())
         {
-            AssertDescriptor<IAuthorizationGrantService, AuthorizationGrantService>(services, ServiceLifetime.Scoped);
+            Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
+                descriptor.ServiceType == typeof(IAuthorizationGrantService)
+                && descriptor.Lifetime == ServiceLifetime.Scoped));
             AssertDescriptor<IAuthorizationEvaluator, AuthorizationEvaluator>(services, ServiceLifetime.Scoped);
             AssertDescriptor<AuthorizationGrantOptions>(services, ServiceLifetime.Singleton);
             Assert.That(provider.GetRequiredService<AuthorizationGrantOptions>().MaxPermissionLength, Is.EqualTo(42));
             Assert.That(services.Any(d => d.ServiceType == typeof(IAuthorizationGrantRepository)), Is.False);
         }
+    }
+
+    [Test]
+    public void AddAshlarAuthorizationResolvesGrantServiceWhenRequiredDependenciesArePresent()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IAuthorizationGrantRepository>());
+        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddAshlarAuthorization();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantService>(), Is.TypeOf<AuthorizationGrantService>());
     }
 
     [Test]
@@ -399,6 +415,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddAshlarIdentity();
 
         using var provider = services.BuildServiceProvider();

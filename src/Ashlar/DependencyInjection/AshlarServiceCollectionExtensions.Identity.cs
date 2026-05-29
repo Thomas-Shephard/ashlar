@@ -108,13 +108,13 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped<ISecurityEventAdministrationService, SecurityEventAdministrationService>();
         services.TryAddScoped<IAuthenticationSessionAdministrationService, AuthenticationSessionAdministrationService>();
         services.TryAddScoped(provider => new AuthenticationSessionServiceDependencies(
-            provider.GetService<AuthenticationSessionOptions>(),
-            provider.GetService<TimeProvider>(),
-            provider.GetService<ISecurityEventSink>(),
-            provider.GetService<IUserRepository>(),
-            provider.GetService<ISecurityNotificationService>(),
-            provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationSessionService>>(),
-            provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()));
+            provider.GetRequiredService<IUserRepository>(),
+            Options: provider.GetService<AuthenticationSessionOptions>(),
+            TimeProvider: provider.GetService<TimeProvider>(),
+            SecurityEventSink: provider.GetService<ISecurityEventSink>(),
+            NotificationService: provider.GetService<ISecurityNotificationService>(),
+            Logger: provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationSessionService>>(),
+            LoggerFactory: provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()));
         services.TryAddScoped<IAuthenticationSessionService, AuthenticationSessionService>();
         services.TryAddScoped<IStepUpAuthenticationService, StepUpAuthenticationService>();
         services.TryAddScoped<IdentityContext>();

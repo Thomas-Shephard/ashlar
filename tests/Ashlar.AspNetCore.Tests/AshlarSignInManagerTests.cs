@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Ashlar.Auditing;
 using Ashlar.AspNetCore.Authentication;
 using Ashlar.AspNetCore.Sessions;
+using Ashlar.Identity.Abstractions.Tenancy;
 using Ashlar.Identity.Models.Tenants;
 using Ashlar.Security.Tokens;
 using Microsoft.AspNetCore.Http;
@@ -285,6 +286,7 @@ internal sealed class AshlarSignInManagerTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IAuthenticationSessionRepository>(repository);
+        services.AddSingleton<IUserRepository, InMemoryUserRepository>();
         services.AddSingleton<ISecureTokenGenerator>(new FixedSessionTokenGenerator("raw-token"));
         services.AddSingleton<ISecureTokenHasher, PrefixSessionTokenHasher>();
         services.AddAshlarIdentity(configureSessions: sessionOptions =>
@@ -590,6 +592,7 @@ internal sealed class AshlarSignInManagerTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IAuthenticationSessionRepository>(repository);
+        services.AddSingleton<IUserRepository, InMemoryUserRepository>();
         services.AddSingleton<ISecureTokenGenerator>(new FixedSessionTokenGenerator("raw-token"));
         services.AddSingleton<ISecureTokenHasher, PrefixSessionTokenHasher>();
         services.AddAshlarIdentity(configureSessions: sessionOptions =>
@@ -637,6 +640,39 @@ internal sealed class AshlarSignInManagerTests
         public string HashToken(string token)
         {
             return $"hashed:{token}";
+        }
+    }
+
+    private sealed class InMemoryUserRepository : IUserRepository
+    {
+        public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IUser?>(null);
+        }
+
+        public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IUser?>(new AshlarUser
+            {
+                Id = userId,
+                Email = $"{userId:N}@example.com",
+                IsActive = true
+            });
+        }
+
+        public Task<IUser?> GetUserByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IUser?>(null);
+        }
+
+        public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task UpdateUserAsync(IUser user, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
         }
     }
 

@@ -20,6 +20,14 @@ WHERE tenant_id IS NULL;
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_users_tenant_id ON ashlar_users (tenant_id);
 
+CREATE TRIGGER IF NOT EXISTS trg_ashlar_users_tenant_immutable
+BEFORE UPDATE OF tenant_id ON ashlar_users
+FOR EACH ROW
+WHEN OLD.tenant_id IS NOT NEW.tenant_id
+BEGIN
+    SELECT RAISE(ABORT, 'ashlar_users tenant cannot be changed');
+END;
+
 CREATE TABLE IF NOT EXISTS ashlar_credentials (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
@@ -79,6 +87,32 @@ WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_expires_at ON ashlar_authorization_grants (expires_at) WHERE expires_at IS NOT NULL AND revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_authorization_grants_revoked_at ON ashlar_authorization_grants (revoked_at) WHERE revoked_at IS NOT NULL;
 
+CREATE TRIGGER IF NOT EXISTS trg_ashlar_authorization_grants_user_tenant_match_insert
+BEFORE INSERT ON ashlar_authorization_grants
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1
+    FROM ashlar_users
+    WHERE id = NEW.user_id
+      AND tenant_id IS NOT NEW.tenant_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'ashlar_authorization_grants user tenant mismatch');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_ashlar_authorization_grants_user_tenant_match_update
+BEFORE UPDATE OF user_id, tenant_id ON ashlar_authorization_grants
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1
+    FROM ashlar_users
+    WHERE id = NEW.user_id
+      AND tenant_id IS NOT NEW.tenant_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'ashlar_authorization_grants user tenant mismatch');
+END;
+
 CREATE TABLE IF NOT EXISTS ashlar_sessions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
@@ -108,6 +142,32 @@ CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_user_created ON ashlar_sessions (u
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_expires_at ON ashlar_sessions (expires_at, id, user_id) WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_active_user_created ON ashlar_sessions (user_id, created_at DESC) WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_sessions_revoked_at ON ashlar_sessions (revoked_at) WHERE revoked_at IS NOT NULL;
+
+CREATE TRIGGER IF NOT EXISTS trg_ashlar_sessions_user_tenant_match_insert
+BEFORE INSERT ON ashlar_sessions
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1
+    FROM ashlar_users
+    WHERE id = NEW.user_id
+      AND tenant_id IS NOT NEW.tenant_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'ashlar_sessions user tenant mismatch');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_ashlar_sessions_user_tenant_match_update
+BEFORE UPDATE OF user_id, tenant_id ON ashlar_sessions
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1
+    FROM ashlar_users
+    WHERE id = NEW.user_id
+      AND tenant_id IS NOT NEW.tenant_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'ashlar_sessions user tenant mismatch');
+END;
 
 CREATE TABLE IF NOT EXISTS ashlar_rate_limits (
     purpose TEXT NOT NULL,

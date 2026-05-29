@@ -11,9 +11,9 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
     public async Task CreateAndGetGrantByIdMapsAllFields()
     {
         await using var scope = CreateAsyncScope();
-        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
-        var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
         var tenantId = Guid.NewGuid();
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider), tenantId: tenantId);
+        var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
         var grant = CreateGrant(
             user.Id,
             tenantId,
@@ -59,13 +59,14 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         await using var scope = CreateAsyncScope();
         var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(userRepository);
-        var otherUser = await CreateUserAsync(userRepository);
         var tenantId = Guid.NewGuid();
         var otherTenantId = Guid.NewGuid();
+        var user = await CreateUserAsync(userRepository, tenantId: tenantId);
+        var otherTenantUser = await CreateUserAsync(userRepository, tenantId: otherTenantId);
+        var otherUser = await CreateUserAsync(userRepository, tenantId: tenantId);
         var matching = CreateGrant(user.Id, tenantId, "project", "alpha", permission: "matching");
         await repository.CreateGrantAsync(matching);
-        await repository.CreateGrantAsync(CreateGrant(user.Id, otherTenantId, "project", "alpha", permission: "other-tenant"));
+        await repository.CreateGrantAsync(CreateGrant(otherTenantUser.Id, otherTenantId, "project", "alpha", permission: "other-tenant"));
         await repository.CreateGrantAsync(CreateGrant(user.Id, tenantId, "project", "beta", permission: "other-scope"));
         await repository.CreateGrantAsync(CreateGrant(otherUser.Id, tenantId, "project", "alpha", permission: "other-user"));
 
@@ -78,22 +79,76 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
     public async Task ScopeFilteringHandlesGlobalAndScopedGrantsDistinctly()
     {
         await using var scope = CreateAsyncScope();
-        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
+        var tenantId = Guid.NewGuid();
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider), tenantId: tenantId);
+        var globalUser = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
         var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
-        var scoped = CreateGrant(user.Id, Guid.NewGuid(), "project", "alpha", role: "reviewer");
-        var global = CreateGrant(user.Id, permission: "global.read");
+        var scoped = CreateGrant(user.Id, tenantId, "project", "alpha", role: "reviewer");
+        var global = CreateGrant(globalUser.Id, permission: "global.read");
         await repository.CreateGrantAsync(scoped);
         await repository.CreateGrantAsync(global);
 
-        var exactGlobal = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(user.Id, ActiveOnly: true, ExactMatch: true));
+        var exactGlobal = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(globalUser.Id, ActiveOnly: true, ExactMatch: true));
         var broad = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(user.Id, ActiveOnly: true));
         var scopedResult = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(user.Id, scoped.TenantId, scoped.ScopeType, scoped.ScopeId, ActiveOnly: true));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exactGlobal.Select(grant => grant.Id), Is.EquivalentTo(new[] { global.Id }));
-            Assert.That(broad.Select(grant => grant.Id), Is.EquivalentTo(new[] { global.Id, scoped.Id }));
+            Assert.That(broad.Select(grant => grant.Id), Is.EquivalentTo(new[] { scoped.Id }));
             Assert.That(scopedResult.Select(grant => grant.Id), Is.EquivalentTo(new[] { scoped.Id }));
+        }
+    }
+
+    [Test]
+    public async Task CreateGrantRejectsTenantUserWithDifferentTenant()
+    {
+        await using var scope = CreateAsyncScope();
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider), tenantId: Guid.NewGuid());
+        var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
+
+        Assert.That(async () => await repository.CreateGrantAsync(CreateGrant(user.Id, Guid.NewGuid(), permission: "read")), Throws.Exception);
+    }
+
+    [Test]
+    public async Task CreateGrantRejectsTenantUserWithNullTenant()
+    {
+        await using var scope = CreateAsyncScope();
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider), tenantId: Guid.NewGuid());
+        var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
+
+        Assert.That(async () => await repository.CreateGrantAsync(CreateGrant(user.Id, permission: "read")), Throws.Exception);
+    }
+
+    [Test]
+    public async Task CreateGrantRejectsGlobalUserWithTenant()
+    {
+        await using var scope = CreateAsyncScope();
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
+        var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
+
+        Assert.That(async () => await repository.CreateGrantAsync(CreateGrant(user.Id, Guid.NewGuid(), permission: "read")), Throws.Exception);
+    }
+
+    [Test]
+    public async Task CreateGrantPersistsMatchingTenantAndGlobalRows()
+    {
+        await using var scope = CreateAsyncScope();
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
+        var tenantId = Guid.NewGuid();
+        var tenantUser = await CreateUserAsync(userRepository, tenantId: tenantId);
+        var globalUser = await CreateUserAsync(userRepository);
+        var tenantGrant = CreateGrant(tenantUser.Id, tenantId, permission: "tenant.read");
+        var globalGrant = CreateGrant(globalUser.Id, permission: "global.read");
+
+        await repository.CreateGrantAsync(tenantGrant);
+        await repository.CreateGrantAsync(globalGrant);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await repository.GetGrantAsync(tenantGrant.Id), Is.Not.Null);
+            Assert.That(await repository.GetGrantAsync(globalGrant.Id), Is.Not.Null);
         }
     }
 
@@ -147,9 +202,10 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
     public async Task RevokeGrantSucceedsOncePersistsTimestampAndPreservesFirstRevocation()
     {
         await using var scope = CreateAsyncScope();
-        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
+        var tenantId = Guid.NewGuid();
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider), tenantId: tenantId);
         var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
-        var grant = CreateGrant(user.Id, Guid.NewGuid(), permission: "revoke");
+        var grant = CreateGrant(user.Id, tenantId, permission: "revoke");
         var firstRevokedAt = Now.AddMinutes(1);
         var secondRevokedAt = Now.AddMinutes(2);
         await repository.CreateGrantAsync(grant);
@@ -193,9 +249,10 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
     public async Task RevokeGrantDoesNotCrossTenantBoundary()
     {
         await using var scope = CreateAsyncScope();
-        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
+        var tenantId = Guid.NewGuid();
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider), tenantId: tenantId);
         var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
-        var grant = CreateGrant(user.Id, Guid.NewGuid(), permission: "tenant.revoke");
+        var grant = CreateGrant(user.Id, tenantId, permission: "tenant.revoke");
         await repository.CreateGrantAsync(grant);
 
         var wrongTenant = await repository.RevokeGrantAsync(grant.Id, Guid.NewGuid(), Now.AddMinutes(1));
@@ -214,9 +271,10 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
     public async Task RevokeGrantMatchesTenantScopedGrant()
     {
         await using var scope = CreateAsyncScope();
-        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
+        var tenantId = Guid.NewGuid();
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider), tenantId: tenantId);
         var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
-        var grant = CreateGrant(user.Id, Guid.NewGuid(), permission: "tenant.revoke");
+        var grant = CreateGrant(user.Id, tenantId, permission: "tenant.revoke");
         var revokedAt = Now.AddMinutes(1);
         await repository.CreateGrantAsync(grant);
 

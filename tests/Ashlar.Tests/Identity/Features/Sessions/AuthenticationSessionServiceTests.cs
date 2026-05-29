@@ -12,6 +12,7 @@ internal sealed class AuthenticationSessionServiceTests
 {
     private Mock<IAuthenticationSessionRepository> _repositoryMock;
     private Mock<ISecureTokenHasher> _tokenHasherMock;
+    private Mock<IUserRepository> _userRepositoryMock;
     private FakeTimeProvider _timeProvider;
     private AuthenticationSessionService _service;
 
@@ -20,16 +21,20 @@ internal sealed class AuthenticationSessionServiceTests
     {
         _repositoryMock = new Mock<IAuthenticationSessionRepository>();
         _tokenHasherMock = new Mock<ISecureTokenHasher>();
+        _userRepositoryMock = new Mock<IUserRepository>();
         _timeProvider = new FakeTimeProvider(new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.Zero));
 
         _tokenHasherMock.Setup(h => h.HashToken(It.IsAny<string>())).Returns<string>(token => $"hashed:{token}");
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid userId, CancellationToken _) => new User { Id = userId, Email = "user@example.com" });
 
         _service = new AuthenticationSessionService(
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider));
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, UserRepository: _userRepositoryMock.Object));
     }
 
     [Test]
@@ -150,12 +155,12 @@ internal sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions
             {
                 StoreIpAddress = false,
                 StoreUserAgent = false,
                 StoreMetadata = false
-            }, _timeProvider));
+            }, TimeProvider: _timeProvider));
 
         AuthenticationSession? storedSession = null;
         _repositoryMock
@@ -217,6 +222,187 @@ internal sealed class AuthenticationSessionServiceTests
     {
         Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateSessionAsync(Guid.NewGuid(), new CreateAuthenticationSessionRequest(Metadata: new string('m', 8193))));
+    }
+
+    [Test]
+    public async Task CreateSessionAsyncShouldSucceedForTenantUserWithMatchingTenant()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = tenantId });
+
+        var result = await _service.CreateSessionAsync(userId, new CreateAuthenticationSessionRequest(TenantId: tenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Session.TenantId, Is.EqualTo(tenantId));
+            _repositoryMock.Verify(r => r.CreateSessionAsync(It.Is<AuthenticationSession>(session => session.UserId == userId && session.TenantId == tenantId), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
+    public async Task CreateSessionAsyncShouldSucceedForGlobalUserWithNullTenant()
+    {
+        var userId = Guid.NewGuid();
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "global@example.com", TenantId = null });
+
+        var result = await _service.CreateSessionAsync(userId, new CreateAuthenticationSessionRequest(TenantId: null));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Session.TenantId, Is.Null);
+            _repositoryMock.Verify(r => r.CreateSessionAsync(It.Is<AuthenticationSession>(session => session.UserId == userId && session.TenantId == null), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task CreateSessionAsyncShouldRejectTenantMismatchesBeforeRepositoryCreation(bool requestedTenantIsNull)
+    {
+        var userId = Guid.NewGuid();
+        var userTenantId = Guid.NewGuid();
+        var requestedTenantId = requestedTenantIsNull ? (Guid?)null : Guid.NewGuid();
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = userTenantId });
+
+        var exception = Assert.ThrowsAsync<AshlarOperationException>(async () =>
+            await _service.CreateSessionAsync(userId, new CreateAuthenticationSessionRequest(TenantId: requestedTenantId)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception!.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            _repositoryMock.Verify(r => r.CreateSessionAsync(It.IsAny<AuthenticationSession>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task CreateSessionAsyncShouldRejectTenantSessionForGlobalUserBeforeRepositoryCreation()
+    {
+        var userId = Guid.NewGuid();
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "global@example.com", TenantId = null });
+
+        var exception = Assert.ThrowsAsync<AshlarOperationException>(async () =>
+            await _service.CreateSessionAsync(userId, new CreateAuthenticationSessionRequest(TenantId: Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception!.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            _repositoryMock.Verify(r => r.CreateSessionAsync(It.IsAny<AuthenticationSession>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task CreateSessionAsyncShouldNotGenerateTokenWhenTenantMismatches()
+    {
+        var tokenGenerator = new CountingSessionTokenGenerator();
+        var tokenHasher = new Mock<ISecureTokenHasher>();
+        tokenHasher.Setup(h => h.HashToken(It.IsAny<string>())).Returns("hash");
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = tenantId });
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            tokenHasher.Object,
+            tokenGenerator,
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, UserRepository: _userRepositoryMock.Object));
+
+        var exception = Assert.ThrowsAsync<AshlarOperationException>(async () =>
+            await service.CreateSessionAsync(userId, new CreateAuthenticationSessionRequest(TenantId: Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception?.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            Assert.That(tokenGenerator.Count, Is.Zero);
+            tokenHasher.Verify(h => h.HashToken(It.IsAny<string>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task CreateSessionAsyncShouldAuditTenantMismatchWithoutLeakingOtherTenantDetails()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var userId = Guid.NewGuid();
+        var userTenantId = Guid.NewGuid();
+        var requestedTenantId = Guid.NewGuid();
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = userTenantId });
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: sink, UserRepository: _userRepositoryMock.Object));
+
+        Assert.ThrowsAsync<AshlarOperationException>(async () =>
+            await service.CreateSessionAsync(userId, new CreateAuthenticationSessionRequest(TenantId: requestedTenantId)));
+
+        var securityEvent = sink.Events.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(securityEvent.UserId, Is.EqualTo(userId));
+            Assert.That(securityEvent.TenantId, Is.EqualTo(requestedTenantId));
+            Assert.That(securityEvent.FailureReason, Is.EqualTo(AshlarFailureCodes.TenantMismatchValue));
+            Assert.That(securityEvent.SessionId, Is.Null);
+            Assert.That(securityEvent.Properties, Is.Null);
+        }
+    }
+
+    [Test]
+    public void ConstructorShouldRequireUserRepositoryForTenantValidation()
+    {
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(null!, TimeProvider: _timeProvider)));
+    }
+
+    [Test]
+    public async Task CreateSessionAsyncShouldRejectMissingUserBeforeRepositoryCreation()
+    {
+        var userId = Guid.NewGuid();
+        var sink = new RecordingSecurityEventSink();
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IUser?)null);
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: sink, UserRepository: _userRepositoryMock.Object));
+
+        var tenantId = Guid.NewGuid();
+        var exception = Assert.ThrowsAsync<AshlarOperationException>(async () =>
+            await service.CreateSessionAsync(userId, new CreateAuthenticationSessionRequest(
+                TenantId: tenantId,
+                IpAddress: "203.0.113.24",
+                UserAgent: "missing-user-agent",
+                CorrelationId: "missing-user-correlation")));
+
+        using (Assert.EnterMultipleScope())
+        {
+            var securityEvent = sink.Events.Single();
+            Assert.That(exception!.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(securityEvent.TenantId, Is.EqualTo(tenantId));
+            Assert.That(securityEvent.IpAddress, Is.EqualTo("203.0.113.24"));
+            Assert.That(securityEvent.UserAgent, Is.EqualTo("missing-user-agent"));
+            Assert.That(securityEvent.CorrelationId, Is.EqualTo("missing-user-correlation"));
+            Assert.That(securityEvent.FailureReason, Is.EqualTo(AshlarFailureCodes.UserNotFoundValue));
+            _repositoryMock.Verify(r => r.CreateSessionAsync(It.IsAny<AuthenticationSession>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
     }
 
     [Test]
@@ -399,7 +585,7 @@ internal sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, UserRepository: _userRepositoryMock.Object),
             logger);
 
         _repositoryMock
@@ -484,7 +670,7 @@ internal sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: securityEvents.Object));
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: securityEvents.Object, UserRepository: _userRepositoryMock.Object));
         var userId = Guid.NewGuid();
         var session = CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1), userId: userId);
         session.AdditionalVerificationAt = _timeProvider.GetUtcNow();
@@ -566,7 +752,7 @@ internal sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: securityEvents.Object));
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: securityEvents.Object, UserRepository: _userRepositoryMock.Object));
 
         _repositoryMock
             .Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
@@ -602,7 +788,7 @@ internal sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: securityEvents.Object));
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: securityEvents.Object, UserRepository: _userRepositoryMock.Object));
 
         _repositoryMock
             .Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
@@ -631,13 +817,14 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
-    public void ConstructorShouldUseDefaultDependencies()
+    public void ConstructorShouldAcceptRequiredUserRepositoryDependency()
     {
         var service = new AuthenticationSessionService(
             _repositoryMock.Object,
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
-            new NullTransactionProvider());
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object));
 
         Assert.That(service, Is.Not.Null);
     }
@@ -1007,28 +1194,28 @@ internal sealed class AuthenticationSessionServiceTests
     public void ConstructorShouldThrowOnNullRepository()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(null!, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), new NullTransactionProvider()));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(null!, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), new NullTransactionProvider(), new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object)));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullTokenHasher()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(_repositoryMock.Object, null!, new FixedSessionTokenGenerator("raw-token"), new NullTransactionProvider()));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(_repositoryMock.Object, null!, new FixedSessionTokenGenerator("raw-token"), new NullTransactionProvider(), new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object)));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullTokenGenerator()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(_repositoryMock.Object, _tokenHasherMock.Object, null!, new NullTransactionProvider()));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(_repositoryMock.Object, _tokenHasherMock.Object, null!, new NullTransactionProvider(), new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object)));
     }
 
     [Test]
     public void ConstructorShouldThrowOnNullTransactionProvider()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(_repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new AuthenticationSessionService(_repositoryMock.Object, _tokenHasherMock.Object, new FixedSessionTokenGenerator("raw-token"), null!, new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object)));
     }
 
     [Test]
@@ -1039,7 +1226,7 @@ internal sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions
             {
                 DefaultLifetime = TimeSpan.FromDays(7),
                 LastSeenUpdateThreshold = TimeSpan.Zero,
@@ -1062,7 +1249,7 @@ internal sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(Logger: logger),
+            new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object, Logger: logger),
             logger: null);
 
         Assert.That(service, Is.Not.Null);
@@ -1076,7 +1263,7 @@ internal sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions { DefaultLifetime = TimeSpan.Zero })));
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { DefaultLifetime = TimeSpan.Zero })));
     }
 
     [Test]
@@ -1087,7 +1274,7 @@ internal sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions { LastSeenUpdateThreshold = TimeSpan.FromTicks(-1) })));
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { LastSeenUpdateThreshold = TimeSpan.FromTicks(-1) })));
     }
 
     [Test]
@@ -1098,7 +1285,7 @@ internal sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions { TokenByteLength = 31 })));
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { TokenByteLength = 31 })));
     }
 
     [Test]
@@ -1109,7 +1296,7 @@ internal sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions { TokenByteLength = 193 })));
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { TokenByteLength = 193 })));
     }
 
     [Test]
@@ -1120,7 +1307,7 @@ internal sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions { MaxIpAddressLength = 0 })));
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { MaxIpAddressLength = 0 })));
     }
 
     [Test]
@@ -1131,7 +1318,7 @@ internal sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions { MaxUserAgentLength = 0 })));
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { MaxUserAgentLength = 0 })));
     }
 
     [Test]
@@ -1142,7 +1329,7 @@ internal sealed class AuthenticationSessionServiceTests
             _tokenHasherMock.Object,
             new FixedSessionTokenGenerator("raw-token"),
             new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(new AuthenticationSessionOptions { MaxMetadataLength = 0 })));
+            new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { MaxMetadataLength = 0 })));
     }
 
     private AuthenticationSession CreateSession(DateTimeOffset expiresAt, DateTimeOffset? lastSeenAt = null, Guid? userId = null)
@@ -1163,6 +1350,28 @@ internal sealed class AuthenticationSessionServiceTests
         public string GenerateToken(int byteLength = ISecureTokenGenerator.DefaultByteLength)
         {
             return token;
+        }
+    }
+
+    private sealed class CountingSessionTokenGenerator : ISecureTokenGenerator
+    {
+        public int Count { get; private set; }
+
+        public string GenerateToken(int byteLength = ISecureTokenGenerator.DefaultByteLength)
+        {
+            Count++;
+            return "raw-token";
+        }
+    }
+
+    private sealed class RecordingSecurityEventSink : ISecurityEventSink
+    {
+        public List<AshlarSecurityEvent> Events { get; } = [];
+
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            Events.Add(securityEvent);
+            return Task.CompletedTask;
         }
     }
 }

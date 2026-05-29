@@ -139,6 +139,87 @@ internal sealed class PostgresSchemaIntegrityTests : PostgresTestBase
     }
 
     [Test]
+    public async Task TenantScopedUserRowsShouldMatchReferencedUserTenant()
+    {
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var globalUserId = Guid.NewGuid();
+        var tenantUserId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        await InsertUserAsync(connection, globalUserId, "global-owner@example.com", null);
+        await InsertUserAsync(connection, tenantUserId, "tenant-owner@example.com", tenantId);
+
+        await connection.ExecuteAsync(
+            "INSERT INTO ashlar_sessions (id, user_id, tenant_id, token_hash, created_at, expires_at) VALUES (@id, @userId, @tenantId, @token, @now, @expires)",
+            new { id = Guid.NewGuid(), userId = tenantUserId, tenantId, token = "matching-session", now, expires = now.AddHours(1) });
+        await connection.ExecuteAsync(
+            "INSERT INTO ashlar_authorization_grants (id, user_id, tenant_id, permission, created_at) VALUES (@id, @userId, @tenantId, 'tenant.read', @now)",
+            new { id = Guid.NewGuid(), userId = tenantUserId, tenantId, now });
+        await connection.ExecuteAsync(
+            "INSERT INTO ashlar_sessions (id, user_id, token_hash, created_at, expires_at) VALUES (@id, @userId, @token, @now, @expires)",
+            new { id = Guid.NewGuid(), userId = globalUserId, token = "global-session", now, expires = now.AddHours(1) });
+        await connection.ExecuteAsync(
+            "INSERT INTO ashlar_authorization_grants (id, user_id, permission, created_at) VALUES (@id, @userId, 'global.read', @now)",
+            new { id = Guid.NewGuid(), userId = globalUserId, now });
+
+        var tenantUserWithOtherTenantSession = Assert.ThrowsAsync<PostgresException>(async () =>
+            await connection.ExecuteAsync(
+                "INSERT INTO ashlar_sessions (id, user_id, tenant_id, token_hash, created_at, expires_at) VALUES (@id, @userId, @tenantId, @token, @now, @expires)",
+                new { id = Guid.NewGuid(), userId = tenantUserId, tenantId = otherTenantId, token = "bad-session-other", now, expires = now.AddHours(1) }));
+        var tenantUserWithGlobalGrant = Assert.ThrowsAsync<PostgresException>(async () =>
+            await connection.ExecuteAsync(
+                "INSERT INTO ashlar_authorization_grants (id, user_id, permission, created_at) VALUES (@id, @userId, 'bad.global', @now)",
+                new { id = Guid.NewGuid(), userId = tenantUserId, now }));
+        var globalUserWithTenantSession = Assert.ThrowsAsync<PostgresException>(async () =>
+            await connection.ExecuteAsync(
+                "INSERT INTO ashlar_sessions (id, user_id, tenant_id, token_hash, created_at, expires_at) VALUES (@id, @userId, @tenantId, @token, @now, @expires)",
+                new { id = Guid.NewGuid(), userId = globalUserId, tenantId, token = "bad-session-tenant", now, expires = now.AddHours(1) }));
+        var globalUserWithTenantGrant = Assert.ThrowsAsync<PostgresException>(async () =>
+            await connection.ExecuteAsync(
+                "INSERT INTO ashlar_authorization_grants (id, user_id, tenant_id, permission, created_at) VALUES (@id, @userId, @tenantId, 'bad.tenant', @now)",
+                new { id = Guid.NewGuid(), userId = globalUserId, tenantId, now }));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tenantUserWithOtherTenantSession!.SqlState, Is.EqualTo(PostgresErrorCodes.CheckViolation));
+            Assert.That(tenantUserWithGlobalGrant!.SqlState, Is.EqualTo(PostgresErrorCodes.CheckViolation));
+            Assert.That(globalUserWithTenantSession!.SqlState, Is.EqualTo(PostgresErrorCodes.CheckViolation));
+            Assert.That(globalUserWithTenantGrant!.SqlState, Is.EqualTo(PostgresErrorCodes.CheckViolation));
+        }
+    }
+
+    [Test]
+    public async Task UserTenantIdShouldBeImmutable()
+    {
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        var globalUserId = Guid.NewGuid();
+        var tenantUserId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        await InsertUserAsync(connection, globalUserId, "immutable-global@example.com", null);
+        await InsertUserAsync(connection, tenantUserId, "immutable-tenant@example.com", tenantId);
+
+        var globalToTenant = Assert.ThrowsAsync<PostgresException>(async () =>
+            await connection.ExecuteAsync(
+                "UPDATE ashlar_users SET tenant_id = @tenantId WHERE id = @id",
+                new { id = globalUserId, tenantId }));
+        var tenantToGlobal = Assert.ThrowsAsync<PostgresException>(async () =>
+            await connection.ExecuteAsync(
+                "UPDATE ashlar_users SET tenant_id = NULL WHERE id = @id",
+                new { id = tenantUserId }));
+        var sameTenant = await connection.ExecuteAsync(
+            "UPDATE ashlar_users SET tenant_id = @tenantId WHERE id = @id",
+            new { id = tenantUserId, tenantId });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(globalToTenant!.SqlState, Is.EqualTo(PostgresErrorCodes.CheckViolation));
+            Assert.That(tenantToGlobal!.SqlState, Is.EqualTo(PostgresErrorCodes.CheckViolation));
+            Assert.That(sameTenant, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task TerminalStateConstraintsShouldRejectImpossibleInvitationHandshakeAndOutboxRows()
     {
         await using var connection = await GetDataSource().OpenConnectionAsync();

@@ -12,8 +12,9 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         await using var scope = CreateAsyncScope();
         var userRepository = GetUserRepository(scope.ServiceProvider);
         var sessionRepository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(userRepository);
-        var session = CreateSession(user.Id, tenantId: Guid.NewGuid());
+        var tenantId = Guid.NewGuid();
+        var user = await CreateUserAsync(userRepository, tenantId: tenantId);
+        var session = CreateSession(user.Id, tenantId: tenantId);
         session.LastSeenAt = CreatedAt.AddMinutes(5);
         session.RevokedAt = CreatedAt.AddMinutes(10);
         session.RevocationReason = "signed-out";
@@ -83,6 +84,61 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         await repository.CreateSessionAsync(first);
 
         Assert.That(async () => await repository.CreateSessionAsync(second), Throws.Exception);
+    }
+
+    [Test]
+    public async Task CreateSessionRejectsTenantUserWithDifferentTenant()
+    {
+        await using var scope = CreateAsyncScope();
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var repository = GetAuthenticationSessionRepository(scope.ServiceProvider);
+        var user = await CreateUserAsync(userRepository, tenantId: Guid.NewGuid());
+
+        Assert.That(async () => await repository.CreateSessionAsync(CreateSession(user.Id, tenantId: Guid.NewGuid())), Throws.Exception);
+    }
+
+    [Test]
+    public async Task CreateSessionRejectsTenantUserWithNullTenant()
+    {
+        await using var scope = CreateAsyncScope();
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var repository = GetAuthenticationSessionRepository(scope.ServiceProvider);
+        var user = await CreateUserAsync(userRepository, tenantId: Guid.NewGuid());
+
+        Assert.That(async () => await repository.CreateSessionAsync(CreateSession(user.Id, tenantId: null)), Throws.Exception);
+    }
+
+    [Test]
+    public async Task CreateSessionRejectsGlobalUserWithTenant()
+    {
+        await using var scope = CreateAsyncScope();
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var repository = GetAuthenticationSessionRepository(scope.ServiceProvider);
+        var user = await CreateUserAsync(userRepository);
+
+        Assert.That(async () => await repository.CreateSessionAsync(CreateSession(user.Id, tenantId: Guid.NewGuid())), Throws.Exception);
+    }
+
+    [Test]
+    public async Task CreateSessionPersistsMatchingTenantAndGlobalRows()
+    {
+        await using var scope = CreateAsyncScope();
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var repository = GetAuthenticationSessionRepository(scope.ServiceProvider);
+        var tenantId = Guid.NewGuid();
+        var tenantUser = await CreateUserAsync(userRepository, tenantId: tenantId);
+        var globalUser = await CreateUserAsync(userRepository);
+        var tenantSession = CreateSession(tenantUser.Id, tenantId: tenantId);
+        var globalSession = CreateSession(globalUser.Id);
+
+        await repository.CreateSessionAsync(tenantSession);
+        await repository.CreateSessionAsync(globalSession);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await repository.GetSessionAsync(tenantSession.Id), Is.Not.Null);
+            Assert.That(await repository.GetSessionAsync(globalSession.Id), Is.Not.Null);
+        }
     }
 
     [Test]
@@ -294,36 +350,29 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         await using var scope = CreateAsyncScope();
         var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationSessionRepository(scope.ServiceProvider);
-        var bulkUser = await CreateUserAsync(userRepository);
-        var singleUser = await CreateUserAsync(userRepository);
-        var otherSessionsUser = await CreateUserAsync(userRepository);
-        var globalUser = await CreateUserAsync(userRepository);
         var tenantA = Guid.NewGuid();
         var tenantB = Guid.NewGuid();
+        var bulkUser = await CreateUserAsync(userRepository, tenantId: tenantA);
+        var singleUser = await CreateUserAsync(userRepository, tenantId: tenantB);
+        var otherSessionsUser = await CreateUserAsync(userRepository, tenantId: tenantA);
+        var globalUser = await CreateUserAsync(userRepository);
         var tenantASession = CreateSession(bulkUser.Id, tenantId: tenantA);
-        var tenantBSession = CreateSession(bulkUser.Id, tenantId: tenantB);
-        var globalSession = CreateSession(bulkUser.Id);
+        var otherTenantUser = await CreateUserAsync(userRepository, tenantId: tenantB);
+        var tenantBSession = CreateSession(otherTenantUser.Id, tenantId: tenantB);
         var singleTenantB = CreateSession(singleUser.Id, tenantId: tenantB);
         var currentTenantA = CreateSession(otherSessionsUser.Id, tenantId: tenantA);
         var otherTenantA = CreateSession(otherSessionsUser.Id, tenantId: tenantA);
-        var otherTenantB = CreateSession(otherSessionsUser.Id, tenantId: tenantB);
-        var otherGlobal = CreateSession(otherSessionsUser.Id);
         var globalOnly = CreateSession(globalUser.Id);
-        var tenantOnly = CreateSession(globalUser.Id, tenantId: tenantA);
         var firstRevokedAt = CreatedAt.AddHours(1);
         var secondRevokedAt = CreatedAt.AddHours(2);
         var thirdRevokedAt = CreatedAt.AddHours(3);
         var fourthRevokedAt = CreatedAt.AddHours(4);
         await repository.CreateSessionAsync(tenantASession);
         await repository.CreateSessionAsync(tenantBSession);
-        await repository.CreateSessionAsync(globalSession);
         await repository.CreateSessionAsync(singleTenantB);
         await repository.CreateSessionAsync(currentTenantA);
         await repository.CreateSessionAsync(otherTenantA);
-        await repository.CreateSessionAsync(otherTenantB);
-        await repository.CreateSessionAsync(otherGlobal);
         await repository.CreateSessionAsync(globalOnly);
-        await repository.CreateSessionAsync(tenantOnly);
 
         var tenantACount = await repository.RevokeSessionsForUserAsync(bulkUser.Id, firstRevokedAt, "tenant-a", new TenantContext(tenantA));
         var wrongTenantSingle = await repository.RevokeSessionByIdAsync(singleTenantB.Id, singleUser.Id, secondRevokedAt, "wrong-tenant", new TenantContext(tenantA));
@@ -332,14 +381,10 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
         var globalCount = await repository.RevokeSessionsForUserAsync(globalUser.Id, fourthRevokedAt, "global", TenantContext.Global);
         var fetchedTenantA = await repository.GetSessionAsync(tenantASession.Id);
         var fetchedTenantB = await repository.GetSessionAsync(tenantBSession.Id);
-        var fetchedGlobal = await repository.GetSessionAsync(globalSession.Id);
         var fetchedSingleTenantB = await repository.GetSessionAsync(singleTenantB.Id);
         var fetchedCurrentTenantA = await repository.GetSessionAsync(currentTenantA.Id);
         var fetchedOtherTenantA = await repository.GetSessionAsync(otherTenantA.Id);
-        var fetchedOtherTenantB = await repository.GetSessionAsync(otherTenantB.Id);
-        var fetchedOtherGlobal = await repository.GetSessionAsync(otherGlobal.Id);
         var fetchedGlobalOnly = await repository.GetSessionAsync(globalOnly.Id);
-        var fetchedTenantOnly = await repository.GetSessionAsync(tenantOnly.Id);
 
         using (Assert.EnterMultipleScope())
         {
@@ -350,14 +395,10 @@ internal abstract class AuthenticationSessionRepositoryContractTests : ProviderC
             Assert.That(globalCount, Is.EqualTo(1));
             Assert.That(fetchedTenantA!.RevokedAt, Is.EqualTo(firstRevokedAt));
             Assert.That(fetchedTenantB!.RevokedAt, Is.Null);
-            Assert.That(fetchedGlobal!.RevokedAt, Is.Null);
             Assert.That(fetchedSingleTenantB!.RevokedAt, Is.EqualTo(secondRevokedAt));
             Assert.That(fetchedCurrentTenantA!.RevokedAt, Is.Null);
             Assert.That(fetchedOtherTenantA!.RevokedAt, Is.EqualTo(thirdRevokedAt));
-            Assert.That(fetchedOtherTenantB!.RevokedAt, Is.Null);
-            Assert.That(fetchedOtherGlobal!.RevokedAt, Is.Null);
             Assert.That(fetchedGlobalOnly!.RevokedAt, Is.EqualTo(fourthRevokedAt));
-            Assert.That(fetchedTenantOnly!.RevokedAt, Is.Null);
         }
     }
 

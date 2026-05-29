@@ -62,27 +62,29 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
     public async Task ListGrantsAsyncSupportsTenantScopeAndActiveFilters()
     {
         var tenantId = Guid.NewGuid();
-        await _repository.CreateGrantAsync(CreateGrant(tenantId, "project", "abc", role: "reviewer"));
-        await _repository.CreateGrantAsync(CreateGrant(tenantId, "project", "other", role: "reviewer"));
-        await _repository.CreateGrantAsync(CreateGrant(permission: "global.read"));
-        await _repository.CreateGrantAsync(CreateGrant(permission: "expired", expiresAt: _now.AddSeconds(-1)));
+        var tenantUserId = await CreateUserAsync(tenantId);
+        await _repository.CreateGrantAsync(CreateGrantForUser(tenantUserId, tenantId, "project", "abc", role: "reviewer"));
+        await _repository.CreateGrantAsync(CreateGrantForUser(tenantUserId, tenantId, "project", "other", role: "reviewer"));
+        await _repository.CreateGrantAsync(CreateGrantForUser(tenantUserId, tenantId, permission: "expired", expiresAt: _now.AddSeconds(-1)));
 
-        var scoped = await _repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(UserId, tenantId, "project", "abc", ActiveOnly: true));
-        var all = await _repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(UserId));
+        var scoped = await _repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUserId, tenantId, "project", "abc", ActiveOnly: true));
+        var all = await _repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUserId));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scoped, Has.Count.EqualTo(1));
             Assert.That(scoped[0].ScopeId, Is.EqualTo("abc"));
-            Assert.That(all, Has.Count.EqualTo(4));
+            Assert.That(all, Has.Count.EqualTo(3));
         }
     }
 
     [Test]
     public async Task ListGrantsAsyncExactMatchFiltersGlobalGrantsInDatabase()
     {
+        var tenantId = Guid.NewGuid();
+        var tenantUserId = await CreateUserAsync(tenantId);
         await _repository.CreateGrantAsync(CreateGrant(permission: "global.read"));
-        await _repository.CreateGrantAsync(CreateGrant(Guid.NewGuid(), "project", "abc", permission: "scoped.read"));
+        await _repository.CreateGrantAsync(CreateGrantForUser(tenantUserId, tenantId, "project", "abc", permission: "scoped.read"));
 
         var exactGlobal = await _repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(UserId, ActiveOnly: true, ExactMatch: true));
         var broad = await _repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(UserId, ActiveOnly: true));
@@ -91,7 +93,7 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
         {
             Assert.That(exactGlobal, Has.Count.EqualTo(1));
             Assert.That(exactGlobal[0].Permission, Is.EqualTo("global.read"));
-            Assert.That(broad, Has.Count.EqualTo(2));
+            Assert.That(broad, Has.Count.EqualTo(1));
         }
     }
 
@@ -160,10 +162,23 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
         DateTimeOffset? expiresAt = null,
         string? metadata = null)
     {
+        return CreateGrantForUser(UserId, tenantId, scopeType, scopeId, role, permission, expiresAt, metadata);
+    }
+
+    private AuthorizationGrant CreateGrantForUser(
+        Guid userId,
+        Guid? tenantId = null,
+        string? scopeType = null,
+        string? scopeId = null,
+        string? role = null,
+        string? permission = null,
+        DateTimeOffset? expiresAt = null,
+        string? metadata = null)
+    {
         return new AuthorizationGrant
         {
             Id = Guid.NewGuid(),
-            UserId = UserId,
+            UserId = userId,
             TenantId = tenantId,
             ScopeType = scopeType,
             ScopeId = scopeId,
@@ -173,5 +188,15 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
             ExpiresAt = expiresAt,
             Metadata = metadata
         };
+    }
+
+    private async Task<Guid> CreateUserAsync(Guid? tenantId)
+    {
+        var id = Guid.NewGuid();
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        await connection.ExecuteAsync(
+            "INSERT INTO ashlar_users (id, email, normalized_email, tenant_id, created_at) VALUES (@id, @email, @email, @tenantId, @now)",
+            new { id, email = $"{id:N}@example.com", tenantId, now = _now });
+        return id;
     }
 }

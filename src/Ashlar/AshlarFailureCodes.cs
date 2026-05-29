@@ -73,6 +73,8 @@ public static class AshlarFailureCodes
     public const string AlreadyInitializedValue = "already_initialized";
     /// <summary>The operation failed because of a concurrency conflict.</summary>
     public const string ConcurrencyConflictValue = "concurrency_conflict";
+    /// <summary>The tenant scope does not match the referenced user's tenant.</summary>
+    public const string TenantMismatchValue = "tenant_mismatch";
     /// <summary>The grant creation failed.</summary>
     public const string GrantCreationFailedValue = "grant_creation_failed";
     /// <summary>The authorization grant shape is invalid.</summary>
@@ -181,6 +183,8 @@ public static class AshlarFailureCodes
     public static readonly AshlarFailureCode AlreadyInitialized = new(AlreadyInitializedValue);
     /// <summary>The operation failed because of a concurrency conflict.</summary>
     public static readonly AshlarFailureCode ConcurrencyConflict = new(ConcurrencyConflictValue);
+    /// <summary>The tenant scope does not match the referenced user's tenant.</summary>
+    public static readonly AshlarFailureCode TenantMismatch = new(TenantMismatchValue);
     /// <summary>The grant creation failed.</summary>
     public static readonly AshlarFailureCode GrantCreationFailed = new(GrantCreationFailedValue);
     /// <summary>The authorization grant shape is invalid.</summary>
