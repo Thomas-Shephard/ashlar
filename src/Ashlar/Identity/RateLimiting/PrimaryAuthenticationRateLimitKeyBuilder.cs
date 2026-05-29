@@ -58,12 +58,12 @@ public static class PrimaryAuthenticationRateLimitKeyBuilder
         string? normalizedEmail)
     {
         return AuthenticationRateLimitKeyBuilder.BuildAttempt(
-            Purpose,
-            dimensionName,
-            dimensionValue,
-            context,
-            providerKey,
-            email: normalizedEmail);
+            new AuthenticationRateLimitAttemptDescriptor(Purpose, dimensionName, dimensionValue)
+            {
+                Context = context,
+                ProviderKey = providerKey,
+                Email = normalizedEmail
+            });
     }
 
     private static string GetIdentityDimension(AuthenticationContext context, IAuthenticationAssertion assertion, string? normalizedEmail)

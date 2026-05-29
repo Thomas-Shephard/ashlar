@@ -123,16 +123,10 @@ public sealed class AuthenticationOrchestrator(
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Invalid factor type.");
         }
 
-        if (!IsAssertionAuthorizedForFactor(assertion, resolvedFactorType))
+        var assertionFailure = ValidateFactorAssertion(handshake, resolvedFactorType, assertion);
+        if (assertionFailure != null)
         {
-            MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "assertion_not_authorized_for_factor", null);
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: FactorVerificationFailedMessage);
-        }
-
-        if (IsSameCredentialAsPrimary(handshake, assertion))
-        {
-            MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "factor_reuses_primary_credential", null);
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: FactorVerificationFailedMessage);
+            return assertionFailure;
         }
 
         var factorContext = context with { UserId = handshake.UserId };
@@ -331,6 +325,26 @@ public sealed class AuthenticationOrchestrator(
         }
 
         return factorProvider.CanSatisfyFactor(factorType);
+    }
+
+    private MfaAuthenticationResult? ValidateFactorAssertion(
+        AuthenticationHandshake handshake,
+        string resolvedFactorType,
+        IAuthenticationAssertion assertion)
+    {
+        if (!IsAssertionAuthorizedForFactor(assertion, resolvedFactorType))
+        {
+            MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "assertion_not_authorized_for_factor", null);
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: FactorVerificationFailedMessage);
+        }
+
+        if (IsSameCredentialAsPrimary(handshake, assertion))
+        {
+            MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "factor_reuses_primary_credential", null);
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: FactorVerificationFailedMessage);
+        }
+
+        return null;
     }
 
     private static IEnumerable<string> NormalizeRequiredFactors(IEnumerable<string>? factors)

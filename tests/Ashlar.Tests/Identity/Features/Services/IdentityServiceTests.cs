@@ -2370,8 +2370,9 @@ internal sealed class IdentityServiceTests
             providerRegistry,
             credentialService,
             transactionProvider,
-            AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, securityEventSink,
-            _timeProvider);
+            AllowPrimaryAuthenticationRateLimiter.Instance,
+            AllowAuthenticationFactorRateLimiter.Instance,
+            new AuthenticationPipelineDependencies(securityEventSink, _timeProvider));
 
         return new IdentityService(
             _repositoryMock.Object,
@@ -2379,8 +2380,7 @@ internal sealed class IdentityServiceTests
             credentialService,
             pipeline,
             transactionProvider,
-            securityEventSink,
-            _timeProvider);
+            new IdentityServiceDependencies(securityEventSink, _timeProvider));
     }
 
     private sealed class AuditedUser : ITenantUser, IHasAuditMetadata

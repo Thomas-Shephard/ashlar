@@ -11,18 +11,14 @@ namespace Ashlar.Identity.Features.Services;
 /// <param name="credentialService">The credential service used for credential lifecycle operations.</param>
 /// <param name="authenticationPipeline">The pipeline used to validate authentication assertions.</param>
 /// <param name="transactionProvider">The transaction provider used to commit multi-step identity operations.</param>
-/// <param name="securityEventSink">Optional sink for identity security events.</param>
-/// <param name="timeProvider">Optional clock used when emitting time-stamped security events.</param>
-/// <param name="loggerFactory">Optional logger factory used for security event sink failures.</param>
+/// <param name="dependencies">Optional operational dependencies used by identity flows.</param>
 public sealed class IdentityService(
     IUserRepository repository,
     IAuthenticationProviderRegistry providerRegistry,
     ICredentialService credentialService,
     IAuthenticationPipeline authenticationPipeline,
     IAshlarTransactionProvider transactionProvider,
-    ISecurityEventSink? securityEventSink = null,
-    TimeProvider? timeProvider = null,
-    ILoggerFactory? loggerFactory = null)
+    IdentityServiceDependencies? dependencies = null)
     : IIdentityService
 {
     private readonly IUserRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
@@ -30,7 +26,7 @@ public sealed class IdentityService(
     private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
     private readonly IAuthenticationPipeline _authenticationPipeline = authenticationPipeline ?? throw new ArgumentNullException(nameof(authenticationPipeline));
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
-    private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider, loggerFactory);
+    private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider, dependencies?.LoggerFactory);
 
     /// <summary>
     /// Gets the authentication providers supported by this identity service.
@@ -177,3 +173,14 @@ public sealed class IdentityService(
         }
     }
 }
+
+/// <summary>
+/// Optional operational dependencies for <see cref="IdentityService" />.
+/// </summary>
+/// <param name="SecurityEventSink">The optional security event sink.</param>
+/// <param name="TimeProvider">The optional clock.</param>
+/// <param name="LoggerFactory">The optional logger factory used by the security event emitter.</param>
+public sealed record IdentityServiceDependencies(
+    ISecurityEventSink? SecurityEventSink = null,
+    TimeProvider? TimeProvider = null,
+    ILoggerFactory? LoggerFactory = null);

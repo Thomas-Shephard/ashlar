@@ -64,11 +64,23 @@ public static partial class AshlarServiceCollectionExtensions
                 provider.GetRequiredService<ICredentialService>(),
                 provider.GetRequiredService<IAuthenticationPipeline>(),
                 provider.GetRequiredService<IAshlarTransactionProvider>(),
-                provider.GetService<ISecurityEventSink>(),
-                provider.GetService<TimeProvider>(),
-                provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()),
+                new IdentityServiceDependencies(
+                    provider.GetService<ISecurityEventSink>(),
+                    provider.GetService<TimeProvider>(),
+                    provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>())),
             ServiceLifetime.Scoped));
-        services.TryAddScoped<AuthenticationPipeline>();
+        services.TryAddScoped(provider => new AuthenticationPipelineDependencies(
+            provider.GetService<ISecurityEventSink>(),
+            provider.GetService<TimeProvider>(),
+            provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationPipeline>>(),
+            provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()));
+        services.TryAddScoped(provider => new AuthenticationPipeline(
+            provider.GetRequiredService<IAuthenticationProviderRegistry>(),
+            provider.GetRequiredService<ICredentialService>(),
+            provider.GetRequiredService<IAshlarTransactionProvider>(),
+            provider.GetRequiredService<IPrimaryAuthenticationRateLimiter>(),
+            provider.GetRequiredService<IAuthenticationFactorRateLimiter>(),
+            provider.GetRequiredService<AuthenticationPipelineDependencies>()));
         services.TryAddScoped<IAuthenticationPipeline>(provider => provider.GetRequiredService<AuthenticationPipeline>());
         services.TryAddScoped<IAuthenticationFactorPipeline>(provider => provider.GetRequiredService<AuthenticationPipeline>());
         services.TryAddScoped<IPrimaryAuthenticationRateLimiter, PrimaryAuthenticationRateLimiter>();

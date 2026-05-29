@@ -32,14 +32,14 @@ public static class AuthenticationRateLimitKeyBuilder
         }
 
         return BuildAttempt(
-            check.Purpose,
-            check.DimensionName,
-            check.DimensionValue,
-            check.Context,
-            check.ProviderKey,
-            check.TenantId,
-            check.UserId,
-            check.Email);
+            new AuthenticationRateLimitAttemptDescriptor(check.Purpose, check.DimensionName, check.DimensionValue)
+            {
+                Context = check.Context,
+                ProviderKey = check.ProviderKey,
+                TenantId = check.TenantId,
+                UserId = check.UserId,
+                Email = check.Email
+            });
     }
 
     /// <summary>
@@ -48,31 +48,36 @@ public static class AuthenticationRateLimitKeyBuilder
     /// <param name="purpose">The operation purpose being limited.</param>
     /// <param name="dimensionName">The safe bucket dimension name.</param>
     /// <param name="dimensionValue">The safe bucket dimension value.</param>
-    /// <param name="context">The optional authentication context.</param>
-    /// <param name="providerKey">The optional provider identity.</param>
-    /// <param name="tenantId">The optional normalized tenant scope override.</param>
-    /// <param name="userId">The optional user identity metadata.</param>
-    /// <param name="email">The optional email metadata.</param>
     /// <returns>The rate-limit attempt.</returns>
     public static RateLimitAttempt BuildAttempt(
         string purpose,
         string dimensionName,
-        string dimensionValue,
-        AuthenticationContext? context = null,
-        AuthenticationProviderKey? providerKey = null,
-        Guid? tenantId = null,
-        Guid? userId = null,
-        string? email = null)
+        string dimensionValue)
     {
+        return BuildAttempt(new AuthenticationRateLimitAttemptDescriptor(purpose, dimensionName, dimensionValue));
+    }
+
+    /// <summary>
+    /// Builds a rate-limit attempt for the supplied descriptor.
+    /// </summary>
+    /// <param name="descriptor">The rate-limit attempt descriptor.</param>
+    /// <returns>The rate-limit attempt.</returns>
+    public static RateLimitAttempt BuildAttempt(AuthenticationRateLimitAttemptDescriptor descriptor)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+
+        var purpose = descriptor.Purpose;
+        var dimensionName = descriptor.DimensionName;
+        var dimensionValue = descriptor.DimensionValue;
         ArgumentException.ThrowIfNullOrWhiteSpace(purpose);
         ArgumentException.ThrowIfNullOrWhiteSpace(dimensionName);
         ArgumentException.ThrowIfNullOrWhiteSpace(dimensionValue);
 
-        var resolvedTenantId = tenantId ?? context?.TenantId;
-        var normalizedEmail = NormalizeEmail(email ?? context?.Email);
-        var resolvedUserId = userId ?? context?.UserId;
-        var provider = providerKey.HasValue
-            ? NormalizeProviderSelector(providerKey.Value)
+        var resolvedTenantId = descriptor.TenantId ?? descriptor.Context?.TenantId;
+        var normalizedEmail = NormalizeEmail(descriptor.Email ?? descriptor.Context?.Email);
+        var resolvedUserId = descriptor.UserId ?? descriptor.Context?.UserId;
+        var provider = descriptor.ProviderKey.HasValue
+            ? NormalizeProviderSelector(descriptor.ProviderKey.Value)
             : NoProvider;
 
         var composedKey = ComposeKey(
@@ -88,8 +93,8 @@ public static class AuthenticationRateLimitKeyBuilder
             Purpose = purpose.Trim(),
             Email = normalizedEmail,
             UserId = resolvedUserId?.ToString("D"),
-            IpAddress = NormalizeIpAddress(context?.IpAddress),
-            CorrelationId = NormalizeOptional(context?.CorrelationId)
+            IpAddress = NormalizeIpAddress(descriptor.Context?.IpAddress),
+            CorrelationId = NormalizeOptional(descriptor.Context?.CorrelationId)
         };
     }
 
@@ -174,4 +179,53 @@ public static class AuthenticationRateLimitKeyBuilder
             ? null
             : AuthenticationRateLimitDimensions.NormalizeIpAddress(value);
     }
+}
+
+/// <summary>
+/// Describes a rate-limit attempt to build.
+/// </summary>
+/// <param name="purpose">The operation purpose being limited.</param>
+/// <param name="dimensionName">The safe bucket dimension name.</param>
+/// <param name="dimensionValue">The safe bucket dimension value.</param>
+public sealed class AuthenticationRateLimitAttemptDescriptor(string purpose, string dimensionName, string dimensionValue)
+{
+    /// <summary>
+    /// Gets the operation purpose being limited.
+    /// </summary>
+    public string Purpose { get; } = purpose;
+
+    /// <summary>
+    /// Gets the safe bucket dimension name.
+    /// </summary>
+    public string DimensionName { get; } = dimensionName;
+
+    /// <summary>
+    /// Gets the safe bucket dimension value.
+    /// </summary>
+    public string DimensionValue { get; } = dimensionValue;
+
+    /// <summary>
+    /// Gets the optional authentication context.
+    /// </summary>
+    public AuthenticationContext? Context { get; init; }
+
+    /// <summary>
+    /// Gets the optional provider identity.
+    /// </summary>
+    public AuthenticationProviderKey? ProviderKey { get; init; }
+
+    /// <summary>
+    /// Gets the optional normalized tenant scope override.
+    /// </summary>
+    public Guid? TenantId { get; init; }
+
+    /// <summary>
+    /// Gets the optional user identity metadata.
+    /// </summary>
+    public Guid? UserId { get; init; }
+
+    /// <summary>
+    /// Gets the optional email metadata.
+    /// </summary>
+    public string? Email { get; init; }
 }

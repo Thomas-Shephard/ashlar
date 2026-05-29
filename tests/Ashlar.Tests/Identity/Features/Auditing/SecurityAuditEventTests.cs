@@ -193,7 +193,13 @@ internal sealed class SecurityAuditEventTests
     {
         var sink = new RecordingSecurityEventSink();
         var registry = new Mock<IAuthenticationProviderRegistry>();
-        var pipeline = new AuthenticationPipeline(registry.Object, Mock.Of<ICredentialService>(), new NullTransactionProvider(), AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, sink, new FakeTimeProvider(TestTime));
+        var pipeline = new AuthenticationPipeline(
+            registry.Object,
+            Mock.Of<ICredentialService>(),
+            new NullTransactionProvider(),
+            AllowPrimaryAuthenticationRateLimiter.Instance,
+            AllowAuthenticationFactorRateLimiter.Instance,
+            new AuthenticationPipelineDependencies(sink, new FakeTimeProvider(TestTime)));
         var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
 
         var response = await pipeline.LoginAsync(CreateContext(), assertion);
@@ -473,7 +479,13 @@ internal sealed class SecurityAuditEventTests
             .ReturnsAsync(result);
         credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
-        var pipeline = new AuthenticationPipeline(registry.Object, credentialService.Object, new NullTransactionProvider(), AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, sink, new FakeTimeProvider(TestTime));
+        var pipeline = new AuthenticationPipeline(
+            registry.Object,
+            credentialService.Object,
+            new NullTransactionProvider(),
+            AllowPrimaryAuthenticationRateLimiter.Instance,
+            AllowAuthenticationFactorRateLimiter.Instance,
+            new AuthenticationPipelineDependencies(sink, new FakeTimeProvider(TestTime)));
 
         var login = await pipeline.LoginAsync(context, assertion);
 
@@ -536,7 +548,13 @@ internal sealed class SecurityAuditEventTests
             Status = CredentialStatus.Active
         };
 
-        var pipeline = new AuthenticationPipeline(registry.Object, credentialService.Object, new NullTransactionProvider(), AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, sink, new FakeTimeProvider(TestTime));
+        var pipeline = new AuthenticationPipeline(
+            registry.Object,
+            credentialService.Object,
+            new NullTransactionProvider(),
+            AllowPrimaryAuthenticationRateLimiter.Instance,
+            AllowAuthenticationFactorRateLimiter.Instance,
+            new AuthenticationPipelineDependencies(sink, new FakeTimeProvider(TestTime)));
         return (pipeline, registry, credentialService, providerMock, provider, assertion, user, credential);
     }
 

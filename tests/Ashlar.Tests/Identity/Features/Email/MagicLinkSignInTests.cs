@@ -666,8 +666,20 @@ internal sealed class MagicLinkSignInTests
             Mock.Of<ISecretProtector>(),
             transactionProvider,
             new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: audit));
-        var pipeline = new AuthenticationPipeline(registry, credentialService, transactionProvider, AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, audit, time);
-        var identity = identityService ?? new IdentityService(repository, registry, credentialService, pipeline, transactionProvider, audit, time);
+        var pipeline = new AuthenticationPipeline(
+            registry,
+            credentialService,
+            transactionProvider,
+            AllowPrimaryAuthenticationRateLimiter.Instance,
+            AllowAuthenticationFactorRateLimiter.Instance,
+            new AuthenticationPipelineDependencies(audit, time));
+        var identity = identityService ?? new IdentityService(
+            repository,
+            registry,
+            credentialService,
+            pipeline,
+            transactionProvider,
+            new IdentityServiceDependencies(audit, time));
         var orchestrator = authenticationOrchestrator ?? CreateOrchestrator(pipeline, user, requireMfa);
         var core = new IdentityContext(repository, repository, identity, transactionProvider);
         var tokenContext = new SecureTokenContext(new SecureTokenGenerator(), tokenHasher);

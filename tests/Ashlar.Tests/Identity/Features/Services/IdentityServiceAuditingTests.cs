@@ -22,7 +22,9 @@ internal sealed class IdentityServiceAuditingTests
             providerRegistry,
             credentialServiceMock.Object,
             transactionProvider,
-            AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, sinkMock.Object);
+            AllowPrimaryAuthenticationRateLimiter.Instance,
+            AllowAuthenticationFactorRateLimiter.Instance,
+            new AuthenticationPipelineDependencies(SecurityEventSink: sinkMock.Object));
 
         var service = new IdentityService(
             repositoryMock.Object,
@@ -30,7 +32,7 @@ internal sealed class IdentityServiceAuditingTests
             credentialServiceMock.Object,
             pipeline,
             transactionProvider,
-            sinkMock.Object);
+            new IdentityServiceDependencies(SecurityEventSink: sinkMock.Object));
 
         var tenantId = Guid.NewGuid();
         var actorUserId = Guid.NewGuid();

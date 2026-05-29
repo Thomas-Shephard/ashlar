@@ -434,8 +434,20 @@ internal sealed class EmailCodeSignInTests
             Mock.Of<ISecretProtector>(),
             new NullTransactionProvider(),
             new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: audit));
-        var pipeline = new AuthenticationPipeline(registry, credentialService, new NullTransactionProvider(), AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, audit, time);
-        var identity = identityService ?? new IdentityService(repository, registry, credentialService, pipeline, new NullTransactionProvider(), audit, time);
+        var pipeline = new AuthenticationPipeline(
+            registry,
+            credentialService,
+            new NullTransactionProvider(),
+            AllowPrimaryAuthenticationRateLimiter.Instance,
+            AllowAuthenticationFactorRateLimiter.Instance,
+            new AuthenticationPipelineDependencies(audit, time));
+        var identity = identityService ?? new IdentityService(
+            repository,
+            registry,
+            credentialService,
+            pipeline,
+            new NullTransactionProvider(),
+            new IdentityServiceDependencies(audit, time));
         var orchestrator = authenticationOrchestrator ?? CreateOrchestrator(pipeline, user, requireMfa);
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed, time);
         var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());

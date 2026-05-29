@@ -14,12 +14,9 @@ namespace Ashlar.Identity.Features.Authentication;
 /// <param name="transactionProvider">The transaction provider value.</param>
 /// <param name="primaryRateLimiter">The provider-neutral primary authentication rate limiter.</param>
 /// <param name="factorRateLimiter">The provider-neutral secondary factor verification rate limiter.</param>
-/// <param name="securityEventSink">The security event sink value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-/// <param name="logger">The logger used for operational messages emitted directly by this pipeline.</param>
-/// <param name="loggerFactory">The logger factory used only to create the embedded security event emitter logger.</param>
+/// <param name="dependencies">Optional operational dependencies used by the pipeline.</param>
 /// <remarks>
-/// Pass both <paramref name="logger" /> and <paramref name="loggerFactory" /> when constructing this pipeline manually and operational
+/// Pass both log members in <paramref name="dependencies" /> when constructing this pipeline manually and operational
 /// logging is desired for both authentication lifecycle operations and security event sink failures.
 /// </remarks>
 public sealed class AuthenticationPipeline(
@@ -28,10 +25,7 @@ public sealed class AuthenticationPipeline(
     IAshlarTransactionProvider transactionProvider,
     IPrimaryAuthenticationRateLimiter primaryRateLimiter,
     IAuthenticationFactorRateLimiter factorRateLimiter,
-    ISecurityEventSink? securityEventSink = null,
-    TimeProvider? timeProvider = null,
-    ILogger<AuthenticationPipeline>? logger = null,
-    ILoggerFactory? loggerFactory = null)
+    AuthenticationPipelineDependencies? dependencies = null)
     : IAuthenticationPipeline, IAuthenticationFactorPipeline
 {
     private static readonly Action<ILogger, Guid, Guid?, string, string, Exception?> CredentialLifecycleUpdateFailed =
@@ -57,8 +51,8 @@ public sealed class AuthenticationPipeline(
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly IPrimaryAuthenticationRateLimiter _primaryRateLimiter = primaryRateLimiter ?? throw new ArgumentNullException(nameof(primaryRateLimiter));
     private readonly IAuthenticationFactorRateLimiter _factorRateLimiter = factorRateLimiter ?? throw new ArgumentNullException(nameof(factorRateLimiter));
-    private readonly SecurityEventEmitter _securityEvents = new(securityEventSink, timeProvider ?? TimeProvider.System, loggerFactory);
-    private readonly ILogger<AuthenticationPipeline> _logger = logger ?? NullLogger<AuthenticationPipeline>.Instance;
+    private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider ?? TimeProvider.System, dependencies?.LoggerFactory);
+    private readonly ILogger<AuthenticationPipeline> _logger = dependencies?.Logger ?? NullLogger<AuthenticationPipeline>.Instance;
 
     /// <summary>
     /// Performs primary sign-in authentication and returns the result.
@@ -363,3 +357,16 @@ public sealed class AuthenticationPipeline(
         AuthenticationContext Context,
         AuthenticationStatus Status);
 }
+
+/// <summary>
+/// Optional operational dependencies for <see cref="AuthenticationPipeline" />.
+/// </summary>
+/// <param name="SecurityEventSink">The optional security event sink.</param>
+/// <param name="TimeProvider">The optional clock.</param>
+/// <param name="Logger">The optional operational <paramref name="Logger" />.</param>
+/// <param name="LoggerFactory">The optional <paramref name="LoggerFactory" /> used by the security event emitter.</param>
+public sealed record AuthenticationPipelineDependencies(
+    ISecurityEventSink? SecurityEventSink = null,
+    TimeProvider? TimeProvider = null,
+    ILogger<AuthenticationPipeline>? Logger = null,
+    ILoggerFactory? LoggerFactory = null);

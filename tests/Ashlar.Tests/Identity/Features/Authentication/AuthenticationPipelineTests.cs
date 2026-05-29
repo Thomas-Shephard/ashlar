@@ -69,7 +69,7 @@ internal sealed class AuthenticationPipelineTests
             new NullTransactionProvider(),
             _primaryRateLimiterMock.Object,
             _factorRateLimiterMock.Object,
-            logger: Mock.Of<Microsoft.Extensions.Logging.ILogger<AuthenticationPipeline>>());
+            new AuthenticationPipelineDependencies(Logger: Mock.Of<Microsoft.Extensions.Logging.ILogger<AuthenticationPipeline>>()));
 
         Assert.That(pipeline, Is.Not.Null);
     }
@@ -193,8 +193,7 @@ internal sealed class AuthenticationPipelineTests
             new NullTransactionProvider(),
             primaryRateLimiter.Object,
             _factorRateLimiterMock.Object,
-            audit,
-            timeProvider: null);
+            new AuthenticationPipelineDependencies(SecurityEventSink: audit));
 
         var response = await _pipeline.LoginAsync(context, assertion);
 
@@ -227,8 +226,7 @@ internal sealed class AuthenticationPipelineTests
             new NullTransactionProvider(),
             primaryRateLimiter.Object,
             _factorRateLimiterMock.Object,
-            audit,
-            timeProvider: null);
+            new AuthenticationPipelineDependencies(SecurityEventSink: audit));
 
         var response = await _pipeline.LoginAsync(context, assertion);
 
@@ -254,7 +252,7 @@ internal sealed class AuthenticationPipelineTests
             new NullTransactionProvider(),
             _primaryRateLimiterMock.Object,
             _factorRateLimiterMock.Object,
-            audit);
+            new AuthenticationPipelineDependencies(SecurityEventSink: audit));
 
         _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
             .ReturnsAsync(((IUser?)null, (UserCredential?)null, (UserCredential?)null, true));
@@ -364,7 +362,7 @@ internal sealed class AuthenticationPipelineTests
             new NullTransactionProvider(),
             _primaryRateLimiterMock.Object,
             factorRateLimiter.Object,
-            audit);
+            new AuthenticationPipelineDependencies(SecurityEventSink: audit));
 
         var response = await _pipeline.VerifyFactorAsync(context, assertion);
 
@@ -460,7 +458,7 @@ internal sealed class AuthenticationPipelineTests
             new NullTransactionProvider(),
             _primaryRateLimiterMock.Object,
             factorRateLimiter.Object,
-            audit);
+            new AuthenticationPipelineDependencies(SecurityEventSink: audit));
 
         var response = await _pipeline.VerifyFactorAsync(context, assertion);
 

@@ -53,11 +53,11 @@ public static class AuthenticationFactorRateLimitKeyBuilder
         string dimensionValue)
     {
         return AuthenticationRateLimitKeyBuilder.BuildAttempt(
-            Purpose,
-            dimensionName,
-            dimensionValue,
-            context,
-            providerKey,
-            userId: context.UserId);
+            new AuthenticationRateLimitAttemptDescriptor(Purpose, dimensionName, dimensionValue)
+            {
+                Context = context,
+                ProviderKey = providerKey,
+                UserId = context.UserId
+            });
     }
 }

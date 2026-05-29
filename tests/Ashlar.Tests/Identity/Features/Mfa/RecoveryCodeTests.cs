@@ -595,7 +595,13 @@ internal sealed class RecoveryCodeTests
             credentialRepository.Object,
             Mock.Of<ISecretProtector>(),
             transactionProvider);
-        var pipeline = new AuthenticationPipeline(registry, credentialService, transactionProvider, AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, events);
+        var pipeline = new AuthenticationPipeline(
+            registry,
+            credentialService,
+            transactionProvider,
+            AllowPrimaryAuthenticationRateLimiter.Instance,
+            AllowAuthenticationFactorRateLimiter.Instance,
+            new AuthenticationPipelineDependencies(SecurityEventSink: events));
         var context = new AuthenticationContext(TenantId: tenantId, UserId: userId);
 
         var response = await pipeline.LoginAsync(context, new RecoveryCodeAssertion("ABCD-EFGH-IJKL"));
@@ -813,7 +819,13 @@ internal sealed class RecoveryCodeTests
         provider.Setup(p => p.AuthenticateAsync(assertion, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true));
 
-        var pipeline = new AuthenticationPipeline(providerRegistry.Object, credentialService.Object, transProvider.Object, AllowPrimaryAuthenticationRateLimiter.Instance, AllowAuthenticationFactorRateLimiter.Instance, securityEventSink.Object);
+        var pipeline = new AuthenticationPipeline(
+            providerRegistry.Object,
+            credentialService.Object,
+            transProvider.Object,
+            AllowPrimaryAuthenticationRateLimiter.Instance,
+            AllowAuthenticationFactorRateLimiter.Instance,
+            new AuthenticationPipelineDependencies(SecurityEventSink: securityEventSink.Object));
 
         var response = await pipeline.LoginAsync(context, assertion);
 

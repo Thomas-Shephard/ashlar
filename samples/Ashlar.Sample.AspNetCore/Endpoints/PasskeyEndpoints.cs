@@ -36,11 +36,17 @@ internal static class PasskeyEndpoints
     private static async Task<IResult> StartAuthenticationAsync(IPasskeyService passkeys, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var result = await passkeys.StartAuthenticationAsync(new StartPasskeyAuthenticationRequest(Audit: httpContext.ToAuditContext()), cancellationToken);
-        return result.Succeeded && result.Value != null
-            ? Results.Json(new { result.Value.ChallengeId, result.Value.ExpiresAt, options = JsonDocument.Parse(result.Value.OptionsJson).RootElement })
-            : result.FailureCode == AshlarFailureCodes.RateLimited
-                ? Results.StatusCode(StatusCodes.Status429TooManyRequests)
-                : Results.BadRequest(SampleResultErrors.From(result));
+        if (result.Succeeded && result.Value != null)
+        {
+            return Results.Json(new { result.Value.ChallengeId, result.Value.ExpiresAt, options = JsonDocument.Parse(result.Value.OptionsJson).RootElement });
+        }
+
+        if (result.FailureCode == AshlarFailureCodes.RateLimited)
+        {
+            return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+        }
+
+        return Results.BadRequest(SampleResultErrors.From(result));
     }
 
     private static async Task<IResult> CompleteAuthenticationAsync(PasskeyCompleteAuthenticationSampleRequest request, IPasskeyService passkeys, IAshlarSignInManager signIn, HttpContext httpContext, CancellationToken cancellationToken)
@@ -73,11 +79,17 @@ internal static class PasskeyEndpoints
     private static async Task<IResult> StartFactorAsync(PasskeyStartFactorSampleRequest request, IPasskeyService passkeys, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var result = await passkeys.StartFactorAsync(new StartPasskeyFactorRequest(request.HandshakeToken, request.FactorType ?? "passkey", httpContext.ToAuditContext()), cancellationToken);
-        return result.Succeeded && result.Value != null
-            ? Results.Json(new { result.Value.ChallengeId, result.Value.ExpiresAt, options = JsonDocument.Parse(result.Value.OptionsJson).RootElement })
-            : result.FailureCode == AshlarFailureCodes.RateLimitExceeded
-                ? Results.StatusCode(StatusCodes.Status429TooManyRequests)
-                : Results.BadRequest(SampleResultErrors.From(result));
+        if (result.Succeeded && result.Value != null)
+        {
+            return Results.Json(new { result.Value.ChallengeId, result.Value.ExpiresAt, options = JsonDocument.Parse(result.Value.OptionsJson).RootElement });
+        }
+
+        if (result.FailureCode == AshlarFailureCodes.RateLimitExceeded)
+        {
+            return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+        }
+
+        return Results.BadRequest(SampleResultErrors.From(result));
     }
 
     private static async Task<IResult> CompleteFactorAsync(PasskeyCompleteFactorSampleRequest request, IPasskeyService passkeys, IAshlarSignInManager signIn, HttpContext httpContext, CancellationToken cancellationToken)
