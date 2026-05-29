@@ -48,5 +48,10 @@ public enum AshlarExternalAssertionStatus
     /// <summary>
     /// The external ticket was issued by a different configured provider.
     /// </summary>
-    ProviderMismatch = 6
+    ProviderMismatch = 6,
+
+    /// <summary>
+    /// The external assertion attempt was blocked by rate limiting.
+    /// </summary>
+    RateLimited = 7
 }

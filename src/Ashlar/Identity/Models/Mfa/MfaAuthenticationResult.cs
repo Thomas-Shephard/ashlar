@@ -20,7 +20,11 @@ public enum MfaAuthenticationStatus
     /// <summary>
     /// The MFA handshake exists but not all required factors have been verified.
     /// </summary>
-    HandshakeIncomplete = 3
+    HandshakeIncomplete = 3,
+    /// <summary>
+    /// Authentication was blocked by a rate limiter.
+    /// </summary>
+    RateLimited = 4
 }
 
 /// <summary>

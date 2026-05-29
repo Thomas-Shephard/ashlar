@@ -201,7 +201,7 @@ internal sealed class EmailCodeSignInTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.RateLimited));
             Assert.That(fixture.Audit.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.EmailCodeVerificationRateLimited));
             orchestrator.Verify(o => o.AuthenticateAsync(
                 It.IsAny<AuthenticationContext>(),
@@ -434,8 +434,20 @@ internal sealed class EmailCodeSignInTests
             Mock.Of<ISecretProtector>(),
             new NullTransactionProvider(),
             new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: audit));
-        var pipeline = new AuthenticationPipeline(registry, credentialService, new NullTransactionProvider(), audit, time);
-        var identity = identityService ?? new IdentityService(repository, registry, credentialService, pipeline, new NullTransactionProvider(), audit, time);
+        var pipeline = new AuthenticationPipeline(
+            registry,
+            credentialService,
+            new NullTransactionProvider(),
+            AllowPrimaryAuthenticationRateLimiter.Instance,
+            AllowAuthenticationFactorRateLimiter.Instance,
+            new AuthenticationPipelineDependencies(audit, time));
+        var identity = identityService ?? new IdentityService(
+            repository,
+            registry,
+            credentialService,
+            pipeline,
+            new NullTransactionProvider(),
+            new IdentityServiceDependencies(audit, time));
         var orchestrator = authenticationOrchestrator ?? CreateOrchestrator(pipeline, user, requireMfa);
         var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed, time);
         var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());
@@ -468,7 +480,7 @@ internal sealed class EmailCodeSignInTests
                 });
         }
 
-        return new AuthenticationOrchestrator(pipeline, handshakes.Object, policy);
+        return new AuthenticationOrchestrator(pipeline, Mock.Of<IAuthenticationFactorPipeline>(), handshakes.Object, policy, Mock.Of<IAuthenticationProviderRegistry>());
     }
 
     private static EmailCodeAuthenticationProvider CreateProvider()

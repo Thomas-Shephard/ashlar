@@ -3,7 +3,7 @@ namespace Ashlar.Identity.Providers.External;
 /// <summary>
 /// Represents authentication data supplied by an external identity provider.
 /// </summary>
-public sealed record ExternalIdentityAssertion : IAuthenticationAssertion
+public sealed record ExternalIdentityAssertion : ICredentialKeyAuthenticationAssertion
 {
     /// <summary>
     /// Initializes a new instance of the external identity assertion class.
@@ -38,6 +38,9 @@ public sealed record ExternalIdentityAssertion : IAuthenticationAssertion
     /// Gets or sets the provider key value.
     /// </summary>
     public string ProviderKey { get; }
+
+    /// <inheritdoc />
+    public string CredentialKey => ProviderKey;
 
     /// <summary>
     /// Gets or sets the claims value.

@@ -109,24 +109,18 @@ internal static class MfaEndpoints
             CancellationToken cancellationToken)
     {
         var authContext = httpContext.ToAuthenticationContext();
-        var handshake = await services.HandshakeService.GetHandshakeAsync(request.HandshakeToken, cancellationToken);
-        if (handshake == null)
-        {
-            return Results.BadRequest(new { error = "handshake_not_found" });
-        }
-
         var code = request.Code.Trim();
         if (IsTotpCode(code))
         {
             return await VerifyTotpAsync(request.HandshakeToken, code, authContext, services, httpContext, cancellationToken);
         }
 
-        return await VerifyRecoveryCodeAsync(request.HandshakeToken, code, handshake, authContext, services, httpContext, cancellationToken);
+        return await VerifyRecoveryCodeAsync(request.HandshakeToken, code, authContext, services, httpContext, cancellationToken);
     }
 
     private static async Task<IResult> VerifyCurrentSessionAsync(
         StepUpVerifyRequest request,
-        IAuthenticationPipeline pipeline,
+        IAuthenticationFactorPipeline factorPipeline,
         IStepUpAuthenticationService stepUp,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -147,7 +141,12 @@ internal static class MfaEndpoints
             : new RecoveryCodeAssertion(code);
 
         var authContext = httpContext.ToAuthenticationContext() with { UserId = userId };
-        var response = await pipeline.LoginAsync(authContext, assertion, cancellationToken);
+        var response = await factorPipeline.VerifyFactorAsync(authContext, assertion, cancellationToken);
+        if (response.Status == AuthenticationStatus.RateLimited)
+        {
+            return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+        }
+
         if (!response.Succeeded || response.User?.Id != userId)
         {
             return Results.BadRequest(new { error = isTotp ? "invalid_totp" : "invalid_mfa_code" });
@@ -206,9 +205,19 @@ internal static class MfaEndpoints
             new TotpAssertion(code),
             cancellationToken: cancellationToken);
 
-        if (response is not { Status: MfaAuthenticationStatus.Succeeded, User: not null })
+        if (response.Status == MfaAuthenticationStatus.RateLimited)
+        {
+            return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+        }
+
+        if (response is not { Status: MfaAuthenticationStatus.Succeeded or MfaAuthenticationStatus.HandshakeIncomplete, User: not null })
         {
             return Results.BadRequest(new { error = response.ErrorMessage ?? "invalid_totp" });
+        }
+
+        if (response.Status == MfaAuthenticationStatus.HandshakeIncomplete)
+        {
+            return CreateIncompleteMfaResponse(response);
         }
 
         await services.SignInManager.SignInAsync(httpContext, response.User.Id, httpContext.ToSessionRequest(
@@ -221,53 +230,52 @@ internal static class MfaEndpoints
     private static async Task<IResult> VerifyRecoveryCodeAsync(
         string handshakeToken,
         string code,
-        AuthenticationHandshake handshake,
         AuthenticationContext authContext,
         MfaVerifyServices services,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var user = await services.Users.GetUserByIdAsync(handshake.UserId, cancellationToken);
-        var factorContext = authContext with { UserId = handshake.UserId, Email = user?.Email };
-        var recoveryResponse = await services.Pipeline.LoginAsync(factorContext, new RecoveryCodeAssertion(code), cancellationToken);
-
-        if (!recoveryResponse.Succeeded || recoveryResponse.User?.Id != handshake.UserId)
-        {
-            return Results.BadRequest(new { error = "invalid_mfa_code" });
-        }
-
-        var factorToSatisfy = handshake.RequiredFactors.FirstOrDefault() ?? "totp";
-        var result = await services.HandshakeService.VerifyFactorAsync(
-            new VerifyAuthenticationHandshakeRequest(handshakeToken, factorToSatisfy, new Dictionary<string, string> { ["mfa_recovery"] = "true" }, factorContext),
+        var response = await services.Orchestrator.VerifyFactorAsync(
+            handshakeToken,
+            AuthenticationFactorTypes.RecoveryCode,
+            authContext,
+            new RecoveryCodeAssertion(code),
             cancellationToken);
 
-        if (result is not { Succeeded: true, Value: not null })
+        if (response.Status == MfaAuthenticationStatus.RateLimited)
+        {
+            return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+        }
+
+        if (response is not { Status: MfaAuthenticationStatus.Succeeded or MfaAuthenticationStatus.HandshakeIncomplete, User: not null })
         {
             return Results.BadRequest(new { error = "invalid_mfa_code" });
         }
 
-        if (!result.Value.IsCompleted)
+        if (response.Status == MfaAuthenticationStatus.HandshakeIncomplete)
         {
-            return Results.Ok(new
-            {
-                status = "mfa_required",
-                handshakeToken,
-                requiredFactors = result.Value.RequiredFactors.Except(result.Value.VerifiedFactors)
-            });
+            return CreateIncompleteMfaResponse(response);
         }
 
-        await services.SignInManager.SignInAsync(httpContext, recoveryResponse.User.Id, httpContext.ToSessionRequest(
-            recoveryResponse.User,
+        await services.SignInManager.SignInAsync(httpContext, response.User.Id, httpContext.ToSessionRequest(
+            response.User,
             additionalVerificationProvider: new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode"),
             additionalVerificationFactor: "recovery_code"), cancellationToken);
-        return Results.Ok(new { userId = recoveryResponse.User.Id });
+        return Results.Ok(new { userId = response.User.Id });
+    }
+
+    private static IResult CreateIncompleteMfaResponse(MfaAuthenticationResult response)
+    {
+        return Results.Ok(new
+        {
+            status = "mfa_required",
+            response.HandshakeToken,
+            response.RequiredFactors
+        });
     }
 
     private sealed record MfaVerifyServices(
         [FromServices] IAuthenticationOrchestrator Orchestrator,
-        [FromServices] IAuthenticationHandshakeService HandshakeService,
-        [FromServices] IAuthenticationPipeline Pipeline,
-        [FromServices] IUserRepository Users,
         [FromServices] IAshlarSignInManager SignInManager);
 
     private sealed record StepUpVerifyRequest(string Code);

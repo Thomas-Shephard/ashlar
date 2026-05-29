@@ -2,6 +2,7 @@ using System.Globalization;
 using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Providers.Local;
+using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
@@ -138,7 +139,7 @@ internal sealed class PasswordResetServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        fixture.RateLimiter.BlockedKeys.Add("password-reset-request:email:USER@EXAMPLE.COM");
+        fixture.RateLimiter.BlockedKeys.Add(ExpectedRateLimitKey("password-reset-request", "email", "email:USER@EXAMPLE.COM"));
 
         var result = await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
 
@@ -227,7 +228,7 @@ internal sealed class PasswordResetServiceTests
     public async Task ResetPasswordAsyncReturnsRateLimitedForOverlongTokenWhenSourceLimitIsExceeded()
     {
         var fixture = CreateFixture(CreateUser());
-        fixture.RateLimiter.BlockedKeys.Add("password-reset-verify:source:ip:203.0.113.41");
+        fixture.RateLimiter.BlockedKeys.Add(ExpectedRateLimitKey("password-reset-verify", "source", "source:ip:203.0.113.41"));
 
         var result = await fixture.Service.ResetPasswordAsync(
             new PasswordResetRequest { Token = new string('a', 257), NewPassword = NewPassword },
@@ -246,7 +247,7 @@ internal sealed class PasswordResetServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        fixture.RateLimiter.BlockedKeys.Add("password-reset-request:source:ip:203.0.113.40");
+        fixture.RateLimiter.BlockedKeys.Add(ExpectedRateLimitKey("password-reset-request", "source", "source:ip:203.0.113.40"));
 
         var result = await fixture.Service.RequestPasswordResetAsync(
             user.Email,
@@ -470,6 +471,9 @@ internal sealed class PasswordResetServiceTests
         sessionService
             .Setup(s => s.ListSessionsForUserAsync(user.Id, It.IsAny<ListAuthenticationSessionsRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<AuthenticationSessionSummary>());
+        var localProvider = new Mock<IPrimaryAuthenticationProvider>();
+        localProvider.SetupGet(provider => provider.Key).Returns(AuthenticationProviderKey.Local);
+        var providerRegistry = new AuthenticationProviderRegistry([localProvider.Object]);
 
         var accountSecurity = new AccountSecurityService(
             fixture.Store,
@@ -477,7 +481,7 @@ internal sealed class PasswordResetServiceTests
             sessionService.Object,
             new NullTransactionProvider(),
             new AllowAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(fixture.Time, fixture.Audit));
+            new AccountSecurityServiceDependencies(fixture.Time, fixture.Audit, ProviderRegistry: providerRegistry));
 
         var posture = await accountSecurity.GetUserSecurityPostureAsync(user.Id);
 
@@ -497,7 +501,7 @@ internal sealed class PasswordResetServiceTests
         await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
         var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
         var tokenHash = new Sha256TokenHasher().HashToken(token);
-        fixture.RateLimiter.BlockedKeys.Add($"password-reset-verify:token:{tokenHash}");
+        fixture.RateLimiter.BlockedKeys.Add(ExpectedRateLimitKey("password-reset-verify", "token-hash", $"token:{tokenHash}"));
 
         var result = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword });
 
@@ -523,12 +527,13 @@ internal sealed class PasswordResetServiceTests
             new AuthenticationContext(IpAddress: "203.0.113.20"));
 
         var verifyAttempts = fixture.RateLimiter.Attempts.Where(a => a.Purpose == "password-reset-verify").ToList();
+        var tokenHash = fixture.Dependencies.TokenContext.Hasher.HashToken(token);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(verifyAttempts.Select(a => a.Key), Does.Contain("password-reset-verify:source:ip:203.0.113.20"));
-            Assert.That(verifyAttempts.Any(a => a.Key.StartsWith("password-reset-verify:token:", StringComparison.Ordinal)), Is.True);
+            Assert.That(verifyAttempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("password-reset-verify", "source", "source:ip:203.0.113.20")));
+            Assert.That(verifyAttempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("password-reset-verify", "token-hash", $"token:{tokenHash}")));
         }
     }
 
@@ -563,8 +568,8 @@ internal sealed class PasswordResetServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(fixture.RateLimiter.Attempts, Has.Count.EqualTo(2));
-            Assert.That(fixture.RateLimiter.Attempts[0].Key, Is.EqualTo("password-reset-request:source:ip:203.0.113.30"));
-            Assert.That(fixture.RateLimiter.Attempts[1].Key, Is.EqualTo("password-reset-request:email:USER@EXAMPLE.COM"));
+            Assert.That(fixture.RateLimiter.Attempts[0].Key, Is.EqualTo(ExpectedRateLimitKey("password-reset-request", "source", "source:ip:203.0.113.30")));
+            Assert.That(fixture.RateLimiter.Attempts[1].Key, Is.EqualTo(ExpectedRateLimitKey("password-reset-request", "email", "email:USER@EXAMPLE.COM")));
         }
     }
 
@@ -680,6 +685,19 @@ internal sealed class PasswordResetServiceTests
         RecordingSecurityNotificationService Notifications,
         RecordingSessionRepository Sessions,
         FakeTimeProvider Time);
+
+    private static string ExpectedRateLimitKey(string purpose, string dimensionName, string dimensionValue)
+    {
+        var composed = string.Join('|',
+            EncodeRateLimitKeySegment(purpose),
+            EncodeRateLimitKeySegment("local:local"),
+            EncodeRateLimitKeySegment("global"),
+            EncodeRateLimitKeySegment(dimensionName),
+            EncodeRateLimitKeySegment(dimensionValue));
+        return AuthenticationRateLimitKeyBuilder.HashKey(composed);
+    }
+
+    private static string EncodeRateLimitKeySegment(string value) => $"{value.Length}:{value}";
 
     private class RecordingEmailSender : IEmailSender
     {

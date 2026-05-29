@@ -22,7 +22,6 @@ public static partial class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarMfaOrchestration();
-        services.AddOptions();
         if (configure != null)
         {
             services.Configure(configure);
@@ -52,7 +51,6 @@ public static partial class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarMfaOrchestration();
-        services.AddOptions();
         if (configure != null)
         {
             services.Configure(configure);

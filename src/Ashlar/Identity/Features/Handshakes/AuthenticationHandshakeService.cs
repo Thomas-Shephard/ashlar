@@ -1,5 +1,6 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
+using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Security.Tokens;
@@ -13,6 +14,8 @@ namespace Ashlar.Identity.Features.Handshakes;
 public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeService
 {
     private const string HandshakeIdProperty = "handshake_id";
+    private const string LookupRateLimitPurpose = "handshake-lookup";
+    private const string VerificationRateLimitPurpose = "handshake-verify";
     private const int MaxMetadataEntries = 20;
     private const int MaxMetadataKeyLength = 128;
     private const int MaxMetadataValueLength = 512;
@@ -24,9 +27,16 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
     private readonly AuthenticationHandshakeOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly SecurityEventEmitter _securityEvents;
-    private readonly IAuthenticationRateLimiter? _rateLimiter;
+    private readonly AuthenticationRateLimitChecker? _rateLimitChecker;
     private readonly IUserRepository? _userRepository;
     private readonly SecurityNotificationEmitter _notifications;
+
+    private enum HandshakeRateLimitMode
+    {
+        None,
+        LookupOnly,
+        LookupAndVerification
+    }
 
     /// <summary>
     /// Initializes a configured service instance.
@@ -50,7 +60,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         _options = dependencies?.Options?.Value ?? new AuthenticationHandshakeOptions();
         _timeProvider = dependencies?.TimeProvider ?? TimeProvider.System;
         _securityEvents = new SecurityEventEmitter(dependencies?.SecurityEventSink, _timeProvider);
-        _rateLimiter = dependencies?.RateLimiter;
+        _rateLimitChecker = dependencies?.RateLimiter == null ? null : new AuthenticationRateLimitChecker(dependencies.RateLimiter);
         _userRepository = dependencies?.UserRepository;
         _notifications = new SecurityNotificationEmitter(dependencies?.NotificationService);
     }
@@ -137,98 +147,45 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         return Result<AuthenticationHandshakeCreated>.Success(new AuthenticationHandshakeCreated(handshake, token));
     }
 
-    public async Task<Result<AuthenticationHandshake>> VerifyFactorAsync(
+    /// <inheritdoc />
+    public async Task<Result<AuthenticationHandshake>> BeginFactorChallengeAsync(
         VerifyAuthenticationHandshakeRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        if (string.IsNullOrWhiteSpace(request.HandshakeToken))
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.AuthenticationHandshakeFailed,
-                Outcome = SecurityEventOutcomes.Failure,
-                Context = request.Context,
-                FailureReason = AshlarFailureCodes.EmptyToken.Value
-            }, cancellationToken);
-            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.EmptyToken);
-        }
+        var result = await LoadHandshakeForFactorVerificationAsync(request, HandshakeRateLimitMode.LookupOnly, cancellationToken);
+        return result;
+    }
 
-        if (!SecureTokenHashing.TryHashToken(_tokenHasher, request.HandshakeToken, out var tokenHash))
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.AuthenticationHandshakeFailed,
-                Outcome = SecurityEventOutcomes.Failure,
-                Context = request.Context,
-                FailureReason = AshlarFailureCodes.HandshakeNotFound.Value
-            }, cancellationToken);
-            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeNotFound);
-        }
+    /// <inheritdoc />
+    public async Task<Result<AuthenticationHandshake>> BeginFactorVerificationAsync(
+        VerifyAuthenticationHandshakeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await LoadHandshakeForFactorVerificationAsync(request, HandshakeRateLimitMode.LookupAndVerification, cancellationToken);
+        return result;
+    }
 
+    /// <inheritdoc />
+    public async Task<Result<AuthenticationHandshake>> CompleteFactorVerificationAsync(
+        VerifyAuthenticationHandshakeRequest request,
+        CancellationToken cancellationToken = default)
+    {
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
-        var handshake = await _repository.FindByTokenHashAsync(tokenHash, forUpdate: true, cancellationToken);
-        if (handshake == null)
+        var result = await LoadHandshakeForFactorVerificationAsync(request, HandshakeRateLimitMode.None, cancellationToken);
+        if (!result.Succeeded)
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.AuthenticationHandshakeFailed,
-                Outcome = SecurityEventOutcomes.Failure,
-                Context = request.Context,
-                FailureReason = AshlarFailureCodes.HandshakeNotFound.Value
-            }, cancellationToken);
-            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeNotFound);
+            return result;
         }
 
-        var rateLimitResult = await CheckRateLimitAsync(handshake, request.Context, cancellationToken);
-        if (rateLimitResult != null)
-        {
-            return rateLimitResult;
-        }
-
+        var handshake = result.Value!;
         var now = _timeProvider.GetUtcNow();
-        if (handshake.IsRevoked)
-        {
-            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.HandshakeRevoked, request.Context, cancellationToken);
-            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeRevoked);
-        }
-
-        if (handshake.IsCompleted)
-        {
-            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.HandshakeAlreadyCompleted, request.Context, cancellationToken);
-            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeAlreadyCompleted);
-        }
-
-        if (handshake.ExpiresAt <= now)
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.AuthenticationHandshakeExpired,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = handshake.UserId,
-                Context = request.Context,
-                Properties = new Dictionary<string, string> { [HandshakeIdProperty] = handshake.Id.ToString() }
-            }, cancellationToken);
-            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeExpired);
-        }
-
-        if (!handshake.RequiredFactors.Contains(request.FactorType))
-        {
-            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.InvalidFactorType, request.Context, cancellationToken);
-            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.InvalidFactorType);
-        }
-
-        if (handshake.VerifiedFactors.Contains(request.FactorType))
-        {
-            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.FactorAlreadyVerified, request.Context, cancellationToken);
-            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.FactorAlreadyVerified);
-        }
-
         var verifiedFactors = handshake.VerifiedFactors.ToHashSet();
-        verifiedFactors.Add(request.FactorType);
+        var factorType = ResolveRequiredFactor(handshake, request.FactorType);
+        verifiedFactors.Add(factorType);
 
-        var isCompleted = handshake.RequiredFactors.All(verifiedFactors.Contains);
+        var isCompleted = handshake.RequiredFactors.All(requiredFactor =>
+            verifiedFactors.Any(verifiedFactor => AuthenticationFactorTypes.Matches(requiredFactor, verifiedFactor)));
         try
         {
             ValidateMetadata(request.Metadata, nameof(request));
@@ -258,7 +215,7 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
             Properties = new Dictionary<string, string>
             {
                 [HandshakeIdProperty] = handshake.Id.ToString(),
-                ["verified_factor"] = request.FactorType,
+                ["verified_factor"] = factorType,
                 ["is_completed"] = isCompleted.ToString()
             }
         }, ct));
@@ -268,21 +225,106 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         return Result.Success(updatedHandshake);
     }
 
-    /// <summary>
-    /// Performs the get handshake <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="handshakeToken">The handshake token value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
-    public async Task<AuthenticationHandshake?> GetHandshakeAsync(string handshakeToken, CancellationToken cancellationToken = default)
+    private async Task<Result<AuthenticationHandshake>> LoadHandshakeForFactorVerificationAsync(
+        VerifyAuthenticationHandshakeRequest request,
+        HandshakeRateLimitMode rateLimitMode,
+        CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(handshakeToken)) return null;
-        if (!SecureTokenHashing.TryHashToken(_tokenHasher, handshakeToken, out var tokenHash))
+        ArgumentNullException.ThrowIfNull(request);
+        if (string.IsNullOrWhiteSpace(request.HandshakeToken))
         {
-            return null;
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.AuthenticationHandshakeFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                Context = request.Context,
+                FailureReason = AshlarFailureCodes.EmptyToken.Value
+            }, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.EmptyToken);
         }
 
-        return await _repository.FindByTokenHashAsync(tokenHash, cancellationToken: cancellationToken);
+        if (rateLimitMode != HandshakeRateLimitMode.None)
+        {
+            var lookupRateLimitResult = await CheckLookupRateLimitAsync(request.Context, cancellationToken);
+            if (lookupRateLimitResult != null)
+            {
+                return lookupRateLimitResult;
+            }
+        }
+
+        if (!SecureTokenHashing.TryHashToken(_tokenHasher, request.HandshakeToken, out var tokenHash))
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.AuthenticationHandshakeFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                Context = request.Context,
+                FailureReason = AshlarFailureCodes.HandshakeNotFound.Value
+            }, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeNotFound);
+        }
+
+        var handshake = await _repository.FindByTokenHashAsync(tokenHash, forUpdate: rateLimitMode == HandshakeRateLimitMode.None, cancellationToken);
+        if (handshake == null)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.AuthenticationHandshakeFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                Context = request.Context,
+                FailureReason = AshlarFailureCodes.HandshakeNotFound.Value
+            }, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeNotFound);
+        }
+
+        if (rateLimitMode == HandshakeRateLimitMode.LookupAndVerification)
+        {
+            var rateLimitResult = await CheckRateLimitAsync(handshake, request.Context, cancellationToken);
+            if (rateLimitResult != null)
+            {
+                return rateLimitResult;
+            }
+        }
+
+        var now = _timeProvider.GetUtcNow();
+        if (handshake.IsRevoked)
+        {
+            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.HandshakeRevoked, request.Context, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeRevoked);
+        }
+
+        if (handshake.IsCompleted)
+        {
+            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.HandshakeAlreadyCompleted, request.Context, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeAlreadyCompleted);
+        }
+
+        if (handshake.ExpiresAt <= now)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.AuthenticationHandshakeExpired,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = handshake.UserId,
+                Context = request.Context,
+                Properties = new Dictionary<string, string> { [HandshakeIdProperty] = handshake.Id.ToString() }
+            }, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeExpired);
+        }
+
+        var factorType = ResolveRequiredFactor(handshake, request.FactorType);
+        if (factorType.Length == 0)
+        {
+            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.InvalidFactorType, request.Context, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.InvalidFactorType);
+        }
+
+        if (handshake.VerifiedFactors.Any(verifiedFactor => AuthenticationFactorTypes.Matches(verifiedFactor, factorType)))
+        {
+            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.FactorAlreadyVerified, request.Context, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.FactorAlreadyVerified);
+        }
+        return Result.Success(handshake);
     }
 
     /// <summary>
@@ -338,35 +380,83 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
 
     private async Task<Result<AuthenticationHandshake>?> CheckRateLimitAsync(AuthenticationHandshake handshake, AuthenticationContext? context, CancellationToken cancellationToken)
     {
-        if (_rateLimiter == null)
+        if (_rateLimitChecker == null)
         {
             return null;
         }
 
-        var rateLimitAttempt = new RateLimitAttempt
+        var userBucket = AuthenticationRateLimitDimensions.User(handshake.UserId);
+        var sourceBucket = AuthenticationRateLimitDimensions.Source(context);
+        var checks = new[]
         {
-            Key = $"handshake-verify:{handshake.UserId}",
-            Purpose = "handshake-verify"
+            CreateHandshakeVerificationRateLimitCheck(handshake, context, "source", sourceBucket),
+            CreateHandshakeVerificationRateLimitCheck(handshake, context, "user", userBucket)
         };
 
-        if (context != null)
+        foreach (var check in checks)
         {
-            rateLimitAttempt = new RateLimitAttempt
+            var rateLimitDecision = await _rateLimitChecker.CheckAsync(check, cancellationToken);
+            if (!rateLimitDecision.IsAllowed)
             {
-                Key = rateLimitAttempt.Key,
-                Purpose = rateLimitAttempt.Purpose,
-                IpAddress = context.IpAddress,
-                CorrelationId = context.CorrelationId
-            };
+                await RecordVerificationRateLimitedAsync(handshake, context, cancellationToken);
+                return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.RateLimitExceeded);
+            }
         }
 
-        var rateLimitDecision = await _rateLimiter.CheckAsync(rateLimitAttempt, _options.VerificationRateLimit, cancellationToken);
+        return null;
+    }
+
+    private async Task<Result<AuthenticationHandshake>?> CheckLookupRateLimitAsync(AuthenticationContext? context, CancellationToken cancellationToken)
+    {
+        if (_rateLimitChecker == null)
+        {
+            return null;
+        }
+
+        var rateLimitDecision = await _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(
+            LookupRateLimitPurpose,
+            "source",
+            AuthenticationRateLimitDimensions.Source(context),
+            _options.VerificationRateLimit)
+        {
+            Context = context
+        }, cancellationToken);
 
         if (rateLimitDecision.IsAllowed)
         {
             return null;
         }
 
+        await RecordLookupRateLimitedAsync(context, cancellationToken);
+        return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.RateLimitExceeded);
+    }
+
+    private AuthenticationRateLimitCheck CreateHandshakeVerificationRateLimitCheck(
+        AuthenticationHandshake handshake,
+        AuthenticationContext? context,
+        string dimensionName,
+        string dimensionValue)
+    {
+        return new AuthenticationRateLimitCheck(VerificationRateLimitPurpose, dimensionName, dimensionValue, _options.VerificationRateLimit)
+        {
+            Context = context,
+            UserId = handshake.UserId
+        };
+    }
+
+    private async Task RecordLookupRateLimitedAsync(AuthenticationContext? context, CancellationToken cancellationToken)
+    {
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.AuthenticationHandshakeVerificationRateLimited,
+            Outcome = SecurityEventOutcomes.Failure,
+            Context = context,
+            FailureReason = SecurityEventFailureReasons.RateLimited
+        }, cancellationToken);
+    }
+
+    private async Task RecordVerificationRateLimitedAsync(AuthenticationHandshake handshake, AuthenticationContext? context, CancellationToken cancellationToken)
+    {
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.AuthenticationHandshakeVerificationRateLimited,
@@ -384,8 +474,6 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
                 await _notifications.NotifyAsync(SecurityNotificationType.SuspiciousAuthenticationAttempt, user, _timeProvider.GetUtcNow(), cancellationToken: cancellationToken);
             }
         }
-
-        return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.RateLimitExceeded);
     }
 
     private static Dictionary<string, string>? MergeMetadata(
@@ -457,6 +545,17 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
     private static string NormalizeMetadataValue(string? value) => value ?? string.Empty;
 
     private static int GetMetadataValueLength(string? value) => value?.Length ?? 0;
+
+    private static string ResolveRequiredFactor(AuthenticationHandshake handshake, string factorType)
+    {
+        if (AuthenticationFactorTypes.Matches(factorType, AuthenticationFactorTypes.RecoveryCode))
+        {
+            return handshake.RequiredFactors.FirstOrDefault(requiredFactor =>
+                !handshake.VerifiedFactors.Any(verifiedFactor => AuthenticationFactorTypes.Matches(requiredFactor, verifiedFactor))) ?? string.Empty;
+        }
+
+        return handshake.RequiredFactors.FirstOrDefault(requiredFactor => AuthenticationFactorTypes.Matches(requiredFactor, factorType)) ?? string.Empty;
+    }
 }
 
 /// <summary>

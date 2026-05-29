@@ -22,6 +22,7 @@ public sealed class AuthenticationProviderRegistry : IAuthenticationProviderRegi
             ArgumentNullException.ThrowIfNull(provider);
 
             var key = ValidateProviderKey(provider.Key, nameof(providers));
+            ValidateSecondaryFactorProvider(provider, nameof(providers));
             if (!dict.TryAdd(key, provider))
             {
                 throw new ArgumentException($"Duplicate provider registered for key '{key}'.", nameof(providers));
@@ -46,7 +47,18 @@ public sealed class AuthenticationProviderRegistry : IAuthenticationProviderRegi
     {
         ArgumentNullException.ThrowIfNull(assertion);
 
-        return _providers.TryGetValue(assertion.ProviderIdentity, out provider);
+        return TryGetProvider(assertion.ProviderIdentity, out provider);
+    }
+
+    /// <summary>
+    /// Performs the try get provider operation by canonical provider key and returns the result.
+    /// </summary>
+    /// <param name="providerKey">The provider key.</param>
+    /// <param name="provider">The provider value.</param>
+    /// <returns>The operation result.</returns>
+    public bool TryGetProvider(AuthenticationProviderKey providerKey, [NotNullWhen(true)] out IAuthenticationProvider? provider)
+    {
+        return _providers.TryGetValue(providerKey, out provider);
     }
 
     private static AuthenticationProviderKey ValidateProviderKey(AuthenticationProviderKey key, string parameterName)
@@ -57,5 +69,14 @@ public sealed class AuthenticationProviderRegistry : IAuthenticationProviderRegi
         }
 
         return key;
+    }
+
+    private static void ValidateSecondaryFactorProvider(IAuthenticationProvider provider, string parameterName)
+    {
+        if (provider is ISecondaryAuthenticationFactorProvider factorProvider &&
+            string.IsNullOrWhiteSpace(factorProvider.FactorType))
+        {
+            throw new ArgumentException("Secondary factor provider must declare a factor type.", parameterName);
+        }
     }
 }

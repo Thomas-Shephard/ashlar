@@ -1,8 +1,5 @@
 using System.Text.Json;
-using Ashlar.Auditing;
 using Ashlar.Identity.Models.Totp;
-using Ashlar.Identity.RateLimiting.Abstractions;
-using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Security;
 using Microsoft.Extensions.Options;
 
@@ -11,32 +8,24 @@ namespace Ashlar.Identity.Providers.Totp;
 /// <summary>
 /// Implements an authentication provider that uses TOTP (Time-based One-Time Password) codes.
 /// </summary>
-public sealed class TotpAuthenticationProvider : IAuthenticationProvider
+public sealed class TotpAuthenticationProvider : ISecondaryAuthenticationFactorProvider
 {
-    private readonly IAuthenticationRateLimiter _rateLimiter;
     private readonly TotpOptions _options;
     private readonly TimeProvider _timeProvider;
-    private readonly SecurityEventEmitter _securityEvents;
 
     /// <summary>
     /// Initializes a configured service instance.
     /// </summary>
-    /// <param name="rateLimiter">The rate limiter value.</param>
     /// <param name="options">The options value.</param>
     /// <param name="timeProvider">The time provider value.</param>
-    /// <param name="securityEventSink">The security event sink value.</param>
     public TotpAuthenticationProvider(
-        IAuthenticationRateLimiter rateLimiter,
         IOptions<TotpOptions> options,
-        TimeProvider? timeProvider = null,
-        ISecurityEventSink? securityEventSink = null)
+        TimeProvider? timeProvider = null)
     {
-        _rateLimiter = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
         ArgumentNullException.ThrowIfNull(options);
         _options = options.Value;
         TotpOptions.ThrowIfInvalid(_options);
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
     }
 
     /// <inheritdoc />
@@ -47,6 +36,12 @@ public sealed class TotpAuthenticationProvider : IAuthenticationProvider
 
     /// <inheritdoc />
     public int TypicalCredentialLength => 32;
+
+    /// <inheritdoc />
+    public string FactorType => AuthenticationFactorTypes.Totp;
+
+    /// <inheritdoc />
+    public bool CanSatisfyFactor(string factorType) => AuthenticationFactorTypes.Matches(FactorType, factorType);
 
     /// <inheritdoc />
     public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId) => userId.ToString("D");
@@ -69,33 +64,14 @@ public sealed class TotpAuthenticationProvider : IAuthenticationProvider
     }
 
     /// <inheritdoc />
-    public async Task<UserCredential?> ResolveCredentialAsync(Guid userId, IAuthenticationAssertion assertion, AuthenticationContext? context, ICredentialRepository repository, CancellationToken cancellationToken = default)
+    public Task<UserCredential?> ResolveCredentialAsync(Guid userId, IAuthenticationAssertion assertion, AuthenticationContext? context, ICredentialRepository repository, CancellationToken cancellationToken = default)
     {
         if (assertion is not TotpAssertion)
         {
-            return null;
+            return Task.FromResult<UserCredential?>(null);
         }
 
-        var rateLimitKey = userId.ToString("D");
-        var rule = new RateLimitRule { PermitLimit = _options.RateLimitPermitLimit, Window = _options.RateLimitWindow };
-        var attempt = new RateLimitAttempt { Key = rateLimitKey, Purpose = "totp-verify", IpAddress = context?.IpAddress, CorrelationId = context?.CorrelationId };
-
-        var decision = await _rateLimiter.CheckAsync(attempt, rule, cancellationToken);
-        if (decision.Status == RateLimitStatus.Blocked)
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.TotpVerificationRateLimited,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                Context = context,
-                Provider = Key,
-                FailureReason = AshlarFailureCodes.RateLimited.Value
-            }, cancellationToken);
-            return null;
-        }
-
-        return await repository.GetCredentialForUserAsync(userId, Key.Type, Key.Name, GetProviderKey(assertion, userId), cancellationToken);
+        return repository.GetCredentialForUserAsync(userId, Key.Type, Key.Name, GetProviderKey(assertion, userId), cancellationToken);
     }
 
     /// <inheritdoc />

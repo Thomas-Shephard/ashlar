@@ -1,4 +1,5 @@
 using Ashlar.Identity.RateLimiting.Models;
+using Ashlar.Identity.RateLimiting;
 
 namespace Ashlar.Identity.Providers.Email;
 
@@ -53,12 +54,12 @@ public sealed class EmailCodeSignInOptions
         return options is
         {
             CodeLength: >= MinimumCodeLength and <= MaximumCodeLength,
-            RequestRateLimit.PermitLimit: > 0,
-            VerificationRateLimit.PermitLimit: > 0
+            RequestRateLimit: { },
+            VerificationRateLimit: { }
         }
         && options.CodeLifetime > TimeSpan.Zero
-        && options.RequestRateLimit.Window > TimeSpan.Zero
-        && options.VerificationRateLimit.Window > TimeSpan.Zero
+        && AuthenticationRateLimitRuleValidator.IsValid(options.RequestRateLimit)
+        && AuthenticationRateLimitRuleValidator.IsValid(options.VerificationRateLimit)
         && !string.IsNullOrWhiteSpace(options.EmailSubject)
         && !string.IsNullOrWhiteSpace(options.EmailTextTemplate);
     }

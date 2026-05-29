@@ -14,6 +14,10 @@ public static class AshlarSecurityEventTypes
     /// </summary>
     public const string AuthenticationFailed = "ashlar.authentication.failed";
     /// <summary>
+    /// Defines the authentication rate limited value.
+    /// </summary>
+    public const string AuthenticationRateLimited = "ashlar.authentication.rate_limited";
+    /// <summary>
     /// Defines the user created value.
     /// </summary>
     public const string UserCreated = "ashlar.user.created";
@@ -89,10 +93,6 @@ public static class AshlarSecurityEventTypes
     /// Defines the recovery codes revoked value.
     /// </summary>
     public const string RecoveryCodesRevoked = "ashlar.recovery_codes.revoked";
-    /// <summary>
-    /// Defines the recovery code verification rate limited value.
-    /// </summary>
-    public const string RecoveryCodeVerificationRateLimited = "ashlar.recovery_codes.verification_rate_limited";
     /// <summary>
     /// Defines the session created value.
     /// </summary>
@@ -189,10 +189,6 @@ public static class AshlarSecurityEventTypes
     /// Defines the totp disabled value.
     /// </summary>
     public const string TotpDisabled = "ashlar.totp.disabled";
-    /// <summary>
-    /// Defines the totp verification rate limited value.
-    /// </summary>
-    public const string TotpVerificationRateLimited = "ashlar.totp.verification_rate_limited";
     /// <summary>
     /// Defines the passkey registration started value.
     /// </summary>

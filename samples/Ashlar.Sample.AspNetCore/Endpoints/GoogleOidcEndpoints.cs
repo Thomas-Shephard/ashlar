@@ -48,7 +48,7 @@ internal static class GoogleOidcEndpoints
         var externalCredentialAuthentication = services.GetRequiredService<AshlarExternalCredentialAuthenticationService>();
         var orchestrator = services.GetRequiredService<IAuthenticationOrchestrator>();
         var signInManager = services.GetRequiredService<IAshlarSignInManager>();
-        var result = await externalCredentialAuthentication.CompleteExternalAssertionAsync(httpContext, SampleGoogleOidc.ProviderName);
+        var result = await externalCredentialAuthentication.CompleteExternalAssertionAsync(httpContext, SampleGoogleOidc.ProviderName, cancellationToken);
         if (result.Succeeded && result.Assertion != null)
         {
             var mfaResult = await orchestrator.AuthenticateAsync(
@@ -59,6 +59,13 @@ internal static class GoogleOidcEndpoints
             if (mfaResult.Status == MfaAuthenticationStatus.MfaRequired && mfaResult.HandshakeToken != null)
             {
                 return AppViews.RenderGoogleMfaCallback(mfaResult.HandshakeToken, mfaResult.RequiredFactors ?? []);
+            }
+
+            if (mfaResult.Status == MfaAuthenticationStatus.RateLimited)
+            {
+                return AppViews.RenderGoogleOidcResult(
+                    GoogleSignInFailedTitle,
+                    "Too many Google sign-in attempts were made. Wait a few minutes and try again.");
             }
 
             if (mfaResult.Status != MfaAuthenticationStatus.Succeeded || mfaResult.User == null)
@@ -81,6 +88,13 @@ internal static class GoogleOidcEndpoints
             return AppViews.RenderGoogleOidcResult(
                 GoogleSignInFailedTitle,
                 "Google sign-in was not completed. Try again, or use another sign-in method.");
+        }
+
+        if (result.Status == AshlarExternalAssertionStatus.RateLimited)
+        {
+            return AppViews.RenderGoogleOidcResult(
+                GoogleSignInFailedTitle,
+                "Too many Google sign-in attempts were made. Wait a few minutes and try again.");
         }
 
         if (result.Status == AshlarExternalAssertionStatus.InvalidPrincipal)

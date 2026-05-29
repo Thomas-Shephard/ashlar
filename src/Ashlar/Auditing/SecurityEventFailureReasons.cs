@@ -26,6 +26,10 @@ public static class SecurityEventFailureReasons
     /// </summary>
     public const string UnprotectFailed = "unprotect_failed";
     /// <summary>
+    /// Defines the rate limited value.
+    /// </summary>
+    public const string RateLimited = "rate_limited";
+    /// <summary>
     /// Defines the session validation failed value.
     /// </summary>
     public const string SessionValidationFailed = "session_validation_failed";

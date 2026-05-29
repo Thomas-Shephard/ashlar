@@ -36,7 +36,17 @@ internal static class PasskeyEndpoints
     private static async Task<IResult> StartAuthenticationAsync(IPasskeyService passkeys, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var result = await passkeys.StartAuthenticationAsync(new StartPasskeyAuthenticationRequest(Audit: httpContext.ToAuditContext()), cancellationToken);
-        return Results.Json(new { result.ChallengeId, result.ExpiresAt, options = JsonDocument.Parse(result.OptionsJson).RootElement });
+        if (result.Succeeded && result.Value != null)
+        {
+            return Results.Json(new { result.Value.ChallengeId, result.Value.ExpiresAt, options = JsonDocument.Parse(result.Value.OptionsJson).RootElement });
+        }
+
+        if (result.FailureCode == AshlarFailureCodes.RateLimited)
+        {
+            return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+        }
+
+        return Results.BadRequest(SampleResultErrors.From(result));
     }
 
     private static async Task<IResult> CompleteAuthenticationAsync(PasskeyCompleteAuthenticationSampleRequest request, IPasskeyService passkeys, IAshlarSignInManager signIn, HttpContext httpContext, CancellationToken cancellationToken)
@@ -52,6 +62,11 @@ internal static class PasskeyEndpoints
             });
         }
 
+        if (result.Status == MfaAuthenticationStatus.RateLimited)
+        {
+            return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+        }
+
         if (!result.Succeeded || result.User == null)
         {
             return Results.BadRequest(new { error = result.FailureCode?.Value ?? "passkey_validation_failed" });
@@ -64,9 +79,17 @@ internal static class PasskeyEndpoints
     private static async Task<IResult> StartFactorAsync(PasskeyStartFactorSampleRequest request, IPasskeyService passkeys, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var result = await passkeys.StartFactorAsync(new StartPasskeyFactorRequest(request.HandshakeToken, request.FactorType ?? "passkey", httpContext.ToAuditContext()), cancellationToken);
-        return result.Succeeded && result.Value != null
-            ? Results.Json(new { result.Value.ChallengeId, result.Value.ExpiresAt, options = JsonDocument.Parse(result.Value.OptionsJson).RootElement })
-            : Results.BadRequest(SampleResultErrors.From(result));
+        if (result.Succeeded && result.Value != null)
+        {
+            return Results.Json(new { result.Value.ChallengeId, result.Value.ExpiresAt, options = JsonDocument.Parse(result.Value.OptionsJson).RootElement });
+        }
+
+        if (result.FailureCode == AshlarFailureCodes.RateLimitExceeded)
+        {
+            return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+        }
+
+        return Results.BadRequest(SampleResultErrors.From(result));
     }
 
     private static async Task<IResult> CompleteFactorAsync(PasskeyCompleteFactorSampleRequest request, IPasskeyService passkeys, IAshlarSignInManager signIn, HttpContext httpContext, CancellationToken cancellationToken)
@@ -80,6 +103,11 @@ internal static class PasskeyEndpoints
                 handshakeToken = result.HandshakeToken,
                 requiredFactors = result.RequiredFactors
             });
+        }
+
+        if (result.Status == MfaAuthenticationStatus.RateLimited)
+        {
+            return Results.StatusCode(StatusCodes.Status429TooManyRequests);
         }
 
         if (!result.Succeeded || result.User == null)

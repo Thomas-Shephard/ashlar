@@ -1,6 +1,3 @@
-using Ashlar.Auditing;
-using Ashlar.Identity.RateLimiting.Abstractions;
-using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Security.Hashing;
 using Microsoft.Extensions.Options;
 
@@ -9,39 +6,30 @@ namespace Ashlar.Identity.Providers.RecoveryCode;
 /// <summary>
 /// Implements an authentication provider that uses recovery codes.
 /// </summary>
-public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
+public sealed class RecoveryCodeAuthenticationProvider : ISecondaryAuthenticationFactorProvider
 {
     private readonly PasswordHasherSelector _hasherSelector;
-    private readonly IAuthenticationRateLimiter _rateLimiter;
     private readonly RecoveryCodeOptions _options;
     private readonly TimeProvider _timeProvider;
-    private readonly SecurityEventEmitter _securityEvents;
 
     /// <summary>
     /// Initializes a configured service instance.
     /// </summary>
     /// <param name="hasherSelector">The hasher selector value.</param>
-    /// <param name="rateLimiter">The rate limiter value.</param>
     /// <param name="options">The options value.</param>
     /// <param name="timeProvider">The time provider value.</param>
-    /// <param name="securityEventSink">The security event sink value.</param>
     public RecoveryCodeAuthenticationProvider(
         PasswordHasherSelector hasherSelector,
-        IAuthenticationRateLimiter rateLimiter,
         IOptions<RecoveryCodeOptions> options,
-        TimeProvider? timeProvider = null,
-        ISecurityEventSink? securityEventSink = null)
+        TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(hasherSelector);
-        ArgumentNullException.ThrowIfNull(rateLimiter);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(options.Value);
 
         _hasherSelector = hasherSelector;
-        _rateLimiter = rateLimiter;
         _options = options.Value;
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _securityEvents = new SecurityEventEmitter(securityEventSink, _timeProvider);
     }
 
     /// <summary>
@@ -58,6 +46,18 @@ public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
     /// Gets or sets the typical credential length value.
     /// </summary>
     public int TypicalCredentialLength => 128; // Hashed password length
+
+    /// <summary>
+    /// Gets the factor family represented by recovery codes.
+    /// </summary>
+    public string FactorType => AuthenticationFactorTypes.RecoveryCode;
+
+    /// <summary>
+    /// Determines whether recovery codes can satisfy a pending factor.
+    /// </summary>
+    /// <param name="factorType">The required factor type.</param>
+    /// <returns><see langword="true" /> when the factor value is present.</returns>
+    public bool CanSatisfyFactor(string factorType) => !string.IsNullOrWhiteSpace(factorType);
 
     /// <summary>
     /// Executes the get provider key operation.
@@ -124,25 +124,6 @@ public sealed class RecoveryCodeAuthenticationProvider : IAuthenticationProvider
     {
         if (assertion is not RecoveryCodeAssertion recoveryCodeAssertion)
         {
-            return null;
-        }
-
-        var rateLimitKey = userId.ToString("D");
-        var rule = new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(5) };
-        var attempt = new RateLimitAttempt { Key = rateLimitKey, Purpose = "recovery-code-verify", IpAddress = context?.IpAddress, CorrelationId = context?.CorrelationId };
-
-        var decision = await _rateLimiter.CheckAsync(attempt, rule, cancellationToken);
-        if (decision.Status == RateLimitStatus.Blocked)
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.RecoveryCodeVerificationRateLimited,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                Context = context,
-                Provider = Key,
-                FailureReason = AshlarFailureCodes.RateLimited.Value
-            }, cancellationToken);
             return null;
         }
 

@@ -78,6 +78,29 @@ public interface IAuthenticationProvider
 }
 
 /// <summary>
+/// Marks an authentication provider that can verify a primary sign-in credential.
+/// </summary>
+public interface IPrimaryAuthenticationProvider : IAuthenticationProvider;
+
+/// <summary>
+/// Marks an authentication provider that can verify a secondary MFA or step-up factor.
+/// </summary>
+public interface ISecondaryAuthenticationFactorProvider : IAuthenticationProvider
+{
+    /// <summary>
+    /// Gets the normalized factor family represented by this provider.
+    /// </summary>
+    string FactorType { get; }
+
+    /// <summary>
+    /// Determines whether this provider can satisfy a pending authentication factor.
+    /// </summary>
+    /// <param name="factorType">The required factor type.</param>
+    /// <returns><see langword="true" /> when this provider can satisfy the required factor.</returns>
+    bool CanSatisfyFactor(string factorType);
+}
+
+/// <summary>
 /// Represents the result of an authentication attempt.
 /// </summary>
 /// <param name="Status">The outcome of the authentication attempt.</param>

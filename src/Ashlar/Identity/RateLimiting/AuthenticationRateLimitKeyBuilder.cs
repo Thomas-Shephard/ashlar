@@ -1,0 +1,231 @@
+using System.Security.Cryptography;
+using System.Text;
+using Ashlar.Identity.RateLimiting.Models;
+
+namespace Ashlar.Identity.RateLimiting;
+
+/// <summary>
+/// Builds safe, stable authentication rate-limit attempts.
+/// </summary>
+public static class AuthenticationRateLimitKeyBuilder
+{
+    private const string GlobalTenant = "global";
+    private const string NoProvider = "none";
+
+    /// <summary>
+    /// Builds a rate-limit attempt for the supplied bucket.
+    /// </summary>
+    /// <param name="check">The rate-limit bucket check.</param>
+    /// <returns>The rate-limit attempt.</returns>
+    public static RateLimitAttempt BuildAttempt(AuthenticationRateLimitCheck check)
+    {
+        ArgumentNullException.ThrowIfNull(check);
+
+        if (string.IsNullOrWhiteSpace(check.Purpose))
+        {
+            throw new ArgumentException("Rate-limit purpose is required.", nameof(check));
+        }
+
+        if (string.IsNullOrWhiteSpace(check.DimensionName) || string.IsNullOrWhiteSpace(check.DimensionValue))
+        {
+            throw new ArgumentException("Rate-limit dimension name and value are required.", nameof(check));
+        }
+
+        return BuildAttempt(
+            new AuthenticationRateLimitAttemptDescriptor(check.Purpose, check.DimensionName, check.DimensionValue)
+            {
+                Context = check.Context,
+                ProviderKey = check.ProviderKey,
+                TenantId = check.TenantId,
+                UserId = check.UserId,
+                Email = check.Email
+            });
+    }
+
+    /// <summary>
+    /// Builds a rate-limit attempt for the supplied bucket.
+    /// </summary>
+    /// <param name="purpose">The operation purpose being limited.</param>
+    /// <param name="dimensionName">The safe bucket dimension name.</param>
+    /// <param name="dimensionValue">The safe bucket dimension value.</param>
+    /// <returns>The rate-limit attempt.</returns>
+    public static RateLimitAttempt BuildAttempt(
+        string purpose,
+        string dimensionName,
+        string dimensionValue)
+    {
+        return BuildAttempt(new AuthenticationRateLimitAttemptDescriptor(purpose, dimensionName, dimensionValue));
+    }
+
+    /// <summary>
+    /// Builds a rate-limit attempt for the supplied descriptor.
+    /// </summary>
+    /// <param name="descriptor">The rate-limit attempt descriptor.</param>
+    /// <returns>The rate-limit attempt.</returns>
+    public static RateLimitAttempt BuildAttempt(AuthenticationRateLimitAttemptDescriptor descriptor)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+
+        var purpose = descriptor.Purpose;
+        var dimensionName = descriptor.DimensionName;
+        var dimensionValue = descriptor.DimensionValue;
+        ArgumentException.ThrowIfNullOrWhiteSpace(purpose);
+        ArgumentException.ThrowIfNullOrWhiteSpace(dimensionName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(dimensionValue);
+
+        var resolvedTenantId = descriptor.TenantId ?? descriptor.Context?.TenantId;
+        var normalizedEmail = NormalizeEmail(descriptor.Email ?? descriptor.Context?.Email);
+        var resolvedUserId = descriptor.UserId ?? descriptor.Context?.UserId;
+        var provider = descriptor.ProviderKey.HasValue
+            ? NormalizeProviderSelector(descriptor.ProviderKey.Value)
+            : NoProvider;
+
+        var composedKey = ComposeKey(
+            purpose.Trim(),
+            provider,
+            resolvedTenantId?.ToString("D") ?? GlobalTenant,
+            dimensionName.Trim().ToLowerInvariant(),
+            dimensionValue.Trim());
+
+        return new RateLimitAttempt
+        {
+            Key = HashKey(composedKey),
+            Purpose = purpose.Trim(),
+            Email = normalizedEmail,
+            UserId = resolvedUserId?.ToString("D"),
+            IpAddress = NormalizeIpAddress(descriptor.Context?.IpAddress),
+            CorrelationId = NormalizeOptional(descriptor.Context?.CorrelationId)
+        };
+    }
+
+    /// <summary>
+    /// Normalizes a provider selector for option lookup and key construction.
+    /// </summary>
+    /// <param name="providerKey">The provider identity.</param>
+    /// <returns>The normalized selector.</returns>
+    public static string NormalizeProviderSelector(AuthenticationProviderKey providerKey)
+    {
+        return $"{providerKey.TypeValueOrUnknown.Trim().ToLowerInvariant()}:{providerKey.Name.Trim().ToLowerInvariant()}";
+    }
+
+    /// <summary>
+    /// Hashes a composed key before handing it to persistence-backed limiters.
+    /// </summary>
+    /// <param name="value">The composed key.</param>
+    /// <returns>The lower-case SHA-256 hexadecimal hash.</returns>
+    public static string HashKey(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    private static string ComposeKey(params string[] segments)
+    {
+        var capacity = 0;
+        for (var i = 0; i < segments.Length; i++)
+        {
+            capacity += segments[i].Length + CountDigits(segments[i].Length) + 1;
+            if (i > 0)
+            {
+                capacity++;
+            }
+        }
+
+        var builder = new StringBuilder(capacity);
+        for (var i = 0; i < segments.Length; i++)
+        {
+            if (i > 0)
+            {
+                builder.Append('|');
+            }
+
+            builder.Append(segments[i].Length);
+            builder.Append(':');
+            builder.Append(segments[i]);
+        }
+
+        return builder.ToString();
+    }
+
+    private static int CountDigits(int value)
+    {
+        var digits = 1;
+        while (value >= 10)
+        {
+            value /= 10;
+            digits++;
+        }
+
+        return digits;
+    }
+
+    private static string? NormalizeEmail(string? email)
+    {
+        return string.IsNullOrWhiteSpace(email)
+            ? null
+            : IdentityNormalization.NormalizeEmail(email);
+    }
+
+    private static string? NormalizeOptional(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string? NormalizeIpAddress(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : AuthenticationRateLimitDimensions.NormalizeIpAddress(value);
+    }
+}
+
+/// <summary>
+/// Describes a rate-limit attempt to build.
+/// </summary>
+/// <param name="purpose">The operation purpose being limited.</param>
+/// <param name="dimensionName">The safe bucket dimension name.</param>
+/// <param name="dimensionValue">The safe bucket dimension value.</param>
+public sealed class AuthenticationRateLimitAttemptDescriptor(string purpose, string dimensionName, string dimensionValue)
+{
+    /// <summary>
+    /// Gets the operation purpose being limited.
+    /// </summary>
+    public string Purpose { get; } = purpose;
+
+    /// <summary>
+    /// Gets the safe bucket dimension name.
+    /// </summary>
+    public string DimensionName { get; } = dimensionName;
+
+    /// <summary>
+    /// Gets the safe bucket dimension value.
+    /// </summary>
+    public string DimensionValue { get; } = dimensionValue;
+
+    /// <summary>
+    /// Gets the optional authentication context.
+    /// </summary>
+    public AuthenticationContext? Context { get; init; }
+
+    /// <summary>
+    /// Gets the optional provider identity.
+    /// </summary>
+    public AuthenticationProviderKey? ProviderKey { get; init; }
+
+    /// <summary>
+    /// Gets the optional normalized tenant scope override.
+    /// </summary>
+    public Guid? TenantId { get; init; }
+
+    /// <summary>
+    /// Gets the optional user identity metadata.
+    /// </summary>
+    public Guid? UserId { get; init; }
+
+    /// <summary>
+    /// Gets the optional email metadata.
+    /// </summary>
+    public string? Email { get; init; }
+}

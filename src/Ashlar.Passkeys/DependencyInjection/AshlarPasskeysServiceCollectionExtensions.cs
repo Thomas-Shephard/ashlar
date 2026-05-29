@@ -1,4 +1,5 @@
 using Ashlar.Auditing;
+using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Operational.Configuration;
 using Ashlar.Passkeys;
 using Ashlar.Security.Tokens;
@@ -44,6 +45,7 @@ public static class AshlarPasskeysServiceCollectionExtensions
             provider.GetRequiredService<IAuthenticationOrchestrator>(),
             provider.GetRequiredService<IAuthenticationHandshakeService>(),
             provider.GetRequiredService<ISecureTokenHasher>(),
+            provider.GetRequiredService<IAuthenticationRateLimiter>(),
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>()));
         services.TryAddScoped<IPasskeyService, PasskeyService>();

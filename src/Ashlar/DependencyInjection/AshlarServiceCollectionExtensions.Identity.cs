@@ -9,6 +9,7 @@ using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Providers.RecoveryCode;
 using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
+using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
 using Ashlar.Operational.Diagnostics;
 using Ashlar.Security.Encryption;
@@ -50,7 +51,11 @@ public static partial class AshlarServiceCollectionExtensions
             services.Configure(configureSessions);
         }
 
-        // IdentityService has multiple public constructors; use the full dependency graph explicitly.
+        services.AddOptions<PrimaryAuthenticationRateLimitOptions>()
+            .Validate(PrimaryAuthenticationRateLimitOptions.Validate, "Primary authentication rate-limit options are invalid.");
+        services.AddOptions<AuthenticationFactorRateLimitOptions>()
+            .Validate(AuthenticationFactorRateLimitOptions.Validate, "Secondary factor rate-limit options are invalid.");
+
         services.TryAdd(new ServiceDescriptor(
             typeof(IIdentityService),
             provider => new IdentityService(
@@ -59,10 +64,27 @@ public static partial class AshlarServiceCollectionExtensions
                 provider.GetRequiredService<ICredentialService>(),
                 provider.GetRequiredService<IAuthenticationPipeline>(),
                 provider.GetRequiredService<IAshlarTransactionProvider>(),
-                provider.GetService<ISecurityEventSink>(),
-                provider.GetService<TimeProvider>()),
+                new IdentityServiceDependencies(
+                    provider.GetService<ISecurityEventSink>(),
+                    provider.GetService<TimeProvider>(),
+                    provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>())),
             ServiceLifetime.Scoped));
-        services.TryAddScoped<IAuthenticationPipeline, AuthenticationPipeline>();
+        services.TryAddScoped(provider => new AuthenticationPipelineDependencies(
+            provider.GetService<ISecurityEventSink>(),
+            provider.GetService<TimeProvider>(),
+            provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationPipeline>>(),
+            provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()));
+        services.TryAddScoped(provider => new AuthenticationPipeline(
+            provider.GetRequiredService<IAuthenticationProviderRegistry>(),
+            provider.GetRequiredService<ICredentialService>(),
+            provider.GetRequiredService<IAshlarTransactionProvider>(),
+            provider.GetRequiredService<IPrimaryAuthenticationRateLimiter>(),
+            provider.GetRequiredService<IAuthenticationFactorRateLimiter>(),
+            provider.GetRequiredService<AuthenticationPipelineDependencies>()));
+        services.TryAddScoped<IAuthenticationPipeline>(provider => provider.GetRequiredService<AuthenticationPipeline>());
+        services.TryAddScoped<IAuthenticationFactorPipeline>(provider => provider.GetRequiredService<AuthenticationPipeline>());
+        services.TryAddScoped<IPrimaryAuthenticationRateLimiter, PrimaryAuthenticationRateLimiter>();
+        services.TryAddScoped<IAuthenticationFactorRateLimiter, AuthenticationFactorRateLimiter>();
         services.TryAddScoped<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>();
         services.TryAddScoped(provider => new CredentialServiceDependencies(
             provider.GetService<IdentityServiceOptions>(),
@@ -77,7 +99,8 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<IUserSecurityEventSummaryRepository>(),
             provider.GetService<IOptions<TotpOptions>>(),
             provider.GetService<IOptions<RecoveryCodeOptions>>(),
-            provider.GetService<IMfaPolicyEvaluator>()));
+            provider.GetService<IMfaPolicyEvaluator>(),
+            provider.GetService<IAuthenticationProviderRegistry>()));
         services.TryAddScoped<IAccountSecurityGuard, AllowAccountSecurityGuard>();
         services.TryAddScoped<IAccountSecurityService, AccountSecurityService>();
         services.TryAddScoped<IUserAdministrationService, UserAdministrationService>();

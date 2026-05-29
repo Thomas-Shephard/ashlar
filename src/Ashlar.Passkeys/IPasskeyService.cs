@@ -28,8 +28,8 @@ public interface IPasskeyService
     /// </summary>
     /// <param name="request">The authentication request.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The browser ceremony options.</returns>
-    Task<PasskeyCeremonyOptions> StartAuthenticationAsync(StartPasskeyAuthenticationRequest request, CancellationToken cancellationToken = default);
+    /// <returns>The browser ceremony options when challenge creation is allowed.</returns>
+    Task<Result<PasskeyCeremonyOptions>> StartAuthenticationAsync(StartPasskeyAuthenticationRequest request, CancellationToken cancellationToken = default);
     /// <summary>
     /// Completes a passkey authentication ceremony.
     /// </summary>

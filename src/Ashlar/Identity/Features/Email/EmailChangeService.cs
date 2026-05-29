@@ -1,5 +1,6 @@
 using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
+using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
 using Ashlar.Security.Tokens;
@@ -37,6 +38,8 @@ internal sealed class EmailChangeService(
     private readonly IOptions<EmailChangeOptions> _options = options ?? Options.Create(new EmailChangeOptions());
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
     private readonly ILogger<EmailChangeService> _logger = logger ?? NullLogger<EmailChangeService>.Instance;
+    private readonly AuthenticationRateLimitChecker _rateLimitChecker = new(dependencies.RateLimiter);
+    private readonly EmailFlowVerificationRateLimitChecker _verificationRateLimits = new(new AuthenticationRateLimitChecker(dependencies.RateLimiter), VerifyPurpose);
 
     /// <summary>
     /// Creates an email-change verification credential and sends the confirmation message.
@@ -91,14 +94,13 @@ internal sealed class EmailChangeService(
             return Result.Failure(AshlarFailureCodes.SameEmail, "New email must be different from the current email.");
         }
 
-        var rateLimit = await _dependencies.RateLimiter.CheckAsync(new RateLimitAttempt
+        var userBucket = AuthenticationRateLimitDimensions.User(user.Id);
+        var rateLimit = await _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(RequestPurpose, AuthenticationRateLimitDimensions.DimensionName(userBucket), userBucket, _options.Value.RequestRateLimit)
         {
-            Key = $"{RequestPurpose}:{user.Id}",
-            Purpose = RequestPurpose,
-            UserId = user.Id.ToString(),
-            IpAddress = request.Audit?.IpAddress,
-            CorrelationId = request.Audit?.CorrelationId
-        }, new RateLimitRule { PermitLimit = 3, Window = TimeSpan.FromHours(1) }, cancellationToken);
+            UserId = user.Id,
+            TenantId = (user as ITenantUser)?.TenantId,
+            Context = EmailFlowRateLimitHelpers.ToAuthenticationContext(request.Audit)
+        }, cancellationToken);
 
         if (!rateLimit.IsAllowed)
         {
@@ -211,12 +213,8 @@ internal sealed class EmailChangeService(
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Token);
 
-        var rateLimit = await _dependencies.RateLimiter.CheckAsync(new RateLimitAttempt
-        {
-            Key = $"{VerifyPurpose}:{request.UserId}",
-            Purpose = VerifyPurpose,
-            UserId = request.UserId.ToString()
-        }, new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) }, cancellationToken);
+        var context = EmailFlowRateLimitHelpers.ToAuthenticationContext(request.Audit);
+        var rateLimit = await _verificationRateLimits.CheckAsync(AuthenticationRateLimitDimensions.Source(context), request.UserId, context, _options.Value.VerificationRateLimit, cancellationToken);
 
         if (!rateLimit.IsAllowed)
         {
@@ -242,6 +240,34 @@ internal sealed class EmailChangeService(
                 FailureReason = AshlarFailureCodes.InvalidOrExpiredToken.Value
             }, cancellationToken);
             return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, InvalidOrExpiredTokenMessage);
+        }
+
+        var tokenRateLimit = await _verificationRateLimits.CheckAsync(AuthenticationRateLimitDimensions.TokenHash(tokenHash), request.UserId, context, _options.Value.VerificationRateLimit, cancellationToken);
+        if (!tokenRateLimit.IsAllowed)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailChangeVerificationRateLimited,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = request.UserId,
+                Audit = request.Audit,
+                FailureReason = AshlarFailureCodes.RateLimited.Value
+            }, cancellationToken);
+            return Result.Failure(AshlarFailureCodes.RateLimited, "Too many attempts.");
+        }
+
+        var userRateLimit = await _verificationRateLimits.CheckAsync(AuthenticationRateLimitDimensions.User(request.UserId), request.UserId, context, _options.Value.VerificationRateLimit, cancellationToken);
+        if (!userRateLimit.IsAllowed)
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.EmailChangeVerificationRateLimited,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = request.UserId,
+                Audit = request.Audit,
+                FailureReason = AshlarFailureCodes.RateLimited.Value
+            }, cancellationToken);
+            return Result.Failure(AshlarFailureCodes.RateLimited, "Too many attempts.");
         }
 
         var credential = await _dependencies.IdentityContext.CredentialRepository.GetCredentialForUserAsync(request.UserId, ProviderType.Internal, ProviderName, tokenHash, cancellationToken);

@@ -66,7 +66,7 @@ internal static class AshlarExternalProviderResolver
     {
         if (!properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.ProviderType, out var providerType))
         {
-            return provider.Type == ProviderType.Oidc;
+            return false;
         }
 
         return string.Equals(provider.Type.Value, providerType, StringComparison.Ordinal);

@@ -284,6 +284,72 @@ internal sealed class EmailVerificationServiceTests
     }
 
     [Test]
+    public async Task VerifyTokenChecksSourceTokenAndUserBuckets()
+    {
+        var fixture = CreateFixture(_user);
+        await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = _user.Id, CallbackBaseUri = new Uri("http://localhost") });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+        fixture.RateLimiter.Attempts.Clear();
+
+        var result = await fixture.Service.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest
+        {
+            UserId = _user.Id,
+            Token = token,
+            Audit = new AuditContext(Guid.NewGuid(), "203.0.113.99", "NUnit", "corr-confirm")
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixture.RateLimiter.Attempts, Has.Count.EqualTo(3));
+            Assert.That(fixture.RateLimiter.Attempts.Select(a => a.Purpose), Is.All.EqualTo("email-verification-verify"));
+            Assert.That(fixture.RateLimiter.Attempts.Select(a => a.IpAddress), Is.All.EqualTo("203.0.113.99"));
+            Assert.That(fixture.RateLimiter.Attempts.Select(a => a.Key), Is.Unique);
+            Assert.That(string.Join("|", fixture.RateLimiter.Attempts.Select(a => a.Key)), Does.Not.Contain(token));
+        }
+    }
+
+    [Test]
+    public async Task VerifyTokenStopsWhenTokenBucketIsRateLimited()
+    {
+        var fixture = CreateFixture(_user);
+        await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = _user.Id, CallbackBaseUri = new Uri("http://localhost") });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+        fixture.RateLimiter.Attempts.Clear();
+        fixture.RateLimiter.BlockedVerifyCallNumber = 2;
+
+        var result = await fixture.Service.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest { UserId = _user.Id, Token = token });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.RateLimited));
+            Assert.That(fixture.RateLimiter.Attempts, Has.Count.EqualTo(2));
+            Assert.That(fixture.UserCredentialStore.Credentials.Single().Status, Is.EqualTo(CredentialStatus.Active));
+        }
+    }
+
+    [Test]
+    public async Task VerifyTokenStopsWhenUserBucketIsRateLimited()
+    {
+        var fixture = CreateFixture(_user);
+        await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = _user.Id, CallbackBaseUri = new Uri("http://localhost") });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+        fixture.RateLimiter.Attempts.Clear();
+        fixture.RateLimiter.BlockedVerifyCallNumber = 3;
+
+        var result = await fixture.Service.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest { UserId = _user.Id, Token = token });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.RateLimited));
+            Assert.That(fixture.RateLimiter.Attempts, Has.Count.EqualTo(3));
+            Assert.That(fixture.UserCredentialStore.Credentials.Single().Status, Is.EqualTo(CredentialStatus.Active));
+        }
+    }
+
+    [Test]
     public async Task RequestVerificationFailsForInvalidCallbackUri()
     {
         var fixture = CreateFixture(_user);
@@ -335,15 +401,28 @@ internal sealed class EmailVerificationServiceTests
 
     private sealed class StubRateLimiter(bool requestAllowed, bool verifyAllowed) : IAuthenticationRateLimiter
     {
+        private int _verifyCalls;
+
+        public List<RateLimitAttempt> Attempts { get; } = [];
+
+        public int? BlockedVerifyCallNumber { get; set; }
+
         public Task<RateLimitDecision> CheckAsync(RateLimitAttempt attempt, RateLimitRule rule, CancellationToken cancellationToken = default)
         {
-            var allowed = attempt.Purpose == "email-verification-request" ? requestAllowed : verifyAllowed;
+            Attempts.Add(attempt);
+            var allowed = attempt.Purpose == "email-verification-request" ? requestAllowed : IsVerifyAllowed();
             return Task.FromResult(new RateLimitDecision
             {
                 Status = allowed ? RateLimitStatus.Allowed : RateLimitStatus.Blocked,
                 Remaining = allowed ? 1 : 0,
                 WindowResetAt = DateTimeOffset.UtcNow.Add(rule.Window)
             });
+        }
+
+        private bool IsVerifyAllowed()
+        {
+            _verifyCalls++;
+            return verifyAllowed && _verifyCalls != BlockedVerifyCallNumber;
         }
     }
 

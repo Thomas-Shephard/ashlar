@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Operational.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -149,6 +150,19 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
     public void PasskeyOptionsShouldRejectInvalidAttestation(string attestation)
     {
         var options = new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com", Attestation = attestation };
+
+        Assert.That(PasskeyOptions.Validate(options), Is.False);
+    }
+
+    [Test]
+    public void PasskeyOptionsShouldRejectInvalidAuthenticationChallengeStartRateLimit()
+    {
+        var options = new PasskeyOptions
+        {
+            Origin = "https://example.com",
+            RelyingPartyId = "example.com",
+            AuthenticationChallengeStartRateLimit = new RateLimitRule { PermitLimit = 0, Window = TimeSpan.FromMinutes(1) }
+        };
 
         Assert.That(PasskeyOptions.Validate(options), Is.False);
     }

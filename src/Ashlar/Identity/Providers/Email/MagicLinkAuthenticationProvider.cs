@@ -6,7 +6,7 @@ namespace Ashlar.Identity.Providers.Email;
 /// Authenticates one-time magic link tokens.
 /// </summary>
 /// <param name="tokenHasher">Hashes raw magic link tokens before lookup.</param>
-public sealed class MagicLinkAuthenticationProvider(ISecureTokenHasher tokenHasher) : IAuthenticationProvider
+public sealed class MagicLinkAuthenticationProvider(ISecureTokenHasher tokenHasher) : IPrimaryAuthenticationProvider
 {
     /// <summary>
     /// Identifies credentials issued for magic link sign-in.

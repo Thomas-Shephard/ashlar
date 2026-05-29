@@ -180,9 +180,7 @@ await signInManager.SignInAsync(httpContext, authentication.User.Id, cancellatio
 return Results.Redirect("/");
 ```
 
-`CompleteExternalAssertionAsync` validates the temporary external ticket, checks that it was issued for the expected configured provider and provider kind, clears the external cookie, and returns a mapped `ExternalIdentityAssertion`. Use this method for both OIDC and non-OIDC OAuth2 providers. A successful assertion result means the external credential was validated and mapped; it does not mean an application session may be issued.
-
-`AshlarExternalCredentialAuthenticationService.CompleteExternalCredentialAuthenticationAsync` is a lower-level helper that maps the external credential and calls Ashlar's authentication pipeline directly. It works for both OIDC and non-OIDC OAuth2 providers, but still does not issue an application session or cookie. Use it only when the host application deliberately treats the returned Ashlar authentication response as the complete credential-authentication decision. Applications with MFA policy must not issue sessions directly from external credential validation; use `CompleteExternalAssertionAsync` and the host orchestration pipeline instead.
+`CompleteExternalAssertionAsync` validates the temporary external ticket, checks that it was issued for the expected configured provider and provider kind, clears the external cookie, and returns a mapped `ExternalIdentityAssertion`. Use this method for both OIDC and non-OIDC OAuth2 providers. The external ticket must include Ashlar's provider name, scheme name, and provider type metadata; missing or mismatched metadata is rejected as a provider mismatch. A successful assertion result means the external credential was validated and mapped; it does not mean an application session may be issued.
 
 ## Profile Hints
 

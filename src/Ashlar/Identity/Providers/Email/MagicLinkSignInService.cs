@@ -1,4 +1,5 @@
 using Ashlar.Auditing;
+using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
 using Ashlar.Security.Tokens;
@@ -16,6 +17,7 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
     private readonly MagicLinkSignInDependencies _dependencies;
     private readonly IOptions<MagicLinkSignInOptions> _options;
     private readonly SecurityEventEmitter _securityEvents;
+    private readonly AuthenticationRateLimitChecker _rateLimitChecker;
 
     /// <summary>
     /// Initializes a configured service instance.
@@ -29,6 +31,7 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
         _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
         _options = options ?? Options.Create(new MagicLinkSignInOptions());
         _securityEvents = new SecurityEventEmitter(_dependencies.SecurityEventSink, _dependencies.TimeProvider);
+        _rateLimitChecker = new AuthenticationRateLimitChecker(_dependencies.RateLimiter);
     }
 
     /// <summary>
@@ -49,7 +52,7 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
         context = (context ?? new AuthenticationContext()) with { Email = normalizedEmail };
 
         var signInOptions = _options.Value;
-        var rateLimit = await CheckRateLimitAsync(normalizedEmail, RequestPurpose, context, signInOptions.RequestRateLimit, cancellationToken);
+        var rateLimit = await CheckRateLimitAsync(AuthenticationRateLimitDimensions.Email(normalizedEmail), RequestPurpose, context, signInOptions.RequestRateLimit, cancellationToken);
         if (!rateLimit.IsAllowed)
         {
             await RecordAsync(AshlarSecurityEventTypes.MagicLinkRequestRateLimited, SecurityEventOutcomes.Failure, context, null, "rate_limited", cancellationToken);
@@ -119,18 +122,24 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
 
         context ??= new AuthenticationContext();
 
+        var sourceRateLimit = await CheckRateLimitAsync(AuthenticationRateLimitDimensions.Source(context), VerifyPurpose, context, _options.Value.VerificationRateLimit, cancellationToken);
+        if (!sourceRateLimit.IsAllowed)
+        {
+            await RecordAsync(AshlarSecurityEventTypes.MagicLinkVerificationRateLimited, SecurityEventOutcomes.Failure, context, null, "rate_limited", cancellationToken);
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.RateLimited, ErrorMessage: "Authentication failed.");
+        }
+
         if (!SecureTokenHashing.TryHashToken(_dependencies.TokenHasher, token, out var tokenHash))
         {
             await RecordAsync(AshlarSecurityEventTypes.AuthenticationFailed, SecurityEventOutcomes.Failure, context, null, "invalid_token", cancellationToken);
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Authentication failed.");
         }
 
-        // Rate limit by IP address to prevent brute forcing.
-        var rateLimit = await CheckRateLimitAsync(GetVerificationRateLimitKey(tokenHash, context), VerifyPurpose, context, _options.Value.VerificationRateLimit, cancellationToken);
-        if (!rateLimit.IsAllowed)
+        var tokenRateLimit = await CheckRateLimitAsync(AuthenticationRateLimitDimensions.TokenHash(tokenHash), VerifyPurpose, context, _options.Value.VerificationRateLimit, cancellationToken);
+        if (!tokenRateLimit.IsAllowed)
         {
             await RecordAsync(AshlarSecurityEventTypes.MagicLinkVerificationRateLimited, SecurityEventOutcomes.Failure, context, null, "rate_limited", cancellationToken);
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Authentication failed.");
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.RateLimited, ErrorMessage: "Authentication failed.");
         }
 
         return await _dependencies.AuthenticationOrchestrator.AuthenticateAsync(context, new MagicLinkAssertion(token), cancellationToken: cancellationToken);
@@ -138,14 +147,11 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
 
     private Task<RateLimitDecision> CheckRateLimitAsync(string key, string purpose, AuthenticationContext context, RateLimitRule rule, CancellationToken cancellationToken)
     {
-        return _dependencies.RateLimiter.CheckAsync(new RateLimitAttempt
+        return _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(purpose, AuthenticationRateLimitDimensions.DimensionName(key), key, rule)
         {
-            Key = $"{purpose}:{key}",
-            Purpose = purpose,
-            Email = context.Email,
-            IpAddress = context.IpAddress,
-            CorrelationId = context.CorrelationId
-        }, rule, cancellationToken);
+            ProviderKey = _dependencies.Provider.Key,
+            Context = context
+        }, cancellationToken);
     }
 
     private Task RecordAsync(string eventType, string outcome, AuthenticationContext context, Guid? userId, string? failureReason, CancellationToken cancellationToken)
@@ -159,20 +165,5 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
             Context = context,
             FailureReason = failureReason
         }, cancellationToken);
-    }
-
-    private static string GetVerificationRateLimitKey(string tokenHash, AuthenticationContext context)
-    {
-        if (!string.IsNullOrWhiteSpace(context.IpAddress))
-        {
-            return context.IpAddress;
-        }
-
-        if (!string.IsNullOrWhiteSpace(context.CorrelationId))
-        {
-            return $"correlation:{context.CorrelationId}";
-        }
-
-        return $"token:{tokenHash}";
     }
 }

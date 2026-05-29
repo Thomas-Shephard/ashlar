@@ -63,11 +63,11 @@ public sealed class AshlarExternalAccountLinkService
         var provider = AshlarExternalProviderResolver.GetProvider(_options.CurrentValue, providerName);
         if (provider == null)
         {
-            await AshlarExternalTicket.TryClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme);
+            await AshlarExternalTicket.TryClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme, CancellationToken.None);
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.UnsupportedProvider);
         }
 
-        var result = await AshlarExternalTicket.AuthenticateAndClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme);
+        var result = await AshlarExternalTicket.AuthenticateAndClearAsync(httpContext, _options.CurrentValue.ExternalSignInScheme, cancellationToken);
 
         if (!result.Succeeded || result.Principal == null)
         {

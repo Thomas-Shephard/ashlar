@@ -430,6 +430,24 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     [Test]
+    public async Task CompleteExternalLinkShouldClearUnsupportedProviderTicketWhenRequestIsCanceled()
+    {
+        var service = CreateService();
+        var authService = new TestAuthenticationService(AuthenticateResult.NoResult());
+        var httpContext = CreateHttpContext(authService);
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        var result = await service.CompleteExternalLinkAsync(httpContext, Guid.NewGuid(), "Microsoft", cancellationToken: cts.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.UnsupportedProvider));
+            Assert.That(authService.SignOutCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void CompleteExternalLinkShouldRejectNullHttpContext()
     {
         var service = CreateService();
@@ -460,25 +478,26 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     [Test]
-    public async Task CompleteExternalLinkShouldAcceptLegacyExternalTicketWithoutProviderType()
+    public async Task CompleteExternalLinkShouldReturnProviderMismatchForOidcTicketWithoutProviderType()
     {
         var authService = new TestAuthenticationService(AuthenticateResult.Success(new AuthenticationTicket(
             CreatePrincipal("sub"),
             CreateProperties("Google", "Google", includeProviderType: false),
             "Ashlar.OAuth.External")));
         var credentialService = new Mock<ICredentialService>();
-        credentialService
-            .Setup(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success());
         var service = CreateService(credentialService.Object);
 
         var result = await service.CompleteExternalLinkAsync(CreateHttpContext(authService), Guid.NewGuid(), "Google");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.ProviderMismatch));
             Assert.That(authService.SignOutCount, Is.EqualTo(1));
         }
+
+        credentialService.Verify(
+            s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Test]

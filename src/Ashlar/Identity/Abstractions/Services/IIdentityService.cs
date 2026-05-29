@@ -80,7 +80,11 @@ public enum AuthenticationStatus
     /// <summary>
     /// Authentication requires an MFA handshake before completion.
     /// </summary>
-    MfaRequired = 4
+    MfaRequired = 4,
+    /// <summary>
+    /// Authentication was blocked by rate limiting.
+    /// </summary>
+    RateLimited = 5
 }
 
 /// <summary>

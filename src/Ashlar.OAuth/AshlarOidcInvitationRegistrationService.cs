@@ -63,11 +63,11 @@ public sealed class AshlarOidcInvitationRegistrationService
         var provider = GetOidcProvider(providerName);
         if (provider == null)
         {
-            await AshlarExternalTicket.TryClearAsync(httpContext, _oauthOptions.CurrentValue.ExternalSignInScheme);
+            await AshlarExternalTicket.TryClearAsync(httpContext, _oauthOptions.CurrentValue.ExternalSignInScheme, CancellationToken.None);
             return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.UnsupportedProvider);
         }
 
-        var result = await AshlarExternalTicket.AuthenticateAndClearAsync(httpContext, _oauthOptions.CurrentValue.ExternalSignInScheme);
+        var result = await AshlarExternalTicket.AuthenticateAndClearAsync(httpContext, _oauthOptions.CurrentValue.ExternalSignInScheme, cancellationToken);
 
         if (!result.Succeeded || result.Principal == null)
         {
@@ -222,16 +222,23 @@ public sealed class AshlarOidcInvitationRegistrationService
 
     private static AshlarOidcInvitationRegistrationStatus MapInvitationFailure(Result<Guid> result)
     {
-        return result.FailureCode?.Value == AshlarFailureCodes.InvalidInvitationValue
-            ? AshlarOidcInvitationRegistrationStatus.InvalidInvitation
-            : AshlarOidcInvitationRegistrationStatus.Failed;
+        return result.FailureCode?.Value switch
+        {
+            AshlarFailureCodes.InvalidInvitationValue => AshlarOidcInvitationRegistrationStatus.InvalidInvitation,
+            AshlarFailureCodes.RateLimitedValue => AshlarOidcInvitationRegistrationStatus.RateLimited,
+            _ => AshlarOidcInvitationRegistrationStatus.Failed
+        };
     }
 
     private static AshlarOidcInvitationRegistrationStatus MapInvitationPreviewFailure(Result<InvitationAcceptancePreview> result)
     {
-        return result.Succeeded || result.FailureCode?.Value == AshlarFailureCodes.InvalidInvitationValue
-            ? AshlarOidcInvitationRegistrationStatus.InvalidInvitation
-            : AshlarOidcInvitationRegistrationStatus.Failed;
+        return result.FailureCode?.Value switch
+        {
+            AshlarFailureCodes.RateLimitedValue => AshlarOidcInvitationRegistrationStatus.RateLimited,
+            AshlarFailureCodes.InvalidInvitationValue => AshlarOidcInvitationRegistrationStatus.InvalidInvitation,
+            _ when result.Succeeded => AshlarOidcInvitationRegistrationStatus.InvalidInvitation,
+            _ => AshlarOidcInvitationRegistrationStatus.Failed
+        };
     }
 
     private static AshlarOidcInvitationRegistrationStatus MapLinkFailure(Result result)

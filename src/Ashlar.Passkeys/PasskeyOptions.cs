@@ -1,3 +1,6 @@
+using Ashlar.Identity.RateLimiting;
+using Ashlar.Identity.RateLimiting.Models;
+
 namespace Ashlar.Passkeys;
 
 /// <summary>
@@ -41,6 +44,10 @@ public sealed class PasskeyOptions
     /// Gets or sets whether resident/discoverable credentials are required.
     /// </summary>
     public bool RequireResidentKey { get; set; } = true;
+    /// <summary>
+    /// Gets or sets the source-based rate limit for starting passkey authentication challenges.
+    /// </summary>
+    public RateLimitRule AuthenticationChallengeStartRateLimit { get; set; } = new() { PermitLimit = 30, Window = TimeSpan.FromMinutes(15) };
 
     /// <summary>
     /// Validates the configured passkey options.
@@ -59,6 +66,7 @@ public sealed class PasskeyOptions
             && options.ChallengeLifetime > TimeSpan.Zero
             && options.ChallengeLifetime.TotalMilliseconds <= uint.MaxValue
             && options.ChallengeBytes >= 16
+            && AuthenticationRateLimitRuleValidator.IsValid(options.AuthenticationChallengeStartRateLimit)
             && IsUserVerificationValid(options.UserVerification)
             && IsAttestationValid(options.Attestation);
     }
