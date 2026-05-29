@@ -3,7 +3,6 @@ using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.RateLimiting;
-using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Options;
@@ -15,37 +14,19 @@ namespace Ashlar.Identity.Features.Bootstrap;
 /// <summary>
 /// Creates the first administrator for an uninitialized Ashlar installation.
 /// </summary>
-/// <param name="stateRepository">Reads and marks bootstrap initialization state.</param>
-/// <param name="userRepository">Stores and retrieves first-admin users.</param>
-/// <param name="transactionProvider">Creates transactions for the bootstrap workflow.</param>
-/// <param name="tokenContext">Hashes setup secrets before comparison.</param>
-/// <param name="auditContext">Provides time, audit, and notification dependencies.</param>
-/// <param name="grantService">Optionally assigns configured grants to the first administrator.</param>
+/// <param name="dependencies">The dependencies required by the bootstrap workflow.</param>
 /// <param name="options">Configures the setup secret and first-admin grants.</param>
-/// <param name="notificationService">Optionally sends bootstrap security notifications.</param>
-/// <param name="rateLimiter">Optionally rate limits bootstrap attempts.</param>
 internal sealed class BootstrapService(
-    IBootstrapStateRepository stateRepository,
-    IUserRepository userRepository,
-    IAshlarTransactionProvider transactionProvider,
-    SecureTokenContext tokenContext,
-    IdentityAuditContext auditContext,
-    IAuthorizationGrantService? grantService = null,
-    IOptions<BootstrapOptions>? options = null,
-    ISecurityNotificationService? notificationService = null,
-    IAuthenticationRateLimiter? rateLimiter = null)
+    BootstrapDependencies dependencies,
+    IOptions<BootstrapOptions>? options = null)
     : IBootstrapService
 {
-    private readonly IBootstrapStateRepository _stateRepository = stateRepository ?? throw new ArgumentNullException(nameof(stateRepository));
-    private readonly IUserRepository _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
-    private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
-    private readonly SecureTokenContext _tokenContext = tokenContext ?? throw new ArgumentNullException(nameof(tokenContext));
-    private readonly IdentityAuditContext _auditContext = auditContext ?? throw new ArgumentNullException(nameof(auditContext));
-    private readonly IAuthorizationGrantService? _grantService = ValidateGrantService(grantService, options?.Value ?? new BootstrapOptions());
+    private readonly BootstrapDependencies _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
     private readonly IOptions<BootstrapOptions> _options = options ?? Options.Create(new BootstrapOptions());
-    private readonly SecurityEventEmitter _securityEvents = new(auditContext.SecurityEventSink, auditContext.TimeProvider);
-    private readonly SecurityNotificationEmitter _notifications = new(notificationService ?? auditContext.NotificationService);
-    private readonly AuthenticationRateLimitChecker? _rateLimitChecker = rateLimiter == null ? null : new AuthenticationRateLimitChecker(rateLimiter);
+    private readonly IAuthorizationGrantService? _grantService = ValidateGrantService(dependencies.GrantService, options?.Value ?? new BootstrapOptions());
+    private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider);
+    private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
+    private readonly AuthenticationRateLimitChecker _rateLimitChecker = new(dependencies.RateLimiter);
 
     /// <summary>
     /// Gets whether the installation has already been initialized.
@@ -54,7 +35,7 @@ internal sealed class BootstrapService(
     /// <returns>The current bootstrap status.</returns>
     public Task<BootstrapStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
-        return _stateRepository.GetBootstrapStatusAsync(cancellationToken);
+        return _dependencies.StateRepository.GetBootstrapStatusAsync(cancellationToken);
     }
 
     /// <summary>
@@ -79,7 +60,7 @@ internal sealed class BootstrapService(
                 TenantId = request.TenantId,
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.AlreadyInitialized.Value,
-                Properties = AddEmailIfEnabled(new Dictionary<string, string>(), email)
+                Properties = AddEmailIfEnabled([], email)
             }, cancellationToken);
             return Result.Failure<Guid>(AshlarFailureCodes.AlreadyInitialized);
         }
@@ -118,10 +99,10 @@ internal sealed class BootstrapService(
             return Result.Failure<Guid>(AshlarFailureCodes.AlreadyInitialized);
         }
 
-        var now = _auditContext.TimeProvider.GetUtcNow();
+        var now = _dependencies.TimeProvider.GetUtcNow();
         var grants = _options.Value.Grants;
-        var grantService = _grantService;
-        if (grants.Count > 0 && grantService is null)
+        var authorizationGrantService = _grantService;
+        if (grants.Count > 0 && authorizationGrantService is null)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
@@ -136,15 +117,15 @@ internal sealed class BootstrapService(
             return Result.Failure<Guid>(AshlarFailureCodes.InvalidConfiguration);
         }
 
-        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
         var createdUser = await CreateOrActivateFirstAdminUserAsync(normalizedEmail, email, request.UserName, request.TenantId, now, cancellationToken);
         var userId = createdUser.UserId;
 
-        if (grantService is not null)
+        if (authorizationGrantService is not null)
         {
             foreach (var template in grants)
             {
-                var grantResult = await grantService.CreateGrantAsync(new CreateAuthorizationGrantRequest(
+                var grantResult = await authorizationGrantService.CreateGrantAsync(new CreateAuthorizationGrantRequest(
                     UserId: userId,
                     TenantId: template.TenantId,
                     ScopeType: template.ScopeType,
@@ -172,7 +153,7 @@ internal sealed class BootstrapService(
             }
         }
 
-        var initialized = await _stateRepository.MarkAsInitializedAsync(userId, now, cancellationToken);
+        var initialized = await _dependencies.StateRepository.MarkAsInitializedAsync(userId, now, cancellationToken);
         if (!initialized)
         {
             // This should only happen if someone else initialized the system concurrently.
@@ -214,7 +195,7 @@ internal sealed class BootstrapService(
                 Context = context
             }, ct);
 
-            var notifiedUser = await _userRepository.GetUserByIdAsync(userId, ct);
+            var notifiedUser = await _dependencies.UserRepository.GetUserByIdAsync(userId, ct);
             if (notifiedUser != null)
             {
                 await _notifications.NotifyAsync(SecurityNotificationType.BootstrapCompleted, notifiedUser, now, context: context, cancellationToken: ct);
@@ -228,11 +209,6 @@ internal sealed class BootstrapService(
 
     private async Task<bool> CheckRateLimitAsync(Guid? tenantId, AuthenticationContext? context, CancellationToken cancellationToken)
     {
-        if (_rateLimitChecker is null)
-        {
-            return true;
-        }
-
         var sourceBucket = AuthenticationRateLimitDimensions.Source(context);
         var rateLimit = await _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(
             "bootstrap-first-admin",
@@ -278,11 +254,11 @@ internal sealed class BootstrapService(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var user = await _userRepository.GetUserByEmailAsync(normalizedEmail, tenantId, cancellationToken);
+        var user = await _dependencies.UserRepository.GetUserByEmailAsync(normalizedEmail, tenantId, cancellationToken);
         if (user == null)
         {
             var userId = Guid.NewGuid();
-            await _userRepository.CreateUserAsync(new AshlarUser
+            await _dependencies.UserRepository.CreateUserAsync(new AshlarUser
             {
                 Id = userId,
                 Email = email,
@@ -296,7 +272,7 @@ internal sealed class BootstrapService(
 
         if (!user.IsActive || !user.EmailVerifiedAt.HasValue)
         {
-            await _userRepository.UpdateUserAsync(new AshlarUser
+            await _dependencies.UserRepository.UpdateUserAsync(new AshlarUser
             {
                 Id = user.Id,
                 Email = user.Email,
@@ -317,8 +293,8 @@ internal sealed class BootstrapService(
         AuthenticationContext? context,
         CancellationToken cancellationToken)
     {
-        var options = _options.Value;
-        var failureReason = GetSetupAuthorizationFailureReason(options, setupSecret);
+        var bootstrapOptions = _options.Value;
+        var failureReason = GetSetupAuthorizationFailureReason(bootstrapOptions, setupSecret);
         if (failureReason is null)
         {
             return true;
@@ -337,15 +313,15 @@ internal sealed class BootstrapService(
         return false;
     }
 
-    private string? GetSetupAuthorizationFailureReason(BootstrapOptions options, string? setupSecret)
+    private string? GetSetupAuthorizationFailureReason(BootstrapOptions bootstrapOptions, string? setupSecret)
     {
-        if (string.IsNullOrWhiteSpace(options.SetupSecret)
-            || !SecureTokenHashing.TryHashToken(_tokenContext.Hasher, options.SetupSecret, out var configuredHash))
+        if (string.IsNullOrWhiteSpace(bootstrapOptions.SetupSecret)
+            || !SecureTokenHashing.TryHashToken(_dependencies.TokenContext.Hasher, bootstrapOptions.SetupSecret, out var configuredHash))
         {
             return SecurityEventFailureReasons.BootstrapSetupAuthorizationMissing;
         }
 
-        if (!SecureTokenHashing.TryHashToken(_tokenContext.Hasher, setupSecret ?? string.Empty, out var suppliedHash))
+        if (!SecureTokenHashing.TryHashToken(_dependencies.TokenContext.Hasher, setupSecret ?? string.Empty, out var suppliedHash))
         {
             return SecurityEventFailureReasons.BootstrapSetupAuthorizationInvalid;
         }

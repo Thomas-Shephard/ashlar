@@ -5,6 +5,7 @@ using Ashlar.Authorization.Models;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
+using Ashlar.Messaging;
 using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
@@ -50,6 +51,9 @@ internal sealed class BootstrapServiceTests
         _tokenHasher.Setup(h => h.HashToken(SetupSecret)).Returns(SetupSecretHash);
         _tokenHasher.Setup(h => h.HashToken(WrongSetupSecret)).Returns("sha256:wrong");
         _tokenHasher.Setup(h => h.HashToken(string.Empty)).Throws(new ArgumentException("Token is required.", "token"));
+        _rateLimiter
+            .Setup(l => l.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RateLimitDecision.Allow());
 
         _tokenContext = new SecureTokenContext(_tokenGenerator.Object, _tokenHasher.Object);
         _auditContext = new IdentityAuditContext(_timeProvider, _securityEventSink.Object);
@@ -73,46 +77,39 @@ internal sealed class BootstrapServiceTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new BootstrapService(
+            Assert.Throws<ArgumentNullException>(() => _ = new BootstrapService(null!, Options.Create(_options)));
+            Assert.Throws<ArgumentNullException>(() => _ = new BootstrapStoreContext(
                 null!,
                 _userRepository.Object,
-                _transactionProvider.Object,
-                _tokenContext,
-                _auditContext,
-                _grantService.Object,
-                Options.Create(_options)));
-            Assert.Throws<ArgumentNullException>(() => _ = new BootstrapService(
+                _transactionProvider.Object));
+            Assert.Throws<ArgumentNullException>(() => _ = new BootstrapStoreContext(
                 _stateRepository.Object,
                 null!,
-                _transactionProvider.Object,
-                _tokenContext,
-                _auditContext,
-                _grantService.Object,
-                Options.Create(_options)));
-            Assert.Throws<ArgumentNullException>(() => _ = new BootstrapService(
+                _transactionProvider.Object));
+            Assert.Throws<ArgumentNullException>(() => _ = new BootstrapStoreContext(
                 _stateRepository.Object,
                 _userRepository.Object,
+                null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new BootstrapDependencies(
                 null!,
                 _tokenContext,
-                _auditContext,
-                _grantService.Object,
-                Options.Create(_options)));
-            Assert.Throws<ArgumentNullException>(() => _ = new BootstrapService(
-                _stateRepository.Object,
-                _userRepository.Object,
-                _transactionProvider.Object,
+                CreateInfrastructureContext(),
+                _auditContext));
+            Assert.Throws<ArgumentNullException>(() => _ = new BootstrapDependencies(
+                CreateStoreContext(),
                 null!,
-                _auditContext,
-                _grantService.Object,
-                Options.Create(_options)));
-            Assert.Throws<ArgumentNullException>(() => _ = new BootstrapService(
-                _stateRepository.Object,
-                _userRepository.Object,
-                _transactionProvider.Object,
+                CreateInfrastructureContext(),
+                _auditContext));
+            Assert.Throws<ArgumentNullException>(() => _ = new BootstrapDependencies(
+                CreateStoreContext(),
                 _tokenContext,
                 null!,
-                _grantService.Object,
-                Options.Create(_options)));
+                _auditContext));
+            Assert.Throws<ArgumentNullException>(() => _ = new BootstrapDependencies(
+                CreateStoreContext(),
+                _tokenContext,
+                CreateInfrastructureContext(),
+                null!));
         }
     }
 
@@ -129,13 +126,7 @@ internal sealed class BootstrapServiceTests
     [Test]
     public async Task BootstrapFirstAdminAsyncFailsClosedWithDefaultOptions()
     {
-        var service = new BootstrapService(
-            _stateRepository.Object,
-            _userRepository.Object,
-            _transactionProvider.Object,
-            _tokenContext,
-            _auditContext,
-            _grantService.Object);
+        var service = new BootstrapService(CreateDependencies());
         ArrangeBootstrapStatus(BootstrapStatus.Uninitialized);
 
         var result = await service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest { Email = "admin@example.com" });
@@ -742,15 +733,31 @@ internal sealed class BootstrapServiceTests
     private BootstrapService CreateService(ISecurityNotificationService? notificationService = null, bool includeGrantService = true, IAuthenticationRateLimiter? rateLimiter = null)
     {
         return new BootstrapService(
-            _stateRepository.Object,
-            _userRepository.Object,
-            _transactionProvider.Object,
+            CreateDependencies(notificationService, includeGrantService, rateLimiter),
+            Options.Create(_options));
+    }
+
+    private BootstrapDependencies CreateDependencies(ISecurityNotificationService? notificationService = null, bool includeGrantService = true, IAuthenticationRateLimiter? rateLimiter = null)
+    {
+        return new BootstrapDependencies(
+            CreateStoreContext(),
             _tokenContext,
-            _auditContext,
-            includeGrantService ? _grantService.Object : null,
-            Options.Create(_options),
-            notificationService,
-            rateLimiter);
+            CreateInfrastructureContext(rateLimiter),
+            new IdentityAuditContext(_timeProvider, _securityEventSink.Object, notificationService),
+            includeGrantService ? _grantService.Object : null);
+    }
+
+    private BootstrapStoreContext CreateStoreContext()
+    {
+        return new BootstrapStoreContext(_stateRepository.Object, _userRepository.Object, _transactionProvider.Object);
+    }
+
+    private IdentityInfrastructureContext CreateInfrastructureContext(IAuthenticationRateLimiter? rateLimiter = null)
+    {
+        return new IdentityInfrastructureContext(
+            Mock.Of<IEmailSender>(),
+            rateLimiter ?? _rateLimiter.Object,
+            Mock.Of<IUriValidator>());
     }
 
     private void ArrangeBootstrapStatus(BootstrapStatus status)

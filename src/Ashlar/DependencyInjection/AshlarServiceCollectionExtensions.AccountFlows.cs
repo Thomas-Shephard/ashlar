@@ -65,6 +65,8 @@ public static partial class AshlarServiceCollectionExtensions
         }
 
         services.TryAddScoped<IBootstrapService, BootstrapService>();
+        services.TryAddScoped<BootstrapStoreContext>();
+        services.TryAddScoped<BootstrapDependencies>();
 
         return services;
     }
