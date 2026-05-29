@@ -825,6 +825,27 @@ internal sealed class PasskeyServiceTests
     }
 
     [Test]
+    public async Task StartFactorAsyncShouldRejectEmptyHandshakeChallengeSuccess()
+    {
+        var handshakes = new Mock<IAuthenticationHandshakeService>();
+        handshakes.Setup(h => h.BeginFactorChallengeAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success<AuthenticationHandshake>(null!));
+        var service = new PasskeyService(
+            new Mock<IUserRepository>().Object,
+            new Mock<ICredentialRepository>().Object,
+            new Mock<IPasskeyChallengeRepository>().Object,
+            new Mock<IPasskeyCeremonyValidator>().Object,
+            CreateDependencies(
+                authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object,
+                handshakeService: handshakes.Object,
+                tokenHasher: new TestTokenHasher()));
+
+        var result = await service.StartFactorAsync(new StartPasskeyFactorRequest("token"));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
+    }
+
+    [Test]
     public async Task StartFactorAsyncShouldExcludePrimaryPasskeyCredential()
     {
         var userId = Guid.NewGuid();
