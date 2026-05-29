@@ -26,6 +26,14 @@ public static class SecurityEventFailureReasons
     /// </summary>
     public const string UnprotectFailed = "unprotect_failed";
     /// <summary>
+    /// Defines the bootstrap setup authorization missing value.
+    /// </summary>
+    public const string BootstrapSetupAuthorizationMissing = "bootstrap_setup_authorization_missing";
+    /// <summary>
+    /// Defines the bootstrap setup authorization invalid value.
+    /// </summary>
+    public const string BootstrapSetupAuthorizationInvalid = "bootstrap_setup_authorization_invalid";
+    /// <summary>
     /// Defines the rate limited value.
     /// </summary>
     public const string RateLimited = "rate_limited";

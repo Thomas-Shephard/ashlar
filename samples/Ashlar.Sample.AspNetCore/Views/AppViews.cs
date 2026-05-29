@@ -409,8 +409,12 @@ internal static class AppViews
 
             applyLastSignInMethodHint();
 
-            setupForm('bootstrapForm', '/api/bootstrap/invitations', 'POST',
-                f => ({ email: f.querySelector('#bootstrapEmail').value, userName: f.querySelector('#bootstrapUsername').value }),
+            setupForm('bootstrapForm', '/api/bootstrap/first-admin', 'POST',
+                f => ({
+                    email: f.querySelector('#bootstrapEmail').value,
+                    userName: f.querySelector('#bootstrapUsername').value,
+                    setupSecret: f.querySelector('#bootstrapSetupSecret').value
+                }),
                 (r, div) => {
                     div.innerHTML = '<p class="badge badge-success" style="margin-bottom: 1rem;">Bootstrap complete!</p><button onclick="location.href=\'/\'">Go to Dashboard</button>';
                 }
@@ -511,6 +515,7 @@ internal static class AppViews
                 <form id="bootstrapForm">
                     <input type="email" id="bootstrapEmail" placeholder="admin@example.com" required />
                     <input type="text" id="bootstrapUsername" placeholder="Admin Username" required />
+                    <input type="password" id="bootstrapSetupSecret" placeholder="Setup Secret" required autocomplete="off" />
                     <button type="submit">Bootstrap System</button>
                 </form>
                 <div id="bootstrapFormResult"></div>

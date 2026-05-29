@@ -56,6 +56,21 @@ public static class AshlarConfigurationIssueCodes
     public const string BootstrapStateRepositoryMissing = "ASHLAR-CONFIG-BOOTSTRAP-STATE-REPOSITORY-MISSING";
 
     /// <summary>
+    /// Bootstrap options are invalid.
+    /// </summary>
+    public const string BootstrapOptionsInvalid = "ASHLAR-CONFIG-BOOTSTRAP-OPTIONS-INVALID";
+
+    /// <summary>
+    /// Bootstrap setup authorization is not configured.
+    /// </summary>
+    public const string BootstrapSetupAuthorizationMissing = "ASHLAR-CONFIG-BOOTSTRAP-SETUP-AUTHORIZATION-MISSING";
+
+    /// <summary>
+    /// Bootstrap grants are configured but authorization services are not configured.
+    /// </summary>
+    public const string BootstrapGrantServiceMissing = "ASHLAR-CONFIG-BOOTSTRAP-GRANT-SERVICE-MISSING";
+
+    /// <summary>
     /// The authentication handshake repository is not configured.
     /// </summary>
     public const string AuthenticationHandshakeRepositoryMissing = "ASHLAR-CONFIG-AUTHENTICATION-HANDSHAKE-REPOSITORY-MISSING";

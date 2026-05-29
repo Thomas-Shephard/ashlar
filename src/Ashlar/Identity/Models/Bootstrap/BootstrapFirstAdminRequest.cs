@@ -3,20 +3,20 @@ using Ashlar.Auditing;
 namespace Ashlar.Identity.Models.Bootstrap;
 
 /// <summary>
-/// Provides create bootstrap invitation request behavior.
+/// Describes the first administrator to create during installation bootstrap.
 /// </summary>
-public sealed class CreateBootstrapInvitationRequest
+public sealed class BootstrapFirstAdminRequest
 {
     /// <summary>
-    /// Gets or sets the email value.
+    /// Gets or sets the administrator email address.
     /// </summary>
     public required string Email { get; init; }
     /// <summary>
-    /// Gets or sets the user name value.
+    /// Gets or sets the optional display name for the administrator.
     /// </summary>
     public string? UserName { get; init; }
     /// <summary>
-    /// Gets or sets the tenant id value.
+    /// Gets or sets the tenant boundary for tenant-scoped bootstrap.
     /// </summary>
     public Guid? TenantId { get; init; }
     /// <summary>
@@ -24,11 +24,7 @@ public sealed class CreateBootstrapInvitationRequest
     /// </summary>
     public AuditContext? Audit { get; init; }
     /// <summary>
-    /// Gets or sets the expiry value.
+    /// Gets or sets the operator-controlled setup secret used to authorize bootstrap.
     /// </summary>
-    public TimeSpan? Expiry { get; init; }
-    /// <summary>
-    /// Gets or sets the metadata value.
-    /// </summary>
-    public string? Metadata { get; init; }
+    public string? SetupSecret { get; init; }
 }

@@ -7,13 +7,7 @@ internal static class BootstrapEndpoints
 {
     public static void MapBootstrapEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/bootstrap/status", async (IBootstrapService bootstrap, CancellationToken cancellationToken) =>
-        {
-            var status = await bootstrap.GetStatusAsync(cancellationToken);
-            return Results.Ok(new { status = status.ToString() });
-        });
-
-        app.MapPost("/api/bootstrap/invitations", async Task<IResult> (
+        app.MapPost("/api/bootstrap/first-admin", async Task<IResult> (
             HttpRequest httpRequest,
             IBootstrapService bootstrap,
             IUserRepository users,
@@ -21,37 +15,33 @@ internal static class BootstrapEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var request = await BootstrapInvitationRequest.ReadAsync(httpRequest, cancellationToken);
-            var email = string.IsNullOrWhiteSpace(request?.Email) ? "admin@example.com" : request.Email;
-            var userName = string.IsNullOrWhiteSpace(request?.UserName) ? "Admin" : request.UserName;
-
-            var createResult = await bootstrap.CreateBootstrapInvitationAsync(new CreateBootstrapInvitationRequest
+            var request = await BootstrapFirstAdminEndpointRequest.ReadAsync(httpRequest, cancellationToken);
+            if (request == null
+                || string.IsNullOrWhiteSpace(request.Email)
+                || string.IsNullOrWhiteSpace(request.UserName)
+                || string.IsNullOrWhiteSpace(request.SetupSecret))
             {
-                Email = email,
-                UserName = userName,
+                return Results.BadRequest(new { error = "bootstrap_request_failed" });
+            }
+
+            var result = await bootstrap.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+            {
+                Email = request.Email,
+                UserName = request.UserName,
                 TenantId = httpContext.GetAshlarTenantId(),
-                Audit = httpContext.ToAuditContext()
-            }, cancellationToken);
+                Audit = httpContext.ToAuditContext(),
+                SetupSecret = request.SetupSecret
+            }, httpContext.ToAuthenticationContext(), cancellationToken);
 
-            if (!createResult.Succeeded || createResult.Value == null)
+            if (!result.Succeeded)
             {
-                return Results.BadRequest(SampleResultErrors.From(createResult));
+                return Results.BadRequest(new { error = "bootstrap_request_failed" });
             }
 
-            var acceptResult = await bootstrap.AcceptBootstrapInvitationAsync(
-                new AcceptInvitationRequest { Token = createResult.Value, UserName = userName },
-                httpContext.ToAuthenticationContext(),
-                cancellationToken);
+            var user = await users.GetUserByIdAsync(result.Value, cancellationToken);
+            await signInManager.SignInAsync(httpContext, result.Value, httpContext.ToSessionRequest(user), cancellationToken);
 
-            if (!acceptResult.Succeeded || acceptResult.Value == Guid.Empty)
-            {
-                return Results.BadRequest(SampleResultErrors.From(acceptResult));
-            }
-
-            var user = await users.GetUserByIdAsync(acceptResult.Value, cancellationToken);
-            await signInManager.SignInAsync(httpContext, acceptResult.Value, httpContext.ToSessionRequest(user), cancellationToken);
-
-            return Results.Ok(new { userId = acceptResult.Value });
+            return Results.Ok(new { userId = result.Value });
         });
     }
 }

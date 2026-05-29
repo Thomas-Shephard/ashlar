@@ -210,6 +210,97 @@ internal sealed class AshlarConfigurationValidatorTests
     }
 
     [Test]
+    public async Task CoreCheckReportsBootstrapSetupAuthorizationErrorWhenBootstrapHasNoSecureGate()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarBootstrap();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        AssertIssue(result, AshlarConfigurationIssueCodes.BootstrapSetupAuthorizationMissing, AshlarConfigurationIssueSeverity.Error);
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotReportBootstrapSetupAuthorizationIssueWhenSecretIsConfigured()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarBootstrap(options => options.SetupSecret = "configured-secret");
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.BootstrapSetupAuthorizationMissing));
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotRequireAuthorizationForBootstrapWithoutGrants()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarBootstrap(options => options.SetupSecret = "configured-secret");
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.BootstrapGrantServiceMissing));
+    }
+
+    [Test]
+    public async Task CoreCheckReportsBootstrapGrantServiceMissingWhenGrantsAreConfiguredWithoutAuthorization()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarBootstrap(options =>
+        {
+            options.SetupSecret = "configured-secret";
+            options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
+        });
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        AssertIssue(result, AshlarConfigurationIssueCodes.BootstrapGrantServiceMissing, AshlarConfigurationIssueSeverity.Error);
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotReportBootstrapGrantServiceMissingWhenAuthorizationIsRegistered()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarBootstrap(options =>
+        {
+            options.SetupSecret = "configured-secret";
+            options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
+        });
+        services.AddAshlarAuthorization();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.BootstrapGrantServiceMissing));
+    }
+
+    [Test]
+    public async Task CoreCheckReportsBootstrapOptionsIssueInsteadOfThrowingWhenOptionsAreInvalid()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarBootstrap(options =>
+        {
+            options.SetupSecret = "configured-secret";
+            options.Grants.Add(new BootstrapGrantTemplate());
+        });
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        AssertIssue(result, AshlarConfigurationIssueCodes.BootstrapOptionsInvalid, AshlarConfigurationIssueSeverity.Error);
+    }
+
+    [Test]
     public async Task CoreCheckDoesNotRequireCredentialRepositoryForInvitationServiceAlone()
     {
         var services = new ServiceCollection();
@@ -243,6 +334,7 @@ internal sealed class AshlarConfigurationValidatorTests
         {
             AssertIssue(result, AshlarConfigurationIssueCodes.UserRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
             AssertIssue(result, AshlarConfigurationIssueCodes.BootstrapStateRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.InvitationRepositoryMissing));
             Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.CredentialRepositoryMissing));
         }
     }

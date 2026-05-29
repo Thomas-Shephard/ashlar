@@ -2,263 +2,158 @@ using Ashlar.Auditing;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.Identity.Notifications;
+using Ashlar.Identity.RateLimiting;
+using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Security.Tokens;
 using Microsoft.Extensions.Options;
-using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Ashlar.Identity.Features.Bootstrap;
 
 /// <summary>
-/// Provides bootstrap service behavior.
+/// Creates the first administrator for an uninitialized Ashlar installation.
 /// </summary>
-/// <param name="stateRepository">The state repository value.</param>
-/// <param name="invitationService">The invitation service value.</param>
-/// <param name="invitationDependencies">The invitation dependencies value.</param>
-/// <param name="grantService">The grant service value.</param>
-/// <param name="options">The options value.</param>
-/// <param name="notificationService">The notification service value.</param>
+/// <param name="dependencies">The dependencies required by the bootstrap workflow.</param>
+/// <param name="options">Configures the setup secret and first-admin grants.</param>
 internal sealed class BootstrapService(
-    IBootstrapStateRepository stateRepository,
-    IInvitationService invitationService,
-    InvitationDependencies invitationDependencies,
-    IAuthorizationGrantService grantService,
-    IOptions<BootstrapOptions>? options = null,
-    ISecurityNotificationService? notificationService = null)
+    BootstrapDependencies dependencies,
+    IOptions<BootstrapOptions>? options = null)
     : IBootstrapService
 {
-    private const string BootstrapMetadataKey = "ashlar.bootstrap";
-    private readonly IBootstrapStateRepository _stateRepository = stateRepository ?? throw new ArgumentNullException(nameof(stateRepository));
-    private readonly IInvitationService _invitationService = invitationService ?? throw new ArgumentNullException(nameof(invitationService));
-    private readonly InvitationDependencies _invitationDependencies = invitationDependencies ?? throw new ArgumentNullException(nameof(invitationDependencies));
-    private readonly IAuthorizationGrantService _grantService = grantService ?? throw new ArgumentNullException(nameof(grantService));
+    private readonly BootstrapDependencies _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
     private readonly IOptions<BootstrapOptions> _options = options ?? Options.Create(new BootstrapOptions());
-    private readonly SecurityEventEmitter _securityEvents = new(invitationDependencies.SecurityEventSink, invitationDependencies.TimeProvider);
-    private readonly SecurityNotificationEmitter _notifications = new(notificationService);
+    private readonly IAuthorizationGrantService? _grantService = ValidateGrantService(dependencies.GrantService, options?.Value ?? new BootstrapOptions());
+    private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider);
+    private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
+    private readonly AuthenticationRateLimitChecker _rateLimitChecker = new(dependencies.RateLimiter);
 
     /// <summary>
-    /// Performs the get status <see langword="async" /> operation and returns the result.
+    /// Gets whether the installation has already been initialized.
     /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>The current bootstrap status.</returns>
     public Task<BootstrapStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
-        return _stateRepository.GetBootstrapStatusAsync(cancellationToken);
+        return _dependencies.StateRepository.GetBootstrapStatusAsync(cancellationToken);
     }
 
     /// <summary>
-    /// Performs the create bootstrap invitation <see langword="async" /> operation and returns the result.
+    /// Creates the first administrator for an uninitialized installation.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
-    public async Task<Result<string>> CreateBootstrapInvitationAsync(CreateBootstrapInvitationRequest request, CancellationToken cancellationToken = default)
+    /// <param name="request">The first-admin details and setup secret supplied by the operator.</param>
+    /// <param name="context">Optional request context for auditing and notifications.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>The created administrator user ID when bootstrap succeeds; otherwise a failure describing why bootstrap was rejected.</returns>
+    public async Task<Result<Guid>> BootstrapFirstAdminAsync(BootstrapFirstAdminRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var email = IdentityNormalization.SanitizeEmailForDelivery(request.Email);
+        var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
 
         if (await GetStatusAsync(cancellationToken) == BootstrapStatus.Initialized)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
-                EventType = AshlarSecurityEventTypes.BootstrapInvitationCreated,
+                EventType = AshlarSecurityEventTypes.BootstrapRequested,
                 Outcome = SecurityEventOutcomes.Failure,
                 TenantId = request.TenantId,
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.AlreadyInitialized.Value,
-                Properties = new Dictionary<string, string> { ["email"] = request.Email }
+                Properties = AddEmailIfEnabled([], email)
             }, cancellationToken);
-            return Result.Failure<string>(AshlarFailureCodes.AlreadyInitialized);
+            return Result.Failure<Guid>(AshlarFailureCodes.AlreadyInitialized);
         }
 
-        var token = _invitationDependencies.TokenGenerator.GenerateToken();
-        var tokenHash = _invitationDependencies.TokenHasher.HashToken(token);
-        var now = _invitationDependencies.TimeProvider.GetUtcNow();
-        var email = IdentityNormalization.SanitizeEmailForDelivery(request.Email);
-        var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
-
-        var metadataDict = new Dictionary<string, object>();
-        if (!string.IsNullOrWhiteSpace(request.Metadata))
+        if (!await CheckRateLimitAsync(request.TenantId, context, cancellationToken))
         {
-            try
-            {
-                var existingMetadata = JsonSerializer.Deserialize<Dictionary<string, object>>(request.Metadata);
-                if (existingMetadata != null)
-                {
-                    metadataDict = existingMetadata;
-                }
-            }
-            catch (JsonException)
-            {
-                await _securityEvents.RecordAsync(new SecurityEventDescriptor
-                {
-                    EventType = AshlarSecurityEventTypes.BootstrapInvitationCreated,
-                    Outcome = SecurityEventOutcomes.Failure,
-                    TenantId = request.TenantId,
-                    Audit = request.Audit,
-                    FailureReason = AshlarFailureCodes.InvalidMetadataFormat.Value,
-                    Properties = new Dictionary<string, string> { ["email"] = email }
-                }, cancellationToken);
-                return Result.Failure<string>(AshlarFailureCodes.InvalidMetadataFormat);
-            }
+            return Result.Failure<Guid>(AshlarFailureCodes.RateLimited);
         }
-        metadataDict[BootstrapMetadataKey] = true;
-        var metadata = JsonSerializer.Serialize(metadataDict);
 
-        var invitation = new UserInvitation
-        {
-            Id = Guid.NewGuid(),
-            Email = email,
-            TenantId = request.TenantId,
-            TokenHash = tokenHash,
-            CreatedAt = now,
-            UpdatedAt = now,
-            ExpiresAt = now.Add(request.Expiry ?? TimeSpan.FromHours(24)), // Default bootstrap expiry
-            Metadata = metadata,
-            Version = Guid.NewGuid().ToString()
-        };
-
-        await using var transaction = await _invitationDependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
-
-        // Ensure we are still uninitialized within the transaction if the repo supports it.
-        // For now, we rely on the repository implementation to handle concurrency if it can.
-
-        await _invitationDependencies.InvitationRepository.RevokeInvitationsByEmailAsync(
-            normalizedEmail,
+        if (!await AuthorizeSetupAsync(
+            request.SetupSecret,
             request.TenantId,
-            cancellationToken);
-
-        await _invitationDependencies.InvitationRepository.CreateInvitationAsync(invitation, cancellationToken);
-
-        transaction.OnCommitted(async ct =>
+            request.Audit,
+            context,
+            cancellationToken))
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.BootstrapInvitationCreated,
-                Outcome = SecurityEventOutcomes.Success,
-                TenantId = invitation.TenantId,
-                Audit = request.Audit,
-                Properties = new Dictionary<string, string>
-                {
-                    ["invitation_id"] = invitation.Id.ToString(),
-                    ["email"] = email
-                }
-            }, ct);
-        });
+            return Result.Failure<Guid>(AshlarFailureCodes.InvalidSecret);
+        }
 
-        await transaction.CommitAsync(cancellationToken);
-
-        return Result.Success(token);
+        return await CompleteFirstAdminBootstrapAsync(request, email, normalizedEmail, context, cancellationToken);
     }
 
-    /// <summary>
-    /// Performs the accept bootstrap invitation <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
-    public async Task<Result<Guid>> AcceptBootstrapInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
+    private async Task<Result<Guid>> CompleteFirstAdminBootstrapAsync(BootstrapFirstAdminRequest request, string email, string normalizedEmail, AuthenticationContext? context, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(request);
-
-        if (!SecureTokenHashing.TryHashToken(_invitationDependencies.TokenHasher, request.Token, out var tokenHash))
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.BootstrapCompleted,
-                Outcome = SecurityEventOutcomes.Failure,
-                TenantId = context?.TenantId,
-                FailureReason = AshlarFailureCodes.InvalidInvitation.Value,
-                Context = context
-            }, cancellationToken);
-            return Result.Failure<Guid>(AshlarFailureCodes.InvalidInvitation);
-        }
-
-        var invitation = await _invitationDependencies.InvitationRepository.GetInvitationByTokenHashAsync(tokenHash, cancellationToken);
-
-        if (invitation == null || !invitation.IsAvailable(_invitationDependencies.TimeProvider.GetUtcNow()))
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.BootstrapCompleted,
-                Outcome = SecurityEventOutcomes.Failure,
-                TenantId = invitation?.TenantId ?? context?.TenantId,
-                FailureReason = AshlarFailureCodes.InvalidInvitation.Value,
-                Context = context
-            }, cancellationToken);
-            return Result.Failure<Guid>(AshlarFailureCodes.InvalidInvitation);
-        }
-
-        if (!IsBootstrapInvitation(invitation))
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.BootstrapCompleted,
-                Outcome = SecurityEventOutcomes.Failure,
-                TenantId = invitation.TenantId,
-                FailureReason = AshlarFailureCodes.NotBootstrapInvitation.Value,
-                Context = context
-            }, cancellationToken);
-            return Result.Failure<Guid>(AshlarFailureCodes.NotBootstrapInvitation);
-        }
-
         if (await GetStatusAsync(cancellationToken) == BootstrapStatus.Initialized)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
-                TenantId = invitation.TenantId,
+                TenantId = request.TenantId,
+                Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.AlreadyInitialized.Value,
                 Context = context
             }, cancellationToken);
             return Result.Failure<Guid>(AshlarFailureCodes.AlreadyInitialized);
         }
 
-        var now = _invitationDependencies.TimeProvider.GetUtcNow();
-
-        // We use a transaction to ensure atomicity of invitation acceptance, grant assignment, and state update.
-        await using var transaction = await _invitationDependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
-
-        var result = await _invitationService.AcceptInvitationAsync(request, context, cancellationToken);
-
-        if (!result.Succeeded || result.Value == Guid.Empty)
+        var now = _dependencies.TimeProvider.GetUtcNow();
+        var grants = _options.Value.Grants;
+        var authorizationGrantService = _grantService;
+        if (grants.Count > 0 && authorizationGrantService is null)
         {
-            return result;
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.BootstrapCompleted,
+                Outcome = SecurityEventOutcomes.Failure,
+                TenantId = request.TenantId,
+                Audit = request.Audit,
+                Context = context,
+                FailureReason = AshlarFailureCodes.InvalidConfiguration.Value
+            }, cancellationToken);
+
+            return Result.Failure<Guid>(AshlarFailureCodes.InvalidConfiguration);
         }
 
-        var userId = result.Value;
+        await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
+        var createdUser = await CreateOrActivateFirstAdminUserAsync(normalizedEmail, email, request.UserName, request.TenantId, now, cancellationToken);
+        var userId = createdUser.UserId;
 
-        // Assign configured grants
-        foreach (var template in _options.Value.Grants)
+        if (authorizationGrantService is not null)
         {
-            var grantResult = await _grantService.CreateGrantAsync(new CreateAuthorizationGrantRequest(
-                UserId: userId,
-                TenantId: template.TenantId,
-                ScopeType: template.ScopeType,
-                ScopeId: template.ScopeId,
-                Role: template.Role,
-                Permission: template.Permission,
-                Audit: new AuditContext(ActorUserId: context?.UserId, IpAddress: context?.IpAddress, UserAgent: context?.UserAgent, CorrelationId: context?.CorrelationId)
-            ), cancellationToken);
-
-            if (!grantResult.Succeeded)
+            foreach (var template in grants)
             {
-                await transaction.RollbackAsync(cancellationToken);
-                await _securityEvents.RecordAsync(new SecurityEventDescriptor
+                var grantResult = await authorizationGrantService.CreateGrantAsync(new CreateAuthorizationGrantRequest(
+                    UserId: userId,
+                    TenantId: template.TenantId,
+                    ScopeType: template.ScopeType,
+                    ScopeId: template.ScopeId,
+                    Role: template.Role,
+                    Permission: template.Permission,
+                    Audit: new AuditContext(ActorUserId: context?.UserId, IpAddress: context?.IpAddress, UserAgent: context?.UserAgent, CorrelationId: context?.CorrelationId)
+                ), cancellationToken);
+
+                if (!grantResult.Succeeded)
                 {
-                    EventType = AshlarSecurityEventTypes.BootstrapCompleted,
-                    Outcome = SecurityEventOutcomes.Failure,
-                    FailureReason = grantResult.FailureCode?.Value ?? AshlarFailureCodes.GrantCreationFailed.Value,
-                    UserId = userId,
-                    TenantId = invitation.TenantId,
-                    Context = context
-                }, cancellationToken);
-                return Result.Failure<Guid>(grantResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.GrantCreationFailed));
+                    await transaction.RollbackAsync(cancellationToken);
+                    await _securityEvents.RecordAsync(new SecurityEventDescriptor
+                    {
+                        EventType = AshlarSecurityEventTypes.BootstrapCompleted,
+                        Outcome = SecurityEventOutcomes.Failure,
+                        FailureReason = grantResult.FailureCode?.Value ?? AshlarFailureCodes.GrantCreationFailed.Value,
+                        UserId = userId,
+                        TenantId = request.TenantId,
+                        Audit = request.Audit,
+                        Context = context
+                    }, cancellationToken);
+                    return Result.Failure<Guid>(grantResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.GrantCreationFailed));
+                }
             }
         }
 
-        // Mark as initialized
-        var initialized = await _stateRepository.MarkAsInitializedAsync(userId, now, cancellationToken);
+        var initialized = await _dependencies.StateRepository.MarkAsInitializedAsync(userId, now, cancellationToken);
         if (!initialized)
         {
             // This should only happen if someone else initialized the system concurrently.
@@ -267,7 +162,8 @@ internal sealed class BootstrapService(
             {
                 EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                 Outcome = SecurityEventOutcomes.Failure,
-                TenantId = invitation.TenantId,
+                TenantId = request.TenantId,
+                Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.AlreadyInitialized.Value,
                 Context = context
             }, cancellationToken);
@@ -276,16 +172,30 @@ internal sealed class BootstrapService(
 
         transaction.OnCommitted(async ct =>
         {
+            if (createdUser.IsNewUser)
+            {
+                await _securityEvents.RecordAsync(new SecurityEventDescriptor
+                {
+                    EventType = AshlarSecurityEventTypes.UserCreated,
+                    Outcome = SecurityEventOutcomes.Success,
+                    UserId = userId,
+                    TenantId = request.TenantId,
+                    Audit = request.Audit,
+                    Context = context
+                }, ct);
+            }
+
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.BootstrapCompleted,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = userId,
-                TenantId = invitation.TenantId,
+                TenantId = request.TenantId,
+                Audit = request.Audit,
                 Context = context
             }, ct);
 
-            var notifiedUser = await _invitationDependencies.UserRepository.GetUserByIdAsync(userId, ct);
+            var notifiedUser = await _dependencies.UserRepository.GetUserByIdAsync(userId, ct);
             if (notifiedUser != null)
             {
                 await _notifications.NotifyAsync(SecurityNotificationType.BootstrapCompleted, notifiedUser, now, context: context, cancellationToken: ct);
@@ -294,24 +204,154 @@ internal sealed class BootstrapService(
 
         await transaction.CommitAsync(cancellationToken);
 
-        return result;
+        return Result.Success(userId);
     }
 
-    private static bool IsBootstrapInvitation(UserInvitation invitation)
+    private async Task<bool> CheckRateLimitAsync(Guid? tenantId, AuthenticationContext? context, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(invitation.Metadata))
+        var sourceBucket = AuthenticationRateLimitDimensions.Source(context);
+        var rateLimit = await _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(
+            "bootstrap-first-admin",
+            AuthenticationRateLimitDimensions.DimensionName(sourceBucket),
+            sourceBucket,
+            _options.Value.AttemptRateLimit)
+        {
+            Context = context,
+            TenantId = tenantId
+        }, cancellationToken);
+
+        if (rateLimit.IsAllowed)
+        {
+            return true;
+        }
+
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.BootstrapRequested,
+            Outcome = SecurityEventOutcomes.Failure,
+            TenantId = tenantId,
+            Context = context,
+            FailureReason = AshlarFailureCodes.RateLimited.Value
+        }, cancellationToken);
+        return false;
+    }
+
+    private static IAuthorizationGrantService? ValidateGrantService(IAuthorizationGrantService? grantService, BootstrapOptions options)
+    {
+        if (options.Grants.Count > 0 && grantService is null)
+        {
+            throw new InvalidOperationException("Bootstrap grants require IAuthorizationGrantService. Register Ashlar authorization services or remove BootstrapOptions.Grants.");
+        }
+
+        return grantService;
+    }
+
+    private async Task<BootstrapUser> CreateOrActivateFirstAdminUserAsync(
+        string normalizedEmail,
+        string email,
+        string? requestedUserName,
+        Guid? tenantId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var user = await _dependencies.UserRepository.GetUserByEmailAsync(normalizedEmail, tenantId, cancellationToken);
+        if (user == null)
+        {
+            var userId = Guid.NewGuid();
+            await _dependencies.UserRepository.CreateUserAsync(new AshlarUser
+            {
+                Id = userId,
+                Email = email,
+                Name = requestedUserName,
+                IsActive = true,
+                EmailVerifiedAt = now,
+                TenantId = tenantId
+            }, cancellationToken);
+            return new BootstrapUser(userId, IsNewUser: true);
+        }
+
+        if (!user.IsActive || !user.EmailVerifiedAt.HasValue)
+        {
+            await _dependencies.UserRepository.UpdateUserAsync(new AshlarUser
+            {
+                Id = user.Id,
+                Email = user.Email,
+                Name = requestedUserName ?? user.Name,
+                IsActive = true,
+                EmailVerifiedAt = user.EmailVerifiedAt ?? now,
+                TenantId = tenantId
+            }, cancellationToken);
+        }
+
+        return new BootstrapUser(user.Id, IsNewUser: false);
+    }
+
+    private async Task<bool> AuthorizeSetupAsync(
+        string? setupSecret,
+        Guid? tenantId,
+        AuditContext? audit,
+        AuthenticationContext? context,
+        CancellationToken cancellationToken)
+    {
+        var bootstrapOptions = _options.Value;
+        var failureReason = GetSetupAuthorizationFailureReason(bootstrapOptions, setupSecret);
+        if (failureReason is null)
+        {
+            return true;
+        }
+
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.BootstrapRequested,
+            Outcome = SecurityEventOutcomes.Failure,
+            TenantId = tenantId,
+            Audit = audit,
+            Context = context,
+            FailureReason = failureReason
+        }, cancellationToken);
+
+        return false;
+    }
+
+    private string? GetSetupAuthorizationFailureReason(BootstrapOptions bootstrapOptions, string? setupSecret)
+    {
+        if (string.IsNullOrWhiteSpace(bootstrapOptions.SetupSecret)
+            || !SecureTokenHashing.TryHashToken(_dependencies.TokenContext.Hasher, bootstrapOptions.SetupSecret, out var configuredHash))
+        {
+            return SecurityEventFailureReasons.BootstrapSetupAuthorizationMissing;
+        }
+
+        if (!SecureTokenHashing.TryHashToken(_dependencies.TokenContext.Hasher, setupSecret ?? string.Empty, out var suppliedHash))
+        {
+            return SecurityEventFailureReasons.BootstrapSetupAuthorizationInvalid;
+        }
+
+        return FixedTimeEquals(suppliedHash, configuredHash)
+            ? null
+            : SecurityEventFailureReasons.BootstrapSetupAuthorizationInvalid;
+    }
+
+    private static bool FixedTimeEquals(string suppliedHash, string configuredHash)
+    {
+        var suppliedBytes = Encoding.UTF8.GetBytes(suppliedHash);
+        var configuredBytes = Encoding.UTF8.GetBytes(configuredHash);
+        if (suppliedBytes.Length != configuredBytes.Length)
         {
             return false;
         }
 
-        try
-        {
-            using var doc = JsonDocument.Parse(invitation.Metadata);
-            return doc.RootElement.TryGetProperty(BootstrapMetadataKey, out var prop) && prop.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
+        return CryptographicOperations.FixedTimeEquals(suppliedBytes, configuredBytes);
     }
+
+    private Dictionary<string, string> AddEmailIfEnabled(Dictionary<string, string> properties, string email)
+    {
+        if (_options.Value.StoreEmailInAudit)
+        {
+            properties["email"] = email;
+        }
+
+        return properties;
+    }
+
+    private sealed record BootstrapUser(Guid UserId, bool IsNewUser);
 }

@@ -32,6 +32,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
 
         SetSampleEnvironment("Ashlar__ConnectionString", GetConnectionString());
         SetSampleEnvironment("Ashlar__PublicAppUrl", "http://localhost");
+        SetSampleEnvironment("Ashlar__Bootstrap__SetupSecret", "sample-bootstrap-secret");
         SetSampleEnvironment("Ashlar__Cookie__Secure", "false");
         SetSampleEnvironment("Ashlar__Outbox__PollingInterval", "01:00:00");
         SetSampleEnvironment("Ashlar__Cleanup__CleanupInterval", "01:00:00");
@@ -85,9 +86,6 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     [Test]
     public async Task SampleStackSupportsRepresentativeIdentityAuthorizationAndEmailFlows()
     {
-        var status = await GetJsonAsync(AdminClient, "/api/bootstrap/status");
-        Assert.That(status.RootElement.GetProperty("status").GetString(), Is.EqualTo("Uninitialized"));
-
         var adminUserId = await BootstrapFirstAdminAsync();
         await AssertGoogleUiHiddenWhenNotConfiguredAsync(AdminClient);
         await AssertGitHubUiHiddenWhenNotConfiguredAsync(AdminClient);
@@ -213,6 +211,27 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     }
 
     [Test]
+    public void SampleStartupFailsWhenBootstrapSetupSecretIsMissing()
+    {
+        var previousSecret = Environment.GetEnvironmentVariable("Ashlar__Bootstrap__SetupSecret");
+        try
+        {
+            Environment.SetEnvironmentVariable("Ashlar__Bootstrap__SetupSecret", null);
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+            {
+                using var factory = new SampleApplicationFactory(GetConnectionString());
+                using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+            });
+
+            Assert.That(exception?.Message, Does.Contain("Ashlar:Bootstrap:SetupSecret"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("Ashlar__Bootstrap__SetupSecret", previousSecret);
+        }
+    }
+
+    [Test]
     public async Task SampleGitHubAccountSecurityRoutesRequireAuthorizationAndFreshMfaWhenAvailable()
     {
         Environment.SetEnvironmentVariable("Authentication__GitHub__ClientId", "sample-client-id");
@@ -272,7 +291,22 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
 
     private async Task<Guid> BootstrapFirstAdminAsync()
     {
-        var response = await AdminClient.PostAsJsonAsync("/api/bootstrap/invitations", new { email = "admin@example.com", userName = "Admin" });
+        var publicResponse = await AdminClient.PostAsJsonAsync("/api/bootstrap/first-admin", new { email = "public@example.com", userName = "Public" });
+        Assert.That(publicResponse.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        using (var publicJson = await JsonDocument.ParseAsync(await publicResponse.Content.ReadAsStreamAsync()))
+        {
+            Assert.That(publicJson.RootElement.GetProperty("error").GetString(), Is.EqualTo("bootstrap_request_failed"));
+        }
+
+        using var malformedContent = new StringContent("{", System.Text.Encoding.UTF8, "application/json");
+        var malformedResponse = await AdminClient.PostAsync("/api/bootstrap/first-admin", malformedContent);
+        Assert.That(malformedResponse.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        using (var malformedJson = await JsonDocument.ParseAsync(await malformedResponse.Content.ReadAsStreamAsync()))
+        {
+            Assert.That(malformedJson.RootElement.GetProperty("error").GetString(), Is.EqualTo("bootstrap_request_failed"));
+        }
+
+        var response = await AdminClient.PostAsJsonAsync("/api/bootstrap/first-admin", new { email = "admin@example.com", userName = "Admin", setupSecret = "sample-bootstrap-secret" });
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
         var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());

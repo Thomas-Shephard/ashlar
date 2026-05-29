@@ -6,9 +6,9 @@ using Testcontainers.PostgreSql;
 
 namespace Ashlar.Sample.AspNetCore;
 
-internal sealed record BootstrapInvitationRequest(string? Email, string? UserName)
+internal sealed record BootstrapFirstAdminEndpointRequest(string? Email, string? UserName, string? SetupSecret)
 {
-    public static async Task<BootstrapInvitationRequest?> ReadAsync(HttpRequest request, CancellationToken cancellationToken)
+    public static async Task<BootstrapFirstAdminEndpointRequest?> ReadAsync(HttpRequest request, CancellationToken cancellationToken)
     {
         if (request.ContentLength is 0)
         {
@@ -20,10 +20,17 @@ internal sealed record BootstrapInvitationRequest(string? Email, string? UserNam
             return null;
         }
 
-        return await JsonSerializer.DeserializeAsync<BootstrapInvitationRequest>(
-            request.Body,
-            JsonSerializerOptions.Web,
-            cancellationToken);
+        try
+        {
+            return await JsonSerializer.DeserializeAsync<BootstrapFirstAdminEndpointRequest>(
+                request.Body,
+                JsonSerializerOptions.Web,
+                cancellationToken);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 }
 

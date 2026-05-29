@@ -507,50 +507,44 @@ Ashlar includes generic bootstrap primitives that allow a newly self-hosted appl
 Register bootstrap services:
 
 ```csharp
+var setupSecret = configuration["Bootstrap:SetupSecret"]
+    ?? throw new InvalidOperationException("Bootstrap setup secret is required.");
+
 services.AddAshlarBootstrap(options =>
 {
+    options.SetupSecret = setupSecret;
     options.Grants.Add(new BootstrapGrantTemplate
     {
         Role = "admin"
     });
 });
+services.AddAshlarAuthorization();
 ```
 
-Check bootstrap status and create the first-admin invitation:
+Ashlar hashes `SetupSecret` internally before comparison.
+
+Check bootstrap status and create the first administrator:
 
 ```csharp
 var bootstrap = httpContext.RequestServices.GetRequiredService<IBootstrapService>();
 
 if (await bootstrap.GetStatusAsync() == BootstrapStatus.Uninitialized)
 {
-    var result = await bootstrap.CreateBootstrapInvitationAsync(new CreateBootstrapInvitationRequest
+    var result = await bootstrap.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
     {
-        Email = "admin@example.com"
+        Email = "admin@example.com",
+        UserName = "Admin User",
+        SetupSecret = operatorSuppliedSetupSecret
     });
 
     if (result.Succeeded)
     {
-        // Display result.Token to the administrator
+        // The system is now initialized and the user has 'admin' role.
     }
 }
 ```
 
-Accept the bootstrap invitation:
-
-```csharp
-var result = await bootstrap.AcceptBootstrapInvitationAsync(new AcceptInvitationRequest
-{
-    Token = tokenFromUrl,
-    UserName = "Admin User"
-});
-
-if (result.Succeeded)
-{
-    // The system is now initialized and the user has 'admin' role.
-}
-```
-
-Bootstrap is available only while the application is uninitialized. Initialization is determined by a persistent marker in the database. Accepting a bootstrap invitation is atomic, single-use, and assigns all configured grants to the new user before marking the system as initialized.
+Bootstrap is available only while the application is uninitialized. Initialization is determined by a persistent marker in the database. First-admin bootstrap is atomic, single-use, and assigns all configured grants to the new user before marking the system as initialized.
 
 ## Recovery Codes
 Ashlar includes a framework-neutral service for generating and verifying backup recovery codes. These are typically used as a fallback authentication method when a user loses access to their primary multi-factor authentication device.

@@ -68,8 +68,15 @@ internal static class ServiceCollectionExtensions
             });
         }
 
+        var bootstrapSetupSecret = configuration["Ashlar:Bootstrap:SetupSecret"];
+        if (string.IsNullOrWhiteSpace(bootstrapSetupSecret))
+        {
+            throw new InvalidOperationException("The sample requires Ashlar:Bootstrap:SetupSecret for first-admin bootstrap.");
+        }
+
         services.AddAshlarBootstrap(options =>
         {
+            options.SetupSecret = bootstrapSetupSecret;
             options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
         });
         services.AddAshlarAuthorization();
