@@ -39,6 +39,7 @@ internal sealed class EmailChangeService(
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
     private readonly ILogger<EmailChangeService> _logger = logger ?? NullLogger<EmailChangeService>.Instance;
     private readonly AuthenticationRateLimitChecker _rateLimitChecker = new(dependencies.RateLimiter);
+    private readonly EmailFlowVerificationRateLimitChecker _verificationRateLimits = new(new AuthenticationRateLimitChecker(dependencies.RateLimiter), VerifyPurpose);
 
     /// <summary>
     /// Creates an email-change verification credential and sends the confirmation message.
@@ -98,7 +99,7 @@ internal sealed class EmailChangeService(
         {
             UserId = user.Id,
             TenantId = (user as ITenantUser)?.TenantId,
-            Context = ToAuthenticationContext(request.Audit)
+            Context = EmailFlowRateLimitHelpers.ToAuthenticationContext(request.Audit)
         }, cancellationToken);
 
         if (!rateLimit.IsAllowed)
@@ -212,8 +213,8 @@ internal sealed class EmailChangeService(
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Token);
 
-        var context = ToAuthenticationContext(request.Audit);
-        var rateLimit = await CheckVerificationRateLimitAsync(AuthenticationRateLimitDimensions.Source(context), request.UserId, context, cancellationToken);
+        var context = EmailFlowRateLimitHelpers.ToAuthenticationContext(request.Audit);
+        var rateLimit = await _verificationRateLimits.CheckAsync(AuthenticationRateLimitDimensions.Source(context), request.UserId, context, _options.Value.VerificationRateLimit, cancellationToken);
 
         if (!rateLimit.IsAllowed)
         {
@@ -241,7 +242,7 @@ internal sealed class EmailChangeService(
             return Result.Failure(AshlarFailureCodes.InvalidOrExpiredToken, InvalidOrExpiredTokenMessage);
         }
 
-        var tokenRateLimit = await CheckVerificationRateLimitAsync(AuthenticationRateLimitDimensions.TokenHash(tokenHash), request.UserId, context, cancellationToken);
+        var tokenRateLimit = await _verificationRateLimits.CheckAsync(AuthenticationRateLimitDimensions.TokenHash(tokenHash), request.UserId, context, _options.Value.VerificationRateLimit, cancellationToken);
         if (!tokenRateLimit.IsAllowed)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -255,7 +256,7 @@ internal sealed class EmailChangeService(
             return Result.Failure(AshlarFailureCodes.RateLimited, "Too many attempts.");
         }
 
-        var userRateLimit = await CheckVerificationRateLimitAsync(AuthenticationRateLimitDimensions.User(request.UserId), request.UserId, context, cancellationToken);
+        var userRateLimit = await _verificationRateLimits.CheckAsync(AuthenticationRateLimitDimensions.User(request.UserId), request.UserId, context, _options.Value.VerificationRateLimit, cancellationToken);
         if (!userRateLimit.IsAllowed)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -396,22 +397,6 @@ internal sealed class EmailChangeService(
         await transaction.CommitAsync(cancellationToken);
 
         return Result.Success();
-    }
-
-    private static AuthenticationContext? ToAuthenticationContext(AuditContext? audit)
-    {
-        return audit == null
-            ? null
-            : new AuthenticationContext { IpAddress = audit.IpAddress, CorrelationId = audit.CorrelationId };
-    }
-
-    private Task<RateLimitDecision> CheckVerificationRateLimitAsync(string key, Guid userId, AuthenticationContext? context, CancellationToken cancellationToken)
-    {
-        return _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(VerifyPurpose, AuthenticationRateLimitDimensions.DimensionName(key), key, _options.Value.VerificationRateLimit)
-        {
-            UserId = userId,
-            Context = context
-        }, cancellationToken);
     }
 
     private sealed class UpdatedUserWrapper(IUser original, string newEmail, DateTimeOffset? emailVerifiedAt) : ITenantUser, IHasAuditMetadata
