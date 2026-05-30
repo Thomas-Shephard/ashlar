@@ -62,6 +62,8 @@ public sealed class TotpService : ITotpService
         ArgumentException.ThrowIfNullOrWhiteSpace(accountName);
         tenant ??= TenantContext.Global;
 
+        await ValidateUserTenantAsync(userId, tenant, audit, AshlarSecurityEventTypes.TotpEnrollmentStarted, throwOnFailure: true, cancellationToken);
+
         var secretBytes = RandomNumberGenerator.GetBytes(_options.SecretLengthBytes);
         var base32Secret = Base32.Encode(secretBytes);
 
@@ -131,6 +133,12 @@ public sealed class TotpService : ITotpService
             return Result.Failure(AshlarFailureCodes.InvalidSecretFormat);
         }
 
+        var userResult = await ValidateUserTenantAsync(userId, tenant, audit, AshlarSecurityEventTypes.TotpEnrollmentCompleted, throwOnFailure: false, cancellationToken);
+        if (!userResult.Succeeded)
+        {
+            return Result.Failure(userResult.FailureDetails!);
+        }
+
         var now = _timeProvider.GetUtcNow();
 
         var (verified, verifiedStep) = TotpAuthenticator.VerifyTotp(secretBytes, code, now, _options.StepSeconds, _options.CodeDigits, _options.AllowedSkewSteps);
@@ -186,11 +194,7 @@ public sealed class TotpService : ITotpService
                 Provider = _options.ProviderKey
             }, ct);
 
-            var user = await _userRepository.GetUserByIdAsync(userId, ct);
-            if (user != null)
-            {
-                await _notifications.NotifyAsync(SecurityNotificationType.TotpEnrolled, user, now, context: ToNotificationContext(audit), cancellationToken: ct);
-            }
+            await _notifications.NotifyAsync(SecurityNotificationType.TotpEnrolled, userResult.Value!, now, context: ToNotificationContext(audit), cancellationToken: ct);
         });
 
         await transaction.CommitAsync(cancellationToken);
@@ -202,6 +206,12 @@ public sealed class TotpService : ITotpService
     {
         if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
         tenant ??= TenantContext.Global;
+
+        var userResult = await ValidateUserTenantAsync(userId, tenant, audit, AshlarSecurityEventTypes.TotpDisabled, throwOnFailure: false, cancellationToken);
+        if (!userResult.Succeeded)
+        {
+            return false;
+        }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
@@ -221,15 +231,45 @@ public sealed class TotpService : ITotpService
                 Provider = _options.ProviderKey
             }, ct);
 
-            var user = await _userRepository.GetUserByIdAsync(userId, ct);
-            if (user != null)
-            {
-                await _notifications.NotifyAsync(SecurityNotificationType.TotpDisabled, user, now, context: ToNotificationContext(audit), cancellationToken: ct);
-            }
+            await _notifications.NotifyAsync(SecurityNotificationType.TotpDisabled, userResult.Value!, now, context: ToNotificationContext(audit), cancellationToken: ct);
         });
 
         await transaction.CommitAsync(cancellationToken);
         return true;
+    }
+
+    private async Task<Result<IUser>> ValidateUserTenantAsync(
+        Guid userId,
+        TenantContext tenant,
+        AuditContext? audit,
+        string eventType,
+        bool throwOnFailure,
+        CancellationToken cancellationToken)
+    {
+        var result = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, tenant, cancellationToken);
+        if (result.Succeeded)
+        {
+            return result;
+        }
+
+        var failureCode = result.FailureCode!.Value;
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = eventType,
+            Outcome = SecurityEventOutcomes.Failure,
+            UserId = userId,
+            TenantId = tenant.TenantId,
+            Audit = audit,
+            Provider = _options.ProviderKey,
+            FailureReason = failureCode.Value
+        }, cancellationToken);
+
+        if (throwOnFailure)
+        {
+            throw new AshlarOperationException(failureCode, "TOTP user validation failed for the requested tenant.");
+        }
+
+        return result;
     }
 
     private static AuthenticationContext? ToNotificationContext(AuditContext? audit)

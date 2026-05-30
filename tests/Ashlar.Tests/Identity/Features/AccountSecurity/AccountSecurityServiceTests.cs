@@ -137,20 +137,22 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldReturnUserNotFoundForTenantMismatch()
+    public async Task DisableUserAsyncShouldReturnTenantMismatchForTenantMismatch()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = Guid.NewGuid() };
         _sessionRepository.Sessions.Add(CreateSession(_userId));
+        var requestedTenantId = Guid.NewGuid();
 
-        var result = await _service.DisableUserAsync(_userId, CreateRequest(tenantId: Guid.NewGuid()));
+        var result = await _service.DisableUserAsync(_userId, CreateRequest(tenantId: requestedTenantId));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
             Assert.That(_userRepository.Users[_userId].IsActive, Is.True);
             Assert.That(_sessionRepository.Sessions.Single().RevokedAt, Is.Null);
-            Assert.That(_events.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.UserNotFound.Value));
+            Assert.That(_events.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.TenantMismatch.Value));
+            Assert.That(_events.Events.Single().TenantId, Is.EqualTo(requestedTenantId));
         }
     }
 
@@ -171,7 +173,7 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldReturnUserNotFoundWhenTenantScopeTargetsGlobalUser()
+    public async Task DisableUserAsyncShouldReturnTenantMismatchWhenTenantScopeTargetsGlobalUser()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
 
@@ -180,8 +182,25 @@ internal sealed class AccountSecurityServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
             Assert.That(_userRepository.Users[_userId].IsActive, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task DisableUserAsyncShouldTreatMissingTenantAsGlobalOnly()
+    {
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = Guid.NewGuid() };
+
+        var result = await _service.DisableUserAsync(_userId, CreateRequest());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            Assert.That(_userRepository.Users[_userId].IsActive, Is.True);
+            Assert.That(_events.Events.Single().TenantId, Is.Null);
+            Assert.That(_events.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.TenantMismatch.Value));
         }
     }
 
@@ -269,7 +288,7 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task ReactivateUserAsyncShouldReturnUserNotFoundForTenantMismatch()
+    public async Task ReactivateUserAsyncShouldReturnTenantMismatchForTenantMismatch()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = false, TenantId = Guid.NewGuid() };
 
@@ -278,7 +297,7 @@ internal sealed class AccountSecurityServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
             Assert.That(_userRepository.Users[_userId].IsActive, Is.False);
         }
     }
@@ -312,7 +331,7 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task RevokeSessionsAsyncShouldReturnUserNotFoundForTenantMismatch()
+    public async Task RevokeSessionsAsyncShouldReturnTenantMismatchForTenantMismatch()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = Guid.NewGuid() };
         _sessionRepository.Sessions.Add(CreateSession(_userId));
@@ -322,7 +341,7 @@ internal sealed class AccountSecurityServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
             Assert.That(_sessionRepository.Sessions.Single().RevokedAt, Is.Null);
         }
     }
@@ -374,7 +393,7 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task RevokeCredentialsAsyncShouldReturnUserNotFoundForTenantMismatch()
+    public async Task RevokeCredentialsAsyncShouldReturnTenantMismatchForTenantMismatch()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = Guid.NewGuid() };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
@@ -384,7 +403,7 @@ internal sealed class AccountSecurityServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
             Assert.That(_userRepository.Credentials.Single().RevokedAt, Is.Null);
         }
     }
@@ -429,7 +448,7 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task ResetMfaAsyncShouldReturnUserNotFoundForTenantMismatch()
+    public async Task ResetMfaAsyncShouldReturnTenantMismatchForTenantMismatch()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = Guid.NewGuid() };
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
@@ -439,7 +458,7 @@ internal sealed class AccountSecurityServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
             Assert.That(_userRepository.Credentials.Single().RevokedAt, Is.Null);
         }
     }
@@ -495,7 +514,7 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldReturnUserNotFoundForTenantScopedRequestWhenUserHasNoTenantInterface()
+    public async Task DisableUserAsyncShouldReturnTenantMismatchForTenantScopedRequestWhenUserHasNoTenantInterface()
     {
         var repository = new Mock<IUserRepository>();
         repository
@@ -514,7 +533,7 @@ internal sealed class AccountSecurityServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
         }
     }
 
@@ -997,7 +1016,7 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task GetUserSecurityPostureAsyncShouldReturnUserNotFoundForTenantMismatch()
+    public async Task GetUserSecurityPostureAsyncShouldReturnTenantMismatchForTenantMismatch()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = Guid.NewGuid() };
 
@@ -1006,7 +1025,7 @@ internal sealed class AccountSecurityServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
         }
     }
 

@@ -57,6 +57,8 @@ internal sealed class TotpTests
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success());
+        _repository.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid userId, CancellationToken _) => new User { Id = userId, Email = "user@example.com" });
     }
 
     private TotpService CreateService()
@@ -324,6 +326,32 @@ internal sealed class TotpTests
     }
 
     [Test]
+    public async Task StartEnrollmentAsyncShouldRejectTenantMismatchBeforeReturningSecret()
+    {
+        var service = CreateService();
+        var userId = Guid.NewGuid();
+        var userTenantId = Guid.NewGuid();
+        var requestedTenantId = Guid.NewGuid();
+        _repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = userTenantId });
+
+        var exception = Assert.ThrowsAsync<AshlarOperationException>(() =>
+            service.StartEnrollmentAsync(userId, "Ashlar", "user@example.com", new TenantContext(requestedTenantId)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception?.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(d =>
+                d.EventType == AshlarSecurityEventTypes.TotpEnrollmentStarted &&
+                d.Outcome == SecurityEventOutcomes.Failure &&
+                d.UserId == userId &&
+                d.TenantId == requestedTenantId &&
+                d.FailureReason == AshlarFailureCodes.TenantMismatch.Value &&
+                d.Properties == null), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
     public void StartEnrollmentAsyncWithEmptyUserIdShouldThrow()
     {
         var service = CreateService();
@@ -397,11 +425,11 @@ internal sealed class TotpTests
         System.Security.Cryptography.RandomNumberGenerator.Fill(secretBytes);
         var secret = Base32.Encode(secretBytes);
         var code = TotpAuthenticator.GenerateCode(secretBytes, _timeProvider.GetUtcNow().ToUnixTimeSeconds() / 30);
+        var tenantId = Guid.NewGuid();
 
         _repository.Setup(x => x.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
+            .ReturnsAsync(new User { Id = userId, Email = "user@example.com", TenantId = tenantId });
 
-        var tenantId = Guid.NewGuid();
         var result = await service.VerifyAndEnrollAsync(userId, secret, code, new TenantContext(tenantId), audit);
 
         Assert.That(result.Succeeded, Is.True);
@@ -435,6 +463,37 @@ internal sealed class TotpTests
 
         Assert.That(result.Succeeded, Is.True);
         _credentialService.Verify(x => x.LinkCredentialAsync(userId, It.IsAny<TotpAssertion>(), It.IsAny<IAuthenticationProvider>(), secret, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task VerifyAndEnrollAsyncShouldRejectTenantMismatchBeforeReplacingCredential()
+    {
+        var service = CreateService();
+        var userId = Guid.NewGuid();
+        var requestedTenantId = Guid.NewGuid();
+        var secretBytes = new byte[20];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(secretBytes);
+        var secret = Base32.Encode(secretBytes);
+        var code = TotpAuthenticator.GenerateCode(secretBytes, _timeProvider.GetUtcNow().ToUnixTimeSeconds() / 30);
+
+        _repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = Guid.NewGuid() });
+
+        var result = await service.VerifyAndEnrollAsync(userId, secret, code, new TenantContext(requestedTenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            _credentialRepository.Verify(x => x.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _credentialService.Verify(x => x.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(d =>
+                d.EventType == AshlarSecurityEventTypes.TotpEnrollmentCompleted &&
+                d.Outcome == SecurityEventOutcomes.Failure &&
+                d.TenantId == requestedTenantId &&
+                d.FailureReason == AshlarFailureCodes.TenantMismatch.Value &&
+                d.Properties == null), It.IsAny<CancellationToken>()), Times.Once);
+        }
     }
 
     [Test]
@@ -617,6 +676,30 @@ internal sealed class TotpTests
         var result = await service.DisableTotpAsync(userId);
 
         Assert.That(result, Is.False);
+    }
+
+    [Test]
+    public async Task DisableTotpAsyncShouldRejectTenantMismatchBeforeRevokingCredential()
+    {
+        var service = CreateService();
+        var userId = Guid.NewGuid();
+        var requestedTenantId = Guid.NewGuid();
+        _repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = Guid.NewGuid() });
+
+        var result = await service.DisableTotpAsync(userId, new TenantContext(requestedTenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            _credentialRepository.Verify(x => x.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(d =>
+                d.EventType == AshlarSecurityEventTypes.TotpDisabled &&
+                d.Outcome == SecurityEventOutcomes.Failure &&
+                d.TenantId == requestedTenantId &&
+                d.FailureReason == AshlarFailureCodes.TenantMismatch.Value &&
+                d.Properties == null), It.IsAny<CancellationToken>()), Times.Once);
+        }
     }
 
     [Test]

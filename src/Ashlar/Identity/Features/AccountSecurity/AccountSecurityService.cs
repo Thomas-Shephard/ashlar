@@ -72,13 +72,15 @@ public sealed class AccountSecurityService : IAccountSecurityService
         request = RequireAudit(request);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
-        var user = await GetUserInRequestedTenantAsync(userId, request.Tenant, cancellationToken);
-        if (user == null)
+        var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
+        if (!userResult.Succeeded)
         {
-            await RecordFailureAsync(AshlarSecurityEventTypes.UserDisabled, userId, request, AshlarFailureCodes.UserNotFound.Value, cancellationToken);
-            return Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound);
+            var failure = userResult.FailureDetails!;
+            await RecordFailureAsync(AshlarSecurityEventTypes.UserDisabled, userId, request, failure.Code.Value, cancellationToken);
+            return Result.Failure<AccountSecurityOperationResult>(failure);
         }
 
+        var user = userResult.Value!;
         var changed = user.IsActive;
         if (changed)
         {
@@ -107,13 +109,15 @@ public sealed class AccountSecurityService : IAccountSecurityService
         request = RequireAudit(request);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
-        var user = await GetUserInRequestedTenantAsync(userId, request.Tenant, cancellationToken);
-        if (user == null)
+        var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
+        if (!userResult.Succeeded)
         {
-            await RecordFailureAsync(AshlarSecurityEventTypes.UserReactivated, userId, request, AshlarFailureCodes.UserNotFound.Value, cancellationToken);
-            return Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound);
+            var failure = userResult.FailureDetails!;
+            await RecordFailureAsync(AshlarSecurityEventTypes.UserReactivated, userId, request, failure.Code.Value, cancellationToken);
+            return Result.Failure<AccountSecurityOperationResult>(failure);
         }
 
+        var user = userResult.Value!;
         var changed = !user.IsActive;
         if (changed)
         {
@@ -132,11 +136,12 @@ public sealed class AccountSecurityService : IAccountSecurityService
     {
         ValidateUserId(userId);
         request = RequireAudit(request);
-        var user = await GetUserInRequestedTenantAsync(userId, request.Tenant, cancellationToken);
-        if (user == null)
+        var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
+        if (!userResult.Succeeded)
         {
-            await RecordFailureAsync(AshlarSecurityEventTypes.SessionsRevokedForUser, userId, request, AshlarFailureCodes.UserNotFound.Value, cancellationToken);
-            return Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound);
+            var failure = userResult.FailureDetails!;
+            await RecordFailureAsync(AshlarSecurityEventTypes.SessionsRevokedForUser, userId, request, failure.Code.Value, cancellationToken);
+            return Result.Failure<AccountSecurityOperationResult>(failure);
         }
 
         var revoked = await _sessionService.RevokeSessionsForUserAsync(userId, request.Reason ?? AdminReason, request.Tenant, request.Audit, cancellationToken);
@@ -150,11 +155,12 @@ public sealed class AccountSecurityService : IAccountSecurityService
         ValidateProvider(provider);
         request = RequireAudit(request);
 
-        var user = await GetUserInRequestedTenantAsync(userId, request.Tenant, cancellationToken);
-        if (user == null)
+        var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
+        if (!userResult.Succeeded)
         {
-            await RecordFailureAsync(AshlarSecurityEventTypes.UserCredentialsRevoked, userId, request, AshlarFailureCodes.UserNotFound.Value, cancellationToken, provider);
-            return Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound);
+            var failure = userResult.FailureDetails!;
+            await RecordFailureAsync(AshlarSecurityEventTypes.UserCredentialsRevoked, userId, request, failure.Code.Value, cancellationToken, provider);
+            return Result.Failure<AccountSecurityOperationResult>(failure);
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
@@ -172,11 +178,12 @@ public sealed class AccountSecurityService : IAccountSecurityService
         ValidateUserId(userId);
         request = RequireAudit(request);
 
-        var user = await GetUserInRequestedTenantAsync(userId, request.Tenant, cancellationToken);
-        if (user == null)
+        var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
+        if (!userResult.Succeeded)
         {
-            await RecordFailureAsync(AshlarSecurityEventTypes.UserMfaReset, userId, request, AshlarFailureCodes.UserNotFound.Value, cancellationToken);
-            return Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound);
+            var failure = userResult.FailureDetails!;
+            await RecordFailureAsync(AshlarSecurityEventTypes.UserMfaReset, userId, request, failure.Code.Value, cancellationToken);
+            return Result.Failure<AccountSecurityOperationResult>(failure);
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
@@ -195,12 +202,13 @@ public sealed class AccountSecurityService : IAccountSecurityService
         ValidateUserId(userId);
         request ??= new UserSecurityPostureRequest();
 
-        var user = await GetUserInRequestedTenantAsync(userId, request.Tenant, cancellationToken);
-        if (user == null)
+        var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
+        if (!userResult.Succeeded)
         {
-            return Result.Failure<UserSecurityPosture>(AshlarFailureCodes.UserNotFound);
+            return Result.Failure<UserSecurityPosture>(userResult.FailureDetails!);
         }
 
+        var user = userResult.Value!;
         var credentials = await _credentialRepository.ListCredentialsForUserAsync(userId, activeOnly: false, cancellationToken);
         var sessions = await _sessionService.ListSessionsForUserAsync(userId, new ListAuthenticationSessionsRequest { ActiveOnly = true }, cancellationToken);
         int? eventCount = null;
@@ -266,27 +274,6 @@ public sealed class AccountSecurityService : IAccountSecurityService
         {
             throw new ArgumentException("Provider key must be fully initialized.", nameof(provider));
         }
-    }
-
-    private static bool IsInRequestedTenant(IUser user, TenantContext? tenant)
-    {
-        if (tenant == null)
-        {
-            return true;
-        }
-
-        if (user is not ITenantUser tenantUser)
-        {
-            return false;
-        }
-
-        return tenantUser.TenantId == tenant.TenantId;
-    }
-
-    private async Task<IUser?> GetUserInRequestedTenantAsync(Guid userId, TenantContext? tenant, CancellationToken cancellationToken)
-    {
-        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
-        return user != null && IsInRequestedTenant(user, tenant) ? user : null;
     }
 
     private CredentialPostureItem ClassifyCredential(UserCredential credential)
