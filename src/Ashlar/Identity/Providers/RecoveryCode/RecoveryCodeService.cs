@@ -60,23 +60,11 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
 
         request ??= new RecoveryCodeGenerationRequest();
         var tenant = request.Tenant ?? TenantContext.Global;
-        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
-        // Verify user exists
-        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
-        if (user == null)
+        var userResult = await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.RecoveryCodesGenerated, cancellationToken);
+        if (!userResult.Succeeded)
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                TenantId = tenant.TenantId,
-                Audit = request.Audit,
-                Provider = _options.ProviderKey,
-                FailureReason = AshlarFailureCodes.UserNotFound.Value
-            }, cancellationToken);
-            return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.UserNotFound);
+            return Result.Failure<IReadOnlyList<string>>(userResult.FailureDetails!);
         }
 
         var codeCount = request.CodeCount ?? _options.CodeCount;
@@ -125,6 +113,8 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
             }, cancellationToken);
             return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.InvalidExpiry);
         }
+
+        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         // Revoke existing recovery codes if requested
         if (request.ReplaceExisting)
@@ -179,7 +169,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
                 }
             }, ct);
 
-            await _notifications.NotifyAsync(SecurityNotificationType.RecoveryCodesGenerated, user, now, context: ToNotificationContext(request.Audit), metadata: new Dictionary<string, string>
+            await _notifications.NotifyAsync(SecurityNotificationType.RecoveryCodesGenerated, userResult.Value!, now, context: ToNotificationContext(request.Audit), metadata: new Dictionary<string, string>
             {
                 ["count"] = codeCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
             }, cancellationToken: ct);
@@ -199,6 +189,12 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         }
         tenant ??= TenantContext.Global;
 
+        var userResult = await ValidateUserTenantAsync(userId, tenant, audit, AshlarSecurityEventTypes.RecoveryCodesRevoked, cancellationToken);
+        if (!userResult.Succeeded)
+        {
+            return 0;
+        }
+
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         var count = await _credentialRepository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
@@ -217,6 +213,34 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         await transaction.CommitAsync(cancellationToken);
 
         return count;
+    }
+
+    private async Task<Result<IUser>> ValidateUserTenantAsync(
+        Guid userId,
+        TenantContext tenant,
+        AuditContext? audit,
+        string eventType,
+        CancellationToken cancellationToken)
+    {
+        var result = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, tenant, cancellationToken);
+        if (result.Succeeded)
+        {
+            return result;
+        }
+
+        var failureCode = result.FailureCode!.Value;
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = eventType,
+            Outcome = SecurityEventOutcomes.Failure,
+            UserId = userId,
+            TenantId = tenant.TenantId,
+            Audit = audit,
+            Provider = _options.ProviderKey,
+            FailureReason = failureCode.Value
+        }, cancellationToken);
+
+        return result;
     }
 
     private static AuthenticationContext? ToNotificationContext(AuditContext? audit)

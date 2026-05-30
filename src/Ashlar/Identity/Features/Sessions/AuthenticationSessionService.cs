@@ -263,9 +263,29 @@ public sealed class AuthenticationSessionService(
         ValidateStepUpProvider(request.VerifiedProvider, $"{nameof(request)}.{nameof(request.VerifiedProvider)}");
         var verifiedFactor = ValidateRequiredLength(request.VerifiedFactor, MaxStepUpFactorLength, $"{nameof(request)}.{nameof(request.VerifiedFactor)}");
 
+        var now = _timeProvider.GetUtcNow();
+        var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
+        if (!userResult.Succeeded)
+        {
+            var failure = userResult.FailureDetails!;
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.SessionStepUpVerified,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                TenantId = request.Tenant?.TenantId,
+                SessionId = request.SessionId,
+                Provider = request.VerifiedProvider,
+                Audit = request.Audit,
+                FailureReason = failure.Code.Value,
+                Properties = new Dictionary<string, string> { ["factor"] = verifiedFactor }
+            }, cancellationToken);
+
+            return Result.Failure<AuthenticationSession>(failure);
+        }
+
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
-        var now = _timeProvider.GetUtcNow();
         var updated = await _repository.MarkStepUpVerifiedAsync(
             request.SessionId,
             userId,
@@ -283,6 +303,7 @@ public sealed class AuthenticationSessionService(
             SessionId = request.SessionId,
             Provider = request.VerifiedProvider,
             Audit = request.Audit,
+            FailureReason = updated == null ? AshlarFailureCodes.SessionNotFoundOrInactiveValue : null,
             Properties = new Dictionary<string, string> { ["factor"] = verifiedFactor }
         }, ct));
 

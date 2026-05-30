@@ -297,6 +297,57 @@ internal sealed class RecoveryCodeTests
     }
 
     [Test]
+    public async Task ServiceGenerateRecoveryCodesAsyncShouldRejectTenantMismatchBeforeGeneratingCodes()
+    {
+        var repository = new Mock<IUserRepository>();
+        var credentialRepository = new Mock<ICredentialRepository>();
+        var transactionProvider = new Mock<IAshlarTransactionProvider>();
+        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
+        var securityEvents = new Mock<ISecurityEventSink>();
+        var options = Options.Create(new RecoveryCodeOptions());
+        var userId = Guid.NewGuid();
+        var requestedTenantId = Guid.NewGuid();
+
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = Guid.NewGuid() });
+
+        var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, securityEventSink: securityEvents.Object));
+
+        var result = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest { ReplaceExisting = true, Tenant = new TenantContext(requestedTenantId) });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            Assert.That(result.Value, Is.Null);
+            credentialRepository.Verify(r => r.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            credentialRepository.Verify(r => r.CreateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()), Times.Never);
+            transactionProvider.Verify(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
+            securityEvents.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+                e.EventType == AshlarSecurityEventTypes.RecoveryCodesGenerated &&
+                e.Outcome == SecurityEventOutcomes.Failure &&
+                e.UserId == userId &&
+                e.TenantId == requestedTenantId &&
+                e.FailureReason == AshlarFailureCodes.TenantMismatch.Value &&
+                e.Properties == null), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
+    public async Task ServiceGenerateRecoveryCodesAsyncShouldTreatMissingTenantAsGlobalOnly()
+    {
+        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 }, Guid.NewGuid());
+
+        var result = await service.GenerateRecoveryCodesAsync(Guid.NewGuid());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+        }
+    }
+
+    [Test]
     public async Task ServiceGenerateRecoveryCodesAsyncFailsOnInvalidGenerationRequest()
     {
         var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 5 });
@@ -373,6 +424,8 @@ internal sealed class RecoveryCodeTests
         var options = Options.Create(new RecoveryCodeOptions());
         var userId = Guid.NewGuid();
 
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "test@example.com", IsActive = true });
         credentialRepository.Setup(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()))
             .ReturnsAsync(10);
 
@@ -401,6 +454,39 @@ internal sealed class RecoveryCodeTests
 
         credentialRepository.Verify(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()), Times.Exactly(2));
         transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Test]
+    public async Task ServiceRevokeRecoveryCodesAsyncShouldRejectTenantMismatchBeforeRevokingCredentials()
+    {
+        var repository = new Mock<IUserRepository>();
+        var credentialRepository = new Mock<ICredentialRepository>();
+        var transactionProvider = new Mock<IAshlarTransactionProvider>();
+        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
+        var securityEvents = new Mock<ISecurityEventSink>();
+        var options = Options.Create(new RecoveryCodeOptions());
+        var userId = Guid.NewGuid();
+        var requestedTenantId = Guid.NewGuid();
+
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = Guid.NewGuid() });
+
+        var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, securityEventSink: securityEvents.Object));
+
+        var result = await service.RevokeRecoveryCodesAsync(userId, "admin", new TenantContext(requestedTenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Zero);
+            credentialRepository.Verify(r => r.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            transactionProvider.Verify(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
+            securityEvents.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+                e.EventType == AshlarSecurityEventTypes.RecoveryCodesRevoked &&
+                e.Outcome == SecurityEventOutcomes.Failure &&
+                e.TenantId == requestedTenantId &&
+                e.FailureReason == AshlarFailureCodes.TenantMismatch.Value &&
+                e.Properties == null), It.IsAny<CancellationToken>()), Times.Once);
+        }
     }
 
     [Test]
@@ -878,14 +964,14 @@ internal sealed class RecoveryCodeTests
         };
     }
 
-    private static RecoveryCodeService CreateServiceForGenerationValidation(RecoveryCodeOptions options)
+    private static RecoveryCodeService CreateServiceForGenerationValidation(RecoveryCodeOptions options, Guid? userTenantId = null)
     {
         var repository = new Mock<IUserRepository>();
         var credentialRepository = new Mock<ICredentialRepository>();
         var transactionProvider = new Mock<IAshlarTransactionProvider>();
 
         repository.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid id, CancellationToken _) => new User { Id = id, Email = "test@example.com", IsActive = true });
+            .ReturnsAsync((Guid id, CancellationToken _) => new User { Id = id, Email = "test@example.com", IsActive = true, TenantId = userTenantId });
 
         transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Mock<IAshlarTransaction>().Object);

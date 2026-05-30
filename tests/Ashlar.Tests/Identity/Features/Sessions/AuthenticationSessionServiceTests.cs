@@ -661,6 +661,96 @@ internal sealed class AuthenticationSessionServiceTests
         }
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task MarkStepUpVerifiedAsyncShouldRejectTenantMismatchBeforeRepositoryUpdate(bool requestedTenantIsNull)
+    {
+        var userId = Guid.NewGuid();
+        var userTenantId = Guid.NewGuid();
+        var requestedTenantId = requestedTenantIsNull ? (Guid?)null : Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = userTenantId });
+
+        var result = await _service.MarkStepUpVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = sessionId,
+            VerifiedProvider = provider,
+            VerifiedFactor = "totp",
+            Tenant = requestedTenantIsNull ? null : new TenantContext(requestedTenantId)
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            _repositoryMock.Verify(r => r.MarkStepUpVerifiedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<AuthenticationProviderKey>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task MarkStepUpVerifiedAsyncShouldRejectTenantContextForGlobalUserBeforeRepositoryUpdate()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "global@example.com" });
+
+        var result = await _service.MarkStepUpVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = sessionId,
+            VerifiedProvider = provider,
+            VerifiedFactor = "totp",
+            Tenant = new TenantContext(Guid.NewGuid())
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            _repositoryMock.Verify(r => r.MarkStepUpVerifiedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<AuthenticationProviderKey>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task MarkStepUpVerifiedAsyncShouldAuditTenantMismatchSafely()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: sink, UserRepository: _userRepositoryMock.Object));
+        var userId = Guid.NewGuid();
+        var requestedTenantId = Guid.NewGuid();
+        var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = Guid.NewGuid() });
+
+        await service.MarkStepUpVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = Guid.NewGuid(),
+            VerifiedProvider = provider,
+            VerifiedFactor = "totp",
+            Tenant = new TenantContext(requestedTenantId),
+            Audit = new AuditContext(ActorUserId: Guid.NewGuid(), IpAddress: "203.0.113.44")
+        });
+
+        var securityEvent = sink.Events.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(securityEvent.FailureReason, Is.EqualTo(AshlarFailureCodes.TenantMismatchValue));
+            Assert.That(securityEvent.TenantId, Is.EqualTo(requestedTenantId));
+            Assert.That(securityEvent.Properties?["factor"], Is.EqualTo("totp"));
+        }
+    }
+
     [Test]
     public async Task MarkStepUpVerifiedAsyncShouldRecordSecurityEvent()
     {
