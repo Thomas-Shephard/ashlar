@@ -21,3 +21,15 @@ public interface ICredentialKeyAuthenticationAssertion : IAuthenticationAssertio
     /// </summary>
     string CredentialKey { get; }
 }
+
+/// <summary>
+/// Represents an authentication assertion that reports whether the authenticator verified the user.
+/// Secondary factor verification rejects assertions that report <see langword="false" /> before credential resolution.
+/// </summary>
+public interface IUserVerifiedAuthenticationAssertion : IAuthenticationAssertion
+{
+    /// <summary>
+    /// Gets a value indicating whether user verification was performed.
+    /// </summary>
+    bool UserVerified { get; }
+}

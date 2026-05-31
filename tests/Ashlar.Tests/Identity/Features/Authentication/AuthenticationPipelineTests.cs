@@ -404,6 +404,57 @@ internal sealed class AuthenticationPipelineTests
     }
 
     [Test]
+    public async Task VerifyFactorAsyncShouldRejectUnverifiedUserVerificationAssertionWithoutCallingProvider()
+    {
+        var userId = Guid.NewGuid();
+        var context = new AuthenticationContext("test@example.com", UserId: userId);
+        var assertion = new TestUserVerifiedAssertion(new AuthenticationProviderKey(ProviderType.Passkey, "PASSKEY"), UserVerified: false);
+        var providerMock = new Mock<ISecondaryAuthenticationFactorProvider>();
+        providerMock.SetupGet(p => p.Key).Returns(assertion.ProviderIdentity);
+        IAuthenticationProvider? provider = providerMock.Object;
+        _providerRegistryMock.Setup(r => r.TryGetProvider(assertion, out provider))
+            .Returns(true);
+
+        var response = await _pipeline.VerifyFactorAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+            _factorRateLimiterMock.Verify(l => l.CheckAsync(context, assertion.ProviderIdentity, It.IsAny<CancellationToken>()), Times.Once);
+            _credentialServiceMock.Verify(
+                s => s.ResolveAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            providerMock.Verify(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task LoginAsyncShouldAllowPrimaryUserVerificationAssertionWithoutUserVerification()
+    {
+        var userId = Guid.NewGuid();
+        var context = new AuthenticationContext("test@example.com", UserId: userId);
+        var assertion = new TestUserVerifiedAssertion(AuthenticationProviderKey.Local, UserVerified: false);
+        ConfigureProviderResolution(assertion);
+        var user = new User { Id = userId, Email = "test@example.com" };
+        var credential = CreateCredential(userId);
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, _providerMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        _credentialServiceMock.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, It.IsAny<AuthenticationResult>(), _providerMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded));
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.True);
+            _providerMock.Verify(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
     public async Task VerifyFactorAsyncShouldRejectSecondaryFactorWithoutUserId()
     {
         var context = new AuthenticationContext("test@example.com");
@@ -873,6 +924,7 @@ internal sealed class AuthenticationPipelineTests
     }
 
     private sealed record TestAssertion(AuthenticationProviderKey ProviderIdentity) : IAuthenticationAssertion;
+    private sealed record TestUserVerifiedAssertion(AuthenticationProviderKey ProviderIdentity, bool UserVerified) : IUserVerifiedAuthenticationAssertion;
 
     private sealed class RecordingSecurityEventSink : ISecurityEventSink
     {

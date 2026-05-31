@@ -9,6 +9,9 @@ namespace Ashlar.Passkeys;
 /// </summary>
 public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
 {
+    // WebAuthn authenticator data stores flags at byte 32, after the 32-byte RP ID hash.
+    private const int AuthenticatorDataFlagsOffset = 32;
+    private const byte UserVerifiedFlag = 0x04;
     private readonly IUserRepository _userRepository;
     private readonly Func<Fido2NetLib.Fido2, MakeNewCredentialParams, CancellationToken, Task<RegisteredPublicKeyCredential>> _makeCredentialAsync;
     private readonly Func<Fido2NetLib.Fido2, MakeAssertionParams, CancellationToken, Task<VerifyAssertionResult>> _makeAssertionAsync;
@@ -48,7 +51,7 @@ public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
             AuthenticatorSelection = new AuthenticatorSelection
             {
                 ResidentKey = options.RequireResidentKey ? ResidentKeyRequirement.Required : ResidentKeyRequirement.Preferred,
-                UserVerification = ParseUserVerification(options.UserVerification)
+                UserVerification = ParseUserVerification(options.RegistrationUserVerification)
             },
             AttestationPreference = ParseAttestation(options.Attestation)
         });
@@ -78,17 +81,18 @@ public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
             credential.SignCount,
             credential.Transports?.Select(t => t.ToString()).ToArray() ?? [],
             credential.AaGuid == Guid.Empty ? null : credential.AaGuid.ToString("D"),
-            Discoverable: options.RequireResidentKey);
+            Discoverable: options.RequireResidentKey,
+            UserVerified: HasUserVerification(response));
     }
 
     /// <inheritdoc />
-    public string CreateAuthenticationOptions(PasskeyOptions options, string challenge, IReadOnlyList<UserCredential> allowedCredentials)
+    public string CreateAuthenticationOptions(PasskeyOptions options, string challenge, IReadOnlyList<UserCredential> allowedCredentials, string userVerification)
     {
         var fido = CreateFido2(options);
         var assertionOptions = fido.GetAssertionOptions(new GetAssertionOptionsParams
         {
             AllowedCredentials = allowedCredentials.Select(ToDescriptor).ToList(),
-            UserVerification = ParseUserVerification(options.UserVerification)
+            UserVerification = ParseUserVerification(userVerification)
         });
         assertionOptions.Challenge = Base64Url.Decode(challenge);
         return assertionOptions.ToJson();
@@ -116,7 +120,7 @@ public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
                 && args.CredentialId.SequenceEqual(Base64Url.Decode(credential.ProviderKey)))
         }, cancellationToken);
 
-        return new PasskeyAuthenticationVerificationResult(Base64Url.Encode(result.CredentialId), result.SignCount, ParseUserVerification(options.UserVerification) == UserVerificationRequirement.Required);
+        return new PasskeyAuthenticationVerificationResult(Base64Url.Encode(result.CredentialId), result.SignCount, HasUserVerification(response));
     }
 
     private static Fido2NetLib.Fido2 CreateFido2(PasskeyOptions options)
@@ -140,19 +144,37 @@ public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
         return new PublicKeyCredentialDescriptor(PublicKeyCredentialType.PublicKey, Base64Url.Decode(credential.ProviderKey), transports);
     }
 
-    private static UserVerificationRequirement ParseUserVerification(string value)
+    private static UserVerificationRequirement ParseUserVerification(string? value)
     {
-        return value.Trim().ToLowerInvariant() switch
+        return value?.Trim().ToLowerInvariant() switch
         {
-            "required" => UserVerificationRequirement.Required,
-            "discouraged" => UserVerificationRequirement.Discouraged,
+            PasskeyUserVerificationRequirement.Required => UserVerificationRequirement.Required,
+            PasskeyUserVerificationRequirement.Discouraged => UserVerificationRequirement.Discouraged,
             _ => UserVerificationRequirement.Preferred
         };
     }
 
-    private static AttestationConveyancePreference ParseAttestation(string value)
+    private static bool HasUserVerification(AuthenticatorAssertionRawResponse response)
     {
-        return value.Trim().ToLowerInvariant() switch
+        var authenticatorData = response.Response?.AuthenticatorData;
+        if (authenticatorData is not { Length: > AuthenticatorDataFlagsOffset })
+        {
+            return false;
+        }
+
+        return (authenticatorData[AuthenticatorDataFlagsOffset] & UserVerifiedFlag) == UserVerifiedFlag;
+    }
+
+    private static bool HasUserVerification(AuthenticatorAttestationRawResponse response)
+    {
+        // Registration has already been validated by fido2-net-lib; this parse reports the UV bit from the attestation authData.
+        return response.Response?.AttestationObject is { Length: > 0 }
+            && AuthenticatorAttestationResponse.Parse(response).AttestationObject.AuthData.UserVerified;
+    }
+
+    private static AttestationConveyancePreference ParseAttestation(string? value)
+    {
+        return value?.Trim().ToLowerInvariant() switch
         {
             "direct" => AttestationConveyancePreference.Direct,
             "enterprise" => AttestationConveyancePreference.Enterprise,

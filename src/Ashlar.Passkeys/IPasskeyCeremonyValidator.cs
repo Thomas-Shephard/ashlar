@@ -32,8 +32,9 @@ public interface IPasskeyCeremonyValidator
     /// <param name="options">The passkey options.</param>
     /// <param name="challenge">The Ashlar-managed challenge.</param>
     /// <param name="allowedCredentials">Allowed credentials for user-scoped flows.</param>
+    /// <param name="userVerification">The WebAuthn user verification requirement for this authentication ceremony.</param>
     /// <returns>The serialized authentication options.</returns>
-    string CreateAuthenticationOptions(PasskeyOptions options, string challenge, IReadOnlyList<UserCredential> allowedCredentials);
+    string CreateAuthenticationOptions(PasskeyOptions options, string challenge, IReadOnlyList<UserCredential> allowedCredentials, string userVerification);
     /// <summary>
     /// Verifies an authentication ceremony response.
     /// </summary>

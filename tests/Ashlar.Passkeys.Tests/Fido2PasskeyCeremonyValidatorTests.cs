@@ -45,7 +45,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
             RelyingPartyId = "example.com",
             RelyingPartyName = "Example",
             Origin = "https://login.example.com",
-            UserVerification = "required",
+            RegistrationUserVerification = PasskeyUserVerificationRequirement.Required,
             Attestation = "none",
             RequireResidentKey = true
         };
@@ -81,20 +81,20 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
             RelyingPartyId = "example.com",
             RelyingPartyName = "Example",
             Origin = "https://login.example.com",
-            UserVerification = "preferred"
+            AuthenticationUserVerification = PasskeyUserVerificationRequirement.Required
         };
         var credentialId = Base64Url.Encode(RandomNumberGenerator.GetBytes(32));
         var credential = CreateCredential(userId, credentialId);
         var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
 
-        using var document = JsonDocument.Parse(validator.CreateAuthenticationOptions(options, challenge, [credential]));
+        using var document = JsonDocument.Parse(validator.CreateAuthenticationOptions(options, challenge, [credential], PasskeyUserVerificationRequirement.Discouraged));
         var root = document.RootElement;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root.GetProperty("challenge").GetString(), Is.EqualTo(challenge));
             Assert.That(root.GetProperty("rpId").GetString(), Is.EqualTo("example.com"));
-            Assert.That(root.GetProperty("userVerification").GetString(), Is.EqualTo("preferred"));
+            Assert.That(root.GetProperty("userVerification").GetString(), Is.EqualTo("discouraged"));
             Assert.That(root.GetProperty("allowCredentials")[0].GetProperty("id").GetString(), Is.EqualTo(credentialId));
             Assert.That(root.GetProperty("allowCredentials")[0].GetProperty("transports").EnumerateArray().Select(t => t.GetString()), Is.EquivalentTo(ExpectedTransports));
         }
@@ -123,7 +123,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         withNullMetadata.Metadata = "null";
         var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
 
-        using var document = JsonDocument.Parse(validator.CreateAuthenticationOptions(options, challenge, [withoutMetadata, withInvalidTransport, withNullMetadata]));
+        using var document = JsonDocument.Parse(validator.CreateAuthenticationOptions(options, challenge, [withoutMetadata, withInvalidTransport, withNullMetadata], options.AuthenticationUserVerification));
         var allowCredentials = document.RootElement.GetProperty("allowCredentials").EnumerateArray().ToArray();
 
         using (Assert.EnterMultipleScope())
@@ -133,6 +133,17 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
             Assert.That(allowCredentials[1].TryGetProperty("transports", out var secondTransports) ? secondTransports.GetArrayLength() : 0, Is.Zero);
             Assert.That(allowCredentials[2].TryGetProperty("transports", out var thirdTransports) ? thirdTransports.GetArrayLength() : 0, Is.Zero);
         }
+    }
+
+    [Test]
+    public void CreateAuthenticationOptionsShouldDefaultNullUserVerificationToPreferred()
+    {
+        var challenge = Base64Url.Encode(RandomNumberGenerator.GetBytes(32));
+        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
+
+        using var document = JsonDocument.Parse(validator.CreateAuthenticationOptions(CreateOptions(), challenge, [], null!));
+
+        Assert.That(document.RootElement.GetProperty("userVerification").GetString(), Is.EqualTo("preferred"));
     }
 
     [Test]
@@ -147,7 +158,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
             RelyingPartyId = "example.com",
             RelyingPartyName = "Example",
             Origin = "https://login.example.com",
-            UserVerification = "discouraged",
+            RegistrationUserVerification = PasskeyUserVerificationRequirement.Discouraged,
             Attestation = "direct",
             RequireResidentKey = false
         };
@@ -185,6 +196,26 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         using var document = JsonDocument.Parse(validator.CreateRegistrationOptions(options, user.Object, "Laptop", Base64Url.Encode(RandomNumberGenerator.GetBytes(32)), []));
 
         Assert.That(document.RootElement.GetProperty("attestation").GetString(), Is.EqualTo(expectedAttestation));
+    }
+
+    [Test]
+    public void CreateRegistrationOptionsShouldDefaultNullAttestationToNone()
+    {
+        var user = new Mock<IUser>();
+        user.Setup(u => u.Id).Returns(Guid.NewGuid());
+        user.Setup(u => u.Email).Returns("pat@example.com");
+        var options = new PasskeyOptions
+        {
+            RelyingPartyId = "example.com",
+            RelyingPartyName = "Example",
+            Origin = "https://login.example.com",
+            Attestation = null!
+        };
+        var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
+
+        using var document = JsonDocument.Parse(validator.CreateRegistrationOptions(options, user.Object, "Laptop", Base64Url.Encode(RandomNumberGenerator.GetBytes(32)), []));
+
+        Assert.That(document.RootElement.GetProperty("attestation").GetString(), Is.EqualTo("none"));
     }
 
     [Test]
@@ -244,6 +275,30 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
             Assert.That(result.Aaguid, Is.EqualTo(aaGuid.ToString("D")));
             Assert.That(result.Discoverable, Is.True);
         }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task VerifyRegistrationAsyncShouldReturnVerifiedCredentialUvFromAttestationObject(bool userVerified)
+    {
+        var credentialId = RandomNumberGenerator.GetBytes(32);
+        var publicKey = RandomNumberGenerator.GetBytes(65);
+        var validator = new Fido2PasskeyCeremonyValidator(
+            new Mock<IUserRepository>().Object,
+            (_, _, _) => Task.FromResult(new RegisteredPublicKeyCredential
+            {
+                Id = credentialId,
+                PublicKey = publicKey,
+                SignCount = 0,
+                Transports = [],
+                AaGuid = Guid.Empty
+            }),
+            (_, _, _) => throw new InvalidOperationException("Authentication should not be invoked."));
+        var challenge = CreateChallenge("passkey-registration");
+
+        var result = await validator.VerifyRegistrationAsync(CreateOptions(), challenge, CreateRegistrationResponse(userVerified));
+
+        Assert.That(result.UserVerified, Is.EqualTo(userVerified));
     }
 
     [Test]
@@ -324,9 +379,9 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         Assert.That(async () => await validator.VerifyAuthenticationAsync(CreateOptions(), challenge, credential, JsonDocument.Parse("{}").RootElement), Throws.Exception);
     }
 
-    [TestCase("required", true)]
-    [TestCase("preferred", false)]
-    public async Task VerifyAuthenticationAsyncShouldReturnVerifiedAssertion(string userVerification, bool expectedVerified)
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task VerifyAuthenticationAsyncShouldReturnVerifiedAssertionUvFromAuthenticatorData(bool userVerified)
     {
         var credentialIdBytes = RandomNumberGenerator.GetBytes(32);
         var userId = Guid.NewGuid();
@@ -353,17 +408,79 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
                 };
             });
         var options = CreateOptions();
-        options.UserVerification = userVerification;
 
-        var result = await validator.VerifyAuthenticationAsync(options, challenge, credential, JsonDocument.Parse("{}").RootElement);
+        var result = await validator.VerifyAuthenticationAsync(options, challenge, credential, CreateAssertionResponse(userVerified));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.CredentialId, Is.EqualTo(credential.ProviderKey));
             Assert.That(result.SignCount, Is.EqualTo(11));
-            Assert.That(result.UserVerified, Is.EqualTo(expectedVerified));
+            Assert.That(result.UserVerified, Is.EqualTo(userVerified));
             Assert.That(callbackChecks, Is.EqualTo(1));
         }
+    }
+
+    [Test]
+    public async Task VerifyAuthenticationAsyncShouldTreatMissingAssertionResponseAsNotUserVerified()
+    {
+        var credentialIdBytes = RandomNumberGenerator.GetBytes(32);
+        var userId = Guid.NewGuid();
+        var challenge = CreateChallenge("passkey-authentication", userId);
+        var credential = CreateCredential(userId, Base64Url.Encode(credentialIdBytes));
+        var validator = new Fido2PasskeyCeremonyValidator(
+            new Mock<IUserRepository>().Object,
+            (_, _, _) => throw new InvalidOperationException("Registration should not be invoked."),
+            (_, _, _) => Task.FromResult(new VerifyAssertionResult
+            {
+                CredentialId = credentialIdBytes,
+                SignCount = 11
+            }));
+
+        var result = await validator.VerifyAuthenticationAsync(CreateOptions(), challenge, credential, CreateAssertionResponseWithoutAuthenticatorData());
+
+        Assert.That(result.UserVerified, Is.False);
+    }
+
+    [Test]
+    public async Task VerifyAuthenticationAsyncShouldTreatNullAuthenticatorDataAsNotUserVerified()
+    {
+        var credentialIdBytes = RandomNumberGenerator.GetBytes(32);
+        var userId = Guid.NewGuid();
+        var challenge = CreateChallenge("passkey-authentication", userId);
+        var credential = CreateCredential(userId, Base64Url.Encode(credentialIdBytes));
+        var validator = new Fido2PasskeyCeremonyValidator(
+            new Mock<IUserRepository>().Object,
+            (_, _, _) => throw new InvalidOperationException("Registration should not be invoked."),
+            (_, _, _) => Task.FromResult(new VerifyAssertionResult
+            {
+                CredentialId = credentialIdBytes,
+                SignCount = 11
+            }));
+
+        var result = await validator.VerifyAuthenticationAsync(CreateOptions(), challenge, credential, CreateAssertionResponseWithNullAuthenticatorData());
+
+        Assert.That(result.UserVerified, Is.False);
+    }
+
+    [Test]
+    public async Task VerifyAuthenticationAsyncShouldTreatShortAuthenticatorDataAsNotUserVerified()
+    {
+        var credentialIdBytes = RandomNumberGenerator.GetBytes(32);
+        var userId = Guid.NewGuid();
+        var challenge = CreateChallenge("passkey-authentication", userId);
+        var credential = CreateCredential(userId, Base64Url.Encode(credentialIdBytes));
+        var validator = new Fido2PasskeyCeremonyValidator(
+            new Mock<IUserRepository>().Object,
+            (_, _, _) => throw new InvalidOperationException("Registration should not be invoked."),
+            (_, _, _) => Task.FromResult(new VerifyAssertionResult
+            {
+                CredentialId = credentialIdBytes,
+                SignCount = 11
+            }));
+
+        var result = await validator.VerifyAuthenticationAsync(CreateOptions(), challenge, credential, CreateAssertionResponse(authenticatorData: []));
+
+        Assert.That(result.UserVerified, Is.False);
     }
 
     [Test]
@@ -392,7 +509,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
                 });
             });
 
-        await validator.VerifyAuthenticationAsync(CreateOptions(), challenge, credential, JsonDocument.Parse("{}").RootElement);
+        await validator.VerifyAuthenticationAsync(CreateOptions(), challenge, credential, CreateAssertionResponse(userVerified: false));
 
         Assert.That(storedSignCount, Is.Zero);
     }
@@ -439,11 +556,98 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
             Challenge = challengeValue,
             OptionsJson = purpose == "passkey-registration"
                 ? new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object).CreateRegistrationOptions(CreateOptions(), new TestUser(Guid.NewGuid(), "pat@example.com"), "Laptop", challengeValue, [])
-                : new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object).CreateAuthenticationOptions(CreateOptions(), challengeValue, []),
+                : new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object).CreateAuthenticationOptions(CreateOptions(), challengeValue, [], PasskeyUserVerificationRequirement.Preferred),
             RelyingPartyId = "example.com",
             Origin = "https://login.example.com",
             CreatedAt = DateTimeOffset.UtcNow,
             ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5)
         };
+    }
+
+    private static JsonElement CreateRegistrationResponse(bool userVerified)
+    {
+        var authenticatorData = new byte[37];
+        authenticatorData[32] = userVerified ? (byte)0x05 : (byte)0x01;
+        var attestationObject = CreateAttestationObject(authenticatorData);
+        return JsonDocument.Parse($$"""
+            {
+              "id": "credential",
+              "rawId": "{{Base64Url.Encode(RandomNumberGenerator.GetBytes(32))}}",
+              "type": "public-key",
+              "response": {
+                "attestationObject": "{{Base64Url.Encode(attestationObject)}}",
+                "clientDataJSON": "{{Base64Url.Encode("{ }"u8.ToArray())}}"
+              }
+            }
+            """).RootElement.Clone();
+    }
+
+    private static byte[] CreateAttestationObject(byte[] authenticatorData)
+    {
+        var prefix = new byte[]
+        {
+            0xA3,
+            0x63, 0x66, 0x6D, 0x74,
+            0x64, 0x6E, 0x6F, 0x6E, 0x65,
+            0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6D, 0x74,
+            0xA0,
+            0x68, 0x61, 0x75, 0x74, 0x68, 0x44, 0x61, 0x74, 0x61,
+            0x58, (byte)authenticatorData.Length
+        };
+        var attestationObject = new byte[prefix.Length + authenticatorData.Length];
+        prefix.CopyTo(attestationObject, 0);
+        authenticatorData.CopyTo(attestationObject, prefix.Length);
+        return attestationObject;
+    }
+
+    private static JsonElement CreateAssertionResponse(bool userVerified)
+    {
+        var authenticatorData = new byte[37];
+        authenticatorData[32] = userVerified ? (byte)0x05 : (byte)0x01;
+        return CreateAssertionResponse(authenticatorData);
+    }
+
+    private static JsonElement CreateAssertionResponse(byte[] authenticatorData)
+    {
+        return JsonDocument.Parse($$"""
+            {
+              "id": "credential",
+              "rawId": "{{Base64Url.Encode(RandomNumberGenerator.GetBytes(32))}}",
+              "type": "public-key",
+              "response": {
+                "authenticatorData": "{{Base64Url.Encode(authenticatorData)}}",
+                "signature": "",
+                "clientDataJSON": ""
+              }
+            }
+            """).RootElement.Clone();
+    }
+
+    private static JsonElement CreateAssertionResponseWithoutAuthenticatorData()
+    {
+        return JsonDocument.Parse($$"""
+            {
+              "id": "credential",
+              "rawId": "{{Base64Url.Encode(RandomNumberGenerator.GetBytes(32))}}",
+              "type": "public-key",
+              "response": null
+            }
+            """).RootElement.Clone();
+    }
+
+    private static JsonElement CreateAssertionResponseWithNullAuthenticatorData()
+    {
+        return JsonDocument.Parse($$"""
+            {
+              "id": "credential",
+              "rawId": "{{Base64Url.Encode(RandomNumberGenerator.GetBytes(32))}}",
+              "type": "public-key",
+              "response": {
+                "authenticatorData": null,
+                "signature": "",
+                "clientDataJSON": ""
+              }
+            }
+            """).RootElement.Clone();
     }
 }

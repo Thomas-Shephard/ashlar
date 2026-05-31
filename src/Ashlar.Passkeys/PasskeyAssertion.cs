@@ -5,9 +5,9 @@ namespace Ashlar.Passkeys;
 /// </summary>
 /// <param name="CredentialId">The WebAuthn credential id.</param>
 /// <param name="SignCount">The signature counter.</param>
-/// <param name="UserVerified">Whether user verification was performed.</param>
+/// <param name="UserVerified">Whether user verification was performed. Passkey factor verification requires this to be <see langword="true" />.</param>
 /// <param name="ProviderKey">The optional provider key override.</param>
-public sealed record PasskeyAssertion(string CredentialId, long SignCount, bool UserVerified = false, AuthenticationProviderKey? ProviderKey = null) : ICredentialKeyAuthenticationAssertion
+public sealed record PasskeyAssertion(string CredentialId, long SignCount, bool UserVerified = false, AuthenticationProviderKey? ProviderKey = null) : ICredentialKeyAuthenticationAssertion, IUserVerifiedAuthenticationAssertion
 {
     /// <summary>
     /// Gets the authentication provider identity.

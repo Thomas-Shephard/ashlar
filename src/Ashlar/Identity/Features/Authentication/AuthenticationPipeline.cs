@@ -148,6 +148,12 @@ public sealed class AuthenticationPipeline(
             return await RecordFailureAsync(context, provider.Key, context.UserId, SecurityEventFailureReasons.InvalidCredentials, cancellationToken);
         }
 
+        // Assertions that opt into this contract require actual user verification for factor use.
+        if (assertion is IUserVerifiedAuthenticationAssertion { UserVerified: false })
+        {
+            return await RecordFailureAsync(context, provider.Key, context.UserId, SecurityEventFailureReasons.InvalidCredentials, cancellationToken);
+        }
+
         return await ExecuteProviderAsync(context, assertion, provider, cancellationToken);
     }
 
