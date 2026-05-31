@@ -91,7 +91,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         await using var connection = await GetDataSource().OpenConnectionAsync();
         var row = await connection.QuerySingleAsync<RawWebhookRow>("""
             SELECT endpoint_name AS EndpointName, uri AS Uri, event_id AS EventId,
-                   event_type AS EventType, occurred_at AS OccurredAt, timeout_ms AS TimeoutMs, body AS Body,
+                   event_type AS EventType, outcome AS Outcome, occurred_at AS OccurredAt, timeout_ms AS TimeoutMs, body AS Body,
                    headers::text AS Headers, created_at AS CreatedAt, available_at AS AvailableAt
             FROM ashlar_security_event_webhook_outbox
             """);
@@ -103,6 +103,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             Assert.That(row.Uri, Is.EqualTo("https://example.test/security-events"));
             Assert.That(row.EventId, Is.EqualTo(delivery.Payload.Id));
             Assert.That(row.EventType, Is.EqualTo(delivery.Payload.EventType));
+            Assert.That(row.Outcome, Is.EqualTo(delivery.Payload.Outcome));
             Assert.That(row.OccurredAt, Is.EqualTo(delivery.Payload.OccurredAt));
             Assert.That(row.TimeoutMs, Is.EqualTo(10000));
             Assert.That(row.Body, Is.EqualTo(delivery.Body.ToArray()));
@@ -504,6 +505,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             Uri = "https://example.test/security-events",
             EventId = Guid.NewGuid(),
             EventType = "ashlar.test",
+            Outcome = SecurityEventOutcomes.Success,
             OccurredAt = _now,
             Body = Encoding.UTF8.GetBytes("{}"),
             Headers = """{"Content-Encoding":"gzip","X-Ashlar-Event-Type":"ashlar.test"}""",
@@ -529,6 +531,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             Uri = "https://example.test/security-events",
             EventId = Guid.NewGuid(),
             EventType = "ashlar.test",
+            Outcome = SecurityEventOutcomes.Success,
             OccurredAt = _now,
             Body = Encoding.UTF8.GetBytes("{}"),
             Headers = """{"X-Ashlar-Event-Type":"ashlar.test"}""",
@@ -554,6 +557,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             Uri = "https://example.test/security-events",
             EventId = Guid.NewGuid(),
             EventType = "ashlar.test",
+            Outcome = SecurityEventOutcomes.Success,
             OccurredAt = _now,
             Body = Encoding.UTF8.GetBytes("{}"),
             Headers = "{}",
@@ -578,6 +582,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             Uri = "https://example.test/security-events",
             EventId = Guid.NewGuid(),
             EventType = "ashlar.test",
+            Outcome = SecurityEventOutcomes.Success,
             OccurredAt = _now,
             Body = Encoding.UTF8.GetBytes("{}"),
             Headers = "null",
@@ -751,6 +756,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             Id = new Guid("11111111-1111-1111-1111-111111111111"),
             EventType = "ashlar.sign_in.failed",
             OccurredAt = new DateTimeOffset(2026, 5, 24, 11, 0, 0, TimeSpan.Zero),
+            Outcome = SecurityEventOutcomes.Failure,
             IpAddress = "203.0.113.10"
         };
         var payload = AshlarSecurityEventWebhookDeliveryFactory.CreatePayload(securityEvent);
@@ -981,6 +987,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         public required string Uri { get; set; }
         public Guid EventId { get; set; }
         public required string EventType { get; set; }
+        public string? Outcome { get; set; }
         public DateTimeOffset OccurredAt { get; set; }
         public long TimeoutMs { get; set; }
         public required byte[] Body { get; set; }

@@ -82,6 +82,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         {
             Assert.That(request.Headers["X-Ashlar-Event-Id"].Single(), Is.EqualTo(securityEvent.Id.ToString("D")));
             Assert.That(request.Headers["X-Ashlar-Event-Type"].Single(), Is.EqualTo(securityEvent.EventType));
+            Assert.That(request.Headers["X-Ashlar-Event-Outcome"].Single(), Is.EqualTo(securityEvent.Outcome));
             Assert.That(request.Headers["X-Ashlar-Webhook-Endpoint"].Single(), Is.EqualTo(endpoint.Name));
             Assert.That(request.Headers["X-Ashlar-Timestamp"].Single(), Is.EqualTo(securityEvent.OccurredAt.ToString("O")));
             Assert.That(request.Headers[AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName].Single(), Is.Not.Empty);
@@ -433,6 +434,20 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     }
 
     [Test]
+    public async Task HandleAsyncSkipsDisabledEndpointsRegardlessOfOutcomeAllowList()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var endpoint = CreateEndpoint();
+        endpoint.Enabled = false;
+        endpoint.Outcomes.Add(SecurityEventOutcomes.Failure);
+        var handler = CreateHandler(transport, CreateOptions(endpoint));
+
+        await handler.HandleAsync(CreateEvent(outcome: SecurityEventOutcomes.Failure));
+
+        Assert.That(transport.Requests, Is.Empty);
+    }
+
+    [Test]
     public async Task HandleAsyncAppliesEventTypeAllowList()
     {
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
@@ -456,6 +471,120 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         await handler.HandleAsync(CreateEvent());
 
         Assert.That(transport.Requests, Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public async Task HandleAsyncSendsSuccessAndFailureWhenOutcomeAllowListIsEmpty()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var handler = CreateHandler(transport, CreateOptions(CreateEndpoint()));
+
+        await handler.HandleAsync(CreateEvent(outcome: SecurityEventOutcomes.Success));
+        await handler.HandleAsync(CreateEvent(outcome: SecurityEventOutcomes.Failure));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Has.Count.EqualTo(2));
+            Assert.That(ReadPayload(transport.Requests[0]).GetProperty("outcome").GetString(), Is.EqualTo(SecurityEventOutcomes.Success));
+            Assert.That(ReadPayload(transport.Requests[1]).GetProperty("outcome").GetString(), Is.EqualTo(SecurityEventOutcomes.Failure));
+        }
+    }
+
+    [Test]
+    public async Task HandleAsyncAppliesSuccessOutcomeAllowList()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var endpoint = CreateEndpoint();
+        endpoint.Outcomes.Add(SecurityEventOutcomes.Success);
+        var handler = CreateHandler(transport, CreateOptions(endpoint));
+
+        await handler.HandleAsync(CreateEvent(outcome: SecurityEventOutcomes.Success));
+        await handler.HandleAsync(CreateEvent(outcome: SecurityEventOutcomes.Failure));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+            Assert.That(ReadPayload(transport.Requests.Single()).GetProperty("outcome").GetString(), Is.EqualTo(SecurityEventOutcomes.Success));
+        }
+    }
+
+    [Test]
+    public async Task HandleAsyncAppliesFailureOutcomeAllowList()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var endpoint = CreateEndpoint();
+        endpoint.Outcomes.Add(SecurityEventOutcomes.Failure);
+        var handler = CreateHandler(transport, CreateOptions(endpoint));
+
+        await handler.HandleAsync(CreateEvent(outcome: SecurityEventOutcomes.Success));
+        await handler.HandleAsync(CreateEvent(outcome: SecurityEventOutcomes.Failure));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+            Assert.That(ReadPayload(transport.Requests.Single()).GetProperty("outcome").GetString(), Is.EqualTo(SecurityEventOutcomes.Failure));
+        }
+    }
+
+    [Test]
+    public async Task HandleAsyncMatchesOutcomeAllowListCaseInsensitively()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var endpoint = CreateEndpoint();
+        endpoint.Outcomes.Add("SUCCESS");
+        var handler = CreateHandler(transport, CreateOptions(endpoint));
+
+        await handler.HandleAsync(CreateEvent(outcome: SecurityEventOutcomes.Success));
+
+        Assert.That(transport.Requests, Has.Count.EqualTo(1));
+    }
+
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase(" ")]
+    [TestCase("success\r\nx-test")]
+    public async Task HandleAsyncSkipsMissingOrUnsafeOutcomeWithoutThrowing(string? outcome)
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var handler = CreateHandler(transport, CreateOptions(CreateEndpoint()));
+
+        await handler.HandleAsync(CreateEvent(outcome: outcome));
+
+        Assert.That(transport.Requests, Is.Empty);
+    }
+
+    [TestCase(" ")]
+    [TestCase("ashlar.sign_in\nfailed")]
+    public async Task HandleAsyncSkipsUnsafeEventTypeWithoutThrowing(string eventType)
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var handler = CreateHandler(transport, CreateOptions(CreateEndpoint()));
+
+        await handler.HandleAsync(CreateEvent(eventType: eventType));
+
+        Assert.That(transport.Requests, Is.Empty);
+    }
+
+    [Test]
+    public void DeliveryFactoryRequiresEventTypeAndOutcomeAllowListsToMatch()
+    {
+        var eventTypeMismatch = CreateEndpoint("event-type-mismatch", "https://event-type.example.test/security-events");
+        eventTypeMismatch.EventTypes.Add("different.event");
+        eventTypeMismatch.Outcomes.Add(SecurityEventOutcomes.Success);
+        var outcomeMismatch = CreateEndpoint("outcome-mismatch", "https://outcome.example.test/security-events");
+        outcomeMismatch.EventTypes.Add("ashlar.sign_in.failed");
+        outcomeMismatch.Outcomes.Add(SecurityEventOutcomes.Failure);
+        var bothMatch = CreateEndpoint("both-match", "https://both.example.test/security-events");
+        bothMatch.EventTypes.Add("ashlar.sign_in.failed");
+        bothMatch.Outcomes.Add(SecurityEventOutcomes.Success);
+        var factory = new AshlarSecurityEventWebhookDeliveryFactory(Options.Create(CreateOptions(
+            eventTypeMismatch,
+            outcomeMismatch,
+            bothMatch)));
+
+        var deliveries = factory.CreateDeliveries(CreateEvent(outcome: SecurityEventOutcomes.Success));
+
+        Assert.That(deliveries.Single().EndpointName, Is.EqualTo("both-match"));
     }
 
     [Test]
@@ -796,6 +925,57 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         Assert.That(exception?.ParamName, Is.EqualTo("securityEvent"));
     }
 
+    [TestCase(" ")]
+    [TestCase("ashlar.sign_in\nfailed")]
+    public void CreateHeadersRejectsUnsafePayloadEventType(string eventType)
+    {
+        var payload = CreatePayload(eventType);
+        var body = AshlarSecurityEventWebhookPayloadSerializer.Serialize(payload);
+
+        var exception = Assert.Throws<ArgumentException>(() =>
+            AshlarSecurityEventWebhookDeliveryFactory.CreateHeaders(
+                CreateEndpoint(),
+                payload,
+                body,
+                DateTimeOffset.FromUnixTimeSeconds(1_800_000_000)));
+
+        Assert.That(exception?.ParamName, Is.EqualTo("payload.EventType"));
+    }
+
+    [Test]
+    public void CreateHeadersAddsOutcomeHeaderWhenOutcomeIsPresent()
+    {
+        var payload = CreatePayloadWithOutcome(SecurityEventOutcomes.Success);
+        var body = AshlarSecurityEventWebhookPayloadSerializer.Serialize(payload);
+
+        var headers = AshlarSecurityEventWebhookDeliveryFactory.CreateHeaders(
+            CreateEndpoint(),
+            payload,
+            body,
+            DateTimeOffset.FromUnixTimeSeconds(1_800_000_000));
+
+        Assert.That(headers["X-Ashlar-Event-Outcome"], Is.EqualTo(SecurityEventOutcomes.Success));
+    }
+
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase(" ")]
+    [TestCase("success\r\nx-test")]
+    public void CreateHeadersRejectsMissingOrUnsafePayloadOutcome(string? outcome)
+    {
+        var payload = CreatePayloadWithOutcome(outcome);
+        var body = AshlarSecurityEventWebhookPayloadSerializer.Serialize(payload);
+
+        var exception = Assert.Throws<ArgumentException>(() =>
+            AshlarSecurityEventWebhookDeliveryFactory.CreateHeaders(
+                CreateEndpoint(),
+                payload,
+                body,
+                DateTimeOffset.FromUnixTimeSeconds(1_800_000_000)));
+
+        Assert.That(exception?.ParamName, Is.EqualTo("payload.Outcome"));
+    }
+
     [Test]
     public void CreateSignatureThrowsForNullSecret()
     {
@@ -857,6 +1037,11 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
                     "audit",
                     "/security-events?tenant=contoso")
         };
+    }
+
+    private static JsonElement ReadPayload(RecordedRequest request)
+    {
+        return JsonSerializer.Deserialize<JsonElement>(request.ReadBody());
     }
 
     private static AshlarSecurityEventWebhookVerificationResult VerifySignature(
@@ -949,11 +1134,31 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             Uri = uri ?? delivery.Uri.ToString(),
             EventId = delivery.Payload.Id,
             EventType = delivery.Payload.EventType,
+            Outcome = delivery.Payload.Outcome ?? string.Empty,
             OccurredAt = delivery.Payload.OccurredAt,
             Body = delivery.Body.ToArray(),
             Headers = headers ?? JsonSerializer.Serialize(delivery.Headers),
             TimeoutMs = (long)delivery.Timeout.TotalMilliseconds,
             AttemptCount = 0
+        };
+    }
+
+    private static AshlarSecurityEventWebhookOutboxEntry CreateOutboxEntryWithOutcome(string outcome)
+    {
+        var entry = CreateOutboxEntry();
+        return new AshlarSecurityEventWebhookOutboxEntry
+        {
+            Id = entry.Id,
+            EndpointName = entry.EndpointName,
+            Uri = entry.Uri,
+            EventId = entry.EventId,
+            EventType = entry.EventType,
+            Outcome = outcome,
+            OccurredAt = entry.OccurredAt,
+            Body = entry.Body,
+            Headers = entry.Headers,
+            TimeoutMs = entry.TimeoutMs,
+            AttemptCount = entry.AttemptCount
         };
     }
 
@@ -999,20 +1204,33 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
 
     private static AshlarSecurityEventWebhookPayload CreatePayload(string eventType)
     {
+        return CreatePayload(eventType, SecurityEventOutcomes.Failure);
+    }
+
+    private static AshlarSecurityEventWebhookPayload CreatePayloadWithOutcome(string? outcome)
+    {
+        return CreatePayload("ashlar.sign_in.failed", outcome);
+    }
+
+    private static AshlarSecurityEventWebhookPayload CreatePayload(string eventType, string? outcome)
+    {
         return new AshlarSecurityEventWebhookPayload
         {
             Id = Guid.NewGuid(),
             EventType = eventType,
-            OccurredAt = DateTimeOffset.UtcNow
+            OccurredAt = DateTimeOffset.UtcNow,
+            Outcome = outcome!
         };
     }
 
-    private static AshlarSecurityEvent CreateEvent()
+    private static AshlarSecurityEvent CreateEvent(
+        string? outcome = SecurityEventOutcomes.Failure,
+        string eventType = "ashlar.sign_in.failed")
     {
         return new AshlarSecurityEvent
         {
             Id = new Guid("11111111-1111-1111-1111-111111111111"),
-            EventType = "ashlar.sign_in.failed",
+            EventType = eventType,
             OccurredAt = new DateTimeOffset(2026, 5, 24, 12, 0, 0, TimeSpan.Zero),
             UserId = new Guid("22222222-2222-2222-2222-222222222222"),
             TenantId = new Guid("33333333-3333-3333-3333-333333333333"),
@@ -1022,7 +1240,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             IpAddress = "203.0.113.10",
             UserAgent = "Sensitive Browser",
             CorrelationId = "correlation-1",
-            Outcome = SecurityEventOutcomes.Failure,
+            Outcome = outcome,
             FailureReason = "invalid_code",
             Properties = new Dictionary<string, string> { ["token_hash"] = "secret-token-hash" }
         };
@@ -1102,6 +1320,8 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit\r\nbad", new Uri("https://example.test"), TimeSpan.FromSeconds(1), EmptyHeaders, CreatePayload()))?.ParamName, Is.EqualTo("endpointName"));
             Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), EmptyHeaders, CreatePayload(" ")))?.ParamName, Is.EqualTo("payload.EventType"));
             Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), EmptyHeaders, CreatePayload("bad\r\nevent")))?.ParamName, Is.EqualTo("payload.EventType"));
+            Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), EmptyHeaders, CreatePayloadWithOutcome(" ")))?.ParamName, Is.EqualTo("payload.Outcome"));
+            Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), EmptyHeaders, CreatePayloadWithOutcome("success\n")))?.ParamName, Is.EqualTo("payload.Outcome"));
             Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), EmptyHeaders, CreatePayload(), ReadOnlyMemory<byte>.Empty))?.ParamName, Is.EqualTo("body"));
             Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), new Dictionary<string, string> { ["bad\r\nname"] = "value" }, CreatePayload()))?.ParamName, Is.EqualTo("headers"));
             Assert.That(Assert.Throws<ArgumentException>(() => new AshlarSecurityEventWebhookDelivery("audit", new Uri("https://example.test"), TimeSpan.FromSeconds(1), new Dictionary<string, string> { ["X-Test"] = "bad\r\nvalue" }, CreatePayload()))?.ParamName, Is.EqualTo("headers"));
@@ -1325,14 +1545,16 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var observer = new RecordingDeliveryObserver();
         var missingHeaders = CreateOutboxEntry("{}");
         var nullHeaders = CreateOutboxEntry("null");
+        var missingHeadersTransport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var nullHeadersTransport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
 
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
             missingHeaders,
-            CreateOutboxDispatchContext(new RecordingHttpMessageHandler(HttpStatusCode.Accepted), observer),
+            CreateOutboxDispatchContext(missingHeadersTransport, observer),
             CancellationToken.None);
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
             nullHeaders,
-            CreateOutboxDispatchContext(new RecordingHttpMessageHandler(HttpStatusCode.Accepted), observer),
+            CreateOutboxDispatchContext(nullHeadersTransport, observer),
             CancellationToken.None);
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
             CreateOutboxEntry(),
@@ -1346,6 +1568,33 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             Assert.That(observer.Attempts[0].EndpointName, Is.EqualTo("audit"));
             Assert.That(observer.Attempts[1].EventType, Is.EqualTo("ashlar.sign_in.failed"));
             Assert.That(observer.Attempts[1].EndpointName, Is.EqualTo("audit"));
+            Assert.That(missingHeadersTransport.Requests.Single().Headers["X-Ashlar-Event-Outcome"].Single(), Is.EqualTo(SecurityEventOutcomes.Failure));
+            Assert.That(nullHeadersTransport.Requests.Single().Headers["X-Ashlar-Event-Outcome"].Single(), Is.EqualTo(SecurityEventOutcomes.Failure));
+        }
+    }
+
+    [TestCase("")]
+    [TestCase(" ")]
+    [TestCase("success\n")]
+    public async Task SharedOutboxDispatchFailsSafelyWhenStoredOutcomeIsInvalid(string outcome)
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var failed = new List<Exception>();
+        var observer = new RecordingDeliveryObserver();
+        var entry = CreateOutboxEntryWithOutcome(outcome);
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
+            entry,
+            CreateOutboxDispatchContext(transport, observer, failed),
+            CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Is.Empty);
+            Assert.That(failed.Single(), Is.InstanceOf<Exception>());
+            Assert.That(observer.Attempts.Single().Outcome, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.FailureOutcome));
+            Assert.That(observer.Attempts.Single().EventType, Is.EqualTo("ashlar.sign_in.failed"));
+            Assert.That(observer.Attempts.Single().EndpointName, Is.EqualTo("audit"));
         }
     }
 
@@ -1515,10 +1764,12 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         var headers = JsonSerializer.Deserialize<Dictionary<string, string>>(entry.Headers)!;
         headers.Remove("X-Ashlar-Event-Id");
         headers.Remove("X-Ashlar-Event-Type");
+        headers.Remove("X-Ashlar-Event-Outcome");
         headers.Remove("X-Ashlar-Webhook-Endpoint");
         headers.Remove("X-Ashlar-Timestamp");
         headers["x-ashlar-event-id"] = Guid.Empty.ToString("D");
         headers["x-ashlar-event-type"] = "wrong.event";
+        headers["x-ashlar-event-outcome"] = "success";
         headers["x-ashlar-webhook-endpoint"] = "wrong";
         headers["x-ashlar-timestamp"] = DateTimeOffset.UnixEpoch.ToString("O");
 
@@ -1532,10 +1783,12 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         {
             Assert.That(request.Headers.Keys.Count(key => string.Equals(key, "X-Ashlar-Event-Id", StringComparison.OrdinalIgnoreCase)), Is.EqualTo(1));
             Assert.That(request.Headers.Keys.Count(key => string.Equals(key, "X-Ashlar-Event-Type", StringComparison.OrdinalIgnoreCase)), Is.EqualTo(1));
+            Assert.That(request.Headers.Keys.Count(key => string.Equals(key, "X-Ashlar-Event-Outcome", StringComparison.OrdinalIgnoreCase)), Is.EqualTo(1));
             Assert.That(request.Headers.Keys.Count(key => string.Equals(key, "X-Ashlar-Webhook-Endpoint", StringComparison.OrdinalIgnoreCase)), Is.EqualTo(1));
             Assert.That(request.Headers.Keys.Count(key => string.Equals(key, "X-Ashlar-Timestamp", StringComparison.OrdinalIgnoreCase)), Is.EqualTo(1));
             Assert.That(request.Headers["x-ashlar-event-id"].Single(), Is.EqualTo(entry.EventId.ToString("D")));
             Assert.That(request.Headers["x-ashlar-event-type"].Single(), Is.EqualTo(entry.EventType));
+            Assert.That(request.Headers["x-ashlar-event-outcome"].Single(), Is.EqualTo(SecurityEventOutcomes.Failure));
             Assert.That(request.Headers["x-ashlar-webhook-endpoint"].Single(), Is.EqualTo(entry.EndpointName));
             Assert.That(request.Headers["x-ashlar-timestamp"].Single(), Is.EqualTo(entry.OccurredAt.ToString("O")));
         }

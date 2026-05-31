@@ -154,7 +154,8 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         {
             Id = Guid.NewGuid(),
             EventType = "test.event",
-            OccurredAt = DateTimeOffset.UtcNow
+            OccurredAt = DateTimeOffset.UtcNow,
+            Outcome = SecurityEventOutcomes.Success
         });
 
         using (Assert.EnterMultipleScope())

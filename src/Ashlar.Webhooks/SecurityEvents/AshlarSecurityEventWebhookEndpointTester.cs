@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Ashlar.Auditing;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.Webhooks.SecurityEvents;
@@ -203,7 +204,8 @@ public sealed class AshlarSecurityEventWebhookEndpointTester : IAshlarSecurityEv
         {
             Id = Guid.NewGuid(),
             EventType = TestEventType,
-            OccurredAt = _timeProvider.GetUtcNow()
+            OccurredAt = _timeProvider.GetUtcNow(),
+            Outcome = SecurityEventOutcomes.Success
         };
     }
 

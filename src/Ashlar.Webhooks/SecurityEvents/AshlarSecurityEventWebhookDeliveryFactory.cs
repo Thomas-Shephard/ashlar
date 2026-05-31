@@ -36,8 +36,18 @@ public sealed class AshlarSecurityEventWebhookDeliveryFactory
     {
         ArgumentNullException.ThrowIfNull(securityEvent);
 
+        if (!IsSafeEventType(securityEvent.EventType))
+        {
+            return [];
+        }
+
+        if (!TryGetSafeOutcome(securityEvent.Outcome, out var outcome))
+        {
+            return [];
+        }
+
         var activeEndpoints = _options.Endpoints
-            .Where(endpoint => ShouldSend(endpoint, securityEvent.EventType))
+            .Where(endpoint => ShouldSend(endpoint, securityEvent.EventType, outcome))
             .ToList();
 
         if (activeEndpoints.Count == 0)
@@ -45,7 +55,7 @@ public sealed class AshlarSecurityEventWebhookDeliveryFactory
             return [];
         }
 
-        var payload = CreatePayload(securityEvent);
+        var payload = CreatePayload(securityEvent, outcome);
         var body = AshlarSecurityEventWebhookPayloadSerializer.Serialize(payload);
         var signatureTimestamp = _timeProvider.GetUtcNow();
         return activeEndpoints
@@ -80,12 +90,24 @@ public sealed class AshlarSecurityEventWebhookDeliveryFactory
             "Endpoint name is required.",
             "Endpoint name must not contain line breaks.");
         ArgumentNullException.ThrowIfNull(payload);
+        AshlarSecurityEventWebhookHeaderValues.ThrowIfRequiredUnsafe(
+            payload.EventType,
+            $"{nameof(payload)}.{nameof(payload.EventType)}",
+            "Event type is required.",
+            "Event type must not contain line breaks.");
+        var outcome = GetRequiredSafeHeaderValue(
+            payload.Outcome,
+            $"{nameof(payload)}.{nameof(payload.Outcome)}",
+            "Outcome is required.",
+            "Outcome must not contain line breaks.");
+
         var uri = GetEndpointUri(endpoint);
 
         var headers = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["X-Ashlar-Event-Id"] = payload.Id.ToString("D"),
             ["X-Ashlar-Event-Type"] = payload.EventType,
+            ["X-Ashlar-Event-Outcome"] = outcome,
             ["X-Ashlar-Webhook-Endpoint"] = endpoint.Name,
             [AshlarSecurityEventWebhookSignature.EventTimestampHeaderName] = payload.OccurredAt.ToString("O")
         };
@@ -103,6 +125,25 @@ public sealed class AshlarSecurityEventWebhookDeliveryFactory
         });
 
         return headers;
+    }
+
+    private static string GetRequiredSafeHeaderValue(
+        string? value,
+        string paramName,
+        string requiredMessage,
+        string unsafeMessage)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException(requiredMessage, paramName);
+        }
+
+        if (!AshlarSecurityEventWebhookHeaderValues.IsSafe(value))
+        {
+            throw new ArgumentException(unsafeMessage, paramName);
+        }
+
+        return value;
     }
 
     internal static void AddSigningHeaders(
@@ -164,12 +205,23 @@ public sealed class AshlarSecurityEventWebhookDeliveryFactory
     {
         ArgumentNullException.ThrowIfNull(securityEvent);
 
+        return CreatePayload(
+            securityEvent,
+            GetRequiredSafeHeaderValue(
+                securityEvent.Outcome,
+                $"{nameof(securityEvent)}.{nameof(securityEvent.Outcome)}",
+                "Outcome is required.",
+                "Outcome must not contain line breaks."));
+    }
+
+    private static AshlarSecurityEventWebhookPayload CreatePayload(AshlarSecurityEvent securityEvent, string outcome)
+    {
         return new AshlarSecurityEventWebhookPayload
         {
             Id = securityEvent.Id,
             EventType = securityEvent.EventType,
             OccurredAt = securityEvent.OccurredAt,
-            Outcome = securityEvent.Outcome,
+            Outcome = outcome,
             FailureReason = securityEvent.FailureReason,
             UserId = securityEvent.UserId,
             TenantId = securityEvent.TenantId,
@@ -181,9 +233,28 @@ public sealed class AshlarSecurityEventWebhookDeliveryFactory
         };
     }
 
-    private static bool ShouldSend(AshlarSecurityEventWebhookEndpointOptions endpoint, string eventType)
+    private static bool ShouldSend(AshlarSecurityEventWebhookEndpointOptions endpoint, string eventType, string outcome)
     {
-        return endpoint.Enabled && (endpoint.EventTypes.Count == 0 || endpoint.EventTypes.Contains(eventType));
+        return endpoint.Enabled
+            && (endpoint.EventTypes.Count == 0 || endpoint.EventTypes.Contains(eventType))
+            && (endpoint.Outcomes.Count == 0 || endpoint.Outcomes.Contains(outcome));
+    }
+
+    private static bool IsSafeEventType(string? eventType)
+    {
+        return !string.IsNullOrWhiteSpace(eventType) && AshlarSecurityEventWebhookHeaderValues.IsSafe(eventType);
+    }
+
+    private static bool TryGetSafeOutcome(string? value, out string outcome)
+    {
+        if (string.IsNullOrWhiteSpace(value) || !AshlarSecurityEventWebhookHeaderValues.IsSafe(value))
+        {
+            outcome = string.Empty;
+            return false;
+        }
+
+        outcome = value;
+        return true;
     }
 
     private static Uri GetEndpointUri(AshlarSecurityEventWebhookEndpointOptions endpoint)

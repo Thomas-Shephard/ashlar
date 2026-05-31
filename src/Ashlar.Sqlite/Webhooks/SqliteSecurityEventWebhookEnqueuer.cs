@@ -31,9 +31,9 @@ public sealed class SqliteSecurityEventWebhookEnqueuer(
         command.Transaction = connectionHandle.Transaction;
         command.CommandText = """
             INSERT INTO ashlar_security_event_webhook_outbox (
-                id, endpoint_name, uri, event_id, event_type, occurred_at, timeout_ms, body, headers, created_at, available_at
+                id, endpoint_name, uri, event_id, event_type, outcome, occurred_at, timeout_ms, body, headers, created_at, available_at
             ) VALUES (
-                $id, $endpointName, $uri, $eventId, $eventType, $occurredAt, $timeoutMs, $body, $headers, $createdAt, $availableAt
+                $id, $endpointName, $uri, $eventId, $eventType, $outcome, $occurredAt, $timeoutMs, $body, $headers, $createdAt, $availableAt
             )
             """;
         command.AddGuidParameter("$id", Guid.NewGuid());
@@ -41,6 +41,7 @@ public sealed class SqliteSecurityEventWebhookEnqueuer(
         command.AddParameter("$uri", delivery.Uri.ToString());
         command.AddGuidParameter("$eventId", delivery.Payload.Id);
         command.AddParameter("$eventType", delivery.Payload.EventType);
+        command.AddParameter("$outcome", delivery.Payload.Outcome);
         command.AddDateTimeOffsetParameter("$occurredAt", delivery.Payload.OccurredAt);
         command.AddParameter("$timeoutMs", checked((long)delivery.Timeout.TotalMilliseconds));
         command.AddParameter("$body", delivery.Body.ToArray());
