@@ -8,6 +8,23 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.Postgres.Webhooks;
 
 /// <summary>
+/// Groups dependencies used by the PostgreSQL security event webhook outbox dispatcher.
+/// </summary>
+/// <param name="ServiceProvider">The service provider value.</param>
+/// <param name="TimeProvider">The time provider value.</param>
+/// <param name="Options">The <paramref name="Options" /> value.</param>
+/// <param name="WebhookOptions">The current webhook endpoint configuration.</param>
+/// <param name="HttpClientFactory">The HTTP client factory value.</param>
+/// <param name="DestinationValidator">The webhook destination safety validator.</param>
+public sealed record PostgresSecurityEventWebhookOutboxDispatcherDependencies(
+    IServiceProvider ServiceProvider,
+    TimeProvider TimeProvider,
+    IOptions<PostgresSecurityEventWebhookOutboxOptions> Options,
+    IOptions<AshlarSecurityEventWebhookOptions> WebhookOptions,
+    IHttpClientFactory HttpClientFactory,
+    AshlarSecurityEventWebhookDestinationValidator DestinationValidator);
+
+/// <summary>
 /// PostgreSQL-backed dispatcher for durable security event webhook deliveries.
 /// </summary>
 public sealed class PostgresSecurityEventWebhookOutboxDispatcher
@@ -30,39 +47,30 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
     /// <summary>
     /// Initializes a new instance of the dispatcher class.
     /// </summary>
-    /// <param name="serviceProvider">The service provider value.</param>
-    /// <param name="timeProvider">The time provider value.</param>
-    /// <param name="options">The options value.</param>
-    /// <param name="webhookOptions">The current webhook endpoint options.</param>
-    /// <param name="httpClientFactory">The HTTP client factory value.</param>
-    /// <param name="destinationValidator">The webhook destination safety validator.</param>
+    /// <param name="dependencies">The dispatcher dependencies.</param>
     /// <param name="logger">The logger value.</param>
     /// <param name="deliveryObserver">The delivery observer.</param>
     public PostgresSecurityEventWebhookOutboxDispatcher(
-        IServiceProvider serviceProvider,
-        TimeProvider timeProvider,
-        IOptions<PostgresSecurityEventWebhookOutboxOptions> options,
-        IOptions<AshlarSecurityEventWebhookOptions> webhookOptions,
-        IHttpClientFactory httpClientFactory,
-        AshlarSecurityEventWebhookDestinationValidator destinationValidator,
+        PostgresSecurityEventWebhookOutboxDispatcherDependencies dependencies,
         ILogger<PostgresSecurityEventWebhookOutboxDispatcher>? logger = null,
         IAshlarSecurityEventWebhookDeliveryObserver? deliveryObserver = null)
     {
-        ArgumentNullException.ThrowIfNull(serviceProvider);
-        ArgumentNullException.ThrowIfNull(timeProvider);
-        ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(webhookOptions);
-        ArgumentNullException.ThrowIfNull(httpClientFactory);
-        ArgumentNullException.ThrowIfNull(destinationValidator);
+        ArgumentNullException.ThrowIfNull(dependencies);
+        ArgumentNullException.ThrowIfNull(dependencies.ServiceProvider);
+        ArgumentNullException.ThrowIfNull(dependencies.TimeProvider);
+        ArgumentNullException.ThrowIfNull(dependencies.Options);
+        ArgumentNullException.ThrowIfNull(dependencies.WebhookOptions);
+        ArgumentNullException.ThrowIfNull(dependencies.HttpClientFactory);
+        ArgumentNullException.ThrowIfNull(dependencies.DestinationValidator);
 
-        _serviceProvider = serviceProvider;
-        _timeProvider = timeProvider;
-        _options = options.Value;
-        _webhookOptions = webhookOptions.Value;
-        _httpClientFactory = httpClientFactory;
+        _serviceProvider = dependencies.ServiceProvider;
+        _timeProvider = dependencies.TimeProvider;
+        _options = dependencies.Options.Value;
+        _webhookOptions = dependencies.WebhookOptions.Value;
+        _httpClientFactory = dependencies.HttpClientFactory;
         _logger = logger ?? NullLogger<PostgresSecurityEventWebhookOutboxDispatcher>.Instance;
         _deliveryObserver = deliveryObserver ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
-        _destinationValidator = destinationValidator;
+        _destinationValidator = dependencies.DestinationValidator;
     }
 
     /// <summary>

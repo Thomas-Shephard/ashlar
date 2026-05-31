@@ -90,35 +90,39 @@ public sealed class AshlarSecurityEventWebhookDeliveryFactory
             [AshlarSecurityEventWebhookSignature.EventTimestampHeaderName] = payload.OccurredAt.ToString("O")
         };
 
-        AddSigningHeaders(headers, endpoint.Name, endpoint.SharedSecret, endpoint.AllowUnsigned, payload.Id, payload.OccurredAt, uri, body, signatureTimestamp);
+        AddSigningHeaders(headers, new AshlarSecurityEventWebhookSigningRequest
+        {
+            EndpointName = endpoint.Name,
+            SharedSecret = endpoint.SharedSecret,
+            AllowUnsigned = endpoint.AllowUnsigned,
+            EventId = payload.Id,
+            OccurredAt = payload.OccurredAt,
+            Uri = uri,
+            Body = body.ToArray(),
+            SignatureTimestamp = signatureTimestamp
+        });
 
         return headers;
     }
 
     internal static void AddSigningHeaders(
         IDictionary<string, string> headers,
-        string endpointName,
-        string? sharedSecret,
-        bool allowUnsigned,
-        Guid eventId,
-        DateTimeOffset occurredAt,
-        Uri uri,
-        ReadOnlySpan<byte> body,
-        DateTimeOffset signatureTimestamp)
+        AshlarSecurityEventWebhookSigningRequest request)
     {
         ArgumentNullException.ThrowIfNull(headers);
-        ArgumentNullException.ThrowIfNull(uri);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Uri);
         AshlarSecurityEventWebhookHeaderValues.ThrowIfRequiredUnsafe(
-            endpointName,
-            nameof(endpointName),
+            request.EndpointName,
+            $"{nameof(request)}.{nameof(request.EndpointName)}",
             "Endpoint name is required.",
             "Endpoint name must not contain line breaks.");
         RemoveHeader(headers, AshlarSecurityEventWebhookSignature.SignatureHeaderName);
         RemoveHeader(headers, AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName);
 
-        if (string.IsNullOrWhiteSpace(sharedSecret))
+        if (string.IsNullOrWhiteSpace(request.SharedSecret))
         {
-            if (!allowUnsigned)
+            if (!request.AllowUnsigned)
             {
                 throw new InvalidOperationException("Ashlar security event webhook endpoint is missing a shared secret.");
             }
@@ -127,16 +131,16 @@ public sealed class AshlarSecurityEventWebhookDeliveryFactory
         }
 
         headers[AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName] =
-            AshlarSecurityEventWebhookSignature.FormatTimestamp(signatureTimestamp);
+            AshlarSecurityEventWebhookSignature.FormatTimestamp(request.SignatureTimestamp);
         headers[AshlarSecurityEventWebhookSignature.SignatureHeaderName] =
             AshlarSecurityEventWebhookSignature.CreateSignature(
-                sharedSecret,
-                body,
-                signatureTimestamp,
-                occurredAt,
-                eventId,
-                endpointName,
-                AshlarSecurityEventWebhookSignature.CreateCanonicalDestination(uri));
+                request.SharedSecret,
+                request.Body.Span,
+                request.SignatureTimestamp,
+                request.OccurredAt,
+                request.EventId,
+                request.EndpointName,
+                AshlarSecurityEventWebhookSignature.CreateCanonicalDestination(request.Uri));
     }
 
     private static void RemoveHeader(IDictionary<string, string> headers, string headerName)
@@ -186,4 +190,50 @@ public sealed class AshlarSecurityEventWebhookDeliveryFactory
     {
         return endpoint.Uri ?? throw new InvalidOperationException("Active webhook endpoint is missing a URI.");
     }
+}
+
+/// <summary>
+/// Groups inputs used to sign an Ashlar security event webhook request.
+/// </summary>
+internal sealed class AshlarSecurityEventWebhookSigningRequest
+{
+    /// <summary>
+    /// Gets the endpoint name or identity.
+    /// </summary>
+    public required string EndpointName { get; init; }
+
+    /// <summary>
+    /// Gets the shared secret.
+    /// </summary>
+    public string? SharedSecret { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether unsigned delivery is explicitly allowed.
+    /// </summary>
+    public bool AllowUnsigned { get; init; }
+
+    /// <summary>
+    /// Gets the security event identifier.
+    /// </summary>
+    public Guid EventId { get; init; }
+
+    /// <summary>
+    /// Gets the security event occurrence timestamp.
+    /// </summary>
+    public DateTimeOffset OccurredAt { get; init; }
+
+    /// <summary>
+    /// Gets the destination URI.
+    /// </summary>
+    public required Uri Uri { get; init; }
+
+    /// <summary>
+    /// Gets the raw request body bytes.
+    /// </summary>
+    public ReadOnlyMemory<byte> Body { get; init; }
+
+    /// <summary>
+    /// Gets the signature timestamp.
+    /// </summary>
+    public DateTimeOffset SignatureTimestamp { get; init; }
 }

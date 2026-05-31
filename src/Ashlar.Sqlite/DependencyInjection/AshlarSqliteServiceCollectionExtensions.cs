@@ -277,6 +277,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         var httpClientBuilder = services.AddHttpClient(SqliteSecurityEventWebhookOutboxDispatcher.HttpClientName)
             .ConfigurePrimaryHttpMessageHandler(CreateWebhookHttpMessageHandler);
         configureHttpClient?.Invoke(httpClientBuilder);
+        services.TryAddScoped<SqliteSecurityEventWebhookOutboxDispatcherDependencies>();
         services.TryAddScoped<SqliteSecurityEventWebhookOutboxDispatcher>();
 
         return services;

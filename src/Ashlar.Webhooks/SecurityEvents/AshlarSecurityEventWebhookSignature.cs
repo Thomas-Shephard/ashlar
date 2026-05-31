@@ -101,6 +101,52 @@ public sealed record AshlarSecurityEventWebhookVerificationResult(AshlarSecurity
 }
 
 /// <summary>
+/// Groups receiver-side inputs needed to verify an Ashlar security event webhook request.
+/// </summary>
+public sealed class AshlarSecurityEventWebhookVerificationRequest
+{
+    /// <summary>
+    /// Gets the raw request body bytes.
+    /// </summary>
+    public ReadOnlyMemory<byte> Body { get; init; }
+
+    /// <summary>
+    /// Gets the relevant request headers.
+    /// </summary>
+    public required IReadOnlyDictionary<string, string> Headers { get; init; }
+
+    /// <summary>
+    /// Gets the shared secret.
+    /// </summary>
+    public string? SharedSecret { get; init; }
+
+    /// <summary>
+    /// Gets the expected event identifier.
+    /// </summary>
+    public Guid EventId { get; init; }
+
+    /// <summary>
+    /// Gets the endpoint name or identity.
+    /// </summary>
+    public required string EndpointName { get; init; }
+
+    /// <summary>
+    /// Gets the canonical destination path and query component.
+    /// </summary>
+    public required string DestinationPathAndQuery { get; init; }
+
+    /// <summary>
+    /// Gets the current time provider.
+    /// </summary>
+    public required TimeProvider TimeProvider { get; init; }
+
+    /// <summary>
+    /// Gets optional verification options.
+    /// </summary>
+    public AshlarSecurityEventWebhookVerificationOptions? Options { get; init; }
+}
+
+/// <summary>
 /// Creates and verifies Ashlar security event webhook signatures.
 /// </summary>
 public static class AshlarSecurityEventWebhookSignature
@@ -158,35 +204,21 @@ public static class AshlarSecurityEventWebhookSignature
     /// <summary>
     /// Verifies an Ashlar security event webhook request signature.
     /// </summary>
-    /// <param name="body">The raw request body bytes.</param>
-    /// <param name="headers">The relevant request headers.</param>
-    /// <param name="sharedSecret">The shared secret.</param>
-    /// <param name="eventId">The expected event identifier.</param>
-    /// <param name="endpointName">The endpoint name or identity.</param>
-    /// <param name="destinationPathAndQuery">The canonical destination path and query component.</param>
-    /// <param name="timeProvider">The current time provider.</param>
-    /// <param name="options">Optional verification options.</param>
+    /// <param name="request">The verification request.</param>
     /// <returns>The verification result.</returns>
-    public static AshlarSecurityEventWebhookVerificationResult Verify(
-        ReadOnlySpan<byte> body,
-        IReadOnlyDictionary<string, string> headers,
-        string? sharedSecret,
-        Guid eventId,
-        string endpointName,
-        string destinationPathAndQuery,
-        TimeProvider timeProvider,
-        AshlarSecurityEventWebhookVerificationOptions? options = null)
+    public static AshlarSecurityEventWebhookVerificationResult Verify(AshlarSecurityEventWebhookVerificationRequest request)
     {
-        ArgumentNullException.ThrowIfNull(headers);
-        ArgumentNullException.ThrowIfNull(timeProvider);
-        ValidateSigningInputs(endpointName, destinationPathAndQuery);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Headers);
+        ArgumentNullException.ThrowIfNull(request.TimeProvider);
+        ValidateSigningInputs(request.EndpointName, request.DestinationPathAndQuery);
 
-        if (string.IsNullOrWhiteSpace(sharedSecret))
+        if (string.IsNullOrWhiteSpace(request.SharedSecret))
         {
             return new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingSecret);
         }
 
-        if (!TryGetHeader(headers, SignatureTimestampHeaderName, out var timestampValue))
+        if (!TryGetHeader(request.Headers, SignatureTimestampHeaderName, out var timestampValue))
         {
             return new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingTimestamp);
         }
@@ -211,19 +243,19 @@ public static class AshlarSecurityEventWebhookSignature
             return new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MalformedSignature);
         }
 
-        var tolerance = options?.TimestampTolerance ?? TimeSpan.FromMinutes(5);
+        var tolerance = request.Options?.TimestampTolerance ?? TimeSpan.FromMinutes(5);
         if (tolerance < TimeSpan.Zero)
         {
-            throw new ArgumentOutOfRangeException(nameof(options), "Timestamp tolerance must not be negative.");
+            throw new ArgumentOutOfRangeException(nameof(request), "Timestamp tolerance must not be negative.");
         }
 
-        var now = timeProvider.GetUtcNow();
+        var now = request.TimeProvider.GetUtcNow();
         if (signatureTimestamp < now.Subtract(tolerance) || signatureTimestamp > now.Add(tolerance))
         {
             return new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.TimestampOutsideTolerance);
         }
 
-        if (!TryGetHeader(headers, EventTimestampHeaderName, out var occurredAtValue))
+        if (!TryGetHeader(request.Headers, EventTimestampHeaderName, out var occurredAtValue))
         {
             return new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingEventTimestamp);
         }
@@ -238,7 +270,7 @@ public static class AshlarSecurityEventWebhookSignature
             return new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MalformedEventTimestamp);
         }
 
-        if (!TryGetHeader(headers, SignatureHeaderName, out var signatureValue))
+        if (!TryGetHeader(request.Headers, SignatureHeaderName, out var signatureValue))
         {
             return new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingSignature);
         }
@@ -248,7 +280,14 @@ public static class AshlarSecurityEventWebhookSignature
             return new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MalformedSignature);
         }
 
-        var expectedSignature = ComputeSignatureHash(sharedSecret, body, signatureTimestamp, occurredAt, eventId, endpointName, destinationPathAndQuery);
+        var expectedSignature = ComputeSignatureHash(
+            request.SharedSecret,
+            request.Body.Span,
+            signatureTimestamp,
+            occurredAt,
+            request.EventId,
+            request.EndpointName,
+            request.DestinationPathAndQuery);
         return CryptographicOperations.FixedTimeEquals(actualSignature, expectedSignature)
             ? AshlarSecurityEventWebhookVerificationResult.Valid
             : new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.InvalidSignature);

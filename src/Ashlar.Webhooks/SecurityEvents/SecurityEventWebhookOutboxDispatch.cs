@@ -237,14 +237,17 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
 
         AshlarSecurityEventWebhookDeliveryFactory.AddSigningHeaders(
             headers,
-            entry.EndpointName,
-            endpoint.SharedSecret,
-            endpoint.AllowUnsigned,
-            entry.EventId,
-            entry.OccurredAt,
-            uri,
-            entry.Body,
-            context.TimeProvider.GetUtcNow());
+            new AshlarSecurityEventWebhookSigningRequest
+            {
+                EndpointName = entry.EndpointName,
+                SharedSecret = endpoint.SharedSecret,
+                AllowUnsigned = endpoint.AllowUnsigned,
+                EventId = entry.EventId,
+                OccurredAt = entry.OccurredAt,
+                Uri = uri,
+                Body = entry.Body,
+                SignatureTimestamp = context.TimeProvider.GetUtcNow()
+            });
         return headers;
     }
 
