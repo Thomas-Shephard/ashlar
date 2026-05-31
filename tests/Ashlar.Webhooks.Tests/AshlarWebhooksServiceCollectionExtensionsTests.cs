@@ -43,6 +43,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
             Assert.That(provider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
             Assert.That(provider.GetServices<ISecurityEventHandler>().Single(), Is.TypeOf<AshlarSecurityEventWebhookHandler>());
             Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookSender>(), Is.TypeOf<AshlarSecurityEventWebhookSender>());
+            Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookEndpointTester>(), Is.TypeOf<AshlarSecurityEventWebhookEndpointTester>());
             Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>(), Is.TypeOf<NoOpAshlarSecurityEventWebhookDeliveryObserver>());
             Assert.That(provider.GetRequiredService<AshlarSecurityEventWebhookDeliveryFactory>(), Is.Not.Null);
             Assert.That(provider.GetRequiredService<IOptions<AshlarSecurityEventWebhookOptions>>().Value.Endpoints.Single().Name, Is.EqualTo("audit"));
@@ -65,6 +66,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         {
             Assert.That(provider.GetServices<ISecurityEventHandler>().OfType<AshlarSecurityEventWebhookHandler>(), Has.Exactly(1).Items);
             Assert.That(provider.GetServices<IAshlarSecurityEventWebhookSender>().OfType<AshlarSecurityEventWebhookSender>(), Has.Exactly(1).Items);
+            Assert.That(provider.GetServices<IAshlarSecurityEventWebhookEndpointTester>().OfType<AshlarSecurityEventWebhookEndpointTester>(), Has.Exactly(1).Items);
             Assert.That(provider.GetServices<AshlarSecurityEventWebhookDeliveryFactory>(), Has.Exactly(1).Items);
         }
     }

@@ -57,7 +57,9 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
     }
 
     /// <inheritdoc />
-    public async Task SendAsync(AshlarSecurityEventWebhookDelivery delivery, CancellationToken cancellationToken = default)
+    public async Task<AshlarSecurityEventWebhookSendResult> SendAsync(
+        AshlarSecurityEventWebhookDelivery delivery,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(delivery);
 
@@ -72,7 +74,7 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
             {
                 LogDestinationRejected(delivery, destinationValidation);
                 RecordFailure(delivery, start, AshlarSecurityEventWebhookDeliveryTelemetry.ExceptionFailureKind);
-                return;
+                return AshlarSecurityEventWebhookSendResult.DestinationRejected;
             }
 
             using var request = CreateRequest(delivery);
@@ -83,10 +85,11 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
             {
                 LogEndpointNonSuccess(delivery, response);
                 RecordFailure(delivery, start, AshlarSecurityEventWebhookDeliveryTelemetry.HttpStatusFailureKind);
-                return;
+                return AshlarSecurityEventWebhookSendResult.DeliveryFailed;
             }
 
             RecordSuccess(delivery, start);
+            return AshlarSecurityEventWebhookSendResult.Sent;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

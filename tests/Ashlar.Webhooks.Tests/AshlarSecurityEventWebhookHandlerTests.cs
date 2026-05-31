@@ -1615,9 +1615,11 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
 
     private sealed class TestWebhookSender : IAshlarSecurityEventWebhookSender
     {
-        public Task SendAsync(AshlarSecurityEventWebhookDelivery delivery, CancellationToken cancellationToken = default)
+        public Task<AshlarSecurityEventWebhookSendResult> SendAsync(
+            AshlarSecurityEventWebhookDelivery delivery,
+            CancellationToken cancellationToken = default)
         {
-            return Task.CompletedTask;
+            return Task.FromResult(AshlarSecurityEventWebhookSendResult.Sent);
         }
     }
 
