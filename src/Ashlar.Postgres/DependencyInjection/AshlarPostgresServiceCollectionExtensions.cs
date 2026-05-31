@@ -370,6 +370,7 @@ public static class AshlarPostgresServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarSecurityEventWebhookEnqueuer, PostgresSecurityEventWebhookEnqueuer>();
+        services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxOperations, PostgresSecurityEventWebhookOutboxOperations>());
         services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxBrowser, PostgresSecurityEventWebhookOutboxBrowser>());
         services.Replace(ServiceDescriptor.Scoped<ISecurityEventWebhookOutboxDiagnostics, PostgresSecurityEventWebhookOutboxDiagnostics>());
 

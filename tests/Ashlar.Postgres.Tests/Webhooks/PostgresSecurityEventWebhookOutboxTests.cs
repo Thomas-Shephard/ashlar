@@ -19,6 +19,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         "ix_ashlar_security_event_webhook_outbox_locked_until",
         "ix_ashlar_security_event_webhook_outbox_sent_at",
         "ix_ashlar_security_event_webhook_outbox_failed_at",
+        "ix_ashlar_security_event_webhook_outbox_discarded_at",
         "ix_ashlar_security_event_webhook_outbox_event"
     ];
     private static readonly JsonSerializerOptions WebJsonOptions = new(JsonSerializerDefaults.Web);

@@ -79,6 +79,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxDiagnosticsTests : SqliteT
         var scheduled = CheckedAt.AddMinutes(5);
         var lockedUntil = CheckedAt.AddMinutes(10);
         var expiredLock = CheckedAt.AddMinutes(-1);
+        var discardedFailed = CheckedAt.AddDays(-3);
         var oldestFailed = CheckedAt.AddDays(-2);
         var newestFailed = CheckedAt.AddDays(-1);
 
@@ -95,6 +96,9 @@ internal sealed class SqliteSecurityEventWebhookOutboxDiagnosticsTests : SqliteT
             INSERT INTO ashlar_security_event_webhook_outbox (id, endpoint_name, uri, event_id, event_type, outcome, occurred_at, timeout_ms, body, headers, created_at, available_at, failed_at)
             VALUES ($id6, 'audit', 'https://example.test/failed-old', $eventId6, 'security.test', 'success', $oldPending, 1000, $body, $headers, $oldPending, $oldPending, $oldestFailed),
                    ($id7, 'audit', 'https://example.test/failed-new', $eventId7, 'security.test', 'success', $oldPending, 1000, $body, $headers, $oldPending, $oldPending, $newestFailed);
+
+            INSERT INTO ashlar_security_event_webhook_outbox (id, endpoint_name, uri, event_id, event_type, outcome, occurred_at, timeout_ms, body, headers, created_at, available_at, failed_at, discarded_at)
+            VALUES ($id8, 'audit', 'https://example.test/discarded', $eventId8, 'security.test', 'success', $oldPending, 1000, $body, $headers, $oldPending, $oldPending, $discardedFailed, $checkedAt);
             """, command =>
         {
             command.AddGuidParameter("$id1", Guid.NewGuid());
@@ -104,6 +108,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxDiagnosticsTests : SqliteT
             command.AddGuidParameter("$id5", Guid.NewGuid());
             command.AddGuidParameter("$id6", Guid.NewGuid());
             command.AddGuidParameter("$id7", Guid.NewGuid());
+            command.AddGuidParameter("$id8", Guid.NewGuid());
             command.AddGuidParameter("$eventId1", Guid.NewGuid());
             command.AddGuidParameter("$eventId2", Guid.NewGuid());
             command.AddGuidParameter("$eventId3", Guid.NewGuid());
@@ -111,6 +116,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxDiagnosticsTests : SqliteT
             command.AddGuidParameter("$eventId5", Guid.NewGuid());
             command.AddGuidParameter("$eventId6", Guid.NewGuid());
             command.AddGuidParameter("$eventId7", Guid.NewGuid());
+            command.AddGuidParameter("$eventId8", Guid.NewGuid());
             command.AddParameter("$body", new byte[] { 1, 2, 3 });
             command.AddParameter("$headers", "{}");
             command.AddDateTimeOffsetParameter("$oldPending", oldPending);
@@ -118,8 +124,10 @@ internal sealed class SqliteSecurityEventWebhookOutboxDiagnosticsTests : SqliteT
             command.AddDateTimeOffsetParameter("$scheduled", scheduled);
             command.AddDateTimeOffsetParameter("$lockedUntil", lockedUntil);
             command.AddDateTimeOffsetParameter("$expiredLock", expiredLock);
+            command.AddDateTimeOffsetParameter("$discardedFailed", discardedFailed);
             command.AddDateTimeOffsetParameter("$oldestFailed", oldestFailed);
             command.AddDateTimeOffsetParameter("$newestFailed", newestFailed);
+            command.AddDateTimeOffsetParameter("$checkedAt", CheckedAt);
         });
 
         var result = await _provider.GetRequiredService<ISecurityEventWebhookOutboxDiagnostics>().CheckAsync();

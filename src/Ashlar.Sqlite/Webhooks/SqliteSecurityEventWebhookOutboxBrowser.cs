@@ -57,6 +57,7 @@ public sealed class SqliteSecurityEventWebhookOutboxBrowser(
                        END AS status
                 FROM ashlar_security_event_webhook_outbox
                 WHERE sent_at IS NULL
+                  AND discarded_at IS NULL
             )
             SELECT id, endpoint_name, event_id, event_type, outcome, status, attempt_count, created_at, available_at,
                    last_attempt_at, failed_at, last_error

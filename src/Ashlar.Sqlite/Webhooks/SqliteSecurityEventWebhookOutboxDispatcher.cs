@@ -25,6 +25,7 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
             FROM ashlar_security_event_webhook_outbox
             WHERE sent_at IS NULL
               AND failed_at IS NULL
+              AND discarded_at IS NULL
               AND available_at <= $now
               AND (locked_until IS NULL OR locked_until < $now)
             ORDER BY available_at, id
@@ -38,7 +39,7 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
             locked_by = NULL,
             last_attempt_at = $now,
             attempt_count = attempt_count + 1
-        WHERE id = $id AND locked_by = $lockedBy
+        WHERE id = $id AND locked_by = $lockedBy AND discarded_at IS NULL
         """;
     private const string MarkAsFailedSql = """
         UPDATE ashlar_security_event_webhook_outbox
@@ -49,7 +50,7 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
             locked_by = NULL,
             last_attempt_at = $now,
             attempt_count = $attemptCount
-        WHERE id = $id AND locked_by = $lockedBy
+        WHERE id = $id AND locked_by = $lockedBy AND discarded_at IS NULL
         """;
     private readonly IServiceProvider _serviceProvider;
     private readonly TimeProvider _timeProvider;
@@ -124,6 +125,7 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
             WHERE locked_by = $lockedBy
               AND sent_at IS NULL
               AND failed_at IS NULL
+              AND discarded_at IS NULL
             ORDER BY available_at, id
             """;
         command.AddParameter(LockedByParameter, lockId);

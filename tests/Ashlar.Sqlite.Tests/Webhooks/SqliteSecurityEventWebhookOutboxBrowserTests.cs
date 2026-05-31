@@ -7,6 +7,7 @@ namespace Ashlar.Sqlite.Tests.Webhooks;
 internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestBase
 {
     private static readonly DateTimeOffset Now = new(2026, 5, 24, 12, 0, 0, TimeSpan.Zero);
+    private static readonly string[] FailedEndpointNames = ["failed"];
     private FakeTimeProvider _timeProvider = null!;
     private ServiceProvider _provider = null!;
 
@@ -44,6 +45,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
     public async Task ListAsyncReturnsSafeStatusesAndOmitsSentRows()
     {
         await InsertRowsAsync();
+        await InsertDiscardedRowAsync();
 
         var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
             .ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest { Limit = 10 });
@@ -60,9 +62,26 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
                 AshlarSecurityEventWebhookOutboxStatus.Failed
             }));
             Assert.That(result.Deliveries.Select(delivery => delivery.EndpointName), Does.Not.Contain("sent"));
+            Assert.That(result.Deliveries.Select(delivery => delivery.EndpointName), Does.Not.Contain("discarded"));
             Assert.That(result.Deliveries.All(delivery => delivery.EventType == "security.test"), Is.True);
             Assert.That(result.Deliveries.All(delivery => delivery.Outcome == "success"), Is.True);
         }
+    }
+
+    [Test]
+    public async Task ListAsyncExcludesDiscardedRowsFromFailedFilter()
+    {
+        await InsertRowsAsync();
+        await InsertDiscardedRowAsync();
+
+        var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
+            .ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest
+            {
+                Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
+                Limit = 10
+            });
+
+        Assert.That(result.Deliveries.Select(delivery => delivery.EndpointName), Is.EqualTo(FailedEndpointNames));
     }
 
     [Test]
@@ -180,6 +199,29 @@ internal sealed class SqliteSecurityEventWebhookOutboxBrowserTests : SqliteTestB
         command.AddDateTimeOffsetParameter("$lastAttemptAt", Now.AddSeconds(-30));
         command.AddDateTimeOffsetParameter("$sentAt", Now);
         command.AddParameter("$lastError", lastError);
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private async Task InsertDiscardedRowAsync()
+    {
+        await using var connection = await OpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO ashlar_security_event_webhook_outbox (
+                id, endpoint_name, uri, event_id, event_type, outcome, occurred_at, timeout_ms, body, headers,
+                created_at, available_at, failed_at, discarded_at, attempt_count, last_error)
+            VALUES (
+                $id, 'discarded', 'https://example.test/discarded', $eventId, 'security.test', 'success', $createdAt, 1000, $body, $headers,
+                $createdAt, $createdAt, $failedAt, $discardedAt, 3, 'failure');
+            """;
+        command.AddGuidParameter("$id", Guid.NewGuid());
+        command.AddGuidParameter("$eventId", Guid.NewGuid());
+        command.AddParameter("$body", new byte[] { 1, 2, 3 });
+        command.AddParameter("$headers", "{}");
+        command.AddDateTimeOffsetParameter("$createdAt", Now.AddSeconds(-10));
+        command.AddDateTimeOffsetParameter("$failedAt", Now.AddSeconds(-5));
+        command.AddDateTimeOffsetParameter("$discardedAt", Now);
 
         await command.ExecuteNonQueryAsync();
     }

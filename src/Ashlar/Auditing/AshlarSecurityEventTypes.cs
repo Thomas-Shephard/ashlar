@@ -289,4 +289,12 @@ public static class AshlarSecurityEventTypes
     /// Defines the password reset verification rate limited value.
     /// </summary>
     public const string PasswordResetVerificationRateLimited = "ashlar.password_reset.verification_rate_limited";
+    /// <summary>
+    /// Defines the security event webhook outbox delivery retried value.
+    /// </summary>
+    public const string SecurityEventWebhookOutboxDeliveryRetried = "ashlar.security_event_webhook.outbox.delivery_retried";
+    /// <summary>
+    /// Defines the security event webhook outbox delivery discarded value.
+    /// </summary>
+    public const string SecurityEventWebhookOutboxDeliveryDiscarded = "ashlar.security_event_webhook.outbox.delivery_discarded";
 }

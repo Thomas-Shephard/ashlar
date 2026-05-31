@@ -70,6 +70,7 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
                 FROM ashlar_security_event_webhook_outbox
                 WHERE sent_at IS NULL
                   AND failed_at IS NULL
+                  AND discarded_at IS NULL
                   AND available_at <= @Now
                   AND (locked_until IS NULL OR locked_until < @Now)
                 ORDER BY available_at, id
@@ -139,7 +140,7 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
                 locked_by = NULL,
                 last_attempt_at = @Now,
                 attempt_count = attempt_count + 1
-            WHERE id = @Id AND locked_by = @LockedBy
+            WHERE id = @Id AND locked_by = @LockedBy AND discarded_at IS NULL
             """;
 
         var now = _timeProvider.GetUtcNow();
@@ -171,7 +172,7 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
                 locked_by = NULL,
                 last_attempt_at = @Now,
                 attempt_count = @AttemptCount
-            WHERE id = @Id AND locked_by = @LockedBy
+            WHERE id = @Id AND locked_by = @LockedBy AND discarded_at IS NULL
             """;
 
         var connectionProvider = provider.GetRequiredService<IPostgresConnectionProvider>();
