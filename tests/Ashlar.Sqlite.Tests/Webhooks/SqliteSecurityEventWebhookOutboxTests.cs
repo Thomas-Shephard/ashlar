@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -302,6 +303,29 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     }
 
     [Test]
+    public async Task DispatcherRejectsUnsafePersistedDestinationBeforeHttpSend()
+    {
+        await EnqueueAsync(CreateDelivery());
+        await ExecuteAsync(
+            "UPDATE ashlar_security_event_webhook_outbox SET uri = $uri",
+            command => command.Parameters.AddWithValue("$uri", "https://127.0.0.1/security-events"));
+
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+
+        await CreateDispatcher(transport, new SqliteSecurityEventWebhookOutboxOptions { MaxAttempts = 1 }).ProcessBatchAsync();
+        var row = await QuerySingleOutboxRowAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Is.Empty);
+            Assert.That(row.SentAt, Is.Null);
+            Assert.That(row.FailedAt, Is.EqualTo(_now));
+            Assert.That(row.AttemptCount, Is.EqualTo(1));
+            Assert.That(row.LastError, Does.Contain(nameof(AshlarSecurityEventWebhookUnsafeDestinationException)));
+        }
+    }
+
+    [Test]
     public async Task SuccessfulSendWithMarkSentDatabaseFailureDoesNotMarkDeliveryFailed()
     {
         await EnqueueAsync(CreateDelivery());
@@ -312,7 +336,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             provider,
             _timeProvider,
             Options.Create(new SqliteSecurityEventWebhookOutboxOptions()),
-            new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.Accepted)));
+            new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.Accepted)),
+            destinationValidator: CreateDestinationValidator());
 
         Assert.ThrowsAsync<InvalidOperationException>(() => dispatcher.ProcessBatchAsync());
         var row = await QuerySingleOutboxRowAsync();
@@ -370,6 +395,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     {
         var connectionProvider = _serviceProvider.GetRequiredService<ISqliteConnectionProvider>();
         var options = Options.Create(new SqliteSecurityEventWebhookOutboxOptions());
+        var destinationValidator = CreateDestinationValidator();
 
         using (Assert.EnterMultipleScope())
         {
@@ -382,10 +408,11 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Assert.Throws<ArgumentNullException>(() => SqliteSecurityEventWebhookOutboxOptions.Validate(null!));
             Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookEnqueuer(null!, _timeProvider));
             Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookEnqueuer(connectionProvider, null!));
-            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(null!, _timeProvider, options, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK))));
-            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(_serviceProvider, null!, options, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK))));
-            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(_serviceProvider, _timeProvider, null!, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK))));
-            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(_serviceProvider, _timeProvider, options, null!));
+            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(null!, _timeProvider, options, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator: destinationValidator));
+            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(_serviceProvider, null!, options, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator: destinationValidator));
+            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(_serviceProvider, _timeProvider, null!, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator: destinationValidator));
+            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(_serviceProvider, _timeProvider, options, null!, destinationValidator: destinationValidator));
+            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(_serviceProvider, _timeProvider, options, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK))));
             Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxHostedService(null!, options));
             Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxHostedService(_serviceProvider, null!));
         }
@@ -450,6 +477,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         services.AddAshlarSqlite("Data Source=:memory:");
         services.AddAshlarSqliteSecurityEventWebhookDispatcher(
             options => options.BatchSize = 7,
+            webhooks => webhooks.DestinationPolicy = AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks,
             builder => builder.ConfigureHttpClient(client => client.DefaultRequestHeaders.Add("X-Test", "configured")));
 
         await using var provider = services.BuildServiceProvider();
@@ -460,6 +488,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Assert.That(provider.GetService<SqliteSecurityEventWebhookOutboxDispatcher>(), Is.Not.Null);
             Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
             Assert.That(provider.GetRequiredService<IOptions<SqliteSecurityEventWebhookOutboxOptions>>().Value.BatchSize, Is.EqualTo(7));
+            Assert.That(provider.GetRequiredService<IOptions<AshlarSecurityEventWebhookOptions>>().Value.DestinationPolicy, Is.EqualTo(AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks));
             Assert.That(provider.GetRequiredService<IHttpClientFactory>().CreateClient(SqliteSecurityEventWebhookOutboxDispatcher.HttpClientName).DefaultRequestHeaders.GetValues("X-Test").Single(), Is.EqualTo("configured"));
         }
     }
@@ -589,7 +618,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             _timeProvider,
             Options.Create(options ?? new SqliteSecurityEventWebhookOutboxOptions()),
             new TestHttpClientFactory(transport),
-            deliveryObserver: observer);
+            deliveryObserver: observer,
+            destinationValidator: CreateDestinationValidator());
     }
 
     private ServiceProvider CreateDispatcherProvider()
@@ -597,6 +627,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         var services = new ServiceCollection();
         services.AddAshlarSqlite(GetConnectionString());
         services.AddSingleton<TimeProvider>(_timeProvider);
+        services.AddSingleton(CreateDestinationValidator());
         var provider = services.BuildServiceProvider();
         _dispatcherProviders.Add(provider);
         return provider;
@@ -609,8 +640,28 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         services.AddSingleton<TimeProvider>(_timeProvider);
         services.AddSingleton<IHttpClientFactory>(new TestHttpClientFactory(transport));
         services.AddSingleton(Options.Create(options));
+        services.AddSingleton(CreateDestinationValidator());
         services.AddScoped<SqliteSecurityEventWebhookOutboxDispatcher>();
         return services.BuildServiceProvider();
+    }
+
+    [Test]
+    public async Task DispatcherNamedHttpClientDisablesAutomaticRedirects()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAshlarSqlite("Data Source=:memory:");
+        services.AddAshlarSqliteSecurityEventWebhookDispatcher();
+        await using var provider = services.BuildServiceProvider();
+        using var handler = provider.GetRequiredService<IHttpMessageHandlerFactory>()
+            .CreateHandler(SqliteSecurityEventWebhookOutboxDispatcher.HttpClientName);
+
+        Assert.That(ContainsHardenedSocketsHandler(handler), Is.True);
+    }
+
+    private static AshlarSecurityEventWebhookDestinationValidator CreateDestinationValidator()
+    {
+        return new AshlarSecurityEventWebhookDestinationValidator(new StaticDestinationResolver());
     }
 
     private static AshlarSecurityEventWebhookDelivery CreateDelivery(string? sharedSecret = null, TimeSpan? timeout = null)
@@ -728,6 +779,92 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Assert.That(name, Is.EqualTo(SqliteSecurityEventWebhookOutboxDispatcher.HttpClientName));
             return new HttpClient(transport, disposeHandler: false);
         }
+    }
+
+    private sealed class StaticDestinationResolver : IAshlarSecurityEventWebhookDestinationResolver
+    {
+        public ValueTask<IReadOnlyList<IPAddress>> ResolveAsync(string host, CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<IPAddress> addresses = [IPAddress.Parse("93.184.216.34")];
+            return ValueTask.FromResult(addresses);
+        }
+    }
+
+    private sealed class RedirectServer : IAsyncDisposable
+    {
+        private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+
+        public RedirectServer()
+        {
+            _listener.Start();
+            RedirectUri = new Uri($"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/redirect");
+        }
+
+        public Uri RedirectUri { get; }
+
+        public int RequestCount { get; private set; }
+
+        public async ValueTask DisposeAsync()
+        {
+            _listener.Stop();
+            await ValueTask.CompletedTask;
+        }
+
+        public async Task ServeAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    using var client = await _listener.AcceptTcpClientAsync(cancellationToken);
+                    RequestCount++;
+                    await ReadRequestAsync(client.GetStream(), cancellationToken);
+                    var response = RequestCount == 1
+                        ? "HTTP/1.1 302 Found\r\nLocation: /final\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        : "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                    await client.GetStream().WriteAsync(Encoding.ASCII.GetBytes(response), cancellationToken);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+        }
+
+        private static async Task ReadRequestAsync(NetworkStream stream, CancellationToken cancellationToken)
+        {
+            var buffer = new byte[1024];
+            var builder = new StringBuilder();
+            do
+            {
+                var read = await stream.ReadAsync(buffer, cancellationToken);
+                builder.Append(Encoding.ASCII.GetString(buffer, 0, read));
+            }
+            while (!builder.ToString().Contains("\r\n\r\n", StringComparison.Ordinal));
+        }
+    }
+
+    private static bool ContainsHardenedSocketsHandler(HttpMessageHandler handler)
+    {
+        if (handler is SocketsHttpHandler socketsHandler)
+        {
+            return !socketsHandler.AllowAutoRedirect && socketsHandler.ConnectCallback != null;
+        }
+
+        if (handler is DelegatingHandler { InnerHandler: { } innerHandler })
+        {
+            return ContainsHardenedSocketsHandler(innerHandler);
+        }
+
+        var fields = handler.GetType().GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        foreach (var field in fields)
+        {
+            if (field.GetValue(handler) is HttpMessageHandler nestedHandler && ContainsHardenedSocketsHandler(nestedHandler))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private sealed class RecordingHttpMessageHandler(HttpStatusCode statusCode) : HttpMessageHandler

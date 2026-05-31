@@ -380,17 +380,30 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// </summary>
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="configure">Optional webhook outbox configuration.</param>
+    /// <param name="configureWebhooks">Optional webhook destination configuration.</param>
     /// <param name="configureHttpClient">Optional HTTP client builder configuration.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarPostgresSecurityEventWebhookDispatcher(
         this IServiceCollection services,
         Action<PostgresSecurityEventWebhookOutboxOptions>? configure = null,
+        Action<AshlarSecurityEventWebhookOptions>? configureWebhooks = null,
         Action<IHttpClientBuilder>? configureHttpClient = null)
     {
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarPostgresSecurityEventWebhookOutbox(configure);
-        var httpClientBuilder = services.AddHttpClient(PostgresSecurityEventWebhookOutboxDispatcher.HttpClientName);
+        services.AddOptions<AshlarSecurityEventWebhookOptions>()
+            .Validate(AshlarSecurityEventWebhookOptions.Validate, "Ashlar security event webhook options are invalid.")
+            .ValidateOnStart();
+        if (configureWebhooks != null)
+        {
+            services.Configure(configureWebhooks);
+        }
+
+        services.TryAddSingleton<IAshlarSecurityEventWebhookDestinationResolver, DnsAshlarSecurityEventWebhookDestinationResolver>();
+        services.TryAddSingleton<AshlarSecurityEventWebhookDestinationValidator>();
+        var httpClientBuilder = services.AddHttpClient(PostgresSecurityEventWebhookOutboxDispatcher.HttpClientName)
+            .ConfigurePrimaryHttpMessageHandler(CreateWebhookHttpMessageHandler);
         configureHttpClient?.Invoke(httpClientBuilder);
         services.TryAddScoped<PostgresSecurityEventWebhookOutboxDispatcher>();
 
@@ -402,18 +415,26 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// </summary>
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="configure">Optional webhook outbox configuration.</param>
+    /// <param name="configureWebhooks">Optional webhook destination configuration.</param>
     /// <param name="configureHttpClient">Optional HTTP client builder configuration.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarPostgresSecurityEventWebhookHostedService(
         this IServiceCollection services,
         Action<PostgresSecurityEventWebhookOutboxOptions>? configure = null,
+        Action<AshlarSecurityEventWebhookOptions>? configureWebhooks = null,
         Action<IHttpClientBuilder>? configureHttpClient = null)
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddAshlarPostgresSecurityEventWebhookDispatcher(configure, configureHttpClient);
+        services.AddAshlarPostgresSecurityEventWebhookDispatcher(configure, configureWebhooks, configureHttpClient);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, PostgresSecurityEventWebhookOutboxHostedService>());
 
         return services;
+    }
+
+    private static HttpMessageHandler CreateWebhookHttpMessageHandler(IServiceProvider provider)
+    {
+        var destinationValidator = provider.GetRequiredService<AshlarSecurityEventWebhookDestinationValidator>();
+        return AshlarSecurityEventWebhookHttpMessageHandlerFactory.Create(destinationValidator);
     }
 }

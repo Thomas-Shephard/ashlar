@@ -49,6 +49,7 @@ public sealed class AshlarSecurityEventWebhookOutboxEntry
 /// <param name="MarkAsSentAsync">The callback that persists successful delivery state.</param>
 /// <param name="MarkAsFailedAsync">The callback that persists failed delivery state.</param>
 /// <param name="LogDeliveryFailed">The callback that logs failed delivery attempts.</param>
+/// <param name="DestinationValidator">The webhook destination safety validator.</param>
 /// <param name="DeliveryObserver">The provider-neutral delivery observer.</param>
 public sealed record AshlarSecurityEventWebhookOutboxDispatchContext(
     IHttpClientFactory HttpClientFactory,
@@ -57,6 +58,7 @@ public sealed record AshlarSecurityEventWebhookOutboxDispatchContext(
     Func<Guid, CancellationToken, Task> MarkAsSentAsync,
     Func<AshlarSecurityEventWebhookOutboxEntry, Exception, CancellationToken, Task> MarkAsFailedAsync,
     Action<Guid, int, bool, Exception> LogDeliveryFailed,
+    AshlarSecurityEventWebhookDestinationValidator DestinationValidator,
     IAshlarSecurityEventWebhookDeliveryObserver? DeliveryObserver = null);
 
 /// <summary>
@@ -83,14 +85,15 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         Dictionary<string, string>? headers)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, entry.Uri);
-        request.Content = new ReadOnlyMemoryContent(entry.Body);
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        var content = new ReadOnlyMemoryContent(entry.Body);
+        request.Content = content;
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
         if (headers != null)
         {
             foreach (var header in headers)
             {
-                AddHeader(request, header);
+                AddHeader(request, content, header);
             }
         }
 
@@ -116,15 +119,26 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         ArgumentNullException.ThrowIfNull(context.MarkAsSentAsync);
         ArgumentNullException.ThrowIfNull(context.MarkAsFailedAsync);
         ArgumentNullException.ThrowIfNull(context.LogDeliveryFailed);
+        ArgumentNullException.ThrowIfNull(context.DestinationValidator);
 
         var start = Stopwatch.GetTimestamp();
         Dictionary<string, string>? headers = null;
         try
         {
             headers = DeserializeHeaders(entry.Headers);
-            using var request = MapToHttpRequest(entry, headers);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromMilliseconds(entry.TimeoutMs));
+            var uri = new Uri(entry.Uri, UriKind.Absolute);
+            var destinationValidation = await context.DestinationValidator.ValidateAsync(uri, timeout.Token).ConfigureAwait(false);
+            if (!destinationValidation.IsValid)
+            {
+                var exception = new AshlarSecurityEventWebhookUnsafeDestinationException(destinationValidation.FailureReason);
+                RecordFailure(context, start, AshlarSecurityEventWebhookDeliveryTelemetry.ExceptionFailureKind, headers);
+                await MarkAsFailedAsync(entry, context, exception).ConfigureAwait(false);
+                return;
+            }
+
+            using var request = MapToHttpRequest(entry, headers);
             var client = context.HttpClientFactory.CreateClient(context.HttpClientName);
             using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
@@ -163,11 +177,11 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         return !request.Headers.TryAddWithoutValidation(header.Key, header.Value);
     }
 
-    private static void AddHeader(HttpRequestMessage request, KeyValuePair<string, string> header)
+    private static void AddHeader(HttpRequestMessage request, HttpContent content, KeyValuePair<string, string> header)
     {
         if (ShouldAddAsContentHeader(request, header))
         {
-            request.Content!.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            content.Headers.TryAddWithoutValidation(header.Key, header.Value);
         }
     }
 

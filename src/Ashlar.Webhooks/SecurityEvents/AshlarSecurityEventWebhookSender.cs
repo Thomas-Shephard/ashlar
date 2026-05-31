@@ -28,6 +28,13 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<AshlarSecurityEventWebhookSender> _logger;
     private readonly IAshlarSecurityEventWebhookDeliveryObserver _observer;
+    private readonly AshlarSecurityEventWebhookDestinationValidator _destinationValidator;
+
+    private static readonly Action<ILogger, string, Guid, string, string, Exception?> WebhookEndpointDestinationRejected =
+        LoggerMessage.Define<string, Guid, string, string>(
+            LogLevel.Warning,
+            new EventId(2001, nameof(WebhookEndpointDestinationRejected)),
+            "Ashlar security event webhook endpoint destination was rejected. Endpoint={EndpointName} EventId={EventId} EventType={EventType} Reason={Reason}");
 
     /// <summary>
     /// Initializes a new instance of the webhook sender class.
@@ -35,16 +42,20 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
     /// <param name="httpClientFactory">The HTTP client factory.</param>
     /// <param name="logger">The logger.</param>
     /// <param name="observer">The delivery observer.</param>
+    /// <param name="destinationValidator">The webhook destination safety validator.</param>
     public AshlarSecurityEventWebhookSender(
         IHttpClientFactory httpClientFactory,
         ILogger<AshlarSecurityEventWebhookSender>? logger = null,
-        IAshlarSecurityEventWebhookDeliveryObserver? observer = null)
+        IAshlarSecurityEventWebhookDeliveryObserver? observer = null,
+        AshlarSecurityEventWebhookDestinationValidator? destinationValidator = null)
     {
         ArgumentNullException.ThrowIfNull(httpClientFactory);
+        ArgumentNullException.ThrowIfNull(destinationValidator);
 
         _httpClientFactory = httpClientFactory;
         _logger = logger ?? NullLogger<AshlarSecurityEventWebhookSender>.Instance;
         _observer = observer ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
+        _destinationValidator = destinationValidator;
     }
 
     /// <inheritdoc />
@@ -52,14 +63,22 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
     {
         ArgumentNullException.ThrowIfNull(delivery);
 
-        using var request = CreateRequest(delivery);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(delivery.Timeout);
 
         var start = Stopwatch.GetTimestamp();
-        var client = _httpClientFactory.CreateClient(HttpClientName);
         try
         {
+            var destinationValidation = await _destinationValidator.ValidateAsync(delivery.Uri, timeout.Token).ConfigureAwait(false);
+            if (!destinationValidation.IsValid)
+            {
+                LogDestinationRejected(delivery, destinationValidation);
+                RecordFailure(delivery, start, AshlarSecurityEventWebhookDeliveryTelemetry.ExceptionFailureKind);
+                return;
+            }
+
+            using var request = CreateRequest(delivery);
+            var client = _httpClientFactory.CreateClient(HttpClientName);
             using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
@@ -125,6 +144,19 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
             delivery.Payload.Id,
             delivery.Payload.EventType,
             (int)response.StatusCode,
+            null);
+    }
+
+    private void LogDestinationRejected(
+        AshlarSecurityEventWebhookDelivery delivery,
+        AshlarSecurityEventWebhookDestinationValidationResult validation)
+    {
+        WebhookEndpointDestinationRejected(
+            _logger,
+            delivery.EndpointName,
+            delivery.Payload.Id,
+            delivery.Payload.EventType,
+            validation.FailureReason,
             null);
     }
 

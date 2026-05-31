@@ -58,6 +58,7 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<SqliteSecurityEventWebhookOutboxDispatcher> _logger;
     private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver;
+    private readonly AshlarSecurityEventWebhookDestinationValidator _destinationValidator;
 
     /// <summary>
     /// Initializes a new instance of the dispatcher class.
@@ -68,18 +69,21 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
     /// <param name="httpClientFactory">The HTTP client factory value.</param>
     /// <param name="logger">The logger value.</param>
     /// <param name="deliveryObserver">The delivery observer.</param>
+    /// <param name="destinationValidator">The webhook destination safety validator.</param>
     public SqliteSecurityEventWebhookOutboxDispatcher(
         IServiceProvider serviceProvider,
         TimeProvider timeProvider,
         IOptions<SqliteSecurityEventWebhookOutboxOptions> options,
         IHttpClientFactory httpClientFactory,
         ILogger<SqliteSecurityEventWebhookOutboxDispatcher>? logger = null,
-        IAshlarSecurityEventWebhookDeliveryObserver? deliveryObserver = null)
+        IAshlarSecurityEventWebhookDeliveryObserver? deliveryObserver = null,
+        AshlarSecurityEventWebhookDestinationValidator? destinationValidator = null)
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(httpClientFactory);
+        ArgumentNullException.ThrowIfNull(destinationValidator);
 
         _serviceProvider = serviceProvider;
         _timeProvider = timeProvider;
@@ -87,6 +91,7 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
         _httpClientFactory = httpClientFactory;
         _logger = logger ?? NullLogger<SqliteSecurityEventWebhookOutboxDispatcher>.Instance;
         _deliveryObserver = deliveryObserver ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
+        _destinationValidator = destinationValidator;
     }
 
     /// <summary>
@@ -163,6 +168,7 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
                 (id, token) => MarkAsSentAsync(id, provider, lockId, token),
                 (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, lockId, token),
                 (id, attemptCount, finalFailure, exception) => SqliteSecurityEventWebhookOutboxDispatcherLog.WebhookDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
+                _destinationValidator,
                 _deliveryObserver),
             cancellationToken);
     }
