@@ -49,7 +49,8 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
         var options = CreateOptions(new AshlarSecurityEventWebhookEndpointOptions
         {
             Name = "internal",
-            Uri = new Uri("https://10.0.0.5/security-events")
+            Uri = new Uri("https://10.0.0.5/security-events"),
+            SharedSecret = "shared-secret"
         });
         options.DestinationPolicy = AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks;
 
@@ -65,9 +66,23 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
         {
             Assert.That(endpoint.Enabled, Is.True);
             Assert.That(endpoint.SharedSecret, Is.Null);
+            Assert.That(endpoint.AllowUnsigned, Is.False);
             Assert.That(endpoint.Timeout, Is.Null);
             Assert.That(endpoint.EventTypes, Is.Empty);
         }
+    }
+
+    [Test]
+    public void EndpointValidateAcceptsUnsignedOnlyWhenExplicitlyAllowed()
+    {
+        var endpoint = new AshlarSecurityEventWebhookEndpointOptions
+        {
+            Name = "audit",
+            Uri = new Uri("https://example.test/security-events"),
+            AllowUnsigned = true
+        };
+
+        Assert.That(AshlarSecurityEventWebhookEndpointOptions.Validate(endpoint), Is.True);
     }
 
     private static IEnumerable<AshlarSecurityEventWebhookOptions?> InvalidOptions()
@@ -85,8 +100,9 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
         yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), Timeout = TimeSpan.Zero });
         yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit\r\nbad", Uri = new Uri("https://example.test") });
         yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = " " });
+        yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test") });
 
-        var blankEventType = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test") };
+        var blankEventType = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = "shared-secret" };
         blankEventType.EventTypes.Add(" ");
         yield return CreateOptions(blankEventType);
     }

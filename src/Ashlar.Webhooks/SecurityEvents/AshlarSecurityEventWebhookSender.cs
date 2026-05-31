@@ -1,7 +1,5 @@
 using System.Net.Http.Headers;
-using System.Security.Cryptography;
 using System.Diagnostics;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -17,7 +15,7 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
     /// </summary>
     public const string HttpClientName = "Ashlar.SecurityEventWebhooks";
 
-    internal const string SignatureHeaderName = "X-Ashlar-Signature";
+    internal const string SignatureHeaderName = AshlarSecurityEventWebhookSignature.SignatureHeaderName;
 
     private static readonly Action<ILogger, string, Guid, string, int, Exception?> WebhookEndpointReturnedNonSuccess =
         LoggerMessage.Define<string, Guid, string, int>(
@@ -105,20 +103,6 @@ public sealed class AshlarSecurityEventWebhookSender : IAshlarSecurityEventWebho
             RecordFailure(delivery, start, AshlarSecurityEventWebhookDeliveryTelemetry.ExceptionFailureKind);
             throw;
         }
-    }
-
-    internal static string CreateSignature(string sharedSecret, ReadOnlySpan<byte> body)
-    {
-        ArgumentNullException.ThrowIfNull(sharedSecret);
-
-        var secretBytes = Encoding.UTF8.GetBytes(sharedSecret);
-        var hash = HMACSHA256.HashData(secretBytes, body);
-#if NET9_0_OR_GREATER
-        var hex = Convert.ToHexStringLower(hash);
-#else
-        var hex = Convert.ToHexString(hash).ToLowerInvariant();
-#endif
-        return string.Concat("sha256=", hex);
     }
 
     private static HttpRequestMessage CreateRequest(AshlarSecurityEventWebhookDelivery delivery)

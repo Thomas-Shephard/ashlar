@@ -36,6 +36,7 @@ public static class AshlarWebhooksServiceCollectionExtensions
             services.Configure(configure);
         }
 
+        services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<AshlarSecurityEventWebhookDeliveryFactory>();
         services.TryAddSingleton<IAshlarSecurityEventWebhookDestinationResolver, DnsAshlarSecurityEventWebhookDestinationResolver>();
         services.TryAddSingleton<AshlarSecurityEventWebhookDestinationValidator>();
@@ -66,6 +67,7 @@ public static class AshlarWebhooksServiceCollectionExtensions
             services.Configure(configure);
         }
 
+        services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<AshlarSecurityEventWebhookDeliveryFactory>();
         services.TryAddSingleton<IAshlarSecurityEventWebhookDestinationResolver, DnsAshlarSecurityEventWebhookDestinationResolver>();
         services.TryAddSingleton<AshlarSecurityEventWebhookDestinationValidator>();
