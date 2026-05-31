@@ -548,6 +548,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.GetService<IAshlarSecurityEventWebhookEnqueuer>(), Is.InstanceOf<SqliteSecurityEventWebhookEnqueuer>());
+            Assert.That(provider.GetService<IAshlarSecurityEventWebhookOutboxBrowser>(), Is.InstanceOf<SqliteSecurityEventWebhookOutboxBrowser>());
             Assert.That(provider.GetService<SqliteSecurityEventWebhookOutboxDispatcher>(), Is.Not.Null);
             Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
             Assert.That(provider.GetRequiredService<IOptions<SqliteSecurityEventWebhookOutboxOptions>>().Value.BatchSize, Is.EqualTo(7));

@@ -46,6 +46,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
             Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookEndpointTester>(), Is.TypeOf<AshlarSecurityEventWebhookEndpointTester>());
             Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>(), Is.TypeOf<NoOpAshlarSecurityEventWebhookDeliveryObserver>());
             Assert.That(provider.GetRequiredService<AshlarSecurityEventWebhookDeliveryFactory>(), Is.Not.Null);
+            Assert.That(provider.GetService<IAshlarSecurityEventWebhookOutboxBrowser>(), Is.Null);
             Assert.That(provider.GetRequiredService<IOptions<AshlarSecurityEventWebhookOptions>>().Value.Endpoints.Single().Name, Is.EqualTo("audit"));
             Assert.That(configuredHttpClient, Is.True);
             Assert.That(httpClient.DefaultRequestHeaders.GetValues("X-Test").Single(), Is.EqualTo("configured"));
