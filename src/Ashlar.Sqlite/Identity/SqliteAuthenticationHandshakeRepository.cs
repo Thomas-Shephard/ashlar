@@ -51,7 +51,7 @@ public sealed class SqliteAuthenticationHandshakeRepository(ISqliteConnectionPro
         return await reader.ReadAsync(cancellationToken) ? ReadHandshake(reader) : null;
     }
 
-    public async Task UpdateAsync(AuthenticationHandshake handshake, CancellationToken cancellationToken = default)
+    public async Task<bool> UpdateAsync(AuthenticationHandshake handshake, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(handshake);
 
@@ -73,7 +73,8 @@ public sealed class SqliteAuthenticationHandshakeRepository(ISqliteConnectionPro
         command.Transaction = handle.Transaction;
         command.CommandText = sql;
         AddUpdateParameters(command, handshake, _timeProvider.GetUtcNow());
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        var affectedRows = await command.ExecuteNonQueryAsync(cancellationToken);
+        return affectedRows == 1;
     }
 
     private static void AddParameters(SqliteCommand command, AuthenticationHandshake handshake, DateTimeOffset now)

@@ -29,6 +29,6 @@ public interface IAuthenticationHandshakeRepository
     /// </summary>
     /// <param name="handshake">The handshake value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
-    Task UpdateAsync(AuthenticationHandshake handshake, CancellationToken cancellationToken = default);
+    /// <returns><see langword="true" /> when the handshake was updated; otherwise, <see langword="false" />.</returns>
+    Task<bool> UpdateAsync(AuthenticationHandshake handshake, CancellationToken cancellationToken = default);
 }
