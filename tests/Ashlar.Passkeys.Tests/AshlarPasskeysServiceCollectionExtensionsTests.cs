@@ -139,9 +139,38 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
     [TestCase("unexpected")]
     public void PasskeyOptionsShouldRejectInvalidUserVerification(string userVerification)
     {
-        var options = new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com", UserVerification = userVerification };
+        var registration = new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com", RegistrationUserVerification = userVerification };
+        var authentication = new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com", AuthenticationUserVerification = userVerification };
 
-        Assert.That(PasskeyOptions.Validate(options), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PasskeyOptions.Validate(registration), Is.False);
+            Assert.That(PasskeyOptions.Validate(authentication), Is.False);
+        }
+    }
+
+    [Test]
+    public void PasskeyOptionsShouldUseUserVerificationDefaults()
+    {
+        var options = new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com" };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.RegistrationUserVerification, Is.EqualTo(PasskeyUserVerificationRequirement.Preferred));
+            Assert.That(options.AuthenticationUserVerification, Is.EqualTo(PasskeyUserVerificationRequirement.Preferred));
+            Assert.That(PasskeyOptions.Validate(options), Is.True);
+        }
+    }
+
+    [Test]
+    public void PasskeyUserVerificationRequirementShouldExposeWebAuthnValues()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PasskeyUserVerificationRequirement.Required, Is.EqualTo("required"));
+            Assert.That(PasskeyUserVerificationRequirement.Preferred, Is.EqualTo("preferred"));
+            Assert.That(PasskeyUserVerificationRequirement.Discouraged, Is.EqualTo("discouraged"));
+        }
     }
 
     [TestCase("")]
@@ -189,7 +218,7 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
             throw new NotSupportedException();
         }
 
-        public string CreateAuthenticationOptions(PasskeyOptions options, string challenge, IReadOnlyList<UserCredential> allowedCredentials)
+        public string CreateAuthenticationOptions(PasskeyOptions options, string challenge, IReadOnlyList<UserCredential> allowedCredentials, string userVerification)
         {
             throw new NotSupportedException();
         }

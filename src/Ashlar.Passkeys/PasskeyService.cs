@@ -154,7 +154,7 @@ public sealed class PasskeyService(
             ? (await _credentialRepository.ListCredentialsForUserAsync(userId.Value, cancellationToken: cancellationToken)).Where(IsPasskey).ToList()
             : [];
         var challengeValue = CreateChallenge();
-        var optionsJson = _ceremonyValidator.CreateAuthenticationOptions(_options, challengeValue, credentials);
+        var optionsJson = _ceremonyValidator.CreateAuthenticationOptions(_options, challengeValue, credentials, _options.AuthenticationUserVerification);
         var challenge = CreateChallengeEntity(AuthenticationPurpose, challengeValue, optionsJson, userId);
         await _challengeRepository.CreateAsync(challenge, cancellationToken);
         await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationStarted, SecurityEventOutcomes.Success, userId, null, request.Audit, cancellationToken);
@@ -173,6 +173,12 @@ public sealed class PasskeyService(
         if (ceremony.Failure != null)
         {
             return ceremony.Failure;
+        }
+
+        if (IsUserVerificationRequired(_options.AuthenticationUserVerification) && !ceremony.Verified.UserVerified)
+        {
+            await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, ceremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
+            return new PasskeyAuthenticationResult(false, ceremony.User, null, AshlarFailureCodes.PasskeyValidationFailed);
         }
 
         try
@@ -248,7 +254,7 @@ public sealed class PasskeyService(
         }
 
         var challengeValue = CreateChallenge();
-        var optionsJson = _ceremonyValidator.CreateAuthenticationOptions(_options, challengeValue, credentials);
+        var optionsJson = _ceremonyValidator.CreateAuthenticationOptions(_options, challengeValue, credentials, PasskeyUserVerificationRequirement.Required);
         var challenge = CreateChallengeEntity(
             AuthenticationPurpose,
             challengeValue,
@@ -292,6 +298,12 @@ public sealed class PasskeyService(
         if (ceremony.Failure != null)
         {
             return ceremony.Failure;
+        }
+
+        if (!ceremony.Verified.UserVerified)
+        {
+            await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, ceremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
+            return new PasskeyAuthenticationResult(false, ceremony.User, null, AshlarFailureCodes.PasskeyValidationFailed);
         }
 
         try
@@ -444,6 +456,11 @@ public sealed class PasskeyService(
     private static string? NormalizeFactorType(string factorType)
     {
         return string.Equals(factorType.Trim(), "passkey", StringComparison.OrdinalIgnoreCase) ? "passkey" : null;
+    }
+
+    private static bool IsUserVerificationRequired(string? userVerification)
+    {
+        return string.Equals(userVerification?.Trim(), PasskeyUserVerificationRequirement.Required, StringComparison.OrdinalIgnoreCase);
     }
 
     private static AuthenticationContext ToAuthenticationContext(AuditContext? audit)

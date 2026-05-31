@@ -33,9 +33,13 @@ public sealed class PasskeyOptions
     /// </summary>
     public int ChallengeBytes { get; set; } = 32;
     /// <summary>
-    /// Gets or sets the WebAuthn user verification requirement.
+    /// Gets or sets the WebAuthn user verification requirement for passkey registration.
     /// </summary>
-    public string UserVerification { get; set; } = "preferred";
+    public string RegistrationUserVerification { get; set; } = PasskeyUserVerificationRequirement.Preferred;
+    /// <summary>
+    /// Gets or sets the WebAuthn user verification requirement for primary passkey sign-in.
+    /// </summary>
+    public string AuthenticationUserVerification { get; set; } = PasskeyUserVerificationRequirement.Preferred;
     /// <summary>
     /// Gets or sets the WebAuthn attestation conveyance preference.
     /// </summary>
@@ -67,13 +71,18 @@ public sealed class PasskeyOptions
             && options.ChallengeLifetime.TotalMilliseconds <= uint.MaxValue
             && options.ChallengeBytes >= 16
             && AuthenticationRateLimitRuleValidator.IsValid(options.AuthenticationChallengeStartRateLimit)
-            && IsUserVerificationValid(options.UserVerification)
+            && IsUserVerificationValid(options.RegistrationUserVerification)
+            && IsUserVerificationValid(options.AuthenticationUserVerification)
             && IsAttestationValid(options.Attestation);
     }
 
     private static bool IsUserVerificationValid(string? value)
     {
-        return IsOneOf(value, "required", "preferred", "discouraged");
+        return IsOneOf(
+            value,
+            PasskeyUserVerificationRequirement.Required,
+            PasskeyUserVerificationRequirement.Preferred,
+            PasskeyUserVerificationRequirement.Discouraged);
     }
 
     private static bool IsAttestationValid(string? value)
