@@ -91,6 +91,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxDiagnosticsTests : Postg
         var scheduled = CheckedAt.AddMinutes(5);
         var lockedUntil = CheckedAt.AddMinutes(10);
         var expiredLock = CheckedAt.AddMinutes(-1);
+        var discardedFailed = CheckedAt.AddDays(-3);
         var oldestFailed = CheckedAt.AddDays(-2);
         var newestFailed = CheckedAt.AddDays(-1);
 
@@ -109,6 +110,9 @@ internal sealed class PostgresSecurityEventWebhookOutboxDiagnosticsTests : Postg
                 INSERT INTO ashlar_security_event_webhook_outbox (id, endpoint_name, uri, event_id, event_type, outcome, occurred_at, timeout_ms, body, headers, created_at, available_at, failed_at)
                 VALUES (@id6, 'audit', 'https://example.test/failed-old', @eventId6, 'security.test', 'success', @oldPending, 1000, @body, @headers::jsonb, @oldPending, @oldPending, @oldestFailed),
                        (@id7, 'audit', 'https://example.test/failed-new', @eventId7, 'security.test', 'success', @oldPending, 1000, @body, @headers::jsonb, @oldPending, @oldPending, @newestFailed);
+
+                INSERT INTO ashlar_security_event_webhook_outbox (id, endpoint_name, uri, event_id, event_type, outcome, occurred_at, timeout_ms, body, headers, created_at, available_at, failed_at, discarded_at)
+                VALUES (@id8, 'audit', 'https://example.test/discarded', @eventId8, 'security.test', 'success', @oldPending, 1000, @body, @headers::jsonb, @oldPending, @oldPending, @discardedFailed, @checkedAt);
                 """, new
             {
                 id1 = Guid.NewGuid(),
@@ -118,6 +122,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxDiagnosticsTests : Postg
                 id5 = Guid.NewGuid(),
                 id6 = Guid.NewGuid(),
                 id7 = Guid.NewGuid(),
+                id8 = Guid.NewGuid(),
                 eventId1 = Guid.NewGuid(),
                 eventId2 = Guid.NewGuid(),
                 eventId3 = Guid.NewGuid(),
@@ -125,6 +130,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxDiagnosticsTests : Postg
                 eventId5 = Guid.NewGuid(),
                 eventId6 = Guid.NewGuid(),
                 eventId7 = Guid.NewGuid(),
+                eventId8 = Guid.NewGuid(),
                 body = new byte[] { 1, 2, 3 },
                 headers = "{}",
                 oldPending,
@@ -132,8 +138,10 @@ internal sealed class PostgresSecurityEventWebhookOutboxDiagnosticsTests : Postg
                 scheduled,
                 lockedUntil,
                 expiredLock,
+                discardedFailed,
                 oldestFailed,
-                newestFailed
+                newestFailed,
+                checkedAt = CheckedAt
             });
         }
 

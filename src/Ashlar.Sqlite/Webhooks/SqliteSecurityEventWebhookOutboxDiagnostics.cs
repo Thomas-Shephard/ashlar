@@ -62,13 +62,13 @@ internal sealed class SqliteSecurityEventWebhookOutboxDiagnostics(
         command.Transaction = connectionHandle.Transaction;
         command.CommandText = """
             SELECT
-                COALESCE(SUM(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND available_at <= $now AND (locked_until IS NULL OR locked_until <= $now) THEN 1 ELSE 0 END), 0) AS pending_count,
-                COALESCE(SUM(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND available_at > $now THEN 1 ELSE 0 END), 0) AS scheduled_count,
-                COALESCE(SUM(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND locked_until > $now THEN 1 ELSE 0 END), 0) AS locked_count,
-                COALESCE(SUM(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND locked_until IS NOT NULL AND locked_until <= $now THEN 1 ELSE 0 END), 0) AS expired_lock_count,
-                COALESCE(SUM(CASE WHEN failed_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS failed_count,
-                MIN(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND available_at <= $now AND (locked_until IS NULL OR locked_until <= $now) THEN available_at END) AS oldest_pending_at,
-                MIN(CASE WHEN failed_at IS NOT NULL THEN failed_at END) AS oldest_failed_at
+                COALESCE(SUM(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND discarded_at IS NULL AND available_at <= $now AND (locked_until IS NULL OR locked_until <= $now) THEN 1 ELSE 0 END), 0) AS pending_count,
+                COALESCE(SUM(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND discarded_at IS NULL AND available_at > $now THEN 1 ELSE 0 END), 0) AS scheduled_count,
+                COALESCE(SUM(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND discarded_at IS NULL AND locked_until > $now THEN 1 ELSE 0 END), 0) AS locked_count,
+                COALESCE(SUM(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND discarded_at IS NULL AND locked_until IS NOT NULL AND locked_until <= $now THEN 1 ELSE 0 END), 0) AS expired_lock_count,
+                COALESCE(SUM(CASE WHEN failed_at IS NOT NULL AND discarded_at IS NULL THEN 1 ELSE 0 END), 0) AS failed_count,
+                MIN(CASE WHEN sent_at IS NULL AND failed_at IS NULL AND discarded_at IS NULL AND available_at <= $now AND (locked_until IS NULL OR locked_until <= $now) THEN available_at END) AS oldest_pending_at,
+                MIN(CASE WHEN failed_at IS NOT NULL AND discarded_at IS NULL THEN failed_at END) AS oldest_failed_at
             FROM ashlar_security_event_webhook_outbox;
             """;
         command.AddDateTimeOffsetParameter("$now", now);

@@ -62,36 +62,43 @@ internal sealed class PostgresSecurityEventWebhookOutboxDiagnostics(
                 COUNT(*) FILTER (
                     WHERE sent_at IS NULL
                       AND failed_at IS NULL
+                      AND discarded_at IS NULL
                       AND available_at <= @Now
                       AND (locked_until IS NULL OR locked_until <= @Now)
                 ) AS PendingCount,
                 COUNT(*) FILTER (
                     WHERE sent_at IS NULL
                       AND failed_at IS NULL
+                      AND discarded_at IS NULL
                       AND available_at > @Now
                 ) AS ScheduledCount,
                 COUNT(*) FILTER (
                     WHERE sent_at IS NULL
                       AND failed_at IS NULL
+                      AND discarded_at IS NULL
                       AND locked_until > @Now
                 ) AS LockedCount,
                 COUNT(*) FILTER (
                     WHERE sent_at IS NULL
                       AND failed_at IS NULL
+                      AND discarded_at IS NULL
                       AND locked_until IS NOT NULL
                       AND locked_until <= @Now
                 ) AS ExpiredLockCount,
                 COUNT(*) FILTER (
                     WHERE failed_at IS NOT NULL
+                      AND discarded_at IS NULL
                 ) AS FailedCount,
                 MIN(available_at) FILTER (
                     WHERE sent_at IS NULL
                       AND failed_at IS NULL
+                      AND discarded_at IS NULL
                       AND available_at <= @Now
                       AND (locked_until IS NULL OR locked_until <= @Now)
                 ) AS OldestPendingAt,
                 MIN(failed_at) FILTER (
                     WHERE failed_at IS NOT NULL
+                      AND discarded_at IS NULL
                 ) AS OldestFailedAt
             FROM ashlar_security_event_webhook_outbox;
         """;

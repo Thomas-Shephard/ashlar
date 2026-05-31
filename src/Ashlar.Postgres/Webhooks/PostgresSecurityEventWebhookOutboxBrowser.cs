@@ -39,6 +39,7 @@ public sealed class PostgresSecurityEventWebhookOutboxBrowser(
                        END AS status
                 FROM ashlar_security_event_webhook_outbox
                 WHERE sent_at IS NULL
+                  AND discarded_at IS NULL
             )
             SELECT id AS DeliveryId, endpoint_name AS EndpointName, event_id AS EventId,
                    event_type AS EventType, outcome AS Outcome, status AS Status,

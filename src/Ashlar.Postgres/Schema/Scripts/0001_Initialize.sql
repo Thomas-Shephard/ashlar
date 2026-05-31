@@ -342,6 +342,7 @@ CREATE TABLE IF NOT EXISTS ashlar_security_event_webhook_outbox (
     locked_by TEXT,
     sent_at TIMESTAMPTZ,
     failed_at TIMESTAMPTZ,
+    discarded_at TIMESTAMPTZ,
     last_attempt_at TIMESTAMPTZ,
     attempt_count INTEGER NOT NULL DEFAULT 0,
     last_error TEXT,
@@ -360,6 +361,7 @@ CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_created_at ON
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_locked_until ON ashlar_security_event_webhook_outbox (locked_until) WHERE locked_until IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_sent_at ON ashlar_security_event_webhook_outbox (sent_at) WHERE sent_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_failed_at ON ashlar_security_event_webhook_outbox (failed_at) WHERE failed_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_discarded_at ON ashlar_security_event_webhook_outbox (discarded_at) WHERE discarded_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_event ON ashlar_security_event_webhook_outbox (event_id, event_type);
 
 CREATE TABLE IF NOT EXISTS ashlar_bootstrap_state (
