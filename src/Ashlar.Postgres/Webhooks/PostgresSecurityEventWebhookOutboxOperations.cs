@@ -13,6 +13,41 @@ public sealed class PostgresSecurityEventWebhookOutboxOperations(
     TimeProvider timeProvider,
     ISecurityEventSink? securityEventSink = null) : IAshlarSecurityEventWebhookOutboxOperations
 {
+    private const string RetrySql = """
+        UPDATE ashlar_security_event_webhook_outbox
+        SET failed_at = NULL,
+            last_error = NULL,
+            locked_until = NULL,
+            locked_by = NULL,
+            available_at = @Now
+        WHERE id = @DeliveryId
+          AND sent_at IS NULL
+          AND failed_at IS NOT NULL
+          AND discarded_at IS NULL
+        RETURNING id AS DeliveryId, endpoint_name AS EndpointName, event_id AS EventId,
+                  event_type AS EventType, outcome AS Outcome, discarded_at AS DiscardedAt
+        """;
+
+    private const string DiscardSql = """
+        UPDATE ashlar_security_event_webhook_outbox
+        SET discarded_at = @Now,
+            locked_until = NULL,
+            locked_by = NULL
+        WHERE id = @DeliveryId
+          AND sent_at IS NULL
+          AND failed_at IS NOT NULL
+          AND discarded_at IS NULL
+        RETURNING id AS DeliveryId, endpoint_name AS EndpointName, event_id AS EventId,
+                  event_type AS EventType, outcome AS Outcome, discarded_at AS DiscardedAt
+        """;
+
+    private const string LoadSql = """
+        SELECT id AS DeliveryId, endpoint_name AS EndpointName, event_id AS EventId,
+               event_type AS EventType, outcome AS Outcome, discarded_at AS DiscardedAt
+        FROM ashlar_security_event_webhook_outbox
+        WHERE id = @DeliveryId
+        """;
+
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     private readonly ISecurityEventSink _securityEventSink = securityEventSink ?? new NullSecurityEventSink();
@@ -27,38 +62,12 @@ public sealed class PostgresSecurityEventWebhookOutboxOperations(
         AshlarSecurityEventWebhookOutboxOperationRequest request,
         CancellationToken cancellationToken = default)
     {
-        AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(request);
-
-        const string sql = """
-            UPDATE ashlar_security_event_webhook_outbox
-            SET failed_at = NULL,
-                last_error = NULL,
-                locked_until = NULL,
-                locked_by = NULL,
-                available_at = @Now
-            WHERE id = @DeliveryId
-              AND sent_at IS NULL
-              AND failed_at IS NOT NULL
-              AND discarded_at IS NULL
-            RETURNING id AS DeliveryId, endpoint_name AS EndpointName, event_id AS EventId,
-                      event_type AS EventType, outcome AS Outcome, discarded_at AS DiscardedAt
-            """;
-
-        var row = await ExecuteOperationAsync(sql, request.DeliveryId, cancellationToken).ConfigureAwait(false);
-        if (row is null)
-        {
-            return await ClassifyNoOpAsync(request.DeliveryId, cancellationToken).ConfigureAwait(false);
-        }
-
-        var result = row.ToResult(AshlarSecurityEventWebhookOutboxOperationStatus.Retried);
-        await AshlarSecurityEventWebhookOutboxOperations.RecordSuccessfulOperationAsync(
-            _securityEventSink,
-            _timeProvider,
+        return await ExecuteAsync(
+            RetrySql,
+            AshlarSecurityEventWebhookOutboxOperationStatus.Retried,
             AshlarSecurityEventTypes.SecurityEventWebhookOutboxDeliveryRetried,
             request,
-            result,
             cancellationToken).ConfigureAwait(false);
-        return result;
     }
 
     /// <summary>
@@ -71,72 +80,51 @@ public sealed class PostgresSecurityEventWebhookOutboxOperations(
         AshlarSecurityEventWebhookOutboxOperationRequest request,
         CancellationToken cancellationToken = default)
     {
-        AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(request);
-
-        const string sql = """
-            UPDATE ashlar_security_event_webhook_outbox
-            SET discarded_at = @Now,
-                locked_until = NULL,
-                locked_by = NULL
-            WHERE id = @DeliveryId
-              AND sent_at IS NULL
-              AND failed_at IS NOT NULL
-              AND discarded_at IS NULL
-            RETURNING id AS DeliveryId, endpoint_name AS EndpointName, event_id AS EventId,
-                      event_type AS EventType, outcome AS Outcome, discarded_at AS DiscardedAt
-            """;
-
-        var row = await ExecuteOperationAsync(sql, request.DeliveryId, cancellationToken).ConfigureAwait(false);
-        if (row is null)
-        {
-            return await ClassifyNoOpAsync(request.DeliveryId, cancellationToken).ConfigureAwait(false);
-        }
-
-        var result = row.ToResult(AshlarSecurityEventWebhookOutboxOperationStatus.Discarded);
-        await AshlarSecurityEventWebhookOutboxOperations.RecordSuccessfulOperationAsync(
-            _securityEventSink,
-            _timeProvider,
+        return await ExecuteAsync(
+            DiscardSql,
+            AshlarSecurityEventWebhookOutboxOperationStatus.Discarded,
             AshlarSecurityEventTypes.SecurityEventWebhookOutboxDeliveryDiscarded,
             request,
-            result,
             cancellationToken).ConfigureAwait(false);
-        return result;
     }
 
-    private async Task<OperationRow?> ExecuteOperationAsync(string sql, Guid deliveryId, CancellationToken cancellationToken)
+    private async Task<AshlarSecurityEventWebhookOutboxOperationResult> ExecuteAsync(
+        string sql,
+        AshlarSecurityEventWebhookOutboxOperationStatus successStatus,
+        string auditEventType,
+        AshlarSecurityEventWebhookOutboxOperationRequest request,
+        CancellationToken cancellationToken)
     {
-        return await PostgresAdminQuery.QuerySingleAsync<OperationRow>(
+        return await AshlarSecurityEventWebhookOutboxOperations.ExecuteStateChangeAsync(
+            request,
+            new AshlarSecurityEventWebhookOutboxOperationContext(
+                successStatus,
+                auditEventType,
+                (deliveryId, token) => ExecuteOperationAsync(sql, deliveryId, token),
+                LoadAsync,
+                _securityEventSink,
+                _timeProvider),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<AshlarSecurityEventWebhookOutboxOperationState?> ExecuteOperationAsync(string sql, Guid deliveryId, CancellationToken cancellationToken)
+    {
+        var row = await PostgresAdminQuery.QuerySingleAsync<OperationRow>(
             _connectionProvider,
             sql,
             new { DeliveryId = deliveryId, Now = _timeProvider.GetUtcNow() },
             cancellationToken).ConfigureAwait(false);
+        return row?.ToState();
     }
 
-    private async Task<AshlarSecurityEventWebhookOutboxOperationResult> ClassifyNoOpAsync(Guid deliveryId, CancellationToken cancellationToken)
+    private async Task<AshlarSecurityEventWebhookOutboxOperationState?> LoadAsync(Guid deliveryId, CancellationToken cancellationToken)
     {
-        const string sql = """
-            SELECT id AS DeliveryId, endpoint_name AS EndpointName, event_id AS EventId,
-                   event_type AS EventType, outcome AS Outcome, discarded_at AS DiscardedAt
-            FROM ashlar_security_event_webhook_outbox
-            WHERE id = @DeliveryId
-            """;
-
         var row = await PostgresAdminQuery.QuerySingleAsync<OperationRow>(
             _connectionProvider,
-            sql,
+            LoadSql,
             new { DeliveryId = deliveryId },
             cancellationToken).ConfigureAwait(false);
-        if (row is null)
-        {
-            return AshlarSecurityEventWebhookOutboxOperations.CreateResult(
-                AshlarSecurityEventWebhookOutboxOperationStatus.NotFound,
-                deliveryId);
-        }
-
-        var status = row.DiscardedAt.HasValue
-            ? AshlarSecurityEventWebhookOutboxOperationStatus.AlreadyDiscarded
-            : AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed;
-        return row.ToResult(status);
+        return row?.ToState();
     }
 
     private sealed record OperationRow(
@@ -147,15 +135,15 @@ public sealed class PostgresSecurityEventWebhookOutboxOperations(
         string? Outcome,
         DateTime? DiscardedAt)
     {
-        public AshlarSecurityEventWebhookOutboxOperationResult ToResult(AshlarSecurityEventWebhookOutboxOperationStatus status)
+        public AshlarSecurityEventWebhookOutboxOperationState ToState()
         {
-            return AshlarSecurityEventWebhookOutboxOperations.CreateResult(
-                status,
+            return new AshlarSecurityEventWebhookOutboxOperationState(
                 DeliveryId,
                 EndpointName,
                 EventId,
                 EventType,
-                Outcome);
+                Outcome,
+                DiscardedAt.HasValue);
         }
     }
 }

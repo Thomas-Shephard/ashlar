@@ -91,6 +91,40 @@ public sealed record AshlarSecurityEventWebhookOutboxOperationResult(
     string? Outcome = null);
 
 /// <summary>
+/// Safe stored metadata used to classify and report manual durable outbox operations.
+/// </summary>
+/// <param name="DeliveryId">The delivery id value.</param>
+/// <param name="EndpointName">The safe endpoint name value.</param>
+/// <param name="EventId">The security event id value.</param>
+/// <param name="EventType">The safe security event type value.</param>
+/// <param name="Outcome">The safe security event outcome value.</param>
+/// <param name="IsDiscarded">A value indicating whether the delivery is already discarded.</param>
+public sealed record AshlarSecurityEventWebhookOutboxOperationState(
+    Guid DeliveryId,
+    string? EndpointName,
+    Guid EventId,
+    string? EventType,
+    string? Outcome,
+    bool IsDiscarded);
+
+/// <summary>
+/// Provider-specific callbacks and dependencies for a manual durable outbox operation.
+/// </summary>
+/// <param name="SuccessStatus">The status to return when the state change is applied.</param>
+/// <param name="AuditEventType">The audit event type to emit when the state change is applied.</param>
+/// <param name="ApplyAsync">The conditional state-changing persistence callback.</param>
+/// <param name="LoadAsync">The persistence callback used to classify no-op results.</param>
+/// <param name="SecurityEventSink">The security event sink.</param>
+/// <param name="TimeProvider">The time provider.</param>
+public sealed record AshlarSecurityEventWebhookOutboxOperationContext(
+    AshlarSecurityEventWebhookOutboxOperationStatus SuccessStatus,
+    string AuditEventType,
+    Func<Guid, CancellationToken, Task<AshlarSecurityEventWebhookOutboxOperationState?>> ApplyAsync,
+    Func<Guid, CancellationToken, Task<AshlarSecurityEventWebhookOutboxOperationState?>> LoadAsync,
+    ISecurityEventSink SecurityEventSink,
+    TimeProvider TimeProvider);
+
+/// <summary>
 /// Shared validation and safe audit helpers for manual webhook outbox operations.
 /// </summary>
 public static class AshlarSecurityEventWebhookOutboxOperations
@@ -135,6 +169,37 @@ public static class AshlarSecurityEventWebhookOutboxOperations
             eventId,
             AshlarSecurityEventWebhookOutboxBrowser.SanitizeSafeText(eventType),
             AshlarSecurityEventWebhookOutboxBrowser.SanitizeSafeText(outcome));
+    }
+
+    /// <summary>
+    /// Applies a provider-specific manual state change and classifies no-op results.
+    /// </summary>
+    /// <param name="request">The operation request.</param>
+    /// <param name="context">The provider-specific operation context.</param>
+    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <returns>The safe operation result.</returns>
+    public static async Task<AshlarSecurityEventWebhookOutboxOperationResult> ExecuteStateChangeAsync(
+        AshlarSecurityEventWebhookOutboxOperationRequest request,
+        AshlarSecurityEventWebhookOutboxOperationContext context,
+        CancellationToken cancellationToken)
+    {
+        ValidateRequest(request);
+
+        var row = await context.ApplyAsync(request.DeliveryId, cancellationToken).ConfigureAwait(false);
+        if (row is null)
+        {
+            return await ClassifyNoOpAsync(request.DeliveryId, context, cancellationToken).ConfigureAwait(false);
+        }
+
+        var result = CreateResult(context.SuccessStatus, row);
+        await RecordSuccessfulOperationAsync(
+            context.SecurityEventSink,
+            context.TimeProvider,
+            context.AuditEventType,
+            request,
+            result,
+            cancellationToken).ConfigureAwait(false);
+        return result;
     }
 
     /// <summary>
@@ -184,6 +249,36 @@ public static class AshlarSecurityEventWebhookOutboxOperations
         {
             // Ashlar security event audit emission is fail-open.
         }
+    }
+
+    private static async Task<AshlarSecurityEventWebhookOutboxOperationResult> ClassifyNoOpAsync(
+        Guid deliveryId,
+        AshlarSecurityEventWebhookOutboxOperationContext context,
+        CancellationToken cancellationToken)
+    {
+        var row = await context.LoadAsync(deliveryId, cancellationToken).ConfigureAwait(false);
+        if (row is null)
+        {
+            return CreateResult(AshlarSecurityEventWebhookOutboxOperationStatus.NotFound, deliveryId);
+        }
+
+        var status = row.IsDiscarded
+            ? AshlarSecurityEventWebhookOutboxOperationStatus.AlreadyDiscarded
+            : AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed;
+        return CreateResult(status, row);
+    }
+
+    private static AshlarSecurityEventWebhookOutboxOperationResult CreateResult(
+        AshlarSecurityEventWebhookOutboxOperationStatus status,
+        AshlarSecurityEventWebhookOutboxOperationState row)
+    {
+        return CreateResult(
+            status,
+            row.DeliveryId,
+            row.EndpointName,
+            row.EventId,
+            row.EventType,
+            row.Outcome);
     }
 
     private static Dictionary<string, string> CreateAuditProperties(AshlarSecurityEventWebhookOutboxOperationResult result)

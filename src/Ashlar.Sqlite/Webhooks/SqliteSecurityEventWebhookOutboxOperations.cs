@@ -14,6 +14,38 @@ public sealed class SqliteSecurityEventWebhookOutboxOperations(
     TimeProvider timeProvider,
     ISecurityEventSink? securityEventSink = null) : IAshlarSecurityEventWebhookOutboxOperations
 {
+    private const string RetrySql = """
+        UPDATE ashlar_security_event_webhook_outbox
+        SET failed_at = NULL,
+            last_error = NULL,
+            locked_until = NULL,
+            locked_by = NULL,
+            available_at = $now
+        WHERE id = $deliveryId
+          AND sent_at IS NULL
+          AND failed_at IS NOT NULL
+          AND discarded_at IS NULL
+        RETURNING id, endpoint_name, event_id, event_type, outcome, discarded_at;
+        """;
+
+    private const string DiscardSql = """
+        UPDATE ashlar_security_event_webhook_outbox
+        SET discarded_at = $now,
+            locked_until = NULL,
+            locked_by = NULL
+        WHERE id = $deliveryId
+          AND sent_at IS NULL
+          AND failed_at IS NOT NULL
+          AND discarded_at IS NULL
+        RETURNING id, endpoint_name, event_id, event_type, outcome, discarded_at;
+        """;
+
+    private const string LoadSql = """
+        SELECT id, endpoint_name, event_id, event_type, outcome, discarded_at
+        FROM ashlar_security_event_webhook_outbox
+        WHERE id = $deliveryId;
+        """;
+
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     private readonly ISecurityEventSink _securityEventSink = securityEventSink ?? new NullSecurityEventSink();
@@ -28,37 +60,12 @@ public sealed class SqliteSecurityEventWebhookOutboxOperations(
         AshlarSecurityEventWebhookOutboxOperationRequest request,
         CancellationToken cancellationToken = default)
     {
-        AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(request);
-
-        const string sql = """
-            UPDATE ashlar_security_event_webhook_outbox
-            SET failed_at = NULL,
-                last_error = NULL,
-                locked_until = NULL,
-                locked_by = NULL,
-                available_at = $now
-            WHERE id = $deliveryId
-              AND sent_at IS NULL
-              AND failed_at IS NOT NULL
-              AND discarded_at IS NULL
-            RETURNING id, endpoint_name, event_id, event_type, outcome, sent_at, failed_at, discarded_at;
-            """;
-
-        var row = await ExecuteOperationAsync(sql, request.DeliveryId, cancellationToken).ConfigureAwait(false);
-        if (row is null)
-        {
-            return await ClassifyNoOpAsync(request.DeliveryId, cancellationToken).ConfigureAwait(false);
-        }
-
-        var result = row.ToResult(AshlarSecurityEventWebhookOutboxOperationStatus.Retried);
-        await AshlarSecurityEventWebhookOutboxOperations.RecordSuccessfulOperationAsync(
-            _securityEventSink,
-            _timeProvider,
+        return await ExecuteAsync(
+            RetrySql,
+            AshlarSecurityEventWebhookOutboxOperationStatus.Retried,
             AshlarSecurityEventTypes.SecurityEventWebhookOutboxDeliveryRetried,
             request,
-            result,
             cancellationToken).ConfigureAwait(false);
-        return result;
     }
 
     /// <summary>
@@ -71,73 +78,56 @@ public sealed class SqliteSecurityEventWebhookOutboxOperations(
         AshlarSecurityEventWebhookOutboxOperationRequest request,
         CancellationToken cancellationToken = default)
     {
-        AshlarSecurityEventWebhookOutboxOperations.ValidateRequest(request);
-
-        const string sql = """
-            UPDATE ashlar_security_event_webhook_outbox
-            SET discarded_at = $now,
-                locked_until = NULL,
-                locked_by = NULL
-            WHERE id = $deliveryId
-              AND sent_at IS NULL
-              AND failed_at IS NOT NULL
-              AND discarded_at IS NULL
-            RETURNING id, endpoint_name, event_id, event_type, outcome, sent_at, failed_at, discarded_at;
-            """;
-
-        var row = await ExecuteOperationAsync(sql, request.DeliveryId, cancellationToken).ConfigureAwait(false);
-        if (row is null)
-        {
-            return await ClassifyNoOpAsync(request.DeliveryId, cancellationToken).ConfigureAwait(false);
-        }
-
-        var result = row.ToResult(AshlarSecurityEventWebhookOutboxOperationStatus.Discarded);
-        await AshlarSecurityEventWebhookOutboxOperations.RecordSuccessfulOperationAsync(
-            _securityEventSink,
-            _timeProvider,
+        return await ExecuteAsync(
+            DiscardSql,
+            AshlarSecurityEventWebhookOutboxOperationStatus.Discarded,
             AshlarSecurityEventTypes.SecurityEventWebhookOutboxDeliveryDiscarded,
             request,
-            result,
             cancellationToken).ConfigureAwait(false);
-        return result;
     }
 
-    private Task<OperationRow?> ExecuteOperationAsync(string sql, Guid deliveryId, CancellationToken cancellationToken)
+    private async Task<AshlarSecurityEventWebhookOutboxOperationResult> ExecuteAsync(
+        string sql,
+        AshlarSecurityEventWebhookOutboxOperationStatus successStatus,
+        string auditEventType,
+        AshlarSecurityEventWebhookOutboxOperationRequest request,
+        CancellationToken cancellationToken)
     {
-        return QuerySingleAsync(
+        return await AshlarSecurityEventWebhookOutboxOperations.ExecuteStateChangeAsync(
+            request,
+            new AshlarSecurityEventWebhookOutboxOperationContext(
+                successStatus,
+                auditEventType,
+                (deliveryId, token) => ExecuteOperationAsync(sql, deliveryId, token),
+                LoadAsync,
+                _securityEventSink,
+                _timeProvider),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<AshlarSecurityEventWebhookOutboxOperationState?> ExecuteOperationAsync(string sql, Guid deliveryId, CancellationToken cancellationToken)
+    {
+        var row = await QuerySingleAsync(
             command =>
             {
                 command.CommandText = sql;
                 command.AddGuidParameter("$deliveryId", deliveryId);
                 command.AddDateTimeOffsetParameter("$now", _timeProvider.GetUtcNow());
             },
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+        return row?.ToState();
     }
 
-    private async Task<AshlarSecurityEventWebhookOutboxOperationResult> ClassifyNoOpAsync(Guid deliveryId, CancellationToken cancellationToken)
+    private async Task<AshlarSecurityEventWebhookOutboxOperationState?> LoadAsync(Guid deliveryId, CancellationToken cancellationToken)
     {
         var row = await QuerySingleAsync(
             command =>
             {
-                command.CommandText = """
-                    SELECT id, endpoint_name, event_id, event_type, outcome, sent_at, failed_at, discarded_at
-                    FROM ashlar_security_event_webhook_outbox
-                    WHERE id = $deliveryId;
-                    """;
+                command.CommandText = LoadSql;
                 command.AddGuidParameter("$deliveryId", deliveryId);
             },
             cancellationToken).ConfigureAwait(false);
-        if (row is null)
-        {
-            return AshlarSecurityEventWebhookOutboxOperations.CreateResult(
-                AshlarSecurityEventWebhookOutboxOperationStatus.NotFound,
-                deliveryId);
-        }
-
-        var status = row.DiscardedAt != null
-            ? AshlarSecurityEventWebhookOutboxOperationStatus.AlreadyDiscarded
-            : AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed;
-        return row.ToResult(status);
+        return row?.ToState();
     }
 
     private async Task<OperationRow?> QuerySingleAsync(Action<SqliteCommand> buildCommand, CancellationToken cancellationToken)
@@ -159,8 +149,6 @@ public sealed class SqliteSecurityEventWebhookOutboxOperations(
             reader.GetGuidFromText("event_id"),
             reader.GetNullableString("event_type"),
             reader.GetNullableString("outcome"),
-            reader.GetNullableDateTimeOffsetFromText("sent_at"),
-            reader.GetNullableDateTimeOffsetFromText("failed_at"),
             reader.GetNullableDateTimeOffsetFromText("discarded_at"));
     }
 
@@ -170,19 +158,17 @@ public sealed class SqliteSecurityEventWebhookOutboxOperations(
         Guid EventId,
         string? EventType,
         string? Outcome,
-        DateTimeOffset? SentAt = null,
-        DateTimeOffset? FailedAt = null,
         DateTimeOffset? DiscardedAt = null)
     {
-        public AshlarSecurityEventWebhookOutboxOperationResult ToResult(AshlarSecurityEventWebhookOutboxOperationStatus status)
+        public AshlarSecurityEventWebhookOutboxOperationState ToState()
         {
-            return AshlarSecurityEventWebhookOutboxOperations.CreateResult(
-                status,
+            return new AshlarSecurityEventWebhookOutboxOperationState(
                 DeliveryId,
                 EndpointName,
                 EventId,
                 EventType,
-                Outcome);
+                Outcome,
+                DiscardedAt.HasValue);
         }
     }
 }
