@@ -1,6 +1,22 @@
 namespace Ashlar.Webhooks.SecurityEvents;
 
 /// <summary>
+/// Defines the network destinations allowed for security event webhook delivery.
+/// </summary>
+public enum AshlarSecurityEventWebhookDestinationPolicy
+{
+    /// <summary>
+    /// Allows only public internet destinations.
+    /// </summary>
+    PublicInternetOnly = 0,
+
+    /// <summary>
+    /// Allows private network destinations while continuing to block loopback, link-local, multicast, and unspecified destinations.
+    /// </summary>
+    AllowPrivateNetworks = 1
+}
+
+/// <summary>
 /// Configures best-effort webhook delivery for Ashlar security events.
 /// </summary>
 public sealed class AshlarSecurityEventWebhookOptions
@@ -21,6 +37,12 @@ public sealed class AshlarSecurityEventWebhookOptions
     public TimeSpan Timeout { get; set; } = DefaultTimeout;
 
     /// <summary>
+    /// Gets or sets the destination policy for webhook endpoint validation and dispatch.
+    /// </summary>
+    public AshlarSecurityEventWebhookDestinationPolicy DestinationPolicy { get; set; } =
+        AshlarSecurityEventWebhookDestinationPolicy.PublicInternetOnly;
+
+    /// <summary>
     /// Validates webhook options.
     /// </summary>
     /// <param name="options">The options value.</param>
@@ -29,6 +51,7 @@ public sealed class AshlarSecurityEventWebhookOptions
     {
         return options is not null
             && options.Timeout > TimeSpan.Zero
-            && options.Endpoints.All(AshlarSecurityEventWebhookEndpointOptions.Validate);
+            && Enum.IsDefined(options.DestinationPolicy)
+            && options.Endpoints.All(endpoint => AshlarSecurityEventWebhookEndpointOptions.Validate(endpoint, options.DestinationPolicy));
     }
 }

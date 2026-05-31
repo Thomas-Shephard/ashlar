@@ -1,3 +1,6 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using Ashlar.Auditing;
 using Ashlar.Webhooks.SecurityEvents;
 using Microsoft.Extensions.DependencyInjection;
@@ -114,6 +117,18 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarSecurityEventWebhooksDisablesAutomaticRedirectsForNamedClient()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarSecurityEventWebhooks();
+        using var provider = services.BuildServiceProvider();
+        using var handler = provider.GetRequiredService<IHttpMessageHandlerFactory>()
+            .CreateHandler(AshlarSecurityEventWebhookSender.HttpClientName);
+
+        Assert.That(ContainsHardenedSocketsHandler(handler), Is.True);
+    }
+
+    [Test]
     public async Task AddAshlarSecurityEventWebhookOutboxRegistersDurableHandler()
     {
         var enqueuer = new TestWebhookEnqueuer();
@@ -189,5 +204,82 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
             Deliveries.Add(delivery);
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class RedirectServer : IAsyncDisposable
+    {
+        private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+
+        public RedirectServer()
+        {
+            _listener.Start();
+            RedirectUri = new Uri($"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/redirect");
+        }
+
+        public Uri RedirectUri { get; }
+
+        public int RequestCount { get; private set; }
+
+        public async ValueTask DisposeAsync()
+        {
+            _listener.Stop();
+            await ValueTask.CompletedTask;
+        }
+
+        public async Task ServeAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    using var client = await _listener.AcceptTcpClientAsync(cancellationToken);
+                    RequestCount++;
+                    await ReadRequestAsync(client.GetStream(), cancellationToken);
+                    var response = RequestCount == 1
+                        ? "HTTP/1.1 302 Found\r\nLocation: /final\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        : "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                    await client.GetStream().WriteAsync(Encoding.ASCII.GetBytes(response), cancellationToken);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+        }
+
+        private static async Task ReadRequestAsync(NetworkStream stream, CancellationToken cancellationToken)
+        {
+            var buffer = new byte[1024];
+            var builder = new StringBuilder();
+            do
+            {
+                var read = await stream.ReadAsync(buffer, cancellationToken);
+                builder.Append(Encoding.ASCII.GetString(buffer, 0, read));
+            }
+            while (!builder.ToString().Contains("\r\n\r\n", StringComparison.Ordinal));
+        }
+    }
+
+    private static bool ContainsHardenedSocketsHandler(HttpMessageHandler handler)
+    {
+        if (handler is SocketsHttpHandler socketsHandler)
+        {
+            return !socketsHandler.AllowAutoRedirect && socketsHandler.ConnectCallback != null;
+        }
+
+        if (handler is DelegatingHandler { InnerHandler: { } innerHandler })
+        {
+            return ContainsHardenedSocketsHandler(innerHandler);
+        }
+
+        var fields = handler.GetType().GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        foreach (var field in fields)
+        {
+            if (field.GetValue(handler) is HttpMessageHandler nestedHandler && ContainsHardenedSocketsHandler(nestedHandler))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

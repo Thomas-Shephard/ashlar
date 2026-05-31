@@ -15,7 +15,11 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
     {
         var options = new AshlarSecurityEventWebhookOptions();
 
-        Assert.That(options.Timeout, Is.EqualTo(TimeSpan.FromSeconds(10)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.Timeout, Is.EqualTo(TimeSpan.FromSeconds(10)));
+            Assert.That(options.DestinationPolicy, Is.EqualTo(AshlarSecurityEventWebhookDestinationPolicy.PublicInternetOnly));
+        }
     }
 
     [TestCaseSource(nameof(InvalidOptions))]
@@ -40,6 +44,19 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
     }
 
     [Test]
+    public void ValidateAllowsPrivateEndpointWhenPolicyExplicitlyAllowsPrivateNetworks()
+    {
+        var options = CreateOptions(new AshlarSecurityEventWebhookEndpointOptions
+        {
+            Name = "internal",
+            Uri = new Uri("https://10.0.0.5/security-events")
+        });
+        options.DestinationPolicy = AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks;
+
+        Assert.That(AshlarSecurityEventWebhookOptions.Validate(options), Is.True);
+    }
+
+    [Test]
     public void EndpointDefaultsAreSafe()
     {
         var endpoint = new AshlarSecurityEventWebhookEndpointOptions();
@@ -57,10 +74,14 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
     {
         yield return null;
         yield return new AshlarSecurityEventWebhookOptions { Timeout = TimeSpan.Zero };
+        yield return new AshlarSecurityEventWebhookOptions { DestinationPolicy = (AshlarSecurityEventWebhookDestinationPolicy)99 };
         yield return CreateOptions(null);
         yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = " ", Uri = new Uri("https://example.test") });
         yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("http://example.test") });
         yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("/relative", UriKind.Relative) });
+        yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://127.0.0.1") });
+        yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test/path#fragment") });
+        yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://user@example.test") });
         yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), Timeout = TimeSpan.Zero });
         yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit\r\nbad", Uri = new Uri("https://example.test") });
         yield return CreateOptions(new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = " " });

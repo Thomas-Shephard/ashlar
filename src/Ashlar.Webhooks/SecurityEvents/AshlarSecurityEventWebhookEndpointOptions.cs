@@ -42,11 +42,17 @@ public sealed class AshlarSecurityEventWebhookEndpointOptions
     /// <returns><see langword="true" /> when the endpoint is valid.</returns>
     public static bool Validate(AshlarSecurityEventWebhookEndpointOptions? endpoint)
     {
+        return Validate(endpoint, AshlarSecurityEventWebhookDestinationPolicy.PublicInternetOnly);
+    }
+
+    internal static bool Validate(
+        AshlarSecurityEventWebhookEndpointOptions? endpoint,
+        AshlarSecurityEventWebhookDestinationPolicy destinationPolicy)
+    {
         return endpoint is not null
             && !string.IsNullOrWhiteSpace(endpoint.Name)
             && AshlarSecurityEventWebhookHeaderValues.IsSafe(endpoint.Name)
-            && endpoint.Uri is { IsAbsoluteUri: true }
-            && endpoint.Uri.Scheme == Uri.UriSchemeHttps
+            && AshlarSecurityEventWebhookDestinationValidator.ValidateUri(endpoint.Uri, destinationPolicy).IsValid
             && (endpoint.SharedSecret is null || !string.IsNullOrWhiteSpace(endpoint.SharedSecret))
             && (!endpoint.Timeout.HasValue || endpoint.Timeout.Value > TimeSpan.Zero)
             && endpoint.EventTypes.All(eventType => !string.IsNullOrWhiteSpace(eventType));
