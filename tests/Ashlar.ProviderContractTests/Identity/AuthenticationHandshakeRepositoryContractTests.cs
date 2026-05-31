@@ -46,12 +46,13 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         await repository.CreateAsync(handshake);
 
         var fetched = await repository.FindByTokenHashAsync(handshake.TokenHash, forUpdate: true);
-        await repository.UpdateAsync(fetched! with { VerifiedFactors = new HashSet<string> { "totp" } });
+        var updateApplied = await repository.UpdateAsync(fetched! with { VerifiedFactors = new HashSet<string> { "totp" } });
         var updated = await repository.FindByTokenHashAsync(handshake.TokenHash);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fetched?.Id, Is.EqualTo(handshake.Id));
+            Assert.That(updateApplied, Is.True);
             Assert.That(updated!.VerifiedFactors, Is.EquivalentTo(TotpFactor));
         }
     }
@@ -109,11 +110,12 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         var completedAt = CreatedAt.AddMinutes(10);
         await repository.CreateAsync(handshake);
 
-        await repository.UpdateAsync(handshake with { IsCompleted = true, CompletedAt = completedAt });
+        var updateApplied = await repository.UpdateAsync(handshake with { IsCompleted = true, CompletedAt = completedAt });
 
         var fetched = await repository.FindByTokenHashAsync(handshake.TokenHash);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(updateApplied, Is.True);
             Assert.That(fetched!.IsCompleted, Is.True);
             Assert.That(fetched.CompletedAt, Is.EqualTo(completedAt));
         }
@@ -129,11 +131,12 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         var handshake = CreateHandshake(user.Id);
         await repository.CreateAsync(handshake);
 
-        await repository.UpdateAsync(handshake with { IsCompleted = true, CompletedAt = null });
+        var updateApplied = await repository.UpdateAsync(handshake with { IsCompleted = true, CompletedAt = null });
 
         var fetched = await repository.FindByTokenHashAsync(handshake.TokenHash);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(updateApplied, Is.True);
             Assert.That(fetched!.IsCompleted, Is.True);
             Assert.That(fetched.CompletedAt, Is.Not.Null);
         }
@@ -150,11 +153,12 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         var revokedAt = CreatedAt.AddMinutes(11);
         await repository.CreateAsync(handshake);
 
-        await repository.UpdateAsync(handshake with { IsRevoked = true, RevokedAt = revokedAt });
+        var updateApplied = await repository.UpdateAsync(handshake with { IsRevoked = true, RevokedAt = revokedAt });
 
         var fetched = await repository.FindByTokenHashAsync(handshake.TokenHash);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(updateApplied, Is.True);
             Assert.That(fetched!.IsRevoked, Is.True);
             Assert.That(fetched.RevokedAt, Is.EqualTo(revokedAt));
         }
@@ -170,11 +174,12 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         var handshake = CreateHandshake(user.Id);
         await repository.CreateAsync(handshake);
 
-        await repository.UpdateAsync(handshake with { IsRevoked = true, RevokedAt = null });
+        var updateApplied = await repository.UpdateAsync(handshake with { IsRevoked = true, RevokedAt = null });
 
         var fetched = await repository.FindByTokenHashAsync(handshake.TokenHash);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(updateApplied, Is.True);
             Assert.That(fetched!.IsRevoked, Is.True);
             Assert.That(fetched.RevokedAt, Is.Not.Null);
         }
@@ -190,22 +195,111 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         var handshake = CreateHandshake(user.Id, verifiedFactors: new HashSet<string>(TotpFactor), metadata: new Dictionary<string, string> { ["initial"] = "true" });
         await repository.CreateAsync(handshake);
 
-        await repository.UpdateAsync(handshake with
+        var firstUpdateApplied = await repository.UpdateAsync(handshake with
         {
             VerifiedFactors = new HashSet<string> { "passkey" },
             Metadata = new Dictionary<string, string> { ["updated"] = "true" }
         });
         var updated = await repository.FindByTokenHashAsync(handshake.TokenHash);
-        await repository.UpdateAsync(handshake with { VerifiedFactors = new HashSet<string>(), Metadata = null });
+        var resetUpdateApplied = await repository.UpdateAsync(handshake with { VerifiedFactors = new HashSet<string>(), Metadata = null });
         var reset = await repository.FindByTokenHashAsync(handshake.TokenHash);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(firstUpdateApplied, Is.True);
             Assert.That(updated!.VerifiedFactors, Is.EquivalentTo(PasskeyFactor));
             Assert.That(updated.Metadata, Is.EquivalentTo(UpdatedMetadata));
+            Assert.That(resetUpdateApplied, Is.True);
             Assert.That(reset!.VerifiedFactors, Is.Empty);
             Assert.That(reset.Metadata, Is.Null);
         }
+    }
+
+    [Test]
+    public async Task UpdateReturnsFalseAndDoesNotModifyCompletedHandshake()
+    {
+        await using var scope = CreateAsyncScope();
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
+        var user = await CreateUserAsync(userRepository);
+        var handshake = CreateHandshake(user.Id, metadata: new Dictionary<string, string> { ["initial"] = "true" });
+        var completedAt = CreatedAt.AddMinutes(12);
+        await repository.CreateAsync(handshake);
+        var completedUpdateApplied = await repository.UpdateAsync(handshake with
+        {
+            IsCompleted = true,
+            CompletedAt = completedAt,
+            VerifiedFactors = new HashSet<string>(TotpFactor),
+            Metadata = new Dictionary<string, string> { ["completed"] = "true" }
+        });
+        var completed = await repository.FindByTokenHashAsync(handshake.TokenHash);
+
+        var staleUpdateApplied = await repository.UpdateAsync(completed! with
+        {
+            IsCompleted = false,
+            CompletedAt = null,
+            IsRevoked = true,
+            RevokedAt = CreatedAt.AddMinutes(13),
+            VerifiedFactors = new HashSet<string>(PasskeyFactor),
+            Metadata = UpdatedMetadata
+        });
+        var afterStaleUpdate = await repository.FindByTokenHashAsync(handshake.TokenHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completedUpdateApplied, Is.True);
+            Assert.That(staleUpdateApplied, Is.False);
+            AssertHandshake(afterStaleUpdate!, completed!);
+        }
+    }
+
+    [Test]
+    public async Task UpdateReturnsFalseAndDoesNotModifyRevokedHandshake()
+    {
+        await using var scope = CreateAsyncScope();
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
+        var user = await CreateUserAsync(userRepository);
+        var handshake = CreateHandshake(user.Id, metadata: new Dictionary<string, string> { ["initial"] = "true" });
+        var revokedAt = CreatedAt.AddMinutes(14);
+        await repository.CreateAsync(handshake);
+        var revokedUpdateApplied = await repository.UpdateAsync(handshake with
+        {
+            IsRevoked = true,
+            RevokedAt = revokedAt,
+            Metadata = new Dictionary<string, string> { ["revoked"] = "true" }
+        });
+        var revoked = await repository.FindByTokenHashAsync(handshake.TokenHash);
+
+        var staleUpdateApplied = await repository.UpdateAsync(revoked! with
+        {
+            IsRevoked = false,
+            RevokedAt = null,
+            IsCompleted = true,
+            CompletedAt = CreatedAt.AddMinutes(15),
+            VerifiedFactors = new HashSet<string>(PasskeyFactor),
+            Metadata = UpdatedMetadata
+        });
+        var afterStaleUpdate = await repository.FindByTokenHashAsync(handshake.TokenHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revokedUpdateApplied, Is.True);
+            Assert.That(staleUpdateApplied, Is.False);
+            AssertHandshake(afterStaleUpdate!, revoked!);
+        }
+    }
+
+    [Test]
+    public async Task UpdateMissingHandshakeReturnsFalse()
+    {
+        await using var scope = CreateAsyncScope();
+        var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
+        var missing = CreateHandshake(Guid.NewGuid(), verifiedFactors: new HashSet<string>(TotpFactor));
+
+        var updateApplied = await repository.UpdateAsync(missing);
+
+        Assert.That(updateApplied, Is.False);
     }
 
     [Test]

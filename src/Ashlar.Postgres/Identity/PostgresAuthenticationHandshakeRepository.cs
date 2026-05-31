@@ -111,8 +111,8 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
     /// </summary>
     /// <param name="handshake">The handshake value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
-    public async Task UpdateAsync(AuthenticationHandshake handshake, CancellationToken cancellationToken = default)
+    /// <returns><see langword="true" /> when the handshake was updated; otherwise, <see langword="false" />.</returns>
+    public async Task<bool> UpdateAsync(AuthenticationHandshake handshake, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(handshake);
 
@@ -125,6 +125,8 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
                 verified_factors = @VerifiedFactors::jsonb,
                 metadata = @Metadata::jsonb
             WHERE id = @Id
+              AND is_completed = false
+              AND is_revoked = false
             """;
 
         var now = _timeProvider.GetUtcNow();
@@ -141,7 +143,8 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
                 VerifiedFactors = JsonSerializer.Serialize(handshake.VerifiedFactors),
                 Metadata = SerializeMetadata(handshake.Metadata)
             }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            await connectionHandle.Connection.ExecuteAsync(command);
+            var affectedRows = await connectionHandle.Connection.ExecuteAsync(command);
+            return affectedRows == 1;
         }
     }
 

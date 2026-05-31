@@ -110,13 +110,14 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
             Metadata = new Dictionary<string, string> { ["updated"] = "true" }
         };
 
-        await repository.UpdateAsync(updatedHandshake);
+        var updateApplied = await repository.UpdateAsync(updatedHandshake);
 
         var fetched = await repository.FindByTokenHashAsync(handshake.TokenHash);
 
         Assert.That(fetched, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(updateApplied, Is.True);
             Assert.That(fetched.IsRevoked, Is.True);
             Assert.That(fetched.IsCompleted, Is.True);
             Assert.That(fetched.RevokedAt, Is.Not.Null);
@@ -233,7 +234,7 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
 
         var updatedHandshake = handshake with { Metadata = null };
 
-        await repository.UpdateAsync(updatedHandshake);
+        var updateApplied = await repository.UpdateAsync(updatedHandshake);
 
         var fetched = await repository.FindByTokenHashAsync(handshake.TokenHash);
         var metadataIsSqlNull = await IsHandshakeMetadataSqlNullAsync(handshake.Id);
@@ -241,6 +242,7 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
         Assert.That(fetched, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(updateApplied, Is.True);
             Assert.That(fetched.Metadata, Is.Null);
             Assert.That(metadataIsSqlNull, Is.True);
         }

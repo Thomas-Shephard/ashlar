@@ -13,6 +13,7 @@ internal sealed class AuthenticationHandshakeServiceTests
 {
     private static readonly string[] ExpectedRequiredFactors = ["totp", "email"];
     private static readonly string[] ExpectedCompletionTransactionOperations = ["begin", "read", "update", "commit"];
+    private static readonly string[] ExpectedStaleUpdateTransactionOperations = ["begin", "read", "update", "dispose"];
     private static readonly string[] ExpectedRecoveryCodeVerifiedFactors = ["totp", "passkey"];
 
     private Mock<IAuthenticationHandshakeRepository> _repositoryMock;
@@ -32,6 +33,8 @@ internal sealed class AuthenticationHandshakeServiceTests
         _timeProvider = new FakeTimeProvider(new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.Zero));
 
         _tokenHasherMock.Setup(h => h.HashToken(It.IsAny<string>())).Returns<string>(token => $"hashed:{token}");
+        _repositoryMock.Setup(r => r.UpdateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         _rateLimiterMock.Setup(r => r.CheckAsync(It.IsAny<RateLimitAttempt>(), It.IsAny<RateLimitRule>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RateLimitDecision
@@ -346,7 +349,7 @@ internal sealed class AuthenticationHandshakeServiceTests
                 Assert.That(transactionProvider.IsActive, Is.True);
                 operations.Add("update");
             })
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync(true);
 
         var result = await service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
@@ -355,6 +358,62 @@ internal sealed class AuthenticationHandshakeServiceTests
             Assert.That(result.Succeeded, Is.True);
             Assert.That(operations, Is.EqualTo(ExpectedCompletionTransactionOperations));
         }
+    }
+
+    [Test]
+    public async Task CompleteFactorVerificationAsyncShouldFailOnStaleUpdateWithoutCommitOrSuccessEvent()
+    {
+        var operations = new List<string>();
+        var transactionProvider = new RecordingTransactionProvider(operations);
+        var service = new AuthenticationHandshakeService(
+            _repositoryMock.Object,
+            new FixedTokenGenerator("raw-token"),
+            _tokenHasherMock.Object,
+            transactionProvider,
+            new AuthenticationHandshakeServiceDependencies(
+                Options.Create(new AuthenticationHandshakeOptions()),
+                _timeProvider,
+                _eventSinkMock.Object,
+                _rateLimiterMock.Object));
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(15),
+            false,
+            false,
+            new HashSet<string> { "totp" },
+            new HashSet<string>());
+
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", true, It.IsAny<CancellationToken>()))
+            .Callback(() => operations.Add("read"))
+            .ReturnsAsync(handshake);
+        _repositoryMock.Setup(r => r.UpdateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()))
+            .Callback(() => operations.Add("update"))
+            .ReturnsAsync(false);
+
+        var result = await service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ConcurrencyConflict));
+            Assert.That(operations, Is.EqualTo(ExpectedStaleUpdateTransactionOperations));
+        }
+
+        _eventSinkMock.Verify(sink => sink.RecordAsync(It.Is<AshlarSecurityEvent>(securityEvent =>
+            securityEvent.EventType == AshlarSecurityEventTypes.AuthenticationHandshakeFailed &&
+            securityEvent.Outcome == SecurityEventOutcomes.Failure &&
+            securityEvent.FailureReason == AshlarFailureCodes.ConcurrencyConflict.Value &&
+            securityEvent.UserId == handshake.UserId &&
+            securityEvent.Properties != null &&
+            securityEvent.Properties.ContainsKey("handshake_id") &&
+            securityEvent.Properties["handshake_id"] == handshake.Id.ToString()), It.IsAny<CancellationToken>()), Times.Once);
+        _eventSinkMock.Verify(sink => sink.RecordAsync(It.Is<AshlarSecurityEvent>(securityEvent =>
+            securityEvent.Outcome == SecurityEventOutcomes.Success &&
+            (securityEvent.EventType == AshlarSecurityEventTypes.AuthenticationHandshakeCompleted ||
+             securityEvent.EventType == AshlarSecurityEventTypes.AuthenticationHandshakeFactorVerified)), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -1118,9 +1177,65 @@ internal sealed class AuthenticationHandshakeServiceTests
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
                        .ReturnsAsync(handshake);
 
-        await _service.RevokeHandshakeAsync("raw-token");
+        var result = await _service.RevokeHandshakeAsync("raw-token");
 
+        Assert.That(result.Succeeded, Is.True);
         _repositoryMock.Verify(r => r.UpdateAsync(It.Is<AuthenticationHandshake>(h => h.IsRevoked && h.RevokedAt == _timeProvider.GetUtcNow()), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task RevokeHandshakeAsyncShouldFailOnStaleUpdateWithoutCommitOrSuccessEvent()
+    {
+        var operations = new List<string>();
+        var transactionProvider = new RecordingTransactionProvider(operations);
+        var service = new AuthenticationHandshakeService(
+            _repositoryMock.Object,
+            new FixedTokenGenerator("raw-token"),
+            _tokenHasherMock.Object,
+            transactionProvider,
+            new AuthenticationHandshakeServiceDependencies(
+                Options.Create(new AuthenticationHandshakeOptions()),
+                _timeProvider,
+                _eventSinkMock.Object,
+                _rateLimiterMock.Object));
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(15),
+            false,
+            false,
+            new HashSet<string> { "totp" },
+            new HashSet<string>());
+
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", true, It.IsAny<CancellationToken>()))
+                       .Callback(() => operations.Add("read"))
+                       .ReturnsAsync(handshake);
+        _repositoryMock.Setup(r => r.UpdateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()))
+                       .Callback(() => operations.Add("update"))
+                       .ReturnsAsync(false);
+
+        var result = await service.RevokeHandshakeAsync("raw-token");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ConcurrencyConflict));
+            Assert.That(operations, Is.EqualTo(ExpectedStaleUpdateTransactionOperations));
+        }
+
+        _eventSinkMock.Verify(sink => sink.RecordAsync(It.Is<AshlarSecurityEvent>(securityEvent =>
+            securityEvent.EventType == AshlarSecurityEventTypes.AuthenticationHandshakeFailed &&
+            securityEvent.Outcome == SecurityEventOutcomes.Failure &&
+            securityEvent.FailureReason == AshlarFailureCodes.ConcurrencyConflict.Value &&
+            securityEvent.UserId == handshake.UserId &&
+            securityEvent.Properties != null &&
+            securityEvent.Properties.ContainsKey("handshake_id") &&
+            securityEvent.Properties["handshake_id"] == handshake.Id.ToString()), It.IsAny<CancellationToken>()), Times.Once);
+        _eventSinkMock.Verify(sink => sink.RecordAsync(It.Is<AshlarSecurityEvent>(securityEvent =>
+            securityEvent.EventType == AshlarSecurityEventTypes.AuthenticationHandshakeRevoked &&
+            securityEvent.Outcome == SecurityEventOutcomes.Success), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]

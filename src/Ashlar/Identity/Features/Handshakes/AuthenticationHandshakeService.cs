@@ -204,7 +204,10 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
             Metadata = MergeMetadata(handshake.Metadata, request.Metadata)
         };
 
-        await _repository.UpdateAsync(updatedHandshake, cancellationToken);
+        if (!await TryUpdateHandshakeAsync(handshake, updatedHandshake, request.Context, cancellationToken))
+        {
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.ConcurrencyConflict);
+        }
 
         transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
@@ -350,7 +353,10 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
 
         var updatedHandshake = handshake with { IsRevoked = true, RevokedAt = _timeProvider.GetUtcNow() };
 
-        await _repository.UpdateAsync(updatedHandshake, cancellationToken);
+        if (!await TryUpdateHandshakeAsync(handshake, updatedHandshake, context, cancellationToken))
+        {
+            return Result.Failure(AshlarFailureCodes.ConcurrencyConflict);
+        }
 
         transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
@@ -363,6 +369,22 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success();
+    }
+
+    private async Task<bool> TryUpdateHandshakeAsync(
+        AuthenticationHandshake originalHandshake,
+        AuthenticationHandshake updatedHandshake,
+        AuthenticationContext? context,
+        CancellationToken cancellationToken)
+    {
+        var updated = await _repository.UpdateAsync(updatedHandshake, cancellationToken);
+        if (updated)
+        {
+            return true;
+        }
+
+        await RecordHandshakeFailedAsync(originalHandshake, AshlarFailureCodes.ConcurrencyConflict, context, cancellationToken);
+        return false;
     }
 
     private Task RecordHandshakeFailedAsync(AuthenticationHandshake handshake, AshlarFailureCode reason, AuthenticationContext? context, CancellationToken cancellationToken)

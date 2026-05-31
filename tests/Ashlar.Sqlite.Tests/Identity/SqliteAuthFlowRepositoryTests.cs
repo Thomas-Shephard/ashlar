@@ -207,7 +207,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
             Metadata = new Dictionary<string, string> { ["done"] = "true" }
         };
 
-        await repository.UpdateAsync(updated);
+        var updateApplied = await repository.UpdateAsync(updated);
         var afterUpdate = await repository.FindByTokenHashAsync(handshake.TokenHash);
         var expired = new AuthenticationHandshake(Guid.NewGuid(), user.Id, "expired-handshake", DateTimeOffset.UtcNow.AddHours(-2), DateTimeOffset.UtcNow.AddHours(-1), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
         await repository.CreateAsync(expired);
@@ -216,6 +216,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         {
             Assert.That(fetched, Is.Not.Null);
             Assert.That(fetched!.RequiredFactors, Is.EquivalentTo(handshake.RequiredFactors));
+            Assert.That(updateApplied, Is.True);
             Assert.That(afterUpdate!.IsCompleted, Is.True);
             Assert.That(afterUpdate.IsRevoked, Is.True);
             Assert.That(afterUpdate.CompletedAt, Is.Not.Null);
@@ -243,7 +244,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
 
         await repository.CreateAsync(terminal);
         var fetched = await repository.FindByTokenHashAsync(terminal.TokenHash);
-        await repository.UpdateAsync(terminal with { IsRevoked = false, IsCompleted = false, VerifiedFactors = new HashSet<string>(), Metadata = null });
+        var terminalUpdateApplied = await repository.UpdateAsync(terminal with { IsRevoked = false, IsCompleted = false, VerifiedFactors = new HashSet<string>(), Metadata = null });
         var terminalAfterStaleUpdate = await repository.FindByTokenHashAsync(terminal.TokenHash);
 
         var resettable = new AuthenticationHandshake(
@@ -257,15 +258,17 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
             new HashSet<string> { "totp" },
             new HashSet<string>());
         await repository.CreateAsync(resettable);
-        await repository.UpdateAsync(resettable with { IsRevoked = false, IsCompleted = false, VerifiedFactors = new HashSet<string>(), Metadata = null });
+        var resetUpdateApplied = await repository.UpdateAsync(resettable with { IsRevoked = false, IsCompleted = false, VerifiedFactors = new HashSet<string>(), Metadata = null });
         var reset = await repository.FindByTokenHashAsync(resettable.TokenHash);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fetched!.RevokedAt, Is.Not.Null);
             Assert.That(fetched.CompletedAt, Is.Not.Null);
+            Assert.That(terminalUpdateApplied, Is.False);
             Assert.That(terminalAfterStaleUpdate!.IsRevoked, Is.True);
             Assert.That(terminalAfterStaleUpdate.IsCompleted, Is.True);
+            Assert.That(resetUpdateApplied, Is.True);
             Assert.That(reset!.IsRevoked, Is.False);
             Assert.That(reset.IsCompleted, Is.False);
             Assert.That(reset.RevokedAt, Is.Null);
