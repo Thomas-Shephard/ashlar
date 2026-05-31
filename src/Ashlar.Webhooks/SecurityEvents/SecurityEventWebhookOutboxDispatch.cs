@@ -148,10 +148,9 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         ArgumentNullException.ThrowIfNull(context.TimeProvider);
 
         var start = Stopwatch.GetTimestamp();
-        Dictionary<string, string>? headers = null;
         try
         {
-            headers = DeserializeHeaders(entry.Headers);
+            var headers = DeserializeHeaders(entry.Headers);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromMilliseconds(entry.TimeoutMs));
             var uri = new Uri(entry.Uri, UriKind.Absolute);

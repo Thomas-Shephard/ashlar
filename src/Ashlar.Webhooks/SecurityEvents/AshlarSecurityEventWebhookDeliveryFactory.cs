@@ -141,14 +141,9 @@ public sealed class AshlarSecurityEventWebhookDeliveryFactory
 
     private static void RemoveHeader(IDictionary<string, string> headers, string headerName)
     {
-        var keysToRemove = new List<string>();
-        foreach (var key in headers.Keys)
-        {
-            if (string.Equals(key, headerName, StringComparison.OrdinalIgnoreCase))
-            {
-                keysToRemove.Add(key);
-            }
-        }
+        var keysToRemove = headers.Keys
+            .Where(key => string.Equals(key, headerName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
 
         foreach (var key in keysToRemove)
         {

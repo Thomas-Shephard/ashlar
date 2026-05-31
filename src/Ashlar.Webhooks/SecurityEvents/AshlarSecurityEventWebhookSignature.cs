@@ -359,13 +359,15 @@ public static class AshlarSecurityEventWebhookSignature
             return true;
         }
 
-        foreach (var header in headers)
+        var matchedValue = headers
+            .Where(header => string.Equals(header.Key, name, StringComparison.OrdinalIgnoreCase))
+            .Select(header => header.Value)
+            .FirstOrDefault();
+
+        if (matchedValue is not null)
         {
-            if (string.Equals(header.Key, name, StringComparison.OrdinalIgnoreCase))
-            {
-                value = header.Value;
-                return true;
-            }
+            value = matchedValue;
+            return true;
         }
 
         value = string.Empty;
