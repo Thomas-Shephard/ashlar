@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 
 namespace Ashlar.Webhooks.SecurityEvents;
 
@@ -58,6 +59,56 @@ public sealed class AshlarSecurityEventWebhookOutboxEntry
     /// Gets the number of previous delivery attempts.
     /// </summary>
     public int AttemptCount { get; init; }
+}
+
+/// <summary>
+/// Groups common dependencies used by security event webhook outbox dispatchers.
+/// </summary>
+/// <typeparam name="TOptions">The provider-specific options type.</typeparam>
+/// <param name="serviceProvider">The service provider value.</param>
+/// <param name="timeProvider">The time provider value.</param>
+/// <param name="options">The provider-specific options value.</param>
+/// <param name="webhookOptions">The current webhook endpoint configuration.</param>
+/// <param name="httpClientFactory">The HTTP client factory value.</param>
+/// <param name="destinationValidator">The webhook destination safety validator.</param>
+public sealed class AshlarSecurityEventWebhookOutboxDispatcherDependencies<TOptions>(
+    IServiceProvider serviceProvider,
+    TimeProvider timeProvider,
+    IOptions<TOptions> options,
+    IOptions<AshlarSecurityEventWebhookOptions> webhookOptions,
+    IHttpClientFactory httpClientFactory,
+    AshlarSecurityEventWebhookDestinationValidator destinationValidator)
+    where TOptions : class
+{
+    /// <summary>
+    /// Gets the service provider value.
+    /// </summary>
+    public IServiceProvider ServiceProvider { get; } = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+
+    /// <summary>
+    /// Gets the time provider value.
+    /// </summary>
+    public TimeProvider TimeProvider { get; } = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+
+    /// <summary>
+    /// Gets the provider-specific options value.
+    /// </summary>
+    public TOptions Options { get; } = (options ?? throw new ArgumentNullException(nameof(options))).Value;
+
+    /// <summary>
+    /// Gets the current webhook endpoint configuration.
+    /// </summary>
+    public AshlarSecurityEventWebhookOptions WebhookOptions { get; } = (webhookOptions ?? throw new ArgumentNullException(nameof(webhookOptions))).Value;
+
+    /// <summary>
+    /// Gets the HTTP client factory value.
+    /// </summary>
+    public IHttpClientFactory HttpClientFactory { get; } = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+
+    /// <summary>
+    /// Gets the webhook destination safety validator.
+    /// </summary>
+    public AshlarSecurityEventWebhookDestinationValidator DestinationValidator { get; } = destinationValidator ?? throw new ArgumentNullException(nameof(destinationValidator));
 }
 
 /// <summary>

@@ -361,7 +361,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         var services = new ServiceCollection();
         services.AddSingleton<IPostgresConnectionProvider>(new ThrowingAfterFirstConnectionProvider(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>()));
         var dispatcherProvider = services.BuildServiceProvider();
-        var dispatcher = new PostgresSecurityEventWebhookOutboxDispatcher(new PostgresSecurityEventWebhookOutboxDispatcherDependencies(
+        var dispatcher = new PostgresSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(
             dispatcherProvider,
             _timeProvider,
             Options.Create(new PostgresSecurityEventWebhookOutboxOptions()),
@@ -447,12 +447,12 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookEnqueuer(null!, _timeProvider));
             Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookEnqueuer(connectionProvider, null!));
             Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(null!));
-            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new PostgresSecurityEventWebhookOutboxDispatcherDependencies(null!, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
-            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new PostgresSecurityEventWebhookOutboxDispatcherDependencies(_serviceProvider, null!, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
-            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new PostgresSecurityEventWebhookOutboxDispatcherDependencies(_serviceProvider, _timeProvider, null!, Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
-            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new PostgresSecurityEventWebhookOutboxDispatcherDependencies(_serviceProvider, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), null!, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
-            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new PostgresSecurityEventWebhookOutboxDispatcherDependencies(_serviceProvider, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), Options.Create(CreateWebhookOptions()), null!, destinationValidator)));
-            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new PostgresSecurityEventWebhookOutboxDispatcherDependencies(_serviceProvider, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), null!)));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(null!, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(_serviceProvider, null!, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(_serviceProvider, _timeProvider, null!, Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(_serviceProvider, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), null!, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(_serviceProvider, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), Options.Create(CreateWebhookOptions()), null!, destinationValidator)));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(_serviceProvider, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), null!)));
             Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxHostedService(null!, Options.Create(new PostgresSecurityEventWebhookOutboxOptions())));
             Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxHostedService(_serviceProvider, null!));
         }
@@ -694,7 +694,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             deliveryObserver: observer);
     }
 
-    private PostgresSecurityEventWebhookOutboxDispatcherDependencies CreateDispatcherDependencies(
+    private AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions> CreateDispatcherDependencies(
         IServiceProvider? serviceProvider = null,
         TimeProvider? timeProvider = null,
         IOptions<PostgresSecurityEventWebhookOutboxOptions>? options = null,
@@ -702,7 +702,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         IHttpClientFactory? httpClientFactory = null,
         AshlarSecurityEventWebhookDestinationValidator? destinationValidator = null)
     {
-        return new PostgresSecurityEventWebhookOutboxDispatcherDependencies(
+        return new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(
             serviceProvider ?? _serviceProvider,
             timeProvider ?? _timeProvider,
             options ?? Options.Create(new PostgresSecurityEventWebhookOutboxOptions()),
@@ -720,7 +720,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         services.AddSingleton(Options.Create(new PostgresSecurityEventWebhookOutboxOptions()));
         services.AddSingleton(Options.Create(CreateWebhookOptions()));
         services.AddSingleton(CreateDestinationValidator());
-        services.AddScoped<PostgresSecurityEventWebhookOutboxDispatcherDependencies>();
+        services.AddScoped<AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>>();
         services.AddScoped<PostgresSecurityEventWebhookOutboxDispatcher>();
         return services.BuildServiceProvider();
     }
