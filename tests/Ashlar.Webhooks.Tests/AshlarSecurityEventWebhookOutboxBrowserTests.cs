@@ -34,6 +34,15 @@ internal sealed class AshlarSecurityEventWebhookOutboxBrowserTests
     }
 
     [Test]
+    public void ValidateRequestAcceptsExplicitSupportedStatuses()
+    {
+        Assert.DoesNotThrow(() => AshlarSecurityEventWebhookOutboxBrowser.ValidateRequest(new AshlarSecurityEventWebhookOutboxBrowseRequest
+        {
+            Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Pending }
+        }));
+    }
+
+    [Test]
     public void GetStatusesUsesExplicitFilterWhenPresent()
     {
         var statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed };
