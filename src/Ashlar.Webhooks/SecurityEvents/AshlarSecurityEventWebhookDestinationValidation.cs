@@ -318,7 +318,7 @@ public static class AshlarSecurityEventWebhookHttpMessageHandlerFactory
                 }
                 catch
                 {
-                    connection.Stream.Dispose();
+                    await connection.Stream.DisposeAsync().ConfigureAwait(false);
                     throw;
                 }
             }
