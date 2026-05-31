@@ -31,6 +31,11 @@ public sealed class AshlarSecurityEventWebhookEndpointOptions
     public ISet<string> EventTypes { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Gets the optional outcome allow-list.
+    /// </summary>
+    public ISet<string> Outcomes { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Gets or sets the optional per-request timeout.
     /// </summary>
     public TimeSpan? Timeout { get; set; }
@@ -61,6 +66,9 @@ public sealed class AshlarSecurityEventWebhookEndpointOptions
             && (endpoint.SharedSecret is null || !string.IsNullOrWhiteSpace(endpoint.SharedSecret))
             && (endpoint.AllowUnsigned || !string.IsNullOrWhiteSpace(endpoint.SharedSecret))
             && (!endpoint.Timeout.HasValue || endpoint.Timeout.Value > TimeSpan.Zero)
-            && endpoint.EventTypes.All(eventType => !string.IsNullOrWhiteSpace(eventType));
+            && endpoint.EventTypes.All(eventType =>
+                !string.IsNullOrWhiteSpace(eventType) && AshlarSecurityEventWebhookHeaderValues.IsSafe(eventType))
+            && endpoint.Outcomes.All(outcome =>
+                !string.IsNullOrWhiteSpace(outcome) && AshlarSecurityEventWebhookHeaderValues.IsSafe(outcome));
     }
 }

@@ -393,8 +393,9 @@ public static class AshlarSecurityEventWebhookSignature
 
     private static bool TryGetHeader(IReadOnlyDictionary<string, string> headers, string name, out string value)
     {
-        if (headers.TryGetValue(name, out value!))
+        if (headers.TryGetValue(name, out var exactValue))
         {
+            value = exactValue;
             return true;
         }
 

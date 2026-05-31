@@ -119,7 +119,7 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
         await using var command = connectionHandle.Connection.CreateCommand();
         command.Transaction = connectionHandle.Transaction;
         command.CommandText = """
-            SELECT id, endpoint_name, uri, event_id, event_type, occurred_at, body, headers, timeout_ms, attempt_count
+            SELECT id, endpoint_name, uri, event_id, event_type, outcome, occurred_at, body, headers, timeout_ms, attempt_count
             FROM ashlar_security_event_webhook_outbox
             WHERE locked_by = $lockedBy
               AND sent_at IS NULL
@@ -139,6 +139,7 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
                 Uri = reader.GetString(reader.GetOrdinal("uri")),
                 EventId = reader.GetGuidFromText("event_id"),
                 EventType = reader.GetString(reader.GetOrdinal("event_type")),
+                Outcome = reader.GetString(reader.GetOrdinal("outcome")),
                 OccurredAt = reader.GetDateTimeOffsetFromText("occurred_at"),
                 Body = (byte[])reader["body"],
                 Headers = reader.GetString(reader.GetOrdinal("headers")),

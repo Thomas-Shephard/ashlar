@@ -97,18 +97,18 @@ internal sealed class PostgresSecurityEventWebhookOutboxDiagnosticsTests : Postg
         await using (var connection = await GetDataSource().OpenConnectionAsync())
         {
             await connection.ExecuteAsync("""
-                INSERT INTO ashlar_security_event_webhook_outbox (id, endpoint_name, uri, event_id, event_type, occurred_at, timeout_ms, body, headers, created_at, available_at)
-                VALUES (@id1, 'audit', 'https://example.test/old', @eventId1, 'security.test', @oldPending, 1000, @body, @headers::jsonb, @oldPending, @oldPending),
-                       (@id2, 'audit', 'https://example.test/new', @eventId2, 'security.test', @newPending, 1000, @body, @headers::jsonb, @newPending, @newPending),
-                       (@id3, 'audit', 'https://example.test/scheduled', @eventId3, 'security.test', @scheduled, 1000, @body, @headers::jsonb, @scheduled, @scheduled);
+                INSERT INTO ashlar_security_event_webhook_outbox (id, endpoint_name, uri, event_id, event_type, outcome, occurred_at, timeout_ms, body, headers, created_at, available_at)
+                VALUES (@id1, 'audit', 'https://example.test/old', @eventId1, 'security.test', 'success', @oldPending, 1000, @body, @headers::jsonb, @oldPending, @oldPending),
+                       (@id2, 'audit', 'https://example.test/new', @eventId2, 'security.test', 'success', @newPending, 1000, @body, @headers::jsonb, @newPending, @newPending),
+                       (@id3, 'audit', 'https://example.test/scheduled', @eventId3, 'security.test', 'success', @scheduled, 1000, @body, @headers::jsonb, @scheduled, @scheduled);
 
-                INSERT INTO ashlar_security_event_webhook_outbox (id, endpoint_name, uri, event_id, event_type, occurred_at, timeout_ms, body, headers, created_at, available_at, locked_until, locked_by)
-                VALUES (@id4, 'audit', 'https://example.test/locked', @eventId4, 'security.test', @oldPending, 1000, @body, @headers::jsonb, @oldPending, @oldPending, @lockedUntil, 'worker'),
-                       (@id5, 'audit', 'https://example.test/expired', @eventId5, 'security.test', @oldPending, 1000, @body, @headers::jsonb, @oldPending, @oldPending, @expiredLock, 'worker');
+                INSERT INTO ashlar_security_event_webhook_outbox (id, endpoint_name, uri, event_id, event_type, outcome, occurred_at, timeout_ms, body, headers, created_at, available_at, locked_until, locked_by)
+                VALUES (@id4, 'audit', 'https://example.test/locked', @eventId4, 'security.test', 'success', @oldPending, 1000, @body, @headers::jsonb, @oldPending, @oldPending, @lockedUntil, 'worker'),
+                       (@id5, 'audit', 'https://example.test/expired', @eventId5, 'security.test', 'success', @oldPending, 1000, @body, @headers::jsonb, @oldPending, @oldPending, @expiredLock, 'worker');
 
-                INSERT INTO ashlar_security_event_webhook_outbox (id, endpoint_name, uri, event_id, event_type, occurred_at, timeout_ms, body, headers, created_at, available_at, failed_at)
-                VALUES (@id6, 'audit', 'https://example.test/failed-old', @eventId6, 'security.test', @oldPending, 1000, @body, @headers::jsonb, @oldPending, @oldPending, @oldestFailed),
-                       (@id7, 'audit', 'https://example.test/failed-new', @eventId7, 'security.test', @oldPending, 1000, @body, @headers::jsonb, @oldPending, @oldPending, @newestFailed);
+                INSERT INTO ashlar_security_event_webhook_outbox (id, endpoint_name, uri, event_id, event_type, outcome, occurred_at, timeout_ms, body, headers, created_at, available_at, failed_at)
+                VALUES (@id6, 'audit', 'https://example.test/failed-old', @eventId6, 'security.test', 'success', @oldPending, 1000, @body, @headers::jsonb, @oldPending, @oldPending, @oldestFailed),
+                       (@id7, 'audit', 'https://example.test/failed-new', @eventId7, 'security.test', 'success', @oldPending, 1000, @body, @headers::jsonb, @oldPending, @oldPending, @newestFailed);
                 """, new
             {
                 id1 = Guid.NewGuid(),

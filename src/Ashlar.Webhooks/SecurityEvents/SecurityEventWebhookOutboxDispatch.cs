@@ -36,6 +36,11 @@ public sealed class AshlarSecurityEventWebhookOutboxEntry
     public required string EventType { get; init; }
 
     /// <summary>
+    /// Gets the security event outcome.
+    /// </summary>
+    public required string Outcome { get; init; }
+
+    /// <summary>
     /// Gets the security event occurrence timestamp.
     /// </summary>
     public DateTimeOffset OccurredAt { get; init; }
@@ -318,8 +323,24 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
     {
         headers["X-Ashlar-Event-Id"] = entry.EventId.ToString("D");
         headers["X-Ashlar-Event-Type"] = entry.EventType;
+        headers["X-Ashlar-Event-Outcome"] = GetRequiredOutcome(entry.Outcome);
         headers["X-Ashlar-Webhook-Endpoint"] = entry.EndpointName;
         headers[AshlarSecurityEventWebhookSignature.EventTimestampHeaderName] = entry.OccurredAt.ToString("O");
+    }
+
+    private static string GetRequiredOutcome(string? outcome)
+    {
+        if (string.IsNullOrWhiteSpace(outcome))
+        {
+            throw new InvalidOperationException("Durable security event webhook entry must contain a valid outcome.");
+        }
+
+        if (!AshlarSecurityEventWebhookHeaderValues.IsSafe(outcome))
+        {
+            throw new InvalidOperationException("Durable security event webhook entry outcome must not contain line breaks.");
+        }
+
+        return outcome;
     }
 
     private static async Task MarkAsFailedAsync(

@@ -1,3 +1,4 @@
+using Ashlar.Auditing;
 using Ashlar.Webhooks.SecurityEvents;
 
 namespace Ashlar.Webhooks.Tests;
@@ -39,6 +40,7 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
             Timeout = TimeSpan.FromSeconds(3)
         };
         endpoint.EventTypes.Add("ashlar.session.created");
+        endpoint.Outcomes.Add(SecurityEventOutcomes.Success);
 
         Assert.That(AshlarSecurityEventWebhookEndpointOptions.Validate(endpoint), Is.True);
     }
@@ -69,6 +71,7 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
             Assert.That(endpoint.AllowUnsigned, Is.False);
             Assert.That(endpoint.Timeout, Is.Null);
             Assert.That(endpoint.EventTypes, Is.Empty);
+            Assert.That(endpoint.Outcomes, Is.Empty);
         }
     }
 
@@ -105,6 +108,22 @@ internal sealed class AshlarSecurityEventWebhookOptionsTests
         var blankEventType = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = "shared-secret" };
         blankEventType.EventTypes.Add(" ");
         yield return CreateOptions(blankEventType);
+
+        var unsafeEventType = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = "shared-secret" };
+        unsafeEventType.EventTypes.Add("ashlar.sign_in.failed\r\nx-test");
+        yield return CreateOptions(unsafeEventType);
+
+        var nullOutcome = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = "shared-secret" };
+        nullOutcome.Outcomes.Add(null!);
+        yield return CreateOptions(nullOutcome);
+
+        var blankOutcome = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = "shared-secret" };
+        blankOutcome.Outcomes.Add(" ");
+        yield return CreateOptions(blankOutcome);
+
+        var unsafeOutcome = new AshlarSecurityEventWebhookEndpointOptions { Name = "audit", Uri = new Uri("https://example.test"), SharedSecret = "shared-secret" };
+        unsafeOutcome.Outcomes.Add("success\r\nx-test");
+        yield return CreateOptions(unsafeOutcome);
     }
 
     private static AshlarSecurityEventWebhookOptions CreateOptions(AshlarSecurityEventWebhookEndpointOptions? endpoint)

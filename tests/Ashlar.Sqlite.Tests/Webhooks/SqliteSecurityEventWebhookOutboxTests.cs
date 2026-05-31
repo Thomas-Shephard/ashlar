@@ -93,6 +93,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Assert.That(row.Uri, Is.EqualTo("https://example.test/security-events"));
             Assert.That(row.EventId, Is.EqualTo(delivery.Payload.Id));
             Assert.That(row.EventType, Is.EqualTo(delivery.Payload.EventType));
+            Assert.That(row.Outcome, Is.EqualTo(delivery.Payload.Outcome));
             Assert.That(row.OccurredAt, Is.EqualTo(delivery.Payload.OccurredAt));
             Assert.That(row.TimeoutMs, Is.EqualTo(10000));
             Assert.That(row.Body, Is.EqualTo(delivery.Body.ToArray()));
@@ -496,6 +497,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Uri = "https://example.test/security-events",
             EventId = Guid.NewGuid(),
             EventType = "ashlar.test",
+            Outcome = SecurityEventOutcomes.Success,
             OccurredAt = _now,
             Body = Encoding.UTF8.GetBytes("{}"),
             Headers = """{"Content-Encoding":"gzip","X-Ashlar-Event-Type":"ashlar.test"}""",
@@ -509,6 +511,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Uri = "https://example.test/security-events",
             EventId = Guid.NewGuid(),
             EventType = "ashlar.test",
+            Outcome = SecurityEventOutcomes.Success,
             OccurredAt = _now,
             Body = Encoding.UTF8.GetBytes("{}"),
             Headers = "null",
@@ -753,6 +756,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Id = new Guid("11111111-1111-1111-1111-111111111111"),
             EventType = "ashlar.sign_in.failed",
             OccurredAt = new DateTimeOffset(2026, 5, 24, 11, 0, 0, TimeSpan.Zero),
+            Outcome = SecurityEventOutcomes.Failure,
             IpAddress = "203.0.113.10"
         };
         var payload = AshlarSecurityEventWebhookDeliveryFactory.CreatePayload(securityEvent);
@@ -835,7 +839,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         await using var connection = await OpenConnectionAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT endpoint_name, uri, event_id, event_type, occurred_at, timeout_ms, body, headers,
+            SELECT endpoint_name, uri, event_id, event_type, outcome, occurred_at, timeout_ms, body, headers,
                    created_at, available_at, sent_at, failed_at, attempt_count, last_error,
                    locked_by, last_attempt_at
             FROM ashlar_security_event_webhook_outbox
@@ -850,6 +854,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Uri = reader.GetString(reader.GetOrdinal("uri")),
             EventId = reader.GetGuidFromText("event_id"),
             EventType = reader.GetString(reader.GetOrdinal("event_type")),
+            Outcome = reader.GetString(reader.GetOrdinal("outcome")),
             OccurredAt = reader.GetDateTimeOffsetFromText("occurred_at"),
             TimeoutMs = reader.GetInt64(reader.GetOrdinal("timeout_ms")),
             Body = (byte[])reader["body"],
@@ -1093,6 +1098,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         public required string Uri { get; init; }
         public Guid EventId { get; init; }
         public required string EventType { get; init; }
+        public string? Outcome { get; init; }
         public DateTimeOffset OccurredAt { get; init; }
         public long TimeoutMs { get; init; }
         public required byte[] Body { get; init; }

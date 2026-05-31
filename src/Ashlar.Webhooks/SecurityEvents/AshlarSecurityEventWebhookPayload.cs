@@ -23,7 +23,7 @@ public sealed class AshlarSecurityEventWebhookPayload
     /// <summary>
     /// Gets or sets the outcome value.
     /// </summary>
-    public string? Outcome { get; init; }
+    public required string Outcome { get; init; }
 
     /// <summary>
     /// Gets or sets the failure reason value.

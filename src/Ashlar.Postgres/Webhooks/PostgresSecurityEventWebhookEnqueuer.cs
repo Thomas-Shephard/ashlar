@@ -28,9 +28,9 @@ public sealed class PostgresSecurityEventWebhookEnqueuer(
 
         const string sql = """
             INSERT INTO ashlar_security_event_webhook_outbox (
-                id, endpoint_name, uri, event_id, event_type, occurred_at, timeout_ms, body, headers, created_at, available_at
+                id, endpoint_name, uri, event_id, event_type, outcome, occurred_at, timeout_ms, body, headers, created_at, available_at
             ) VALUES (
-                @Id, @EndpointName, @Uri, @EventId, @EventType, @OccurredAt, @TimeoutMs, @Body, @Headers::jsonb, @CreatedAt, @AvailableAt
+                @Id, @EndpointName, @Uri, @EventId, @EventType, @Outcome, @OccurredAt, @TimeoutMs, @Body, @Headers::jsonb, @CreatedAt, @AvailableAt
             )
             """;
 
@@ -43,6 +43,7 @@ public sealed class PostgresSecurityEventWebhookEnqueuer(
             Uri = delivery.Uri.ToString(),
             EventId = delivery.Payload.Id,
             delivery.Payload.EventType,
+            delivery.Payload.Outcome,
             delivery.Payload.OccurredAt,
             TimeoutMs = checked((long)delivery.Timeout.TotalMilliseconds),
             Body = delivery.Body.ToArray(),

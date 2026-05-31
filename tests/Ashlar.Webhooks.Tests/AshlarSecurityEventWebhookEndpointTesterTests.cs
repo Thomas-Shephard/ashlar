@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Ashlar.Auditing;
 using Ashlar.Webhooks.SecurityEvents;
 using Microsoft.Extensions.Options;
 
@@ -52,6 +53,23 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
         var endpoint = CreateEndpoint();
         endpoint.EventTypes.Add("ashlar.sign_in.failed");
+        var tester = CreateTester(transport, CreateOptions(endpoint));
+
+        var result = await tester.TestAsync("audit");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookEndpointTestStatus.Sent));
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task TestAsyncIgnoresEndpointOutcomeFilters()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var endpoint = CreateEndpoint();
+        endpoint.Outcomes.Add(SecurityEventOutcomes.Failure);
         var tester = CreateTester(transport, CreateOptions(endpoint));
 
         var result = await tester.TestAsync("audit");
@@ -387,7 +405,8 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         {
             Id = Guid.NewGuid(),
             EventType = "ashlar.webhook.test",
-            OccurredAt = StaticNow
+            OccurredAt = StaticNow,
+            Outcome = SecurityEventOutcomes.Success
         };
         var body = AshlarSecurityEventWebhookPayloadSerializer.Serialize(payload);
         var endpoint = CreateEndpoint(uri: (uri ?? new Uri("https://example.test/security-events")).ToString());

@@ -77,7 +77,7 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
                 FOR UPDATE SKIP LOCKED
             )
             RETURNING id AS Id, endpoint_name AS EndpointName, uri AS Uri, event_id AS EventId,
-                      event_type AS EventType, occurred_at AS OccurredAt, body AS Body, headers::text AS Headers,
+                      event_type AS EventType, outcome AS Outcome, occurred_at AS OccurredAt, body AS Body, headers::text AS Headers,
                       timeout_ms AS TimeoutMs, attempt_count AS AttemptCount
             """;
 

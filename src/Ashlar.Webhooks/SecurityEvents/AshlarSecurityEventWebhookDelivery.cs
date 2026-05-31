@@ -45,6 +45,11 @@ public sealed record AshlarSecurityEventWebhookDelivery
             $"{nameof(payload)}.{nameof(payload.EventType)}",
             "Event type is required.",
             "Event type must not contain line breaks.");
+        AshlarSecurityEventWebhookHeaderValues.ThrowIfRequiredUnsafe(
+            payload.Outcome,
+            $"{nameof(payload)}.{nameof(payload.Outcome)}",
+            "Outcome is required.",
+            "Outcome must not contain line breaks.");
 
         if (body.IsEmpty)
         {

@@ -331,6 +331,7 @@ CREATE TABLE IF NOT EXISTS ashlar_security_event_webhook_outbox (
     uri TEXT NOT NULL,
     event_id UUID NOT NULL,
     event_type TEXT NOT NULL,
+    outcome TEXT NOT NULL,
     occurred_at TIMESTAMPTZ NOT NULL,
     timeout_ms BIGINT NOT NULL,
     body BYTEA NOT NULL,
