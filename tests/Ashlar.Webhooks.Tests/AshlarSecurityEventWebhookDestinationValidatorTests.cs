@@ -297,7 +297,7 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
     }
 
     [Test]
-    public void HandlerConnectCallbackDisposesStreamWhenConnectedAddressIsUnsafe()
+    public async Task HandlerConnectCallbackDisposesStreamWhenConnectedAddressIsUnsafe()
     {
         using var stream = new TrackingStream();
         var validator = new AshlarSecurityEventWebhookDestinationValidator(new StaticResolver(IPAddress.Parse("93.184.216.34")));
@@ -308,10 +308,12 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
                 (_, _, _) => ValueTask.FromResult(new AshlarSecurityEventWebhookConnection(stream, IPAddress.Parse("10.0.0.5"))),
                 "example.test").AsTask());
 
+        await stream.DisposeTask.ConfigureAwait(false);
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exception, Is.Not.Null);
-            Assert.That(stream.IsDisposed, Is.True);
+            Assert.That(stream.IsAsyncDisposed, Is.True);
         }
     }
 
@@ -431,12 +433,17 @@ internal sealed class AshlarSecurityEventWebhookDestinationValidatorTests
 
     private sealed class TrackingStream : MemoryStream
     {
-        public bool IsDisposed { get; private set; }
+        private readonly TaskCompletionSource _disposeCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        protected override void Dispose(bool disposing)
+        public bool IsAsyncDisposed { get; private set; }
+
+        public Task DisposeTask => _disposeCompletion.Task;
+
+        public override ValueTask DisposeAsync()
         {
-            IsDisposed = true;
-            base.Dispose(disposing);
+            IsAsyncDisposed = true;
+            _disposeCompletion.SetResult();
+            return base.DisposeAsync();
         }
     }
 }
