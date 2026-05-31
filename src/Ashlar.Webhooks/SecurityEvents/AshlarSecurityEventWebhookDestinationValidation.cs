@@ -306,21 +306,7 @@ public static class AshlarSecurityEventWebhookHttpMessageHandlerFactory
             try
             {
                 var connection = await connectToAddressAsync(address, endPoint.Port, cancellationToken).ConfigureAwait(false);
-                try
-                {
-                    var validation = destinationValidator.ValidateAddress(connection.RemoteAddress);
-                    if (!validation.IsValid)
-                    {
-                        throw new AshlarSecurityEventWebhookUnsafeDestinationException(validation.FailureReason);
-                    }
-
-                    return connection.Stream;
-                }
-                catch
-                {
-                    await connection.Stream.DisposeAsync().ConfigureAwait(false);
-                    throw;
-                }
+                return await ValidateConnectedStreamAsync(destinationValidator, connection).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not AshlarSecurityEventWebhookUnsafeDestinationException and not OperationCanceledException)
             {
@@ -329,6 +315,27 @@ public static class AshlarSecurityEventWebhookHttpMessageHandlerFactory
         }
 
         throw lastException;
+    }
+
+    private static async ValueTask<Stream> ValidateConnectedStreamAsync(
+        AshlarSecurityEventWebhookDestinationValidator destinationValidator,
+        AshlarSecurityEventWebhookConnection connection)
+    {
+        try
+        {
+            var validation = destinationValidator.ValidateAddress(connection.RemoteAddress);
+            if (!validation.IsValid)
+            {
+                throw new AshlarSecurityEventWebhookUnsafeDestinationException(validation.FailureReason);
+            }
+
+            return connection.Stream;
+        }
+        catch
+        {
+            await connection.Stream.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
     }
 
     internal static async ValueTask<AshlarSecurityEventWebhookConnection> ConnectSocketToAddressAsync(
