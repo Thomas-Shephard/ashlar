@@ -107,7 +107,7 @@ public static class AshlarSecurityEventWebhookOutboxOperations
             throw new ArgumentException("Delivery ID cannot be empty.", nameof(request));
         }
 
-        ArgumentNullException.ThrowIfNull(request.Audit, nameof(request.Audit));
+        ArgumentNullException.ThrowIfNull(request.Audit);
     }
 
     /// <summary>

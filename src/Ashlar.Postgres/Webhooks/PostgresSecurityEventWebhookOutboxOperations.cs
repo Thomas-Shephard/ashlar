@@ -41,7 +41,7 @@ public sealed class PostgresSecurityEventWebhookOutboxOperations(
               AND failed_at IS NOT NULL
               AND discarded_at IS NULL
             RETURNING id AS DeliveryId, endpoint_name AS EndpointName, event_id AS EventId,
-                      event_type AS EventType, outcome AS Outcome
+                      event_type AS EventType, outcome AS Outcome, discarded_at AS DiscardedAt
             """;
 
         var row = await ExecuteOperationAsync(sql, request.DeliveryId, cancellationToken).ConfigureAwait(false);
@@ -83,7 +83,7 @@ public sealed class PostgresSecurityEventWebhookOutboxOperations(
               AND failed_at IS NOT NULL
               AND discarded_at IS NULL
             RETURNING id AS DeliveryId, endpoint_name AS EndpointName, event_id AS EventId,
-                      event_type AS EventType, outcome AS Outcome
+                      event_type AS EventType, outcome AS Outcome, discarded_at AS DiscardedAt
             """;
 
         var row = await ExecuteOperationAsync(sql, request.DeliveryId, cancellationToken).ConfigureAwait(false);
@@ -116,8 +116,7 @@ public sealed class PostgresSecurityEventWebhookOutboxOperations(
     {
         const string sql = """
             SELECT id AS DeliveryId, endpoint_name AS EndpointName, event_id AS EventId,
-                   event_type AS EventType, outcome AS Outcome, sent_at AS SentAt,
-                   failed_at AS FailedAt, discarded_at AS DiscardedAt
+                   event_type AS EventType, outcome AS Outcome, discarded_at AS DiscardedAt
             FROM ashlar_security_event_webhook_outbox
             WHERE id = @DeliveryId
             """;
@@ -140,17 +139,14 @@ public sealed class PostgresSecurityEventWebhookOutboxOperations(
         return row.ToResult(status);
     }
 
-    private sealed class OperationRow
+    private sealed record OperationRow(
+        Guid DeliveryId,
+        string? EndpointName,
+        Guid EventId,
+        string? EventType,
+        string? Outcome,
+        DateTime? DiscardedAt)
     {
-        public Guid DeliveryId { get; init; }
-        public string? EndpointName { get; init; }
-        public Guid EventId { get; init; }
-        public string? EventType { get; init; }
-        public string? Outcome { get; init; }
-        public DateTime? SentAt { get; init; }
-        public DateTime? FailedAt { get; init; }
-        public DateTime? DiscardedAt { get; init; }
-
         public AshlarSecurityEventWebhookOutboxOperationResult ToResult(AshlarSecurityEventWebhookOutboxOperationStatus status)
         {
             return AshlarSecurityEventWebhookOutboxOperations.CreateResult(
