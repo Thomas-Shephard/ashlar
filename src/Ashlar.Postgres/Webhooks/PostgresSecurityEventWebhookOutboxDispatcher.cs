@@ -3,7 +3,6 @@ using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace Ashlar.Postgres.Webhooks;
 
@@ -20,6 +19,7 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
     private readonly IServiceProvider _serviceProvider;
     private readonly TimeProvider _timeProvider;
     private readonly PostgresSecurityEventWebhookOutboxOptions _options;
+    private readonly AshlarSecurityEventWebhookOptions _webhookOptions;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<PostgresSecurityEventWebhookOutboxDispatcher> _logger;
     private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver;
@@ -29,35 +29,24 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
     /// <summary>
     /// Initializes a new instance of the dispatcher class.
     /// </summary>
-    /// <param name="serviceProvider">The service provider value.</param>
-    /// <param name="timeProvider">The time provider value.</param>
-    /// <param name="options">The options value.</param>
-    /// <param name="httpClientFactory">The HTTP client factory value.</param>
+    /// <param name="dependencies">The dispatcher dependencies.</param>
     /// <param name="logger">The logger value.</param>
     /// <param name="deliveryObserver">The delivery observer.</param>
-    /// <param name="destinationValidator">The webhook destination safety validator.</param>
     public PostgresSecurityEventWebhookOutboxDispatcher(
-        IServiceProvider serviceProvider,
-        TimeProvider timeProvider,
-        IOptions<PostgresSecurityEventWebhookOutboxOptions> options,
-        IHttpClientFactory httpClientFactory,
+        AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions> dependencies,
         ILogger<PostgresSecurityEventWebhookOutboxDispatcher>? logger = null,
-        IAshlarSecurityEventWebhookDeliveryObserver? deliveryObserver = null,
-        AshlarSecurityEventWebhookDestinationValidator? destinationValidator = null)
+        IAshlarSecurityEventWebhookDeliveryObserver? deliveryObserver = null)
     {
-        ArgumentNullException.ThrowIfNull(serviceProvider);
-        ArgumentNullException.ThrowIfNull(timeProvider);
-        ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(httpClientFactory);
-        ArgumentNullException.ThrowIfNull(destinationValidator);
+        ArgumentNullException.ThrowIfNull(dependencies);
 
-        _serviceProvider = serviceProvider;
-        _timeProvider = timeProvider;
-        _options = options.Value;
-        _httpClientFactory = httpClientFactory;
+        _serviceProvider = dependencies.ServiceProvider;
+        _timeProvider = dependencies.TimeProvider;
+        _options = dependencies.Options;
+        _webhookOptions = dependencies.WebhookOptions;
+        _httpClientFactory = dependencies.HttpClientFactory;
         _logger = logger ?? NullLogger<PostgresSecurityEventWebhookOutboxDispatcher>.Instance;
         _deliveryObserver = deliveryObserver ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
-        _destinationValidator = destinationValidator;
+        _destinationValidator = dependencies.DestinationValidator;
     }
 
     /// <summary>
@@ -87,7 +76,8 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
                 LIMIT @BatchSize
                 FOR UPDATE SKIP LOCKED
             )
-            RETURNING id AS Id, uri AS Uri, body AS Body, headers::text AS Headers,
+            RETURNING id AS Id, endpoint_name AS EndpointName, uri AS Uri, event_id AS EventId,
+                      event_type AS EventType, occurred_at AS OccurredAt, body AS Body, headers::text AS Headers,
                       timeout_ms AS TimeoutMs, attempt_count AS AttemptCount
             """;
 
@@ -134,6 +124,8 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
                 (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, token),
                 (id, attemptCount, finalFailure, exception) => PostgresSecurityEventWebhookOutboxDispatcherLog.WebhookDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
                 _destinationValidator,
+                _webhookOptions,
+                _timeProvider,
                 _deliveryObserver),
             cancellationToken).ConfigureAwait(false);
     }

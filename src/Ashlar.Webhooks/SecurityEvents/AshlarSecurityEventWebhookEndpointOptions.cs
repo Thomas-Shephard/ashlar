@@ -21,6 +21,11 @@ public sealed class AshlarSecurityEventWebhookEndpointOptions
     public string? SharedSecret { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether this endpoint may receive unsigned webhooks.
+    /// </summary>
+    public bool AllowUnsigned { get; set; }
+
+    /// <summary>
     /// Gets the optional event type allow-list.
     /// </summary>
     public ISet<string> EventTypes { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -54,6 +59,7 @@ public sealed class AshlarSecurityEventWebhookEndpointOptions
             && AshlarSecurityEventWebhookHeaderValues.IsSafe(endpoint.Name)
             && AshlarSecurityEventWebhookDestinationValidator.ValidateUri(endpoint.Uri, destinationPolicy).IsValid
             && (endpoint.SharedSecret is null || !string.IsNullOrWhiteSpace(endpoint.SharedSecret))
+            && (endpoint.AllowUnsigned || !string.IsNullOrWhiteSpace(endpoint.SharedSecret))
             && (!endpoint.Timeout.HasValue || endpoint.Timeout.Value > TimeSpan.Zero)
             && endpoint.EventTypes.All(eventType => !string.IsNullOrWhiteSpace(eventType));
     }

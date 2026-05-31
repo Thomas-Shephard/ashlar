@@ -2,7 +2,6 @@ using Ashlar.Webhooks.SecurityEvents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace Ashlar.Sqlite.Webhooks;
 
@@ -55,6 +54,7 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
     private readonly IServiceProvider _serviceProvider;
     private readonly TimeProvider _timeProvider;
     private readonly SqliteSecurityEventWebhookOutboxOptions _options;
+    private readonly AshlarSecurityEventWebhookOptions _webhookOptions;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<SqliteSecurityEventWebhookOutboxDispatcher> _logger;
     private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver;
@@ -63,35 +63,24 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
     /// <summary>
     /// Initializes a new instance of the dispatcher class.
     /// </summary>
-    /// <param name="serviceProvider">The service provider value.</param>
-    /// <param name="timeProvider">The time provider value.</param>
-    /// <param name="options">The options value.</param>
-    /// <param name="httpClientFactory">The HTTP client factory value.</param>
+    /// <param name="dependencies">The dispatcher dependencies.</param>
     /// <param name="logger">The logger value.</param>
     /// <param name="deliveryObserver">The delivery observer.</param>
-    /// <param name="destinationValidator">The webhook destination safety validator.</param>
     public SqliteSecurityEventWebhookOutboxDispatcher(
-        IServiceProvider serviceProvider,
-        TimeProvider timeProvider,
-        IOptions<SqliteSecurityEventWebhookOutboxOptions> options,
-        IHttpClientFactory httpClientFactory,
+        AshlarSecurityEventWebhookOutboxDispatcherDependencies<SqliteSecurityEventWebhookOutboxOptions> dependencies,
         ILogger<SqliteSecurityEventWebhookOutboxDispatcher>? logger = null,
-        IAshlarSecurityEventWebhookDeliveryObserver? deliveryObserver = null,
-        AshlarSecurityEventWebhookDestinationValidator? destinationValidator = null)
+        IAshlarSecurityEventWebhookDeliveryObserver? deliveryObserver = null)
     {
-        ArgumentNullException.ThrowIfNull(serviceProvider);
-        ArgumentNullException.ThrowIfNull(timeProvider);
-        ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(httpClientFactory);
-        ArgumentNullException.ThrowIfNull(destinationValidator);
+        ArgumentNullException.ThrowIfNull(dependencies);
 
-        _serviceProvider = serviceProvider;
-        _timeProvider = timeProvider;
-        _options = options.Value;
-        _httpClientFactory = httpClientFactory;
+        _serviceProvider = dependencies.ServiceProvider;
+        _timeProvider = dependencies.TimeProvider;
+        _options = dependencies.Options;
+        _webhookOptions = dependencies.WebhookOptions;
+        _httpClientFactory = dependencies.HttpClientFactory;
         _logger = logger ?? NullLogger<SqliteSecurityEventWebhookOutboxDispatcher>.Instance;
         _deliveryObserver = deliveryObserver ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
-        _destinationValidator = destinationValidator;
+        _destinationValidator = dependencies.DestinationValidator;
     }
 
     /// <summary>
@@ -130,7 +119,7 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
         await using var command = connectionHandle.Connection.CreateCommand();
         command.Transaction = connectionHandle.Transaction;
         command.CommandText = """
-            SELECT id, uri, body, headers, timeout_ms, attempt_count
+            SELECT id, endpoint_name, uri, event_id, event_type, occurred_at, body, headers, timeout_ms, attempt_count
             FROM ashlar_security_event_webhook_outbox
             WHERE locked_by = $lockedBy
               AND sent_at IS NULL
@@ -146,7 +135,11 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
             entries.Add(new AshlarSecurityEventWebhookOutboxEntry
             {
                 Id = reader.GetGuidFromText("id"),
+                EndpointName = reader.GetString(reader.GetOrdinal("endpoint_name")),
                 Uri = reader.GetString(reader.GetOrdinal("uri")),
+                EventId = reader.GetGuidFromText("event_id"),
+                EventType = reader.GetString(reader.GetOrdinal("event_type")),
+                OccurredAt = reader.GetDateTimeOffsetFromText("occurred_at"),
                 Body = (byte[])reader["body"],
                 Headers = reader.GetString(reader.GetOrdinal("headers")),
                 TimeoutMs = reader.GetInt64(reader.GetOrdinal("timeout_ms")),
@@ -169,6 +162,8 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
                 (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, lockId, token),
                 (id, attemptCount, finalFailure, exception) => SqliteSecurityEventWebhookOutboxDispatcherLog.WebhookDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
                 _destinationValidator,
+                _webhookOptions,
+                _timeProvider,
                 _deliveryObserver),
             cancellationToken);
     }

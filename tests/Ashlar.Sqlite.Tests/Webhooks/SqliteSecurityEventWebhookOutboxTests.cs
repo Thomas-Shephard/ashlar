@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Ashlar.Webhooks.SecurityEvents;
@@ -140,6 +139,56 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Assert.That(row.SentAt, Is.EqualTo(_now));
             Assert.That(row.AttemptCount, Is.EqualTo(1));
             Assert.That(row.LockedBy, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task DispatcherRegeneratesSignatureAtSendTime()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        await EnqueueAsync(CreateDelivery("old-secret"));
+
+        await CreateDispatcher(transport, webhookOptions: CreateWebhookOptions("current-secret")).ProcessBatchAsync();
+
+        var request = transport.Requests.Single();
+        var result = AshlarSecurityEventWebhookSignature.Verify(new AshlarSecurityEventWebhookVerificationRequest
+        {
+            Body = Encoding.UTF8.GetBytes(request.Body),
+            Headers = request.Headers.ToDictionary(header => header.Key, header => header.Value.Single(), StringComparer.Ordinal),
+            SharedSecret = "current-secret",
+            EventId = new Guid("11111111-1111-1111-1111-111111111111"),
+            EndpointName = "audit",
+            DestinationPathAndQuery = "/security-events",
+            TimeProvider = _timeProvider
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(request.Headers[AshlarSecurityEventWebhookSignature.SignatureHeaderName].Single(), Is.Not.EqualTo(CreateSignature("old-secret", Encoding.UTF8.GetBytes(request.Body))));
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task DispatcherFailsSafelyWhenSigningConfigurationIsUnavailable(bool missingEndpoint)
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        await EnqueueAsync(CreateDelivery());
+        var webhookOptions = missingEndpoint ? new AshlarSecurityEventWebhookOptions() : CreateWebhookOptionsWithoutSecret();
+
+        await CreateDispatcher(
+            transport,
+            new SqliteSecurityEventWebhookOutboxOptions { MaxAttempts = 1 },
+            webhookOptions: webhookOptions).ProcessBatchAsync();
+
+        var row = await QuerySingleOutboxRowAsync();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Is.Empty);
+            Assert.That(row.FailedAt, Is.EqualTo(_now));
+            Assert.That(row.AttemptCount, Is.EqualTo(1));
+            Assert.That(row.LastError, Does.Contain("InvalidOperationException"));
         }
     }
 
@@ -332,12 +381,13 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         await using var provider = new ServiceCollection()
             .AddSingleton<ISqliteConnectionProvider>(new ThrowingAfterFirstConnectionProvider(_serviceProvider.GetRequiredService<ISqliteConnectionProvider>()))
             .BuildServiceProvider();
-        var dispatcher = new SqliteSecurityEventWebhookOutboxDispatcher(
+        var dispatcher = new SqliteSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<SqliteSecurityEventWebhookOutboxOptions>(
             provider,
             _timeProvider,
             Options.Create(new SqliteSecurityEventWebhookOutboxOptions()),
+            Options.Create(CreateWebhookOptions()),
             new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.Accepted)),
-            destinationValidator: CreateDestinationValidator());
+            CreateDestinationValidator()));
 
         Assert.ThrowsAsync<InvalidOperationException>(() => dispatcher.ProcessBatchAsync());
         var row = await QuerySingleOutboxRowAsync();
@@ -408,11 +458,13 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Assert.Throws<ArgumentNullException>(() => SqliteSecurityEventWebhookOutboxOptions.Validate(null!));
             Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookEnqueuer(null!, _timeProvider));
             Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookEnqueuer(connectionProvider, null!));
-            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(null!, _timeProvider, options, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator: destinationValidator));
-            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(_serviceProvider, null!, options, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator: destinationValidator));
-            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(_serviceProvider, _timeProvider, null!, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator: destinationValidator));
-            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(_serviceProvider, _timeProvider, options, null!, destinationValidator: destinationValidator));
-            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(_serviceProvider, _timeProvider, options, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK))));
+            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(null!));
+            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<SqliteSecurityEventWebhookOutboxOptions>(null!, _timeProvider, options, Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
+            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<SqliteSecurityEventWebhookOutboxOptions>(_serviceProvider, null!, options, Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
+            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<SqliteSecurityEventWebhookOutboxOptions>(_serviceProvider, _timeProvider, null!, Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
+            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<SqliteSecurityEventWebhookOutboxOptions>(_serviceProvider, _timeProvider, options, null!, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
+            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<SqliteSecurityEventWebhookOutboxOptions>(_serviceProvider, _timeProvider, options, Options.Create(CreateWebhookOptions()), null!, destinationValidator)));
+            Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<SqliteSecurityEventWebhookOutboxOptions>(_serviceProvider, _timeProvider, options, Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), null!)));
             Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxHostedService(null!, options));
             Assert.Throws<ArgumentNullException>(() => new SqliteSecurityEventWebhookOutboxHostedService(_serviceProvider, null!));
         }
@@ -440,7 +492,11 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         using var contentHeaderRequest = AshlarSecurityEventWebhookOutboxDispatch.MapToHttpRequest(new AshlarSecurityEventWebhookOutboxEntry
         {
             Id = Guid.NewGuid(),
+            EndpointName = "audit",
             Uri = "https://example.test/security-events",
+            EventId = Guid.NewGuid(),
+            EventType = "ashlar.test",
+            OccurredAt = _now,
             Body = Encoding.UTF8.GetBytes("{}"),
             Headers = """{"Content-Encoding":"gzip","X-Ashlar-Event-Type":"ashlar.test"}""",
             TimeoutMs = 1000,
@@ -449,7 +505,11 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         using var nullHeaderRequest = AshlarSecurityEventWebhookOutboxDispatch.MapToHttpRequest(new AshlarSecurityEventWebhookOutboxEntry
         {
             Id = Guid.NewGuid(),
+            EndpointName = "audit",
             Uri = "https://example.test/security-events",
+            EventId = Guid.NewGuid(),
+            EventType = "ashlar.test",
+            OccurredAt = _now,
             Body = Encoding.UTF8.GetBytes("{}"),
             Headers = "null",
             TimeoutMs = 1000,
@@ -611,15 +671,35 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     private SqliteSecurityEventWebhookOutboxDispatcher CreateDispatcher(
         HttpMessageHandler transport,
         SqliteSecurityEventWebhookOutboxOptions? options = null,
-        IAshlarSecurityEventWebhookDeliveryObserver? observer = null)
+        IAshlarSecurityEventWebhookDeliveryObserver? observer = null,
+        AshlarSecurityEventWebhookOptions? webhookOptions = null)
     {
         return new SqliteSecurityEventWebhookOutboxDispatcher(
-            CreateDispatcherProvider(),
-            _timeProvider,
-            Options.Create(options ?? new SqliteSecurityEventWebhookOutboxOptions()),
-            new TestHttpClientFactory(transport),
-            deliveryObserver: observer,
-            destinationValidator: CreateDestinationValidator());
+            CreateDispatcherDependencies(
+                CreateDispatcherProvider(),
+                _timeProvider,
+                Options.Create(options ?? new SqliteSecurityEventWebhookOutboxOptions()),
+                Options.Create(webhookOptions ?? CreateWebhookOptions()),
+                new TestHttpClientFactory(transport),
+                CreateDestinationValidator()),
+            deliveryObserver: observer);
+    }
+
+    private AshlarSecurityEventWebhookOutboxDispatcherDependencies<SqliteSecurityEventWebhookOutboxOptions> CreateDispatcherDependencies(
+        IServiceProvider? serviceProvider = null,
+        TimeProvider? timeProvider = null,
+        IOptions<SqliteSecurityEventWebhookOutboxOptions>? options = null,
+        IOptions<AshlarSecurityEventWebhookOptions>? webhookOptions = null,
+        IHttpClientFactory? httpClientFactory = null,
+        AshlarSecurityEventWebhookDestinationValidator? destinationValidator = null)
+    {
+        return new AshlarSecurityEventWebhookOutboxDispatcherDependencies<SqliteSecurityEventWebhookOutboxOptions>(
+            serviceProvider ?? _serviceProvider,
+            timeProvider ?? _timeProvider,
+            options ?? Options.Create(new SqliteSecurityEventWebhookOutboxOptions()),
+            webhookOptions ?? Options.Create(CreateWebhookOptions()),
+            httpClientFactory ?? new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)),
+            destinationValidator ?? CreateDestinationValidator());
     }
 
     private ServiceProvider CreateDispatcherProvider()
@@ -640,7 +720,9 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         services.AddSingleton<TimeProvider>(_timeProvider);
         services.AddSingleton<IHttpClientFactory>(new TestHttpClientFactory(transport));
         services.AddSingleton(Options.Create(options));
+        services.AddSingleton(Options.Create(CreateWebhookOptions()));
         services.AddSingleton(CreateDestinationValidator());
+        services.AddScoped<AshlarSecurityEventWebhookOutboxDispatcherDependencies<SqliteSecurityEventWebhookOutboxOptions>>();
         services.AddScoped<SqliteSecurityEventWebhookOutboxDispatcher>();
         return services.BuildServiceProvider();
     }
@@ -664,7 +746,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         return new AshlarSecurityEventWebhookDestinationValidator(new StaticDestinationResolver());
     }
 
-    private static AshlarSecurityEventWebhookDelivery CreateDelivery(string? sharedSecret = null, TimeSpan? timeout = null)
+    private static AshlarSecurityEventWebhookDelivery CreateDelivery(string? sharedSecret = "shared-secret", TimeSpan? timeout = null)
     {
         var securityEvent = new AshlarSecurityEvent
         {
@@ -675,7 +757,18 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         };
         var payload = AshlarSecurityEventWebhookDeliveryFactory.CreatePayload(securityEvent);
         var body = JsonSerializer.SerializeToUtf8Bytes(payload, WebJsonOptions);
-        var headers = AshlarSecurityEventWebhookDeliveryFactory.CreateHeaders("audit", sharedSecret, payload, body);
+        var endpoint = new AshlarSecurityEventWebhookEndpointOptions
+        {
+            Name = "audit",
+            Uri = new Uri("https://example.test/security-events"),
+            SharedSecret = sharedSecret,
+            AllowUnsigned = sharedSecret is null
+        };
+        var headers = AshlarSecurityEventWebhookDeliveryFactory.CreateHeaders(
+            endpoint,
+            payload,
+            body,
+            DateTimeOffset.FromUnixTimeSeconds(1_800_000_000));
 
         return new AshlarSecurityEventWebhookDelivery(
             "audit",
@@ -685,16 +778,39 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             payload);
     }
 
+    private static AshlarSecurityEventWebhookOptions CreateWebhookOptions(string sharedSecret = "shared-secret")
+    {
+        var options = new AshlarSecurityEventWebhookOptions();
+        options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions
+        {
+            Name = "audit",
+            Uri = new Uri("https://example.test/security-events"),
+            SharedSecret = sharedSecret
+        });
+        return options;
+    }
+
+    private static AshlarSecurityEventWebhookOptions CreateWebhookOptionsWithoutSecret()
+    {
+        var options = new AshlarSecurityEventWebhookOptions();
+        options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions
+        {
+            Name = "audit",
+            Uri = new Uri("https://example.test/security-events")
+        });
+        return options;
+    }
+
     private static string CreateSignature(string sharedSecret, ReadOnlySpan<byte> body)
     {
-        var secretBytes = Encoding.UTF8.GetBytes(sharedSecret);
-        var hash = HMACSHA256.HashData(secretBytes, body);
-#if NET9_0_OR_GREATER
-        var hex = Convert.ToHexStringLower(hash);
-#else
-        var hex = Convert.ToHexString(hash).ToLowerInvariant();
-#endif
-        return string.Concat("sha256=", hex);
+        return AshlarSecurityEventWebhookSignature.CreateSignature(
+            sharedSecret,
+            body,
+            DateTimeOffset.FromUnixTimeSeconds(1_800_000_000),
+            new DateTimeOffset(2026, 5, 24, 11, 0, 0, TimeSpan.Zero),
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events");
     }
 
     private async Task ExecuteAsync(string sql, Action<Microsoft.Data.Sqlite.SqliteCommand> bind)

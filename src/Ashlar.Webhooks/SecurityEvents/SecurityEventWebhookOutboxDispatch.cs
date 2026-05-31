@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 
 namespace Ashlar.Webhooks.SecurityEvents;
 
@@ -15,9 +16,29 @@ public sealed class AshlarSecurityEventWebhookOutboxEntry
     public Guid Id { get; init; }
 
     /// <summary>
+    /// Gets the endpoint display name used in safe logs and signing.
+    /// </summary>
+    public required string EndpointName { get; init; }
+
+    /// <summary>
     /// Gets the destination URI.
     /// </summary>
     public required string Uri { get; init; }
+
+    /// <summary>
+    /// Gets the security event identifier.
+    /// </summary>
+    public Guid EventId { get; init; }
+
+    /// <summary>
+    /// Gets the security event type.
+    /// </summary>
+    public required string EventType { get; init; }
+
+    /// <summary>
+    /// Gets the security event occurrence timestamp.
+    /// </summary>
+    public DateTimeOffset OccurredAt { get; init; }
 
     /// <summary>
     /// Gets the final prepared request body.
@@ -41,6 +62,56 @@ public sealed class AshlarSecurityEventWebhookOutboxEntry
 }
 
 /// <summary>
+/// Groups common dependencies used by security event webhook outbox dispatchers.
+/// </summary>
+/// <typeparam name="TOptions">The provider-specific options type.</typeparam>
+/// <param name="serviceProvider">The service provider value.</param>
+/// <param name="timeProvider">The time provider value.</param>
+/// <param name="options">The provider-specific options value.</param>
+/// <param name="webhookOptions">The current webhook endpoint configuration.</param>
+/// <param name="httpClientFactory">The HTTP client factory value.</param>
+/// <param name="destinationValidator">The webhook destination safety validator.</param>
+public sealed class AshlarSecurityEventWebhookOutboxDispatcherDependencies<TOptions>(
+    IServiceProvider serviceProvider,
+    TimeProvider timeProvider,
+    IOptions<TOptions> options,
+    IOptions<AshlarSecurityEventWebhookOptions> webhookOptions,
+    IHttpClientFactory httpClientFactory,
+    AshlarSecurityEventWebhookDestinationValidator destinationValidator)
+    where TOptions : class
+{
+    /// <summary>
+    /// Gets the service provider value.
+    /// </summary>
+    public IServiceProvider ServiceProvider { get; } = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+
+    /// <summary>
+    /// Gets the time provider value.
+    /// </summary>
+    public TimeProvider TimeProvider { get; } = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+
+    /// <summary>
+    /// Gets the provider-specific options value.
+    /// </summary>
+    public TOptions Options { get; } = (options ?? throw new ArgumentNullException(nameof(options))).Value;
+
+    /// <summary>
+    /// Gets the current webhook endpoint configuration.
+    /// </summary>
+    public AshlarSecurityEventWebhookOptions WebhookOptions { get; } = (webhookOptions ?? throw new ArgumentNullException(nameof(webhookOptions))).Value;
+
+    /// <summary>
+    /// Gets the HTTP client factory value.
+    /// </summary>
+    public IHttpClientFactory HttpClientFactory { get; } = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+
+    /// <summary>
+    /// Gets the webhook destination safety validator.
+    /// </summary>
+    public AshlarSecurityEventWebhookDestinationValidator DestinationValidator { get; } = destinationValidator ?? throw new ArgumentNullException(nameof(destinationValidator));
+}
+
+/// <summary>
 /// Provides callbacks and options for dispatching a durable security event webhook outbox entry.
 /// </summary>
 /// <param name="HttpClientFactory">The HTTP client factory.</param>
@@ -50,6 +121,8 @@ public sealed class AshlarSecurityEventWebhookOutboxEntry
 /// <param name="MarkAsFailedAsync">The callback that persists failed delivery state.</param>
 /// <param name="LogDeliveryFailed">The callback that logs failed delivery attempts.</param>
 /// <param name="DestinationValidator">The webhook destination safety validator.</param>
+/// <param name="WebhookOptions">The current webhook endpoint configuration.</param>
+/// <param name="TimeProvider">The time provider used for dispatch-time signing.</param>
 /// <param name="DeliveryObserver">The provider-neutral delivery observer.</param>
 public sealed record AshlarSecurityEventWebhookOutboxDispatchContext(
     IHttpClientFactory HttpClientFactory,
@@ -59,6 +132,8 @@ public sealed record AshlarSecurityEventWebhookOutboxDispatchContext(
     Func<AshlarSecurityEventWebhookOutboxEntry, Exception, CancellationToken, Task> MarkAsFailedAsync,
     Action<Guid, int, bool, Exception> LogDeliveryFailed,
     AshlarSecurityEventWebhookDestinationValidator DestinationValidator,
+    AshlarSecurityEventWebhookOptions WebhookOptions,
+    TimeProvider TimeProvider,
     IAshlarSecurityEventWebhookDeliveryObserver? DeliveryObserver = null);
 
 /// <summary>
@@ -120,12 +195,13 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         ArgumentNullException.ThrowIfNull(context.MarkAsFailedAsync);
         ArgumentNullException.ThrowIfNull(context.LogDeliveryFailed);
         ArgumentNullException.ThrowIfNull(context.DestinationValidator);
+        ArgumentNullException.ThrowIfNull(context.WebhookOptions);
+        ArgumentNullException.ThrowIfNull(context.TimeProvider);
 
         var start = Stopwatch.GetTimestamp();
-        Dictionary<string, string>? headers = null;
         try
         {
-            headers = DeserializeHeaders(entry.Headers);
+            var headers = DeserializeHeaders(entry.Headers);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromMilliseconds(entry.TimeoutMs));
             var uri = new Uri(entry.Uri, UriKind.Absolute);
@@ -133,38 +209,39 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
             if (!destinationValidation.IsValid)
             {
                 var exception = new AshlarSecurityEventWebhookUnsafeDestinationException(destinationValidation.FailureReason);
-                RecordFailure(context, start, AshlarSecurityEventWebhookDeliveryTelemetry.ExceptionFailureKind, headers);
+                RecordFailure(context, entry, start, AshlarSecurityEventWebhookDeliveryTelemetry.ExceptionFailureKind);
                 await MarkAsFailedAsync(entry, context, exception).ConfigureAwait(false);
                 return;
             }
 
+            headers = RegenerateSigningHeaders(entry, context, headers, uri);
             using var request = MapToHttpRequest(entry, headers);
             var client = context.HttpClientFactory.CreateClient(context.HttpClientName);
             using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 var exception = new HttpRequestException($"Webhook endpoint returned HTTP {(int)response.StatusCode}.");
-                RecordFailure(context, start, AshlarSecurityEventWebhookDeliveryTelemetry.HttpStatusFailureKind, headers);
+                RecordFailure(context, entry, start, AshlarSecurityEventWebhookDeliveryTelemetry.HttpStatusFailureKind);
                 await MarkAsFailedAsync(entry, context, exception).ConfigureAwait(false);
                 return;
             }
 
-            RecordSuccess(context, start, headers);
+            RecordSuccess(context, entry, start);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            RecordFailure(context, start, AshlarSecurityEventWebhookDeliveryTelemetry.CanceledFailureKind, headers);
+            RecordFailure(context, entry, start, AshlarSecurityEventWebhookDeliveryTelemetry.CanceledFailureKind);
             throw;
         }
         catch (OperationCanceledException exception)
         {
-            RecordFailure(context, start, AshlarSecurityEventWebhookDeliveryTelemetry.TimeoutFailureKind, headers);
+            RecordFailure(context, entry, start, AshlarSecurityEventWebhookDeliveryTelemetry.TimeoutFailureKind);
             await MarkAsFailedAsync(entry, context, exception).ConfigureAwait(false);
             return;
         }
         catch (Exception exception)
         {
-            RecordFailure(context, start, AshlarSecurityEventWebhookDeliveryTelemetry.ExceptionFailureKind, headers);
+            RecordFailure(context, entry, start, AshlarSecurityEventWebhookDeliveryTelemetry.ExceptionFailureKind);
             await MarkAsFailedAsync(entry, context, exception).ConfigureAwait(false);
             return;
         }
@@ -179,10 +256,70 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
 
     private static void AddHeader(HttpRequestMessage request, HttpContent content, KeyValuePair<string, string> header)
     {
+        if (string.Equals(header.Key, "Content-Type", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(header.Key, "Content-Length", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         if (ShouldAddAsContentHeader(request, header))
         {
             content.Headers.TryAddWithoutValidation(header.Key, header.Value);
         }
+    }
+
+    private static Dictionary<string, string> RegenerateSigningHeaders(
+        AshlarSecurityEventWebhookOutboxEntry entry,
+        AshlarSecurityEventWebhookOutboxDispatchContext context,
+        Dictionary<string, string>? persistedHeaders,
+        Uri uri)
+    {
+        var endpoint = context.WebhookOptions.Endpoints.FirstOrDefault(candidate =>
+            string.Equals(candidate.Name, entry.EndpointName, StringComparison.Ordinal));
+        if (endpoint is null)
+        {
+            throw new InvalidOperationException($"Ashlar security event webhook endpoint configuration for '{entry.EndpointName}' is unavailable.");
+        }
+
+        var headers = persistedHeaders is null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : CreateCaseInsensitiveHeaders(persistedHeaders);
+        EnsureBaseHeaders(headers, entry);
+
+        AshlarSecurityEventWebhookDeliveryFactory.AddSigningHeaders(
+            headers,
+            new AshlarSecurityEventWebhookSigningRequest
+            {
+                EndpointName = entry.EndpointName,
+                SharedSecret = endpoint.SharedSecret,
+                AllowUnsigned = endpoint.AllowUnsigned,
+                EventId = entry.EventId,
+                OccurredAt = entry.OccurredAt,
+                Uri = uri,
+                Body = entry.Body,
+                SignatureTimestamp = context.TimeProvider.GetUtcNow()
+            });
+        return headers;
+    }
+
+    private static Dictionary<string, string> CreateCaseInsensitiveHeaders(Dictionary<string, string> headers)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var header in headers)
+        {
+            // Persisted JSON may contain duplicate header names with different casing.
+            result[header.Key] = header.Value;
+        }
+
+        return result;
+    }
+
+    private static void EnsureBaseHeaders(Dictionary<string, string> headers, AshlarSecurityEventWebhookOutboxEntry entry)
+    {
+        headers["X-Ashlar-Event-Id"] = entry.EventId.ToString("D");
+        headers["X-Ashlar-Event-Type"] = entry.EventType;
+        headers["X-Ashlar-Webhook-Endpoint"] = entry.EndpointName;
+        headers[AshlarSecurityEventWebhookSignature.EventTimestampHeaderName] = entry.OccurredAt.ToString("O");
     }
 
     private static async Task MarkAsFailedAsync(
@@ -197,35 +334,35 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
 
     private static void RecordSuccess(
         AshlarSecurityEventWebhookOutboxDispatchContext context,
-        long start,
-        Dictionary<string, string>? headers)
+        AshlarSecurityEventWebhookOutboxEntry entry,
+        long start)
     {
-        Record(context, start, AshlarSecurityEventWebhookDeliveryTelemetry.SuccessOutcome, null, headers);
+        Record(context, entry, start, AshlarSecurityEventWebhookDeliveryTelemetry.SuccessOutcome, null);
     }
 
     private static void RecordFailure(
         AshlarSecurityEventWebhookOutboxDispatchContext context,
+        AshlarSecurityEventWebhookOutboxEntry entry,
         long start,
-        string failureKind,
-        Dictionary<string, string>? headers)
+        string failureKind)
     {
-        Record(context, start, AshlarSecurityEventWebhookDeliveryTelemetry.FailureOutcome, failureKind, headers);
+        Record(context, entry, start, AshlarSecurityEventWebhookDeliveryTelemetry.FailureOutcome, failureKind);
     }
 
     private static void Record(
         AshlarSecurityEventWebhookOutboxDispatchContext context,
+        AshlarSecurityEventWebhookOutboxEntry entry,
         long start,
         string outcome,
-        string? failureKind,
-        Dictionary<string, string>? headers)
+        string? failureKind)
     {
         try
         {
             var observer = context.DeliveryObserver ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
             observer.RecordDeliveryAttempt(new AshlarSecurityEventWebhookDeliveryTelemetry(
                 AshlarSecurityEventWebhookDeliveryTelemetry.DurableOutboxDeliveryMode,
-                GetHeaderValue(headers, "X-Ashlar-Event-Type"),
-                GetHeaderValue(headers, "X-Ashlar-Webhook-Endpoint"),
+                entry.EventType,
+                entry.EndpointName,
                 outcome,
                 failureKind,
                 Stopwatch.GetElapsedTime(start)));
@@ -234,11 +371,6 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         {
             // Telemetry is best-effort and must never change webhook delivery behavior.
         }
-    }
-
-    private static string? GetHeaderValue(Dictionary<string, string>? headers, string headerName)
-    {
-        return headers != null && headers.TryGetValue(headerName, out var value) ? value : null;
     }
 
     private static Dictionary<string, string>? DeserializeHeaders(string headers)

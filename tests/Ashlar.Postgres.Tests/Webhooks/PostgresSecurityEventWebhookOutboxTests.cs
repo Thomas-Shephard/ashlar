@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Dapper;
@@ -180,6 +179,62 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     }
 
     [Test]
+    public async Task DispatcherRegeneratesSignatureAtSendTime()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        await EnqueueAsync(CreateDelivery("old-secret"));
+
+        await CreateDispatcher(transport, webhookOptions: CreateWebhookOptions("current-secret")).ProcessBatchAsync();
+
+        var request = transport.Requests.Single();
+        var result = AshlarSecurityEventWebhookSignature.Verify(new AshlarSecurityEventWebhookVerificationRequest
+        {
+            Body = Encoding.UTF8.GetBytes(request.Body),
+            Headers = request.Headers.ToDictionary(header => header.Key, header => header.Value.Single(), StringComparer.Ordinal),
+            SharedSecret = "current-secret",
+            EventId = new Guid("11111111-1111-1111-1111-111111111111"),
+            EndpointName = "audit",
+            DestinationPathAndQuery = "/security-events",
+            TimeProvider = _timeProvider
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(request.Headers[AshlarSecurityEventWebhookSignature.SignatureHeaderName].Single(), Is.Not.EqualTo(CreateSignature("old-secret", Encoding.UTF8.GetBytes(request.Body))));
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task DispatcherFailsSafelyWhenSigningConfigurationIsUnavailable(bool missingEndpoint)
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        await EnqueueAsync(CreateDelivery());
+        var webhookOptions = missingEndpoint ? new AshlarSecurityEventWebhookOptions() : CreateWebhookOptionsWithoutSecret();
+
+        await CreateDispatcher(
+            transport,
+            new PostgresSecurityEventWebhookOutboxOptions { MaxAttempts = 1 },
+            webhookOptions: webhookOptions).ProcessBatchAsync();
+
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        var row = await connection.QuerySingleAsync<RawWebhookRow>("""
+            SELECT failed_at AS FailedAt, sent_at AS SentAt, attempt_count AS AttemptCount,
+                   last_error AS LastError
+            FROM ashlar_security_event_webhook_outbox
+            """);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Is.Empty);
+            Assert.That(row.FailedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
+            Assert.That(row.AttemptCount, Is.EqualTo(1));
+            Assert.That(row.LastError, Does.Contain("InvalidOperationException"));
+        }
+    }
+
+    [Test]
     public async Task DispatcherReportsDeliveryObserver()
     {
         var observer = new RecordingDeliveryObserver();
@@ -306,12 +361,13 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         var services = new ServiceCollection();
         services.AddSingleton<IPostgresConnectionProvider>(new ThrowingAfterFirstConnectionProvider(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>()));
         var dispatcherProvider = services.BuildServiceProvider();
-        var dispatcher = new PostgresSecurityEventWebhookOutboxDispatcher(
+        var dispatcher = new PostgresSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(
             dispatcherProvider,
             _timeProvider,
             Options.Create(new PostgresSecurityEventWebhookOutboxOptions()),
+            Options.Create(CreateWebhookOptions()),
             new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.Accepted)),
-            destinationValidator: CreateDestinationValidator());
+            CreateDestinationValidator()));
 
         Assert.ThrowsAsync<InvalidOperationException>(() => dispatcher.ProcessBatchAsync());
 
@@ -390,11 +446,13 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             Assert.Throws<ArgumentNullException>(() => PostgresSecurityEventWebhookOutboxOptions.Validate(null!));
             Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookEnqueuer(null!, _timeProvider));
             Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookEnqueuer(connectionProvider, null!));
-            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(null!, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator: destinationValidator));
-            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(_serviceProvider, null!, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator: destinationValidator));
-            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(_serviceProvider, _timeProvider, null!, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator: destinationValidator));
-            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(_serviceProvider, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), null!, destinationValidator: destinationValidator));
-            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(_serviceProvider, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK))));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(null!));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(null!, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(_serviceProvider, null!, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(_serviceProvider, _timeProvider, null!, Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(_serviceProvider, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), null!, new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), destinationValidator)));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(_serviceProvider, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), Options.Create(CreateWebhookOptions()), null!, destinationValidator)));
+            Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxDispatcher(new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(_serviceProvider, _timeProvider, Options.Create(new PostgresSecurityEventWebhookOutboxOptions()), Options.Create(CreateWebhookOptions()), new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)), null!)));
             Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxHostedService(null!, Options.Create(new PostgresSecurityEventWebhookOutboxOptions())));
             Assert.Throws<ArgumentNullException>(() => new PostgresSecurityEventWebhookOutboxHostedService(_serviceProvider, null!));
         }
@@ -442,7 +500,11 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         using var request = AshlarSecurityEventWebhookOutboxDispatch.MapToHttpRequest(new AshlarSecurityEventWebhookOutboxEntry
         {
             Id = Guid.NewGuid(),
+            EndpointName = "audit",
             Uri = "https://example.test/security-events",
+            EventId = Guid.NewGuid(),
+            EventType = "ashlar.test",
+            OccurredAt = _now,
             Body = Encoding.UTF8.GetBytes("{}"),
             Headers = """{"Content-Encoding":"gzip","X-Ashlar-Event-Type":"ashlar.test"}""",
             TimeoutMs = 1000,
@@ -463,7 +525,11 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         using var request = AshlarSecurityEventWebhookOutboxDispatch.MapToHttpRequest(new AshlarSecurityEventWebhookOutboxEntry
         {
             Id = Guid.NewGuid(),
+            EndpointName = "audit",
             Uri = "https://example.test/security-events",
+            EventId = Guid.NewGuid(),
+            EventType = "ashlar.test",
+            OccurredAt = _now,
             Body = Encoding.UTF8.GetBytes("{}"),
             Headers = """{"X-Ashlar-Event-Type":"ashlar.test"}""",
             TimeoutMs = 1000,
@@ -484,7 +550,11 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         using var request = AshlarSecurityEventWebhookOutboxDispatch.MapToHttpRequest(new AshlarSecurityEventWebhookOutboxEntry
         {
             Id = Guid.NewGuid(),
+            EndpointName = "audit",
             Uri = "https://example.test/security-events",
+            EventId = Guid.NewGuid(),
+            EventType = "ashlar.test",
+            OccurredAt = _now,
             Body = Encoding.UTF8.GetBytes("{}"),
             Headers = "{}",
             TimeoutMs = 1000,
@@ -504,7 +574,11 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         using var request = AshlarSecurityEventWebhookOutboxDispatch.MapToHttpRequest(new AshlarSecurityEventWebhookOutboxEntry
         {
             Id = Guid.NewGuid(),
+            EndpointName = "audit",
             Uri = "https://example.test/security-events",
+            EventId = Guid.NewGuid(),
+            EventType = "ashlar.test",
+            OccurredAt = _now,
             Body = Encoding.UTF8.GetBytes("{}"),
             Headers = "null",
             TimeoutMs = 1000,
@@ -606,15 +680,35 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     private PostgresSecurityEventWebhookOutboxDispatcher CreateDispatcher(
         HttpMessageHandler transport,
         PostgresSecurityEventWebhookOutboxOptions? options = null,
-        IAshlarSecurityEventWebhookDeliveryObserver? observer = null)
+        IAshlarSecurityEventWebhookDeliveryObserver? observer = null,
+        AshlarSecurityEventWebhookOptions? webhookOptions = null)
     {
         return new PostgresSecurityEventWebhookOutboxDispatcher(
+            CreateDispatcherDependencies(
             _serviceProvider,
             _timeProvider,
             Options.Create(options ?? new PostgresSecurityEventWebhookOutboxOptions()),
+            Options.Create(webhookOptions ?? CreateWebhookOptions()),
             new TestHttpClientFactory(transport),
-            deliveryObserver: observer,
-            destinationValidator: CreateDestinationValidator());
+            CreateDestinationValidator()),
+            deliveryObserver: observer);
+    }
+
+    private AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions> CreateDispatcherDependencies(
+        IServiceProvider? serviceProvider = null,
+        TimeProvider? timeProvider = null,
+        IOptions<PostgresSecurityEventWebhookOutboxOptions>? options = null,
+        IOptions<AshlarSecurityEventWebhookOptions>? webhookOptions = null,
+        IHttpClientFactory? httpClientFactory = null,
+        AshlarSecurityEventWebhookDestinationValidator? destinationValidator = null)
+    {
+        return new AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>(
+            serviceProvider ?? _serviceProvider,
+            timeProvider ?? _timeProvider,
+            options ?? Options.Create(new PostgresSecurityEventWebhookOutboxOptions()),
+            webhookOptions ?? Options.Create(CreateWebhookOptions()),
+            httpClientFactory ?? new TestHttpClientFactory(new RecordingHttpMessageHandler(HttpStatusCode.OK)),
+            destinationValidator ?? CreateDestinationValidator());
     }
 
     private ServiceProvider CreateHostedServiceProvider(HttpMessageHandler transport)
@@ -624,7 +718,9 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         services.AddSingleton<TimeProvider>(_timeProvider);
         services.AddSingleton<IHttpClientFactory>(new TestHttpClientFactory(transport));
         services.AddSingleton(Options.Create(new PostgresSecurityEventWebhookOutboxOptions()));
+        services.AddSingleton(Options.Create(CreateWebhookOptions()));
         services.AddSingleton(CreateDestinationValidator());
+        services.AddScoped<AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>>();
         services.AddScoped<PostgresSecurityEventWebhookOutboxDispatcher>();
         return services.BuildServiceProvider();
     }
@@ -648,7 +744,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         return new AshlarSecurityEventWebhookDestinationValidator(new StaticDestinationResolver());
     }
 
-    private static AshlarSecurityEventWebhookDelivery CreateDelivery(string? sharedSecret = null, TimeSpan? timeout = null)
+    private static AshlarSecurityEventWebhookDelivery CreateDelivery(string? sharedSecret = "shared-secret", TimeSpan? timeout = null)
     {
         var securityEvent = new AshlarSecurityEvent
         {
@@ -659,7 +755,18 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         };
         var payload = AshlarSecurityEventWebhookDeliveryFactory.CreatePayload(securityEvent);
         var body = JsonSerializer.SerializeToUtf8Bytes(payload, WebJsonOptions);
-        var headers = AshlarSecurityEventWebhookDeliveryFactory.CreateHeaders("audit", sharedSecret, payload, body);
+        var endpoint = new AshlarSecurityEventWebhookEndpointOptions
+        {
+            Name = "audit",
+            Uri = new Uri("https://example.test/security-events"),
+            SharedSecret = sharedSecret,
+            AllowUnsigned = sharedSecret is null
+        };
+        var headers = AshlarSecurityEventWebhookDeliveryFactory.CreateHeaders(
+            endpoint,
+            payload,
+            body,
+            DateTimeOffset.FromUnixTimeSeconds(1_800_000_000));
 
         return new AshlarSecurityEventWebhookDelivery(
             "audit",
@@ -669,16 +776,39 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             payload);
     }
 
+    private static AshlarSecurityEventWebhookOptions CreateWebhookOptions(string sharedSecret = "shared-secret")
+    {
+        var options = new AshlarSecurityEventWebhookOptions();
+        options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions
+        {
+            Name = "audit",
+            Uri = new Uri("https://example.test/security-events"),
+            SharedSecret = sharedSecret
+        });
+        return options;
+    }
+
+    private static AshlarSecurityEventWebhookOptions CreateWebhookOptionsWithoutSecret()
+    {
+        var options = new AshlarSecurityEventWebhookOptions();
+        options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions
+        {
+            Name = "audit",
+            Uri = new Uri("https://example.test/security-events")
+        });
+        return options;
+    }
+
     private static string CreateSignature(string sharedSecret, ReadOnlySpan<byte> body)
     {
-        var secretBytes = Encoding.UTF8.GetBytes(sharedSecret);
-        var hash = HMACSHA256.HashData(secretBytes, body);
-#if NET9_0_OR_GREATER
-        var hex = Convert.ToHexStringLower(hash);
-#else
-        var hex = Convert.ToHexString(hash).ToLowerInvariant();
-#endif
-        return string.Concat("sha256=", hex);
+        return AshlarSecurityEventWebhookSignature.CreateSignature(
+            sharedSecret,
+            body,
+            DateTimeOffset.FromUnixTimeSeconds(1_800_000_000),
+            new DateTimeOffset(2026, 5, 24, 11, 0, 0, TimeSpan.Zero),
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events");
     }
 
     private sealed class TestHttpClientFactory(HttpMessageHandler transport) : IHttpClientFactory

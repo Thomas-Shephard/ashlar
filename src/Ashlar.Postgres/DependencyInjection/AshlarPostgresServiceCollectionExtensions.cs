@@ -405,6 +405,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         var httpClientBuilder = services.AddHttpClient(PostgresSecurityEventWebhookOutboxDispatcher.HttpClientName)
             .ConfigurePrimaryHttpMessageHandler(CreateWebhookHttpMessageHandler);
         configureHttpClient?.Invoke(httpClientBuilder);
+        services.TryAddScoped<AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>>();
         services.TryAddScoped<PostgresSecurityEventWebhookOutboxDispatcher>();
 
         return services;

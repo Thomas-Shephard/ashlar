@@ -71,30 +71,352 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     {
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
         var endpoint = CreateEndpoint();
-        endpoint.SharedSecret = "shared-secret";
         var handler = CreateHandler(transport, CreateOptions(endpoint));
         var securityEvent = CreateEvent();
 
         await handler.HandleAsync(securityEvent);
 
         var request = transport.Requests.Single();
-        var body = Encoding.UTF8.GetBytes(request.ReadBody());
+        var headers = request.Headers.ToDictionary(header => header.Key, header => header.Value.Single(), StringComparer.Ordinal);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(request.Headers["X-Ashlar-Event-Id"].Single(), Is.EqualTo(securityEvent.Id.ToString("D")));
             Assert.That(request.Headers["X-Ashlar-Event-Type"].Single(), Is.EqualTo(securityEvent.EventType));
             Assert.That(request.Headers["X-Ashlar-Webhook-Endpoint"].Single(), Is.EqualTo(endpoint.Name));
             Assert.That(request.Headers["X-Ashlar-Timestamp"].Single(), Is.EqualTo(securityEvent.OccurredAt.ToString("O")));
-            Assert.That(request.Headers[AshlarSecurityEventWebhookSender.SignatureHeaderName].Single(), Is.EqualTo(AshlarSecurityEventWebhookSender.CreateSignature("shared-secret", body)));
+            Assert.That(request.Headers[AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName].Single(), Is.Not.Empty);
+            Assert.That(VerifySignature(
+                request.Body,
+                headers,
+                endpoint.SharedSecret,
+                securityEvent.Id,
+                endpoint.Name,
+                "/security-events",
+                TimeProvider.System,
+                new AshlarSecurityEventWebhookVerificationOptions { TimestampTolerance = TimeSpan.FromMinutes(10) }).IsValid, Is.True);
         }
     }
 
     [Test]
     public void CreateSignatureReturnsKnownHmacSha256Value()
     {
-        var signature = AshlarSecurityEventWebhookSender.CreateSignature("secret", "hello"u8);
+        var signature = AshlarSecurityEventWebhookSignature.CreateSignature(
+            "secret",
+            "hello"u8,
+            DateTimeOffset.FromUnixTimeSeconds(1_800_000_000),
+            DateTimeOffset.FromUnixTimeSeconds(1_700_000_000),
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso");
 
-        Assert.That(signature, Is.EqualTo("sha256=88aab3ede8d3adf94d26ab90d3bafd4a2083070c3bcce9c014ee04a443847c0b"));
+        Assert.That(signature, Is.EqualTo("v1=381d2453658bf2e7d70575906681e8d788a5bf14e5d6507c326677837d6f8c24"));
+    }
+
+    [Test]
+    public void VerifyAcceptsValidSignature()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var headers = CreateSignedHeaders(now: now);
+
+        var result = VerifySignature(
+            "body"u8,
+            headers,
+            "secret",
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.Valid));
+            Assert.That(result.FailureReason, Is.Empty);
+        }
+    }
+
+    [TestCase(AshlarSecurityEventWebhookSignature.SignatureHeaderName, AshlarSecurityEventWebhookVerificationStatus.MissingSignature)]
+    [TestCase(AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName, AshlarSecurityEventWebhookVerificationStatus.MissingTimestamp)]
+    [TestCase(AshlarSecurityEventWebhookSignature.EventTimestampHeaderName, AshlarSecurityEventWebhookVerificationStatus.MissingEventTimestamp)]
+    public void VerifyReportsMissingHeaders(string missingHeader, AshlarSecurityEventWebhookVerificationStatus expectedStatus)
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var headers = CreateSignedHeaders(now: now);
+        headers.Remove(missingHeader);
+
+        var result = VerifySignature(
+            "body"u8,
+            headers,
+            "secret",
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now));
+
+        Assert.That(result.Status, Is.EqualTo(expectedStatus));
+    }
+
+    [TestCase("not-a-timestamp", AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName)]
+    [TestCase("+1800000000", AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName)]
+    [TestCase("01800000000", AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName)]
+    [TestCase(" 1800000000", AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName)]
+    [TestCase("9223372036854775807", AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName)]
+    [TestCase("not-a-timestamp", AshlarSecurityEventWebhookSignature.EventTimestampHeaderName)]
+    [TestCase(" ", AshlarSecurityEventWebhookSignature.SignatureHeaderName)]
+    [TestCase("v1=not-hex", AshlarSecurityEventWebhookSignature.SignatureHeaderName)]
+    [TestCase("v1=zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", AshlarSecurityEventWebhookSignature.SignatureHeaderName)]
+    [TestCase("sha256=88aab3ede8d3adf94d26ab90d3bafd4a2083070c3bcce9c014ee04a443847c0b", AshlarSecurityEventWebhookSignature.SignatureHeaderName)]
+    public void VerifyReportsMalformedHeaders(string malformedValue, string headerName)
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var headers = CreateSignedHeaders(now: now);
+        headers[headerName] = malformedValue;
+
+        var result = VerifySignature(
+            "body"u8,
+            headers,
+            "secret",
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now));
+
+        var expectedStatus = headerName == AshlarSecurityEventWebhookSignature.EventTimestampHeaderName
+            ? AshlarSecurityEventWebhookVerificationStatus.MalformedEventTimestamp
+            : AshlarSecurityEventWebhookVerificationStatus.MalformedSignature;
+        Assert.That(result.Status, Is.EqualTo(expectedStatus));
+    }
+
+    [TestCase(-301)]
+    [TestCase(301)]
+    public void VerifyRejectsTimestampOutsideTolerance(int offsetSeconds)
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var headers = CreateSignedHeaders(now: now.AddSeconds(offsetSeconds));
+
+        var result = VerifySignature(
+            "body"u8,
+            headers,
+            "secret",
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now),
+            new AshlarSecurityEventWebhookVerificationOptions { TimestampTolerance = TimeSpan.FromMinutes(5) });
+
+        Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.TimestampOutsideTolerance));
+    }
+
+    [Test]
+    public void VerifyRejectsNegativeUnixTimestampOutsideTolerance()
+    {
+        var headers = CreateSignedHeaders(now: DateTimeOffset.FromUnixTimeSeconds(-1));
+
+        var result = VerifySignature(
+            "body"u8,
+            headers,
+            "secret",
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(DateTimeOffset.FromUnixTimeSeconds(1_800_000_000)),
+            new AshlarSecurityEventWebhookVerificationOptions { TimestampTolerance = TimeSpan.FromMinutes(5) });
+
+        Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.TimestampOutsideTolerance));
+    }
+
+    [Test]
+    public void VerifyReportsMissingSecretBeforeSignatureComparison()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var result = VerifySignature(
+            "body"u8,
+            CreateSignedHeaders(now: now),
+            null,
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.MissingSecret));
+    }
+
+    [TestCase("secret", "body", "11111111-1111-1111-1111-111111111111", "audit", "/security-events?tenant=contoso", 1)]
+    [TestCase("wrong-secret", "body", "11111111-1111-1111-1111-111111111111", "audit", "/security-events?tenant=contoso", 0)]
+    [TestCase("secret", "changed-body", "11111111-1111-1111-1111-111111111111", "audit", "/security-events?tenant=contoso", 0)]
+    [TestCase("secret", "body", "22222222-2222-2222-2222-222222222222", "audit", "/security-events?tenant=contoso", 0)]
+    [TestCase("secret", "body", "11111111-1111-1111-1111-111111111111", "other", "/security-events?tenant=contoso", 0)]
+    [TestCase("secret", "body", "11111111-1111-1111-1111-111111111111", "audit", "/security-events?tenant=other", 0)]
+    public void VerifyBindsSecretBodyEventEndpointAndDestination(
+        string secret,
+        string body,
+        string eventId,
+        string endpointName,
+        string destinationPathAndQuery,
+        int expectedValid)
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var result = VerifySignature(
+            Encoding.UTF8.GetBytes(body),
+            CreateSignedHeaders(now: now),
+            secret,
+            Guid.Parse(eventId),
+            endpointName,
+            destinationPathAndQuery,
+            new StaticTimeProvider(now));
+
+        Assert.That(result.IsValid, Is.EqualTo(expectedValid == 1));
+        if (expectedValid == 0)
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.InvalidSignature));
+        }
+    }
+
+    [Test]
+    public void VerifyBindsEventTimestampHeader()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var headers = CreateSignedHeaders(now: now);
+        headers[AshlarSecurityEventWebhookSignature.EventTimestampHeaderName] = DateTimeOffset.UnixEpoch.ToString("O");
+
+        var result = VerifySignature(
+            "body"u8,
+            headers,
+            "secret",
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.InvalidSignature));
+    }
+
+    [Test]
+    public void VerifyUsesFullLengthConstantTimeComparisonPathForWrongSignature()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var headers = CreateSignedHeaders(now: now);
+        headers[AshlarSecurityEventWebhookSignature.SignatureHeaderName] =
+            "v1=0000000000000000000000000000000000000000000000000000000000000000";
+
+        var result = VerifySignature(
+            "body"u8,
+            headers,
+            "secret",
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.InvalidSignature));
+    }
+
+    [Test]
+    public void VerificationFailureReasonsAreSafe()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingSignature).FailureReason, Is.EqualTo("Missing signature."));
+            Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MalformedSignature).FailureReason, Is.EqualTo("Malformed signature."));
+            Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingTimestamp).FailureReason, Is.EqualTo("Missing signature timestamp."));
+            Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.TimestampOutsideTolerance).FailureReason, Is.EqualTo("Signature timestamp is outside the accepted tolerance."));
+            Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.InvalidSignature).FailureReason, Is.EqualTo("Invalid signature."));
+            Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingSecret).FailureReason, Is.EqualTo("Missing shared secret."));
+            Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingEventTimestamp).FailureReason, Is.EqualTo("Missing event timestamp."));
+            Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MalformedEventTimestamp).FailureReason, Is.EqualTo("Malformed event timestamp."));
+            Assert.That(new AshlarSecurityEventWebhookVerificationResult((AshlarSecurityEventWebhookVerificationStatus)99).FailureReason, Is.EqualTo("Invalid signature."));
+        }
+    }
+
+    [Test]
+    public void VerifyAcceptsHeaderNamesCaseInsensitively()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var headers = CreateSignedHeaders(now)
+            .ToDictionary(header => header.Key.ToLowerInvariant(), header => header.Value, StringComparer.Ordinal);
+
+        var result = VerifySignature(
+            "body"u8,
+            headers,
+            "secret",
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now));
+
+        Assert.That(result.IsValid, Is.True);
+    }
+
+    [Test]
+    public void VerifyThrowsForInvalidProgrammerArguments()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentException>(() => AshlarSecurityEventWebhookSignature.CreateSignature("secret", "body"u8, now, now, Guid.Empty, "audit", " "));
+            Assert.Throws<ArgumentException>(() => AshlarSecurityEventWebhookSignature.CreateSignature("secret", "body"u8, now, now, Guid.Empty, "audit", "/security-events\r\nx-test"));
+            Assert.Throws<ArgumentOutOfRangeException>(() => VerifySignature(
+                "body"u8,
+                CreateSignedHeaders(now),
+                "secret",
+                new Guid("11111111-1111-1111-1111-111111111111"),
+                "audit",
+                "/security-events?tenant=contoso",
+                new StaticTimeProvider(now),
+                new AshlarSecurityEventWebhookVerificationOptions { TimestampTolerance = TimeSpan.FromTicks(-1) }));
+        }
+    }
+
+    [Test]
+    public void AddSigningHeadersRemovesStaleSignatureHeadersCaseInsensitively()
+    {
+        var headers = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["x-ashlar-signature"] = new string('0', 67),
+            ["x-ashlar-signature-timestamp"] = "1"
+        };
+
+        AddSigningHeaders(
+            headers,
+            "audit",
+            "secret",
+            allowUnsigned: false,
+            Guid.Empty,
+            DateTimeOffset.FromUnixTimeSeconds(1_700_000_000),
+            new Uri("https://example.test/security-events"),
+            "body"u8,
+            DateTimeOffset.FromUnixTimeSeconds(1_800_000_000));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers, Does.Not.ContainKey("x-ashlar-signature"));
+            Assert.That(headers, Does.Not.ContainKey("x-ashlar-signature-timestamp"));
+            Assert.That(headers, Does.ContainKey(AshlarSecurityEventWebhookSignature.SignatureHeaderName));
+            Assert.That(headers, Does.ContainKey(AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName));
+        }
+    }
+
+    [Test]
+    public void AddSigningHeadersSupportsEmptyHeaderDictionary()
+    {
+        var headers = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        AddSigningHeaders(
+            headers,
+            "audit",
+            "secret",
+            allowUnsigned: false,
+            Guid.Empty,
+            DateTimeOffset.FromUnixTimeSeconds(1_700_000_000),
+            new Uri("https://example.test/security-events"),
+            "body"u8,
+            DateTimeOffset.FromUnixTimeSeconds(1_800_000_000));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers, Does.ContainKey(AshlarSecurityEventWebhookSignature.SignatureHeaderName));
+            Assert.That(headers, Does.ContainKey(AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName));
+        }
     }
 
     [Test]
@@ -134,6 +456,19 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         await handler.HandleAsync(CreateEvent());
 
         Assert.That(transport.Requests, Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public void DeliveryFactoryRejectsUnsignedEndpointUnlessExplicitlyAllowed()
+    {
+        var endpoint = CreateEndpoint();
+        endpoint.SharedSecret = null;
+        var factory = new AshlarSecurityEventWebhookDeliveryFactory(Options.Create(CreateOptions(endpoint)));
+
+        Assert.Throws<InvalidOperationException>(() => factory.CreateDeliveries(CreateEvent()));
+
+        endpoint.AllowUnsigned = true;
+        Assert.That(factory.CreateDeliveries(CreateEvent()).Single().Headers, Does.Not.ContainKey(AshlarSecurityEventWebhookSignature.SignatureHeaderName));
     }
 
     [Test]
@@ -464,7 +799,14 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     [Test]
     public void CreateSignatureThrowsForNullSecret()
     {
-        var exception = Assert.Throws<ArgumentNullException>(() => AshlarSecurityEventWebhookSender.CreateSignature(null!, []));
+        var exception = Assert.Throws<ArgumentNullException>(() => AshlarSecurityEventWebhookSignature.CreateSignature(
+            null!,
+            [],
+            DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch,
+            Guid.Empty,
+            "audit",
+            "/security-events"));
 
         Assert.That(exception?.ParamName, Is.EqualTo("sharedSecret"));
     }
@@ -497,6 +839,73 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         return options;
     }
 
+    private static Dictionary<string, string> CreateSignedHeaders(DateTimeOffset now)
+    {
+        return new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName] =
+                AshlarSecurityEventWebhookSignature.FormatTimestamp(now),
+            [AshlarSecurityEventWebhookSignature.EventTimestampHeaderName] =
+                DateTimeOffset.FromUnixTimeSeconds(1_700_000_000).ToString("O"),
+            [AshlarSecurityEventWebhookSignature.SignatureHeaderName] =
+                AshlarSecurityEventWebhookSignature.CreateSignature(
+                    "secret",
+                    "body"u8,
+                    now,
+                    DateTimeOffset.FromUnixTimeSeconds(1_700_000_000),
+                    new Guid("11111111-1111-1111-1111-111111111111"),
+                    "audit",
+                    "/security-events?tenant=contoso")
+        };
+    }
+
+    private static AshlarSecurityEventWebhookVerificationResult VerifySignature(
+        ReadOnlySpan<byte> body,
+        IReadOnlyDictionary<string, string> headers,
+        string? sharedSecret,
+        Guid eventId,
+        string endpointName,
+        string destinationPathAndQuery,
+        TimeProvider timeProvider,
+        AshlarSecurityEventWebhookVerificationOptions? options = null)
+    {
+        return AshlarSecurityEventWebhookSignature.Verify(new AshlarSecurityEventWebhookVerificationRequest
+        {
+            Body = body.ToArray(),
+            Headers = headers,
+            SharedSecret = sharedSecret,
+            EventId = eventId,
+            EndpointName = endpointName,
+            DestinationPathAndQuery = destinationPathAndQuery,
+            TimeProvider = timeProvider,
+            Options = options
+        });
+    }
+
+    private static void AddSigningHeaders(
+        IDictionary<string, string> headers,
+        string endpointName,
+        string? sharedSecret,
+        bool allowUnsigned,
+        Guid eventId,
+        DateTimeOffset occurredAt,
+        Uri uri,
+        ReadOnlySpan<byte> body,
+        DateTimeOffset signatureTimestamp)
+    {
+        AshlarSecurityEventWebhookDeliveryFactory.AddSigningHeaders(headers, new AshlarSecurityEventWebhookSigningRequest
+        {
+            EndpointName = endpointName,
+            SharedSecret = sharedSecret,
+            AllowUnsigned = allowUnsigned,
+            EventId = eventId,
+            OccurredAt = occurredAt,
+            Uri = uri,
+            Body = body.ToArray(),
+            SignatureTimestamp = signatureTimestamp
+        });
+    }
+
     private static AshlarSecurityEventWebhookEndpointOptions CreateEndpoint(
         string name = "audit",
         string uri = "https://example.test/security-events")
@@ -504,19 +913,28 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         return new AshlarSecurityEventWebhookEndpointOptions
         {
             Name = name,
-            Uri = new Uri(uri)
+            Uri = new Uri(uri),
+            SharedSecret = "shared-secret"
         };
     }
 
     private static AshlarSecurityEventWebhookDelivery CreateDelivery(Uri? uri = null)
     {
         var payload = CreatePayload();
+        var body = AshlarSecurityEventWebhookPayloadSerializer.Serialize(payload);
+        var endpoint = new AshlarSecurityEventWebhookEndpointOptions
+        {
+            Name = "audit",
+            Uri = uri ?? new Uri("https://example.test/security-events"),
+            SharedSecret = "shared-secret"
+        };
         return new AshlarSecurityEventWebhookDelivery(
             "audit",
-            uri ?? new Uri("https://example.test/security-events"),
+            endpoint.Uri,
             TimeSpan.FromSeconds(10),
-            AshlarSecurityEventWebhookDeliveryFactory.CreateHeaders("audit", null, payload, []),
-            payload);
+            AshlarSecurityEventWebhookDeliveryFactory.CreateHeaders(endpoint, payload, body, DateTimeOffset.FromUnixTimeSeconds(1_800_000_000)),
+            payload,
+            body);
     }
 
     private const string AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName = "Ashlar.Webhooks.Tests.Outbox";
@@ -527,7 +945,11 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         return new AshlarSecurityEventWebhookOutboxEntry
         {
             Id = Guid.NewGuid(),
+            EndpointName = delivery.EndpointName,
             Uri = uri ?? delivery.Uri.ToString(),
+            EventId = delivery.Payload.Id,
+            EventType = delivery.Payload.EventType,
+            OccurredAt = delivery.Payload.OccurredAt,
             Body = delivery.Body.ToArray(),
             Headers = headers ?? JsonSerializer.Serialize(delivery.Headers),
             TimeoutMs = (long)delivery.Timeout.TotalMilliseconds,
@@ -537,16 +959,23 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
 
     private static AshlarSecurityEventWebhookOutboxDispatchContext CreateOutboxDispatchContext(
         HttpMessageHandler transport,
-        IAshlarSecurityEventWebhookDeliveryObserver? observer)
+        IAshlarSecurityEventWebhookDeliveryObserver? observer,
+        List<Exception>? failed = null)
     {
         return new AshlarSecurityEventWebhookOutboxDispatchContext(
             new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
             AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
             3,
             (_, _) => Task.CompletedTask,
-            (_, _, _) => Task.CompletedTask,
+            (_, exception, _) =>
+            {
+                failed?.Add(exception);
+                return Task.CompletedTask;
+            },
             (_, _, _, _) => { },
             CreateDestinationValidator(),
+            CreateOptions(CreateEndpoint()),
+            TimeProvider.System,
             observer);
     }
 
@@ -614,6 +1043,14 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         {
             IReadOnlyList<IPAddress> addresses = [IPAddress.Parse("93.184.216.34")];
             return ValueTask.FromResult(addresses);
+        }
+    }
+
+    private sealed class StaticTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow()
+        {
+            return now;
         }
     }
 
@@ -743,6 +1180,8 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             },
             (_, _, _, _) => { },
             CreateDestinationValidator(),
+            CreateOptions(CreateEndpoint()),
+            TimeProvider.System,
             observer);
         var entry = CreateOutboxEntry();
 
@@ -784,6 +1223,8 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             },
             (_, _, _, _) => { },
             CreateDestinationValidator(),
+            CreateOptions(CreateEndpoint()),
+            TimeProvider.System,
             new ThrowingDeliveryObserver());
 
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
@@ -831,6 +1272,8 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             },
             (_, _, _, _) => { },
             CreateDestinationValidator(),
+            CreateOptions(CreateEndpoint()),
+            TimeProvider.System,
             observer);
 
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
@@ -860,7 +1303,9 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
                 return Task.CompletedTask;
             },
             (_, _, _, _) => { },
-            CreateDestinationValidator());
+            CreateDestinationValidator(),
+            CreateOptions(CreateEndpoint()),
+            TimeProvider.System);
 
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
             CreateOutboxEntry(uri: "https://127.0.0.1/security-events"),
@@ -897,10 +1342,10 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(observer.Attempts, Has.Count.EqualTo(2));
-            Assert.That(observer.Attempts[0].EventType, Is.Null);
-            Assert.That(observer.Attempts[0].EndpointName, Is.Null);
-            Assert.That(observer.Attempts[1].EventType, Is.Null);
-            Assert.That(observer.Attempts[1].EndpointName, Is.Null);
+            Assert.That(observer.Attempts[0].EventType, Is.EqualTo("ashlar.sign_in.failed"));
+            Assert.That(observer.Attempts[0].EndpointName, Is.EqualTo("audit"));
+            Assert.That(observer.Attempts[1].EventType, Is.EqualTo("ashlar.sign_in.failed"));
+            Assert.That(observer.Attempts[1].EndpointName, Is.EqualTo("audit"));
         }
     }
 
@@ -920,6 +1365,251 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, valid with { MarkAsFailedAsync = null! }, CancellationToken.None));
             Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, valid with { LogDeliveryFailed = null! }, CancellationToken.None));
             Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, valid with { DestinationValidator = null! }, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, valid with { WebhookOptions = null! }, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, valid with { TimeProvider = null! }, CancellationToken.None));
+        }
+    }
+
+    [Test]
+    public async Task SharedOutboxDispatchRecordsFailureWithNullPersistedHeaders()
+    {
+        var observer = new RecordingDeliveryObserver();
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
+            CreateOutboxEntry(headers: "null", uri: "https://127.0.0.1/security-events"),
+            CreateOutboxDispatchContext(new RecordingHttpMessageHandler(HttpStatusCode.Accepted), observer),
+            CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observer.Attempts.Single().Outcome, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.FailureOutcome));
+            Assert.That(observer.Attempts.Single().EventType, Is.EqualTo("ashlar.sign_in.failed"));
+            Assert.That(observer.Attempts.Single().EndpointName, Is.EqualTo("audit"));
+        }
+    }
+
+    [Test]
+    public async Task SharedOutboxDispatchRecordsFailureWithPresentHeadersMissingEventMetadata()
+    {
+        var observer = new RecordingDeliveryObserver();
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
+            CreateOutboxEntry(headers: """{"X-Other":"value"}""", uri: "https://127.0.0.1/security-events"),
+            CreateOutboxDispatchContext(new RecordingHttpMessageHandler(HttpStatusCode.Accepted), observer),
+            CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observer.Attempts.Single().Outcome, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.FailureOutcome));
+            Assert.That(observer.Attempts.Single().EventType, Is.EqualTo("ashlar.sign_in.failed"));
+            Assert.That(observer.Attempts.Single().EndpointName, Is.EqualTo("audit"));
+        }
+    }
+
+    [Test]
+    public async Task SharedOutboxDispatchRecordsEntryMetadataWhenHeaderDeserializationFails()
+    {
+        var observer = new RecordingDeliveryObserver();
+        var failed = new List<Exception>();
+        var context = CreateOutboxDispatchContext(
+            new RecordingHttpMessageHandler(HttpStatusCode.Accepted),
+            observer,
+            failed);
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
+            CreateOutboxEntry(headers: "{"),
+            context,
+            CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failed.Single(), Is.TypeOf<JsonException>());
+            Assert.That(observer.Attempts.Single().Outcome, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.FailureOutcome));
+            Assert.That(observer.Attempts.Single().FailureKind, Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.ExceptionFailureKind));
+            Assert.That(observer.Attempts.Single().EventType, Is.EqualTo("ashlar.sign_in.failed"));
+            Assert.That(observer.Attempts.Single().EndpointName, Is.EqualTo("audit"));
+        }
+    }
+
+    [Test]
+    public async Task SharedOutboxDispatchRegeneratesSigningHeadersBeforeSend()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var sent = new List<Guid>();
+        var endpoint = CreateEndpoint();
+        endpoint.SharedSecret = "current-secret";
+        var context = new AshlarSecurityEventWebhookOutboxDispatchContext(
+            new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
+            AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
+            3,
+            (id, _) =>
+            {
+                sent.Add(id);
+                return Task.CompletedTask;
+            },
+            (_, _, _) => Task.CompletedTask,
+            (_, _, _, _) => { },
+            CreateDestinationValidator(),
+            CreateOptions(endpoint),
+            TimeProvider.System);
+        var entry = CreateOutboxEntry();
+        var staleHeaders = JsonSerializer.Deserialize<Dictionary<string, string>>(entry.Headers)!;
+        staleHeaders[AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName.ToLowerInvariant()] = "1";
+        staleHeaders[AshlarSecurityEventWebhookSignature.SignatureHeaderName.ToLowerInvariant()] =
+            AshlarSecurityEventWebhookSignature.CreateSignature(
+                "stale-secret",
+                entry.Body,
+                DateTimeOffset.FromUnixTimeSeconds(1),
+                entry.OccurredAt,
+                entry.EventId,
+                entry.EndpointName,
+                "/security-events");
+        entry = CreateOutboxEntry(JsonSerializer.Serialize(staleHeaders));
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(entry, context, CancellationToken.None);
+
+        var request = transport.Requests.Single();
+        var sentHeaders = request.Headers.ToDictionary(header => header.Key, header => header.Value.Single(), StringComparer.Ordinal);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sent, Has.Count.EqualTo(1));
+            Assert.That(sentHeaders[AshlarSecurityEventWebhookSignature.SignatureHeaderName], Is.Not.EqualTo(staleHeaders[AshlarSecurityEventWebhookSignature.SignatureHeaderName.ToLowerInvariant()]));
+            Assert.That(VerifySignature(
+                request.Body,
+                sentHeaders,
+                "current-secret",
+                entry.EventId,
+                entry.EndpointName,
+                "/security-events",
+                TimeProvider.System,
+                new AshlarSecurityEventWebhookVerificationOptions { TimestampTolerance = TimeSpan.FromMinutes(10) }).IsValid, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task SharedOutboxDispatchIgnoresPersistedContentTypeHeader()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var entry = CreateOutboxEntry();
+        var headers = JsonSerializer.Deserialize<Dictionary<string, string>>(entry.Headers)!;
+        headers["Content-Type"] = "text/plain";
+        headers["Content-Length"] = "1";
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
+            CreateOutboxEntry(JsonSerializer.Serialize(headers)),
+            CreateOutboxDispatchContext(transport, new RecordingDeliveryObserver()),
+            CancellationToken.None);
+
+        var request = transport.Requests.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.ContentType, Is.EqualTo("application/json"));
+            Assert.That(request.Headers, Does.Not.ContainKey("Content-Type"));
+            Assert.That(request.Headers, Does.Not.ContainKey("Content-Length"));
+        }
+    }
+
+    [Test]
+    public async Task SharedOutboxDispatchReplacesDifferentlyCasedPersistedBaseHeaders()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var entry = CreateOutboxEntry();
+        var headers = JsonSerializer.Deserialize<Dictionary<string, string>>(entry.Headers)!;
+        headers.Remove("X-Ashlar-Event-Id");
+        headers.Remove("X-Ashlar-Event-Type");
+        headers.Remove("X-Ashlar-Webhook-Endpoint");
+        headers.Remove("X-Ashlar-Timestamp");
+        headers["x-ashlar-event-id"] = Guid.Empty.ToString("D");
+        headers["x-ashlar-event-type"] = "wrong.event";
+        headers["x-ashlar-webhook-endpoint"] = "wrong";
+        headers["x-ashlar-timestamp"] = DateTimeOffset.UnixEpoch.ToString("O");
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
+            CreateOutboxEntry(JsonSerializer.Serialize(headers)),
+            CreateOutboxDispatchContext(transport, new RecordingDeliveryObserver()),
+            CancellationToken.None);
+
+        var request = transport.Requests.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.Headers.Keys.Count(key => string.Equals(key, "X-Ashlar-Event-Id", StringComparison.OrdinalIgnoreCase)), Is.EqualTo(1));
+            Assert.That(request.Headers.Keys.Count(key => string.Equals(key, "X-Ashlar-Event-Type", StringComparison.OrdinalIgnoreCase)), Is.EqualTo(1));
+            Assert.That(request.Headers.Keys.Count(key => string.Equals(key, "X-Ashlar-Webhook-Endpoint", StringComparison.OrdinalIgnoreCase)), Is.EqualTo(1));
+            Assert.That(request.Headers.Keys.Count(key => string.Equals(key, "X-Ashlar-Timestamp", StringComparison.OrdinalIgnoreCase)), Is.EqualTo(1));
+            Assert.That(request.Headers["x-ashlar-event-id"].Single(), Is.EqualTo(entry.EventId.ToString("D")));
+            Assert.That(request.Headers["x-ashlar-event-type"].Single(), Is.EqualTo(entry.EventType));
+            Assert.That(request.Headers["x-ashlar-webhook-endpoint"].Single(), Is.EqualTo(entry.EndpointName));
+            Assert.That(request.Headers["x-ashlar-timestamp"].Single(), Is.EqualTo(entry.OccurredAt.ToString("O")));
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task SharedOutboxDispatchFailsSafelyWhenSigningConfigurationIsUnavailable(bool missingEndpoint)
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var failed = new List<Exception>();
+        var options = missingEndpoint ? new AshlarSecurityEventWebhookOptions() : CreateOptions(CreateEndpoint());
+        if (!missingEndpoint)
+        {
+            options.Endpoints.Single().SharedSecret = null;
+        }
+
+        var context = new AshlarSecurityEventWebhookOutboxDispatchContext(
+            new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
+            AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
+            3,
+            (_, _) => Task.CompletedTask,
+            (_, exception, _) =>
+            {
+                failed.Add(exception);
+                return Task.CompletedTask;
+            },
+            (_, _, _, _) => { },
+            CreateDestinationValidator(),
+            options,
+            TimeProvider.System);
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Is.Empty);
+            Assert.That(failed.Single(), Is.TypeOf<InvalidOperationException>());
+            if (missingEndpoint)
+            {
+                Assert.That(failed.Single().Message, Does.Contain("'audit'"));
+            }
+        }
+    }
+
+    [Test]
+    public async Task SharedOutboxDispatchRequiresExactEndpointIdentityForSigning()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var failed = new List<Exception>();
+        var endpoint = CreateEndpoint();
+        endpoint.Name = "Audit";
+        var context = new AshlarSecurityEventWebhookOutboxDispatchContext(
+            new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
+            AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
+            3,
+            (_, _) => Task.CompletedTask,
+            (_, exception, _) =>
+            {
+                failed.Add(exception);
+                return Task.CompletedTask;
+            },
+            (_, _, _, _) => { },
+            CreateDestinationValidator(),
+            CreateOptions(endpoint),
+            TimeProvider.System);
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Is.Empty);
+            Assert.That(failed.Single(), Is.TypeOf<InvalidOperationException>());
+            Assert.That(failed.Single().Message, Does.Contain("'audit'"));
         }
     }
 

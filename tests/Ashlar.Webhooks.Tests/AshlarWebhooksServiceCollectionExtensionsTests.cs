@@ -22,7 +22,8 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
                 options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions
                 {
                     Name = "audit",
-                    Uri = new Uri("https://example.test/security-events")
+                    Uri = new Uri("https://example.test/security-events"),
+                    SharedSecret = "shared-secret"
                 });
             },
             builder =>
