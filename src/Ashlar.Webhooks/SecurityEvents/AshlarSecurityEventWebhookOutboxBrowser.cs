@@ -158,15 +158,10 @@ public static class AshlarSecurityEventWebhookOutboxBrowser
             throw new ArgumentOutOfRangeException(nameof(request), request.Offset, "Offset cannot be negative.");
         }
 
-        if (request.Statuses != null)
+        var unsupportedStatus = request.Statuses?.Where(static status => !Enum.IsDefined(status)).Cast<AshlarSecurityEventWebhookOutboxStatus?>().FirstOrDefault();
+        if (unsupportedStatus.HasValue)
         {
-            foreach (var status in request.Statuses)
-            {
-                if (!Enum.IsDefined(status))
-                {
-                    throw new ArgumentOutOfRangeException(nameof(request), status, "Status is not supported.");
-                }
-            }
+            throw new ArgumentOutOfRangeException(nameof(request), unsupportedStatus.Value, "Status is not supported.");
         }
     }
 
