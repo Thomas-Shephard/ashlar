@@ -146,6 +146,25 @@ internal sealed class RememberedMfaDeviceServiceTests
     }
 
     [Test]
+    public async Task RevokeAllAsyncNormalizesNonBlankReason()
+    {
+        var fixture = CreateFixture(generator: new SequenceTokenGenerator("selector", "verifier"));
+        var user = fixture.Users.AddUser();
+        var created = await fixture.Service.CreateAsync(user.Id, new CreateRememberedMfaDeviceRequest());
+        fixture.Events.Events.Clear();
+
+        var count = await fixture.Service.RevokeAllAsync(user.Id, new RevokeAllRememberedMfaDevicesRequest { Reason = " reset " });
+        var revokeAllEvent = fixture.Events.Events.Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.EqualTo(1));
+            Assert.That(fixture.Repository.Devices.Single(d => d.Id == created.Value!.Device.Id).RevocationReason, Is.EqualTo("reset"));
+            Assert.That(revokeAllEvent.Properties?["reason"], Is.EqualTo("reset"));
+        }
+    }
+
+    [Test]
     public async Task CreateAsyncRejectsDeviceLimitAndInvalidLifetimeSafely()
     {
         var fixture = CreateFixture(
