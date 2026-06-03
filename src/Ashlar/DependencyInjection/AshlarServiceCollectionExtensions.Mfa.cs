@@ -166,6 +166,10 @@ public static partial class AshlarServiceCollectionExtensions
         }
 
         services.TryAddScoped<IMfaPolicyEvaluator, MfaPolicyEvaluator>();
+        services.TryAddScoped(provider => new AuthenticationOrchestratorDependencies(
+            provider.GetService<IOptions<MfaOrchestrationOptions>>(),
+            provider,
+            provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationOrchestrator>>()));
         services.TryAddScoped<IAuthenticationOrchestrator, AuthenticationOrchestrator>();
 
         return services;

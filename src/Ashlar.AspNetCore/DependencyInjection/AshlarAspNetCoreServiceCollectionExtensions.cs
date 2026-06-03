@@ -2,6 +2,7 @@
 
 using Ashlar.AspNetCore.Authentication;
 using Ashlar.AspNetCore.Authorization;
+using Ashlar.AspNetCore.Mfa;
 using Ashlar.AspNetCore.Security.Encryption;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Security.Encryption;
@@ -52,6 +53,27 @@ public static class AshlarAspNetCoreServiceCollectionExtensions
                 CopyOptions(configuredOptions, options);
                 ValidateOptions(options);
             });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds Ashlar ASP.NET Core remembered MFA device cookie services.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configure">The optional remembered MFA device cookie options callback.</param>
+    /// <returns>The service collection.</returns>
+    public static IServiceCollection AddAshlarAspNetCoreRememberedMfaDeviceCookies(
+        this IServiceCollection services,
+        Action<AshlarRememberedMfaDeviceCookieOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddHttpContextAccessor();
+        services.TryAddScoped<IAshlarRememberedMfaDeviceCookieManager, AshlarRememberedMfaDeviceCookieManager>();
+        services.AddOptions<AshlarRememberedMfaDeviceCookieOptions>()
+            .Configure(options => configure?.Invoke(options))
+            .PostConfigure(ValidateRememberedMfaDeviceCookieOptions);
 
         return services;
     }
@@ -140,24 +162,37 @@ public static class AshlarAspNetCoreServiceCollectionExtensions
         ArgumentException.ThrowIfNullOrWhiteSpace(options.CookieName);
         ArgumentException.ThrowIfNullOrWhiteSpace(options.ClaimsIssuer);
 
-        if (!options.CookieName.StartsWith("__Host-", StringComparison.Ordinal))
+        ValidateHostCookieOptions(options.CookieName, options.Cookie, nameof(options));
+    }
+
+    private static void ValidateRememberedMfaDeviceCookieOptions(AshlarRememberedMfaDeviceCookieOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.CookieName);
+
+        ValidateHostCookieOptions(options.CookieName, options.Cookie, nameof(options));
+    }
+
+    private static void ValidateHostCookieOptions(string cookieName, CookieBuilder cookie, string parameterName)
+    {
+        if (!cookieName.StartsWith("__Host-", StringComparison.Ordinal))
         {
             return;
         }
 
-        if (!string.IsNullOrEmpty(options.Cookie.Domain))
+        if (!string.IsNullOrEmpty(cookie.Domain))
         {
-            throw new ArgumentException("__Host- cookies must not set Cookie.Domain.", nameof(options));
+            throw new ArgumentException("__Host- cookies must not set Cookie.Domain.", parameterName);
         }
 
-        if (!string.Equals(options.Cookie.Path, "/", StringComparison.Ordinal))
+        if (!string.Equals(cookie.Path, "/", StringComparison.Ordinal))
         {
-            throw new ArgumentException("__Host- cookies must set Cookie.Path to '/'.", nameof(options));
+            throw new ArgumentException("__Host- cookies must set Cookie.Path to '/'.", parameterName);
         }
 
-        if (options.Cookie.SecurePolicy != CookieSecurePolicy.Always)
+        if (cookie.SecurePolicy != CookieSecurePolicy.Always)
         {
-            throw new ArgumentException("__Host- cookies must set Cookie.SecurePolicy to Always.", nameof(options));
+            throw new ArgumentException("__Host- cookies must set Cookie.SecurePolicy to Always.", parameterName);
         }
     }
 }

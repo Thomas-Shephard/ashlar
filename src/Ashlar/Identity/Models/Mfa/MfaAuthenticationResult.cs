@@ -36,13 +36,15 @@ public enum MfaAuthenticationStatus
 /// <param name="RequiredFactors">The MFA factors still required for the handshake.</param>
 /// <param name="Claims">Additional claims produced by the authentication provider.</param>
 /// <param name="ErrorMessage">A display-safe error message when authentication fails.</param>
+/// <param name="FreshMfaSatisfied">Whether this result came from a fresh MFA ceremony.</param>
 public sealed record MfaAuthenticationResult(
     MfaAuthenticationStatus Status,
     IUser? User = null,
     string? HandshakeToken = null,
     IEnumerable<string>? RequiredFactors = null,
     IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims = null,
-    string? ErrorMessage = null)
+    string? ErrorMessage = null,
+    bool FreshMfaSatisfied = false)
 {
     /// <summary>
     /// Initializes a new instance of the MFA authentication result class from single-value claims.
@@ -53,14 +55,16 @@ public sealed record MfaAuthenticationResult(
     /// <param name="requiredFactors">The MFA factors still required for the handshake.</param>
     /// <param name="claims">Additional single-value claims produced by the authentication provider.</param>
     /// <param name="errorMessage">A display-safe error message when authentication fails.</param>
+    /// <param name="freshMfaSatisfied">Whether this result came from a fresh MFA ceremony.</param>
     public MfaAuthenticationResult(
         MfaAuthenticationStatus status,
         IUser? user,
         string? handshakeToken,
         IEnumerable<string>? requiredFactors,
         IDictionary<string, string>? claims,
-        string? errorMessage = null)
-        : this(status, user, handshakeToken, requiredFactors, AuthenticationClaims.FromSingleValues(claims), errorMessage)
+        string? errorMessage = null,
+        bool freshMfaSatisfied = false)
+        : this(status, user, handshakeToken, requiredFactors, AuthenticationClaims.FromSingleValues(claims), errorMessage, freshMfaSatisfied)
     {
     }
 }

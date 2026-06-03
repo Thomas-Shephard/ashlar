@@ -2,6 +2,7 @@ using Ashlar.AspNetCore.Security.Encryption;
 using Ashlar.Identity.Features.Credentials;
 using Ashlar.Security.Encryption;
 using Ashlar.AspNetCore.Authorization;
+using Ashlar.AspNetCore.Mfa;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -119,6 +120,91 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarAspNetCoreRememberedMfaDeviceCookiesShouldRegisterManagerAndOptions()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarAspNetCoreRememberedMfaDeviceCookies(options =>
+        {
+            options.CookieName = "Ashlar.RememberedMfaDevice";
+            options.Cookie.Path = "/app";
+            options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertDescriptor<IAshlarRememberedMfaDeviceCookieManager, AshlarRememberedMfaDeviceCookieManager>(services, ServiceLifetime.Scoped);
+            Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor => descriptor.ServiceType == typeof(IConfigureOptions<AshlarRememberedMfaDeviceCookieOptions>)));
+        }
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<AshlarRememberedMfaDeviceCookieOptions>>().Value;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.CookieName, Is.EqualTo("Ashlar.RememberedMfaDevice"));
+            Assert.That(options.Cookie.Path, Is.EqualTo("/app"));
+            Assert.That(options.Cookie.SecurePolicy, Is.EqualTo(CookieSecurePolicy.SameAsRequest));
+        }
+    }
+
+    [Test]
+    public void AddAshlarAspNetCoreRememberedMfaDeviceCookiesShouldUseStandardOptionsPipeline()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarAspNetCoreRememberedMfaDeviceCookies();
+        services.Configure<AshlarRememberedMfaDeviceCookieOptions>(options => options.CookieName = "Ashlar.RememberedMfaDevice");
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertDescriptor<IAshlarRememberedMfaDeviceCookieManager, AshlarRememberedMfaDeviceCookieManager>(services, ServiceLifetime.Scoped);
+            Assert.That(services, Has.None.Matches<ServiceDescriptor>(descriptor =>
+                descriptor.ServiceType == typeof(IOptions<AshlarRememberedMfaDeviceCookieOptions>) &&
+                descriptor.ImplementationInstance != null));
+        }
+
+        using var provider = services.BuildServiceProvider();
+        Assert.That(provider.GetRequiredService<IOptions<AshlarRememberedMfaDeviceCookieOptions>>().Value.CookieName, Is.EqualTo("Ashlar.RememberedMfaDevice"));
+    }
+
+    [Test]
+    public void AddAshlarAspNetCoreRememberedMfaDeviceCookiesShouldResolveSecureDefaults()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarAspNetCoreRememberedMfaDeviceCookies();
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<AshlarRememberedMfaDeviceCookieOptions>>().Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.CookieName, Is.EqualTo(AshlarRememberedMfaDeviceCookieDefaults.CookieName));
+            Assert.That(options.Cookie.SecurePolicy, Is.EqualTo(CookieSecurePolicy.Always));
+        }
+    }
+
+    [Test]
+    public void AddAshlarAspNetCoreRememberedMfaDeviceCookiesShouldRejectInvalidHostCookieOptions()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentNullException>(() => AshlarAspNetCoreServiceCollectionExtensions.AddAshlarAspNetCoreRememberedMfaDeviceCookies(null!));
+            Assert.Throws<ArgumentException>(() => ResolveRememberedMfaDeviceCookieOptions(options => options.CookieName = " "));
+            Assert.Throws<ArgumentException>(() => ResolveRememberedMfaDeviceCookieOptions(options => options.Cookie.Domain = "example.com"));
+            Assert.Throws<ArgumentException>(() => ResolveRememberedMfaDeviceCookieOptions(options => options.Cookie.Path = "/app"));
+            Assert.Throws<ArgumentException>(() => ResolveRememberedMfaDeviceCookieOptions(options => options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest));
+            Assert.DoesNotThrow(() => new ServiceCollection().AddAshlarAspNetCoreRememberedMfaDeviceCookies(options =>
+            {
+                options.CookieName = "Ashlar.RememberedMfaDevice";
+                options.Cookie.Domain = "example.com";
+                options.Cookie.Path = "/app";
+                options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+            }));
+        }
+    }
+
+    [Test]
     public void AddAshlarDataProtectionSecretProtectorRegistersSecretProtectorWhenDataProtectionProviderIsConfigured()
     {
         var dataProtectionProvider = new Mock<IDataProtectionProvider>();
@@ -170,6 +256,14 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
             descriptor.ServiceType == typeof(TService)
             && descriptor.ImplementationType == typeof(TImplementation)
             && descriptor.Lifetime == lifetime));
+    }
+
+    private static AshlarRememberedMfaDeviceCookieOptions ResolveRememberedMfaDeviceCookieOptions(Action<AshlarRememberedMfaDeviceCookieOptions> configure)
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarAspNetCoreRememberedMfaDeviceCookies(configure);
+        using var provider = services.BuildServiceProvider();
+        return provider.GetRequiredService<IOptions<AshlarRememberedMfaDeviceCookieOptions>>().Value;
     }
 
     private static void AssertDescriptor<TService>(IServiceCollection services, ServiceLifetime lifetime)

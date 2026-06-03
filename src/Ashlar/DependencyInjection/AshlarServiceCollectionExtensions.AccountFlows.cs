@@ -161,7 +161,8 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetRequiredService<IdentityInfrastructureContext>(),
             provider.GetRequiredService<IAuthenticationSessionRepository>(),
             provider.GetRequiredService<PasswordHasherSelector>(),
-            provider.GetRequiredService<IdentityAuditContext>()));
+            provider.GetRequiredService<IdentityAuditContext>(),
+            provider.GetService<IRememberedMfaDeviceService>()));
         services.TryAddScoped<IPasswordResetService, PasswordResetService>();
 
         return services;

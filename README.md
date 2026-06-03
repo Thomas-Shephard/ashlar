@@ -685,7 +685,18 @@ services.AddAshlarRememberedMfaDevices(options =>
 
 Applications must also register a durable provider such as PostgreSQL or SQLite. Remembered MFA devices use a selector/verifier token design, store only hashed verifier material, return the raw token only when creating a device, and expose only safe metadata when listed.
 
-Remembered MFA devices are not credentials, are not authentication factors, and do not satisfy fresh MFA or step-up requirements. They are intended only as a future orchestration input for skipping routine MFA after a prior successful MFA ceremony. This core service does not issue or read ASP.NET cookies and is not yet consumed by Ashlar's MFA orchestration.
+Applications can opt MFA orchestration into remembered-device validation:
+
+```csharp
+services.Configure<MfaOrchestrationOptions>(options =>
+{
+    options.EnableRememberedMfaDevices = true;
+});
+```
+
+When enabled, a valid remembered MFA device token can skip routine policy-required MFA only after primary authentication succeeds. It does not create a session, extend a session, bypass provider-forced MFA, or satisfy fresh MFA or step-up requirements. Invalid, expired, revoked, wrong-user, or wrong-tenant tokens fall back to the normal MFA challenge.
+
+ASP.NET Core applications can use `IAshlarRememberedMfaDeviceCookieManager` to issue a distinct remembered MFA device cookie after a successful fresh MFA ceremony and explicit user opt-in, enrich an `AuthenticationContext` on later sign-ins, clear the cookie, or revoke the current remembered device. The cookie contains only the raw remembered-device token.
 
 ## Multi-Factor Authentication (MFA) Handshakes
 Ashlar includes a generic infrastructure for tracking multi-step authentication flows through "handshakes". This allows primary authentication (like passwords) to be verified while requiring additional factors before a final session is issued.
