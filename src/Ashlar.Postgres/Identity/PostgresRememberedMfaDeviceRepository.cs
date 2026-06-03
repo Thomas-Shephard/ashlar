@@ -10,6 +10,7 @@ namespace Ashlar.Postgres.Identity;
 public sealed class PostgresRememberedMfaDeviceRepository(IPostgresConnectionProvider connectionProvider) : IRememberedMfaDeviceRepository
 {
     private const string TenantFilterSql = " AND (@TenantFilter = FALSE OR tenant_id IS NOT DISTINCT FROM @TenantId)";
+    private const string UserIdParameter = "UserId";
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
     public async Task CreateAsync(RememberedMfaDevice device, CancellationToken cancellationToken = default)
@@ -83,7 +84,7 @@ public sealed class PostgresRememberedMfaDeviceRepository(IPostgresConnectionPro
 
         sql += " ORDER BY created_at DESC, id LIMIT 100";
         var parameters = CreateTenantParameters(tenant);
-        parameters.Add("UserId", userId);
+        parameters.Add(UserIdParameter, userId);
         parameters.Add("Now", now);
 
         var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -103,7 +104,7 @@ public sealed class PostgresRememberedMfaDeviceRepository(IPostgresConnectionPro
         }
 
         var parameters = CreateTenantParameters(tenant);
-        parameters.Add("UserId", userId);
+        parameters.Add(UserIdParameter, userId);
         parameters.Add("Now", now);
 
         var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -122,7 +123,7 @@ public sealed class PostgresRememberedMfaDeviceRepository(IPostgresConnectionPro
             """;
         var parameters = CreateTenantParameters(tenant);
         parameters.Add("Id", deviceId);
-        parameters.Add("UserId", userId);
+        parameters.Add(UserIdParameter, userId);
         parameters.Add("RevokedAt", revokedAt);
         parameters.Add("Reason", reason);
 
@@ -141,7 +142,7 @@ public sealed class PostgresRememberedMfaDeviceRepository(IPostgresConnectionPro
             WHERE user_id = @UserId AND revoked_at IS NULL
             """;
         var parameters = CreateTenantParameters(tenant);
-        parameters.Add("UserId", userId);
+        parameters.Add(UserIdParameter, userId);
         parameters.Add("RevokedAt", revokedAt);
         parameters.Add("Reason", reason);
 

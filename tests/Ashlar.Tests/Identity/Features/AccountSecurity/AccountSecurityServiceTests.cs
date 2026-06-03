@@ -635,9 +635,9 @@ internal sealed class AccountSecurityServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rememberedDevice.UserId, Is.EqualTo(_userId));
-            Assert.That(typeof(UserCredential).IsAssignableFrom(rememberedDevice.GetType()), Is.False);
-            Assert.That(typeof(IAuthenticationProvider).IsAssignableFrom(rememberedDevice.GetType()), Is.False);
-            Assert.That(typeof(ISecondaryAuthenticationFactorProvider).IsAssignableFrom(rememberedDevice.GetType()), Is.False);
+            Assert.That(rememberedDevice, Is.Not.InstanceOf<UserCredential>());
+            Assert.That(rememberedDevice, Is.Not.InstanceOf<IAuthenticationProvider>());
+            Assert.That(rememberedDevice, Is.Not.InstanceOf<ISecondaryAuthenticationFactorProvider>());
             Assert.That(result.Value?.CredentialInventory.Select(item => item.DisplayName), Is.EqualTo(ExpectedPasswordCredential));
             Assert.That(result.Value?.AdditionalVerificationFactors, Is.Empty);
             Assert.That(result.Value?.IsMfaConfigured, Is.False);

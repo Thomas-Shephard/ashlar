@@ -169,7 +169,7 @@ internal abstract class RememberedMfaDeviceRepositoryContractTests : ProviderCon
         using (Assert.EnterMultipleScope())
         {
             Assert.That(one, Is.True);
-            Assert.That(wrongTenant, Is.EqualTo(0));
+            Assert.That(wrongTenant, Is.Zero);
             Assert.That(count, Is.EqualTo(1));
             Assert.That(fetched1!.RevokedAt, Is.EqualTo(first));
             Assert.That(fetched1.RevocationReason, Is.EqualTo("first"));

@@ -22,6 +22,8 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
 
     private const char TokenSeparator = '.';
     private const int MaxTokenPartLength = 512;
+    private const string UserIdEmptyMessage = "User ID cannot be empty.";
+    private const string RememberedDeviceIdProperty = "remembered_device_id";
     private readonly IRememberedMfaDeviceRepository _repository;
     private readonly IUserRepository _userRepository;
     private readonly ISecureTokenGenerator _tokenGenerator;
@@ -65,7 +67,7 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
 
     public async Task<Result<RememberedMfaDeviceCreated>> CreateAsync(Guid userId, CreateRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
     {
-        if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        if (userId == Guid.Empty) throw new ArgumentException(UserIdEmptyMessage, nameof(userId));
         ArgumentNullException.ThrowIfNull(request);
         var tenant = request.Tenant ?? TenantContext.Global;
         var displayName = ValidateOptionalLength(request.DisplayName, _options.MaxDisplayNameLength, $"{nameof(request)}.{nameof(request.DisplayName)}");
@@ -115,7 +117,7 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
             UserId = userId,
             TenantId = tenant.TenantId,
             Audit = request.Audit,
-            Properties = new Dictionary<string, string> { ["remembered_device_id"] = device.Id.ToString("D") }
+            Properties = new Dictionary<string, string> { [RememberedDeviceIdProperty] = device.Id.ToString("D") }
         }, ct));
 
         await transaction.CommitAsync(cancellationToken);
@@ -124,7 +126,7 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
 
     public async Task<ValidateRememberedMfaDeviceResult> ValidateAsync(Guid userId, ValidateRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
     {
-        if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        if (userId == Guid.Empty) throw new ArgumentException(UserIdEmptyMessage, nameof(userId));
         ArgumentNullException.ThrowIfNull(request);
         var tenant = request.Tenant ?? TenantContext.Global;
 
@@ -187,7 +189,7 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
             UserId = userId,
             TenantId = tenant.TenantId,
             Audit = request.Audit,
-            Properties = new Dictionary<string, string> { ["remembered_device_id"] = device.Id.ToString("D") }
+            Properties = new Dictionary<string, string> { [RememberedDeviceIdProperty] = device.Id.ToString("D") }
         }, ct));
 
         await transaction.CommitAsync(cancellationToken);
@@ -196,7 +198,7 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
 
     public async Task<IReadOnlyList<RememberedMfaDeviceSummary>> ListAsync(Guid userId, ListRememberedMfaDevicesRequest request, CancellationToken cancellationToken = default)
     {
-        if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        if (userId == Guid.Empty) throw new ArgumentException(UserIdEmptyMessage, nameof(userId));
         ArgumentNullException.ThrowIfNull(request);
         var tenant = request.Tenant ?? TenantContext.Global;
         var now = _timeProvider.GetUtcNow();
@@ -206,7 +208,7 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
 
     public async Task<bool> RevokeAsync(Guid userId, RevokeRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
     {
-        if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        if (userId == Guid.Empty) throw new ArgumentException(UserIdEmptyMessage, nameof(userId));
         ArgumentNullException.ThrowIfNull(request);
         if (request.DeviceId == Guid.Empty) throw new ArgumentException("Device ID cannot be empty.", $"{nameof(request)}.{nameof(request.DeviceId)}");
         var reason = ValidateOptionalLength(request.Reason, _options.MaxRevocationReasonLength, $"{nameof(request)}.{nameof(request.Reason)}");
@@ -232,7 +234,7 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
 
     public async Task<int> RevokeAllAsync(Guid userId, RevokeAllRememberedMfaDevicesRequest request, CancellationToken cancellationToken = default)
     {
-        if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        if (userId == Guid.Empty) throw new ArgumentException(UserIdEmptyMessage, nameof(userId));
         ArgumentNullException.ThrowIfNull(request);
         var reason = ValidateOptionalLength(request.Reason, _options.MaxRevocationReasonLength, $"{nameof(request)}.{nameof(request.Reason)}");
 
@@ -299,7 +301,7 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
             FailureReason = status.ToString(),
             Properties = device == null
                 ? new Dictionary<string, string> { ["status"] = status.ToString() }
-                : new Dictionary<string, string> { ["status"] = status.ToString(), ["remembered_device_id"] = device.Id.ToString("D") }
+                : new Dictionary<string, string> { ["status"] = status.ToString(), [RememberedDeviceIdProperty] = device.Id.ToString("D") }
         }, cancellationToken);
     }
 
@@ -336,7 +338,7 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
 
     private static Dictionary<string, string> CreateRevocationProperties(Guid deviceId, string? reason)
     {
-        var properties = new Dictionary<string, string> { ["remembered_device_id"] = deviceId.ToString("D") };
+        var properties = new Dictionary<string, string> { [RememberedDeviceIdProperty] = deviceId.ToString("D") };
         if (reason != null)
         {
             properties["reason"] = reason;

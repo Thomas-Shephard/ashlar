@@ -11,6 +11,7 @@ namespace Ashlar.Sqlite.Identity;
 public sealed class SqliteRememberedMfaDeviceRepository(ISqliteConnectionProvider connectionProvider) : IRememberedMfaDeviceRepository
 {
     private const string TenantFilterSql = " AND ($tenantFilter = 0 OR (($tenantId IS NULL AND tenant_id IS NULL) OR tenant_id = $tenantId))";
+    private const string UserIdParameter = "$userId";
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
     public async Task CreateAsync(RememberedMfaDevice device, CancellationToken cancellationToken = default)
@@ -93,7 +94,7 @@ public sealed class SqliteRememberedMfaDeviceRepository(ISqliteConnectionProvide
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
         command.CommandText = sql;
-        command.AddGuidParameter("$userId", userId);
+        command.AddGuidParameter(UserIdParameter, userId);
         command.AddDateTimeOffsetParameter("$now", now);
         AddTenantFilter(command, tenant);
 
@@ -119,7 +120,7 @@ public sealed class SqliteRememberedMfaDeviceRepository(ISqliteConnectionProvide
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
         command.CommandText = sql + ";";
-        command.AddGuidParameter("$userId", userId);
+        command.AddGuidParameter(UserIdParameter, userId);
         command.AddDateTimeOffsetParameter("$now", now);
         AddTenantFilter(command, tenant);
         return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
@@ -138,7 +139,7 @@ public sealed class SqliteRememberedMfaDeviceRepository(ISqliteConnectionProvide
         command.Transaction = handle.Transaction;
         command.CommandText = sql + TenantFilterSql + ";";
         command.AddGuidParameter("$id", deviceId);
-        command.AddGuidParameter("$userId", userId);
+        command.AddGuidParameter(UserIdParameter, userId);
         AddTenantFilter(command, tenant);
         AddRevocationParameters(command, revokedAt, reason);
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
@@ -156,7 +157,7 @@ public sealed class SqliteRememberedMfaDeviceRepository(ISqliteConnectionProvide
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
         command.CommandText = sql + TenantFilterSql + ";";
-        command.AddGuidParameter("$userId", userId);
+        command.AddGuidParameter(UserIdParameter, userId);
         AddTenantFilter(command, tenant);
         AddRevocationParameters(command, revokedAt, reason);
         return await command.ExecuteNonQueryAsync(cancellationToken);
@@ -171,7 +172,7 @@ public sealed class SqliteRememberedMfaDeviceRepository(ISqliteConnectionProvide
     private static void AddDeviceParameters(SqliteCommand command, RememberedMfaDevice device)
     {
         command.AddGuidParameter("$id", device.Id);
-        command.AddGuidParameter("$userId", device.UserId);
+        command.AddGuidParameter(UserIdParameter, device.UserId);
         command.AddNullableGuidParameter("$tenantId", device.TenantId);
         command.AddParameter("$tokenSelector", device.TokenSelector);
         command.AddParameter("$tokenHash", device.TokenHash);
