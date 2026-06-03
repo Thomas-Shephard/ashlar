@@ -190,6 +190,26 @@ public static class AshlarSecurityEventTypes
     /// </summary>
     public const string TotpDisabled = "ashlar.totp.disabled";
     /// <summary>
+    /// Defines the remembered MFA device created value.
+    /// </summary>
+    public const string RememberedMfaDeviceCreated = "ashlar.remembered_mfa_device.created";
+    /// <summary>
+    /// Defines the remembered MFA device used value.
+    /// </summary>
+    public const string RememberedMfaDeviceUsed = "ashlar.remembered_mfa_device.used";
+    /// <summary>
+    /// Defines the remembered MFA device rejected value.
+    /// </summary>
+    public const string RememberedMfaDeviceRejected = "ashlar.remembered_mfa_device.rejected";
+    /// <summary>
+    /// Defines the remembered MFA device revoked value.
+    /// </summary>
+    public const string RememberedMfaDeviceRevoked = "ashlar.remembered_mfa_device.revoked";
+    /// <summary>
+    /// Defines the remembered MFA devices revoked value.
+    /// </summary>
+    public const string RememberedMfaDevicesRevoked = "ashlar.remembered_mfa_device.revoked_for_user";
+    /// <summary>
     /// Defines the passkey registration started value.
     /// </summary>
     public const string PasskeyRegistrationStarted = "ashlar.passkey.registration_started";

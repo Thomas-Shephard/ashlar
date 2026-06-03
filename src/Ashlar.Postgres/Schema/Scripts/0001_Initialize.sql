@@ -158,6 +158,34 @@ CREATE OR REPLACE TRIGGER trg_ashlar_sessions_user_tenant_match
 BEFORE INSERT OR UPDATE OF user_id, tenant_id ON ashlar_sessions
 FOR EACH ROW EXECUTE FUNCTION ashlar_enforce_user_tenant_match();
 
+CREATE TABLE IF NOT EXISTS ashlar_remembered_mfa_devices (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
+    tenant_id UUID,
+    token_selector TEXT NOT NULL UNIQUE,
+    token_hash TEXT NOT NULL,
+    display_name TEXT,
+    created_at TIMESTAMPTZ NOT NULL,
+    last_used_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    revocation_reason TEXT,
+    CONSTRAINT ck_ashlar_remembered_mfa_devices_expiry_after_creation CHECK (expires_at >= created_at),
+    CONSTRAINT ck_ashlar_remembered_mfa_devices_revocation_reason_requires_revocation CHECK (revocation_reason IS NULL OR revoked_at IS NOT NULL)
+);
+
+CREATE INDEX IF NOT EXISTS ix_ashlar_remembered_mfa_devices_user_id ON ashlar_remembered_mfa_devices (user_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_remembered_mfa_devices_active_user_created ON ashlar_remembered_mfa_devices (user_id, tenant_id, created_at DESC, id)
+WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_remembered_mfa_devices_expires_at ON ashlar_remembered_mfa_devices (expires_at, id, user_id)
+WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_remembered_mfa_devices_revoked_at ON ashlar_remembered_mfa_devices (revoked_at)
+WHERE revoked_at IS NOT NULL;
+
+CREATE OR REPLACE TRIGGER trg_ashlar_remembered_mfa_devices_user_tenant_match
+BEFORE INSERT OR UPDATE OF user_id, tenant_id ON ashlar_remembered_mfa_devices
+FOR EACH ROW EXECUTE FUNCTION ashlar_enforce_user_tenant_match();
+
 CREATE TABLE IF NOT EXISTS ashlar_rate_limits (
     purpose TEXT NOT NULL,
     rate_limit_key TEXT NOT NULL,

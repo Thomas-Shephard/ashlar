@@ -82,6 +82,11 @@ internal abstract class ProviderContractFixture
         return serviceProvider.GetRequiredService<IAuthenticationSessionRepository>();
     }
 
+    protected static IRememberedMfaDeviceRepository GetRememberedMfaDeviceRepository(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IRememberedMfaDeviceRepository>();
+    }
+
     protected static IAuthenticationSessionAdministrationRepository GetAuthenticationSessionAdministrationRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IAuthenticationSessionAdministrationRepository>();
