@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Ashlar.Testing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -145,6 +146,202 @@ internal sealed class AuthenticationOrchestratorTests
                 r.RequiredFactors.SequenceEqual(requiredFactors) &&
                 r.Metadata != null && r.Metadata["claim:test"] == "[\"value\"]"),
             It.IsAny<CancellationToken>()));
+    }
+
+    [Test]
+    public async Task AuthenticateAsyncSkipsPolicyRequiredMfaWhenRememberedDeviceTokenIsValid()
+    {
+        var tenantId = Guid.NewGuid();
+        var context = _context with { TenantId = tenantId };
+        context = context.WithRememberedMfaDeviceToken("remembered-token");
+        var claims = new Dictionary<string, string> { ["test"] = "value" };
+        _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success, claims));
+        _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
+        var rememberedMfaDeviceService = CreateRememberedDeviceService(
+            new ValidateRememberedMfaDeviceResult(
+                true,
+                CreateRememberedDeviceSummary(_userMock.Object.Id, tenantId),
+                RememberedMfaDeviceValidationStatus.Success));
+        var orchestrator = CreateOrchestratorWithRememberedDevices(rememberedMfaDeviceService.Object);
+
+        var result = await orchestrator.AuthenticateAsync(
+            context,
+            _assertionMock.Object,
+            new MfaOrchestrationOptions { EnableRememberedMfaDevices = true });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
+            Assert.That(result.User, Is.EqualTo(_userMock.Object));
+            Assert.That(result.Claims?["test"], Is.EqualTo(["value"]));
+            Assert.That(result.HandshakeToken, Is.Null);
+            Assert.That(result.RequiredFactors, Is.Null);
+            Assert.That(result.FreshMfaSatisfied, Is.False);
+        }
+
+        rememberedMfaDeviceService.Verify(s => s.ValidateAsync(
+            _userMock.Object.Id,
+            It.Is<ValidateRememberedMfaDeviceRequest>(r =>
+                r.Token == "remembered-token" &&
+                r.Tenant != null &&
+                r.Tenant.TenantId == tenantId &&
+                r.Audit != null &&
+                r.Audit.ActorUserId == _userMock.Object.Id &&
+                r.Audit.IpAddress == _context.IpAddress &&
+                r.Audit.UserAgent == _context.UserAgent &&
+                r.Audit.CorrelationId == _context.CorrelationId),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _handshakeServiceMock.Verify(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [TestCase(RememberedMfaDeviceValidationStatus.Failed)]
+    [TestCase(RememberedMfaDeviceValidationStatus.Expired)]
+    [TestCase(RememberedMfaDeviceValidationStatus.Revoked)]
+    [TestCase(RememberedMfaDeviceValidationStatus.WrongUser)]
+    [TestCase(RememberedMfaDeviceValidationStatus.WrongTenant)]
+    public async Task AuthenticateAsyncFallsBackToMfaHandshakeWhenRememberedDeviceTokenIsInvalid(RememberedMfaDeviceValidationStatus status)
+    {
+        var context = _context.WithRememberedMfaDeviceToken("remembered-token");
+        _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+        _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
+        _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(
+                new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>()),
+                "handshake-token")));
+        var rememberedMfaDeviceService = CreateRememberedDeviceService(new ValidateRememberedMfaDeviceResult(false, null, status));
+        var orchestrator = CreateOrchestratorWithRememberedDevices(rememberedMfaDeviceService.Object);
+
+        var result = await orchestrator.AuthenticateAsync(
+            context,
+            _assertionMock.Object,
+            new MfaOrchestrationOptions { EnableRememberedMfaDevices = true });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.MfaRequired));
+            Assert.That(result.HandshakeToken, Is.EqualTo("handshake-token"));
+        }
+
+        _handshakeServiceMock.Verify(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task AuthenticateAsyncFallsBackToMfaHandshakeWhenRememberedDeviceTokenIsMissing()
+    {
+        _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+        _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
+        _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(
+                new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>()),
+                "handshake-token")));
+        var rememberedMfaDeviceService = CreateRememberedDeviceService(new ValidateRememberedMfaDeviceResult(true, CreateRememberedDeviceSummary(_userMock.Object.Id, null), RememberedMfaDeviceValidationStatus.Success));
+        var orchestrator = CreateOrchestratorWithRememberedDevices(rememberedMfaDeviceService.Object);
+
+        var result = await orchestrator.AuthenticateAsync(
+            _context,
+            _assertionMock.Object,
+            new MfaOrchestrationOptions { EnableRememberedMfaDevices = true });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.MfaRequired));
+            Assert.That(result.HandshakeToken, Is.EqualTo("handshake-token"));
+        }
+
+        rememberedMfaDeviceService.Verify(s => s.ValidateAsync(It.IsAny<Guid>(), It.IsAny<ValidateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task AuthenticateAsyncDoesNotUseRememberedDeviceWhenSupportIsNotEnabled()
+    {
+        var context = _context.WithRememberedMfaDeviceToken("remembered-token");
+        _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+        _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
+        _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(
+                new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>()),
+                "handshake-token")));
+        var rememberedMfaDeviceService = CreateRememberedDeviceService(new ValidateRememberedMfaDeviceResult(true, CreateRememberedDeviceSummary(_userMock.Object.Id, null), RememberedMfaDeviceValidationStatus.Success));
+        var orchestrator = CreateOrchestratorWithRememberedDevices(rememberedMfaDeviceService.Object);
+
+        var result = await orchestrator.AuthenticateAsync(context, _assertionMock.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.MfaRequired));
+            Assert.That(result.HandshakeToken, Is.EqualTo("handshake-token"));
+        }
+
+        rememberedMfaDeviceService.Verify(s => s.ValidateAsync(It.IsAny<Guid>(), It.IsAny<ValidateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task AuthenticateAsyncFallsBackToMfaHandshakeWhenRememberedSupportHasNoRegisteredService()
+    {
+        var context = _context.WithRememberedMfaDeviceToken("remembered-token");
+        _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+        _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
+        _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(
+                new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>()),
+                "handshake-token")));
+        var orchestrator = new AuthenticationOrchestrator(
+            _pipelineMock.Object,
+            _factorPipelineMock.Object,
+            _handshakeServiceMock.Object,
+            _policyEvaluatorMock.Object,
+            _providerRegistry,
+            serviceProvider: new ServiceCollection().BuildServiceProvider());
+
+        var result = await orchestrator.AuthenticateAsync(
+            context,
+            _assertionMock.Object,
+            new MfaOrchestrationOptions { EnableRememberedMfaDevices = true });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.MfaRequired));
+            Assert.That(result.HandshakeToken, Is.EqualTo("handshake-token"));
+        }
+    }
+
+    [Test]
+    public async Task AuthenticateAsyncDoesNotBypassProviderForcedMfaWithRememberedDeviceToken()
+    {
+        var context = _context.WithRememberedMfaDeviceToken("remembered-token");
+        _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResponse(false, _userMock.Object, AuthenticationStatus.MfaRequired));
+        _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
+        _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(
+                new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>()),
+                "handshake-token")));
+        var rememberedMfaDeviceService = CreateRememberedDeviceService(new ValidateRememberedMfaDeviceResult(true, CreateRememberedDeviceSummary(_userMock.Object.Id, null), RememberedMfaDeviceValidationStatus.Success));
+        var orchestrator = CreateOrchestratorWithRememberedDevices(rememberedMfaDeviceService.Object);
+
+        var result = await orchestrator.AuthenticateAsync(
+            context,
+            _assertionMock.Object,
+            new MfaOrchestrationOptions { EnableRememberedMfaDevices = true });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.MfaRequired));
+            Assert.That(result.HandshakeToken, Is.EqualTo("handshake-token"));
+        }
+
+        rememberedMfaDeviceService.Verify(s => s.ValidateAsync(It.IsAny<Guid>(), It.IsAny<ValidateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -580,6 +777,7 @@ internal sealed class AuthenticationOrchestratorTests
             Assert.That(result.User, Is.EqualTo(_userMock.Object));
             Assert.That(result.Claims?["role"], Is.EqualTo(["admin"]));
             Assert.That(result.Claims?["new_claim"], Is.EqualTo(["new_val"]));
+            Assert.That(result.FreshMfaSatisfied, Is.True);
         }
     }
 
@@ -1255,6 +1453,34 @@ internal sealed class AuthenticationOrchestratorTests
     }
 
     [Test]
+    public void RememberedMfaDeviceContextHelpersHandleNullAndWhitespaceItems()
+    {
+        var context = new AuthenticationContext().WithRememberedMfaDeviceToken("remembered-token");
+        var contextWithExistingItems = new AuthenticationContext(Items: new Dictionary<string, string> { ["other"] = "value" })
+            .WithRememberedMfaDeviceToken("existing-items-token");
+        var blankContext = new AuthenticationContext(Items: new Dictionary<string, string>
+        {
+            [AuthenticationContextItemKeys.RememberedMfaDeviceToken] = " "
+        });
+
+        var found = context.TryGetRememberedMfaDeviceToken(out var token);
+        var blankFound = blankContext.TryGetRememberedMfaDeviceToken(out var blankToken);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(token, Is.EqualTo("remembered-token"));
+            Assert.That(contextWithExistingItems.Items?["other"], Is.EqualTo("value"));
+            Assert.That(contextWithExistingItems.Items?[AuthenticationContextItemKeys.RememberedMfaDeviceToken], Is.EqualTo("existing-items-token"));
+            Assert.That(blankFound, Is.False);
+            Assert.That(blankToken, Is.Empty);
+            Assert.Throws<ArgumentNullException>(() => AuthenticationContextItemExtensions.WithRememberedMfaDeviceToken(null!, "token"));
+            Assert.Throws<ArgumentException>(() => new AuthenticationContext().WithRememberedMfaDeviceToken(" "));
+            Assert.Throws<ArgumentNullException>(() => AuthenticationContextItemExtensions.TryGetRememberedMfaDeviceToken(null!, out _));
+        }
+    }
+
+    [Test]
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
     public void MfaPolicyEvaluatorThrowsWhenArgumentsAreNull()
     {
@@ -1349,6 +1575,35 @@ internal sealed class AuthenticationOrchestratorTests
             _policyEvaluatorMock.Object,
             _providerRegistry,
             logger: logger);
+    }
+
+    private AuthenticationOrchestrator CreateOrchestratorWithRememberedDevices(IRememberedMfaDeviceService rememberedMfaDeviceService)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(rememberedMfaDeviceService);
+        var provider = services.BuildServiceProvider();
+        return new AuthenticationOrchestrator(
+            _pipelineMock.Object,
+            _factorPipelineMock.Object,
+            _handshakeServiceMock.Object,
+            _policyEvaluatorMock.Object,
+            _providerRegistry,
+            serviceProvider: provider);
+    }
+
+    private static Mock<IRememberedMfaDeviceService> CreateRememberedDeviceService(ValidateRememberedMfaDeviceResult result)
+    {
+        var service = new Mock<IRememberedMfaDeviceService>();
+        service
+            .Setup(s => s.ValidateAsync(It.IsAny<Guid>(), It.IsAny<ValidateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+        return service;
+    }
+
+    private static RememberedMfaDeviceSummary CreateRememberedDeviceSummary(Guid userId, Guid? tenantId)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return new RememberedMfaDeviceSummary(Guid.NewGuid(), userId, tenantId, null, now, now, now.AddDays(30), null, null, true);
     }
 
     private static AuthenticationProviderRegistry CreateProviderRegistry(params IAuthenticationProvider[] providers)

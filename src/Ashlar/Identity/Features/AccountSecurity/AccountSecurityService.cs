@@ -29,6 +29,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
     private readonly IUserSecurityEventSummaryRepository? _securityEventSummaryRepository;
     private readonly IMfaPolicyEvaluator _mfaPolicyEvaluator;
     private readonly IAuthenticationProviderRegistry? _providerRegistry;
+    private readonly IRememberedMfaDeviceService? _rememberedMfaDevices;
     private readonly AuthenticationProviderKey _totpProvider;
     private readonly AuthenticationProviderKey _recoveryCodeProvider;
 
@@ -61,6 +62,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         _securityEventSummaryRepository = dependencies.SecurityEventSummaryRepository;
         _mfaPolicyEvaluator = dependencies.MfaPolicyEvaluator ?? new MfaPolicyEvaluator();
         _providerRegistry = dependencies.ProviderRegistry;
+        _rememberedMfaDevices = dependencies.RememberedMfaDeviceService;
         _totpProvider = dependencies.TotpOptions?.Value.ProviderKey ?? TotpOptions.DefaultProviderKey;
         _recoveryCodeProvider = dependencies.RecoveryCodeOptions?.Value.ProviderKey ?? new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode");
     }
@@ -95,6 +97,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         }
 
         var revoked = await _sessionService.RevokeSessionsForUserAsync(userId, request.Reason ?? AdminReason, request.Tenant, request.Audit, cancellationToken);
+        await RevokeRememberedMfaDevicesAsync(userId, request, request.Reason ?? AdminReason, cancellationToken);
         var result = new AccountSecurityOperationResult(userId, changed, SessionsRevoked: revoked);
         transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserDisabled, result, request, ct));
 
@@ -189,6 +192,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         var revoked = await _credentialRepository.RevokeCredentialsAsync(userId, _totpProvider.Type, _totpProvider.Name, cancellationToken);
         revoked += await _credentialRepository.RevokeCredentialsAsync(userId, _recoveryCodeProvider.Type, _recoveryCodeProvider.Name, cancellationToken);
+        await RevokeRememberedMfaDevicesAsync(userId, request, request.Reason ?? AdminReason, cancellationToken);
         var result = new AccountSecurityOperationResult(userId, CredentialsRevoked: revoked);
         transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserMfaReset, result, request, ct));
 
@@ -517,6 +521,19 @@ public sealed class AccountSecurityService : IAccountSecurityService
             Properties = properties
         }, cancellationToken);
     }
+
+    private Task<int> RevokeRememberedMfaDevicesAsync(Guid userId, AccountSecurityOperationRequest request, string reason, CancellationToken cancellationToken)
+    {
+        return _rememberedMfaDevices?.RevokeAllAsync(
+            userId,
+            new RevokeAllRememberedMfaDevicesRequest
+            {
+                Tenant = request.Tenant,
+                Reason = reason,
+                Audit = request.Audit
+            },
+            cancellationToken) ?? Task.FromResult(0);
+    }
 }
 
 /// <summary>
@@ -529,6 +546,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
 /// <param name="RecoveryCodeOptions">The recovery code options value.</param>
 /// <param name="MfaPolicyEvaluator">The MFA policy evaluator value.</param>
 /// <param name="ProviderRegistry">The authentication provider registry.</param>
+/// <param name="RememberedMfaDeviceService">The remembered MFA device service.</param>
 public sealed record AccountSecurityServiceDependencies(
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,
@@ -536,4 +554,5 @@ public sealed record AccountSecurityServiceDependencies(
     IOptions<TotpOptions>? TotpOptions = null,
     IOptions<RecoveryCodeOptions>? RecoveryCodeOptions = null,
     IMfaPolicyEvaluator? MfaPolicyEvaluator = null,
-    IAuthenticationProviderRegistry? ProviderRegistry = null);
+    IAuthenticationProviderRegistry? ProviderRegistry = null,
+    IRememberedMfaDeviceService? RememberedMfaDeviceService = null);

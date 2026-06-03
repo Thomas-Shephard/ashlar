@@ -100,7 +100,8 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<IOptions<TotpOptions>>(),
             provider.GetService<IOptions<RecoveryCodeOptions>>(),
             provider.GetService<IMfaPolicyEvaluator>(),
-            provider.GetService<IAuthenticationProviderRegistry>()));
+            provider.GetService<IAuthenticationProviderRegistry>(),
+            provider.GetService<IRememberedMfaDeviceService>()));
         services.TryAddScoped<IAccountSecurityGuard, AllowAccountSecurityGuard>();
         services.TryAddScoped<IAccountSecurityService, AccountSecurityService>();
         services.TryAddScoped<IUserAdministrationService, UserAdministrationService>();

@@ -63,6 +63,33 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
+    public async Task DisableUserAsyncShouldRevokeRememberedMfaDevices()
+    {
+        var tenantId = Guid.NewGuid();
+        var request = CreateRequest("account-disabled", tenantId);
+        var rememberedDevices = new Mock<IRememberedMfaDeviceService>();
+        rememberedDevices
+            .Setup(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2);
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = tenantId };
+        var service = new AccountSecurityService(
+            _userRepository,
+            _userRepository,
+            Mock.Of<IAuthenticationSessionService>(),
+            new NullTransactionProvider(),
+            new AllowAccountSecurityGuard(),
+            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices.Object));
+
+        var result = await service.DisableUserAsync(_userId, request);
+
+        Assert.That(result.Succeeded, Is.True);
+        rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.Is<RevokeAllRememberedMfaDevicesRequest>(r =>
+            r.Tenant == request.Tenant &&
+            r.Reason == "account-disabled" &&
+            r.Audit == request.Audit), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
     public async Task DisableUserAsyncShouldUseSessionServiceNotifications()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
@@ -433,6 +460,33 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(_userRepository.Credentials.Single(c => c.ProviderType == ProviderType.Local).RevokedAt, Is.Null);
             Assert.That(_events.Events.Any(e => e.EventType == AshlarSecurityEventTypes.UserMfaReset), Is.True);
         }
+    }
+
+    [Test]
+    public async Task ResetMfaAsyncShouldRevokeRememberedMfaDevices()
+    {
+        var tenantId = Guid.NewGuid();
+        var request = CreateRequest("mfa-reset", tenantId);
+        var rememberedDevices = new Mock<IRememberedMfaDeviceService>();
+        rememberedDevices
+            .Setup(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(3);
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = tenantId };
+        var service = new AccountSecurityService(
+            _userRepository,
+            _userRepository,
+            Mock.Of<IAuthenticationSessionService>(),
+            new NullTransactionProvider(),
+            new AllowAccountSecurityGuard(),
+            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices.Object));
+
+        var result = await service.ResetMfaAsync(_userId, request);
+
+        Assert.That(result.Succeeded, Is.True);
+        rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.Is<RevokeAllRememberedMfaDevicesRequest>(r =>
+            r.Tenant == request.Tenant &&
+            r.Reason == "mfa-reset" &&
+            r.Audit == request.Audit), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]

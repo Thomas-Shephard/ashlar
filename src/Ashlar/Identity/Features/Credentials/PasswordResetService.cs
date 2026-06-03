@@ -321,6 +321,7 @@ internal sealed class PasswordResetService : IPasswordResetService
             sessionsRevoked = await _dependencies.SessionRepository.RevokeSessionsForUserAsync(user.Id, now, SessionRevocationReason, cancellationToken: cancellationToken);
         }
 
+        await RevokeRememberedMfaDevicesAsync(user.Id, context, cancellationToken);
         var result = new PasswordResetResult(user.Id, sessionsRevoked);
         transaction.OnCommitted(async ct =>
         {
@@ -373,6 +374,28 @@ internal sealed class PasswordResetService : IPasswordResetService
             context,
             userId,
             failureReason,
+            cancellationToken);
+    }
+
+    private Task<int> RevokeRememberedMfaDevicesAsync(Guid userId, AuthenticationContext context, CancellationToken cancellationToken)
+    {
+        if (_dependencies.RememberedMfaDeviceService == null)
+        {
+            return Task.FromResult(0);
+        }
+
+        return _dependencies.RememberedMfaDeviceService.RevokeAllAsync(
+            userId,
+            new RevokeAllRememberedMfaDevicesRequest
+            {
+                Tenant = context.TenantId.HasValue ? new TenantContext(context.TenantId.Value) : null,
+                Reason = SessionRevocationReason,
+                Audit = new AuditContext(
+                    ActorUserId: userId,
+                    IpAddress: context.IpAddress,
+                    UserAgent: context.UserAgent,
+                    CorrelationId: context.CorrelationId)
+            },
             cancellationToken);
     }
 
@@ -437,13 +460,15 @@ internal sealed class PasswordResetService : IPasswordResetService
 /// <param name="sessionRepository">Session persistence used for revocation.</param>
 /// <param name="passwordHasherSelector">Local password hashing selector.</param>
 /// <param name="audit">Audit and notification dependencies.</param>
+/// <param name="rememberedMfaDeviceService">Remembered MFA device revocation dependency.</param>
 internal sealed class PasswordResetDependencies(
     IdentityContext identityContext,
     SecureTokenContext tokenContext,
     IdentityInfrastructureContext infrastructure,
     IAuthenticationSessionRepository sessionRepository,
     PasswordHasherSelector passwordHasherSelector,
-    IdentityAuditContext audit)
+    IdentityAuditContext audit,
+    IRememberedMfaDeviceService? rememberedMfaDeviceService = null)
 {
     /// <summary>
     /// Gets core identity dependencies.
@@ -469,6 +494,10 @@ internal sealed class PasswordResetDependencies(
     /// Gets audit and notification dependencies.
     /// </summary>
     public IdentityAuditContext Audit { get; } = audit ?? throw new ArgumentNullException(nameof(audit));
+    /// <summary>
+    /// Gets the remembered MFA device service.
+    /// </summary>
+    public IRememberedMfaDeviceService? RememberedMfaDeviceService { get; } = rememberedMfaDeviceService;
     /// <summary>
     /// Gets the email sender.
     /// </summary>

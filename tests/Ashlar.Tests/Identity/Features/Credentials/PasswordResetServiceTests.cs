@@ -200,6 +200,59 @@ internal sealed class PasswordResetServiceTests
     }
 
     [Test]
+    public async Task ResetPasswordAsyncRevokesRememberedMfaDevices()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = CreateUser(tenantId: tenantId);
+        var rememberedDevices = new Mock<IRememberedMfaDeviceService>();
+        rememberedDevices
+            .Setup(s => s.RevokeAllAsync(user.Id, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2);
+        var fixture = CreateFixture(user, configure: options => options.RevokeSessions = false, rememberedMfaDeviceService: rememberedDevices.Object);
+        var context = new AuthenticationContext(TenantId: tenantId, IpAddress: "203.0.113.10", UserAgent: "unit-test", CorrelationId: "corr");
+        await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"), context);
+        var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
+
+        var result = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword }, context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixture.Sessions.RevokeAllCount, Is.Zero);
+        }
+
+        rememberedDevices.Verify(s => s.RevokeAllAsync(user.Id, It.Is<RevokeAllRememberedMfaDevicesRequest>(r =>
+            r.Tenant != null &&
+            r.Tenant.TenantId == tenantId &&
+            r.Reason == "Password reset" &&
+            r.Audit != null &&
+            r.Audit.ActorUserId == user.Id &&
+            r.Audit.IpAddress == "203.0.113.10" &&
+            r.Audit.UserAgent == "unit-test" &&
+            r.Audit.CorrelationId == "corr"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ResetPasswordAsyncRevokesRememberedMfaDevicesForGlobalUser()
+    {
+        var user = CreateUser();
+        var rememberedDevices = new Mock<IRememberedMfaDeviceService>();
+        rememberedDevices
+            .Setup(s => s.RevokeAllAsync(user.Id, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        var fixture = CreateFixture(user, rememberedMfaDeviceService: rememberedDevices.Object);
+        await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
+
+        var result = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword });
+
+        Assert.That(result.Succeeded, Is.True);
+        rememberedDevices.Verify(s => s.RevokeAllAsync(user.Id, It.Is<RevokeAllRememberedMfaDevicesRequest>(r =>
+            r.Tenant == null &&
+            r.Reason == "Password reset"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
     public async Task ResetPasswordAsyncRejectsExpiredConsumedRevokedMalformedAndWrongPurposeTokens()
     {
         await AssertResetFailureAsync(fixture => fixture.Time.Advance(TimeSpan.FromHours(3)), AshlarFailureCodes.InvalidOrExpiredToken);
@@ -597,7 +650,8 @@ internal sealed class PasswordResetServiceTests
         bool requestAllowed = true,
         bool verifyAllowed = true,
         Action<PasswordResetOptions>? configure = null,
-        bool transactionalEmailSender = false)
+        bool transactionalEmailSender = false,
+        IRememberedMfaDeviceService? rememberedMfaDeviceService = null)
     {
         var time = new FakeTimeProvider(DateTimeOffset.Parse("2026-05-25T12:00:00Z", CultureInfo.InvariantCulture));
         var store = new InMemoryUserCredentialStore(time);
@@ -625,7 +679,8 @@ internal sealed class PasswordResetServiceTests
             infrastructure,
             new RecordingSessionRepository(),
             new PasswordHasherSelector([new PasswordHasherV1()]),
-            auditContext);
+            auditContext,
+            rememberedMfaDeviceService);
         var options = new PasswordResetOptions { MinimumRequestDuration = TimeSpan.Zero };
         configure?.Invoke(options);
         var service = new PasswordResetService(dependencies, Options.Create(options));

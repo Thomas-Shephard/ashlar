@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Ashlar.Auditing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -14,6 +16,7 @@ namespace Ashlar.Identity.Features.Authentication;
 /// <param name="policyEvaluator">The policy evaluator value.</param>
 /// <param name="providerRegistry">The provider registry value.</param>
 /// <param name="globalOptions">The global options value.</param>
+/// <param name="serviceProvider">The optional service provider used for opt-in remembered MFA device support.</param>
 /// <param name="logger">The logger value.</param>
 public sealed class AuthenticationOrchestrator(
     IAuthenticationPipeline pipeline,
@@ -22,6 +25,7 @@ public sealed class AuthenticationOrchestrator(
     IMfaPolicyEvaluator policyEvaluator,
     IAuthenticationProviderRegistry providerRegistry,
     IOptions<MfaOrchestrationOptions>? globalOptions = null,
+    IServiceProvider? serviceProvider = null,
     ILogger<AuthenticationOrchestrator>? logger = null)
     : IAuthenticationOrchestrator
 {
@@ -54,6 +58,7 @@ public sealed class AuthenticationOrchestrator(
     private readonly IMfaPolicyEvaluator _policyEvaluator = policyEvaluator ?? throw new ArgumentNullException(nameof(policyEvaluator));
     private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
     private readonly MfaOrchestrationOptions _globalOptions = globalOptions?.Value ?? new MfaOrchestrationOptions();
+    private readonly IServiceProvider? _serviceProvider = serviceProvider;
     private readonly ILogger<AuthenticationOrchestrator> _logger = logger ?? NullLogger<AuthenticationOrchestrator>.Instance;
 
     public async Task<MfaAuthenticationResult> AuthenticateAsync(
@@ -186,7 +191,8 @@ public sealed class AuthenticationOrchestrator(
             return new MfaAuthenticationResult(
                 MfaAuthenticationStatus.Succeeded,
                 User: user,
-                Claims: claims);
+                Claims: claims,
+                FreshMfaSatisfied: true);
         }
 
         return new MfaAuthenticationResult(
@@ -214,6 +220,17 @@ public sealed class AuthenticationOrchestrator(
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: "MFA is required but no factors are configured.");
         }
 
+        if (response.Succeeded
+            && response.Status != AuthenticationStatus.MfaRequired
+            && policyEvaluation.IsMfaRequired
+            && await TryValidateRememberedMfaDeviceAsync(user, options, context, cancellationToken))
+        {
+            return new MfaAuthenticationResult(
+                MfaAuthenticationStatus.Succeeded,
+                user,
+                Claims: response.Claims);
+        }
+
         var result = await _handshakeService.CreateHandshakeAsync(
             new CreateAuthenticationHandshakeRequest(user.Id, requiredFactors, BuildClaimMetadata(response.Claims, primaryAssertion), context with { UserId = user.Id }),
             cancellationToken);
@@ -229,6 +246,44 @@ public sealed class AuthenticationOrchestrator(
             user,
             result.Value!.Token,
             result.Value!.Handshake.RequiredFactors);
+    }
+
+    private async Task<bool> TryValidateRememberedMfaDeviceAsync(
+        IUser user,
+        MfaOrchestrationOptions options,
+        AuthenticationContext context,
+        CancellationToken cancellationToken)
+    {
+        if (!options.EnableRememberedMfaDevices || _serviceProvider == null)
+        {
+            return false;
+        }
+
+        var rememberedMfaDeviceService = _serviceProvider.GetService<IRememberedMfaDeviceService>();
+        if (rememberedMfaDeviceService == null)
+        {
+            return false;
+        }
+
+        if (!context.TryGetRememberedMfaDeviceToken(out var token))
+        {
+            return false;
+        }
+
+        var result = await rememberedMfaDeviceService.ValidateAsync(
+            user.Id,
+            new ValidateRememberedMfaDeviceRequest(token)
+            {
+                Tenant = context.TenantId.HasValue ? new TenantContext(context.TenantId.Value) : null,
+                Audit = new AuditContext(
+                    ActorUserId: user.Id,
+                    IpAddress: context.IpAddress,
+                    UserAgent: context.UserAgent,
+                    CorrelationId: context.CorrelationId)
+            },
+            cancellationToken);
+
+        return result.Succeeded;
     }
 
     private static HashSet<string> ResolveRequiredFactors(
