@@ -162,25 +162,7 @@ public static class AshlarAspNetCoreServiceCollectionExtensions
         ArgumentException.ThrowIfNullOrWhiteSpace(options.CookieName);
         ArgumentException.ThrowIfNullOrWhiteSpace(options.ClaimsIssuer);
 
-        if (!options.CookieName.StartsWith("__Host-", StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        if (!string.IsNullOrEmpty(options.Cookie.Domain))
-        {
-            throw new ArgumentException("__Host- cookies must not set Cookie.Domain.", nameof(options));
-        }
-
-        if (!string.Equals(options.Cookie.Path, "/", StringComparison.Ordinal))
-        {
-            throw new ArgumentException("__Host- cookies must set Cookie.Path to '/'.", nameof(options));
-        }
-
-        if (options.Cookie.SecurePolicy != CookieSecurePolicy.Always)
-        {
-            throw new ArgumentException("__Host- cookies must set Cookie.SecurePolicy to Always.", nameof(options));
-        }
+        ValidateHostCookieOptions(options.CookieName, options.Cookie, nameof(options));
     }
 
     private static void ValidateRememberedMfaDeviceCookieOptions(AshlarRememberedMfaDeviceCookieOptions options)
@@ -188,24 +170,29 @@ public static class AshlarAspNetCoreServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(options);
         ArgumentException.ThrowIfNullOrWhiteSpace(options.CookieName);
 
-        if (!options.CookieName.StartsWith("__Host-", StringComparison.Ordinal))
+        ValidateHostCookieOptions(options.CookieName, options.Cookie, nameof(options));
+    }
+
+    private static void ValidateHostCookieOptions(string cookieName, CookieBuilder cookie, string parameterName)
+    {
+        if (!cookieName.StartsWith("__Host-", StringComparison.Ordinal))
         {
             return;
         }
 
-        if (!string.IsNullOrEmpty(options.Cookie.Domain))
+        if (!string.IsNullOrEmpty(cookie.Domain))
         {
-            throw new ArgumentException("__Host- cookies must not set Cookie.Domain.", nameof(options));
+            throw new ArgumentException("__Host- cookies must not set Cookie.Domain.", parameterName);
         }
 
-        if (!string.Equals(options.Cookie.Path, "/", StringComparison.Ordinal))
+        if (!string.Equals(cookie.Path, "/", StringComparison.Ordinal))
         {
-            throw new ArgumentException("__Host- cookies must set Cookie.Path to '/'.", nameof(options));
+            throw new ArgumentException("__Host- cookies must set Cookie.Path to '/'.", parameterName);
         }
 
-        if (options.Cookie.SecurePolicy != CookieSecurePolicy.Always)
+        if (cookie.SecurePolicy != CookieSecurePolicy.Always)
         {
-            throw new ArgumentException("__Host- cookies must set Cookie.SecurePolicy to Always.", nameof(options));
+            throw new ArgumentException("__Host- cookies must set Cookie.SecurePolicy to Always.", parameterName);
         }
     }
 }

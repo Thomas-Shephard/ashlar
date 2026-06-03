@@ -301,7 +301,7 @@ internal sealed class AuthenticationOrchestratorTests
             _handshakeServiceMock.Object,
             _policyEvaluatorMock.Object,
             _providerRegistry,
-            serviceProvider: new ServiceCollection().BuildServiceProvider());
+            new AuthenticationOrchestratorDependencies(ServiceProvider: new ServiceCollection().BuildServiceProvider()));
 
         var result = await orchestrator.AuthenticateAsync(
             context,
@@ -458,7 +458,7 @@ internal sealed class AuthenticationOrchestratorTests
             _handshakeServiceMock.Object,
             _policyEvaluatorMock.Object,
             _providerRegistry,
-            Options.Create(new MfaOrchestrationOptions { ProviderFactorsClaimName = "provider_factors" }));
+            new AuthenticationOrchestratorDependencies(Options.Create(new MfaOrchestrationOptions { ProviderFactorsClaimName = "provider_factors" })));
 
         var claims = new Dictionary<string, string> { ["provider_factors"] = "email_code" };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -1574,7 +1574,7 @@ internal sealed class AuthenticationOrchestratorTests
             _handshakeServiceMock.Object,
             _policyEvaluatorMock.Object,
             _providerRegistry,
-            logger: logger);
+            new AuthenticationOrchestratorDependencies(Logger: logger));
     }
 
     private AuthenticationOrchestrator CreateOrchestratorWithRememberedDevices(IRememberedMfaDeviceService rememberedMfaDeviceService)
@@ -1588,7 +1588,7 @@ internal sealed class AuthenticationOrchestratorTests
             _handshakeServiceMock.Object,
             _policyEvaluatorMock.Object,
             _providerRegistry,
-            serviceProvider: provider);
+            new AuthenticationOrchestratorDependencies(ServiceProvider: provider));
     }
 
     private static Mock<IRememberedMfaDeviceService> CreateRememberedDeviceService(ValidateRememberedMfaDeviceResult result)

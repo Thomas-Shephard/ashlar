@@ -15,24 +15,25 @@ namespace Ashlar.Identity.Features.Authentication;
 /// <param name="handshakeService">The handshake service value.</param>
 /// <param name="policyEvaluator">The policy evaluator value.</param>
 /// <param name="providerRegistry">The provider registry value.</param>
-/// <param name="globalOptions">The global options value.</param>
-/// <param name="serviceProvider">The optional service provider used for opt-in remembered MFA device support.</param>
-/// <param name="logger">The logger value.</param>
+/// <param name="dependencies">Optional operational dependencies.</param>
 public sealed class AuthenticationOrchestrator(
     IAuthenticationPipeline pipeline,
     IAuthenticationFactorPipeline factorPipeline,
     IAuthenticationHandshakeService handshakeService,
     IMfaPolicyEvaluator policyEvaluator,
     IAuthenticationProviderRegistry providerRegistry,
-    IOptions<MfaOrchestrationOptions>? globalOptions = null,
-    IServiceProvider? serviceProvider = null,
-    ILogger<AuthenticationOrchestrator>? logger = null)
+    AuthenticationOrchestratorDependencies? dependencies = null)
     : IAuthenticationOrchestrator
 {
     private const string PrimaryProviderTypeMetadataKey = "primary_provider_type";
     private const string PrimaryProviderNameMetadataKey = "primary_provider_name";
     private const string PrimaryCredentialKeyMetadataKey = "primary_credential_key";
     private const string FactorVerificationFailedMessage = "Factor verification failed.";
+
+    private static AuthenticationOrchestratorDependencies ValidateDependencies(AuthenticationOrchestratorDependencies? dependencies)
+    {
+        return dependencies ?? new AuthenticationOrchestratorDependencies();
+    }
 
     private static readonly Action<ILogger, string, Exception?> MfaFactorVerificationRejected =
         LoggerMessage.Define<string>(
@@ -57,9 +58,9 @@ public sealed class AuthenticationOrchestrator(
     private readonly IAuthenticationHandshakeService _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
     private readonly IMfaPolicyEvaluator _policyEvaluator = policyEvaluator ?? throw new ArgumentNullException(nameof(policyEvaluator));
     private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
-    private readonly MfaOrchestrationOptions _globalOptions = globalOptions?.Value ?? new MfaOrchestrationOptions();
-    private readonly IServiceProvider? _serviceProvider = serviceProvider;
-    private readonly ILogger<AuthenticationOrchestrator> _logger = logger ?? NullLogger<AuthenticationOrchestrator>.Instance;
+    private readonly MfaOrchestrationOptions _globalOptions = ValidateDependencies(dependencies).GlobalOptions?.Value ?? new MfaOrchestrationOptions();
+    private readonly IServiceProvider? _serviceProvider = ValidateDependencies(dependencies).ServiceProvider;
+    private readonly ILogger<AuthenticationOrchestrator> _logger = ValidateDependencies(dependencies).Logger ?? NullLogger<AuthenticationOrchestrator>.Instance;
 
     public async Task<MfaAuthenticationResult> AuthenticateAsync(
         AuthenticationContext context,
@@ -418,3 +419,14 @@ public sealed class AuthenticationOrchestrator(
         return requiredFactor != null;
     }
 }
+
+/// <summary>
+/// Optional dependencies for <see cref="AuthenticationOrchestrator"/>.
+/// </summary>
+/// <param name="GlobalOptions">The global orchestration options.</param>
+/// <param name="ServiceProvider">The service provider used for opt-in remembered MFA device support.</param>
+/// <param name="Logger">The logger.</param>
+public sealed record AuthenticationOrchestratorDependencies(
+    IOptions<MfaOrchestrationOptions>? GlobalOptions = null,
+    IServiceProvider? ServiceProvider = null,
+    ILogger<AuthenticationOrchestrator>? Logger = null);
