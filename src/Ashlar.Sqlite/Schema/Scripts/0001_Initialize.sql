@@ -169,6 +169,54 @@ BEGIN
     SELECT RAISE(ABORT, 'ashlar_sessions user tenant mismatch');
 END;
 
+CREATE TABLE IF NOT EXISTS ashlar_remembered_mfa_devices (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
+    tenant_id TEXT,
+    token_selector TEXT NOT NULL UNIQUE,
+    token_hash TEXT NOT NULL,
+    display_name TEXT,
+    created_at TEXT NOT NULL,
+    last_used_at TEXT,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT,
+    revocation_reason TEXT,
+    CONSTRAINT ck_ashlar_remembered_mfa_devices_expiry_after_creation CHECK (expires_at >= created_at),
+    CONSTRAINT ck_ashlar_remembered_mfa_devices_revocation_reason_requires_revocation CHECK (revocation_reason IS NULL OR revoked_at IS NOT NULL)
+);
+
+CREATE INDEX IF NOT EXISTS ix_ashlar_remembered_mfa_devices_user_id ON ashlar_remembered_mfa_devices (user_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_remembered_mfa_devices_active_user_created ON ashlar_remembered_mfa_devices (user_id, tenant_id, created_at DESC, id)
+WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_remembered_mfa_devices_expires_at ON ashlar_remembered_mfa_devices (expires_at, id, user_id) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_remembered_mfa_devices_revoked_at ON ashlar_remembered_mfa_devices (revoked_at) WHERE revoked_at IS NOT NULL;
+
+CREATE TRIGGER IF NOT EXISTS trg_ashlar_remembered_mfa_devices_user_tenant_match_insert
+BEFORE INSERT ON ashlar_remembered_mfa_devices
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1
+    FROM ashlar_users
+    WHERE id = NEW.user_id
+      AND tenant_id IS NOT NEW.tenant_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'ashlar_remembered_mfa_devices user tenant mismatch');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_ashlar_remembered_mfa_devices_user_tenant_match_update
+BEFORE UPDATE OF user_id, tenant_id ON ashlar_remembered_mfa_devices
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1
+    FROM ashlar_users
+    WHERE id = NEW.user_id
+      AND tenant_id IS NOT NEW.tenant_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'ashlar_remembered_mfa_devices user tenant mismatch');
+END;
+
 CREATE TABLE IF NOT EXISTS ashlar_rate_limits (
     purpose TEXT NOT NULL,
     rate_limit_key TEXT NOT NULL,

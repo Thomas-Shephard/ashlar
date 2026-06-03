@@ -1,4 +1,5 @@
 using Ashlar.Security.Encryption;
+using Ashlar.Security.Tokens;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -51,6 +52,43 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
         _ = provider.GetRequiredService<IOptions<MfaOrchestrationOptions>>().Value;
 
         Assert.That(configured, Is.True);
+    }
+
+    [Test]
+    public void AddAshlarRememberedMfaDevicesRegistersExpectedServices()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IRememberedMfaDeviceRepository>());
+        services.AddSingleton(Mock.Of<IUserRepository>());
+
+        services.AddAshlarRememberedMfaDevices(options => options.DefaultLifetime = TimeSpan.FromDays(7));
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.ServiceProvider.GetRequiredService<IRememberedMfaDeviceService>(), Is.TypeOf<RememberedMfaDeviceService>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<ISecureTokenGenerator>(), Is.TypeOf<SecureTokenGenerator>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<ISecureTokenHasher>(), Is.TypeOf<Sha256TokenHasher>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IOptions<RememberedMfaDeviceOptions>>().Value.DefaultLifetime, Is.EqualTo(TimeSpan.FromDays(7)));
+        }
+    }
+
+    [Test]
+    public void AddAshlarRememberedMfaDevicesRejectsNullServices()
+    {
+        Assert.Throws<ArgumentNullException>(() => AshlarServiceCollectionExtensions.AddAshlarRememberedMfaDevices(null!));
+    }
+
+    [Test]
+    public void AddAshlarRememberedMfaDevicesAllowsMissingConfigure()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarRememberedMfaDevices();
+
+        AssertDescriptor<IRememberedMfaDeviceService, RememberedMfaDeviceService>(services, ServiceLifetime.Scoped);
     }
 
     [Test]

@@ -10,7 +10,9 @@ using Ashlar.Identity.Providers.RecoveryCode;
 using Ashlar.Identity.Providers.Totp;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Security.Hashing;
+using Ashlar.Security.Tokens;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 public static partial class AshlarServiceCollectionExtensions
@@ -107,6 +109,38 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<IUserRepository>(),
             provider.GetService<ISecurityNotificationService>()));
         services.TryAddScoped<IAuthenticationHandshakeService, AuthenticationHandshakeService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers Ashlar's remembered MFA device core service.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configure">Optional remembered MFA device configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarRememberedMfaDevices(
+        this IServiceCollection services,
+        Action<RememberedMfaDeviceOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAshlarIdentity();
+        services.AddOptions<RememberedMfaDeviceOptions>()
+            .Validate(RememberedMfaDeviceOptions.Validate, "Remembered MFA device options are invalid.");
+        if (configure != null)
+        {
+            services.Configure(configure);
+        }
+
+        services.TryAddScoped(provider => new RememberedMfaDeviceServiceDependencies(
+            provider.GetService<IOptions<RememberedMfaDeviceOptions>>(),
+            provider.GetService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>(),
+            provider.GetService<ILoggerFactory>()));
+        services.TryAddScoped<IRememberedMfaDeviceService, RememberedMfaDeviceService>();
+        services.TryAddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
+        services.TryAddSingleton<ISecureTokenHasher, Sha256TokenHasher>();
 
         return services;
     }

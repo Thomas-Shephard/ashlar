@@ -115,6 +115,8 @@ public static class AshlarFailureCodes
     public const string StepUpProviderNotAllowedValue = "step_up_provider_not_allowed";
     /// <summary>The additional verification factor is not allowed.</summary>
     public const string StepUpFactorNotAllowedValue = "step_up_factor_not_allowed";
+    /// <summary>The user has reached the remembered MFA device limit.</summary>
+    public const string RememberedMfaDeviceLimitExceededValue = "remembered_mfa_device_limit_exceeded";
     /// <summary>Generic validation failure.</summary>
     public static readonly AshlarFailureCode ValidationError = new(ValidationErrorValue);
     /// <summary>Configured metadata is invalid.</summary>
@@ -225,4 +227,6 @@ public static class AshlarFailureCodes
     public static readonly AshlarFailureCode StepUpProviderNotAllowed = new(StepUpProviderNotAllowedValue);
     /// <summary>The additional verification factor is not allowed.</summary>
     public static readonly AshlarFailureCode StepUpFactorNotAllowed = new(StepUpFactorNotAllowedValue);
+    /// <summary>The user has reached the remembered MFA device limit.</summary>
+    public static readonly AshlarFailureCode RememberedMfaDeviceLimitExceeded = new(RememberedMfaDeviceLimitExceededValue);
 }

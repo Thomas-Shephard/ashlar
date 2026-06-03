@@ -13,6 +13,7 @@ internal sealed class AccountSecurityServiceTests
     private static readonly string[] ExpectedAppAndRecoveryFactors = ["Authenticator app", "Recovery codes"];
     private static readonly string[] ExpectedAuthenticatorAppFactor = ["Authenticator app"];
     private static readonly string[] ExpectedEmailSignIn = ["Email sign-in"];
+    private static readonly string[] ExpectedPasswordCredential = ["Password"];
     private static readonly string[] ExpectedCustomFactor = ["custom_factor"];
     private readonly Guid _userId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private FakeTimeProvider _timeProvider;
@@ -616,6 +617,36 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
+    public async Task GetUserSecurityPostureAsyncShouldNotTreatRememberedMfaDevicesAsCredentialsOrFactors()
+    {
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        var rememberedDevice = CreateRememberedMfaDevice(_userId);
+        var service = CreateService(
+            new StaticMfaPolicyEvaluator(true, []),
+            new AuthenticationProviderRegistry(
+            [
+                CreatePrimaryProvider(AuthenticationProviderKey.Local).Object,
+                CreateSecondaryProvider(new AuthenticationProviderKey(ProviderType.Mfa, rememberedDevice.DisplayName!), "remembered_device").Object
+            ]));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rememberedDevice.UserId, Is.EqualTo(_userId));
+            Assert.That(rememberedDevice, Is.Not.InstanceOf<UserCredential>());
+            Assert.That(rememberedDevice, Is.Not.InstanceOf<IAuthenticationProvider>());
+            Assert.That(rememberedDevice, Is.Not.InstanceOf<ISecondaryAuthenticationFactorProvider>());
+            Assert.That(result.Value?.CredentialInventory.Select(item => item.DisplayName), Is.EqualTo(ExpectedPasswordCredential));
+            Assert.That(result.Value?.AdditionalVerificationFactors, Is.Empty);
+            Assert.That(result.Value?.IsMfaConfigured, Is.False);
+            Assert.That(result.Value?.Policy.HasUsableAdditionalVerificationFactor, Is.False);
+            Assert.That(result.Value?.Policy.IsReadyForAdditionalVerification, Is.False);
+        }
+    }
+
+    [Test]
     public async Task GetUserSecurityPostureAsyncShouldTreatPasskeyAsPrimaryAndNotImplicitTwoFactorPolicy()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
@@ -1176,6 +1207,20 @@ internal sealed class AccountSecurityServiceTests
             Version = "v1",
             Status = CredentialStatus.Active,
             CreatedAt = _timeProvider.GetUtcNow()
+        };
+    }
+
+    private RememberedMfaDevice CreateRememberedMfaDevice(Guid userId)
+    {
+        return new RememberedMfaDevice
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            TokenSelector = "selector",
+            TokenHash = "hash",
+            DisplayName = "remembered laptop",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            ExpiresAt = _timeProvider.GetUtcNow().AddDays(30)
         };
     }
 

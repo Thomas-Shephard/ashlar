@@ -671,6 +671,22 @@ if (result.Status == MfaAuthenticationStatus.Succeeded)
 
 The orchestrator ensures that factor verification happens through the same provider machinery as primary authentication. It also aggregates claims from all authentication steps into the final result.
 
+## Remembered MFA Devices
+Ashlar includes framework-neutral primitives for durable "remember this device" records after a successful MFA ceremony. Register the core service with:
+
+```csharp
+services.AddAshlarRememberedMfaDevices(options =>
+{
+    options.DefaultLifetime = TimeSpan.FromDays(30);
+    options.MaxLifetime = TimeSpan.FromDays(365);
+    options.MaxActiveDevicesPerUser = 20;
+});
+```
+
+Applications must also register a durable provider such as PostgreSQL or SQLite. Remembered MFA devices use a selector/verifier token design, store only hashed verifier material, return the raw token only when creating a device, and expose only safe metadata when listed.
+
+Remembered MFA devices are not credentials, are not authentication factors, and do not satisfy fresh MFA or step-up requirements. They are intended only as a future orchestration input for skipping routine MFA after a prior successful MFA ceremony. This core service does not issue or read ASP.NET cookies and is not yet consumed by Ashlar's MFA orchestration.
+
 ## Multi-Factor Authentication (MFA) Handshakes
 Ashlar includes a generic infrastructure for tracking multi-step authentication flows through "handshakes". This allows primary authentication (like passwords) to be verified while requiring additional factors before a final session is issued.
 
