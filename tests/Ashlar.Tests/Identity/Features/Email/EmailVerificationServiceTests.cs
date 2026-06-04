@@ -10,7 +10,7 @@ namespace Ashlar.Tests.Identity.Features.Email;
 
 internal sealed class EmailVerificationServiceTests
 {
-    private readonly AshlarUser _user = new() { Id = Guid.NewGuid(), Email = "user@example.com", IsActive = true };
+    private readonly AshlarUser _user = new() { Id = Guid.NewGuid(), Email = "user@example.com", AccountState = UserAccountState.Active };
 
     [Test]
     public void ConstructorUsesDefaultOptionsWhenOptionsAreNull()
@@ -73,7 +73,7 @@ internal sealed class EmailVerificationServiceTests
     [Test]
     public async Task RequestVerificationSucceedsIfAlreadyVerified()
     {
-        var verifiedUser = new AshlarUser { Id = Guid.NewGuid(), Email = "verified@example.com", IsActive = true, EmailVerifiedAt = DateTimeOffset.UtcNow };
+        var verifiedUser = new AshlarUser { Id = Guid.NewGuid(), Email = "verified@example.com", AccountState = UserAccountState.Active, EmailVerifiedAt = DateTimeOffset.UtcNow };
         var fixture = CreateFixture(verifiedUser);
         var request = new EmailVerificationRequest { UserId = verifiedUser.Id, CallbackBaseUri = new Uri("https://example.com/callback") };
 
@@ -97,7 +97,7 @@ internal sealed class EmailVerificationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrInactive));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
         }
     }
 
@@ -119,7 +119,7 @@ internal sealed class EmailVerificationServiceTests
     [Test]
     public async Task RequestVerificationRateLimitWorksForNonTenantUser()
     {
-        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "user@example.com", IsActive = true };
+        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "user@example.com", AccountState = UserAccountState.Active };
         var fixture = CreateFixture(user, requestAllowed: false);
         var request = new EmailVerificationRequest { UserId = user.Id, CallbackBaseUri = new Uri("https://example.com/callback") };
 
@@ -175,7 +175,7 @@ internal sealed class EmailVerificationServiceTests
     [Test]
     public async Task VerifyTokenPreservesAuditMetadataForMetadataBackedUser()
     {
-        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "user@example.com", IsActive = true, CreatedAt = DateTimeOffset.UtcNow.AddDays(-1) };
+        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "user@example.com", AccountState = UserAccountState.Active, CreatedAt = DateTimeOffset.UtcNow.AddDays(-1) };
         var fixture = CreateFixture(user);
         await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = user.Id, CallbackBaseUri = new Uri("https://example.com/callback") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
@@ -206,7 +206,7 @@ internal sealed class EmailVerificationServiceTests
     [Test]
     public async Task VerifyTokenReturnsInvalidOrExpiredForOverlongTokenWithoutMutatingState()
     {
-        var user = new AshlarUser { Id = Guid.NewGuid(), Email = "user@example.com", IsActive = true };
+        var user = new AshlarUser { Id = Guid.NewGuid(), Email = "user@example.com", AccountState = UserAccountState.Active };
         var fixture = CreateFixture(user);
         await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = user.Id, CallbackBaseUri = new Uri("https://example.com/callback") });
         fixture.Audit.Events.Clear();
@@ -266,7 +266,7 @@ internal sealed class EmailVerificationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrInactive));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
         }
     }
 
@@ -476,7 +476,7 @@ internal sealed class EmailVerificationServiceTests
                     break;
             }
             _ = user.Name;
-            _ = user.IsActive;
+            _ = user.CanSignIn();
             _ = (user as ITenantUser)?.TenantId;
             _ = (user as IHasAuditMetadata)?.CreatedAt;
             if (user is IHasAuditMetadata metadata)
@@ -522,7 +522,7 @@ internal sealed class EmailVerificationServiceTests
         public required Guid Id { get; init; }
         public required string Email { get; set; }
         public string? Name { get; set; }
-        public bool IsActive { get; set; }
+        public UserAccountState AccountState { get; set; }
         public DateTimeOffset? EmailVerifiedAt { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }

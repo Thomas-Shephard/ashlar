@@ -327,6 +327,51 @@ internal sealed class AuthenticationSessionServiceTests
         }
     }
 
+    [TestCase(UserAccountState.Disabled, SecurityEventFailureReasons.UserDisabled)]
+    [TestCase(UserAccountState.Locked, SecurityEventFailureReasons.UserLocked)]
+    [TestCase(UserAccountState.Suspended, SecurityEventFailureReasons.UserSuspended)]
+    public async Task CreateSessionAsyncShouldRejectUnavailableUsersBeforeTokenGeneration(UserAccountState accountState, string failureReason)
+    {
+        var tokenGenerator = new CountingSessionTokenGenerator();
+        var tokenHasher = new Mock<ISecureTokenHasher>();
+        tokenHasher.Setup(h => h.HashToken(It.IsAny<string>())).Returns("hash");
+        var sink = new RecordingSecurityEventSink();
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "user@example.com", AccountState = accountState, TenantId = tenantId });
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            tokenHasher.Object,
+            tokenGenerator,
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: sink, UserRepository: _userRepositoryMock.Object));
+
+        var exception = Assert.ThrowsAsync<AshlarOperationException>(async () =>
+            await service.CreateSessionAsync(userId, new CreateAuthenticationSessionRequest(
+                TenantId: tenantId,
+                IpAddress: "203.0.113.25",
+                UserAgent: "blocked-user-agent",
+                CorrelationId: "blocked-user-correlation")));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception?.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
+            Assert.That(tokenGenerator.Count, Is.Zero);
+            tokenHasher.Verify(h => h.HashToken(It.IsAny<string>()), Times.Never);
+            _repositoryMock.Verify(r => r.CreateSessionAsync(It.IsAny<AuthenticationSession>(), It.IsAny<CancellationToken>()), Times.Never);
+
+            var securityEvent = sink.Events.Single();
+            Assert.That(securityEvent.UserId, Is.EqualTo(userId));
+            Assert.That(securityEvent.TenantId, Is.EqualTo(tenantId));
+            Assert.That(securityEvent.IpAddress, Is.EqualTo("203.0.113.25"));
+            Assert.That(securityEvent.UserAgent, Is.EqualTo("blocked-user-agent"));
+            Assert.That(securityEvent.CorrelationId, Is.EqualTo("blocked-user-correlation"));
+            Assert.That(securityEvent.FailureReason, Is.EqualTo(failureReason));
+        }
+    }
+
     [Test]
     public async Task CreateSessionAsyncShouldAuditTenantMismatchWithoutLeakingOtherTenantDetails()
     {
@@ -512,6 +557,73 @@ internal sealed class AuthenticationSessionServiceTests
         }
     }
 
+    [TestCase(UserAccountState.Disabled, SecurityEventFailureReasons.UserDisabled)]
+    [TestCase(UserAccountState.Locked, SecurityEventFailureReasons.UserLocked)]
+    [TestCase(UserAccountState.Suspended, SecurityEventFailureReasons.UserSuspended)]
+    public async Task ValidateSessionAsyncShouldFailForUnavailableUser(UserAccountState accountState, string failureReason)
+    {
+        var sink = new RecordingSecurityEventSink();
+        var now = _timeProvider.GetUtcNow();
+        var session = CreateSession(expiresAt: now.AddHours(1), userId: Guid.NewGuid());
+        _repositoryMock
+            .Setup(r => r.GetSessionByTokenHashAsync("hashed:raw-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(session.UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = session.UserId, Email = "user@example.com", AccountState = accountState });
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: sink, UserRepository: _userRepositoryMock.Object));
+
+        var result = await service.ValidateSessionAsync("raw-token");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Failed));
+            Assert.That(result.Session, Is.EqualTo(session));
+            Assert.That(result.UserId, Is.EqualTo(session.UserId));
+            Assert.That(sink.Events.Single().FailureReason, Is.EqualTo(failureReason));
+        }
+
+        _repositoryMock.Verify(r => r.UpdateSessionLastSeenAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task ValidateSessionAsyncShouldFailForMissingUser()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var session = CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1), userId: Guid.NewGuid());
+        _repositoryMock
+            .Setup(r => r.GetSessionByTokenHashAsync("hashed:raw-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(session.UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IUser?)null);
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: sink, UserRepository: _userRepositoryMock.Object));
+
+        var result = await service.ValidateSessionAsync("raw-token");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Failed));
+            Assert.That(result.Session, Is.EqualTo(session));
+            Assert.That(result.UserId, Is.EqualTo(session.UserId));
+            Assert.That(sink.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.UserNotFoundValue));
+        }
+
+        _repositoryMock.Verify(r => r.UpdateSessionLastSeenAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Test]
     public async Task ValidateSessionAsyncShouldUpdateLastSeenWhenThresholdElapsed()
     {
@@ -658,6 +770,77 @@ internal sealed class AuthenticationSessionServiceTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactive));
+        }
+    }
+
+    [TestCase(UserAccountState.Disabled, SecurityEventFailureReasons.UserDisabled)]
+    [TestCase(UserAccountState.Locked, SecurityEventFailureReasons.UserLocked)]
+    [TestCase(UserAccountState.Suspended, SecurityEventFailureReasons.UserSuspended)]
+    public async Task MarkStepUpVerifiedAsyncShouldRejectUnavailableUsersBeforeRepositoryUpdate(UserAccountState accountState, string failureReason)
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: sink, UserRepository: _userRepositoryMock.Object));
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "user@example.com", AccountState = accountState, TenantId = tenantId });
+
+        var result = await service.MarkStepUpVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = sessionId,
+            VerifiedProvider = provider,
+            VerifiedFactor = "totp",
+            Tenant = new TenantContext(tenantId)
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
+            Assert.That(sink.Events.Single().FailureReason, Is.EqualTo(failureReason));
+            Assert.That(sink.Events.Single().TenantId, Is.EqualTo(tenantId));
+            Assert.That(sink.Events.Single().Properties?["factor"], Is.EqualTo("totp"));
+            _repositoryMock.Verify(r => r.MarkStepUpVerifiedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<AuthenticationProviderKey>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task MarkStepUpVerifiedAsyncShouldAuditUnavailableGlobalUserWithoutTenant()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: sink, UserRepository: _userRepositoryMock.Object));
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "user@example.com", AccountState = UserAccountState.Disabled });
+
+        var result = await service.MarkStepUpVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = sessionId,
+            VerifiedProvider = provider,
+            VerifiedFactor = "totp"
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(sink.Events.Single().TenantId, Is.Null);
+            Assert.That(sink.Events.Single().FailureReason, Is.EqualTo(SecurityEventFailureReasons.UserDisabled));
         }
     }
 

@@ -125,7 +125,7 @@ internal sealed class PasswordResetService : IPasswordResetService
         }
 
         var user = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(normalizedEmail, context.TenantId, cancellationToken);
-        if (user is not { IsActive: true } || !await HasLocalPasswordCredentialAsync(user.Id, cancellationToken))
+        if (user == null || !user.CanSignIn() || !await HasLocalPasswordCredentialAsync(user.Id, cancellationToken))
         {
             _ = _dependencies.TokenContext.Hasher.HashToken(_dependencies.TokenContext.Generator.GenerateToken());
 
@@ -274,7 +274,7 @@ internal sealed class PasswordResetService : IPasswordResetService
         }
 
         var user = await _dependencies.IdentityContext.UserRepository.GetUserByProviderKeyAsync(ProviderType.Internal, ProviderName, tokenHash, cancellationToken);
-        if (user is not { IsActive: true } || !AuthenticationTenantConsistency.Matches(context, user))
+        if (user == null || !user.CanSignIn() || !AuthenticationTenantConsistency.Matches(context, user))
         {
             await RecordFailureAsync(context, user?.Id, AshlarFailureCodes.InvalidOrExpiredToken.Value, cancellationToken);
             return Result.Failure<PasswordResetResult>(AshlarFailureCodes.InvalidOrExpiredToken, InvalidOrExpiredTokenMessage);

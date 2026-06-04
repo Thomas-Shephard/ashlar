@@ -47,18 +47,21 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task DisableUserAsyncShouldDeactivateUserRevokeSessionsAndAudit()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _sessionRepository.Sessions.Add(CreateSession(_userId));
 
         var result = await _service.DisableUserAsync(_userId, CreateRequest("risk"));
+        var disabledEvent = _events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserDisabled);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(_userRepository.Users[_userId].IsActive, Is.False);
+            Assert.That(_userRepository.Users[_userId].CanSignIn(), Is.False);
             Assert.That(_sessionRepository.Sessions.Single().RevokedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
             Assert.That(result.Value?.SessionsRevoked, Is.EqualTo(1));
-            Assert.That(_events.Events.Any(e => e.EventType == AshlarSecurityEventTypes.UserDisabled && e.ActorUserId.HasValue), Is.True);
+            Assert.That(disabledEvent.ActorUserId.HasValue, Is.True);
+            Assert.That(disabledEvent.Properties?["from_account_state"], Is.EqualTo("active"));
+            Assert.That(disabledEvent.Properties?["to_account_state"], Is.EqualTo("disabled"));
         }
     }
 
@@ -71,7 +74,7 @@ internal sealed class AccountSecurityServiceTests
         rememberedDevices
             .Setup(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(2);
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = tenantId };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = tenantId };
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
@@ -92,7 +95,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task DisableUserAsyncShouldUseSessionServiceNotifications()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _sessionRepository.Sessions.Add(CreateSession(_userId));
         var notifications = new Mock<ISecurityNotificationService>();
         var sessionService = new AuthenticationSessionService(
@@ -131,7 +134,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task DisableUserAsyncShouldReturnGuardFailureWhenGuardRejectsOperation()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
@@ -146,7 +149,7 @@ internal sealed class AccountSecurityServiceTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(new AshlarFailureCode("guard_rejected")));
-            Assert.That(_userRepository.Users[_userId].IsActive, Is.True);
+            Assert.That(_userRepository.Users[_userId].CanSignIn(), Is.True);
             Assert.That(_events.Events.Single().FailureReason, Is.EqualTo("guard_rejected"));
         }
     }
@@ -167,7 +170,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task DisableUserAsyncShouldReturnTenantMismatchForTenantMismatch()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = Guid.NewGuid() };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = Guid.NewGuid() };
         _sessionRepository.Sessions.Add(CreateSession(_userId));
         var requestedTenantId = Guid.NewGuid();
 
@@ -177,7 +180,7 @@ internal sealed class AccountSecurityServiceTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
-            Assert.That(_userRepository.Users[_userId].IsActive, Is.True);
+            Assert.That(_userRepository.Users[_userId].CanSignIn(), Is.True);
             Assert.That(_sessionRepository.Sessions.Single().RevokedAt, Is.Null);
             Assert.That(_events.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.TenantMismatch.Value));
             Assert.That(_events.Events.Single().TenantId, Is.EqualTo(requestedTenantId));
@@ -188,14 +191,14 @@ internal sealed class AccountSecurityServiceTests
     public async Task DisableUserAsyncShouldAllowMatchingTenant()
     {
         var tenantId = Guid.NewGuid();
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = tenantId };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = tenantId };
 
         var result = await _service.DisableUserAsync(_userId, CreateRequest(tenantId: tenantId));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(_userRepository.Users[_userId].IsActive, Is.False);
+            Assert.That(_userRepository.Users[_userId].CanSignIn(), Is.False);
             Assert.That(_events.Events.Any(e => e.EventType == AshlarSecurityEventTypes.UserDisabled && e.TenantId == tenantId), Is.True);
         }
     }
@@ -203,7 +206,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task DisableUserAsyncShouldReturnTenantMismatchWhenTenantScopeTargetsGlobalUser()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
 
         var result = await _service.DisableUserAsync(_userId, CreateRequest(tenantId: Guid.NewGuid()));
 
@@ -211,14 +214,14 @@ internal sealed class AccountSecurityServiceTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
-            Assert.That(_userRepository.Users[_userId].IsActive, Is.True);
+            Assert.That(_userRepository.Users[_userId].CanSignIn(), Is.True);
         }
     }
 
     [Test]
     public async Task DisableUserAsyncShouldTreatMissingTenantAsGlobalOnly()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = Guid.NewGuid() };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = Guid.NewGuid() };
 
         var result = await _service.DisableUserAsync(_userId, CreateRequest());
 
@@ -226,7 +229,7 @@ internal sealed class AccountSecurityServiceTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
-            Assert.That(_userRepository.Users[_userId].IsActive, Is.True);
+            Assert.That(_userRepository.Users[_userId].CanSignIn(), Is.True);
             Assert.That(_events.Events.Single().TenantId, Is.Null);
             Assert.That(_events.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.TenantMismatch.Value));
         }
@@ -235,21 +238,21 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task DisableUserAsyncShouldAllowExplicitGlobalTenantForGlobalUser()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
 
         var result = await _service.DisableUserAsync(_userId, new AccountSecurityOperationRequest(new AuditContext(Guid.NewGuid()), TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(_userRepository.Users[_userId].IsActive, Is.False);
+            Assert.That(_userRepository.Users[_userId].CanSignIn(), Is.False);
         }
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldNotUpdateInactiveUserButShouldRevokeSessions()
+    public async Task DisableUserAsyncShouldNotUpdateAlreadyDisabledUserButShouldRevokeSessions()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = false };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Disabled };
         _sessionRepository.Sessions.Add(CreateSession(_userId));
 
         var result = await _service.DisableUserAsync(_userId, CreateRequest());
@@ -266,7 +269,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task DisableUserAsyncShouldUseValidationErrorWhenGuardFailureHasNoDetails()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
@@ -288,17 +291,19 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task ReactivateUserAsyncShouldReactivateWithoutRevokingCredentials()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = false };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Disabled };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
 
         var result = await _service.ReactivateUserAsync(_userId, CreateRequest());
+        var reactivatedEvent = _events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserReactivated);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(_userRepository.Users[_userId].IsActive, Is.True);
+            Assert.That(_userRepository.Users[_userId].CanSignIn(), Is.True);
             Assert.That(_userRepository.Credentials.Single().RevokedAt, Is.Null);
-            Assert.That(_events.Events.Any(e => e.EventType == AshlarSecurityEventTypes.UserReactivated), Is.True);
+            Assert.That(reactivatedEvent.Properties?["from_account_state"], Is.EqualTo("disabled"));
+            Assert.That(reactivatedEvent.Properties?["to_account_state"], Is.EqualTo("active"));
         }
     }
 
@@ -318,7 +323,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task ReactivateUserAsyncShouldReturnTenantMismatchForTenantMismatch()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = false, TenantId = Guid.NewGuid() };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Disabled, TenantId = Guid.NewGuid() };
 
         var result = await _service.ReactivateUserAsync(_userId, CreateRequest(tenantId: Guid.NewGuid()));
 
@@ -326,14 +331,14 @@ internal sealed class AccountSecurityServiceTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
-            Assert.That(_userRepository.Users[_userId].IsActive, Is.False);
+            Assert.That(_userRepository.Users[_userId].CanSignIn(), Is.False);
         }
     }
 
     [Test]
     public async Task ReactivateUserAsyncShouldNoopForActiveUser()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
 
         var result = await _service.ReactivateUserAsync(_userId, CreateRequest("manual-review"));
 
@@ -342,6 +347,8 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value?.UserChanged, Is.False);
             Assert.That(_events.Events.Single().Properties?["reason"], Is.EqualTo("manual-review"));
+            Assert.That(_events.Events.Single().Properties?["from_account_state"], Is.EqualTo("active"));
+            Assert.That(_events.Events.Single().Properties?["to_account_state"], Is.EqualTo("active"));
         }
     }
 
@@ -361,7 +368,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task RevokeSessionsAsyncShouldReturnTenantMismatchForTenantMismatch()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = Guid.NewGuid() };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = Guid.NewGuid() };
         _sessionRepository.Sessions.Add(CreateSession(_userId));
 
         var result = await _service.RevokeSessionsAsync(_userId, CreateRequest(tenantId: Guid.NewGuid()));
@@ -377,7 +384,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task RevokeSessionsAsyncShouldRevokeSessionsForExistingUser()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _sessionRepository.Sessions.Add(CreateSession(_userId));
 
         var result = await _service.RevokeSessionsAsync(_userId, CreateRequest());
@@ -393,7 +400,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task RevokeCredentialsAsyncShouldRevokeMatchingProviderCredentials()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
 
         var result = await _service.RevokeCredentialsAsync(_userId, AuthenticationProviderKey.Local, CreateRequest("rotation"));
@@ -423,7 +430,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task RevokeCredentialsAsyncShouldReturnTenantMismatchForTenantMismatch()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = Guid.NewGuid() };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = Guid.NewGuid() };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
 
         var result = await _service.RevokeCredentialsAsync(_userId, AuthenticationProviderKey.Local, CreateRequest(tenantId: Guid.NewGuid()));
@@ -445,7 +452,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task ResetMfaAsyncShouldRevokeTotpAndRecoveryCodeCredentialsOnly()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode")));
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
@@ -471,7 +478,7 @@ internal sealed class AccountSecurityServiceTests
         rememberedDevices
             .Setup(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(3);
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = tenantId };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = tenantId };
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
@@ -505,7 +512,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task ResetMfaAsyncShouldReturnTenantMismatchForTenantMismatch()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = Guid.NewGuid() };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = Guid.NewGuid() };
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
 
         var result = await _service.ResetMfaAsync(_userId, CreateRequest(tenantId: Guid.NewGuid()));
@@ -523,7 +530,7 @@ internal sealed class AccountSecurityServiceTests
     {
         var totpProvider = new AuthenticationProviderKey(ProviderType.Mfa, "custom-totp");
         var recoveryProvider = new AuthenticationProviderKey(ProviderType.RecoveryCode, "custom-recovery");
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, totpProvider));
         _userRepository.Credentials.Add(CreateCredential(_userId, recoveryProvider));
         var service = new AccountSecurityService(
@@ -550,7 +557,7 @@ internal sealed class AccountSecurityServiceTests
         var repository = new Mock<IUserRepository>();
         repository
             .Setup(r => r.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BasicUser(_userId, "basic@example.com", true));
+            .ReturnsAsync(new BasicUser(_userId, "basic@example.com", UserAccountState.Active));
         var service = new AccountSecurityService(
             repository.Object,
             Mock.Of<ICredentialRepository>(),
@@ -574,7 +581,7 @@ internal sealed class AccountSecurityServiceTests
         var repository = new Mock<IUserRepository>();
         repository
             .Setup(r => r.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BasicUser(_userId, "basic@example.com", true));
+            .ReturnsAsync(new BasicUser(_userId, "basic@example.com", UserAccountState.Active));
         var service = new AccountSecurityService(
             repository.Object,
             Mock.Of<ICredentialRepository>(),
@@ -595,7 +602,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldReturnNonSecretSummary()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, EmailVerifiedAt = _timeProvider.GetUtcNow() };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, EmailVerifiedAt = _timeProvider.GetUtcNow() };
         var localCredential = CreateCredential(_userId, AuthenticationProviderKey.Local);
         localCredential.CredentialValue = "secret";
         var mfaCredential = CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp"));
@@ -610,7 +617,7 @@ internal sealed class AccountSecurityServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value?.IsActive, Is.True);
+            Assert.That(result.Value?.CanSignIn, Is.True);
             Assert.That(result.Value?.IsEmailVerified, Is.True);
             Assert.That(result.Value?.IsMfaConfigured, Is.True);
             Assert.That(result.Value?.ActiveSessionCount, Is.EqualTo(1));
@@ -622,7 +629,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldClassifyEmailSignInOnly()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
 
         var result = await _service.GetUserSecurityPostureAsync(_userId);
 
@@ -638,7 +645,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldPreferDurableEmailCredentialWhenPresent()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.EmailCode));
 
         var result = await _service.GetUserSecurityPostureAsync(_userId);
@@ -654,7 +661,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldClassifyTotpAndRecoveryCodesAsAdditionalVerification()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode")));
@@ -673,7 +680,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldNotTreatRememberedMfaDevicesAsCredentialsOrFactors()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
         var rememberedDevice = CreateRememberedMfaDevice(_userId);
         var service = CreateService(
@@ -703,7 +710,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldTreatPasskeyAsPrimaryAndNotImplicitTwoFactorPolicy()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Passkey));
 
         var result = await _service.GetUserSecurityPostureAsync(_userId);
@@ -721,7 +728,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldShowPasskeyAndTotpWithoutRawProviderNames()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Passkey));
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
 
@@ -739,7 +746,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldReportMissingRequiredTotp()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
         var service = CreateService(new StaticMfaPolicyEvaluator(true, [AuthenticationFactorTypes.Totp]));
 
@@ -758,7 +765,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldAllowPasskeyAsAdditionalVerificationWhenPolicyRequiresIt()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Passkey));
         var service = CreateService(new StaticMfaPolicyEvaluator(true, [AuthenticationFactorTypes.Passkey]));
 
@@ -776,7 +783,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldRequireAnyUsableFactorWhenPolicyHasNoSpecificFactors()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
         var service = CreateService(new StaticMfaPolicyEvaluator(true, []));
 
@@ -796,7 +803,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldAllowAnyUsableFactorWhenPolicyHasNoSpecificFactors()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
         var service = CreateService(new StaticMfaPolicyEvaluator(true, []));
@@ -815,7 +822,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldExposeEmptyAllowedFactorsWhenPolicyDoesNotProvideAllowedFactors()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
         var service = CreateService(new StaticMfaPolicyEvaluator(true, [AuthenticationFactorTypes.Totp]));
@@ -826,16 +833,16 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task GetUserSecurityPostureAsyncShouldReportInactiveUserCannotSignIn()
+    public async Task GetUserSecurityPostureAsyncShouldReportDisabledUserCannotSignIn()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = false };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Disabled };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
 
         var result = await _service.GetUserSecurityPostureAsync(_userId);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Value?.IsActive, Is.False);
+            Assert.That(result.Value?.CanSignIn, Is.False);
             Assert.That(result.Value?.CanSignIn, Is.False);
         }
     }
@@ -843,7 +850,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldClassifyUnknownProviderSafely()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey("Custom", "HardwareThing")));
 
         var result = await _service.GetUserSecurityPostureAsync(_userId);
@@ -864,7 +871,7 @@ internal sealed class AccountSecurityServiceTests
     public async Task GetUserSecurityPostureAsyncShouldNotClassifyUnregisteredBuiltInPrimaryProvider()
     {
         var service = CreateService(providerRegistry: new AuthenticationProviderRegistry([]));
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
 
         var result = await service.GetUserSecurityPostureAsync(_userId);
@@ -892,7 +899,7 @@ internal sealed class AccountSecurityServiceTests
             new NullTransactionProvider(),
             new AllowAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Passkey));
 
         var result = await service.GetUserSecurityPostureAsync(_userId);
@@ -915,7 +922,7 @@ internal sealed class AccountSecurityServiceTests
         provider.SetupGet(item => item.Key).Returns(providerKey);
         var registry = new AuthenticationProviderRegistry([provider.Object]);
         var service = CreateService(providerRegistry: registry);
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, providerKey));
 
         var result = await service.GetUserSecurityPostureAsync(_userId);
@@ -940,7 +947,7 @@ internal sealed class AccountSecurityServiceTests
         provider.SetupGet(item => item.FactorType).Returns("custom_step_up");
         var registry = new AuthenticationProviderRegistry([provider.Object]);
         var service = CreateService(providerRegistry: registry);
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, providerKey));
 
         var result = await service.GetUserSecurityPostureAsync(_userId);
@@ -960,7 +967,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldUseExternalProviderFriendlyNames()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.OAuth, "github")));
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Oidc, "OIDC")));
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Saml2, "enterprise-sso")));
@@ -980,7 +987,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldNormalizeCustomPolicyFactors()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
         var service = CreateService(new StaticMfaPolicyEvaluator(true, [" custom-factor ", "custom_factor"]));
 
@@ -998,7 +1005,7 @@ internal sealed class AccountSecurityServiceTests
     public async Task GetUserSecurityPostureAsyncShouldPassTenantContextIntoPolicyEvaluation()
     {
         var tenantId = Guid.NewGuid();
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = tenantId };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = tenantId };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
         var evaluator = new CapturingMfaPolicyEvaluator();
         var service = CreateService(evaluator);
@@ -1021,7 +1028,7 @@ internal sealed class AccountSecurityServiceTests
             CreateSecondaryProvider(configuredTotp, AuthenticationFactorTypes.Totp).Object,
             CreateSecondaryProvider(new AuthenticationProviderKey(ProviderType.Mfa, "totp"), AuthenticationFactorTypes.Totp).Object
         ]);
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, configuredTotp));
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
         var service = new AccountSecurityService(
@@ -1048,7 +1055,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldKeepUnavailableCredentialsInInventoryOnly()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         var revokedPasskey = CreateCredential(_userId, AuthenticationProviderKey.Passkey);
         revokedPasskey.Status = CredentialStatus.Revoked;
         revokedPasskey.RevokedAt = _timeProvider.GetUtcNow();
@@ -1076,7 +1083,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldNotAddEmailSignInForBlankEmail()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = " ", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = " ", AccountState = UserAccountState.Active };
         var service = CreateService();
 
         var result = await service.GetUserSecurityPostureAsync(_userId);
@@ -1103,7 +1110,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldReturnTenantMismatchForTenantMismatch()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true, TenantId = Guid.NewGuid() };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = Guid.NewGuid() };
 
         var result = await _service.GetUserSecurityPostureAsync(_userId, new UserSecurityPostureRequest(new TenantContext(Guid.NewGuid())));
 
@@ -1117,7 +1124,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public async Task GetUserSecurityPostureAsyncShouldOmitEventCountWhenWindowOrRepositoryMissing()
     {
-        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", IsActive = true };
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode")));
         var sessionService = new Mock<IAuthenticationSessionService>();
         sessionService
@@ -1331,7 +1338,7 @@ internal sealed class AccountSecurityServiceTests
         }
     }
 
-    private sealed record BasicUser(Guid Id, string Email, bool IsActive) : IUser
+    private sealed record BasicUser(Guid Id, string Email, UserAccountState AccountState) : IUser
     {
         public string? Name => null;
         public DateTimeOffset? EmailVerifiedAt => null;
@@ -1370,13 +1377,13 @@ internal sealed class AccountSecurityServiceTests
 
         public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
         {
-            Users[user.Id] = new User { Id = user.Id, Email = user.Email, IsActive = user.IsActive, Name = user.Name, TenantId = (user as ITenantUser)?.TenantId, EmailVerifiedAt = user.EmailVerifiedAt };
+            Users[user.Id] = new User { Id = user.Id, Email = user.Email, AccountState = user.AccountState, Name = user.Name, TenantId = (user as ITenantUser)?.TenantId, EmailVerifiedAt = user.EmailVerifiedAt };
             return Task.CompletedTask;
         }
 
         public Task UpdateUserAsync(IUser user, CancellationToken cancellationToken = default)
         {
-            Users[user.Id] = new User { Id = user.Id, Email = user.Email, IsActive = user.IsActive, Name = user.Name, TenantId = (user as ITenantUser)?.TenantId, EmailVerifiedAt = user.EmailVerifiedAt };
+            Users[user.Id] = new User { Id = user.Id, Email = user.Email, AccountState = user.AccountState, Name = user.Name, TenantId = (user as ITenantUser)?.TenantId, EmailVerifiedAt = user.EmailVerifiedAt };
             return Task.CompletedTask;
         }
 

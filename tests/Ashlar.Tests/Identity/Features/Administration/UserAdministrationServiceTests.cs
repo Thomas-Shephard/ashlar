@@ -88,7 +88,7 @@ internal sealed class UserAdministrationServiceTests
         {
             Query = "tenant",
             Tenant = tenant,
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             IsEmailVerified = false,
             Limit = 25,
             Offset = 5
@@ -99,7 +99,7 @@ internal sealed class UserAdministrationServiceTests
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value?.Users.Single(), Is.EqualTo(expected));
             Assert.That(repository.LastSearchRequest?.Tenant, Is.SameAs(tenant));
-            Assert.That(repository.LastSearchRequest?.IsActive, Is.True);
+            Assert.That(repository.LastSearchRequest?.AccountState, Is.EqualTo(UserAccountState.Active));
             Assert.That(repository.LastSearchRequest?.IsEmailVerified, Is.False);
             Assert.That(repository.LastSearchRequest?.Limit, Is.EqualTo(26));
         }
@@ -208,14 +208,14 @@ internal sealed class UserAdministrationServiceTests
 
     private static UserSummary CreateSummary(string email, Guid? tenantId = null)
     {
-        return new UserSummary(Guid.NewGuid(), email, "Test User", tenantId, true, true, DateTimeOffset.UtcNow, null);
+        return new UserSummary(Guid.NewGuid(), email, "Test User", tenantId, UserAccountState.Active, true, true, DateTimeOffset.UtcNow, null);
     }
 
     private static UserSecurityPosture CreatePosture(Guid userId)
     {
         return new UserSecurityPosture(
             userId,
-            true,
+            UserAccountState.Active,
             true,
             true,
             [],

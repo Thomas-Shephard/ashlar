@@ -74,9 +74,15 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
         var lifetime = ValidateLifetime(request.Lifetime ?? _options.DefaultLifetime, request.Lifetime, $"{nameof(request)}.{nameof(request.Lifetime)}");
 
         var userResult = await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.RememberedMfaDeviceCreated, cancellationToken);
-        if (!userResult.Succeeded)
+        if (!userResult.TryGetValue(out var user))
         {
-            return Result.Failure<RememberedMfaDeviceCreated>(userResult.FailureDetails!);
+            return Result.Failure<RememberedMfaDeviceCreated>(userResult.GetFailureOr(AshlarFailureCodes.UserNotFound));
+        }
+
+        if (!user.CanSignIn())
+        {
+            await RecordCreateRejectedAsync(userId, tenant, request.Audit, user.AccountState.ToSecurityFailureReason(), cancellationToken);
+            return Result.Failure<RememberedMfaDeviceCreated>(AshlarFailureCodes.UserNotFoundOrUnavailable);
         }
 
         var now = _timeProvider.GetUtcNow();
@@ -173,6 +179,18 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
         {
             await RecordValidationRejectedAsync(userId, tenant, request.Audit, RememberedMfaDeviceValidationStatus.Revoked, device, cancellationToken);
             return new ValidateRememberedMfaDeviceResult(false, ToSummary(device, now), RememberedMfaDeviceValidationStatus.Revoked);
+        }
+
+        var userResult = await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.RememberedMfaDeviceRejected, cancellationToken);
+        if (!userResult.TryGetValue(out var user))
+        {
+            return ValidateRememberedMfaDeviceResult.Failed;
+        }
+
+        if (!user.CanSignIn())
+        {
+            await RecordValidationRejectedAsync(userId, tenant, request.Audit, user.AccountState.ToSecurityFailureReason(), device, cancellationToken);
+            return ValidateRememberedMfaDeviceResult.Failed;
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
@@ -277,7 +295,7 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
             UserId = userId,
             TenantId = tenant.TenantId,
             Audit = audit,
-            FailureReason = result.FailureCode!.Value.Value
+            FailureReason = result.GetFailureOr(AshlarFailureCodes.ValidationError).Code.Value
         }, cancellationToken);
 
         return result;
@@ -291,6 +309,29 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
         RememberedMfaDevice? device,
         CancellationToken cancellationToken)
     {
+        return RecordValidationRejectedAsync(userId, tenant, audit, status.ToString(), status.ToString(), device, cancellationToken);
+    }
+
+    private Task RecordValidationRejectedAsync(
+        Guid userId,
+        TenantContext tenant,
+        AuditContext? audit,
+        string failureReason,
+        RememberedMfaDevice? device,
+        CancellationToken cancellationToken)
+    {
+        return RecordValidationRejectedAsync(userId, tenant, audit, failureReason, RememberedMfaDeviceValidationStatus.Failed.ToString(), device, cancellationToken);
+    }
+
+    private Task RecordValidationRejectedAsync(
+        Guid userId,
+        TenantContext tenant,
+        AuditContext? audit,
+        string failureReason,
+        string status,
+        RememberedMfaDevice? device,
+        CancellationToken cancellationToken)
+    {
         return _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.RememberedMfaDeviceRejected,
@@ -298,10 +339,10 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
             UserId = userId,
             TenantId = tenant.TenantId,
             Audit = audit,
-            FailureReason = status.ToString(),
+            FailureReason = failureReason,
             Properties = device == null
-                ? new Dictionary<string, string> { ["status"] = status.ToString() }
-                : new Dictionary<string, string> { ["status"] = status.ToString(), [RememberedDeviceIdProperty] = device.Id.ToString("D") }
+                ? new Dictionary<string, string> { ["status"] = status }
+                : new Dictionary<string, string> { ["status"] = status, [RememberedDeviceIdProperty] = device.Id.ToString("D") }
         }, cancellationToken);
     }
 
@@ -312,6 +353,16 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
         AshlarFailureCode failureCode,
         CancellationToken cancellationToken)
     {
+        return RecordCreateRejectedAsync(userId, tenant, audit, failureCode.Value, cancellationToken);
+    }
+
+    private Task RecordCreateRejectedAsync(
+        Guid userId,
+        TenantContext tenant,
+        AuditContext? audit,
+        string failureReason,
+        CancellationToken cancellationToken)
+    {
         return _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.RememberedMfaDeviceCreated,
@@ -319,7 +370,7 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
             UserId = userId,
             TenantId = tenant.TenantId,
             Audit = audit,
-            FailureReason = failureCode.Value
+            FailureReason = failureReason
         }, cancellationToken);
     }
 

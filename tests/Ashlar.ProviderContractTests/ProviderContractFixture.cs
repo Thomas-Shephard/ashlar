@@ -166,14 +166,14 @@ internal abstract class ProviderContractFixture
         IUserRepository repository,
         string? email = null,
         Guid? tenantId = null,
-        bool isActive = true)
+        UserAccountState AccountState = UserAccountState.Active)
     {
         var user = new AshlarUser
         {
             Id = Guid.NewGuid(),
             Email = email ?? $"{Guid.NewGuid():N}@example.com",
             Name = "Test User",
-            IsActive = isActive,
+            AccountState = AccountState,
             TenantId = tenantId
         };
 

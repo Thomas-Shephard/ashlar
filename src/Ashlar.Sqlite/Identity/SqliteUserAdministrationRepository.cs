@@ -23,7 +23,7 @@ public sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvider
         return await SqliteQuery.QueryAsync(_connectionProvider, command =>
         {
             var sql = """
-                SELECT id, email, name, tenant_id, is_active, email_verified_at, created_at, updated_at
+                SELECT id, email, name, tenant_id, account_state, email_verified_at, created_at, updated_at
                 FROM ashlar_users
                 WHERE 1 = 1
                 """;
@@ -36,10 +36,10 @@ public sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvider
 
             command.AddTenantFilter(request.Tenant, "tenant_id", "$tenantId", ref sql);
 
-            if (request.IsActive.HasValue)
+            if (request.AccountState.HasValue)
             {
-                sql += " AND is_active = $isActive";
-                command.AddParameter("$isActive", request.IsActive.Value ? 1 : 0);
+                sql += " AND account_state = $accountState";
+                command.AddParameter("$accountState", request.AccountState.Value.ToStorageValue());
             }
 
             if (request.IsEmailVerified.HasValue)
@@ -66,7 +66,7 @@ public sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvider
     public async Task<UserSummary?> GetUserSummaryAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         const string sql = """
-            SELECT id, email, name, tenant_id, is_active, email_verified_at, created_at, updated_at
+            SELECT id, email, name, tenant_id, account_state, email_verified_at, created_at, updated_at
             FROM ashlar_users
             WHERE id = $userId;
             """;
@@ -80,12 +80,14 @@ public sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvider
 
     private static UserSummary ReadUserSummary(SqliteDataReader reader)
     {
+        var accountState = UserAccountStates.FromStorageValue(reader.GetString(reader.GetOrdinal("account_state")));
         return new UserSummary(
             reader.GetGuidFromText("id"),
             reader.GetString(reader.GetOrdinal("email")),
             reader.GetNullableString("name"),
             reader.GetNullableGuidFromText("tenant_id"),
-            reader.GetBooleanFromInteger("is_active"),
+            accountState,
+            accountState.CanSignIn(),
             !reader.IsDBNull(reader.GetOrdinal("email_verified_at")),
             reader.GetDateTimeOffsetFromText("created_at"),
             reader.GetNullableDateTimeOffsetFromText("updated_at"));

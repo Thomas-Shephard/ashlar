@@ -27,7 +27,7 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
         var tenant1 = Guid.NewGuid();
         var tenant2 = Guid.NewGuid();
         const string email = "MixedCase@example.com";
-        var noTenant = await CreateUserAsync(users, email, isActive: false);
+        var noTenant = await CreateUserAsync(users, email, AccountState: UserAccountState.Disabled);
         var user1 = await CreateUserAsync(users, email, tenant1);
         var user2 = await CreateUserAsync(users, email, tenant2);
 
@@ -64,15 +64,30 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
         var users = GetUserRepository(scope.ServiceProvider);
         var user = await CreateUserAsync(users, "update-user@example.com");
 
-        await users.UpdateUserAsync(user with { Name = "Updated Name", IsActive = false, EmailVerifiedAt = DateTimeOffset.UtcNow });
+        await users.UpdateUserAsync(user with { Name = "Updated Name", AccountState = UserAccountState.Disabled, EmailVerifiedAt = DateTimeOffset.UtcNow });
         var fetched = await users.GetUserByIdAsync(user.Id);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fetched?.Name, Is.EqualTo("Updated Name"));
-            Assert.That(fetched?.IsActive, Is.False);
+            Assert.That(fetched?.AccountState, Is.EqualTo(UserAccountState.Disabled));
             Assert.That(fetched?.EmailVerifiedAt, Is.Not.Null);
         }
+    }
+
+    [TestCase(UserAccountState.Active)]
+    [TestCase(UserAccountState.Disabled)]
+    [TestCase(UserAccountState.Locked)]
+    [TestCase(UserAccountState.Suspended)]
+    public async Task CreateAndFetchUserRoundTripsAccountState(UserAccountState accountState)
+    {
+        await using var scope = CreateAsyncScope();
+        var users = GetUserRepository(scope.ServiceProvider);
+        var user = await CreateUserAsync(users, $"{accountState.ToStorageValue()}@example.com", AccountState: accountState);
+
+        var fetched = await users.GetUserByIdAsync(user.Id);
+
+        Assert.That(fetched?.AccountState, Is.EqualTo(accountState));
     }
 
     [Test]
@@ -121,7 +136,7 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
             userId = Guid.NewGuid();
 
             await using var transaction = await transactionProvider.BeginTransactionAsync();
-            await users.CreateUserAsync(new AshlarUser { Id = userId, Email = "rollback@example.com", IsActive = true });
+            await users.CreateUserAsync(new AshlarUser { Id = userId, Email = "rollback@example.com", AccountState = UserAccountState.Active });
             await transaction.RollbackAsync();
         }
 

@@ -175,7 +175,7 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
             await using var transaction = await transactionProvider.BeginTransactionAsync();
             var users = GetUserRepository(scope.ServiceProvider);
             var credentials = GetCredentialRepository(scope.ServiceProvider);
-            await users.CreateUserAsync(new AshlarUser { Id = userId, Email = "rollback@example.com", IsActive = true });
+            await users.CreateUserAsync(new AshlarUser { Id = userId, Email = "rollback@example.com", AccountState = UserAccountState.Active });
             await credentials.CreateCredentialAsync(CreateCredential(userId, ProviderType.Local, ProviderType.Local.Value));
             await transaction.RollbackAsync();
         }

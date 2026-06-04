@@ -29,7 +29,7 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
 
         const string sql = """
-            SELECT id, email, name, is_active, tenant_id, email_verified_at, created_at, updated_at
+            SELECT id, email, name, account_state, tenant_id, email_verified_at, created_at, updated_at
             FROM ashlar_users
             WHERE normalized_email = $normalizedEmail AND 
             """;
@@ -48,7 +48,7 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
     public async Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         const string sql = """
-            SELECT id, email, name, is_active, tenant_id, email_verified_at, created_at, updated_at
+            SELECT id, email, name, account_state, tenant_id, email_verified_at, created_at, updated_at
             FROM ashlar_users
             WHERE id = $id;
             """;
@@ -69,7 +69,7 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
         ArgumentException.ThrowIfNullOrWhiteSpace(providerKey);
 
         const string sql = """
-            SELECT u.id, u.email, u.name, u.is_active, u.tenant_id, u.email_verified_at, u.created_at, u.updated_at
+            SELECT u.id, u.email, u.name, u.account_state, u.tenant_id, u.email_verified_at, u.created_at, u.updated_at
             FROM ashlar_users u
             JOIN ashlar_credentials c ON u.id = c.user_id
             WHERE c.provider_type = $providerType AND c.provider_name = $providerName AND c.provider_key = $providerKey
@@ -95,8 +95,8 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
         ArgumentException.ThrowIfNullOrWhiteSpace(user.Email);
 
         const string sql = """
-            INSERT INTO ashlar_users (id, email, normalized_email, name, is_active, tenant_id, email_verified_at, created_at)
-            VALUES ($id, $email, $normalizedEmail, $name, $isActive, $tenantId, $emailVerifiedAt, $createdAt);
+            INSERT INTO ashlar_users (id, email, normalized_email, name, account_state, tenant_id, email_verified_at, created_at)
+            VALUES ($id, $email, $normalizedEmail, $name, $accountState, $tenantId, $emailVerifiedAt, $createdAt);
             """;
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -114,7 +114,7 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
 
         const string sql = """
             UPDATE ashlar_users
-            SET email = $email, normalized_email = $normalizedEmail, name = $name, is_active = $isActive,
+            SET email = $email, normalized_email = $normalizedEmail, name = $name, account_state = $accountState,
                 email_verified_at = $emailVerifiedAt, updated_at = $updatedAt
             WHERE id = $id AND 
             """;
@@ -143,7 +143,7 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
         command.AddParameter("$email", user.Email);
         command.AddParameter(NormalizedEmailParameter, IdentityNormalization.NormalizeEmail(user.Email));
         command.AddParameter("$name", user.Name);
-        command.AddParameter("$isActive", user.IsActive ? 1 : 0);
+        command.AddParameter("$accountState", user.AccountState.ToStorageValue());
         command.AddNullableGuidParameter(TenantIdParameter, tenantId);
         command.AddNullableDateTimeOffsetParameter("$emailVerifiedAt", user.EmailVerifiedAt);
         command.AddDateTimeOffsetParameter(CreatedAtParameter, createdAt);
@@ -160,7 +160,7 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
             Id = reader.GetGuidFromText("id"),
             Email = reader.GetString(reader.GetOrdinal("email")),
             Name = reader.GetNullableString("name"),
-            IsActive = reader.GetBooleanFromInteger("is_active"),
+            AccountState = UserAccountStates.FromStorageValue(reader.GetString(reader.GetOrdinal("account_state"))),
             TenantId = reader.GetNullableGuidFromText("tenant_id"),
             EmailVerifiedAt = reader.GetNullableDateTimeOffsetFromText("email_verified_at"),
             CreatedAt = reader.GetDateTimeOffsetFromText("created_at"),

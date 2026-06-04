@@ -78,7 +78,7 @@ public sealed class AuthenticationOrchestrator(
         {
             return response.Status switch
             {
-                AuthenticationStatus.Disabled => new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: "User is disabled."),
+                AuthenticationStatus.Disabled => new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: "Authentication failed."),
                 AuthenticationStatus.RateLimited => new MfaAuthenticationResult(MfaAuthenticationStatus.RateLimited, response.User, ErrorMessage: "Rate limit exceeded."),
                 _ => new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: "Authentication failed.")
             };
@@ -144,7 +144,7 @@ public sealed class AuthenticationOrchestrator(
             MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "factor_authentication_failed", null);
             var errorMessage = response.Status switch
             {
-                AuthenticationStatus.Disabled => "User is disabled.",
+                AuthenticationStatus.Disabled => "Authentication failed.",
                 AuthenticationStatus.RateLimited => "Rate limit exceeded.",
                 _ => FactorVerificationFailedMessage
             };
@@ -236,7 +236,7 @@ public sealed class AuthenticationOrchestrator(
             new CreateAuthenticationHandshakeRequest(user.Id, requiredFactors, BuildClaimMetadata(response.Claims, primaryAssertion), context with { UserId = user.Id }),
             cancellationToken);
 
-        if (!result.Succeeded)
+        if (!result.TryGetValue(out var created))
         {
             MfaHandshakeOperationFailed(_logger, user.Id, result.FailureReason, null);
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: GetHandshakeCreationFailureMessage(result.FailureCode));
@@ -245,8 +245,8 @@ public sealed class AuthenticationOrchestrator(
         return new MfaAuthenticationResult(
             MfaAuthenticationStatus.MfaRequired,
             user,
-            result.Value!.Token,
-            result.Value!.Handshake.RequiredFactors);
+            created.Token,
+            created.Handshake.RequiredFactors);
     }
 
     private async Task<bool> TryValidateRememberedMfaDeviceAsync(

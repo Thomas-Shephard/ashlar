@@ -14,7 +14,7 @@ namespace Ashlar.Tests.Identity.Features.Email;
 
 internal sealed class EmailChangeServiceTests
 {
-    private static AshlarUser CreateUser(string email = "old@example.com") => new() { Id = Guid.NewGuid(), Email = email, IsActive = true };
+    private static AshlarUser CreateUser(string email = "old@example.com") => new() { Id = Guid.NewGuid(), Email = email, AccountState = UserAccountState.Active };
 
     [Test]
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
@@ -140,7 +140,7 @@ internal sealed class EmailChangeServiceTests
     [Test]
     public async Task RequestChangeSameEmailWorksForNonTenantUser()
     {
-        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "old@example.com", IsActive = true };
+        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "old@example.com", AccountState = UserAccountState.Active };
         var fixture = CreateFixture(user);
         var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "old@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") };
 
@@ -163,7 +163,7 @@ internal sealed class EmailChangeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrInactive));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
         }
     }
 
@@ -186,7 +186,7 @@ internal sealed class EmailChangeServiceTests
     [Test]
     public async Task RequestChangeRateLimitWorksForNonTenantUser()
     {
-        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "old@example.com", IsActive = true };
+        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "old@example.com", AccountState = UserAccountState.Active };
         var fixture = CreateFixture(users: [user], requestAllowed: false);
 
         var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
@@ -320,7 +320,7 @@ internal sealed class EmailChangeServiceTests
     [Test]
     public async Task ConfirmChangePreservesAuditMetadataForMetadataBackedUser()
     {
-        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "old@example.com", IsActive = true, CreatedAt = DateTimeOffset.UtcNow.AddDays(-1) };
+        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "old@example.com", AccountState = UserAccountState.Active, CreatedAt = DateTimeOffset.UtcNow.AddDays(-1) };
         var fixture = CreateFixture(user);
         await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
@@ -490,7 +490,7 @@ internal sealed class EmailChangeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrInactive));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
         }
     }
 
@@ -676,7 +676,7 @@ internal sealed class EmailChangeServiceTests
                     break;
             }
             _ = user.Name;
-            _ = user.IsActive;
+            _ = user.CanSignIn();
             _ = (user as ITenantUser)?.TenantId;
             _ = (user as IHasAuditMetadata)?.CreatedAt;
             if (user is IHasAuditMetadata metadata)
@@ -722,7 +722,7 @@ internal sealed class EmailChangeServiceTests
         public required Guid Id { get; init; }
         public required string Email { get; set; }
         public string? Name { get; set; }
-        public bool IsActive { get; set; }
+        public UserAccountState AccountState { get; set; }
         public DateTimeOffset? EmailVerifiedAt { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }

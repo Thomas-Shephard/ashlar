@@ -581,7 +581,7 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         {
             Id = Guid.NewGuid(),
             Email = $"{Guid.NewGuid()}@example.com",
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             TenantId = tenantId,
             CreatedAt = DateTimeOffset.UtcNow
         };

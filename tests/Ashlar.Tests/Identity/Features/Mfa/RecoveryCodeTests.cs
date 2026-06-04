@@ -99,7 +99,7 @@ internal sealed class RecoveryCodeTests
         var userId = Guid.NewGuid();
 
         repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com", IsActive = true });
+            .ReturnsAsync(new User { Id = userId, Email = "test@example.com", AccountState = UserAccountState.Active });
 
         transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(transaction.Object);
@@ -130,7 +130,7 @@ internal sealed class RecoveryCodeTests
         var userId = Guid.NewGuid();
 
         repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com", IsActive = true });
+            .ReturnsAsync(new User { Id = userId, Email = "test@example.com", AccountState = UserAccountState.Active });
 
         transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(transaction.Object);
@@ -165,7 +165,7 @@ internal sealed class RecoveryCodeTests
         var audit = new AuditContext(ActorUserId: userId, IpAddress: "203.0.113.50", UserAgent: "recovery-agent", CorrelationId: "recovery-correlation");
 
         repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com", IsActive = true });
+            .ReturnsAsync(new User { Id = userId, Email = "test@example.com", AccountState = UserAccountState.Active });
         transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(transaction.Object);
         transaction.Setup(t => t.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()))
@@ -209,7 +209,7 @@ internal sealed class RecoveryCodeTests
         var userId = Guid.NewGuid();
 
         repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com", IsActive = true });
+            .ReturnsAsync(new User { Id = userId, Email = "test@example.com", AccountState = UserAccountState.Active });
         transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(transaction.Object);
         transaction.Setup(t => t.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()))
@@ -245,7 +245,7 @@ internal sealed class RecoveryCodeTests
         var userId = Guid.NewGuid();
 
         repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com", IsActive = true });
+            .ReturnsAsync(new User { Id = userId, Email = "test@example.com", AccountState = UserAccountState.Active });
 
         transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(transaction.Object);
@@ -425,7 +425,7 @@ internal sealed class RecoveryCodeTests
         var userId = Guid.NewGuid();
 
         repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com", IsActive = true });
+            .ReturnsAsync(new User { Id = userId, Email = "test@example.com", AccountState = UserAccountState.Active });
         credentialRepository.Setup(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()))
             .ReturnsAsync(10);
 
@@ -887,7 +887,7 @@ internal sealed class RecoveryCodeTests
         var securityEventSink = new Mock<ISecurityEventSink>();
 
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "test@example.com", IsActive = true };
+        var user = new User { Id = userId, Email = "test@example.com", AccountState = UserAccountState.Active };
         var assertion = new RecoveryCodeAssertion("CODE");
         var context = new AuthenticationContext(Email: "test@example.com");
 
@@ -971,7 +971,7 @@ internal sealed class RecoveryCodeTests
         var transactionProvider = new Mock<IAshlarTransactionProvider>();
 
         repository.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid id, CancellationToken _) => new User { Id = id, Email = "test@example.com", IsActive = true, TenantId = userTenantId });
+            .ReturnsAsync((Guid id, CancellationToken _) => new User { Id = id, Email = "test@example.com", AccountState = UserAccountState.Active, TenantId = userTenantId });
 
         transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Mock<IAshlarTransaction>().Object);

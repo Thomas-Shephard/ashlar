@@ -315,7 +315,7 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
         {
             Id = Guid.NewGuid(),
             Email = $"{Guid.NewGuid()}@example.com",
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };
         await repo.CreateUserAsync(user);

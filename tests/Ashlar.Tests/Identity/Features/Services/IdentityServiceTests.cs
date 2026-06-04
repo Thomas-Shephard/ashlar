@@ -437,10 +437,10 @@ internal sealed class IdentityServiceTests
     }
 
     [Test]
-    public async Task LoginAsyncWithInactiveUserShouldReturnDisabledStatus()
+    public async Task LoginAsyncWithDisabledUserShouldReturnDisabledStatus()
     {
         var email = "inactive@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email, IsActive = false };
+        var user = new User { Id = Guid.NewGuid(), Email = email, AccountState = UserAccountState.Disabled };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -802,7 +802,7 @@ internal sealed class IdentityServiceTests
             Id = Guid.NewGuid(),
             Email = " test@example.com ",
             Name = "Test User",
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             TenantId = Guid.NewGuid(),
             EmailVerifiedAt = createdAt,
             CreatedAt = createdAt,
@@ -821,7 +821,7 @@ internal sealed class IdentityServiceTests
             Assert.That(result.Email, Is.EqualTo("test@example.com"));
             Assert.That(persistedUser?.Email, Is.EqualTo("test@example.com"));
             Assert.That(persistedUser?.Name, Is.EqualTo(user.Name));
-            Assert.That(persistedUser?.IsActive, Is.True);
+            Assert.That(persistedUser?.CanSignIn(), Is.True);
             Assert.That((persistedUser as ITenantUser)?.TenantId, Is.EqualTo(user.TenantId));
             Assert.That(persistedUser?.EmailVerifiedAt, Is.EqualTo(user.EmailVerifiedAt));
             Assert.That((persistedUser as IHasAuditMetadata)?.CreatedAt, Is.EqualTo(createdAt));
@@ -839,7 +839,7 @@ internal sealed class IdentityServiceTests
         {
             Id = Guid.NewGuid(),
             Email = " basic@example.com ",
-            IsActive = true
+            AccountState = UserAccountState.Active
         };
         IUser? persistedUser = null;
         _repositoryMock
@@ -2388,7 +2388,7 @@ internal sealed class IdentityServiceTests
         public required Guid Id { get; init; }
         public required string Email { get; set; }
         public string? Name { get; set; }
-        public bool IsActive { get; set; }
+        public UserAccountState AccountState { get; set; }
         public Guid? TenantId { get; set; }
         public DateTimeOffset? EmailVerifiedAt { get; set; }
         public DateTimeOffset CreatedAt { get; init; }
@@ -2400,7 +2400,7 @@ internal sealed class IdentityServiceTests
         public required Guid Id { get; init; }
         public required string Email { get; init; }
         public string? Name { get; init; }
-        public bool IsActive { get; init; }
+        public UserAccountState AccountState { get; init; } = UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt { get; init; }
     }
 }

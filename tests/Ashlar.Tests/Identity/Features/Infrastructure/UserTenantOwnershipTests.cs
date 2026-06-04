@@ -32,7 +32,7 @@ internal sealed class UserTenantOwnershipTests
     {
         public string Email => $"{Id:N}@example.com";
         public string? Name => null;
-        public bool IsActive => true;
+        public UserAccountState AccountState => UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt => null;
     }
 
@@ -40,7 +40,7 @@ internal sealed class UserTenantOwnershipTests
     {
         public string Email => $"{Id:N}@example.com";
         public string? Name => null;
-        public bool IsActive => true;
+        public UserAccountState AccountState => UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt => null;
     }
 }

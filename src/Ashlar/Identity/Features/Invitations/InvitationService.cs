@@ -69,7 +69,7 @@ internal sealed class InvitationService(
         }
 
         var existingUser = await _dependencies.UserRepository.GetUserByEmailAsync(normalizedEmail, request.TenantId, cancellationToken);
-        if (existingUser is { IsActive: true })
+        if (existingUser?.CanSignIn() == true)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
@@ -318,7 +318,7 @@ internal sealed class InvitationService(
                 Id = userId,
                 Email = invitation.Email,
                 Name = requestedUserName,
-                IsActive = true,
+                AccountState = UserAccountState.Active,
                 EmailVerifiedAt = _options.Value.VerifyEmailOnAcceptance ? now : null,
                 TenantId = invitation.TenantId
             };
@@ -326,14 +326,14 @@ internal sealed class InvitationService(
             return new AcceptedInvitationUser(userId, IsNewUser: true);
         }
 
-        if (!user.IsActive || (!user.EmailVerifiedAt.HasValue && _options.Value.VerifyEmailOnAcceptance))
+        if (!user.CanSignIn() || (!user.EmailVerifiedAt.HasValue && _options.Value.VerifyEmailOnAcceptance))
         {
             var updatedUser = new AshlarUser
             {
                 Id = user.Id,
                 Email = user.Email,
                 Name = requestedUserName ?? user.Name,
-                IsActive = true,
+                AccountState = UserAccountState.Active,
                 EmailVerifiedAt = _options.Value.VerifyEmailOnAcceptance ? (user.EmailVerifiedAt ?? now) : user.EmailVerifiedAt,
                 TenantId = invitation.TenantId
             };

@@ -1419,12 +1419,19 @@ internal static class AppViews
                 const renderUserOptionText = u => (u.name || 'No Name') + ' (' + u.email + ')';
 
                 const setSecurityActions = posture => {
-                    document.getElementById('disableUserBtn').classList.toggle('hidden', !posture.isActive);
-                    document.getElementById('reactivateUserBtn').classList.toggle('hidden', posture.isActive);
+                    document.getElementById('disableUserBtn').classList.toggle('hidden', !posture.canSignIn);
+                    document.getElementById('reactivateUserBtn').classList.toggle('hidden', posture.canSignIn);
                     document.getElementById('revokeUserSessionsBtn').classList.toggle('hidden', posture.activeSessionCount < 1);
                     document.getElementById('resetUserMfaBtn').classList.toggle('hidden', !posture.isMfaConfigured);
                 };
 
+                const formatAccountState = state => {
+                    if (typeof state === 'number') {
+                        return ['Active', 'Disabled', 'Locked', 'Suspended'][state] || 'Unknown';
+                    }
+
+                    return state ? state.charAt(0).toUpperCase() + state.slice(1) : 'Unknown';
+                };
                 const postureNames = items => [...new Set((items || []).map(item => item.displayName).filter(Boolean))].join(', ') || 'None';
 
                 const loadSecurityPosture = async () => {
@@ -1432,7 +1439,7 @@ internal static class AppViews
                     const div = document.getElementById('securityPosture');
                     if (!userId) {
                         div.innerText = 'Select a user to view account security state.';
-                        setSecurityActions({ isActive: false, activeSessionCount: 0, isMfaConfigured: false });
+                        setSecurityActions({ canSignIn: false, activeSessionCount: 0, isMfaConfigured: false });
                         return;
                     }
 
@@ -1442,7 +1449,7 @@ internal static class AppViews
                     if (!response.ok) {
                         div.style.color = '#dc2626';
                         div.innerText = formatSampleError(result.error, 'Unable to load account security state.');
-                        setSecurityActions({ isActive: false, activeSessionCount: 0, isMfaConfigured: false });
+                        setSecurityActions({ canSignIn: false, activeSessionCount: 0, isMfaConfigured: false });
                         return;
                     }
 
@@ -1461,7 +1468,7 @@ internal static class AppViews
                     }
                     div.replaceChildren();
                     [
-                        ['Status', result.isActive ? 'Active' : 'Inactive'],
+                        ['Status', formatAccountState(result.accountState)],
                         ['Email', result.isEmailVerified ? 'Verified' : 'Unverified'],
                         ['Sign-in methods', credentials],
                         ['Additional verification', verification],

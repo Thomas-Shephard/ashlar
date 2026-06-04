@@ -18,9 +18,9 @@ public interface IUser
     /// </summary>
     string? Name { get; }
     /// <summary>
-    /// Gets the is active value.
+    /// Gets the account state value.
     /// </summary>
-    bool IsActive { get; }
+    UserAccountState AccountState { get; }
     /// <summary>
     /// Gets the email verified at value.
     /// </summary>

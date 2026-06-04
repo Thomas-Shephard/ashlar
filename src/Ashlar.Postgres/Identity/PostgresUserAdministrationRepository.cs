@@ -21,7 +21,7 @@ public sealed class PostgresUserAdministrationRepository(IPostgresConnectionProv
         ArgumentNullException.ThrowIfNull(request);
 
         var sql = """
-            SELECT id AS UserId, email, name, tenant_id AS TenantId, is_active AS IsActive,
+            SELECT id AS UserId, email, name, tenant_id AS TenantId, account_state AS AccountState,
                    (email_verified_at IS NOT NULL) AS IsEmailVerified, created_at AS CreatedAt, updated_at AS UpdatedAt
             FROM ashlar_users
             WHERE 1 = 1
@@ -36,10 +36,10 @@ public sealed class PostgresUserAdministrationRepository(IPostgresConnectionProv
 
         PostgresAdminQuery.AddTenantFilter(request.Tenant, "tenant_id", "TenantId", ref sql, parameters);
 
-        if (request.IsActive.HasValue)
+        if (request.AccountState.HasValue)
         {
-            sql += " AND is_active = @IsActive";
-            parameters.Add("IsActive", request.IsActive.Value);
+            sql += " AND account_state = @AccountState";
+            parameters.Add("AccountState", request.AccountState.Value.ToStorageValue());
         }
 
         if (request.IsEmailVerified.HasValue)
@@ -66,7 +66,7 @@ public sealed class PostgresUserAdministrationRepository(IPostgresConnectionProv
     public async Task<UserSummary?> GetUserSummaryAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         const string sql = """
-            SELECT id AS UserId, email, name, tenant_id AS TenantId, is_active AS IsActive,
+            SELECT id AS UserId, email, name, tenant_id AS TenantId, account_state AS AccountState,
                    (email_verified_at IS NOT NULL) AS IsEmailVerified, created_at AS CreatedAt, updated_at AS UpdatedAt
             FROM ashlar_users
             WHERE id = @UserId
@@ -78,12 +78,14 @@ public sealed class PostgresUserAdministrationRepository(IPostgresConnectionProv
 
     private static UserSummary ToUserSummary(UserAdministrationUserRow row)
     {
+        var accountState = UserAccountStates.FromStorageValue(row.AccountState);
         return new UserSummary(
             row.UserId,
             row.Email,
             row.Name,
             row.TenantId,
-            row.IsActive,
+            accountState,
+            accountState.CanSignIn(),
             row.IsEmailVerified,
             PostgresAdminQuery.ToDateTimeOffset(row.CreatedAt),
             PostgresAdminQuery.ToNullableDateTimeOffset(row.UpdatedAt));
@@ -94,7 +96,7 @@ public sealed class PostgresUserAdministrationRepository(IPostgresConnectionProv
         string Email,
         string? Name,
         Guid? TenantId,
-        bool IsActive,
+        string AccountState,
         bool IsEmailVerified,
         DateTime CreatedAt,
         DateTime? UpdatedAt);

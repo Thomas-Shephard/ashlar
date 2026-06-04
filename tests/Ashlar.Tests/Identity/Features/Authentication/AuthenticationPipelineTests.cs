@@ -574,13 +574,15 @@ internal sealed class AuthenticationPipelineTests
             Times.Never);
     }
 
-    [Test]
-    public async Task LoginAsyncWithInactiveUserShouldReturnDisabled()
+    [TestCase(UserAccountState.Disabled)]
+    [TestCase(UserAccountState.Locked)]
+    [TestCase(UserAccountState.Suspended)]
+    public async Task LoginAsyncWithUnavailableUserShouldReturnDisabled(UserAccountState accountState)
     {
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", IsActive = false };
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", AccountState = accountState };
         var credential = CreateCredential(user.Id);
 
         _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
@@ -596,6 +598,25 @@ internal sealed class AuthenticationPipelineTests
             Assert.That(response.User, Is.SameAs(user));
             Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Disabled));
         }
+    }
+
+    [Test]
+    public async Task LoginAsyncWithUnknownUnavailableStateShouldReturnDisabledWithGenericFailureReason()
+    {
+        var context = new AuthenticationContext("test@example.com");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", AccountState = (UserAccountState)999 };
+        var credential = CreateCredential(user.Id);
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded));
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Disabled));
     }
 
     [Test]

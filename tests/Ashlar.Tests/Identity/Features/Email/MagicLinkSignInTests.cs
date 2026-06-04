@@ -18,7 +18,7 @@ namespace Ashlar.Tests.Identity.Features.Email;
 
 internal sealed class MagicLinkSignInTests
 {
-    private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Email = "user@example.com", IsActive = true };
+    private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Email = "user@example.com", AccountState = UserAccountState.Active };
 
     [Test]
     public async Task RequestLinkSendsEmailAndStoresHashedCredentialForActiveUser()
@@ -102,10 +102,12 @@ internal sealed class MagicLinkSignInTests
         }
     }
 
-    [Test]
-    public async Task RequestLinkDoesNotSendForInactiveUser()
+    [TestCase(UserAccountState.Disabled, "user_disabled")]
+    [TestCase(UserAccountState.Locked, "user_locked")]
+    [TestCase(UserAccountState.Suspended, "user_suspended")]
+    public async Task RequestLinkDoesNotSendForUnavailableUser(UserAccountState accountState, string failureReason)
     {
-        var user = new User { Id = Guid.NewGuid(), Email = "inactive@example.com", IsActive = false };
+        var user = new User { Id = Guid.NewGuid(), Email = "inactive@example.com", AccountState = accountState };
         var fixture = CreateFixture(user);
 
         await fixture.Service.RequestLinkAsync(user.Email, new Uri("https://myapp.com/verify"));
@@ -113,8 +115,19 @@ internal sealed class MagicLinkSignInTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fixture.EmailSender.Messages, Is.Empty);
-            Assert.That(fixture.Audit.Events.Single().FailureReason, Is.EqualTo("user_disabled"));
+            Assert.That(fixture.Audit.Events.Single().FailureReason, Is.EqualTo(failureReason));
         }
+    }
+
+    [Test]
+    public async Task RequestLinkUsesGenericSuppressionReasonForUnknownUnavailableState()
+    {
+        var user = new User { Id = Guid.NewGuid(), Email = "inactive@example.com", AccountState = (UserAccountState)999 };
+        var fixture = CreateFixture(user);
+
+        await fixture.Service.RequestLinkAsync(user.Email, new Uri("https://myapp.com/verify"));
+
+        Assert.That(fixture.Audit.Events.Single().FailureReason, Is.EqualTo("invalid_credentials"));
     }
 
     [Test]
@@ -255,7 +268,7 @@ internal sealed class MagicLinkSignInTests
     {
         var tenantId = Guid.NewGuid();
         var otherTenantId = Guid.NewGuid();
-        var user = new User { Id = _user.Id, Email = _user.Email, IsActive = _user.IsActive, TenantId = tenantId };
+        var user = new User { Id = _user.Id, Email = _user.Email, AccountState = _user.AccountState, TenantId = tenantId };
         var fixture = CreateFixture(user);
         await fixture.Service.RequestLinkAsync(user.Email, new Uri("https://myapp.com/verify"), new AuthenticationContext(TenantId: tenantId));
         var token = ExtractToken(fixture.EmailSender.Messages.Single().TextBody);

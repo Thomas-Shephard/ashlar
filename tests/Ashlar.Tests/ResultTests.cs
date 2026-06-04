@@ -53,6 +53,64 @@ internal sealed class ResultTests
         }
     }
 
+    [Test]
+    public void GetFailureOrReturnsFailureDetailsWhenPresent()
+    {
+        var result = Result.Failure(AshlarFailureCodes.InvalidCode, "Invalid code.");
+
+        var failure = result.GetFailureOr(AshlarFailureCodes.ValidationError);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure.Code, Is.EqualTo(AshlarFailureCodes.InvalidCode));
+            Assert.That(failure.Message, Is.EqualTo("Invalid code."));
+        }
+    }
+
+    [Test]
+    public void GetFailureOrReturnsFallbackWhenDetailsAreMissing()
+    {
+        var failure = Result.Success().GetFailureOr(AshlarFailureCodes.ValidationError);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure.Code, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(failure.Message, Is.Null);
+        }
+    }
+
+    [Test]
+    public void TryGetValueReturnsValueForSuccessfulResult()
+    {
+        var result = Result.Success("value");
+
+        var succeeded = result.TryGetValue(out var value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(succeeded, Is.True);
+            Assert.That(value, Is.EqualTo("value"));
+        }
+    }
+
+    [Test]
+    public void TryGetValueReturnsFalseForFailuresAndMissingValues()
+    {
+        var failure = Result.Failure<string>(AshlarFailureCodes.ValidationError);
+        var missingValue = new Result<string>(true);
+
+        var failedHasValue = failure.TryGetValue(out var failedValue);
+        var missingHasValue = missingValue.TryGetValue(out var missing);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failedHasValue, Is.False);
+            Assert.That(failedValue, Is.Null);
+            Assert.That(missingHasValue, Is.False);
+            Assert.That(missing, Is.Null);
+        }
+    }
+
     [TestCase(null)]
     [TestCase("")]
     [TestCase("   ")]

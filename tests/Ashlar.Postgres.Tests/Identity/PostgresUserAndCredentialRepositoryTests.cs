@@ -99,7 +99,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
             Id = Guid.NewGuid(),
             Email = "test@example.com",
             Name = "Test User",
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };
 
@@ -148,7 +148,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         {
             Id = Guid.NewGuid(),
             Email = "MixedCase@Example.Com",
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };
 
@@ -645,7 +645,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
             Id = user.Id,
             Email = user.Email,
             Name = "Updated Name",
-            IsActive = user.IsActive,
+            AccountState = user.AccountState,
             TenantId = user.TenantId,
             CreatedAt = user.CreatedAt
         };
@@ -700,7 +700,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         {
             Id = Guid.NewGuid(),
             Email = "minimal@example.com",
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             Name = "Original"
         };
 
@@ -710,7 +710,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         {
             Id = user.Id,
             Email = user.Email,
-            IsActive = user.IsActive,
+            AccountState = user.AccountState,
             Name = "Updated"
         };
 
@@ -728,7 +728,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         {
             Id = Guid.NewGuid(),
             Email = $"{Guid.NewGuid()}@example.com",
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };
         await repo.CreateUserAsync(user);
@@ -779,7 +779,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         public Guid Id { get; init; }
         public required string Email { get; init; }
         public string? Name { get; init; }
-        public bool IsActive { get; init; }
+        public UserAccountState AccountState { get; init; } = UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt { get; init; }
     }
 }

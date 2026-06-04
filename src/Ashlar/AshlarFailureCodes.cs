@@ -23,8 +23,8 @@ public static class AshlarFailureCodes
     public const string InvalidCallbackUriValue = "invalid_callback_uri";
     /// <summary>The user could not be found.</summary>
     public const string UserNotFoundValue = "user_not_found";
-    /// <summary>The user could not be found or is inactive.</summary>
-    public const string UserNotFoundOrInactiveValue = "user_not_found_or_inactive";
+    /// <summary>The user could not be found or cannot currently sign in.</summary>
+    public const string UserNotFoundOrUnavailableValue = "user_not_found_or_unavailable";
     /// <summary>The requested user already exists.</summary>
     public const string UserExistsValue = "user_exists";
     /// <summary>The token is empty.</summary>
@@ -135,8 +135,8 @@ public static class AshlarFailureCodes
     public static readonly AshlarFailureCode InvalidCallbackUri = new(InvalidCallbackUriValue);
     /// <summary>The user could not be found.</summary>
     public static readonly AshlarFailureCode UserNotFound = new(UserNotFoundValue);
-    /// <summary>The user could not be found or is inactive.</summary>
-    public static readonly AshlarFailureCode UserNotFoundOrInactive = new(UserNotFoundOrInactiveValue);
+    /// <summary>The user could not be found or cannot currently sign in.</summary>
+    public static readonly AshlarFailureCode UserNotFoundOrUnavailable = new(UserNotFoundOrUnavailableValue);
     /// <summary>The requested user already exists.</summary>
     public static readonly AshlarFailureCode UserExists = new(UserExistsValue);
     /// <summary>The token is empty.</summary>

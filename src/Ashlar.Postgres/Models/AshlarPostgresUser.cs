@@ -18,9 +18,9 @@ public sealed class AshlarPostgresUser : ITenantUser, IHasAuditMetadata
     /// </summary>
     public string? Name { get; set; }
     /// <summary>
-    /// Gets or sets the is active value.
+    /// Gets or sets the account state value.
     /// </summary>
-    public bool IsActive { get; set; }
+    public UserAccountState AccountState { get; set; } = UserAccountState.Active;
     /// <summary>
     /// Gets or sets the tenant id value.
     /// </summary>

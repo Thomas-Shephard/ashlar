@@ -40,7 +40,7 @@ internal sealed class AuthenticationOrchestratorTests
         _assertionMock.Setup(a => a.ProviderIdentity).Returns(new AuthenticationProviderKey("totp", "totp"));
         _userMock = new Mock<IUser>();
         _userMock.Setup(u => u.Id).Returns(Guid.NewGuid());
-        _userMock.Setup(u => u.IsActive).Returns(true);
+        _userMock.Setup(u => u.AccountState).Returns(UserAccountState.Active);
         _handshakeServiceMock
             .Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((VerifyAuthenticationHandshakeRequest request, CancellationToken _) => Result.Success(new AuthenticationHandshake(
@@ -629,7 +629,7 @@ internal sealed class AuthenticationOrchestratorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
-            Assert.That(result.ErrorMessage, Is.EqualTo("User is disabled."));
+            Assert.That(result.ErrorMessage, Is.EqualTo("Authentication failed."));
         }
     }
 
@@ -906,7 +906,7 @@ internal sealed class AuthenticationOrchestratorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
-            Assert.That(result.ErrorMessage, Is.EqualTo("User is disabled."));
+            Assert.That(result.ErrorMessage, Is.EqualTo("Authentication failed."));
         }
     }
 

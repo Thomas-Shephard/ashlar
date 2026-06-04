@@ -138,7 +138,7 @@ public sealed record AccountSecurityPolicyPosture(
 /// Non-secret account security posture details for a user.
 /// </summary>
 /// <param name="UserId">The user id value.</param>
-/// <param name="IsActive">Whether the user is active.</param>
+/// <param name="AccountState">The account state value.</param>
 /// <param name="IsEmailVerified">Whether the email address is verified.</param>
 /// <param name="CanSignIn">Whether the account can sign in under current credential and <paramref name="Policy" /> state.</param>
 /// <param name="PrimaryCredentials">The configured primary credentials.</param>
@@ -149,7 +149,7 @@ public sealed record AccountSecurityPolicyPosture(
 /// <param name="RecentSecurityEventCount">The recent security event count.</param>
 public record AccountSecurityPosture(
     Guid UserId,
-    bool IsActive,
+    UserAccountState AccountState,
     bool IsEmailVerified,
     bool CanSignIn,
     IReadOnlyList<CredentialPostureItem> PrimaryCredentials,
@@ -183,7 +183,7 @@ public record AccountSecurityPosture(
 /// Compatibility alias for account security posture results.
 /// </summary>
 /// <param name="UserId">The user id value.</param>
-/// <param name="IsActive">Whether the user is active.</param>
+/// <param name="AccountState">The account state value.</param>
 /// <param name="IsEmailVerified">Whether the email address is verified.</param>
 /// <param name="CanSignIn">Whether the account can sign in under current credential and <paramref name="Policy" /> state.</param>
 /// <param name="PrimaryCredentials">The configured primary credentials.</param>
@@ -194,7 +194,7 @@ public record AccountSecurityPosture(
 /// <param name="RecentSecurityEventCount">The recent security event count.</param>
 public sealed record UserSecurityPosture(
     Guid UserId,
-    bool IsActive,
+    UserAccountState AccountState,
     bool IsEmailVerified,
     bool CanSignIn,
     IReadOnlyList<CredentialPostureItem> PrimaryCredentials,
@@ -205,7 +205,7 @@ public sealed record UserSecurityPosture(
     int? RecentSecurityEventCount)
     : AccountSecurityPosture(
         UserId,
-        IsActive,
+        AccountState,
         IsEmailVerified,
         CanSignIn,
         PrimaryCredentials,

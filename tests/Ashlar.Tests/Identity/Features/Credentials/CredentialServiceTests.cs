@@ -1396,7 +1396,7 @@ internal sealed class CredentialServiceTests
         public required Guid Id { get; init; }
         public required string Email { get; set; }
         public string? Name { get; set; }
-        public bool IsActive { get; set; } = true;
+        public UserAccountState AccountState { get; set; } = UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt { get; set; }
     }
 }
