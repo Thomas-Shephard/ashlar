@@ -6,13 +6,14 @@ namespace Ashlar.Identity.Abstractions.AccountSecurity;
 public interface IAccountSecurityGuard
 {
     /// <summary>
-    /// Determines whether a user can be disabled.
+    /// Determines whether a user's account state can be changed.
     /// </summary>
-    /// <param name="user">The user value.</param>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
-    Task<Result> CanDisableUserAsync(IUser user, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default);
+    /// <param name="user">The user whose account state would change.</param>
+    /// <param name="targetState">The requested account state.</param>
+    /// <param name="request">Audit metadata and optional tenant scope.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>The guard decision.</returns>
+    Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -21,7 +22,7 @@ public interface IAccountSecurityGuard
 public sealed class AllowAccountSecurityGuard : IAccountSecurityGuard
 {
     /// <inheritdoc />
-    public Task<Result> CanDisableUserAsync(IUser user, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
+    public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(request);

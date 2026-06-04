@@ -22,13 +22,9 @@ public static class AshlarSecurityEventTypes
     /// </summary>
     public const string UserCreated = "ashlar.user.created";
     /// <summary>
-    /// Defines the user disabled value.
+    /// Defines the user account state changed value.
     /// </summary>
-    public const string UserDisabled = "ashlar.user.disabled";
-    /// <summary>
-    /// Defines the user reactivated value.
-    /// </summary>
-    public const string UserReactivated = "ashlar.user.reactivated";
+    public const string UserAccountStateChanged = "ashlar.user.account_state_changed";
     /// <summary>
     /// Defines the user credentials revoked value.
     /// </summary>

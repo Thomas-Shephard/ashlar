@@ -499,7 +499,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound).Or.EqualTo(HttpStatusCode.BadRequest));
-            Assert.That(body, Does.Contain("last_admin_cannot_be_disabled"));
+            Assert.That(body, Does.Contain("last_admin_cannot_be_changed_to_non_sign_in_state"));
         }
 
         await AssertAuthenticatedPageAsync(client, "/admin");

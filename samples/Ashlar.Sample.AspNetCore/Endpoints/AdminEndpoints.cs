@@ -10,6 +10,7 @@ namespace Ashlar.Sample.AspNetCore.Endpoints;
 
 internal sealed record CreateProjectRequest(string Id, string Name);
 internal sealed record AdminUserSecurityRequest(string? Reason);
+internal sealed record AdminSetUserAccountStateRequest(UserAccountState AccountState, string? Reason, bool? RevokeSessionsAndRememberedMfaDevices);
 
 internal static partial class AdminEndpoints
 {
@@ -56,6 +57,22 @@ internal static partial class AdminEndpoints
             CancellationToken cancellationToken) =>
         {
             var result = await accountSecurity.DisableUserAsync(userId, ToAdminRequest(request, httpContext), cancellationToken);
+            return ToAdminSecurityResult(result);
+        }).RequireAuthorization(AdminPolicy).RequireFreshMfa();
+
+        app.MapPost("/api/admin/users/{userId:guid}/account-state", async (
+            Guid userId,
+            AdminSetUserAccountStateRequest request,
+            IAccountSecurityService accountSecurity,
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            if (!Enum.IsDefined(request.AccountState))
+            {
+                return Results.BadRequest(new { error = "Invalid account state." });
+            }
+
+            var result = await accountSecurity.SetUserAccountStateAsync(userId, ToSetAccountStateRequest(request, httpContext), cancellationToken);
             return ToAdminSecurityResult(result);
         }).RequireAuthorization(AdminPolicy).RequireFreshMfa();
 
@@ -183,6 +200,17 @@ internal static partial class AdminEndpoints
     private static AccountSecurityOperationRequest ToAdminRequest(AdminUserSecurityRequest? request, HttpContext httpContext)
     {
         return new AccountSecurityOperationRequest(httpContext.ToAuditContext(), ToTenantContext(httpContext), request?.Reason);
+    }
+
+    private static SetUserAccountStateRequest ToSetAccountStateRequest(AdminSetUserAccountStateRequest request, HttpContext httpContext)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return new SetUserAccountStateRequest(
+            request.AccountState,
+            httpContext.ToAuditContext(),
+            ToTenantContext(httpContext),
+            request.Reason,
+            request.RevokeSessionsAndRememberedMfaDevices ?? true);
     }
 
     private static TenantContext? ToTenantContext(HttpContext httpContext)

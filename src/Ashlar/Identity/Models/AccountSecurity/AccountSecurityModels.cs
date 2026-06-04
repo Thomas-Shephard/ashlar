@@ -8,23 +8,44 @@ namespace Ashlar.Identity.Models.AccountSecurity;
 /// <param name="Audit">The audit context value.</param>
 /// <param name="Tenant">The tenant context value.</param>
 /// <param name="Reason">The reason value.</param>
-public sealed record AccountSecurityOperationRequest(
+public record AccountSecurityOperationRequest(
     AuditContext Audit,
     TenantContext? Tenant = null,
     string? Reason = null);
 
 /// <summary>
+/// Request metadata for changing a user's account state.
+/// </summary>
+/// <param name="AccountState">The target account state.</param>
+/// <param name="Audit">The <paramref name="Audit" /> context for the administrator operation.</param>
+/// <param name="Tenant">Optional tenant scope for the target user.</param>
+/// <param name="Reason">Optional safe reason recorded with revocation and security events.</param>
+/// <param name="RevokeSessionsAndRememberedMfaDevices">Whether transitions to non-active states revoke active sessions and remembered MFA devices.</param>
+public sealed record SetUserAccountStateRequest(
+    UserAccountState AccountState,
+    AuditContext Audit,
+    TenantContext? Tenant = null,
+    string? Reason = null,
+    bool RevokeSessionsAndRememberedMfaDevices = true) : AccountSecurityOperationRequest(Audit, Tenant, Reason);
+
+/// <summary>
 /// Result counts from an administrator account security operation.
 /// </summary>
-/// <param name="UserId">The user id value.</param>
-/// <param name="UserChanged">The user changed value.</param>
-/// <param name="SessionsRevoked">The sessions revoked value.</param>
-/// <param name="CredentialsRevoked">The credentials revoked value.</param>
+/// <param name="UserId">The affected user id.</param>
+/// <param name="UserChanged">Whether the user row was updated.</param>
+/// <param name="SessionsRevoked">The number of active sessions revoked.</param>
+/// <param name="CredentialsRevoked">The number of credentials revoked.</param>
+/// <param name="PreviousState">The account state before the operation, when applicable.</param>
+/// <param name="CurrentState">The account state after the operation, when applicable.</param>
+/// <param name="RememberedMfaDevicesRevoked">The number of remembered MFA devices revoked.</param>
 public sealed record AccountSecurityOperationResult(
     Guid UserId,
     bool UserChanged = false,
     int SessionsRevoked = 0,
-    int CredentialsRevoked = 0);
+    int CredentialsRevoked = 0,
+    UserAccountState? PreviousState = null,
+    UserAccountState? CurrentState = null,
+    int RememberedMfaDevicesRevoked = 0);
 
 /// <summary>
 /// Request metadata for a user security posture lookup.
@@ -226,6 +247,6 @@ public interface IUserSecurityEventSummaryRepository
     /// <param name="userId">The user id value.</param>
     /// <param name="since">The since value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The number of matching security events.</returns>
     Task<int> CountSecurityEventsForUserAsync(Guid userId, DateTimeOffset since, CancellationToken cancellationToken = default);
 }
