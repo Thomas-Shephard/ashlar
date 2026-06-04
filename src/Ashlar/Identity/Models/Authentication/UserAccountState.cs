@@ -42,6 +42,17 @@ public static class UserAccountStates
     }
 
     /// <summary>
+    /// Gets whether the user can sign in based on account state.
+    /// </summary>
+    /// <param name="user">The user value.</param>
+    /// <returns><see langword="true" /> when sign-in can proceed.</returns>
+    public static bool CanSignIn(this IUser user)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        return user.AccountState.CanSignIn();
+    }
+
+    /// <summary>
     /// Gets the stable provider storage value.
     /// </summary>
     /// <param name="state">The account state value.</param>
@@ -73,17 +84,6 @@ public static class UserAccountStates
             "suspended" => UserAccountState.Suspended,
             _ => throw new ArgumentOutOfRangeException(nameof(value), value, "Unknown user account state.")
         };
-    }
-
-    /// <summary>
-    /// Gets whether the user can sign in based on account state.
-    /// </summary>
-    /// <param name="user">The user value.</param>
-    /// <returns><see langword="true" /> when sign-in can proceed.</returns>
-    public static bool CanSignIn(this IUser user)
-    {
-        ArgumentNullException.ThrowIfNull(user);
-        return user.AccountState.CanSignIn();
     }
 
     /// <summary>

@@ -161,15 +161,13 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
         };
     }
 
-    private sealed class UserRow
-    {
-        public Guid Id { get; set; }
-        public required string Email { get; set; }
-        public string? Name { get; set; }
-        public required string AccountState { get; set; }
-        public Guid? TenantId { get; set; }
-        public DateTimeOffset? EmailVerifiedAt { get; set; }
-        public DateTimeOffset CreatedAt { get; set; }
-        public DateTimeOffset? UpdatedAt { get; set; }
-    }
+    private sealed record UserRow(
+        Guid Id,
+        string Email,
+        string? Name,
+        string AccountState,
+        Guid? TenantId,
+        DateTimeOffset? EmailVerifiedAt,
+        DateTimeOffset CreatedAt,
+        DateTimeOffset? UpdatedAt);
 }

@@ -28,6 +28,8 @@ public sealed class AuthenticationOrchestrator(
     private const string PrimaryProviderTypeMetadataKey = "primary_provider_type";
     private const string PrimaryProviderNameMetadataKey = "primary_provider_name";
     private const string PrimaryCredentialKeyMetadataKey = "primary_credential_key";
+    private const string AuthenticationFailedMessage = "Authentication failed.";
+    private const string RateLimitExceededMessage = "Rate limit exceeded.";
     private const string FactorVerificationFailedMessage = "Factor verification failed.";
 
     private static AuthenticationOrchestratorDependencies ValidateDependencies(AuthenticationOrchestratorDependencies? dependencies)
@@ -78,15 +80,15 @@ public sealed class AuthenticationOrchestrator(
         {
             return response.Status switch
             {
-                AuthenticationStatus.Disabled => new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: "Authentication failed."),
-                AuthenticationStatus.RateLimited => new MfaAuthenticationResult(MfaAuthenticationStatus.RateLimited, response.User, ErrorMessage: "Rate limit exceeded."),
-                _ => new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: "Authentication failed.")
+                AuthenticationStatus.Disabled => new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: AuthenticationFailedMessage),
+                AuthenticationStatus.RateLimited => new MfaAuthenticationResult(MfaAuthenticationStatus.RateLimited, response.User, ErrorMessage: RateLimitExceededMessage),
+                _ => new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, response.User, ErrorMessage: AuthenticationFailedMessage)
             };
         }
 
         if (response.User == null)
         {
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Authentication failed.");
+            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: AuthenticationFailedMessage);
         }
 
         var policyEvaluation = await _policyEvaluator.EvaluateAsync(response.User, context, cancellationToken);
@@ -144,8 +146,8 @@ public sealed class AuthenticationOrchestrator(
             MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "factor_authentication_failed", null);
             var errorMessage = response.Status switch
             {
-                AuthenticationStatus.Disabled => "Authentication failed.",
-                AuthenticationStatus.RateLimited => "Rate limit exceeded.",
+                AuthenticationStatus.Disabled => AuthenticationFailedMessage,
+                AuthenticationStatus.RateLimited => RateLimitExceededMessage,
                 _ => FactorVerificationFailedMessage
             };
             var status = response.Status == AuthenticationStatus.RateLimited
@@ -354,7 +356,7 @@ public sealed class AuthenticationOrchestrator(
             AshlarFailureCodes.HandshakeRevokedValue => "Handshake is no longer valid.",
             AshlarFailureCodes.HandshakeExpiredValue => "Handshake has expired.",
             AshlarFailureCodes.HandshakeAlreadyCompletedValue => "Handshake has already been completed.",
-            AshlarFailureCodes.RateLimitExceededValue => "Rate limit exceeded.",
+            AshlarFailureCodes.RateLimitExceededValue => RateLimitExceededMessage,
             AshlarFailureCodes.InvalidFactorTypeValue => "Invalid factor type.",
             AshlarFailureCodes.FactorAlreadyVerifiedValue => "Factor already verified.",
             AshlarFailureCodes.InvalidMetadataValue => "Invalid metadata.",
