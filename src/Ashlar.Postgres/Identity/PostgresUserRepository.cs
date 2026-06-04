@@ -155,9 +155,9 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
             Name = row.Name,
             AccountState = UserAccountStates.FromStorageValue(row.AccountState),
             TenantId = row.TenantId,
-            EmailVerifiedAt = row.EmailVerifiedAt,
-            CreatedAt = row.CreatedAt,
-            UpdatedAt = row.UpdatedAt
+            EmailVerifiedAt = PostgresAdminQuery.ToNullableDateTimeOffset(row.EmailVerifiedAt),
+            CreatedAt = PostgresAdminQuery.ToDateTimeOffset(row.CreatedAt),
+            UpdatedAt = PostgresAdminQuery.ToNullableDateTimeOffset(row.UpdatedAt)
         };
     }
 
@@ -167,7 +167,7 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
         string? Name,
         string AccountState,
         Guid? TenantId,
-        DateTimeOffset? EmailVerifiedAt,
-        DateTimeOffset CreatedAt,
-        DateTimeOffset? UpdatedAt);
+        DateTime? EmailVerifiedAt,
+        DateTime CreatedAt,
+        DateTime? UpdatedAt);
 }
