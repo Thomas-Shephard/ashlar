@@ -99,7 +99,14 @@ public sealed class AccountSecurityService : IAccountSecurityService
         if (!userResult.TryGetValue(out var user))
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
-            await RecordFailureAsync(AshlarSecurityEventTypes.UserAccountStateChanged, userId, request, failure.Code.Value, cancellationToken, toAccountState: request.AccountState);
+            await RecordFailureAsync(
+                new AccountSecurityFailureEvent(
+                    AshlarSecurityEventTypes.UserAccountStateChanged,
+                    userId,
+                    request,
+                    failure.Code.Value,
+                    ToAccountState: request.AccountState),
+                cancellationToken);
             return Result.Failure<AccountSecurityOperationResult>(failure);
         }
 
@@ -113,13 +120,14 @@ public sealed class AccountSecurityService : IAccountSecurityService
             {
                 var failure = guardResult.GetFailureOr(AshlarFailureCodes.ValidationError);
                 await RecordFailureAsync(
-                    AshlarSecurityEventTypes.UserAccountStateChanged,
-                    userId,
-                    request,
-                    failure.Code.Value,
-                    cancellationToken,
-                    fromAccountState: user.AccountState,
-                    toAccountState: request.AccountState);
+                    new AccountSecurityFailureEvent(
+                        AshlarSecurityEventTypes.UserAccountStateChanged,
+                        userId,
+                        request,
+                        failure.Code.Value,
+                        FromAccountState: user.AccountState,
+                        ToAccountState: request.AccountState),
+                    cancellationToken);
                 return Result.Failure<AccountSecurityOperationResult>(failure);
             }
 
@@ -154,7 +162,9 @@ public sealed class AccountSecurityService : IAccountSecurityService
         if (!userResult.Succeeded)
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
-            await RecordFailureAsync(AshlarSecurityEventTypes.SessionsRevokedForUser, userId, request, failure.Code.Value, cancellationToken);
+            await RecordFailureAsync(
+                new AccountSecurityFailureEvent(AshlarSecurityEventTypes.SessionsRevokedForUser, userId, request, failure.Code.Value),
+                cancellationToken);
             return Result.Failure<AccountSecurityOperationResult>(failure);
         }
 
@@ -173,7 +183,9 @@ public sealed class AccountSecurityService : IAccountSecurityService
         if (!userResult.Succeeded)
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
-            await RecordFailureAsync(AshlarSecurityEventTypes.UserCredentialsRevoked, userId, request, failure.Code.Value, cancellationToken, provider);
+            await RecordFailureAsync(
+                new AccountSecurityFailureEvent(AshlarSecurityEventTypes.UserCredentialsRevoked, userId, request, failure.Code.Value, Provider: provider),
+                cancellationToken);
             return Result.Failure<AccountSecurityOperationResult>(failure);
         }
 
@@ -196,7 +208,9 @@ public sealed class AccountSecurityService : IAccountSecurityService
         if (!userResult.Succeeded)
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
-            await RecordFailureAsync(AshlarSecurityEventTypes.UserMfaReset, userId, request, failure.Code.Value, cancellationToken);
+            await RecordFailureAsync(
+                new AccountSecurityFailureEvent(AshlarSecurityEventTypes.UserMfaReset, userId, request, failure.Code.Value),
+                cancellationToken);
             return Result.Failure<AccountSecurityOperationResult>(failure);
         }
 
@@ -502,21 +516,13 @@ public sealed class AccountSecurityService : IAccountSecurityService
         };
     }
 
-    private Task RecordFailureAsync(
-        string eventType,
-        Guid userId,
-        AccountSecurityOperationRequest request,
-        string failureReason,
-        CancellationToken cancellationToken,
-        AuthenticationProviderKey? provider = null,
-        UserAccountState? fromAccountState = null,
-        UserAccountState? toAccountState = null)
+    private Task RecordFailureAsync(AccountSecurityFailureEvent failureEvent, CancellationToken cancellationToken)
     {
         var stateProperties = new Dictionary<string, string>();
         foreach (var (key, state) in new[]
         {
-            ("from_account_state", fromAccountState),
-            ("to_account_state", toAccountState)
+            ("from_account_state", failureEvent.FromAccountState),
+            ("to_account_state", failureEvent.ToAccountState)
         })
         {
             if (state.HasValue)
@@ -529,13 +535,13 @@ public sealed class AccountSecurityService : IAccountSecurityService
 
         return _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
-            EventType = eventType,
+            EventType = failureEvent.EventType,
             Outcome = SecurityEventOutcomes.Failure,
-            UserId = userId,
-            TenantId = request.Tenant?.TenantId,
-            Audit = request.Audit,
-            Provider = provider,
-            FailureReason = failureReason,
+            UserId = failureEvent.UserId,
+            TenantId = failureEvent.Request.Tenant?.TenantId,
+            Audit = failureEvent.Request.Audit,
+            Provider = failureEvent.Provider,
+            FailureReason = failureEvent.FailureReason,
             Properties = properties
         }, cancellationToken);
     }
@@ -595,6 +601,15 @@ public sealed class AccountSecurityService : IAccountSecurityService
             },
             cancellationToken) ?? Task.FromResult(0);
     }
+
+    private sealed record AccountSecurityFailureEvent(
+        string EventType,
+        Guid UserId,
+        AccountSecurityOperationRequest Request,
+        string FailureReason,
+        AuthenticationProviderKey? Provider = null,
+        UserAccountState? FromAccountState = null,
+        UserAccountState? ToAccountState = null);
 }
 
 /// <summary>
