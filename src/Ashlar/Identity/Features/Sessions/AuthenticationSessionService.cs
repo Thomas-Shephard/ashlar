@@ -97,6 +97,23 @@ public sealed class AuthenticationSessionService(
             throw new AshlarOperationException(AshlarFailureCodes.TenantMismatch, "Session tenant must match the referenced user's tenant.");
         }
 
+        if (!user.CanSignIn())
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.SessionCreated,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                TenantId = request.TenantId,
+                IpAddress = ipAddress,
+                UserAgent = userAgent,
+                CorrelationId = request.CorrelationId,
+                FailureReason = user.AccountState.ToSecurityFailureReason()
+            }, cancellationToken);
+
+            throw new AshlarOperationException(AshlarFailureCodes.UserNotFoundOrUnavailable, "Session user was not found or cannot currently sign in.");
+        }
+
         var token = _tokenGenerator.GenerateToken(_options.TokenByteLength);
         var tokenHash = _tokenHasher.HashToken(token);
         var now = _timeProvider.GetUtcNow();
@@ -234,6 +251,18 @@ public sealed class AuthenticationSessionService(
             return new ValidateAuthenticationSessionResult(false, session, session.UserId, AuthenticationSessionValidationStatus.Revoked);
         }
 
+        var user = await _userRepository.GetUserByIdAsync(session.UserId, cancellationToken);
+        if (user == null || !user.CanSignIn())
+        {
+            await RecordSessionValidationFailedAsync(
+                AuthenticationSessionValidationStatus.Failed,
+                session,
+                user == null ? AshlarFailureCodes.UserNotFoundValue : user.AccountState.ToSecurityFailureReason(),
+                cancellationToken);
+
+            return new ValidateAuthenticationSessionResult(false, session, session.UserId, AuthenticationSessionValidationStatus.Failed);
+        }
+
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         await TryUpdateLastSeenAsync(session, now, cancellationToken);
@@ -265,9 +294,9 @@ public sealed class AuthenticationSessionService(
 
         var now = _timeProvider.GetUtcNow();
         var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
-        if (!userResult.Succeeded)
+        if (!userResult.TryGetValue(out var user))
         {
-            var failure = userResult.FailureDetails!;
+            var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = AshlarSecurityEventTypes.SessionStepUpVerified,
@@ -282,6 +311,24 @@ public sealed class AuthenticationSessionService(
             }, cancellationToken);
 
             return Result.Failure<AuthenticationSession>(failure);
+        }
+
+        if (!user.CanSignIn())
+        {
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.SessionStepUpVerified,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = userId,
+                TenantId = request.Tenant?.TenantId,
+                SessionId = request.SessionId,
+                Provider = request.VerifiedProvider,
+                Audit = request.Audit,
+                FailureReason = user.AccountState.ToSecurityFailureReason(),
+                Properties = new Dictionary<string, string> { ["factor"] = verifiedFactor }
+            }, cancellationToken);
+
+            return Result.Failure<AuthenticationSession>(AshlarFailureCodes.UserNotFoundOrUnavailable, "Session user was not found or cannot currently sign in.");
         }
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);

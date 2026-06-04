@@ -16,7 +16,7 @@ namespace Ashlar.Tests.Identity.Features.Email;
 
 internal sealed class EmailCodeSignInTests
 {
-    private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Email = "user@example.com", IsActive = true };
+    private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Email = "user@example.com", AccountState = UserAccountState.Active };
     private static readonly string[] RequiredMfaFactors = ["totp"];
 
     [Test]
@@ -64,10 +64,12 @@ internal sealed class EmailCodeSignInTests
         }
     }
 
-    [Test]
-    public async Task RequestCodeDoesNotSendForInactiveUser()
+    [TestCase(UserAccountState.Disabled, "user_disabled")]
+    [TestCase(UserAccountState.Locked, "user_locked")]
+    [TestCase(UserAccountState.Suspended, "user_suspended")]
+    public async Task RequestCodeDoesNotSendForUnavailableUser(UserAccountState accountState, string failureReason)
     {
-        var user = new User { Id = Guid.NewGuid(), Email = "inactive@example.com", IsActive = false };
+        var user = new User { Id = Guid.NewGuid(), Email = "inactive@example.com", AccountState = accountState };
         var fixture = CreateFixture(user);
 
         await fixture.Service.RequestCodeAsync(user.Email);
@@ -75,8 +77,19 @@ internal sealed class EmailCodeSignInTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fixture.EmailSender.Messages, Is.Empty);
-            Assert.That(fixture.Audit.Events.Single().FailureReason, Is.EqualTo("user_disabled"));
+            Assert.That(fixture.Audit.Events.Single().FailureReason, Is.EqualTo(failureReason));
         }
+    }
+
+    [Test]
+    public async Task RequestCodeUsesGenericSuppressionReasonForUnknownUnavailableState()
+    {
+        var user = new User { Id = Guid.NewGuid(), Email = "inactive@example.com", AccountState = (UserAccountState)999 };
+        var fixture = CreateFixture(user);
+
+        await fixture.Service.RequestCodeAsync(user.Email);
+
+        Assert.That(fixture.Audit.Events.Single().FailureReason, Is.EqualTo("invalid_credentials"));
     }
 
     [Test]

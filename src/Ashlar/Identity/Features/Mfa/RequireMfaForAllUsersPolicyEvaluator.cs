@@ -39,7 +39,7 @@ public sealed class RequireMfaForAllUsersPolicyEvaluator : IMfaPolicyEvaluator
         ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(context);
 
-        if (!user.IsActive)
+        if (!user.CanSignIn())
         {
             return Task.FromResult(new MfaPolicyEvaluation(false));
         }

@@ -642,7 +642,7 @@ internal sealed class AuthorizationGrantServiceTests
 
         public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
         {
-            _users[user.Id] = new User { Id = user.Id, Email = user.Email, Name = user.Name, IsActive = user.IsActive, TenantId = user is ITenantUser tenantUser ? tenantUser.TenantId : null };
+            _users[user.Id] = new User { Id = user.Id, Email = user.Email, Name = user.Name, AccountState = user.AccountState, TenantId = user is ITenantUser tenantUser ? tenantUser.TenantId : null };
             return Task.CompletedTask;
         }
 

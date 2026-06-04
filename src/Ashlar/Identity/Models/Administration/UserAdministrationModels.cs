@@ -11,8 +11,8 @@ public sealed record SearchUsersRequest
     /// <summary>Optional tenant scope. <see langword="null" /> means unscoped/admin-wide search.</summary>
     public TenantContext? Tenant { get; init; }
 
-    /// <summary>Optional active state filter.</summary>
-    public bool? IsActive { get; init; }
+    /// <summary>Optional account state filter.</summary>
+    public UserAccountState? AccountState { get; init; }
 
     /// <summary>Optional email verification filter.</summary>
     public bool? IsEmailVerified { get; init; }
@@ -31,7 +31,8 @@ public sealed record SearchUsersRequest
 /// <param name="Email">The <paramref name="Email" /> value.</param>
 /// <param name="Name">The name value.</param>
 /// <param name="TenantId">The tenant id value.</param>
-/// <param name="IsActive">Whether the user is active.</param>
+/// <param name="AccountState">The account state value.</param>
+/// <param name="CanSignIn">Whether account state permits sign-in.</param>
 /// <param name="IsEmailVerified">Whether <paramref name="Email" /> is verified.</param>
 /// <param name="CreatedAt">The creation time.</param>
 /// <param name="UpdatedAt">The update time.</param>
@@ -40,7 +41,8 @@ public sealed record UserSummary(
     string Email,
     string? Name,
     Guid? TenantId,
-    bool IsActive,
+    UserAccountState AccountState,
+    bool CanSignIn,
     bool IsEmailVerified,
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt);

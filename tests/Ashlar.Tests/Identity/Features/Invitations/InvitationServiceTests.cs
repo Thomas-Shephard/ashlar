@@ -14,7 +14,7 @@ namespace Ashlar.Tests.Identity.Features.Invitations;
 
 internal sealed class InvitationServiceTests
 {
-    private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Email = "existing@example.com", IsActive = true };
+    private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Email = "existing@example.com", AccountState = UserAccountState.Active };
 
     [Test]
     public async Task CreateInvitationSendsEmailAndStoresHashedInvitation()
@@ -157,7 +157,7 @@ internal sealed class InvitationServiceTests
             Assert.That(result.Value, Is.Not.EqualTo(Guid.Empty));
             var user = fixture.UserRepository.Users.First(u => u.Email == "NewUser@Example.Com");
             Assert.That(user.Name, Is.EqualTo("New User"));
-            Assert.That(user.IsActive, Is.True);
+            Assert.That(user.CanSignIn(), Is.True);
             Assert.That(fixture.InvitationRepository.Invitations.Any(i => i.AcceptedAt != null), Is.True);
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.UserCreated), Is.True);
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.InvitationAccepted), Is.True);
@@ -200,9 +200,9 @@ internal sealed class InvitationServiceTests
     }
 
     [Test]
-    public async Task AcceptInvitationActivatesInactiveUser()
+    public async Task AcceptInvitationActivatesDisabledUser()
     {
-        var inactiveUser = new User { Id = Guid.NewGuid(), Email = "INACTIVE@EXAMPLE.COM", IsActive = false, Name = "Old Name" };
+        var inactiveUser = new User { Id = Guid.NewGuid(), Email = "INACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Disabled, Name = "Old Name" };
         var fixture = CreateFixture(inactiveUser);
         await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "inactive@example.com" }, new Uri("https://myapp.com/join"));
         var token = ExtractToken(fixture.EmailSender.Messages.First());
@@ -214,7 +214,7 @@ internal sealed class InvitationServiceTests
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value, Is.EqualTo(inactiveUser.Id));
             var user = fixture.UserRepository.Users.First(u => u.Id == inactiveUser.Id);
-            Assert.That(user.IsActive, Is.True);
+            Assert.That(user.CanSignIn(), Is.True);
             Assert.That(user.Name, Is.EqualTo("Updated Name"));
         }
     }
@@ -240,9 +240,9 @@ internal sealed class InvitationServiceTests
     }
 
     [Test]
-    public async Task AcceptInvitationActivatesInactiveUserWithoutVerifyingWhenDisabled()
+    public async Task AcceptInvitationActivatesDisabledUserWithoutVerifyingWhenDisabled()
     {
-        var inactiveUser = new User { Id = Guid.NewGuid(), Email = "INACTIVE@EXAMPLE.COM", IsActive = false, Name = "Old Name" };
+        var inactiveUser = new User { Id = Guid.NewGuid(), Email = "INACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Disabled, Name = "Old Name" };
         var fixture = CreateFixture(inactiveUser, configureOptions: options => options.VerifyEmailOnAcceptance = false);
         await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "inactive@example.com" }, new Uri("https://myapp.com/join"));
         var token = ExtractToken(fixture.EmailSender.Messages.First());
@@ -253,7 +253,7 @@ internal sealed class InvitationServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             var user = fixture.UserRepository.Users.First(u => u.Id == inactiveUser.Id);
-            Assert.That(user.IsActive, Is.True);
+            Assert.That(user.CanSignIn(), Is.True);
             Assert.That(user.Name, Is.EqualTo("Updated Name"));
             Assert.That(user.EmailVerifiedAt, Is.Null);
         }
@@ -263,7 +263,7 @@ internal sealed class InvitationServiceTests
     public async Task AcceptInvitationPreservesExistingVerificationTimestamp()
     {
         var verifiedAt = new DateTimeOffset(2026, 5, 1, 9, 0, 0, TimeSpan.Zero);
-        var inactiveUser = new User { Id = Guid.NewGuid(), Email = "VERIFIED@EXAMPLE.COM", IsActive = false, Name = "Original Name", EmailVerifiedAt = verifiedAt };
+        var inactiveUser = new User { Id = Guid.NewGuid(), Email = "VERIFIED@EXAMPLE.COM", AccountState = UserAccountState.Disabled, Name = "Original Name", EmailVerifiedAt = verifiedAt };
         var fixture = CreateFixture(inactiveUser, configureOptions: options => options.VerifyEmailOnAcceptance = true);
         await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "verified@example.com" }, new Uri("https://myapp.com/join"));
         var token = ExtractToken(fixture.EmailSender.Messages.First());
@@ -274,7 +274,7 @@ internal sealed class InvitationServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             var user = fixture.UserRepository.Users.First(u => u.Id == inactiveUser.Id);
-            Assert.That(user.IsActive, Is.True);
+            Assert.That(user.CanSignIn(), Is.True);
             Assert.That(user.EmailVerifiedAt, Is.EqualTo(verifiedAt));
         }
     }
@@ -282,7 +282,7 @@ internal sealed class InvitationServiceTests
     [Test]
     public async Task AcceptInvitationVerifiesExistingActiveUnverifiedUserWhenConfigured()
     {
-        var activeUser = new User { Id = Guid.NewGuid(), Email = "ACTIVE@EXAMPLE.COM", IsActive = true, Name = "Active User" };
+        var activeUser = new User { Id = Guid.NewGuid(), Email = "ACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Active, Name = "Active User" };
         var fixture = CreateFixture(activeUser, configureOptions: options => options.VerifyEmailOnAcceptance = true);
         fixture.InvitationRepository.Invitations.Add(new UserInvitation
         {
@@ -300,7 +300,7 @@ internal sealed class InvitationServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             var user = fixture.UserRepository.Users.First(u => u.Id == activeUser.Id);
-            Assert.That(user.IsActive, Is.True);
+            Assert.That(user.CanSignIn(), Is.True);
             Assert.That(user.EmailVerifiedAt, Is.EqualTo(fixture.Time.GetUtcNow()));
             Assert.That(fixture.UserRepository.UpdateCount, Is.EqualTo(1));
         }
@@ -310,7 +310,7 @@ internal sealed class InvitationServiceTests
     public async Task AcceptInvitationDoesNotUpdateExistingActiveUserWhenNoActivationOrVerificationIsNeeded()
     {
         var verifiedAt = new DateTimeOffset(2026, 5, 1, 9, 0, 0, TimeSpan.Zero);
-        var activeUser = new User { Id = Guid.NewGuid(), Email = "ACTIVE@EXAMPLE.COM", IsActive = true, Name = "Active User", EmailVerifiedAt = verifiedAt };
+        var activeUser = new User { Id = Guid.NewGuid(), Email = "ACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Active, Name = "Active User", EmailVerifiedAt = verifiedAt };
         var fixture = CreateFixture(activeUser, configureOptions: options => options.VerifyEmailOnAcceptance = true);
         fixture.InvitationRepository.Invitations.Add(new UserInvitation
         {
@@ -646,7 +646,7 @@ internal sealed class InvitationServiceTests
     [Test]
     public async Task AcceptInvitationUsesExistingUserNameIfRequestNameIsNull()
     {
-        var inactiveUser = new User { Id = Guid.NewGuid(), Email = "INACTIVE@EXAMPLE.COM", IsActive = false, Name = "Original Name" };
+        var inactiveUser = new User { Id = Guid.NewGuid(), Email = "INACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Disabled, Name = "Original Name" };
         var fixture = CreateFixture(inactiveUser);
         await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "inactive@example.com" }, new Uri("https://myapp.com/join"));
         var token = ExtractToken(fixture.EmailSender.Messages.First());
@@ -1172,7 +1172,7 @@ internal sealed class InvitationServiceTests
                 Id = user.Id,
                 Email = user.Email,
                 Name = user.Name,
-                IsActive = user.IsActive,
+                AccountState = user.AccountState,
                 TenantId = (user as ITenantUser)?.TenantId,
                 EmailVerifiedAt = user.EmailVerifiedAt
             });
@@ -1185,7 +1185,7 @@ internal sealed class InvitationServiceTests
             if (existing != null)
             {
                 existing.Name = user.Name;
-                existing.IsActive = user.IsActive;
+                existing.AccountState = user.AccountState;
                 existing.EmailVerifiedAt = user.EmailVerifiedAt;
             }
             return Task.CompletedTask;

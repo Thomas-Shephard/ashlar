@@ -566,7 +566,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             Id = Guid.NewGuid(),
             Email = email,
             Name = "GitHub Smoke",
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             EmailVerifiedAt = DateTimeOffset.UtcNow
         };
 

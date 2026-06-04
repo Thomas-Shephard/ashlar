@@ -49,7 +49,7 @@ public sealed class RequireMfaWhenCredentialExistsPolicyEvaluator : IMfaPolicyEv
         ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(context);
 
-        if (!user.IsActive)
+        if (!user.CanSignIn())
         {
             return new MfaPolicyEvaluation(false);
         }

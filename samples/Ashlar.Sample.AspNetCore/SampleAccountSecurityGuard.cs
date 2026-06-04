@@ -27,7 +27,7 @@ internal sealed class SampleAccountSecurityGuard(IPostgresConnectionProvider con
             SELECT COUNT(DISTINCT u.id)::int
             FROM ashlar_users u
             JOIN ashlar_authorization_grants g ON g.user_id = u.id
-            WHERE u.is_active = TRUE
+            WHERE u.account_state = 'active'
               AND g.role = 'admin'
               AND g.revoked_at IS NULL
               AND (g.expires_at IS NULL OR g.expires_at > NOW())

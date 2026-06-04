@@ -1075,7 +1075,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var primary = credentials.Where(c => c.IsPrimaryCredential && c.IsAvailable).ToArray();
         return new UserSecurityPosture(
             userId,
-            true,
+            UserAccountState.Active,
             true,
             primary.Length > 0,
             primary,
@@ -1191,7 +1191,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         public string Email => "tenant@example.com";
         public string? Name => null;
-        public bool IsActive => true;
+        public UserAccountState AccountState => UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt => null;
     }
 
@@ -1199,7 +1199,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         public string Email => "global@example.com";
         public string? Name => null;
-        public bool IsActive => true;
+        public UserAccountState AccountState => UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt => null;
     }
 }

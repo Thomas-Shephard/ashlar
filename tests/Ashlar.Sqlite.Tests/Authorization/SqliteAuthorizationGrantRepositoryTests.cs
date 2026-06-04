@@ -160,7 +160,7 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
         {
             Id = Guid.NewGuid(),
             Email = $"{Guid.NewGuid():N}@example.com",
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             TenantId = tenantId
         };
         await _serviceProvider.GetRequiredService<IUserRepository>().CreateUserAsync(user);

@@ -76,10 +76,10 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         await using var scope = CreateAsyncScope();
         var identity = GetUserRepository(scope.ServiceProvider);
         var repository = GetUserAdministrationRepository(scope.ServiceProvider);
-        var active = await CreateUserAsync(identity, "active-filter@example.com", isActive: true);
-        await CreateUserAsync(identity, "inactive-filter@example.com", isActive: false);
+        var active = await CreateUserAsync(identity, "active-filter@example.com", AccountState: UserAccountState.Active);
+        await CreateUserAsync(identity, "inactive-filter@example.com", AccountState: UserAccountState.Disabled);
 
-        var result = await repository.SearchUsersAsync(new SearchUsersRequest { Query = "filter@example.com", IsActive = true, Limit = 10 });
+        var result = await repository.SearchUsersAsync(new SearchUsersRequest { Query = "filter@example.com", AccountState = UserAccountState.Active, Limit = 10 });
 
         Assert.That(result.Select(user => user.UserId), Is.EqualTo(new[] { active.Id }));
     }
@@ -207,7 +207,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
             Id = Guid.NewGuid(),
             Email = email,
             Name = name,
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             TenantId = tenantId,
             EmailVerifiedAt = emailVerifiedAt
         };

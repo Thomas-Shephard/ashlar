@@ -399,7 +399,7 @@ internal sealed class BootstrapServiceTests
             u.Id == result.Value &&
             u.Email == "Admin@Example.com" &&
             u.Name == "Admin" &&
-            u.IsActive &&
+            u.CanSignIn() &&
             HasTenant(u, tenantId) &&
             u.EmailVerifiedAt == _timeProvider.GetUtcNow()), It.IsAny<CancellationToken>()), Times.Once);
         _grantService.Verify(s => s.CreateGrantAsync(It.Is<CreateAuthorizationGrantRequest>(r =>
@@ -464,7 +464,7 @@ internal sealed class BootstrapServiceTests
     }
 
     [Test]
-    public async Task BootstrapFirstAdminAsyncActivatesExistingInactiveUser()
+    public async Task BootstrapFirstAdminAsyncActivatesExistingDisabledUser()
     {
         var userId = Guid.NewGuid();
         ArrangeSuccessfulBootstrap(userId, existingUser: new AshlarUser
@@ -472,7 +472,7 @@ internal sealed class BootstrapServiceTests
             Id = userId,
             Email = "admin@example.com",
             Name = "Old Name",
-            IsActive = false
+            AccountState = UserAccountState.Disabled
         });
 
         var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
@@ -492,7 +492,7 @@ internal sealed class BootstrapServiceTests
         _userRepository.Verify(r => r.UpdateUserAsync(It.Is<IUser>(u =>
             u.Id == userId &&
             u.Name == "Admin" &&
-            u.IsActive &&
+            u.CanSignIn() &&
             u.EmailVerifiedAt == _timeProvider.GetUtcNow()), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -505,7 +505,7 @@ internal sealed class BootstrapServiceTests
             Id = userId,
             Email = "admin@example.com",
             Name = "Existing Admin",
-            IsActive = true
+            AccountState = UserAccountState.Active
         });
 
         await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
@@ -517,7 +517,7 @@ internal sealed class BootstrapServiceTests
         _userRepository.Verify(r => r.UpdateUserAsync(It.Is<IUser>(u =>
             u.Id == userId &&
             u.Name == "Existing Admin" &&
-            u.IsActive &&
+            u.CanSignIn() &&
             u.EmailVerifiedAt == _timeProvider.GetUtcNow()), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -530,7 +530,7 @@ internal sealed class BootstrapServiceTests
             Id = userId,
             Email = "admin@example.com",
             Name = "Existing Admin",
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             EmailVerifiedAt = _timeProvider.GetUtcNow().AddDays(-1)
         }, executeCommitCallbacks: true);
 
@@ -707,7 +707,7 @@ internal sealed class BootstrapServiceTests
         var userId = Guid.NewGuid();
         ArrangeSuccessfulBootstrap(executeCommitCallbacks: true);
         _userRepository.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid id, CancellationToken _) => new AshlarUser { Id = id, Email = "admin@example.com", IsActive = true });
+            .ReturnsAsync((Guid id, CancellationToken _) => new AshlarUser { Id = id, Email = "admin@example.com", AccountState = UserAccountState.Active });
         var notificationService = new Mock<ISecurityNotificationService>();
         notificationService.Setup(s => s.NotifyAsync(It.IsAny<SecurityNotification>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(SecurityNotificationResult.Success());

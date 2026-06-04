@@ -154,8 +154,8 @@ internal sealed class SqliteSchemaManagerTests : SqliteTestBase
     {
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO ashlar_users (id, email, normalized_email, is_active, tenant_id, created_at)
-            VALUES ($id, $email, $normalized_email, 1, $tenant_id, $created_at);
+            INSERT INTO ashlar_users (id, email, normalized_email, account_state, tenant_id, created_at)
+            VALUES ($id, $email, $normalized_email, 'active', $tenant_id, $created_at);
             """;
         command.Parameters.AddWithValue("$id", id);
         command.Parameters.AddWithValue("$email", email);

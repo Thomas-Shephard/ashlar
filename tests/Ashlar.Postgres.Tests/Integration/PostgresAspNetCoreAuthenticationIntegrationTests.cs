@@ -56,7 +56,7 @@ internal sealed class PostgresAspNetCoreAuthenticationIntegrationTests : Postgre
         {
             Id = Guid.NewGuid(),
             Email = "magic-e2e@example.com",
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };
 

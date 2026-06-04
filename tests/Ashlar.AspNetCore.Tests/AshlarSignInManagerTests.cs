@@ -656,7 +656,7 @@ internal sealed class AshlarSignInManagerTests
             {
                 Id = userId,
                 Email = $"{userId:N}@example.com",
-                IsActive = true
+                AccountState = UserAccountState.Active
             });
         }
 

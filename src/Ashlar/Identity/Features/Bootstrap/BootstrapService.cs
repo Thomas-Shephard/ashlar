@@ -263,21 +263,21 @@ internal sealed class BootstrapService(
                 Id = userId,
                 Email = email,
                 Name = requestedUserName,
-                IsActive = true,
+                AccountState = UserAccountState.Active,
                 EmailVerifiedAt = now,
                 TenantId = tenantId
             }, cancellationToken);
             return new BootstrapUser(userId, IsNewUser: true);
         }
 
-        if (!user.IsActive || !user.EmailVerifiedAt.HasValue)
+        if (!user.CanSignIn() || !user.EmailVerifiedAt.HasValue)
         {
             await _dependencies.UserRepository.UpdateUserAsync(new AshlarUser
             {
                 Id = user.Id,
                 Email = user.Email,
                 Name = requestedUserName ?? user.Name,
-                IsActive = true,
+                AccountState = UserAccountState.Active,
                 EmailVerifiedAt = user.EmailVerifiedAt ?? now,
                 TenantId = tenantId
             }, cancellationToken);

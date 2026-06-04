@@ -52,14 +52,14 @@ internal sealed class MfaPolicyEvaluatorTests
     }
 
     [Test]
-    public async Task RequireMfaForAllUsersPolicyEvaluatorIgnoresInactiveUsers()
+    public async Task RequireMfaForAllUsersPolicyEvaluatorIgnoresUnavailableUsers()
     {
         var evaluator = new RequireMfaForAllUsersPolicyEvaluator(Options.Create(new RequireMfaForAllUsersPolicyOptions
         {
             RequiredFactors = { "totp" }
         }));
 
-        var result = await evaluator.EvaluateAsync(CreateUser(isActive: false).Object, _context);
+        var result = await evaluator.EvaluateAsync(CreateUser(AccountState: UserAccountState.Disabled).Object, _context);
 
         Assert.That(result.IsMfaRequired, Is.False);
     }
@@ -182,10 +182,10 @@ internal sealed class MfaPolicyEvaluatorTests
     }
 
     [Test]
-    public async Task RequireMfaWhenCredentialExistsPolicyEvaluatorIgnoresInactiveUserWithoutRepositoryQuery()
+    public async Task RequireMfaWhenCredentialExistsPolicyEvaluatorIgnoresUnavailableUserWithoutRepositoryQuery()
     {
         var repository = new Mock<ICredentialRepository>(MockBehavior.Strict);
-        var result = await CreateCredentialEvaluator(repository.Object).EvaluateAsync(CreateUser(isActive: false).Object, _context);
+        var result = await CreateCredentialEvaluator(repository.Object).EvaluateAsync(CreateUser(AccountState: UserAccountState.Disabled).Object, _context);
 
         Assert.That(result.IsMfaRequired, Is.False);
     }
@@ -325,11 +325,11 @@ internal sealed class MfaPolicyEvaluatorTests
         return repository;
     }
 
-    private static Mock<IUser> CreateUser(bool isActive = true)
+    private static Mock<IUser> CreateUser(UserAccountState AccountState = UserAccountState.Active)
     {
         var user = new Mock<IUser>();
         user.Setup(u => u.Id).Returns(Guid.NewGuid());
-        user.Setup(u => u.IsActive).Returns(isActive);
+        user.Setup(u => u.AccountState).Returns(AccountState);
         return user;
     }
 

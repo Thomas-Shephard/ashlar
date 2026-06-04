@@ -170,7 +170,7 @@ internal sealed class SecurityAuditEventTests
     {
         var sink = new RecordingSecurityEventSink();
         var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sink);
-        user = new User { Id = user.Id, Email = user.Email, IsActive = false };
+        user = new User { Id = user.Id, Email = user.Email, AccountState = UserAccountState.Disabled };
         var context = CreateContext();
 
         credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))

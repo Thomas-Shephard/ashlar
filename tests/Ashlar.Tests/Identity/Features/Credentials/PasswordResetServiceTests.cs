@@ -65,7 +65,7 @@ internal sealed class PasswordResetServiceTests
     [TestCase(false, "user_disabled")]
     public async Task RequestPasswordResetAsyncSuppressesMissingAndDisabledUsers(bool? active, string _)
     {
-        var user = active.HasValue ? CreateUser(isActive: active.Value) : null;
+        var user = active.HasValue ? CreateUser(active.Value ? UserAccountState.Active : UserAccountState.Disabled) : null;
         var fixture = CreateFixture(user, includeLocalPassword: active == true);
 
         var result = await fixture.Service.RequestPasswordResetAsync("user@example.com", new Uri("https://example.com/reset"));
@@ -452,7 +452,7 @@ internal sealed class PasswordResetServiceTests
         token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
         var tenantRequiredForTenantlessUser = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword }, new AuthenticationContext(TenantId: Guid.NewGuid()));
 
-        var nonTenantUser = new NonTenantUser { Id = Guid.NewGuid(), Email = "plain@example.com", IsActive = true };
+        var nonTenantUser = new NonTenantUser { Id = Guid.NewGuid(), Email = "plain@example.com", AccountState = UserAccountState.Active };
         fixture = CreateFixture(nonTenantUser);
         await fixture.Service.RequestPasswordResetAsync(nonTenantUser.Email, new Uri("https://example.com/reset"));
         token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
@@ -688,9 +688,9 @@ internal sealed class PasswordResetServiceTests
         return new Fixture(service, dependencies, store, emailSender, rateLimiter, uriValidator, audit, notifications, (RecordingSessionRepository)dependencies.SessionRepository, time);
     }
 
-    private static AshlarUser CreateUser(bool isActive = true, Guid? tenantId = null)
+    private static AshlarUser CreateUser(UserAccountState accountState = UserAccountState.Active, Guid? tenantId = null)
     {
-        return new AshlarUser { Id = Guid.NewGuid(), Email = "user@example.com", IsActive = isActive, TenantId = tenantId };
+        return new AshlarUser { Id = Guid.NewGuid(), Email = "user@example.com", AccountState = accountState, TenantId = tenantId };
     }
 
     private static UserCredential CreatePasswordCredential(Guid userId, string password, DateTimeOffset now)
@@ -971,7 +971,7 @@ internal sealed class PasswordResetServiceTests
         public required Guid Id { get; init; }
         public required string Email { get; init; }
         public string? Name { get; init; }
-        public bool IsActive { get; init; }
+        public UserAccountState AccountState { get; init; } = UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt { get; init; }
     }
 }

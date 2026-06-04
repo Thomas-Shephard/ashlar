@@ -145,6 +145,67 @@ internal sealed class RememberedMfaDeviceServiceTests
         }
     }
 
+    [TestCase(UserAccountState.Disabled, SecurityEventFailureReasons.UserDisabled)]
+    [TestCase(UserAccountState.Locked, SecurityEventFailureReasons.UserLocked)]
+    [TestCase(UserAccountState.Suspended, SecurityEventFailureReasons.UserSuspended)]
+    public async Task CreateAsyncRejectsUnavailableUsers(UserAccountState accountState, string failureReason)
+    {
+        var fixture = CreateFixture();
+        var user = fixture.Users.AddUser(accountState: accountState);
+
+        var result = await fixture.Service.CreateAsync(user.Id, new CreateRememberedMfaDeviceRequest());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
+            Assert.That(fixture.Repository.Devices, Is.Empty);
+            Assert.That(fixture.Events.Events.Single().FailureReason, Is.EqualTo(failureReason));
+        }
+    }
+
+    [TestCase(UserAccountState.Disabled, SecurityEventFailureReasons.UserDisabled)]
+    [TestCase(UserAccountState.Locked, SecurityEventFailureReasons.UserLocked)]
+    [TestCase(UserAccountState.Suspended, SecurityEventFailureReasons.UserSuspended)]
+    public async Task ValidateAsyncRejectsUnavailableUsers(UserAccountState accountState, string failureReason)
+    {
+        var fixture = CreateFixture(generator: new SequenceTokenGenerator("selector", "verifier"));
+        var user = fixture.Users.AddUser();
+        var created = await fixture.Service.CreateAsync(user.Id, new CreateRememberedMfaDeviceRequest());
+        user.AccountState = accountState;
+        fixture.Events.Events.Clear();
+
+        var result = await fixture.Service.ValidateAsync(user.Id, new ValidateRememberedMfaDeviceRequest(created.Value!.Token));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Status, Is.EqualTo(RememberedMfaDeviceValidationStatus.Failed));
+            Assert.That(fixture.Repository.Devices.Single().LastUsedAt, Is.Null);
+            Assert.That(fixture.Events.Events.Single().FailureReason, Is.EqualTo(failureReason));
+        }
+    }
+
+    [Test]
+    public async Task ValidateAsyncRejectsWhenDeviceUserNoLongerExists()
+    {
+        var fixture = CreateFixture(generator: new SequenceTokenGenerator("selector", "verifier"));
+        var user = fixture.Users.AddUser();
+        var created = await fixture.Service.CreateAsync(user.Id, new CreateRememberedMfaDeviceRequest());
+        fixture.Users.RemoveUser(user.Id);
+        fixture.Events.Events.Clear();
+
+        var result = await fixture.Service.ValidateAsync(user.Id, new ValidateRememberedMfaDeviceRequest(created.Value!.Token));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Status, Is.EqualTo(RememberedMfaDeviceValidationStatus.Failed));
+            Assert.That(fixture.Repository.Devices.Single().LastUsedAt, Is.Null);
+            Assert.That(fixture.Events.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.UserNotFoundValue));
+        }
+    }
+
     [Test]
     public async Task RevokeAllAsyncNormalizesNonBlankReason()
     {
@@ -385,11 +446,16 @@ internal sealed class RememberedMfaDeviceServiceTests
     {
         private readonly List<User> _users = [];
 
-        public User AddUser(Guid? tenantId = null)
+        public User AddUser(Guid? tenantId = null, UserAccountState accountState = UserAccountState.Active)
         {
-            var user = new User { Id = Guid.NewGuid(), Email = $"{Guid.NewGuid():N}@example.com", TenantId = tenantId };
+            var user = new User { Id = Guid.NewGuid(), Email = $"{Guid.NewGuid():N}@example.com", TenantId = tenantId, AccountState = accountState };
             _users.Add(user);
             return user;
+        }
+
+        public void RemoveUser(Guid userId)
+        {
+            _users.RemoveAll(user => user.Id == userId);
         }
 
         public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default) => throw new NotSupportedException();

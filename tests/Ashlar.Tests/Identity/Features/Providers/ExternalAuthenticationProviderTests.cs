@@ -263,7 +263,7 @@ internal sealed class ExternalAuthenticationProviderTests
     private sealed record GlobalUser(Guid Id, string Email) : IUser
     {
         public string? Name => null;
-        public bool IsActive => true;
+        public UserAccountState AccountState => UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt => null;
     }
 }

@@ -19,7 +19,7 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
 
         const string sql = """
-            SELECT id, email, name, is_active AS IsActive, tenant_id AS TenantId, email_verified_at AS EmailVerifiedAt, created_at AS CreatedAt, updated_at AS UpdatedAt
+            SELECT id, email, name, account_state AS AccountState, tenant_id AS TenantId, email_verified_at AS EmailVerifiedAt, created_at AS CreatedAt, updated_at AS UpdatedAt
             FROM ashlar_users
             WHERE normalized_email = @NormalizedEmail AND 
             """;
@@ -29,14 +29,15 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
         await using (connectionHandle)
         {
             var command = new CommandDefinition(sql + ExactTenantFilterSql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            return await connectionHandle.Connection.QueryFirstOrDefaultAsync<AshlarPostgresUser>(command);
+            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync<UserRow>(command);
+            return row == null ? null : ToUser(row);
         }
     }
 
     public async Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         const string sql = """
-            SELECT id, email, name, is_active AS IsActive, tenant_id AS TenantId, email_verified_at AS EmailVerifiedAt, created_at AS CreatedAt, updated_at AS UpdatedAt
+            SELECT id, email, name, account_state AS AccountState, tenant_id AS TenantId, email_verified_at AS EmailVerifiedAt, created_at AS CreatedAt, updated_at AS UpdatedAt
             FROM ashlar_users
             WHERE id = @Id
             """;
@@ -45,7 +46,8 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
         await using (connectionHandle)
         {
             var command = new CommandDefinition(sql, new { Id = userId }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            return await connectionHandle.Connection.QueryFirstOrDefaultAsync<AshlarPostgresUser>(command);
+            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync<UserRow>(command);
+            return row == null ? null : ToUser(row);
         }
     }
 
@@ -55,7 +57,7 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
         ArgumentException.ThrowIfNullOrWhiteSpace(providerKey);
 
         const string sql = """
-            SELECT u.id, u.email, u.name, u.is_active AS IsActive, u.tenant_id AS TenantId, u.email_verified_at AS EmailVerifiedAt, u.created_at AS CreatedAt, u.updated_at AS UpdatedAt
+            SELECT u.id, u.email, u.name, u.account_state AS AccountState, u.tenant_id AS TenantId, u.email_verified_at AS EmailVerifiedAt, u.created_at AS CreatedAt, u.updated_at AS UpdatedAt
             FROM ashlar_users u
             JOIN ashlar_credentials c ON u.id = c.user_id
             WHERE c.provider_type = @Type AND c.provider_name = @ProviderName AND c.provider_key = @ProviderKey
@@ -67,7 +69,8 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
         await using (connectionHandle)
         {
             var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            return await connectionHandle.Connection.QueryFirstOrDefaultAsync<AshlarPostgresUser>(command);
+            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync<UserRow>(command);
+            return row == null ? null : ToUser(row);
         }
     }
 
@@ -77,8 +80,8 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
         ArgumentException.ThrowIfNullOrWhiteSpace(user.Email);
 
         const string sql = """
-            INSERT INTO ashlar_users (id, email, normalized_email, name, is_active, tenant_id, email_verified_at, created_at)
-            VALUES (@Id, @Email, @NormalizedEmail, @Name, @IsActive, @TenantId, @EmailVerifiedAt, @CreatedAt)
+            INSERT INTO ashlar_users (id, email, normalized_email, name, account_state, tenant_id, email_verified_at, created_at)
+            VALUES (@Id, @Email, @NormalizedEmail, @Name, @AccountState, @TenantId, @EmailVerifiedAt, @CreatedAt)
             """;
 
         var createdAt = user is not IHasAuditMetadata audit || audit.CreatedAt == default ? _timeProvider.GetUtcNow() : audit.CreatedAt;
@@ -90,7 +93,7 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
             user.Email,
             NormalizedEmail = IdentityNormalization.NormalizeEmail(user.Email),
             user.Name,
-            user.IsActive,
+            AccountState = user.AccountState.ToStorageValue(),
             TenantId = tenantId,
             user.EmailVerifiedAt,
             CreatedAt = createdAt
@@ -111,7 +114,7 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
 
         const string sql = """
             UPDATE ashlar_users
-            SET email = @Email, normalized_email = @NormalizedEmail, name = @Name, is_active = @IsActive, email_verified_at = @EmailVerifiedAt, updated_at = @UpdatedAt
+            SET email = @Email, normalized_email = @NormalizedEmail, name = @Name, account_state = @AccountState, email_verified_at = @EmailVerifiedAt, updated_at = @UpdatedAt
             WHERE id = @Id AND 
             """;
 
@@ -124,7 +127,7 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
             user.Email,
             NormalizedEmail = IdentityNormalization.NormalizeEmail(user.Email),
             user.Name,
-            user.IsActive,
+            AccountState = user.AccountState.ToStorageValue(),
             user.EmailVerifiedAt,
             TenantId = tenantId,
             UpdatedAt = now
@@ -142,4 +145,29 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
             }
         }
     }
+
+    private static AshlarPostgresUser ToUser(UserRow row)
+    {
+        return new AshlarPostgresUser
+        {
+            Id = row.Id,
+            Email = row.Email,
+            Name = row.Name,
+            AccountState = UserAccountStates.FromStorageValue(row.AccountState),
+            TenantId = row.TenantId,
+            EmailVerifiedAt = PostgresAdminQuery.ToNullableDateTimeOffset(row.EmailVerifiedAt),
+            CreatedAt = PostgresAdminQuery.ToDateTimeOffset(row.CreatedAt),
+            UpdatedAt = PostgresAdminQuery.ToNullableDateTimeOffset(row.UpdatedAt)
+        };
+    }
+
+    private sealed record UserRow(
+        Guid Id,
+        string Email,
+        string? Name,
+        string AccountState,
+        Guid? TenantId,
+        DateTime? EmailVerifiedAt,
+        DateTime CreatedAt,
+        DateTime? UpdatedAt);
 }

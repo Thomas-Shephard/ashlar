@@ -74,7 +74,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         }
 
         var user = await _identityContext.UserRepository.GetUserByIdAsync(request.UserId, cancellationToken);
-        if (user is not { IsActive: true })
+        if (user == null || !user.CanSignIn())
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
@@ -82,9 +82,9 @@ internal sealed class EmailVerificationService : IEmailVerificationService
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
                 Audit = request.Audit,
-                FailureReason = AshlarFailureCodes.UserNotFoundOrInactive.Value
+                FailureReason = AshlarFailureCodes.UserNotFoundOrUnavailable.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.UserNotFoundOrInactive, "User not found or inactive.");
+            return Result.Failure(AshlarFailureCodes.UserNotFoundOrUnavailable, "User was not found or cannot currently sign in.");
         }
 
         if (user.EmailVerifiedAt.HasValue)
@@ -271,7 +271,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         }
 
         var user = await _identityContext.UserRepository.GetUserByIdAsync(userId, cancellationToken);
-        if (user is not { IsActive: true })
+        if (user == null || !user.CanSignIn())
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
@@ -279,9 +279,9 @@ internal sealed class EmailVerificationService : IEmailVerificationService
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
                 Audit = request.Audit,
-                FailureReason = AshlarFailureCodes.UserNotFoundOrInactive.Value
+                FailureReason = AshlarFailureCodes.UserNotFoundOrUnavailable.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.UserNotFoundOrInactive, InvalidOrExpiredTokenMessage);
+            return Result.Failure(AshlarFailureCodes.UserNotFoundOrUnavailable, InvalidOrExpiredTokenMessage);
         }
 
         var updatedUser = new UpdatedUserWrapper(user, now);
@@ -321,9 +321,9 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         /// </summary>
         public string? Name => original.Name;
         /// <summary>
-        /// Gets whether the user is active.
+        /// Gets the user's account state.
         /// </summary>
-        public bool IsActive => original.IsActive;
+        public UserAccountState AccountState => original.AccountState;
         /// <summary>
         /// Gets the tenant that owns the user.
         /// </summary>

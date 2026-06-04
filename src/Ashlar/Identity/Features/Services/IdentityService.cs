@@ -145,9 +145,9 @@ public sealed class IdentityService(
         /// </summary>
         public string? Name => original.Name;
         /// <summary>
-        /// Gets whether the user is active.
+        /// Gets the user's account state.
         /// </summary>
-        public bool IsActive => original.IsActive;
+        public UserAccountState AccountState => original.AccountState;
         /// <summary>
         /// Gets the tenant that owns the user.
         /// </summary>

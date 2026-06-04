@@ -18,6 +18,14 @@ public static class SecurityEventFailureReasons
     /// </summary>
     public const string UserDisabled = "user_disabled";
     /// <summary>
+    /// Defines the user locked value.
+    /// </summary>
+    public const string UserLocked = "user_locked";
+    /// <summary>
+    /// Defines the user suspended value.
+    /// </summary>
+    public const string UserSuspended = "user_suspended";
+    /// <summary>
     /// Defines the credential update failed value.
     /// </summary>
     public const string CredentialUpdateFailed = "credential_update_failed";

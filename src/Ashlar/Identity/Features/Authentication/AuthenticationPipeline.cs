@@ -175,9 +175,9 @@ public sealed class AuthenticationPipeline(
             return await RecordFailureAsync(context, provider.Key, user?.Id, SecurityEventFailureReasons.InvalidCredentials, cancellationToken);
         }
 
-        if (!user.IsActive)
+        if (!user.CanSignIn())
         {
-            return await RecordFailureAsync(context, provider.Key, user.Id, SecurityEventFailureReasons.UserDisabled, cancellationToken, user, AuthenticationStatus.Disabled);
+            return await RecordFailureAsync(context, provider.Key, user.Id, user.AccountState.ToSecurityFailureReason(), cancellationToken, user, AuthenticationStatus.Disabled);
         }
 
         if (result.Status == AuthenticationResultStatus.MfaRequired)

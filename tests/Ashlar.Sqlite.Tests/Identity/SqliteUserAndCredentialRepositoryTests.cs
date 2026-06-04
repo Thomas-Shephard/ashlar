@@ -38,9 +38,9 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
         var tenant1 = Guid.NewGuid();
         var tenant2 = Guid.NewGuid();
         var email = "MixedCase@Example.Com";
-        var noTenant = new AshlarUser { Id = Guid.NewGuid(), Email = email, Name = "No Tenant", IsActive = false };
-        var user1 = new AshlarUser { Id = Guid.NewGuid(), Email = email, Name = "Tenant 1", IsActive = true, TenantId = tenant1 };
-        var user2 = new AshlarUser { Id = Guid.NewGuid(), Email = email, Name = "Tenant 2", IsActive = true, TenantId = tenant2 };
+        var noTenant = new AshlarUser { Id = Guid.NewGuid(), Email = email, Name = "No Tenant", AccountState = UserAccountState.Disabled };
+        var user1 = new AshlarUser { Id = Guid.NewGuid(), Email = email, Name = "Tenant 1", AccountState = UserAccountState.Active, TenantId = tenant1 };
+        var user2 = new AshlarUser { Id = Guid.NewGuid(), Email = email, Name = "Tenant 2", AccountState = UserAccountState.Active, TenantId = tenant2 };
 
         await repo.CreateUserAsync(noTenant);
         await repo.CreateUserAsync(user1);
@@ -55,7 +55,7 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
         {
             Assert.That(fetchedById?.Id, Is.EqualTo(user1.Id));
             Assert.That(fetchedNoTenant?.Id, Is.EqualTo(noTenant.Id));
-            Assert.That(fetchedNoTenant?.IsActive, Is.False);
+            Assert.That(fetchedNoTenant?.AccountState, Is.EqualTo(UserAccountState.Disabled));
             Assert.That(fetchedTenant1?.Id, Is.EqualTo(user1.Id));
             Assert.That(fetchedTenant2?.Id, Is.EqualTo(user2.Id));
         }
@@ -84,7 +84,7 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
             Id = Guid.NewGuid(),
             Email = "audit@example.com",
             Name = "Original",
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             CreatedAt = new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero)
         };
         await repo.CreateUserAsync(auditUser);
@@ -93,7 +93,7 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
         await repo.UpdateUserAsync(auditUser);
         var fetchedAudit = await repo.GetUserByIdAsync(auditUser.Id);
 
-        var nonAuditUser = new AshlarUser { Id = Guid.NewGuid(), Email = "non-audit@example.com", Name = "Original", IsActive = true };
+        var nonAuditUser = new AshlarUser { Id = Guid.NewGuid(), Email = "non-audit@example.com", Name = "Original", AccountState = UserAccountState.Active };
         await repo.CreateUserAsync(nonAuditUser);
         await repo.UpdateUserAsync(nonAuditUser with { Name = "Updated" });
         var fetchedNonAudit = await repo.GetUserByIdAsync(nonAuditUser.Id);
@@ -103,7 +103,7 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
             Id = Guid.NewGuid(),
             Email = "minimal@example.com",
             Name = "Original",
-            IsActive = true
+            AccountState = UserAccountState.Active
         };
         await repo.CreateUserAsync(minimalUser);
         await repo.UpdateUserAsync(new MinimalUser
@@ -111,7 +111,7 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
             Id = minimalUser.Id,
             Email = minimalUser.Email,
             Name = "Updated",
-            IsActive = true
+            AccountState = UserAccountState.Active
         });
         var fetchedMinimal = await repo.GetUserByIdAsync(minimalUser.Id);
 
@@ -119,7 +119,7 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
         {
             Id = Guid.NewGuid(),
             Email = "missing-update@example.com",
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };
         await repo.UpdateUserAsync(missingAuditUser);
@@ -132,7 +132,7 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
             Assert.That(fetchedMinimal?.Name, Is.EqualTo("Updated"));
             Assert.That(missingAuditUser.UpdatedAt, Is.Null);
             Assert.ThrowsAsync<ArgumentNullException>(async () => await repo.UpdateUserAsync(null!));
-            Assert.ThrowsAsync<ArgumentException>(async () => await repo.UpdateUserAsync(new AshlarUser { Id = Guid.NewGuid(), Email = "", IsActive = true }));
+            Assert.ThrowsAsync<ArgumentException>(async () => await repo.UpdateUserAsync(new AshlarUser { Id = Guid.NewGuid(), Email = "", AccountState = UserAccountState.Active }));
         }
     }
 
@@ -143,13 +143,13 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
         var repo = GetRepository(scope.ServiceProvider);
         var tenantId = Guid.NewGuid();
 
-        await repo.CreateUserAsync(new AshlarUser { Id = Guid.NewGuid(), Email = "dupe@example.com", IsActive = true });
-        await repo.CreateUserAsync(new AshlarUser { Id = Guid.NewGuid(), Email = "dupe@example.com", IsActive = true, TenantId = tenantId });
+        await repo.CreateUserAsync(new AshlarUser { Id = Guid.NewGuid(), Email = "dupe@example.com", AccountState = UserAccountState.Active });
+        await repo.CreateUserAsync(new AshlarUser { Id = Guid.NewGuid(), Email = "dupe@example.com", AccountState = UserAccountState.Active, TenantId = tenantId });
 
         Assert.ThrowsAsync<SqliteException>(async () =>
-            await repo.CreateUserAsync(new AshlarUser { Id = Guid.NewGuid(), Email = "DUPE@example.com", IsActive = true }));
+            await repo.CreateUserAsync(new AshlarUser { Id = Guid.NewGuid(), Email = "DUPE@example.com", AccountState = UserAccountState.Active }));
         Assert.ThrowsAsync<SqliteException>(async () =>
-            await repo.CreateUserAsync(new AshlarUser { Id = Guid.NewGuid(), Email = "DUPE@example.com", IsActive = true, TenantId = tenantId }));
+            await repo.CreateUserAsync(new AshlarUser { Id = Guid.NewGuid(), Email = "DUPE@example.com", AccountState = UserAccountState.Active, TenantId = tenantId }));
     }
 
     [Test]
@@ -251,7 +251,7 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
             userId = Guid.NewGuid();
 
             await using var transaction = await transactions.BeginTransactionAsync();
-            await repo.CreateUserAsync(new AshlarUser { Id = userId, Email = "rolled-back@example.com", IsActive = true });
+            await repo.CreateUserAsync(new AshlarUser { Id = userId, Email = "rolled-back@example.com", AccountState = UserAccountState.Active });
             await repo.CreateCredentialAsync(CreateCredential(userId, ProviderType.Local, ProviderType.Local.Value));
             await transaction.RollbackAsync();
         }
@@ -274,7 +274,7 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
         {
             Id = Guid.NewGuid(),
             Email = $"{Guid.NewGuid():N}@example.com",
-            IsActive = true
+            AccountState = UserAccountState.Active
         };
 
         await repo.CreateUserAsync(user);
@@ -317,7 +317,7 @@ internal sealed class SqliteUserAndCredentialRepositoryTests : SqliteTestBase
         public Guid Id { get; init; }
         public required string Email { get; init; }
         public string? Name { get; init; }
-        public bool IsActive { get; init; }
+        public UserAccountState AccountState { get; init; } = UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt { get; init; }
     }
 }

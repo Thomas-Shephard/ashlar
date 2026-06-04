@@ -18,9 +18,9 @@ public sealed record AshlarUser : ITenantUser
     /// </summary>
     public string? Name { get; init; }
     /// <summary>
-    /// Gets or sets the is active value.
+    /// Gets or sets the account state value.
     /// </summary>
-    public bool IsActive { get; init; }
+    public UserAccountState AccountState { get; init; } = UserAccountState.Active;
     /// <summary>
     /// Gets or sets the tenant id value.
     /// </summary>

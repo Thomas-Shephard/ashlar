@@ -157,7 +157,7 @@ internal sealed class PostgresPasskeyChallengeRepositoryTests : PostgresTestBase
         {
             Id = Guid.NewGuid(),
             Email = $"{Guid.NewGuid():N}@example.com",
-            IsActive = true,
+            AccountState = UserAccountState.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };
         await _serviceProvider.GetRequiredService<IUserRepository>().CreateUserAsync(user);

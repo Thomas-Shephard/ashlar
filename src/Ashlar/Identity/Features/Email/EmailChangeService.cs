@@ -65,7 +65,7 @@ internal sealed class EmailChangeService(
         }
 
         var user = await _dependencies.IdentityContext.UserRepository.GetUserByIdAsync(request.UserId, cancellationToken);
-        if (user is not { IsActive: true })
+        if (user == null || !user.CanSignIn())
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
@@ -73,9 +73,9 @@ internal sealed class EmailChangeService(
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
                 Audit = request.Audit,
-                FailureReason = AshlarFailureCodes.UserNotFoundOrInactive.Value
+                FailureReason = AshlarFailureCodes.UserNotFoundOrUnavailable.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.UserNotFoundOrInactive, "User not found or inactive.");
+            return Result.Failure(AshlarFailureCodes.UserNotFoundOrUnavailable, "User was not found or cannot currently sign in.");
         }
 
         var newEmail = IdentityNormalization.SanitizeEmailForDelivery(request.NewEmail);
@@ -310,7 +310,7 @@ internal sealed class EmailChangeService(
         await using var transaction = await _dependencies.IdentityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
         var user = await _dependencies.IdentityContext.UserRepository.GetUserByIdAsync(request.UserId, cancellationToken);
-        if (user is not { IsActive: true })
+        if (user == null || !user.CanSignIn())
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
@@ -318,9 +318,9 @@ internal sealed class EmailChangeService(
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = request.UserId,
                 Audit = request.Audit,
-                FailureReason = AshlarFailureCodes.UserNotFoundOrInactive.Value
+                FailureReason = AshlarFailureCodes.UserNotFoundOrUnavailable.Value
             }, cancellationToken);
-            return Result.Failure(AshlarFailureCodes.UserNotFoundOrInactive, InvalidOrExpiredTokenMessage);
+            return Result.Failure(AshlarFailureCodes.UserNotFoundOrUnavailable, InvalidOrExpiredTokenMessage);
         }
 
         var consumed = await _dependencies.IdentityContext.CredentialRepository.ConsumeCredentialAsync(credential.Id, credential.Version, cancellationToken);
@@ -414,9 +414,9 @@ internal sealed class EmailChangeService(
         /// </summary>
         public string? Name => original.Name;
         /// <summary>
-        /// Gets whether the existing user remains active.
+        /// Gets the existing account state.
         /// </summary>
-        public bool IsActive => original.IsActive;
+        public UserAccountState AccountState => original.AccountState;
         /// <summary>
         /// Gets the existing tenant identifier.
         /// </summary>

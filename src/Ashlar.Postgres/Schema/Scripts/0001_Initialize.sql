@@ -3,11 +3,12 @@ CREATE TABLE IF NOT EXISTS ashlar_users (
     email TEXT NOT NULL,
     normalized_email TEXT NOT NULL,
     name TEXT,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    account_state TEXT NOT NULL DEFAULT 'active',
     tenant_id UUID,
     email_verified_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ
+    updated_at TIMESTAMPTZ,
+    CONSTRAINT ck_ashlar_users_account_state CHECK (account_state IN ('active', 'disabled', 'locked', 'suspended'))
 );
 
 -- NOTE: Requires PostgreSQL 15+ for NULLS NOT DISTINCT support in unique indexes

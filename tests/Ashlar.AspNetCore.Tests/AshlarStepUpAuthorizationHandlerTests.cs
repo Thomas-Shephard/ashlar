@@ -386,7 +386,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
         var posture = new UserSecurityPosture(
             session.UserId,
-            IsActive: true,
+            AccountState: UserAccountState.Active,
             IsEmailVerified: true,
             CanSignIn: true,
             PrimaryCredentials: [],
@@ -472,7 +472,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(new UserSecurityPosture(
                 session.UserId,
-                IsActive: true,
+                AccountState: UserAccountState.Active,
                 IsEmailVerified: true,
                 CanSignIn: true,
                 PrimaryCredentials: [],
@@ -1083,7 +1083,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(new UserSecurityPosture(
                 userId,
-                IsActive: true,
+                AccountState: UserAccountState.Active,
                 IsEmailVerified: true,
                 CanSignIn: true,
                 PrimaryCredentials: [],

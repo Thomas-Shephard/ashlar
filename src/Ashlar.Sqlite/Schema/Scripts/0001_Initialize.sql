@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS ashlar_users (
     email TEXT NOT NULL,
     normalized_email TEXT NOT NULL,
     name TEXT,
-    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    account_state TEXT NOT NULL DEFAULT 'active' CHECK (account_state IN ('active', 'disabled', 'locked', 'suspended')),
     tenant_id TEXT,
     email_verified_at TEXT,
     created_at TEXT NOT NULL,

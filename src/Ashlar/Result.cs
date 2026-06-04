@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Ashlar;
 
 /// <summary>
@@ -54,6 +56,12 @@ public record Result(bool Succeeded, AshlarFailure? FailureDetails = null)
     /// Gets a display-oriented failure reason. Prefer <see cref="FailureCode" /> for branching.
     /// </summary>
     public string? FailureReason => FailureDetails?.Message ?? FailureDetails?.Code.Value;
+    /// <summary>
+    /// Gets the failure details, or creates fallback details when the result does not carry them.
+    /// </summary>
+    /// <param name="fallback">The fallback failure code.</param>
+    /// <returns>The failure details.</returns>
+    public AshlarFailure GetFailureOr(AshlarFailureCode fallback) => FailureDetails ?? new AshlarFailure(fallback);
 
     /// <summary>
     /// Executes the success operation.
@@ -121,4 +129,16 @@ public record Result(bool Succeeded, AshlarFailure? FailureDetails = null)
 /// <param name="Value">The contained result.</param>
 /// <param name="FailureDetails">The failure information.</param>
 public record Result<T>(bool Succeeded, T? Value = default, AshlarFailure? FailureDetails = null)
-    : Result(Succeeded, FailureDetails);
+    : Result(Succeeded, FailureDetails)
+{
+    /// <summary>
+    /// Gets the result value when the operation succeeded and produced one.
+    /// </summary>
+    /// <param name="value">The result value.</param>
+    /// <returns><see langword="true" /> when a non-<see langword="null" /> value is available.</returns>
+    public bool TryGetValue([NotNullWhen(true)] out T? value)
+    {
+        value = Value;
+        return Succeeded && value is not null;
+    }
+}
