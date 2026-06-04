@@ -251,6 +251,11 @@ internal sealed class UserAdministrationServiceTests
         public Guid LastPostureUserId { get; private set; }
         public UserSecurityPostureRequest? LastPostureRequest { get; private set; }
 
+        public Task<Result<AccountSecurityOperationResult>> SetUserAccountStateAsync(Guid userId, SetUserAccountStateRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
         public Task<Result<AccountSecurityOperationResult>> DisableUserAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();

@@ -6,21 +6,30 @@ namespace Ashlar.Identity.Abstractions.Services;
 public interface IAccountSecurityService
 {
     /// <summary>
-    /// Disables a user and revokes their active authentication sessions.
+    /// Changes a user's account state.
     /// </summary>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="userId">The user to update.</param>
+    /// <param name="request">The account-state transition request.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>The account-state transition result.</returns>
+    Task<Result<AccountSecurityOperationResult>> SetUserAccountStateAsync(Guid userId, SetUserAccountStateRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Disables a user through the generic account-state transition flow.
+    /// </summary>
+    /// <param name="userId">The user to disable.</param>
+    /// <param name="request">Audit metadata and optional tenant scope.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>The account-state transition result.</returns>
     Task<Result<AccountSecurityOperationResult>> DisableUserAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Reactivates a disabled user without changing credentials.
+    /// Reactivates a user through the generic account-state transition flow.
     /// </summary>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="userId">The user to reactivate.</param>
+    /// <param name="request">Audit metadata and optional tenant scope.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>The account-state transition result.</returns>
     Task<Result<AccountSecurityOperationResult>> ReactivateUserAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>

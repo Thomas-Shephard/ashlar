@@ -70,64 +70,84 @@ public sealed class AccountSecurityService : IAccountSecurityService
     /// <inheritdoc />
     public async Task<Result<AccountSecurityOperationResult>> DisableUserAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
     {
-        ValidateUserId(userId);
         request = RequireAudit(request);
-
-        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
-        var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
-        if (!userResult.TryGetValue(out var user))
-        {
-            var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
-            await RecordFailureAsync(AshlarSecurityEventTypes.UserDisabled, userId, request, failure.Code.Value, cancellationToken);
-            return Result.Failure<AccountSecurityOperationResult>(failure);
-        }
-
-        var changed = user.AccountState != UserAccountState.Disabled;
-        if (changed)
-        {
-            var guardResult = await _accountSecurityGuard.CanDisableUserAsync(user, request, cancellationToken);
-            if (!guardResult.Succeeded)
-            {
-                var failure = guardResult.GetFailureOr(AshlarFailureCodes.ValidationError);
-                await RecordFailureAsync(AshlarSecurityEventTypes.UserDisabled, userId, request, failure.Code.Value, cancellationToken);
-                return Result.Failure<AccountSecurityOperationResult>(failure);
-            }
-
-            await _userRepository.UpdateUserAsync(CloneUser(user, UserAccountState.Disabled), cancellationToken);
-        }
-
-        var revoked = await _sessionService.RevokeSessionsForUserAsync(userId, request.Reason ?? AdminReason, request.Tenant, request.Audit, cancellationToken);
-        await RevokeRememberedMfaDevicesAsync(userId, request, request.Reason ?? AdminReason, cancellationToken);
-        var result = new AccountSecurityOperationResult(userId, changed, SessionsRevoked: revoked);
-        transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserDisabled, result, request, ct, fromAccountState: user.AccountState, toAccountState: UserAccountState.Disabled));
-
-        await transaction.CommitAsync(cancellationToken);
-        return Result.Success(result);
+        return await SetUserAccountStateAsync(
+            userId,
+            new SetUserAccountStateRequest(UserAccountState.Disabled, request.Audit, request.Tenant, request.Reason),
+            cancellationToken);
     }
 
     /// <inheritdoc />
     public async Task<Result<AccountSecurityOperationResult>> ReactivateUserAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
     {
+        request = RequireAudit(request);
+        return await SetUserAccountStateAsync(
+            userId,
+            new SetUserAccountStateRequest(UserAccountState.Active, request.Audit, request.Tenant, request.Reason),
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<AccountSecurityOperationResult>> SetUserAccountStateAsync(Guid userId, SetUserAccountStateRequest request, CancellationToken cancellationToken = default)
+    {
         ValidateUserId(userId);
         request = RequireAudit(request);
+        ValidateAccountState(request.AccountState);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
         if (!userResult.TryGetValue(out var user))
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
-            await RecordFailureAsync(AshlarSecurityEventTypes.UserReactivated, userId, request, failure.Code.Value, cancellationToken);
+            await RecordFailureAsync(
+                new AccountSecurityFailureEvent(
+                    AshlarSecurityEventTypes.UserAccountStateChanged,
+                    userId,
+                    request,
+                    failure.Code.Value,
+                    ToAccountState: request.AccountState),
+                cancellationToken);
             return Result.Failure<AccountSecurityOperationResult>(failure);
         }
 
-        var changed = user.AccountState != UserAccountState.Active;
+        var changed = user.AccountState != request.AccountState;
+        var sessionsRevoked = 0;
+        var rememberedMfaDevicesRevoked = 0;
         if (changed)
         {
-            await _userRepository.UpdateUserAsync(CloneUser(user, UserAccountState.Active), cancellationToken);
+            var guardResult = await _accountSecurityGuard.CanChangeAccountStateAsync(user, request.AccountState, request, cancellationToken);
+            if (!guardResult.Succeeded)
+            {
+                var failure = guardResult.GetFailureOr(AshlarFailureCodes.ValidationError);
+                await RecordFailureAsync(
+                    new AccountSecurityFailureEvent(
+                        AshlarSecurityEventTypes.UserAccountStateChanged,
+                        userId,
+                        request,
+                        failure.Code.Value,
+                        FromAccountState: user.AccountState,
+                        ToAccountState: request.AccountState),
+                    cancellationToken);
+                return Result.Failure<AccountSecurityOperationResult>(failure);
+            }
+
+            await _userRepository.UpdateUserAsync(CloneUser(user, request.AccountState), cancellationToken);
+            if (!request.AccountState.CanSignIn() && request.RevokeSessionsAndRememberedMfaDevices)
+            {
+                var reason = request.Reason ?? AdminReason;
+                sessionsRevoked = await _sessionService.RevokeSessionsForUserAsync(userId, reason, request.Tenant, request.Audit, cancellationToken);
+                rememberedMfaDevicesRevoked = await RevokeRememberedMfaDevicesAsync(userId, request, reason, cancellationToken);
+            }
         }
 
-        var result = new AccountSecurityOperationResult(userId, changed);
-        transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserReactivated, result, request, ct, fromAccountState: user.AccountState, toAccountState: UserAccountState.Active));
+        var result = new AccountSecurityOperationResult(
+            userId,
+            changed,
+            sessionsRevoked,
+            PreviousState: user.AccountState,
+            CurrentState: request.AccountState,
+            RememberedMfaDevicesRevoked: rememberedMfaDevicesRevoked);
+        transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserAccountStateChanged, result, request, ct, fromAccountState: user.AccountState, toAccountState: request.AccountState));
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success(result);
@@ -142,7 +162,9 @@ public sealed class AccountSecurityService : IAccountSecurityService
         if (!userResult.Succeeded)
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
-            await RecordFailureAsync(AshlarSecurityEventTypes.SessionsRevokedForUser, userId, request, failure.Code.Value, cancellationToken);
+            await RecordFailureAsync(
+                new AccountSecurityFailureEvent(AshlarSecurityEventTypes.SessionsRevokedForUser, userId, request, failure.Code.Value),
+                cancellationToken);
             return Result.Failure<AccountSecurityOperationResult>(failure);
         }
 
@@ -161,7 +183,9 @@ public sealed class AccountSecurityService : IAccountSecurityService
         if (!userResult.Succeeded)
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
-            await RecordFailureAsync(AshlarSecurityEventTypes.UserCredentialsRevoked, userId, request, failure.Code.Value, cancellationToken, provider);
+            await RecordFailureAsync(
+                new AccountSecurityFailureEvent(AshlarSecurityEventTypes.UserCredentialsRevoked, userId, request, failure.Code.Value, Provider: provider),
+                cancellationToken);
             return Result.Failure<AccountSecurityOperationResult>(failure);
         }
 
@@ -184,7 +208,9 @@ public sealed class AccountSecurityService : IAccountSecurityService
         if (!userResult.Succeeded)
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
-            await RecordFailureAsync(AshlarSecurityEventTypes.UserMfaReset, userId, request, failure.Code.Value, cancellationToken);
+            await RecordFailureAsync(
+                new AccountSecurityFailureEvent(AshlarSecurityEventTypes.UserMfaReset, userId, request, failure.Code.Value),
+                cancellationToken);
             return Result.Failure<AccountSecurityOperationResult>(failure);
         }
 
@@ -252,7 +278,8 @@ public sealed class AccountSecurityService : IAccountSecurityService
         return Result.Success(posture);
     }
 
-    private static AccountSecurityOperationRequest RequireAudit(AccountSecurityOperationRequest? request)
+    private static TRequest RequireAudit<TRequest>(TRequest? request)
+        where TRequest : AccountSecurityOperationRequest
     {
         if (request == null)
         {
@@ -275,6 +302,14 @@ public sealed class AccountSecurityService : IAccountSecurityService
         if (provider.Type == default || string.IsNullOrWhiteSpace(provider.Name))
         {
             throw new ArgumentException("Provider key must be fully initialized.", nameof(provider));
+        }
+    }
+
+    private static void ValidateAccountState(UserAccountState accountState)
+    {
+        if (!Enum.IsDefined(accountState))
+        {
+            throw new ArgumentOutOfRangeException(nameof(accountState), accountState, "Unknown user account state.");
         }
     }
 
@@ -481,17 +516,33 @@ public sealed class AccountSecurityService : IAccountSecurityService
         };
     }
 
-    private Task RecordFailureAsync(string eventType, Guid userId, AccountSecurityOperationRequest request, string failureReason, CancellationToken cancellationToken, AuthenticationProviderKey? provider = null)
+    private Task RecordFailureAsync(AccountSecurityFailureEvent failureEvent, CancellationToken cancellationToken)
     {
+        var stateProperties = new Dictionary<string, string>();
+        foreach (var (key, state) in new[]
+        {
+            ("from_account_state", failureEvent.FromAccountState),
+            ("to_account_state", failureEvent.ToAccountState)
+        })
+        {
+            if (state.HasValue)
+            {
+                stateProperties[key] = state.Value.ToStorageValue();
+            }
+        }
+
+        var properties = stateProperties.Count > 0 ? stateProperties : null;
+
         return _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
-            EventType = eventType,
+            EventType = failureEvent.EventType,
             Outcome = SecurityEventOutcomes.Failure,
-            UserId = userId,
-            TenantId = request.Tenant?.TenantId,
-            Audit = request.Audit,
-            Provider = provider,
-            FailureReason = failureReason
+            UserId = failureEvent.UserId,
+            TenantId = failureEvent.Request.Tenant?.TenantId,
+            Audit = failureEvent.Request.Audit,
+            Provider = failureEvent.Provider,
+            FailureReason = failureEvent.FailureReason,
+            Properties = properties
         }, cancellationToken);
     }
 
@@ -508,7 +559,8 @@ public sealed class AccountSecurityService : IAccountSecurityService
         {
             ["user_changed"] = result.UserChanged ? "true" : "false",
             ["sessions_revoked"] = result.SessionsRevoked.ToString(CultureInfo.InvariantCulture),
-            ["credentials_revoked"] = result.CredentialsRevoked.ToString(CultureInfo.InvariantCulture)
+            ["credentials_revoked"] = result.CredentialsRevoked.ToString(CultureInfo.InvariantCulture),
+            ["remembered_mfa_devices_revoked"] = result.RememberedMfaDevicesRevoked.ToString(CultureInfo.InvariantCulture)
         };
         if (fromAccountState.HasValue)
         {
@@ -549,6 +601,15 @@ public sealed class AccountSecurityService : IAccountSecurityService
             },
             cancellationToken) ?? Task.FromResult(0);
     }
+
+    private sealed record AccountSecurityFailureEvent(
+        string EventType,
+        Guid UserId,
+        AccountSecurityOperationRequest Request,
+        string FailureReason,
+        AuthenticationProviderKey? Provider = null,
+        UserAccountState? FromAccountState = null,
+        UserAccountState? ToAccountState = null);
 }
 
 /// <summary>

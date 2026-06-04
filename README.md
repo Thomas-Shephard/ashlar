@@ -899,12 +899,15 @@ Ashlar exposes framework-neutral administrator primitives through `IAccountSecur
 
 Available operations:
 
-- `DisableUserAsync`: marks the user inactive and revokes active sessions.
-- `ReactivateUserAsync`: marks a disabled user active without changing credentials.
+- `SetUserAccountStateAsync`: changes a user between `Active`, `Disabled`, `Locked`, and `Suspended`.
+- `DisableUserAsync`: convenience wrapper that sets the user to `Disabled`.
+- `ReactivateUserAsync`: convenience wrapper that sets the user to `Active`.
 - `RevokeSessionsAsync`: revokes all active sessions for a user.
 - `RevokeCredentialsAsync`: revokes active credentials for a specific provider key.
 - `ResetMfaAsync`: revokes configured TOTP and recovery-code credentials.
 - `GetUserSecurityPostureAsync`: returns a non-secret `AccountSecurityPosture` read model containing active state, email verification state, primary sign-in methods, additional verification factors, policy readiness, missing required factors, readable credential inventory, active session count, and recent security event count when the persistence provider supports it.
+
+Transitions to non-active states revoke active sessions and remembered MFA devices by default, but they do not revoke credentials. Transitions back to `Active` do not restore sessions, credentials, or remembered MFA devices. No-op state transitions report `UserChanged = false` and do not revoke sessions or remembered MFA devices. `AccountSecurityOperationResult` includes the previous and current account states, whether the user row changed, session and credential revocation counts, and the remembered MFA device revocation count when a remembered-device service is registered.
 
 Account posture separates durable primary credentials from additional verification factors. Local passwords, external providers, email-code or magic-link sign-in credentials, and passkeys are primary sign-in methods. Authenticator apps are additional verification factors, recovery codes are backup additional verification factors, and passkeys can also be additional verification factors when policy or step-up requirements allow the `passkey` factor. One-time email sign-in credentials are not treated as durable MFA factors.
 

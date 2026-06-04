@@ -11,7 +11,7 @@ internal static class AppViews
             invalid_invitation: 'This invitation is invalid or has expired. Ask an administrator to send a new invitation.',
             invalid_mfa_code: 'That verification code was not accepted. Check the code and try again.',
             invalid_totp: 'That authenticator code was not accepted. Check the code and try again.',
-            last_admin_cannot_be_disabled: 'You cannot disable the last active administrator.',
+            last_admin_cannot_be_changed_to_non_sign_in_state: 'You cannot move the last active administrator to a non-sign-in state.',
             rate_limited: 'Too many attempts. Wait a moment, then try again.',
             user_exists: 'A user with this email address already exists.'
         };

@@ -4,12 +4,16 @@ namespace Ashlar.Sample.AspNetCore;
 
 internal sealed class SampleAccountSecurityGuard(IPostgresConnectionProvider connectionProvider) : IAccountSecurityGuard
 {
-    internal const string LastAdminCannotBeDisabledCode = "last_admin_cannot_be_disabled";
+    internal const string LastAdminCannotBeChangedToNonSignInStateCode = "last_admin_cannot_be_changed_to_non_sign_in_state";
 
-    public async Task<Result> CanDisableUserAsync(IUser user, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(request);
+        if (targetState.CanSignIn() || !user.CanSignIn())
+        {
+            return Result.Success();
+        }
 
         const string userHasAdminGrantSql = """
             SELECT EXISTS (
@@ -19,7 +23,7 @@ internal sealed class SampleAccountSecurityGuard(IPostgresConnectionProvider con
                   AND role = 'admin'
                   AND revoked_at IS NULL
                   AND (expires_at IS NULL OR expires_at > NOW())
-                  AND (@TenantId IS NULL OR tenant_id = @TenantId)
+                  AND ((@TenantId IS NULL AND tenant_id IS NULL) OR tenant_id = @TenantId)
             )
             """;
 
@@ -31,7 +35,7 @@ internal sealed class SampleAccountSecurityGuard(IPostgresConnectionProvider con
               AND g.role = 'admin'
               AND g.revoked_at IS NULL
               AND (g.expires_at IS NULL OR g.expires_at > NOW())
-              AND (@TenantId IS NULL OR g.tenant_id = @TenantId)
+              AND ((@TenantId IS NULL AND g.tenant_id IS NULL) OR g.tenant_id = @TenantId)
             """;
 
         var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
@@ -56,7 +60,7 @@ internal sealed class SampleAccountSecurityGuard(IPostgresConnectionProvider con
                 cancellationToken: cancellationToken));
 
             return activeAdminCount <= 1
-                ? Result.Failure(new AshlarFailureCode(LastAdminCannotBeDisabledCode))
+                ? Result.Failure(new AshlarFailureCode(LastAdminCannotBeChangedToNonSignInStateCode))
                 : Result.Success();
         }
     }

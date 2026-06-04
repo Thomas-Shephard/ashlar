@@ -51,7 +51,7 @@ internal sealed class AccountSecurityServiceTests
         _sessionRepository.Sessions.Add(CreateSession(_userId));
 
         var result = await _service.DisableUserAsync(_userId, CreateRequest("risk"));
-        var disabledEvent = _events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserDisabled);
+        var disabledEvent = _events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserAccountStateChanged);
 
         using (Assert.EnterMultipleScope())
         {
@@ -59,6 +59,8 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(_userRepository.Users[_userId].CanSignIn(), Is.False);
             Assert.That(_sessionRepository.Sessions.Single().RevokedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
             Assert.That(result.Value?.SessionsRevoked, Is.EqualTo(1));
+            Assert.That(result.Value?.PreviousState, Is.EqualTo(UserAccountState.Active));
+            Assert.That(result.Value?.CurrentState, Is.EqualTo(UserAccountState.Disabled));
             Assert.That(disabledEvent.ActorUserId.HasValue, Is.True);
             Assert.That(disabledEvent.Properties?["from_account_state"], Is.EqualTo("active"));
             Assert.That(disabledEvent.Properties?["to_account_state"], Is.EqualTo("disabled"));
@@ -83,13 +85,138 @@ internal sealed class AccountSecurityServiceTests
             new AllowAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices.Object));
 
-        var result = await service.DisableUserAsync(_userId, request);
+        var result = await service.SetUserAccountStateAsync(
+            _userId,
+            new SetUserAccountStateRequest(UserAccountState.Disabled, request.Audit, request.Tenant, request.Reason));
 
-        Assert.That(result.Succeeded, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value?.RememberedMfaDevicesRevoked, Is.EqualTo(2));
+        }
+
         rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.Is<RevokeAllRememberedMfaDevicesRequest>(r =>
             r.Tenant == request.Tenant &&
             r.Reason == "account-disabled" &&
             r.Audit == request.Audit), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [TestCase(UserAccountState.Disabled)]
+    [TestCase(UserAccountState.Locked)]
+    [TestCase(UserAccountState.Suspended)]
+    public async Task SetUserAccountStateAsyncShouldTransitionActiveUserToNonActiveState(UserAccountState targetState)
+    {
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
+        _sessionRepository.Sessions.Add(CreateSession(_userId));
+
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(targetState, "security-review"));
+        var stateChangedEvent = _events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserAccountStateChanged);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(_userRepository.Users[_userId].AccountState, Is.EqualTo(targetState));
+            Assert.That(_sessionRepository.Sessions.Single().RevocationReason, Is.EqualTo("security-review"));
+            Assert.That(result.Value?.UserChanged, Is.True);
+            Assert.That(result.Value?.SessionsRevoked, Is.EqualTo(1));
+            Assert.That(result.Value?.PreviousState, Is.EqualTo(UserAccountState.Active));
+            Assert.That(result.Value?.CurrentState, Is.EqualTo(targetState));
+            Assert.That(stateChangedEvent.Properties?["from_account_state"], Is.EqualTo("active"));
+            Assert.That(stateChangedEvent.Properties?["to_account_state"], Is.EqualTo(targetState.ToStorageValue()));
+            Assert.That(stateChangedEvent.Properties?["remembered_mfa_devices_revoked"], Is.EqualTo("0"));
+        }
+    }
+
+    [Test]
+    public async Task SetUserAccountStateAsyncShouldReturnUserNotFoundForMissingUser()
+    {
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Locked));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(_events.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.UserAccountStateChanged));
+            Assert.That(_events.Events.Single().Properties?["to_account_state"], Is.EqualTo("locked"));
+        }
+    }
+
+    [Test]
+    public async Task SetUserAccountStateAsyncShouldReturnTenantMismatchForTenantMismatch()
+    {
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = Guid.NewGuid() };
+        _sessionRepository.Sessions.Add(CreateSession(_userId));
+        var requestedTenantId = Guid.NewGuid();
+
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Suspended, tenantId: requestedTenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+            Assert.That(_userRepository.Users[_userId].AccountState, Is.EqualTo(UserAccountState.Active));
+            Assert.That(_sessionRepository.Sessions.Single().RevokedAt, Is.Null);
+            Assert.That(_events.Events.Single().TenantId, Is.EqualTo(requestedTenantId));
+            Assert.That(_events.Events.Single().Properties?["to_account_state"], Is.EqualTo("suspended"));
+        }
+    }
+
+    [TestCase(UserAccountState.Disabled)]
+    [TestCase(UserAccountState.Locked)]
+    [TestCase(UserAccountState.Suspended)]
+    public async Task SetUserAccountStateAsyncShouldReactivateNonActiveUserWithoutRevokingSessionsOrCredentials(UserAccountState previousState)
+    {
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = previousState };
+        _sessionRepository.Sessions.Add(CreateSession(_userId));
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Active));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(_userRepository.Users[_userId].AccountState, Is.EqualTo(UserAccountState.Active));
+            Assert.That(_sessionRepository.Sessions.Single().RevokedAt, Is.Null);
+            Assert.That(_userRepository.Credentials.Single().RevokedAt, Is.Null);
+            Assert.That(result.Value?.SessionsRevoked, Is.Zero);
+            Assert.That(result.Value?.CredentialsRevoked, Is.Zero);
+            Assert.That(result.Value?.PreviousState, Is.EqualTo(previousState));
+            Assert.That(result.Value?.CurrentState, Is.EqualTo(UserAccountState.Active));
+        }
+    }
+
+    [Test]
+    public async Task SetUserAccountStateAsyncShouldRespectExplicitNoRevocationBehavior()
+    {
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
+        _sessionRepository.Sessions.Add(CreateSession(_userId));
+        var request = CreateStateRequest(UserAccountState.Suspended, revokeSessionsAndRememberedMfaDevices: false);
+
+        var result = await _service.SetUserAccountStateAsync(_userId, request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(_userRepository.Users[_userId].AccountState, Is.EqualTo(UserAccountState.Suspended));
+            Assert.That(_sessionRepository.Sessions.Single().RevokedAt, Is.Null);
+            Assert.That(result.Value?.SessionsRevoked, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task SetUserAccountStateAsyncShouldNotRevokeCredentialsWhenTransitioningToNonActiveState()
+    {
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Locked));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value?.CredentialsRevoked, Is.Zero);
+            Assert.That(_userRepository.Credentials.Single().RevokedAt, Is.Null);
+        }
     }
 
     [Test]
@@ -163,7 +290,7 @@ internal sealed class AccountSecurityServiceTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
-            Assert.That(_events.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.UserDisabled));
+            Assert.That(_events.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.UserAccountStateChanged));
         }
     }
 
@@ -199,7 +326,7 @@ internal sealed class AccountSecurityServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(_userRepository.Users[_userId].CanSignIn(), Is.False);
-            Assert.That(_events.Events.Any(e => e.EventType == AshlarSecurityEventTypes.UserDisabled && e.TenantId == tenantId), Is.True);
+            Assert.That(_events.Events.Any(e => e.EventType == AshlarSecurityEventTypes.UserAccountStateChanged && e.TenantId == tenantId), Is.True);
         }
     }
 
@@ -250,7 +377,7 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldNotUpdateAlreadyDisabledUserButShouldRevokeSessions()
+    public async Task DisableUserAsyncShouldNoopForAlreadyDisabledUserWithoutRevokingSessions()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Disabled };
         _sessionRepository.Sessions.Add(CreateSession(_userId));
@@ -261,8 +388,8 @@ internal sealed class AccountSecurityServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value?.UserChanged, Is.False);
-            Assert.That(result.Value?.SessionsRevoked, Is.EqualTo(1));
-            Assert.That(_sessionRepository.Sessions.Single().RevocationReason, Is.EqualTo("admin"));
+            Assert.That(result.Value?.SessionsRevoked, Is.Zero);
+            Assert.That(_sessionRepository.Sessions.Single().RevokedAt, Is.Null);
         }
     }
 
@@ -295,13 +422,15 @@ internal sealed class AccountSecurityServiceTests
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
 
         var result = await _service.ReactivateUserAsync(_userId, CreateRequest());
-        var reactivatedEvent = _events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserReactivated);
+        var reactivatedEvent = _events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserAccountStateChanged);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(_userRepository.Users[_userId].CanSignIn(), Is.True);
             Assert.That(_userRepository.Credentials.Single().RevokedAt, Is.Null);
+            Assert.That(result.Value?.PreviousState, Is.EqualTo(UserAccountState.Disabled));
+            Assert.That(result.Value?.CurrentState, Is.EqualTo(UserAccountState.Active));
             Assert.That(reactivatedEvent.Properties?["from_account_state"], Is.EqualTo("disabled"));
             Assert.That(reactivatedEvent.Properties?["to_account_state"], Is.EqualTo("active"));
         }
@@ -316,7 +445,7 @@ internal sealed class AccountSecurityServiceTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
-            Assert.That(_events.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.UserReactivated));
+            Assert.That(_events.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.UserAccountStateChanged));
         }
     }
 
@@ -1169,6 +1298,9 @@ internal sealed class AccountSecurityServiceTests
         {
             Assert.ThrowsAsync<ArgumentException>(() => _service.DisableUserAsync(Guid.Empty, CreateRequest()));
             Assert.ThrowsAsync<ArgumentNullException>(() => _service.DisableUserAsync(_userId, null!));
+            Assert.ThrowsAsync<ArgumentException>(() => _service.SetUserAccountStateAsync(Guid.Empty, CreateStateRequest(UserAccountState.Disabled)));
+            Assert.ThrowsAsync<ArgumentNullException>(() => _service.SetUserAccountStateAsync(_userId, null!));
+            Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => _service.SetUserAccountStateAsync(_userId, CreateStateRequest((UserAccountState)999)));
             Assert.ThrowsAsync<ArgumentException>(() => _service.ReactivateUserAsync(Guid.Empty, CreateRequest()));
             Assert.ThrowsAsync<ArgumentNullException>(() => _service.ReactivateUserAsync(_userId, null!));
             Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionsAsync(Guid.Empty, CreateRequest()));
@@ -1182,6 +1314,16 @@ internal sealed class AccountSecurityServiceTests
     private static AccountSecurityOperationRequest CreateRequest(string? reason = null, Guid? tenantId = null)
     {
         return new AccountSecurityOperationRequest(new AuditContext(Guid.NewGuid(), "127.0.0.1", "agent", "corr"), tenantId.HasValue ? new TenantContext(tenantId) : null, reason);
+    }
+
+    private static SetUserAccountStateRequest CreateStateRequest(UserAccountState accountState, string? reason = null, Guid? tenantId = null, bool revokeSessionsAndRememberedMfaDevices = true)
+    {
+        return new SetUserAccountStateRequest(
+            accountState,
+            new AuditContext(Guid.NewGuid(), "127.0.0.1", "agent", "corr"),
+            tenantId.HasValue ? new TenantContext(tenantId) : null,
+            reason,
+            revokeSessionsAndRememberedMfaDevices);
     }
 
     private AuthenticationSession CreateSession(Guid userId)
@@ -1303,7 +1445,7 @@ internal sealed class AccountSecurityServiceTests
 
     private sealed class RejectingAccountSecurityGuard : IAccountSecurityGuard
     {
-        public Task<Result> CanDisableUserAsync(IUser user, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
+        public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(Result.Failure(new AshlarFailureCode("guard_rejected")));
         }
@@ -1311,7 +1453,7 @@ internal sealed class AccountSecurityServiceTests
 
     private sealed class EmptyFailureAccountSecurityGuard : IAccountSecurityGuard
     {
-        public Task<Result> CanDisableUserAsync(IUser user, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
+        public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new Result(false));
         }
