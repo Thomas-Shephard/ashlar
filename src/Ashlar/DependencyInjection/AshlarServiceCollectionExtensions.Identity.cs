@@ -75,7 +75,8 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<ISecurityEventSink>(),
             provider.GetService<TimeProvider>(),
             provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationPipeline>>(),
-            provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()));
+            provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>(),
+            provider.GetService<IAccountLockoutService>()));
         services.TryAddScoped(provider => new AuthenticationPipeline(
             provider.GetRequiredService<IAuthenticationProviderRegistry>(),
             provider.GetRequiredService<ICredentialService>(),
@@ -109,7 +110,16 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped(provider => new AccountLockoutServiceDependencies(
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>()));
-        services.TryAddScoped<IAccountLockoutService, AccountLockoutService>();
+        services.TryAddScoped<IAccountLockoutService>(provider =>
+        {
+            var repository = provider.GetService<IAccountLockoutRepository>();
+            return repository == null
+                ? DisabledAccountLockoutService.Instance
+                : new AccountLockoutService(
+                    repository,
+                    provider.GetRequiredService<IOptions<AccountLockoutOptions>>(),
+                    provider.GetService<AccountLockoutServiceDependencies>());
+        });
         services.TryAddScoped<IUserAdministrationService, UserAdministrationService>();
         services.TryAddScoped<ICredentialAdministrationService, CredentialAdministrationService>();
         services.TryAddScoped<ISecurityEventAdministrationService, SecurityEventAdministrationService>();

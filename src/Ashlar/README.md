@@ -55,5 +55,5 @@ Provider packages implement `IAuthenticationSessionAdministrationRepository`, so
 ## Related Packages
 
 - `Ashlar.AspNetCore`: ASP.NET Core session authentication and authorization integration.
-- `Ashlar.Postgres`: PostgreSQL repositories, schema management, audit persistence, rate limiting, cleanup, and email outbox support.
+- `Ashlar.Postgres`: PostgreSQL repositories, schema management, account-lockout persistence, audit persistence, rate limiting, cleanup, and email outbox support.
 - `Ashlar.Email.Smtp`: SMTP email transport and sender built on MailKit.

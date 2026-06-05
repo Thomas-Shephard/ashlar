@@ -3,13 +3,13 @@ Building blocks for modern ASP.NET applications. Includes generic auth, security
 
 ## Reference Sample
 
-A small ASP.NET Core reference app is available at [samples/Ashlar.Sample.AspNetCore](samples/Ashlar.Sample.AspNetCore/README.md). It shows the recommended composition for PostgreSQL persistence, Data Protection secret protection, Ashlar session cookies, magic-link and email-code sign-in, passkeys, invitation registration, optional Google OIDC sign-in/linking/unlinking, authorization grants, scoped ASP.NET Core policies, TOTP MFA, recovery codes, the PostgreSQL email outbox, cleanup, audit sink, and rate limiting.
+A small ASP.NET Core reference app is available at [samples/Ashlar.Sample.AspNetCore](samples/Ashlar.Sample.AspNetCore/README.md). It shows the recommended composition for PostgreSQL persistence, Data Protection secret protection, Ashlar session cookies, magic-link and email-code sign-in, passkeys, invitation registration, optional Google OIDC sign-in/linking/unlinking, authorization grants, scoped ASP.NET Core policies, TOTP MFA, recovery codes, the PostgreSQL email outbox, cleanup, audit sink, rate limiting, and automatic local-password account lockout.
 
 ## Persistence
 Ashlar does not register persistence by default. The following official packages are available:
 
-- **[Ashlar.Postgres](src/Ashlar.Postgres/README.md)**: PostgreSQL 15+ identity and session persistence using Dapper and DbUp.
-- **[Ashlar.Sqlite](src/Ashlar.Sqlite/README.md)**: SQLite persistence infrastructure for single-instance self-hosted deployments, including identity repositories, sessions, authorization grants, auditing, rate limiting, email outbox, cleanup, schema management, and transactions.
+- **[Ashlar.Postgres](src/Ashlar.Postgres/README.md)**: PostgreSQL 15+ identity, session, account-lockout, and operational persistence using Dapper and DbUp.
+- **[Ashlar.Sqlite](src/Ashlar.Sqlite/README.md)**: SQLite persistence infrastructure for single-instance self-hosted deployments, including identity repositories, sessions, account lockout, authorization grants, auditing, rate limiting, email outbox, cleanup, schema management, and transactions.
 - **[Ashlar.Passkeys](src/Ashlar.Passkeys/README.md)**: Optional WebAuthn/FIDO2 passkey provider and ceremony services. The package includes the default Fido2-backed ceremony validator and can be replaced with a custom `IPasskeyCeremonyValidator`.
 
 ## Passkeys / WebAuthn
@@ -918,7 +918,9 @@ These primitives do not implement a full helpdesk workflow, admin UI, passkeys, 
 ### Automatic Account Lockout
 Ashlar includes provider-neutral account lockout primitives for tracking failed credential verification after a user has already been resolved. This is separate from primary authentication rate limiting: rate limiting throttles pre-authentication requests by caller-selected buckets, while account lockout tracks failures for a specific user, tenant scope, and authentication provider key.
 
-`AddAshlarIdentity()` registers `IAccountLockoutService` and validates `AccountLockoutOptions`. Configure the default threshold and temporary lockout duration with the normal options pattern:
+`AddAshlarIdentity()` registers `IAccountLockoutService` and validates `AccountLockoutOptions`. When a durable `IAccountLockoutRepository` is registered, the authentication pipeline automatically applies account lockout to local password authentication only. It checks lockout status after resolving an active local-password user and before verifying the password, records failures after failed password verification, and resets the local-password lockout state after primary password verification succeeds. Password success that still requires MFA resets lockout before MFA completion, because lockout tracks password guessing rather than full session issuance.
+
+Configure the default threshold and temporary lockout duration with the normal options pattern:
 
 ```csharp
 services.Configure<AccountLockoutOptions>(options =>
@@ -930,7 +932,9 @@ services.Configure<AccountLockoutOptions>(options =>
 services.AddAshlarIdentity();
 ```
 
-Use `IAccountLockoutService.RecordFailureAsync(user, provider, context)` only after resolving a real user and failing credential verification for that provider. Unknown users should continue through the generic authentication failure path without creating lockout state. `ResetAsync(userId, provider, context)` clears the failure counter after successful authentication, and `GetStatusAsync(user, provider, context)` reports the current temporary lockout status.
+Unknown users, disabled/suspended/manually locked users, non-local providers, token flows, passwordless email flows, passkeys, OAuth/OIDC, invitations, and MFA factor verification do not create or reset automatic lockout state. Locked-out local password attempts fail with the same generic public authentication failure shape as invalid credentials; they do not create sessions or MFA handshakes.
+
+Custom provider integrations can still use `IAccountLockoutService` directly. Call `RecordFailureAsync(user, provider, context)` only after resolving a real active user and failing credential verification for that provider. `ResetAsync(user, provider, context)` clears the failure counter after successful authentication, and `GetStatusAsync(user, provider, context)` reports the current temporary lockout status.
 
 Automatic lockout does not change `UserAccountState`. Manual states such as `Disabled`, `Locked`, and `Suspended` remain durable user state controlled through `IAccountSecurityService.SetUserAccountStateAsync`; temporary automatic lockout is provider-scoped failure state with a `LockedUntil` timestamp. Clearing automatic lockout counters must not be treated as reactivating a disabled, suspended, or manually locked user.
 

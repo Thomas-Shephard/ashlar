@@ -1,6 +1,6 @@
 # Ashlar.Postgres
 
-PostgreSQL persistence for Ashlar identity, credentials, MFA handshakes, sessions/devices, invitations, authorization grants, security audit events, rate limiting, cleanup, and the email outbox.
+PostgreSQL persistence for Ashlar identity, credentials, account lockout, MFA handshakes, sessions/devices, invitations, authorization grants, security audit events, rate limiting, cleanup, and the email outbox.
 
 ## Installation
 
