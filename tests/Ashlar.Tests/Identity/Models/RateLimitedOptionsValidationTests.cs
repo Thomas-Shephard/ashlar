@@ -1,4 +1,5 @@
 using Ashlar.Identity.Providers.RecoveryCode;
+using Ashlar.Identity.Models.AccountLockout;
 using Ashlar.Identity.RateLimiting.Models;
 
 namespace Ashlar.Tests.Identity.Models;
@@ -100,6 +101,18 @@ internal sealed class RateLimitedOptionsValidationTests
             Assert.That(AuthenticationHandshakeOptions.Validate(new AuthenticationHandshakeOptions { Expiry = TimeSpan.Zero }), Is.False);
             Assert.That(AuthenticationHandshakeOptions.Validate(new AuthenticationHandshakeOptions { VerificationRateLimit = null! }), Is.False);
             Assert.That(AuthenticationHandshakeOptions.Validate(new AuthenticationHandshakeOptions { VerificationRateLimit = InvalidRule() }), Is.False);
+        }
+    }
+
+    [Test]
+    public void AccountLockoutOptionsValidateAllInvalidShapes()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AccountLockoutOptions.Validate(new AccountLockoutOptions()), Is.True);
+            Assert.That(AccountLockoutOptions.Validate(null), Is.False);
+            Assert.That(AccountLockoutOptions.Validate(new AccountLockoutOptions { FailureThreshold = 0 }), Is.False);
+            Assert.That(AccountLockoutOptions.Validate(new AccountLockoutOptions { LockoutDuration = TimeSpan.Zero }), Is.False);
         }
     }
 

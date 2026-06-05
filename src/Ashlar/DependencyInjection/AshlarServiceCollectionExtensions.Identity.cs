@@ -55,6 +55,8 @@ public static partial class AshlarServiceCollectionExtensions
             .Validate(PrimaryAuthenticationRateLimitOptions.Validate, "Primary authentication rate-limit options are invalid.");
         services.AddOptions<AuthenticationFactorRateLimitOptions>()
             .Validate(AuthenticationFactorRateLimitOptions.Validate, "Secondary factor rate-limit options are invalid.");
+        services.AddOptions<AccountLockoutOptions>()
+            .Validate(AccountLockoutOptions.Validate, "Account lockout options are invalid.");
 
         services.TryAdd(new ServiceDescriptor(
             typeof(IIdentityService),
@@ -104,6 +106,10 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<IRememberedMfaDeviceService>()));
         services.TryAddScoped<IAccountSecurityGuard, AllowAccountSecurityGuard>();
         services.TryAddScoped<IAccountSecurityService, AccountSecurityService>();
+        services.TryAddScoped(provider => new AccountLockoutServiceDependencies(
+            provider.GetService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>()));
+        services.TryAddScoped<IAccountLockoutService, AccountLockoutService>();
         services.TryAddScoped<IUserAdministrationService, UserAdministrationService>();
         services.TryAddScoped<ICredentialAdministrationService, CredentialAdministrationService>();
         services.TryAddScoped<ISecurityEventAdministrationService, SecurityEventAdministrationService>();

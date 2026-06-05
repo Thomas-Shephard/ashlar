@@ -256,16 +256,6 @@ internal sealed class UserAdministrationServiceTests
             throw new NotSupportedException();
         }
 
-        public Task<Result<AccountSecurityOperationResult>> DisableUserAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
-        }
-
-        public Task<Result<AccountSecurityOperationResult>> ReactivateUserAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
-        }
-
         public Task<Result<AccountSecurityOperationResult>> RevokeSessionsAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();

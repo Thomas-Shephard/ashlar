@@ -18,6 +18,10 @@ public static class AshlarSecurityEventTypes
     /// </summary>
     public const string AuthenticationRateLimited = "ashlar.authentication.rate_limited";
     /// <summary>
+    /// Defines the account lockout activated value.
+    /// </summary>
+    public const string AccountLockoutActivated = "ashlar.account_lockout.activated";
+    /// <summary>
     /// Defines the user created value.
     /// </summary>
     public const string UserCreated = "ashlar.user.created";

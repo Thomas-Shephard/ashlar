@@ -45,12 +45,12 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldDeactivateUserRevokeSessionsAndAudit()
+    public async Task SetUserAccountStateAsyncToDisabledShouldDeactivateUserRevokeSessionsAndAudit()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _sessionRepository.Sessions.Add(CreateSession(_userId));
 
-        var result = await _service.DisableUserAsync(_userId, CreateRequest("risk"));
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled, "risk"));
         var disabledEvent = _events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserAccountStateChanged);
 
         using (Assert.EnterMultipleScope())
@@ -68,7 +68,7 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldRevokeRememberedMfaDevices()
+    public async Task SetUserAccountStateAsyncToDisabledShouldRevokeRememberedMfaDevices()
     {
         var tenantId = Guid.NewGuid();
         var request = CreateRequest("account-disabled", tenantId);
@@ -220,7 +220,7 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldUseSessionServiceNotifications()
+    public async Task SetUserAccountStateAsyncToDisabledShouldUseSessionServiceNotifications()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _sessionRepository.Sessions.Add(CreateSession(_userId));
@@ -243,7 +243,7 @@ internal sealed class AccountSecurityServiceTests
             new AllowAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
 
-        var result = await service.DisableUserAsync(_userId, CreateRequest("risk"));
+        var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled, "risk"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -259,7 +259,7 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldReturnGuardFailureWhenGuardRejectsOperation()
+    public async Task SetUserAccountStateAsyncToDisabledShouldReturnGuardFailureWhenGuardRejectsOperation()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         var service = new AccountSecurityService(
@@ -270,7 +270,7 @@ internal sealed class AccountSecurityServiceTests
             new RejectingAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
 
-        var result = await service.DisableUserAsync(_userId, CreateRequest());
+        var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled));
 
         using (Assert.EnterMultipleScope())
         {
@@ -282,9 +282,9 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldReturnUserNotFoundForMissingUser()
+    public async Task SetUserAccountStateAsyncToDisabledShouldReturnUserNotFoundForMissingUser()
     {
-        var result = await _service.DisableUserAsync(_userId, CreateRequest());
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled));
 
         using (Assert.EnterMultipleScope())
         {
@@ -295,13 +295,13 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldReturnTenantMismatchForTenantMismatch()
+    public async Task SetUserAccountStateAsyncToDisabledShouldReturnTenantMismatchForTenantMismatch()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = Guid.NewGuid() };
         _sessionRepository.Sessions.Add(CreateSession(_userId));
         var requestedTenantId = Guid.NewGuid();
 
-        var result = await _service.DisableUserAsync(_userId, CreateRequest(tenantId: requestedTenantId));
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled, tenantId: requestedTenantId));
 
         using (Assert.EnterMultipleScope())
         {
@@ -315,12 +315,12 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldAllowMatchingTenant()
+    public async Task SetUserAccountStateAsyncToDisabledShouldAllowMatchingTenant()
     {
         var tenantId = Guid.NewGuid();
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = tenantId };
 
-        var result = await _service.DisableUserAsync(_userId, CreateRequest(tenantId: tenantId));
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled, tenantId: tenantId));
 
         using (Assert.EnterMultipleScope())
         {
@@ -331,11 +331,11 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldReturnTenantMismatchWhenTenantScopeTargetsGlobalUser()
+    public async Task SetUserAccountStateAsyncToDisabledShouldReturnTenantMismatchWhenTenantScopeTargetsGlobalUser()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
 
-        var result = await _service.DisableUserAsync(_userId, CreateRequest(tenantId: Guid.NewGuid()));
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled, tenantId: Guid.NewGuid()));
 
         using (Assert.EnterMultipleScope())
         {
@@ -346,11 +346,11 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldTreatMissingTenantAsGlobalOnly()
+    public async Task SetUserAccountStateAsyncToDisabledShouldTreatMissingTenantAsGlobalOnly()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = Guid.NewGuid() };
 
-        var result = await _service.DisableUserAsync(_userId, CreateRequest());
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled));
 
         using (Assert.EnterMultipleScope())
         {
@@ -363,11 +363,11 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldAllowExplicitGlobalTenantForGlobalUser()
+    public async Task SetUserAccountStateAsyncToDisabledShouldAllowExplicitGlobalTenantForGlobalUser()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
 
-        var result = await _service.DisableUserAsync(_userId, new AccountSecurityOperationRequest(new AuditContext(Guid.NewGuid()), TenantContext.Global));
+        var result = await _service.SetUserAccountStateAsync(_userId, new SetUserAccountStateRequest(UserAccountState.Disabled, new AuditContext(Guid.NewGuid()), TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -377,12 +377,12 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldNoopForAlreadyDisabledUserWithoutRevokingSessions()
+    public async Task SetUserAccountStateAsyncToDisabledShouldNoopForAlreadyDisabledUserWithoutRevokingSessions()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Disabled };
         _sessionRepository.Sessions.Add(CreateSession(_userId));
 
-        var result = await _service.DisableUserAsync(_userId, CreateRequest());
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled));
 
         using (Assert.EnterMultipleScope())
         {
@@ -394,7 +394,7 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldUseValidationErrorWhenGuardFailureHasNoDetails()
+    public async Task SetUserAccountStateAsyncToDisabledShouldUseValidationErrorWhenGuardFailureHasNoDetails()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         var service = new AccountSecurityService(
@@ -405,7 +405,7 @@ internal sealed class AccountSecurityServiceTests
             new EmptyFailureAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
 
-        var result = await service.DisableUserAsync(_userId, CreateRequest());
+        var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled));
 
         using (Assert.EnterMultipleScope())
         {
@@ -416,12 +416,12 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task ReactivateUserAsyncShouldReactivateWithoutRevokingCredentials()
+    public async Task SetUserAccountStateAsyncToActiveShouldReactivateWithoutRevokingCredentials()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Disabled };
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
 
-        var result = await _service.ReactivateUserAsync(_userId, CreateRequest());
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Active));
         var reactivatedEvent = _events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserAccountStateChanged);
 
         using (Assert.EnterMultipleScope())
@@ -437,9 +437,9 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task ReactivateUserAsyncShouldReturnUserNotFoundForMissingUser()
+    public async Task SetUserAccountStateAsyncToActiveShouldReturnUserNotFoundForMissingUser()
     {
-        var result = await _service.ReactivateUserAsync(_userId, CreateRequest());
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Active));
 
         using (Assert.EnterMultipleScope())
         {
@@ -450,11 +450,11 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task ReactivateUserAsyncShouldReturnTenantMismatchForTenantMismatch()
+    public async Task SetUserAccountStateAsyncToActiveShouldReturnTenantMismatchForTenantMismatch()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Disabled, TenantId = Guid.NewGuid() };
 
-        var result = await _service.ReactivateUserAsync(_userId, CreateRequest(tenantId: Guid.NewGuid()));
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Active, tenantId: Guid.NewGuid()));
 
         using (Assert.EnterMultipleScope())
         {
@@ -465,11 +465,11 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task ReactivateUserAsyncShouldNoopForActiveUser()
+    public async Task SetUserAccountStateAsyncToActiveShouldNoopForActiveUser()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
 
-        var result = await _service.ReactivateUserAsync(_userId, CreateRequest("manual-review"));
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Active, "manual-review"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -681,7 +681,7 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldSupportUsersWithoutTenantInterface()
+    public async Task SetUserAccountStateAsyncToDisabledShouldSupportUsersWithoutTenantInterface()
     {
         var repository = new Mock<IUserRepository>();
         repository
@@ -695,7 +695,7 @@ internal sealed class AccountSecurityServiceTests
             new AllowAccountSecurityGuard(),
             new AccountSecurityServiceDependencies());
 
-        var result = await service.DisableUserAsync(_userId, CreateRequest());
+        var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled));
 
         using (Assert.EnterMultipleScope())
         {
@@ -705,7 +705,7 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
-    public async Task DisableUserAsyncShouldReturnTenantMismatchForTenantScopedRequestWhenUserHasNoTenantInterface()
+    public async Task SetUserAccountStateAsyncToDisabledShouldReturnTenantMismatchForTenantScopedRequestWhenUserHasNoTenantInterface()
     {
         var repository = new Mock<IUserRepository>();
         repository
@@ -719,7 +719,7 @@ internal sealed class AccountSecurityServiceTests
             new AllowAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
 
-        var result = await service.DisableUserAsync(_userId, CreateRequest(tenantId: Guid.NewGuid()));
+        var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled, tenantId: Guid.NewGuid()));
 
         using (Assert.EnterMultipleScope())
         {
@@ -1296,13 +1296,9 @@ internal sealed class AccountSecurityServiceTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.ThrowsAsync<ArgumentException>(() => _service.DisableUserAsync(Guid.Empty, CreateRequest()));
-            Assert.ThrowsAsync<ArgumentNullException>(() => _service.DisableUserAsync(_userId, null!));
             Assert.ThrowsAsync<ArgumentException>(() => _service.SetUserAccountStateAsync(Guid.Empty, CreateStateRequest(UserAccountState.Disabled)));
             Assert.ThrowsAsync<ArgumentNullException>(() => _service.SetUserAccountStateAsync(_userId, null!));
             Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => _service.SetUserAccountStateAsync(_userId, CreateStateRequest((UserAccountState)999)));
-            Assert.ThrowsAsync<ArgumentException>(() => _service.ReactivateUserAsync(Guid.Empty, CreateRequest()));
-            Assert.ThrowsAsync<ArgumentNullException>(() => _service.ReactivateUserAsync(_userId, null!));
             Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionsAsync(Guid.Empty, CreateRequest()));
             Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeSessionsAsync(_userId, null!));
             Assert.ThrowsAsync<ArgumentException>(() => _service.ResetMfaAsync(Guid.Empty, CreateRequest()));

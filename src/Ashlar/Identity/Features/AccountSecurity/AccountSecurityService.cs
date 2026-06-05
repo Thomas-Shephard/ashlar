@@ -68,26 +68,6 @@ public sealed class AccountSecurityService : IAccountSecurityService
     }
 
     /// <inheritdoc />
-    public async Task<Result<AccountSecurityOperationResult>> DisableUserAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
-    {
-        request = RequireAudit(request);
-        return await SetUserAccountStateAsync(
-            userId,
-            new SetUserAccountStateRequest(UserAccountState.Disabled, request.Audit, request.Tenant, request.Reason),
-            cancellationToken);
-    }
-
-    /// <inheritdoc />
-    public async Task<Result<AccountSecurityOperationResult>> ReactivateUserAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
-    {
-        request = RequireAudit(request);
-        return await SetUserAccountStateAsync(
-            userId,
-            new SetUserAccountStateRequest(UserAccountState.Active, request.Audit, request.Tenant, request.Reason),
-            cancellationToken);
-    }
-
-    /// <inheritdoc />
     public async Task<Result<AccountSecurityOperationResult>> SetUserAccountStateAsync(Guid userId, SetUserAccountStateRequest request, CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);

@@ -56,7 +56,11 @@ internal static partial class AdminEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var result = await accountSecurity.DisableUserAsync(userId, ToAdminRequest(request, httpContext), cancellationToken);
+            var adminRequest = ToAdminRequest(request, httpContext);
+            var result = await accountSecurity.SetUserAccountStateAsync(
+                userId,
+                new SetUserAccountStateRequest(UserAccountState.Disabled, adminRequest.Audit, adminRequest.Tenant, adminRequest.Reason),
+                cancellationToken);
             return ToAdminSecurityResult(result);
         }).RequireAuthorization(AdminPolicy).RequireFreshMfa();
 
@@ -83,7 +87,11 @@ internal static partial class AdminEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var result = await accountSecurity.ReactivateUserAsync(userId, ToAdminRequest(request, httpContext), cancellationToken);
+            var adminRequest = ToAdminRequest(request, httpContext);
+            var result = await accountSecurity.SetUserAccountStateAsync(
+                userId,
+                new SetUserAccountStateRequest(UserAccountState.Active, adminRequest.Audit, adminRequest.Tenant, adminRequest.Reason),
+                cancellationToken);
             return ToAdminSecurityResult(result);
         }).RequireAuthorization(AdminPolicy).RequireFreshMfa();
 

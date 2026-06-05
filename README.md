@@ -900,8 +900,6 @@ Ashlar exposes framework-neutral administrator primitives through `IAccountSecur
 Available operations:
 
 - `SetUserAccountStateAsync`: changes a user between `Active`, `Disabled`, `Locked`, and `Suspended`.
-- `DisableUserAsync`: convenience wrapper that sets the user to `Disabled`.
-- `ReactivateUserAsync`: convenience wrapper that sets the user to `Active`.
 - `RevokeSessionsAsync`: revokes all active sessions for a user.
 - `RevokeCredentialsAsync`: revokes active credentials for a specific provider key.
 - `ResetMfaAsync`: revokes configured TOTP and recovery-code credentials.
@@ -916,6 +914,38 @@ Applications should render `PrimaryCredentials`, `AdditionalVerificationFactors`
 Sensitive admin operations require `AccountSecurityOperationRequest` with an `AuditContext`. Applications are responsible for authorizing access before calling these methods, typically with an application admin role or scoped permission enforced by ASP.NET Core authorization. Ashlar records audit events with actor metadata, target user id, tenant id, reason, and affected counts; it does not return or log raw secrets, tokens, password hashes, recovery codes, protected payloads, or session tokens.
 
 These primitives do not implement a full helpdesk workflow, admin UI, passkeys, OAuth, or OIDC. Applications can layer approval workflows, break-glass controls, and support tooling on top of the service.
+
+### Automatic Account Lockout
+Ashlar includes provider-neutral account lockout primitives for tracking failed credential verification after a user has already been resolved. This is separate from primary authentication rate limiting: rate limiting throttles pre-authentication requests by caller-selected buckets, while account lockout tracks failures for a specific user, tenant scope, and authentication provider key.
+
+`AddAshlarIdentity()` registers `IAccountLockoutService` and validates `AccountLockoutOptions`. Configure the default threshold and temporary lockout duration with the normal options pattern:
+
+```csharp
+services.Configure<AccountLockoutOptions>(options =>
+{
+    options.FailureThreshold = 5;
+    options.LockoutDuration = TimeSpan.FromMinutes(15);
+});
+
+services.AddAshlarIdentity();
+```
+
+Use `IAccountLockoutService.RecordFailureAsync(user, provider, context)` only after resolving a real user and failing credential verification for that provider. Unknown users should continue through the generic authentication failure path without creating lockout state. `ResetAsync(userId, provider, context)` clears the failure counter after successful authentication, and `GetStatusAsync(user, provider, context)` reports the current temporary lockout status.
+
+Automatic lockout does not change `UserAccountState`. Manual states such as `Disabled`, `Locked`, and `Suspended` remain durable user state controlled through `IAccountSecurityService.SetUserAccountStateAsync`; temporary automatic lockout is provider-scoped failure state with a `LockedUntil` timestamp. Clearing automatic lockout counters must not be treated as reactivating a disabled, suspended, or manually locked user.
+
+PostgreSQL and SQLite persistence providers register durable `IAccountLockoutRepository` implementations through `AddAshlarPostgres(...)` and `AddAshlarSqlite(...)`. Their embedded schemas include `ashlar_account_lockouts`, keyed by user id, tenant id, provider type, and provider name, with failed-attempt timestamps, temporary lockout expiry, and a version token. Initialize or migrate the provider schema before using lockout:
+
+```csharp
+services.AddAshlarPostgres(connectionString);
+await serviceProvider.InitializeAshlarPostgresSchemaAsync();
+
+// or:
+services.AddAshlarSqlite(connectionString);
+await serviceProvider.InitializeAshlarSqliteSchemaAsync();
+```
+
+Lockout state stores only operational metadata: user id, tenant id, provider key, failed attempt count, first and last failure timestamps, temporary lock expiry, and repository concurrency data. It must not store passwords, attempted passwords, raw IP addresses, user agents, tokens, assertions, or credential values. A new automatic lockout activation emits a safe tenant-aware security event.
 
 ## Authorization Grants
 Ashlar includes framework-neutral authorization primitives for durable grants. Grants are generic: they can assign one normalized role or one normalized permission to a user, optionally within a tenant and explicit scope. Ashlar evaluates these grants, but it does not replace ASP.NET Core Authorization policies or requirements.

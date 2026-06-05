@@ -58,6 +58,59 @@ WHERE revoked_at IS NULL AND status = 0;
 CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_expires_at ON ashlar_credentials (expires_at) WHERE expires_at IS NOT NULL AND revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_revoked_at ON ashlar_credentials (revoked_at) WHERE revoked_at IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS ashlar_account_lockouts (
+    user_id TEXT NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
+    tenant_id TEXT,
+    provider_type TEXT NOT NULL,
+    provider_name TEXT NOT NULL,
+    failed_attempt_count INTEGER NOT NULL CHECK (failed_attempt_count > 0),
+    first_failed_at TEXT NOT NULL,
+    last_failed_at TEXT NOT NULL,
+    locked_until TEXT,
+    version TEXT NOT NULL,
+    CONSTRAINT ck_ashlar_account_lockouts_failure_order CHECK (last_failed_at >= first_failed_at),
+    CONSTRAINT ck_ashlar_account_lockouts_lock_after_failure CHECK (locked_until IS NULL OR locked_until > last_failed_at),
+    CONSTRAINT ck_ashlar_account_lockouts_provider_not_blank CHECK (trim(provider_type) <> '' AND trim(provider_name) <> '')
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ak_ashlar_account_lockouts_tenant_identity
+ON ashlar_account_lockouts (user_id, tenant_id, provider_type, provider_name)
+WHERE tenant_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ak_ashlar_account_lockouts_global_identity
+ON ashlar_account_lockouts (user_id, provider_type, provider_name)
+WHERE tenant_id IS NULL;
+
+CREATE INDEX IF NOT EXISTS ix_ashlar_account_lockouts_user_id ON ashlar_account_lockouts (user_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_account_lockouts_tenant_id ON ashlar_account_lockouts (tenant_id) WHERE tenant_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_account_lockouts_locked_until ON ashlar_account_lockouts (locked_until) WHERE locked_until IS NOT NULL;
+
+CREATE TRIGGER IF NOT EXISTS trg_ashlar_account_lockouts_user_tenant_match_insert
+BEFORE INSERT ON ashlar_account_lockouts
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1
+    FROM ashlar_users
+    WHERE id = NEW.user_id
+      AND tenant_id IS NOT NEW.tenant_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'ashlar_account_lockouts user tenant mismatch');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_ashlar_account_lockouts_user_tenant_match_update
+BEFORE UPDATE OF user_id, tenant_id ON ashlar_account_lockouts
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1
+    FROM ashlar_users
+    WHERE id = NEW.user_id
+      AND tenant_id IS NOT NEW.tenant_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'ashlar_account_lockouts user tenant mismatch');
+END;
+
 CREATE TABLE IF NOT EXISTS ashlar_authorization_grants (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,

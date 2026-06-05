@@ -60,6 +60,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
         services.TryAddScoped<IUserRepository, PostgresUserRepository>();
         services.TryAddScoped<ICredentialRepository, PostgresCredentialRepository>();
+        services.TryAddScoped<IAccountLockoutRepository, PostgresAccountLockoutRepository>();
         services.TryAddScoped<IUserAdministrationRepository, PostgresUserAdministrationRepository>();
         services.TryAddScoped<ICredentialAdministrationRepository, PostgresCredentialAdministrationRepository>();
         services.TryAddScoped<ISecurityEventAdministrationRepository, PostgresSecurityEventAdministrationRepository>();

@@ -57,6 +57,11 @@ internal abstract class ProviderContractFixture
         return serviceProvider.GetRequiredService<ICredentialRepository>();
     }
 
+    protected static IAccountLockoutRepository GetAccountLockoutRepository(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IAccountLockoutRepository>();
+    }
+
     protected static IUserAdministrationRepository GetUserAdministrationRepository(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IUserAdministrationRepository>();

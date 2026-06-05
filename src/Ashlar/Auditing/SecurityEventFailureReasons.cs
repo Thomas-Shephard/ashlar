@@ -26,6 +26,10 @@ public static class SecurityEventFailureReasons
     /// </summary>
     public const string UserSuspended = "user_suspended";
     /// <summary>
+    /// Defines the automatic account lockout value.
+    /// </summary>
+    public const string AutomaticAccountLockout = "automatic_account_lockout";
+    /// <summary>
     /// Defines the credential update failed value.
     /// </summary>
     public const string CredentialUpdateFailed = "credential_update_failed";
