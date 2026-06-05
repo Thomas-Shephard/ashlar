@@ -3,6 +3,8 @@ using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
 using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
+using Ashlar.Identity.Features.AccountLockout;
+using Ashlar.Identity.Models.AccountLockout;
 using Ashlar.Identity.Providers.Email;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.Providers.Local;
@@ -280,6 +282,75 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
+    }
+
+    [Test]
+    public async Task AddAshlarIdentityResolvesDisabledAccountLockoutServiceWithoutRepository()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarIdentity();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IAccountLockoutService>();
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = Guid.NewGuid() };
+
+        var status = await service.GetStatusAsync(user, AuthenticationProviderKey.Local);
+        var failure = await service.RecordFailureAsync(user, AuthenticationProviderKey.Local);
+        var reset = await service.ResetAsync(user, AuthenticationProviderKey.Local);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status.IsLockedOut, Is.False);
+            Assert.That(status.TenantId, Is.EqualTo(user.TenantId));
+            Assert.That(failure.ThresholdReached, Is.False);
+            Assert.That(failure.LockoutActivated, Is.False);
+            Assert.That(reset, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task AddAshlarIdentityDisabledAccountLockoutServiceSupportsNonTenantUsers()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarIdentity();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IAccountLockoutService>();
+        var user = new BasicUser(Guid.NewGuid(), "basic@example.com", UserAccountState.Active);
+
+        var status = await service.GetStatusAsync(user, AuthenticationProviderKey.Local);
+
+        Assert.That(status.TenantId, Is.Null);
+    }
+
+    [Test]
+    public void AddAshlarIdentityResolvesRepositoryBackedAccountLockoutServiceWhenRepositoryIsPresent()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IAccountLockoutRepository>());
+        services.AddAshlarIdentity();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        Assert.That(scope.ServiceProvider.GetRequiredService<IAccountLockoutService>(), Is.TypeOf<AccountLockoutService>());
+    }
+
+    [Test]
+    public void AddAshlarIdentityHonorsCustomAccountLockoutServiceWithoutRepository()
+    {
+        var services = new ServiceCollection();
+        var customService = new CustomAccountLockoutService();
+        services.AddAshlarIdentity();
+        services.AddSingleton<IAccountLockoutService>(customService);
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var dependencies = scope.ServiceProvider.GetRequiredService<AuthenticationPipelineDependencies>();
+
+        Assert.That(dependencies.AccountLockoutService, Is.SameAs(customService));
     }
 
     [Test]
@@ -605,6 +676,42 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         {
             throw new NotSupportedException();
         }
+    }
+
+    private sealed class CustomAccountLockoutService : IAccountLockoutService
+    {
+        public Task<AccountLockoutStatus> GetStatusAsync(
+            IUser user,
+            AuthenticationProviderKey provider,
+            AccountLockoutContext? context = null,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<AccountLockoutFailureResult> RecordFailureAsync(
+            IUser user,
+            AuthenticationProviderKey provider,
+            AccountLockoutContext? context = null,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<bool> ResetAsync(
+            IUser user,
+            AuthenticationProviderKey provider,
+            AccountLockoutContext? context = null,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
+    private sealed record BasicUser(Guid Id, string Email, UserAccountState AccountState) : IUser
+    {
+        public string? Name => null;
+        public DateTimeOffset? EmailVerifiedAt => null;
     }
 
     [Test]

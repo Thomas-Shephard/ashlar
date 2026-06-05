@@ -46,21 +46,28 @@ public sealed class AuthenticationPipeline(
             new EventId(1002, nameof(RateLimiterCheckFailed)),
             "Authentication rate limiter check failed. Scope={Scope} Provider={Provider}");
 
+    private static readonly Action<ILogger, string, Guid, string, Exception?> AccountLockoutOperationFailed =
+        LoggerMessage.Define<string, Guid, string>(
+            LogLevel.Warning,
+            new EventId(1003, nameof(AccountLockoutOperationFailed)),
+            "Account lockout operation failed open during local password authentication. Operation={Operation} UserId={UserId} Provider={Provider}");
+
     private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
     private readonly ICredentialService _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly IPrimaryAuthenticationRateLimiter _primaryRateLimiter = primaryRateLimiter ?? throw new ArgumentNullException(nameof(primaryRateLimiter));
     private readonly IAuthenticationFactorRateLimiter _factorRateLimiter = factorRateLimiter ?? throw new ArgumentNullException(nameof(factorRateLimiter));
+    private readonly IAccountLockoutService? _accountLockoutService = dependencies?.AccountLockoutService;
     private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider ?? TimeProvider.System, dependencies?.LoggerFactory);
     private readonly ILogger<AuthenticationPipeline> _logger = dependencies?.Logger ?? NullLogger<AuthenticationPipeline>.Instance;
 
     /// <summary>
     /// Performs primary sign-in authentication and returns the result.
     /// </summary>
-    /// <param name="context">The context value.</param>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="context">Request metadata used for auditing, tenant checks, and primary rate limiting.</param>
+    /// <param name="assertion">The primary credential or provider assertion to authenticate.</param>
+    /// <param name="cancellationToken">A token that can cancel authentication.</param>
+    /// <returns>The primary authentication outcome.</returns>
     public Task<AuthenticationResponse> LoginAsync(
         AuthenticationContext context,
         IAuthenticationAssertion assertion,
@@ -72,10 +79,10 @@ public sealed class AuthenticationPipeline(
     /// <summary>
     /// Verifies a secondary factor without applying primary sign-in throttles.
     /// </summary>
-    /// <param name="context">The context value.</param>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="context">Request metadata used for auditing, tenant checks, and factor rate limiting.</param>
+    /// <param name="assertion">The secondary factor assertion to verify.</param>
+    /// <param name="cancellationToken">A token that can cancel factor verification.</param>
+    /// <returns>The factor verification outcome.</returns>
     public Task<AuthenticationResponse> VerifyFactorAsync(
         AuthenticationContext context,
         IAuthenticationAssertion assertion,
@@ -169,10 +176,22 @@ public sealed class AuthenticationPipeline(
             return await RecordFailureAsync(context, provider.Key, user?.Id, SecurityEventFailureReasons.UnprotectFailed, cancellationToken);
         }
 
+        var shouldApplyAccountLockout = ShouldApplyAccountLockout(provider, user);
+        if (shouldApplyAccountLockout && await IsAccountLockedOutAsync(user!, provider.Key, context, cancellationToken))
+        {
+            return await RecordFailureAsync(context, provider.Key, user!.Id, SecurityEventFailureReasons.AutomaticAccountLockout, cancellationToken);
+        }
+
         var result = await provider.AuthenticateAsync(assertion, credential, cancellationToken);
         if (result.Status is not (AuthenticationResultStatus.Succeeded or AuthenticationResultStatus.SucceededWithCredentialUpdate or AuthenticationResultStatus.MfaRequired) || user == null)
         {
-            return await RecordFailureAsync(context, provider.Key, user?.Id, SecurityEventFailureReasons.InvalidCredentials, cancellationToken);
+            var reason = SecurityEventFailureReasons.InvalidCredentials;
+            if (shouldApplyAccountLockout && await RecordAccountLockoutFailureAsync(user!, provider.Key, context, cancellationToken))
+            {
+                reason = SecurityEventFailureReasons.AutomaticAccountLockout;
+            }
+
+            return await RecordFailureAsync(context, provider.Key, user?.Id, reason, cancellationToken);
         }
 
         if (!user.CanSignIn())
@@ -182,14 +201,26 @@ public sealed class AuthenticationPipeline(
 
         if (result.Status == AuthenticationResultStatus.MfaRequired)
         {
+            if (shouldApplyAccountLockout)
+            {
+                await ResetAccountLockoutAsync(user, provider.Key, context, cancellationToken);
+            }
+
             return new AuthenticationResponse(false, user, AuthenticationStatus.MfaRequired, result.Claims);
         }
 
         var status = result.Status == AuthenticationResultStatus.SucceededWithCredentialUpdate ? AuthenticationStatus.SuccessWithCredentialUpdate : AuthenticationStatus.Success;
 
-        return await ProcessCredentialLifecycleAsync(
+        var response = await ProcessCredentialLifecycleAsync(
             new CredentialLifecycleContext(user, credential, originalCredential, result, provider, context, status),
             cancellationToken);
+
+        if (shouldApplyAccountLockout && response.Succeeded)
+        {
+            await ResetAccountLockoutAsync(user, provider.Key, context, cancellationToken);
+        }
+
+        return response;
     }
 
     private async Task<bool> CheckPrimaryRateLimitAsync(
@@ -225,6 +256,85 @@ public sealed class AuthenticationPipeline(
             RateLimiterCheckFailed(_logger, "factor", providerKey.ToString(), ex);
             return true;
         }
+    }
+
+    private static bool ShouldApplyAccountLockout(IAuthenticationProvider provider, IUser? user)
+    {
+        return provider.Key == AuthenticationProviderKey.Local && user?.CanSignIn() == true;
+    }
+
+    private async Task<bool> IsAccountLockedOutAsync(
+        IUser user,
+        AuthenticationProviderKey providerKey,
+        AuthenticationContext context,
+        CancellationToken cancellationToken)
+    {
+        if (_accountLockoutService == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var status = await _accountLockoutService.GetStatusAsync(user, providerKey, CreateAccountLockoutContext(context), cancellationToken);
+            return status.IsLockedOut;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            AccountLockoutOperationFailed(_logger, "get_status", user.Id, providerKey.ToString(), ex);
+            return false;
+        }
+    }
+
+    private async Task<bool> RecordAccountLockoutFailureAsync(
+        IUser user,
+        AuthenticationProviderKey providerKey,
+        AuthenticationContext context,
+        CancellationToken cancellationToken)
+    {
+        if (_accountLockoutService == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var result = await _accountLockoutService.RecordFailureAsync(user, providerKey, CreateAccountLockoutContext(context), cancellationToken);
+            return result.ThresholdReached || result.Status.IsLockedOut;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            AccountLockoutOperationFailed(_logger, "record_failure", user.Id, providerKey.ToString(), ex);
+            return false;
+        }
+    }
+
+    private async Task ResetAccountLockoutAsync(
+        IUser user,
+        AuthenticationProviderKey providerKey,
+        AuthenticationContext context,
+        CancellationToken cancellationToken)
+    {
+        if (_accountLockoutService == null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _accountLockoutService.ResetAsync(user, providerKey, CreateAccountLockoutContext(context), cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            AccountLockoutOperationFailed(_logger, "reset", user.Id, providerKey.ToString(), ex);
+        }
+    }
+
+    private static AccountLockoutContext CreateAccountLockoutContext(AuthenticationContext context)
+    {
+        return new AccountLockoutContext(
+            new AuditContext(context.UserId, context.IpAddress, context.UserAgent, context.CorrelationId, context.Items),
+            new TenantContext(context.TenantId));
     }
 
     private async Task<AuthenticationResponse> RecordRateLimitedAsync(
@@ -367,12 +477,14 @@ public sealed class AuthenticationPipeline(
 /// <summary>
 /// Optional operational dependencies for <see cref="AuthenticationPipeline" />.
 /// </summary>
-/// <param name="SecurityEventSink">The optional security event sink.</param>
+/// <param name="SecurityEventSink">The optional sink that receives authentication security events.</param>
 /// <param name="TimeProvider">The optional clock.</param>
-/// <param name="Logger">The optional operational <paramref name="Logger" />.</param>
+/// <param name="Logger">The optional <paramref name="Logger" /> for pipeline operational failures.</param>
 /// <param name="LoggerFactory">The optional <paramref name="LoggerFactory" /> used by the security event emitter.</param>
+/// <param name="AccountLockoutService">The optional automatic account lockout service for local password authentication.</param>
 public sealed record AuthenticationPipelineDependencies(
     ISecurityEventSink? SecurityEventSink = null,
     TimeProvider? TimeProvider = null,
     ILogger<AuthenticationPipeline>? Logger = null,
-    ILoggerFactory? LoggerFactory = null);
+    ILoggerFactory? LoggerFactory = null,
+    IAccountLockoutService? AccountLockoutService = null);

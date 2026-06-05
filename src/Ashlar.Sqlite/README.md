@@ -2,7 +2,7 @@
 
 SQLite persistence infrastructure for Ashlar.
 
-This package is an early durable SQLite provider for Ashlar. It currently provides dependency injection registration, schema initialization, scoped connection/transaction infrastructure, bootstrap state persistence, identity users and credentials, invitations, authentication sessions, read-only admin session browsing, MFA handshakes, passkey challenges, authorization grants, audit persistence, durable authentication rate limiting, SQLite-backed email outbox enqueue/dispatch, and best-effort cleanup.
+This package is an early durable SQLite provider for Ashlar. It currently provides dependency injection registration, schema initialization, scoped connection/transaction infrastructure, bootstrap state persistence, identity users and credentials, account lockout, invitations, authentication sessions, read-only admin session browsing, MFA handshakes, passkey challenges, authorization grants, audit persistence, durable authentication rate limiting, SQLite-backed email outbox enqueue/dispatch, and best-effort cleanup.
 
 ## Supported Scenario
 
