@@ -41,7 +41,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialService, CredentialService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialAdministrationService, CredentialAdministrationService>(services, ServiceLifetime.Scoped);
-            AssertDescriptor<IAccountLockoutAdministrationService, AccountLockoutAdministrationService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IAccountLockoutAdministrationService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<AccountLockoutAdministrationServiceDependencies>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAuthenticationSessionService, AuthenticationSessionService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<PasswordHasherSelector>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ISecureTokenGenerator, SecureTokenGenerator>(services, ServiceLifetime.Singleton);
@@ -337,6 +338,41 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using var scope = provider.CreateScope();
 
         Assert.That(scope.ServiceProvider.GetRequiredService<IAccountLockoutService>(), Is.TypeOf<AccountLockoutService>());
+    }
+
+    [Test]
+    public async Task AddAshlarIdentityWiresAccountLockoutAdministrationServiceAuditing()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var repository = new Mock<IAccountLockoutRepository>();
+        var events = new RecordingSecurityEventSink();
+        repository
+            .Setup(r => r.ResetAsync(userId, tenantId, AuthenticationProviderKey.Local, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        var services = new ServiceCollection();
+        services.AddSingleton(repository.Object);
+        services.AddSingleton<ISecurityEventSink>(events);
+        services.AddAshlarIdentity();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IAccountLockoutAdministrationService>();
+
+        var result = await service.ResetLockoutAsync(
+            userId,
+            AuthenticationProviderKey.Local,
+            new ResetAccountLockoutRequest(new TenantContext(tenantId), new AuditContext(CorrelationId: "di-corr")));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value, Is.True);
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAccountLockoutAdministrationService>(), Is.TypeOf<AccountLockoutAdministrationService>());
+            Assert.That(events.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.AccountLockoutReset));
+            Assert.That(events.Events.Single().CorrelationId, Is.EqualTo("di-corr"));
+            Assert.That(events.Events.Single().Provider, Is.EqualTo(AuthenticationProviderKey.Local));
+        }
     }
 
     [Test]
@@ -659,6 +695,17 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     private sealed class CustomSecurityEventHandler : ISecurityEventHandler
     {
         public Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class RecordingSecurityEventSink : ISecurityEventSink
+    {
+        public List<AshlarSecurityEvent> Events { get; } = [];
+
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            Events.Add(securityEvent);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class CustomAuthorizationGrantService : IAuthorizationGrantService

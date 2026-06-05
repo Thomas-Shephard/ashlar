@@ -42,6 +42,6 @@ public interface IAccountLockoutAdministrationService
     Task<Result<bool>> ResetLockoutAsync(
         Guid userId,
         AuthenticationProviderKey provider,
-        AccountLockoutAdministrationRequest request,
+        ResetAccountLockoutRequest request,
         CancellationToken cancellationToken = default);
 }
