@@ -173,12 +173,6 @@ public sealed class PostgresAccountLockoutRepository(IPostgresConnectionProvider
         return ToRecord(values);
     }
 
-    private static AccountLockoutRecordUpdate ToUpdate(dynamic row)
-    {
-        var values = new Dictionary<string, object?>((IDictionary<string, object?>)row, StringComparer.OrdinalIgnoreCase);
-        return new AccountLockoutRecordUpdate(ToRecord(values), (bool)values["LockoutActivated"]!);
-    }
-
     private static AccountLockoutRecord ToRecord(Dictionary<string, object?> values)
     {
         ProviderType providerType = (string)values["ProviderType"]!;
@@ -191,6 +185,12 @@ public sealed class PostgresAccountLockoutRepository(IPostgresConnectionProvider
             ToDateTimeOffset(values["LastFailedAt"]!),
             values["LockedUntil"] == null ? null : ToDateTimeOffset(values["LockedUntil"]!),
             (string)values["Version"]!);
+    }
+
+    private static AccountLockoutRecordUpdate ToUpdate(dynamic row)
+    {
+        var values = new Dictionary<string, object?>((IDictionary<string, object?>)row, StringComparer.OrdinalIgnoreCase);
+        return new AccountLockoutRecordUpdate(ToRecord(values), (bool)values["LockoutActivated"]!);
     }
 
     private static DateTimeOffset ToDateTimeOffset(object value)
