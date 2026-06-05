@@ -607,6 +607,35 @@ internal sealed class AuthenticationPipelineTests
     }
 
     [Test]
+    public async Task LoginAsyncWithTenantScopedLocalPasswordUserAndNoContextTenantShouldLetLockoutDeriveTenantFromUser()
+    {
+        var context = new AuthenticationContext("test@example.com");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = Guid.NewGuid() };
+        var credential = CreateCredential(user.Id);
+        UseAccountLockoutService();
+        _accountLockoutServiceMock.Setup(s => s.GetStatusAsync(user, AuthenticationProviderKey.Local, It.IsAny<AccountLockoutContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AccountLockoutStatus.None(user.Id, user.TenantId, AuthenticationProviderKey.Local));
+        _accountLockoutServiceMock.Setup(s => s.RecordFailureAsync(user, AuthenticationProviderKey.Local, It.IsAny<AccountLockoutContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AccountLockoutFailureResult(AccountLockoutStatus.None(user.Id, user.TenantId, AuthenticationProviderKey.Local), false, false));
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Failed));
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            _accountLockoutServiceMock.Verify(s => s.GetStatusAsync(user, AuthenticationProviderKey.Local, It.Is<AccountLockoutContext>(c => c.Tenant == null), It.IsAny<CancellationToken>()), Times.Once);
+            _accountLockoutServiceMock.Verify(s => s.RecordFailureAsync(user, AuthenticationProviderKey.Local, It.Is<AccountLockoutContext>(c => c.Tenant == null), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
     public async Task LoginAsyncWithLocalPasswordSuccessShouldResetAccountLockoutAfterSuccessfulAuthentication()
     {
         var context = new AuthenticationContext("test@example.com");
@@ -1064,6 +1093,35 @@ internal sealed class AuthenticationPipelineTests
         var response = await _pipeline.LoginAsync(context, assertion);
 
         Assert.That(response.Succeeded, Is.False);
+    }
+
+    [Test]
+    public async Task LoginAsyncWithFailedAtomicCredentialConsumptionShouldResetAccountLockoutAfterSuccessfulPassword()
+    {
+        var context = new AuthenticationContext("test@example.com");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var credential = CreateCredential(user.Id);
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
+        UseAccountLockoutService();
+        _accountLockoutServiceMock.Setup(s => s.GetStatusAsync(user, AuthenticationProviderKey.Local, It.IsAny<AccountLockoutContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AccountLockoutStatus.None(user.Id, user.TenantId, AuthenticationProviderKey.Local));
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+        _credentialServiceMock.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.False);
+            _accountLockoutServiceMock.Verify(s => s.ResetAsync(user, AuthenticationProviderKey.Local, It.IsAny<AccountLockoutContext>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
     }
 
     [Test]

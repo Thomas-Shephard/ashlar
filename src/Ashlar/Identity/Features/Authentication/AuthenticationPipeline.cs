@@ -201,26 +201,18 @@ public sealed class AuthenticationPipeline(
 
         if (result.Status == AuthenticationResultStatus.MfaRequired)
         {
-            if (shouldApplyAccountLockout)
-            {
-                await ResetAccountLockoutAsync(user, provider.Key, context, cancellationToken);
-            }
+            await ResetAccountLockoutIfApplicableAsync(shouldApplyAccountLockout, user, provider.Key, context, cancellationToken);
 
             return new AuthenticationResponse(false, user, AuthenticationStatus.MfaRequired, result.Claims);
         }
 
         var status = result.Status == AuthenticationResultStatus.SucceededWithCredentialUpdate ? AuthenticationStatus.SuccessWithCredentialUpdate : AuthenticationStatus.Success;
 
-        var response = await ProcessCredentialLifecycleAsync(
+        await ResetAccountLockoutIfApplicableAsync(shouldApplyAccountLockout, user, provider.Key, context, cancellationToken);
+
+        return await ProcessCredentialLifecycleAsync(
             new CredentialLifecycleContext(user, credential, originalCredential, result, provider, context, status),
             cancellationToken);
-
-        if (shouldApplyAccountLockout && response.Succeeded)
-        {
-            await ResetAccountLockoutAsync(user, provider.Key, context, cancellationToken);
-        }
-
-        return response;
     }
 
     private async Task<bool> CheckPrimaryRateLimitAsync(
@@ -330,11 +322,24 @@ public sealed class AuthenticationPipeline(
         }
     }
 
+    private async Task ResetAccountLockoutIfApplicableAsync(
+        bool shouldApplyAccountLockout,
+        IUser user,
+        AuthenticationProviderKey providerKey,
+        AuthenticationContext context,
+        CancellationToken cancellationToken)
+    {
+        if (shouldApplyAccountLockout)
+        {
+            await ResetAccountLockoutAsync(user, providerKey, context, cancellationToken);
+        }
+    }
+
     private static AccountLockoutContext CreateAccountLockoutContext(AuthenticationContext context)
     {
         return new AccountLockoutContext(
             new AuditContext(context.UserId, context.IpAddress, context.UserAgent, context.CorrelationId, context.Items),
-            new TenantContext(context.TenantId));
+            context.TenantId.HasValue ? new TenantContext(context.TenantId) : null);
     }
 
     private async Task<AuthenticationResponse> RecordRateLimitedAsync(
