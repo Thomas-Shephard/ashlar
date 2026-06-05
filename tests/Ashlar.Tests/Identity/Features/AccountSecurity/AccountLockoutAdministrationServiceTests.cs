@@ -152,8 +152,10 @@ internal sealed class AccountLockoutAdministrationServiceTests
             Assert.ThrowsAsync<ArgumentNullException>(() => _service.ResetLockoutAsync(UserId, AuthenticationProviderKey.Local, null!));
             Assert.That((await _service.GetLockoutStatusAsync(Guid.Empty, AuthenticationProviderKey.Local, new AccountLockoutAdministrationRequest(TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That((await _service.GetLockoutStatusAsync(UserId, default, new AccountLockoutAdministrationRequest(TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That((await _service.GetLockoutStatusAsync(UserId, AuthenticationProviderKey.Local, new AccountLockoutAdministrationRequest(null!))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That((await _service.ResetLockoutAsync(Guid.Empty, AuthenticationProviderKey.Local, new AccountLockoutAdministrationRequest(TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That((await _service.ResetLockoutAsync(UserId, default, new AccountLockoutAdministrationRequest(TenantContext.Global))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That((await _service.ResetLockoutAsync(UserId, AuthenticationProviderKey.Local, new AccountLockoutAdministrationRequest(null!))).FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.Throws<ArgumentNullException>(() => _ = new AccountLockoutAdministrationService(null!));
             Assert.DoesNotThrow(() => _ = new AccountLockoutAdministrationService(_repository));
         }

@@ -69,19 +69,11 @@ public sealed class AccountLockoutAdministrationService(
         AccountLockoutAdministrationRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
-
-        if (userId == Guid.Empty)
+        if (ValidateScopedOperation(userId, provider, request, out var tenantId) is { } failure)
         {
-            return Result.Failure<AccountLockoutStatus>(AshlarFailureCodes.ValidationError, "User ID cannot be empty.");
+            return Result.Failure<AccountLockoutStatus>(failure);
         }
 
-        if (IsInvalidProvider(provider))
-        {
-            return Result.Failure<AccountLockoutStatus>(AshlarFailureCodes.ValidationError, "Provider key must be fully initialized.");
-        }
-
-        var tenantId = request.Tenant.TenantId;
         var record = await _repository.GetAsync(userId, tenantId, provider, cancellationToken);
         return Result.Success(ToStatus(userId, tenantId, provider, record, _timeProvider.GetUtcNow()));
     }
@@ -93,19 +85,11 @@ public sealed class AccountLockoutAdministrationService(
         AccountLockoutAdministrationRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
-
-        if (userId == Guid.Empty)
+        if (ValidateScopedOperation(userId, provider, request, out var tenantId) is { } failure)
         {
-            return Result.Failure<bool>(AshlarFailureCodes.ValidationError, "User ID cannot be empty.");
+            return Result.Failure<bool>(failure);
         }
 
-        if (IsInvalidProvider(provider))
-        {
-            return Result.Failure<bool>(AshlarFailureCodes.ValidationError, "Provider key must be fully initialized.");
-        }
-
-        var tenantId = request.Tenant.TenantId;
         var reset = await _repository.ResetAsync(userId, tenantId, provider, cancellationToken);
         return Result.Success(reset);
     }
@@ -151,5 +135,33 @@ public sealed class AccountLockoutAdministrationService(
     private static bool IsInvalidProvider(AuthenticationProviderKey provider)
     {
         return provider.Type == default || string.IsNullOrWhiteSpace(provider.Name);
+    }
+
+    private static AshlarFailure? ValidateScopedOperation(
+        Guid userId,
+        AuthenticationProviderKey provider,
+        AccountLockoutAdministrationRequest request,
+        out Guid? tenantId)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        tenantId = null;
+
+        if (userId == Guid.Empty)
+        {
+            return new AshlarFailure(AshlarFailureCodes.ValidationError, "User ID cannot be empty.");
+        }
+
+        if (IsInvalidProvider(provider))
+        {
+            return new AshlarFailure(AshlarFailureCodes.ValidationError, "Provider key must be fully initialized.");
+        }
+
+        if (request.Tenant == null)
+        {
+            return new AshlarFailure(AshlarFailureCodes.ValidationError, "Tenant scope must be explicit.");
+        }
+
+        tenantId = request.Tenant.TenantId;
+        return null;
     }
 }

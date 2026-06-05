@@ -29,8 +29,7 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
     /// <returns>The matching lockout records.</returns>
     public async Task<IReadOnlyList<AccountLockoutRecord>> SearchAsync(SearchAccountLockoutsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        ValidateSearchRequest(request);
+        SearchAccountLockoutsRequest.ThrowIfInvalid(request);
 
         var conditions = new List<string>();
         if (request.Tenant is { } tenant)
@@ -96,7 +95,7 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
         AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(provider));
 
         var sql = SelectSql + """
-            
+
             WHERE user_id = $userId
               AND provider_type = $providerType
               AND provider_name = $providerName
@@ -331,39 +330,6 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
         if (userId == Guid.Empty)
         {
             throw new ArgumentException("User ID cannot be empty.", nameof(userId));
-        }
-    }
-
-    private static void ValidateSearchRequest(SearchAccountLockoutsRequest request)
-    {
-        if (request.Limit < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(request), request.Limit, "Limit must be greater than zero.");
-        }
-
-        if (request.Offset < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(request), request.Offset, "Offset cannot be negative.");
-        }
-
-        if (request is { Tenant: null, IncludeAllTenants: false })
-        {
-            throw new ArgumentException("Tenant scope must be explicit.", nameof(request));
-        }
-
-        if (request is { Tenant: not null, IncludeAllTenants: true })
-        {
-            throw new ArgumentException("Tenant scope cannot be combined with all-tenant search.", nameof(request));
-        }
-
-        if (request.UserId == Guid.Empty)
-        {
-            throw new ArgumentException("User ID cannot be empty.", nameof(request));
-        }
-
-        if (request.Provider is { } provider)
-        {
-            AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(request));
         }
     }
 }

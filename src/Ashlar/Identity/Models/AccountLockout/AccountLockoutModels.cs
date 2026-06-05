@@ -156,6 +156,48 @@ public sealed record SearchAccountLockoutsRequest
 
     /// <summary>Number of lockout records to skip.</summary>
     public int Offset { get; init; }
+
+    /// <summary>
+    /// Throws when the account lockout search request is not safe to execute.
+    /// </summary>
+    /// <param name="request">The search request to validate.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="request" /> is <see langword="null" />.</exception>
+    /// <exception cref="ArgumentException">Thrown when the tenant scope, user id, or provider filter is invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when paging values are invalid.</exception>
+    public static void ThrowIfInvalid(SearchAccountLockoutsRequest? request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.Limit < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), request.Limit, "Limit must be greater than zero.");
+        }
+
+        if (request.Offset < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), request.Offset, "Offset cannot be negative.");
+        }
+
+        if (request is { Tenant: null, IncludeAllTenants: false })
+        {
+            throw new ArgumentException("Tenant scope must be explicit.", nameof(request));
+        }
+
+        if (request is { Tenant: not null, IncludeAllTenants: true })
+        {
+            throw new ArgumentException("Tenant scope cannot be combined with all-tenant search.", nameof(request));
+        }
+
+        if (request.UserId == Guid.Empty)
+        {
+            throw new ArgumentException("User ID cannot be empty.", nameof(request));
+        }
+
+        if (request.Provider is { } provider)
+        {
+            AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(request));
+        }
+    }
 }
 
 /// <summary>
