@@ -235,7 +235,18 @@ public sealed record AccountLockoutSearchResult(
     bool HasMore);
 
 /// <summary>
-/// Request for administrator account lockout status or reset.
+/// Request for administrator account lockout status.
 /// </summary>
 /// <param name="Tenant">The explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
 public sealed record AccountLockoutAdministrationRequest(TenantContext Tenant);
+
+/// <summary>
+/// Request for administrator account lockout reset.
+/// </summary>
+/// <param name="Tenant">The explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
+/// <param name="Audit">Optional safe audit metadata describing who requested reset.</param>
+/// <param name="Reason">Optional safe reason recorded with the reset event.</param>
+public sealed record ResetAccountLockoutRequest(
+    TenantContext Tenant,
+    AuditContext? Audit = null,
+    string? Reason = null);

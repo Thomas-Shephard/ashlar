@@ -1,18 +1,22 @@
+using Ashlar.Auditing;
+
 namespace Ashlar.Identity.Features.AccountLockout;
 
 /// <summary>
 /// Implements administrator-oriented automatic account lockout visibility and reset operations.
 /// </summary>
 /// <param name="repository">The durable lockout repository.</param>
-/// <param name="timeProvider">The optional clock.</param>
+/// <param name="dependencies">The optional operational dependencies.</param>
 public sealed class AccountLockoutAdministrationService(
     IAccountLockoutRepository repository,
-    TimeProvider? timeProvider = null) : IAccountLockoutAdministrationService
+    AccountLockoutAdministrationServiceDependencies? dependencies = null) : IAccountLockoutAdministrationService
 {
     internal const int MaximumLimit = 100;
+    internal const int MaximumReasonLength = 512;
 
     private readonly IAccountLockoutRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
-    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly TimeProvider _timeProvider = dependencies?.TimeProvider ?? TimeProvider.System;
+    private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider ?? TimeProvider.System);
 
     /// <inheritdoc />
     public async Task<Result<AccountLockoutSearchResult>> SearchLockoutsAsync(SearchAccountLockoutsRequest request, CancellationToken cancellationToken = default)
@@ -82,7 +86,7 @@ public sealed class AccountLockoutAdministrationService(
     public async Task<Result<bool>> ResetLockoutAsync(
         Guid userId,
         AuthenticationProviderKey provider,
-        AccountLockoutAdministrationRequest request,
+        ResetAccountLockoutRequest request,
         CancellationToken cancellationToken = default)
     {
         if (ValidateScopedOperation(userId, provider, request, out var tenantId) is { } failure)
@@ -90,7 +94,13 @@ public sealed class AccountLockoutAdministrationService(
             return Result.Failure<bool>(failure);
         }
 
+        if (ValidateReason(request.Reason) is { } reasonFailure)
+        {
+            return Result.Failure<bool>(reasonFailure);
+        }
+
         var reset = await _repository.ResetAsync(userId, tenantId, provider, cancellationToken);
+        await RecordResetAsync(userId, tenantId, provider, reset, request, cancellationToken);
         return Result.Success(reset);
     }
 
@@ -144,6 +154,25 @@ public sealed class AccountLockoutAdministrationService(
         out Guid? tenantId)
     {
         ArgumentNullException.ThrowIfNull(request);
+        return ValidateScopedOperation(userId, provider, request.Tenant, out tenantId);
+    }
+
+    private static AshlarFailure? ValidateScopedOperation(
+        Guid userId,
+        AuthenticationProviderKey provider,
+        ResetAccountLockoutRequest request,
+        out Guid? tenantId)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return ValidateScopedOperation(userId, provider, request.Tenant, out tenantId);
+    }
+
+    private static AshlarFailure? ValidateScopedOperation(
+        Guid userId,
+        AuthenticationProviderKey provider,
+        TenantContext? tenant,
+        out Guid? tenantId)
+    {
         tenantId = null;
 
         if (userId == Guid.Empty)
@@ -156,12 +185,64 @@ public sealed class AccountLockoutAdministrationService(
             return new AshlarFailure(AshlarFailureCodes.ValidationError, "Provider key must be fully initialized.");
         }
 
-        if (request.Tenant == null)
+        if (tenant == null)
         {
             return new AshlarFailure(AshlarFailureCodes.ValidationError, "Tenant scope must be explicit.");
         }
 
-        tenantId = request.Tenant.TenantId;
+        tenantId = tenant.TenantId;
         return null;
     }
+
+    private static AshlarFailure? ValidateReason(string? reason)
+    {
+        return reason?.Length > MaximumReasonLength
+            ? new AshlarFailure(AshlarFailureCodes.ValidationError, "Reason cannot exceed 512 characters.")
+            : null;
+    }
+
+    private Task RecordResetAsync(
+        Guid userId,
+        Guid? tenantId,
+        AuthenticationProviderKey provider,
+        bool lockoutStateCleared,
+        ResetAccountLockoutRequest request,
+        CancellationToken cancellationToken)
+    {
+        var properties = new Dictionary<string, string>
+        {
+            ["lockout_state_cleared"] = lockoutStateCleared ? "true" : "false",
+            ["tenant_scope"] = tenantId.HasValue ? "tenant" : "global"
+        };
+
+        if (tenantId.HasValue)
+        {
+            properties["tenant_id"] = tenantId.Value.ToString();
+        }
+
+        if (request.Reason != null)
+        {
+            properties["reason"] = request.Reason;
+        }
+
+        return _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.AccountLockoutReset,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = userId,
+            TenantId = tenantId,
+            Audit = request.Audit,
+            Provider = provider,
+            Properties = properties
+        }, cancellationToken);
+    }
 }
+
+/// <summary>
+/// Optional dependencies for <see cref="AccountLockoutAdministrationService" />.
+/// </summary>
+/// <param name="TimeProvider">The optional clock.</param>
+/// <param name="SecurityEventSink">The optional security event sink.</param>
+public sealed record AccountLockoutAdministrationServiceDependencies(
+    TimeProvider? TimeProvider = null,
+    ISecurityEventSink? SecurityEventSink = null);

@@ -122,7 +122,12 @@ public static partial class AshlarServiceCollectionExtensions
         });
         services.TryAddScoped<IUserAdministrationService, UserAdministrationService>();
         services.TryAddScoped<ICredentialAdministrationService, CredentialAdministrationService>();
-        services.TryAddScoped<IAccountLockoutAdministrationService, AccountLockoutAdministrationService>();
+        services.TryAddScoped(provider => new AccountLockoutAdministrationServiceDependencies(
+            provider.GetService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>()));
+        services.TryAddScoped<IAccountLockoutAdministrationService>(provider => new AccountLockoutAdministrationService(
+            provider.GetRequiredService<IAccountLockoutRepository>(),
+            provider.GetService<AccountLockoutAdministrationServiceDependencies>()));
         services.TryAddScoped<ISecurityEventAdministrationService, SecurityEventAdministrationService>();
         services.TryAddScoped<IAuthenticationSessionAdministrationService, AuthenticationSessionAdministrationService>();
         services.TryAddScoped(provider => new AuthenticationSessionServiceDependencies(

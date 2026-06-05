@@ -971,10 +971,13 @@ var status = await lockoutAdministration.GetLockoutStatusAsync(
 await lockoutAdministration.ResetLockoutAsync(
     userId,
     AuthenticationProviderKey.Local,
-    new AccountLockoutAdministrationRequest(tenant));
+    new ResetAccountLockoutRequest(
+        tenant,
+        Audit: new AuditContext(actorUserId, CorrelationId: correlationId),
+        Reason: "support reset"));
 ```
 
-The administrator models expose only user id, tenant id, provider, failed-attempt count, first and last failure timestamps, locked-until, and current locked-out projection. They do not expose repository versions, credential material, token material, secrets, hashes, or raw provider payloads.
+Lockout reset attempts emit a safe security event, including no-op resets where no stored state was cleared. The administrator models and events expose only user id, tenant id or global scope, provider, failed-attempt count, first and last failure timestamps, locked-until, current locked-out projection, whether reset cleared stored state, and optional safe reason/audit metadata. They do not expose repository versions, credential material, token material, secrets, hashes, raw provider payloads, or IP-derived rate-limit keys.
 
 ## Authorization Grants
 Ashlar includes framework-neutral authorization primitives for durable grants. Grants are generic: they can assign one normalized role or one normalized permission to a user, optionally within a tenant and explicit scope. Ashlar evaluates these grants, but it does not replace ASP.NET Core Authorization policies or requirements.

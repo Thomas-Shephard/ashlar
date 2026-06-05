@@ -22,6 +22,10 @@ public static class AshlarSecurityEventTypes
     /// </summary>
     public const string AccountLockoutActivated = "ashlar.account_lockout.activated";
     /// <summary>
+    /// Defines the account lockout reset value.
+    /// </summary>
+    public const string AccountLockoutReset = "ashlar.account_lockout.reset";
+    /// <summary>
     /// Defines the user created value.
     /// </summary>
     public const string UserCreated = "ashlar.user.created";
