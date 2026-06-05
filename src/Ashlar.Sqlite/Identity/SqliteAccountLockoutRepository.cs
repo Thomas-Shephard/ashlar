@@ -28,7 +28,8 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
     /// <returns>The matching lockout record, or <see langword="null" />.</returns>
     public async Task<AccountLockoutRecord?> GetAsync(Guid userId, Guid? tenantId, AuthenticationProviderKey provider, CancellationToken cancellationToken = default)
     {
-        Validate(userId, provider);
+        ValidateUserId(userId);
+        AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(provider));
 
         var sql = SelectSql + """
             
@@ -68,8 +69,9 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
         TimeSpan lockoutDuration,
         CancellationToken cancellationToken = default)
     {
-        Validate(userId, provider);
-        ValidateLockoutPolicy(failureThreshold, lockoutDuration);
+        ValidateUserId(userId);
+        AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(provider));
+        AccountLockoutOptions.ThrowIfInvalidPolicy(failureThreshold, lockoutDuration);
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
         await using var command = handle.Connection.CreateCommand();
@@ -97,7 +99,8 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
     /// <returns><see langword="true" /> when stored state was removed.</returns>
     public async Task<bool> ResetAsync(Guid userId, Guid? tenantId, AuthenticationProviderKey provider, CancellationToken cancellationToken = default)
     {
-        Validate(userId, provider);
+        ValidateUserId(userId);
+        AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(provider));
 
         var sql = """
             DELETE FROM ashlar_account_lockouts
@@ -233,29 +236,11 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
             Convert.ToBoolean(reader.GetInt32ByName("lockout_activated"), System.Globalization.CultureInfo.InvariantCulture));
     }
 
-    private static void Validate(Guid userId, AuthenticationProviderKey provider)
+    private static void ValidateUserId(Guid userId)
     {
         if (userId == Guid.Empty)
         {
             throw new ArgumentException("User ID cannot be empty.", nameof(userId));
-        }
-
-        if (provider.Type == default || string.IsNullOrWhiteSpace(provider.Name))
-        {
-            throw new ArgumentException("Provider key must be fully initialized.", nameof(provider));
-        }
-    }
-
-    private static void ValidateLockoutPolicy(int failureThreshold, TimeSpan lockoutDuration)
-    {
-        if (failureThreshold <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(failureThreshold), failureThreshold, "Failure threshold must be greater than zero.");
-        }
-
-        if (lockoutDuration <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(lockoutDuration), lockoutDuration, "Lockout duration must be greater than zero.");
         }
     }
 }

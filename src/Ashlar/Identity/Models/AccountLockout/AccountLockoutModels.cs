@@ -26,6 +26,25 @@ public sealed class AccountLockoutOptions
     {
         return options is { FailureThreshold: > 0 } && options.LockoutDuration > TimeSpan.Zero;
     }
+
+    /// <summary>
+    /// Throws when the account lockout policy values cannot produce a temporary lockout.
+    /// </summary>
+    /// <param name="failureThreshold">The failed-attempt threshold that activates lockout.</param>
+    /// <param name="lockoutDuration">How long a newly activated lockout remains active.</param>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when the threshold or duration is not positive.</exception>
+    public static void ThrowIfInvalidPolicy(int failureThreshold, TimeSpan lockoutDuration)
+    {
+        if (failureThreshold <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(failureThreshold), failureThreshold, "Failure threshold must be greater than zero.");
+        }
+
+        if (lockoutDuration <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(lockoutDuration), lockoutDuration, "Lockout duration must be greater than zero.");
+        }
+    }
 }
 
 /// <summary>

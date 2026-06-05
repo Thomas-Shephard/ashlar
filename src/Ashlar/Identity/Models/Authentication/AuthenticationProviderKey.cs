@@ -20,6 +20,11 @@ public readonly record struct AuthenticationProviderKey
     public string TypeValueOrUnknown => Type.ValueOrUnknown;
 
     /// <summary>
+    /// Gets a value indicating whether this provider key has a provider type and name.
+    /// </summary>
+    public bool IsInitialized => Type != default && !string.IsNullOrWhiteSpace(Name);
+
+    /// <summary>
     /// Gets the provider type value for an optional provider key, or <see langword="null" /> when no provider key was supplied.
     /// </summary>
     /// <param name="provider">The provider key value.</param>
@@ -27,6 +32,20 @@ public readonly record struct AuthenticationProviderKey
     public static string? GetTypeValueOrNull(AuthenticationProviderKey? provider)
     {
         return provider.HasValue ? provider.Value.TypeValueOrUnknown : null;
+    }
+
+    /// <summary>
+    /// Throws when an authentication provider key has not been fully initialized.
+    /// </summary>
+    /// <param name="provider">The provider key value.</param>
+    /// <param name="parameterName">The parameter name to include in the exception.</param>
+    /// <exception cref="ArgumentException">Thrown when the provider key is uninitialized.</exception>
+    public static void ThrowIfUninitialized(AuthenticationProviderKey provider, string parameterName)
+    {
+        if (!provider.IsInitialized)
+        {
+            throw new ArgumentException("Provider key must be fully initialized with a type and name.", parameterName);
+        }
     }
 
     /// <summary>
