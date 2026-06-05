@@ -11,6 +11,69 @@ public sealed class PostgresAccountLockoutRepository(IPostgresConnectionProvider
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
     /// <summary>
+    /// Searches stored automatic lockout state.
+    /// </summary>
+    /// <param name="request">The search request.</param>
+    /// <param name="now">The timestamp used for active lockout filtering.</param>
+    /// <param name="cancellationToken">A token that can cancel the operation.</param>
+    /// <returns>The matching lockout records.</returns>
+    public async Task<IReadOnlyList<AccountLockoutRecord>> SearchAsync(SearchAccountLockoutsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ValidateSearchRequest(request);
+
+        var conditions = new List<string>();
+        var parameters = new DynamicParameters();
+        parameters.Add("Limit", request.Limit);
+        parameters.Add("Offset", request.Offset);
+        if (request.Tenant is { } tenant)
+        {
+            conditions.Add(tenant.TenantId.HasValue ? "tenant_id = @TenantId" : "tenant_id IS NULL");
+            parameters.Add("TenantId", tenant.TenantId);
+        }
+
+        if (request.UserId.HasValue)
+        {
+            conditions.Add("user_id = @UserId");
+            parameters.Add("UserId", request.UserId);
+        }
+
+        if (request.Provider is { } provider)
+        {
+            conditions.Add("provider_type = @ProviderType");
+            conditions.Add("provider_name = @ProviderName");
+            parameters.Add("ProviderType", provider.TypeValueOrUnknown);
+            parameters.Add("ProviderName", provider.Name);
+        }
+
+        if (request.LockedOut is { } lockedOut)
+        {
+            conditions.Add(lockedOut ? "locked_until > @Now" : "(locked_until IS NULL OR locked_until <= @Now)");
+            parameters.Add("Now", now);
+        }
+
+        var sql = SelectSql;
+        if (conditions.Count > 0)
+        {
+            sql += $"{Environment.NewLine}WHERE {string.Join($"{Environment.NewLine}  AND ", conditions)}";
+        }
+
+        sql += """
+
+            ORDER BY last_failed_at DESC, user_id, provider_type, provider_name
+            LIMIT @Limit OFFSET @Offset
+            """;
+
+        var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using (connectionHandle)
+        {
+            var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            var rows = await connectionHandle.Connection.QueryAsync(command);
+            return rows.Select(ToRecord).ToList().AsReadOnly();
+        }
+    }
+
+    /// <summary>
     /// Retrieves lockout state for a user, tenant, and provider.
     /// </summary>
     /// <param name="userId">The user id.</param>
@@ -206,6 +269,39 @@ public sealed class PostgresAccountLockoutRepository(IPostgresConnectionProvider
         if (userId == Guid.Empty)
         {
             throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        }
+    }
+
+    private static void ValidateSearchRequest(SearchAccountLockoutsRequest request)
+    {
+        if (request.Limit < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), request.Limit, "Limit must be greater than zero.");
+        }
+
+        if (request.Offset < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), request.Offset, "Offset cannot be negative.");
+        }
+
+        if (request is { Tenant: null, IncludeAllTenants: false })
+        {
+            throw new ArgumentException("Tenant scope must be explicit.", nameof(request));
+        }
+
+        if (request is { Tenant: not null, IncludeAllTenants: true })
+        {
+            throw new ArgumentException("Tenant scope cannot be combined with all-tenant search.", nameof(request));
+        }
+
+        if (request.UserId == Guid.Empty)
+        {
+            throw new ArgumentException("User ID cannot be empty.", nameof(request));
+        }
+
+        if (request.Provider is { } provider)
+        {
+            AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(request));
         }
     }
 }

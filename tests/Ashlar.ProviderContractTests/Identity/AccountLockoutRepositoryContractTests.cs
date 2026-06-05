@@ -5,6 +5,105 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
     private static readonly DateTimeOffset FirstFailure = new(2026, 6, 1, 10, 0, 0, TimeSpan.Zero);
 
     [Test]
+    public async Task SearchShouldFilterByTenantUserAndProviderWithPaging()
+    {
+        await using var scope = CreateAsyncScope();
+        var users = GetUserRepository(scope.ServiceProvider);
+        var lockouts = GetAccountLockoutRepository(scope.ServiceProvider);
+        var tenantId = Guid.NewGuid();
+        var tenantUser = await CreateUserAsync(users, tenantId: tenantId);
+        var secondTenantUser = await CreateUserAsync(users, tenantId: tenantId);
+        var otherTenantUser = await CreateUserAsync(users, tenantId: Guid.NewGuid());
+        var globalUser = await CreateUserAsync(users);
+        var oauthProvider = new AuthenticationProviderKey(ProviderType.OAuth, "github");
+
+        await lockouts.RecordFailureAsync(tenantUser.Id, tenantUser.TenantId, AuthenticationProviderKey.Local, FirstFailure, 5, TimeSpan.FromMinutes(10));
+        await lockouts.RecordFailureAsync(secondTenantUser.Id, secondTenantUser.TenantId, AuthenticationProviderKey.Local, FirstFailure.AddMinutes(1), 5, TimeSpan.FromMinutes(10));
+        await lockouts.RecordFailureAsync(tenantUser.Id, tenantUser.TenantId, oauthProvider, FirstFailure.AddMinutes(2), 5, TimeSpan.FromMinutes(10));
+        await lockouts.RecordFailureAsync(otherTenantUser.Id, otherTenantUser.TenantId, AuthenticationProviderKey.Local, FirstFailure.AddMinutes(3), 5, TimeSpan.FromMinutes(10));
+        await lockouts.RecordFailureAsync(globalUser.Id, globalUser.TenantId, AuthenticationProviderKey.Local, FirstFailure.AddMinutes(4), 5, TimeSpan.FromMinutes(10));
+
+        var tenantLocalPage = await lockouts.SearchAsync(new SearchAccountLockoutsRequest
+        {
+            Tenant = new TenantContext(tenantId),
+            Provider = AuthenticationProviderKey.Local,
+            Limit = 1
+        }, FirstFailure.AddMinutes(5));
+        var tenantLocalSecondPage = await lockouts.SearchAsync(new SearchAccountLockoutsRequest
+        {
+            Tenant = new TenantContext(tenantId),
+            Provider = AuthenticationProviderKey.Local,
+            Limit = 1,
+            Offset = 1
+        }, FirstFailure.AddMinutes(5));
+        var userProvider = await lockouts.SearchAsync(new SearchAccountLockoutsRequest
+        {
+            UserId = tenantUser.Id,
+            Tenant = new TenantContext(tenantId),
+            Provider = oauthProvider,
+            Limit = 10
+        }, FirstFailure.AddMinutes(5));
+        var global = await lockouts.SearchAsync(new SearchAccountLockoutsRequest
+        {
+            Tenant = TenantContext.Global,
+            Limit = 10
+        }, FirstFailure.AddMinutes(5));
+        var unfiltered = await lockouts.SearchAsync(new SearchAccountLockoutsRequest
+        {
+            IncludeAllTenants = true,
+            Limit = 10
+        }, FirstFailure.AddMinutes(5));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tenantLocalPage, Has.Count.EqualTo(1));
+            Assert.That(tenantLocalPage.Single().UserId, Is.EqualTo(secondTenantUser.Id));
+            Assert.That(tenantLocalSecondPage, Has.Count.EqualTo(1));
+            Assert.That(tenantLocalSecondPage.Single().UserId, Is.EqualTo(tenantUser.Id));
+            Assert.That(userProvider, Has.Count.EqualTo(1));
+            Assert.That(userProvider.Single().Provider, Is.EqualTo(oauthProvider));
+            Assert.That(global, Has.Count.EqualTo(1));
+            Assert.That(global.Single().UserId, Is.EqualTo(globalUser.Id));
+            Assert.That(unfiltered, Has.Count.EqualTo(5));
+        }
+    }
+
+    [Test]
+    public async Task SearchShouldApplyLockedOutFilterBeforePaging()
+    {
+        await using var scope = CreateAsyncScope();
+        var users = GetUserRepository(scope.ServiceProvider);
+        var lockouts = GetAccountLockoutRepository(scope.ServiceProvider);
+        var tenantId = Guid.NewGuid();
+        var unlockedUser = await CreateUserAsync(users, tenantId: tenantId);
+        var lockedUser = await CreateUserAsync(users, tenantId: tenantId);
+
+        await lockouts.RecordFailureAsync(lockedUser.Id, lockedUser.TenantId, AuthenticationProviderKey.Local, FirstFailure, 1, TimeSpan.FromMinutes(10));
+        await lockouts.RecordFailureAsync(unlockedUser.Id, unlockedUser.TenantId, AuthenticationProviderKey.Local, FirstFailure.AddMinutes(1), 5, TimeSpan.FromMinutes(10));
+
+        var locked = await lockouts.SearchAsync(new SearchAccountLockoutsRequest
+        {
+            Tenant = new TenantContext(tenantId),
+            LockedOut = true,
+            Limit = 1
+        }, FirstFailure.AddMinutes(2));
+        var unlocked = await lockouts.SearchAsync(new SearchAccountLockoutsRequest
+        {
+            Tenant = new TenantContext(tenantId),
+            LockedOut = false,
+            Limit = 1
+        }, FirstFailure.AddMinutes(2));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(locked, Has.Count.EqualTo(1));
+            Assert.That(locked.Single().UserId, Is.EqualTo(lockedUser.Id));
+            Assert.That(unlocked, Has.Count.EqualTo(1));
+            Assert.That(unlocked.Single().UserId, Is.EqualTo(unlockedUser.Id));
+        }
+    }
+
+    [Test]
     public async Task RecordFailureShouldCreateAndIncrementLockoutState()
     {
         await using var scope = CreateAsyncScope();
@@ -215,6 +314,13 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
         {
             Assert.ThrowsAsync<ArgumentException>(() => lockouts.GetAsync(Guid.Empty, null, AuthenticationProviderKey.Local));
             Assert.ThrowsAsync<ArgumentException>(() => lockouts.GetAsync(Guid.NewGuid(), null, default));
+            Assert.ThrowsAsync<ArgumentNullException>(() => lockouts.SearchAsync(null!, FirstFailure));
+            Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => lockouts.SearchAsync(new SearchAccountLockoutsRequest { Tenant = TenantContext.Global, Limit = 0 }, FirstFailure));
+            Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => lockouts.SearchAsync(new SearchAccountLockoutsRequest { Tenant = TenantContext.Global, Offset = -1 }, FirstFailure));
+            Assert.ThrowsAsync<ArgumentException>(() => lockouts.SearchAsync(new SearchAccountLockoutsRequest(), FirstFailure));
+            Assert.ThrowsAsync<ArgumentException>(() => lockouts.SearchAsync(new SearchAccountLockoutsRequest { Tenant = TenantContext.Global, IncludeAllTenants = true }, FirstFailure));
+            Assert.ThrowsAsync<ArgumentException>(() => lockouts.SearchAsync(new SearchAccountLockoutsRequest { Tenant = TenantContext.Global, UserId = Guid.Empty }, FirstFailure));
+            Assert.ThrowsAsync<ArgumentException>(() => lockouts.SearchAsync(new SearchAccountLockoutsRequest { Tenant = TenantContext.Global, Provider = default(AuthenticationProviderKey) }, FirstFailure));
             Assert.ThrowsAsync<ArgumentException>(() => lockouts.ResetAsync(Guid.Empty, null, AuthenticationProviderKey.Local));
             Assert.ThrowsAsync<ArgumentException>(() => lockouts.ResetAsync(Guid.NewGuid(), null, default));
             Assert.ThrowsAsync<ArgumentException>(() => lockouts.RecordFailureAsync(Guid.Empty, null, AuthenticationProviderKey.Local, FirstFailure, 5, TimeSpan.FromMinutes(10)));
