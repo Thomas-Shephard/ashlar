@@ -900,8 +900,6 @@ Ashlar exposes framework-neutral administrator primitives through `IAccountSecur
 Available operations:
 
 - `SetUserAccountStateAsync`: changes a user between `Active`, `Disabled`, `Locked`, and `Suspended`.
-- `DisableUserAsync`: convenience wrapper that sets the user to `Disabled`.
-- `ReactivateUserAsync`: convenience wrapper that sets the user to `Active`.
 - `RevokeSessionsAsync`: revokes all active sessions for a user.
 - `RevokeCredentialsAsync`: revokes active credentials for a specific provider key.
 - `ResetMfaAsync`: revokes configured TOTP and recovery-code credentials.
