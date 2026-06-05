@@ -6,6 +6,15 @@ namespace Ashlar.Identity.Abstractions.Repositories;
 public interface IAccountLockoutRepository
 {
     /// <summary>
+    /// Searches stored automatic lockout state for administrative operations.
+    /// </summary>
+    /// <param name="request">The lockout search request.</param>
+    /// <param name="now">The timestamp used for active lockout filtering.</param>
+    /// <param name="cancellationToken">A token that can cancel the operation.</param>
+    /// <returns>The matching lockout records.</returns>
+    Task<IReadOnlyList<AccountLockoutRecord>> SearchAsync(SearchAccountLockoutsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Retrieves lockout state for a user, tenant, and provider.
     /// </summary>
     /// <param name="userId">The user id.</param>

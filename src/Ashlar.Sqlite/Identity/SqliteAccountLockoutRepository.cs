@@ -16,7 +16,70 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
     private const string FailureThresholdParameter = "$failureThreshold";
     private const string LockedUntilParameter = "$lockedUntil";
     private const string VersionParameter = "$version";
+    private const string LimitParameter = "$limit";
+    private const string OffsetParameter = "$offset";
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
+
+    /// <summary>
+    /// Searches stored automatic lockout state.
+    /// </summary>
+    /// <param name="request">The search request.</param>
+    /// <param name="now">The timestamp used for active lockout filtering.</param>
+    /// <param name="cancellationToken">A token that can cancel the operation.</param>
+    /// <returns>The matching lockout records.</returns>
+    public async Task<IReadOnlyList<AccountLockoutRecord>> SearchAsync(SearchAccountLockoutsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    {
+        SearchAccountLockoutsRequest.ThrowIfInvalid(request);
+
+        var conditions = new List<string>();
+        if (request.Tenant is { } tenant)
+        {
+            conditions.Add(tenant.TenantId.HasValue ? "tenant_id = $tenantId" : "tenant_id IS NULL");
+        }
+
+        if (request.UserId.HasValue)
+        {
+            conditions.Add("user_id = $userId");
+        }
+
+        if (request.Provider.HasValue)
+        {
+            conditions.Add("provider_type = $providerType");
+            conditions.Add("provider_name = $providerName");
+        }
+
+        if (request.LockedOut is { } lockedOut)
+        {
+            conditions.Add(lockedOut ? "locked_until > $now" : "(locked_until IS NULL OR locked_until <= $now)");
+        }
+
+        var sql = SelectSql;
+        if (conditions.Count > 0)
+        {
+            sql += $"{Environment.NewLine}WHERE {string.Join($"{Environment.NewLine}  AND ", conditions)}";
+        }
+
+        sql += """
+
+            ORDER BY last_failed_at DESC, user_id, provider_type, provider_name
+            LIMIT $limit OFFSET $offset;
+            """;
+
+        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using var command = handle.Connection.CreateCommand();
+        command.Transaction = handle.Transaction;
+        command.CommandText = sql;
+        AddSearchParameters(command, request, now);
+
+        var records = new List<AccountLockoutRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            records.Add(ReadRecord(reader));
+        }
+
+        return records.AsReadOnly();
+    }
 
     /// <summary>
     /// Retrieves lockout state for a user, tenant, and provider.
@@ -32,7 +95,7 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
         AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(provider));
 
         var sql = SelectSql + """
-            
+
             WHERE user_id = $userId
               AND provider_type = $providerType
               AND provider_name = $providerName
@@ -213,6 +276,32 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
         command.AddNullableGuidParameter(TenantIdParameter, tenantId);
         command.AddParameter(ProviderTypeParameter, provider.TypeValueOrUnknown);
         command.AddParameter(ProviderNameParameter, provider.Name);
+    }
+
+    private static void AddSearchParameters(SqliteCommand command, SearchAccountLockoutsRequest request, DateTimeOffset now)
+    {
+        command.AddParameter(LimitParameter, request.Limit);
+        command.AddParameter(OffsetParameter, request.Offset);
+        if (request.LockedOut.HasValue)
+        {
+            command.AddDateTimeOffsetParameter("$now", now);
+        }
+
+        if (request.Tenant?.TenantId is { } tenantId)
+        {
+            command.AddGuidParameter(TenantIdParameter, tenantId);
+        }
+
+        if (request.UserId is { } userId)
+        {
+            command.AddGuidParameter(UserIdParameter, userId);
+        }
+
+        if (request.Provider is { } provider)
+        {
+            command.AddParameter(ProviderTypeParameter, provider.TypeValueOrUnknown);
+            command.AddParameter(ProviderNameParameter, provider.Name);
+        }
     }
 
     private static AccountLockoutRecord ReadRecord(SqliteDataReader reader)

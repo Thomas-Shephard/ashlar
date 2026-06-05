@@ -304,6 +304,11 @@ internal sealed class AccountLockoutServiceTests
 
     private sealed class FixedFailureRepository(AccountLockoutRecord record) : IAccountLockoutRepository
     {
+        public Task<IReadOnlyList<AccountLockoutRecord>> SearchAsync(SearchAccountLockoutsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<AccountLockoutRecord>>([]);
+        }
+
         public Task<AccountLockoutRecord?> GetAsync(Guid userId, Guid? tenantId, AuthenticationProviderKey provider, CancellationToken cancellationToken = default)
         {
             return Task.FromResult<AccountLockoutRecord?>(null);
@@ -330,6 +335,14 @@ internal sealed class AccountLockoutServiceTests
             lock (_lock)
             {
                 _records[(record.UserId, record.TenantId, record.Provider)] = record;
+            }
+        }
+
+        public Task<IReadOnlyList<AccountLockoutRecord>> SearchAsync(SearchAccountLockoutsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+        {
+            lock (_lock)
+            {
+                return Task.FromResult<IReadOnlyList<AccountLockoutRecord>>(_records.Values.ToList().AsReadOnly());
             }
         }
 

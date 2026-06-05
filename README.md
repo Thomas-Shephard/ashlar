@@ -951,6 +951,31 @@ await serviceProvider.InitializeAshlarSqliteSchemaAsync();
 
 Lockout state stores only operational metadata: user id, tenant id, provider key, failed attempt count, first and last failure timestamps, temporary lock expiry, and repository concurrency data. It must not store passwords, attempted passwords, raw IP addresses, user agents, tokens, assertions, or credential values. A new automatic lockout activation emits a safe tenant-aware security event.
 
+Administrative and operations tooling can use `IAccountLockoutAdministrationService` for safe lockout visibility and reset by user id, tenant scope, and provider. Host applications must protect this service with admin authorization and step-up policy. Search requests require an explicit tenant scope, use `TenantContext.Global` for global users, or set `IncludeAllTenants = true` for an intentional cross-tenant operations view.
+
+```csharp
+var tenant = new TenantContext(tenantId);
+var search = await lockoutAdministration.SearchLockoutsAsync(new SearchAccountLockoutsRequest
+{
+    Tenant = tenant,
+    Provider = AuthenticationProviderKey.Local,
+    LockedOut = true,
+    Limit = 50
+});
+
+var status = await lockoutAdministration.GetLockoutStatusAsync(
+    userId,
+    AuthenticationProviderKey.Local,
+    new AccountLockoutAdministrationRequest(tenant));
+
+await lockoutAdministration.ResetLockoutAsync(
+    userId,
+    AuthenticationProviderKey.Local,
+    new AccountLockoutAdministrationRequest(tenant));
+```
+
+The administrator models expose only user id, tenant id, provider, failed-attempt count, first and last failure timestamps, locked-until, and current locked-out projection. They do not expose repository versions, credential material, token material, secrets, hashes, or raw provider payloads.
+
 ## Authorization Grants
 Ashlar includes framework-neutral authorization primitives for durable grants. Grants are generic: they can assign one normalized role or one normalized permission to a user, optionally within a tenant and explicit scope. Ashlar evaluates these grants, but it does not replace ASP.NET Core Authorization policies or requirements.
 

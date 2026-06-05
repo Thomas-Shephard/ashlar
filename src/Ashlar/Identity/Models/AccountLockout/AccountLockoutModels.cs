@@ -130,3 +130,112 @@ public sealed record AccountLockoutFailureResult(
 public sealed record AccountLockoutContext(
     AuditContext? Audit = null,
     TenantContext? Tenant = null);
+
+/// <summary>
+/// Request for administrator account lockout search.
+/// </summary>
+public sealed record SearchAccountLockoutsRequest
+{
+    /// <summary>Tenant scope to search. Use <see cref="TenantContext.Global" /> for global users.</summary>
+    public TenantContext? Tenant { get; init; }
+
+    /// <summary>Whether to search across all tenant scopes. Cannot be combined with <see cref="Tenant" />.</summary>
+    public bool IncludeAllTenants { get; init; }
+
+    /// <summary>Optional user filter.</summary>
+    public Guid? UserId { get; init; }
+
+    /// <summary>Optional authentication provider filter.</summary>
+    public AuthenticationProviderKey? Provider { get; init; }
+
+    /// <summary>Optional active lockout filter evaluated with the service clock.</summary>
+    public bool? LockedOut { get; init; }
+
+    /// <summary>Maximum number of lockout records to return.</summary>
+    public int Limit { get; init; } = 50;
+
+    /// <summary>Number of lockout records to skip.</summary>
+    public int Offset { get; init; }
+
+    /// <summary>
+    /// Throws when the account lockout search request is not safe to execute.
+    /// </summary>
+    /// <param name="request">The search request to validate.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="request" /> is <see langword="null" />.</exception>
+    /// <exception cref="ArgumentException">Thrown when the tenant scope, user id, or provider filter is invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when paging values are invalid.</exception>
+    public static void ThrowIfInvalid(SearchAccountLockoutsRequest? request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.Limit < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), request.Limit, "Limit must be greater than zero.");
+        }
+
+        if (request.Offset < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), request.Offset, "Offset cannot be negative.");
+        }
+
+        if (request is { Tenant: null, IncludeAllTenants: false })
+        {
+            throw new ArgumentException("Tenant scope must be explicit.", nameof(request));
+        }
+
+        if (request is { Tenant: not null, IncludeAllTenants: true })
+        {
+            throw new ArgumentException("Tenant scope cannot be combined with all-tenant search.", nameof(request));
+        }
+
+        if (request.UserId == Guid.Empty)
+        {
+            throw new ArgumentException("User ID cannot be empty.", nameof(request));
+        }
+
+        if (request.Provider is { } provider)
+        {
+            AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(request));
+        }
+    }
+}
+
+/// <summary>
+/// Safe administrator summary of automatic account lockout state.
+/// </summary>
+/// <param name="UserId">The user that owns the lockout state.</param>
+/// <param name="TenantId">The tenant scope for the user, or <see langword="null" /> for a global user.</param>
+/// <param name="Provider">The authentication provider key.</param>
+/// <param name="FailedAttemptCount">The number of recorded failures in the current lockout window.</param>
+/// <param name="FirstFailedAt">The first failure timestamp in the current lockout window.</param>
+/// <param name="LastFailedAt">The most recent failure timestamp in the current lockout window.</param>
+/// <param name="LockedUntil">The automatic lockout expiry timestamp, when locked.</param>
+/// <param name="IsLockedOut">Whether automatic lockout is active at the time of evaluation.</param>
+public sealed record AccountLockoutAdministrationSummary(
+    Guid UserId,
+    Guid? TenantId,
+    AuthenticationProviderKey Provider,
+    int FailedAttemptCount,
+    DateTimeOffset FirstFailedAt,
+    DateTimeOffset LastFailedAt,
+    DateTimeOffset? LockedUntil,
+    bool IsLockedOut);
+
+/// <summary>
+/// Paged account lockout search result.
+/// </summary>
+/// <param name="Items">The lockout items.</param>
+/// <param name="Limit">The effective page size.</param>
+/// <param name="Offset">The number of skipped records.</param>
+/// <param name="HasMore">Whether another page may exist.</param>
+public sealed record AccountLockoutSearchResult(
+    IReadOnlyList<AccountLockoutAdministrationSummary> Items,
+    int Limit,
+    int Offset,
+    bool HasMore);
+
+/// <summary>
+/// Request for administrator account lockout status or reset.
+/// </summary>
+/// <param name="Tenant">The explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
+public sealed record AccountLockoutAdministrationRequest(TenantContext Tenant);
