@@ -86,6 +86,31 @@ WHERE revoked_at IS NULL AND status = 0;
 CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_expires_at ON ashlar_credentials (expires_at) WHERE expires_at IS NOT NULL AND revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_credentials_revoked_at ON ashlar_credentials (revoked_at) WHERE revoked_at IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS ashlar_account_lockouts (
+    user_id UUID NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
+    tenant_id UUID,
+    provider_type TEXT NOT NULL,
+    provider_name TEXT NOT NULL,
+    failed_attempt_count INTEGER NOT NULL,
+    first_failed_at TIMESTAMPTZ NOT NULL,
+    last_failed_at TIMESTAMPTZ NOT NULL,
+    locked_until TIMESTAMPTZ,
+    version TEXT NOT NULL,
+    CONSTRAINT ak_ashlar_account_lockouts_identity UNIQUE NULLS NOT DISTINCT (user_id, tenant_id, provider_type, provider_name),
+    CONSTRAINT ck_ashlar_account_lockouts_count_positive CHECK (failed_attempt_count > 0),
+    CONSTRAINT ck_ashlar_account_lockouts_failure_order CHECK (last_failed_at >= first_failed_at),
+    CONSTRAINT ck_ashlar_account_lockouts_lock_after_failure CHECK (locked_until IS NULL OR locked_until > last_failed_at),
+    CONSTRAINT ck_ashlar_account_lockouts_provider_not_blank CHECK (length(btrim(provider_type)) > 0 AND length(btrim(provider_name)) > 0)
+);
+
+CREATE INDEX IF NOT EXISTS ix_ashlar_account_lockouts_user_id ON ashlar_account_lockouts (user_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_account_lockouts_tenant_id ON ashlar_account_lockouts (tenant_id) WHERE tenant_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_account_lockouts_locked_until ON ashlar_account_lockouts (locked_until) WHERE locked_until IS NOT NULL;
+
+CREATE OR REPLACE TRIGGER trg_ashlar_account_lockouts_user_tenant_match
+BEFORE INSERT OR UPDATE OF user_id, tenant_id ON ashlar_account_lockouts
+FOR EACH ROW EXECUTE FUNCTION ashlar_enforce_user_tenant_match();
+
 CREATE TABLE IF NOT EXISTS ashlar_authorization_grants (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
