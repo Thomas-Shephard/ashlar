@@ -197,7 +197,7 @@ public sealed class AccountLockoutAdministrationService(
     private static AshlarFailure? ValidateReason(string? reason)
     {
         return reason?.Length > MaximumReasonLength
-            ? new AshlarFailure(AshlarFailureCodes.ValidationError, "Reason cannot exceed 512 characters.")
+            ? new AshlarFailure(AshlarFailureCodes.ValidationError, $"Reason cannot exceed {MaximumReasonLength} characters.")
             : null;
     }
 

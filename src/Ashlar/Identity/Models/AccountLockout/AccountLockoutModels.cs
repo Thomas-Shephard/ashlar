@@ -245,7 +245,7 @@ public sealed record AccountLockoutAdministrationRequest(TenantContext Tenant);
 /// </summary>
 /// <param name="Tenant">The explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
 /// <param name="Audit">Optional safe audit metadata describing who requested reset.</param>
-/// <param name="Reason">Optional safe reason recorded with the reset event.</param>
+/// <param name="Reason">Optional safe reason recorded with the reset event. Cannot exceed 512 characters.</param>
 public sealed record ResetAccountLockoutRequest(
     TenantContext Tenant,
     AuditContext? Audit = null,
