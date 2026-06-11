@@ -1393,40 +1393,6 @@ internal sealed class AccountSecurityServiceTests
         }
     }
 
-    [TestCase(nameof(IAccountSecurityService.SetUserAccountStateAsync))]
-    [TestCase(nameof(IAccountSecurityService.RevokeSessionsAsync))]
-    [TestCase(nameof(IAccountSecurityService.RevokeCredentialsAsync))]
-    [TestCase(nameof(IAccountSecurityService.ResetMfaAsync))]
-    public void MutatingOperationsShouldRejectMissingScope(string operation)
-    {
-        var request = CreateRequest() with { Tenant = null, IncludeAllTenants = false };
-
-        Assert.ThrowsAsync<ArgumentException>(() => InvokeMutationAsync(operation, request));
-    }
-
-    [TestCase(nameof(IAccountSecurityService.SetUserAccountStateAsync))]
-    [TestCase(nameof(IAccountSecurityService.RevokeSessionsAsync))]
-    [TestCase(nameof(IAccountSecurityService.RevokeCredentialsAsync))]
-    [TestCase(nameof(IAccountSecurityService.ResetMfaAsync))]
-    public void MutatingOperationsShouldRejectConflictingScope(string operation)
-    {
-        var request = CreateRequest(includeAllTenants: true) with { Tenant = TenantContext.Global };
-
-        Assert.ThrowsAsync<ArgumentException>(() => InvokeMutationAsync(operation, request));
-    }
-
-    private Task<Result<AccountSecurityOperationResult>> InvokeMutationAsync(string operation, AccountSecurityOperationRequest request)
-    {
-        return operation switch
-        {
-            nameof(IAccountSecurityService.SetUserAccountStateAsync) => _service.SetUserAccountStateAsync(_userId, new SetUserAccountStateRequest(UserAccountState.Disabled, request.Audit, request.Tenant, request.Reason, IncludeAllTenants: request.IncludeAllTenants)),
-            nameof(IAccountSecurityService.RevokeSessionsAsync) => _service.RevokeSessionsAsync(_userId, request),
-            nameof(IAccountSecurityService.RevokeCredentialsAsync) => _service.RevokeCredentialsAsync(_userId, AuthenticationProviderKey.Local, request),
-            nameof(IAccountSecurityService.ResetMfaAsync) => _service.ResetMfaAsync(_userId, request),
-            _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, "Unknown account-security operation.")
-        };
-    }
-
     private static AccountSecurityOperationRequest CreateRequest(string? reason = null, Guid? tenantId = null, bool includeAllTenants = false)
     {
         var tenant = includeAllTenants

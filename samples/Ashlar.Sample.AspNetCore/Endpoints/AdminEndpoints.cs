@@ -208,7 +208,7 @@ internal static partial class AdminEndpoints
     private static AccountSecurityOperationRequest ToAdminRequest(AdminUserSecurityRequest? request, HttpContext httpContext)
     {
         var tenant = ToTenantContext(httpContext);
-        return new AccountSecurityOperationRequest(httpContext.ToAuditContext(), tenant, request?.Reason, IncludeAllTenants: tenant == null);
+        return new AccountSecurityOperationRequest(httpContext.ToAuditContext(), tenant, request?.Reason);
     }
 
     private static SetUserAccountStateRequest ToSetAccountStateRequest(AdminSetUserAccountStateRequest request, HttpContext httpContext)
@@ -220,14 +220,13 @@ internal static partial class AdminEndpoints
             httpContext.ToAuditContext(),
             tenant,
             request.Reason,
-            request.RevokeSessionsAndRememberedMfaDevices ?? true,
-            IncludeAllTenants: tenant == null);
+            request.RevokeSessionsAndRememberedMfaDevices ?? true);
     }
 
-    private static TenantContext? ToTenantContext(HttpContext httpContext)
+    private static TenantContext ToTenantContext(HttpContext httpContext)
     {
         var tenantId = httpContext.GetAshlarTenantId();
-        return tenantId.HasValue ? new TenantContext(tenantId.Value) : null;
+        return tenantId.HasValue ? new TenantContext(tenantId.Value) : TenantContext.Global;
     }
 
     private static IResult ToAdminSecurityResult(Result<AccountSecurityOperationResult> result)

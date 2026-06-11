@@ -28,16 +28,16 @@ public record AccountSecurityOperationRequest
     }
 
     /// <summary>Gets audit metadata recorded with the account-security operation.</summary>
-    public AuditContext Audit { get; init; }
+    public AuditContext Audit { get; }
 
     /// <summary>Gets the tenant scope for the target user, or <see langword="null" /> when <see cref="IncludeAllTenants" /> is enabled.</summary>
-    public TenantContext? Tenant { get; init; }
+    public TenantContext? Tenant { get; }
 
     /// <summary>Gets the optional safe reason recorded with revocation and security events.</summary>
-    public string? Reason { get; init; }
+    public string? Reason { get; }
 
     /// <summary>Gets whether the operation runs without tenant filtering.</summary>
-    public bool IncludeAllTenants { get; init; }
+    public bool IncludeAllTenants { get; }
 
     /// <summary>
     /// Throws when the request does not identify exactly one mutation scope.
@@ -76,10 +76,10 @@ public sealed record SetUserAccountStateRequest : AccountSecurityOperationReques
     }
 
     /// <summary>Gets the requested account state.</summary>
-    public UserAccountState AccountState { get; init; }
+    public UserAccountState AccountState { get; }
 
     /// <summary>Gets whether transitions to non-active states revoke active sessions and remembered MFA devices.</summary>
-    public bool RevokeSessionsAndRememberedMfaDevices { get; init; }
+    public bool RevokeSessionsAndRememberedMfaDevices { get; }
 }
 
 /// <summary>
