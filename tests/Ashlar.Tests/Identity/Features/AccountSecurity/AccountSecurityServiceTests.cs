@@ -191,13 +191,13 @@ internal sealed class AccountSecurityServiceTests
     public async Task SetUserAccountStateAsyncShouldRespectExplicitNoRevocationBehavior()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
-        _sessionRepository.Sessions.Add(CreateSession(_userId));
+        var sessionService = new Mock<IAuthenticationSessionService>();
         var rememberedDevices = new Mock<IRememberedMfaDeviceService>();
         var request = CreateStateRequest(UserAccountState.Suspended, revokeSessionsAndRememberedMfaDevices: false);
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
-            Mock.Of<IAuthenticationSessionService>(),
+            sessionService.Object,
             new NullTransactionProvider(),
             new AllowAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices.Object));
@@ -208,11 +208,11 @@ internal sealed class AccountSecurityServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(_userRepository.Users[_userId].AccountState, Is.EqualTo(UserAccountState.Suspended));
-            Assert.That(_sessionRepository.Sessions.Single().RevokedAt, Is.Null);
             Assert.That(result.Value?.SessionsRevoked, Is.Zero);
             Assert.That(result.Value?.RememberedMfaDevicesRevoked, Is.Zero);
         }
 
+        sessionService.Verify(s => s.RevokeSessionsForUserAsync(_userId, It.IsAny<string>(), It.IsAny<TenantContext?>(), It.IsAny<AuditContext?>(), It.IsAny<CancellationToken>()), Times.Never);
         rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -393,12 +393,12 @@ internal sealed class AccountSecurityServiceTests
     public async Task SetUserAccountStateAsyncToDisabledShouldNoopForAlreadyDisabledUserWithoutRevokingSessions()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Disabled };
-        _sessionRepository.Sessions.Add(CreateSession(_userId));
+        var sessionService = new Mock<IAuthenticationSessionService>();
         var rememberedDevices = new Mock<IRememberedMfaDeviceService>();
         var service = new AccountSecurityService(
             _userRepository,
             _userRepository,
-            Mock.Of<IAuthenticationSessionService>(),
+            sessionService.Object,
             new NullTransactionProvider(),
             new AllowAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices.Object));
@@ -411,9 +411,9 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(result.Value?.UserChanged, Is.False);
             Assert.That(result.Value?.SessionsRevoked, Is.Zero);
             Assert.That(result.Value?.RememberedMfaDevicesRevoked, Is.Zero);
-            Assert.That(_sessionRepository.Sessions.Single().RevokedAt, Is.Null);
         }
 
+        sessionService.Verify(s => s.RevokeSessionsForUserAsync(_userId, It.IsAny<string>(), It.IsAny<TenantContext?>(), It.IsAny<AuditContext?>(), It.IsAny<CancellationToken>()), Times.Never);
         rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
