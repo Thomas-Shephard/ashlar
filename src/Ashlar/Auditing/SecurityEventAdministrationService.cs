@@ -6,7 +6,7 @@ namespace Ashlar.Auditing;
 /// <param name="repository">The repository value.</param>
 /// <remarks>
 /// These operations are intended for administrative diagnostics and do not authorize the caller.
-/// Host applications must protect usage of this service with appropriate admin authorization.
+/// Host applications must protect usage of this service with appropriate admin authorization and step-up policy.
 /// </remarks>
 public sealed class SecurityEventAdministrationService(ISecurityEventAdministrationRepository repository) : ISecurityEventAdministrationService
 {
@@ -18,6 +18,11 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
     public async Task<Result<SecurityEventSearchResult>> SearchSecurityEventsAsync(SearchSecurityEventsRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        if (!TryValidateSearchRequest(request, out var validationFailure))
+        {
+            return validationFailure;
+        }
 
         if (request.Offset < 0)
         {
@@ -39,16 +44,48 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
     }
 
     /// <inheritdoc />
-    public async Task<Result<SecurityEventSummary>> GetSecurityEventAsync(Guid eventId, CancellationToken cancellationToken = default)
+    public async Task<Result<SecurityEventSummary>> GetSecurityEventAsync(SecurityEventAdministrationDetailRequest request, CancellationToken cancellationToken = default)
     {
-        if (eventId == Guid.Empty)
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!TryValidateDetailRequest(request, out var validationFailure))
         {
-            return Result.Failure<SecurityEventSummary>(AshlarFailureCodes.ValidationError, "Event ID cannot be empty.");
+            return validationFailure;
         }
 
-        var securityEvent = await _repository.GetSecurityEventAsync(eventId, cancellationToken);
-        return securityEvent == null
+        var securityEvent = await _repository.GetSecurityEventAsync(request, cancellationToken);
+        return securityEvent == null || (!request.IncludeAllTenants && !AdministrationScopeValidation.IncludesTenant(request.Tenant!, securityEvent.TenantId))
             ? Result.Failure<SecurityEventSummary>(AshlarFailureCodes.SecurityEventNotFound, "Security event was not found.")
             : Result.Success(securityEvent);
+    }
+
+    private static bool TryValidateSearchRequest(SearchSecurityEventsRequest request, out Result<SecurityEventSearchResult> failure)
+    {
+        try
+        {
+            SearchSecurityEventsRequest.ThrowIfInvalid(request);
+            failure = null!;
+            return true;
+        }
+        catch (ArgumentException exception)
+        {
+            failure = Result.Failure<SecurityEventSearchResult>(AshlarFailureCodes.ValidationError, exception.Message);
+            return false;
+        }
+    }
+
+    private static bool TryValidateDetailRequest(SecurityEventAdministrationDetailRequest request, out Result<SecurityEventSummary> failure)
+    {
+        try
+        {
+            SecurityEventAdministrationDetailRequest.ThrowIfInvalid(request);
+            failure = null!;
+            return true;
+        }
+        catch (ArgumentException exception)
+        {
+            failure = Result.Failure<SecurityEventSummary>(AshlarFailureCodes.ValidationError, exception.Message);
+            return false;
+        }
     }
 }

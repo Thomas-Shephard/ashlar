@@ -5,8 +5,11 @@ namespace Ashlar.Identity.Models.Administration;
 /// </summary>
 public sealed record SearchAuthenticationSessionsRequest
 {
-    /// <summary>Optional tenant scope. <see langword="null" /> means unscoped/admin-wide search.</summary>
+    /// <summary>Tenant scope to search. Use <see cref="TenantContext.Global" /> for global users.</summary>
     public TenantContext? Tenant { get; init; }
+
+    /// <summary>Whether to search across all tenant scopes. Cannot be combined with <see cref="Tenant" />.</summary>
+    public bool IncludeAllTenants { get; init; }
 
     /// <summary>Optional user filter.</summary>
     public Guid? UserId { get; init; }
@@ -43,6 +46,16 @@ public sealed record SearchAuthenticationSessionsRequest
 
     /// <summary>Number of sessions to skip.</summary>
     public int Offset { get; init; }
+
+    /// <summary>
+    /// Throws when the authentication session administration search request is not safe to execute.
+    /// </summary>
+    /// <param name="request">The search request value.</param>
+    public static void ThrowIfInvalid(SearchAuthenticationSessionsRequest? request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+    }
 }
 
 /// <summary>
@@ -131,3 +144,29 @@ public sealed record AuthenticationSessionSearchResult(
     int Limit,
     int Offset,
     bool HasMore);
+
+/// <summary>
+/// Request for administrator authentication session detail.
+/// </summary>
+/// <param name="SessionId">The session id value.</param>
+/// <param name="Tenant">The requested scope. Use <see cref="TenantContext.Global" /> for global users.</param>
+/// <param name="IncludeAllTenants">Whether to allow lookup across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+public sealed record AuthenticationSessionAdministrationDetailRequest(
+    Guid SessionId,
+    TenantContext? Tenant = null,
+    bool IncludeAllTenants = false)
+{
+    /// <summary>
+    /// Throws when the authentication session detail request is not safe to execute.
+    /// </summary>
+    /// <param name="request">The detail request value.</param>
+    public static void ThrowIfInvalid(AuthenticationSessionAdministrationDetailRequest? request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+        if (request.SessionId == Guid.Empty)
+        {
+            throw new ArgumentException("Session ID cannot be empty.", nameof(request));
+        }
+    }
+}

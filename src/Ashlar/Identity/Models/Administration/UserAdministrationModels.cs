@@ -8,8 +8,11 @@ public sealed record SearchUsersRequest
     /// <summary>Optional case-insensitive email or name query.</summary>
     public string? Query { get; init; }
 
-    /// <summary>Optional tenant scope. <see langword="null" /> means unscoped/admin-wide search.</summary>
+    /// <summary>Tenant scope to search. Use <see cref="TenantContext.Global" /> for global users.</summary>
     public TenantContext? Tenant { get; init; }
+
+    /// <summary>Whether to search across all tenant scopes. Cannot be combined with <see cref="Tenant" />.</summary>
+    public bool IncludeAllTenants { get; init; }
 
     /// <summary>Optional account state filter.</summary>
     public UserAccountState? AccountState { get; init; }
@@ -22,6 +25,16 @@ public sealed record SearchUsersRequest
 
     /// <summary>Number of users to skip.</summary>
     public int Offset { get; init; }
+
+    /// <summary>
+    /// Throws when the user administration search request is not safe to execute.
+    /// </summary>
+    /// <param name="request">The search request value.</param>
+    public static void ThrowIfInvalid(SearchUsersRequest? request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+    }
 }
 
 /// <summary>
@@ -68,3 +81,31 @@ public sealed record UserSearchResult(
 public sealed record UserAdministrationDetail(
     UserSummary User,
     UserSecurityPosture SecurityPosture);
+
+/// <summary>
+/// Request for administrator user detail.
+/// </summary>
+/// <param name="UserId">The user id value.</param>
+/// <param name="Tenant">The requested scope. Use <see cref="TenantContext.Global" /> for global users.</param>
+/// <param name="IncludeAllTenants">Whether to allow lookup across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+/// <param name="RecentSecurityEventWindow">Optional recent security event window for the embedded security posture.</param>
+public sealed record UserAdministrationDetailRequest(
+    Guid UserId,
+    TenantContext? Tenant = null,
+    bool IncludeAllTenants = false,
+    TimeSpan? RecentSecurityEventWindow = null)
+{
+    /// <summary>
+    /// Throws when the user detail request is not safe to execute.
+    /// </summary>
+    /// <param name="request">The detail request value.</param>
+    public static void ThrowIfInvalid(UserAdministrationDetailRequest? request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+        if (request.UserId == Guid.Empty)
+        {
+            throw new ArgumentException("User ID cannot be empty.", nameof(request));
+        }
+    }
+}

@@ -13,7 +13,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         var higherTie = await RecordAsync(scope.ServiceProvider, "HigherTie", id: Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff"), occurredAt: BaseTime);
         await FlushAsync(scope.ServiceProvider);
 
-        var result = await GetSecurityEventAdministrationRepository(scope.ServiceProvider).SearchSecurityEventsAsync(new SearchSecurityEventsRequest { Limit = 10 });
+        var result = await GetSecurityEventAdministrationRepository(scope.ServiceProvider).SearchSecurityEventsAsync(new SearchSecurityEventsRequest { IncludeAllTenants = true, Limit = 10 });
 
         Assert.That(result.Select(static securityEvent => securityEvent.EventId), Is.EqualTo(new[] { higherTie.Id, lowerTie.Id, older.Id }));
     }
@@ -31,7 +31,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         var repository = GetSecurityEventAdministrationRepository(scope.ServiceProvider);
         var scoped = await repository.SearchSecurityEventsAsync(new SearchSecurityEventsRequest { Tenant = new TenantContext(tenantId), Limit = 10 });
         var global = await repository.SearchSecurityEventsAsync(new SearchSecurityEventsRequest { Tenant = TenantContext.Global, Limit = 10 });
-        var unscoped = await repository.SearchSecurityEventsAsync(new SearchSecurityEventsRequest { Limit = 10 });
+        var unscoped = await repository.SearchSecurityEventsAsync(new SearchSecurityEventsRequest { IncludeAllTenants = true, Limit = 10 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -40,6 +40,19 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
             Assert.That(unscoped.Select(static securityEvent => securityEvent.EventId), Does.Contain(tenantEvent.Id));
             Assert.That(unscoped.Select(static securityEvent => securityEvent.EventId), Does.Contain(globalEvent.Id));
             Assert.That(unscoped.Select(static securityEvent => securityEvent.EventId), Does.Contain(otherTenantEvent.Id));
+        }
+    }
+
+    [Test]
+    public async Task SecurityEventAdministrationSearchRequiresExplicitTenantScopeOrAllTenantsMode()
+    {
+        await using var scope = CreateAsyncScope();
+        var repository = GetSecurityEventAdministrationRepository(scope.ServiceProvider);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<ArgumentException>(() => repository.SearchSecurityEventsAsync(new SearchSecurityEventsRequest { Limit = 10 }));
+            Assert.ThrowsAsync<ArgumentException>(() => repository.SearchSecurityEventsAsync(new SearchSecurityEventsRequest { Tenant = TenantContext.Global, IncludeAllTenants = true, Limit = 10 }));
         }
     }
 
@@ -58,6 +71,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
 
         var result = await GetSecurityEventAdministrationRepository(scope.ServiceProvider).SearchSecurityEventsAsync(new SearchSecurityEventsRequest
         {
+            IncludeAllTenants = true,
             UserId = userId,
             ActorUserId = actorUserId,
             SessionId = sessionId,
@@ -81,6 +95,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
 
         var result = await GetSecurityEventAdministrationRepository(scope.ServiceProvider).SearchSecurityEventsAsync(new SearchSecurityEventsRequest
         {
+            IncludeAllTenants = true,
             EventTypes = new HashSet<string>(StringComparer.Ordinal) { "PasswordSignIn", "Unused" },
             Outcome = SecurityEventOutcomes.Failure,
             FailureReason = "bad_password",
@@ -100,6 +115,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
 
         var result = await GetSecurityEventAdministrationRepository(scope.ServiceProvider).SearchSecurityEventsAsync(new SearchSecurityEventsRequest
         {
+            IncludeAllTenants = true,
             EventTypes = new HashSet<string>(StringComparer.Ordinal) { " ", string.Empty },
             Limit = 10
         });
@@ -120,6 +136,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
 
         var result = await GetSecurityEventAdministrationRepository(scope.ServiceProvider).SearchSecurityEventsAsync(new SearchSecurityEventsRequest
         {
+            IncludeAllTenants = true,
             OccurredFrom = BaseTime,
             OccurredTo = BaseTime.AddMinutes(2),
             Limit = 10
@@ -137,7 +154,7 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         var third = await RecordAsync(scope.ServiceProvider, "Third", occurredAt: BaseTime.AddMinutes(1));
         await FlushAsync(scope.ServiceProvider);
 
-        var result = await GetSecurityEventAdministrationRepository(scope.ServiceProvider).SearchSecurityEventsAsync(new SearchSecurityEventsRequest { Limit = 2, Offset = 1 });
+        var result = await GetSecurityEventAdministrationRepository(scope.ServiceProvider).SearchSecurityEventsAsync(new SearchSecurityEventsRequest { IncludeAllTenants = true, Limit = 2, Offset = 1 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -154,8 +171,8 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         await FlushAsync(scope.ServiceProvider);
 
         var repository = GetSecurityEventAdministrationRepository(scope.ServiceProvider);
-        var found = await repository.GetSecurityEventAsync(stored.Id);
-        var missing = await repository.GetSecurityEventAsync(Guid.NewGuid());
+        var found = await repository.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(stored.Id, IncludeAllTenants: true));
+        var missing = await repository.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(Guid.NewGuid(), IncludeAllTenants: true));
 
         using (Assert.EnterMultipleScope())
         {
@@ -163,6 +180,47 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
             Assert.That(found?.Provider, Is.EqualTo(AuthenticationProviderKey.Local));
             Assert.That(found?.Properties, Does.ContainKey("reason").WithValue("diagnostic"));
             Assert.That(missing, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task SecurityEventAdministrationGetEventByIdAppliesExplicitTenantScopeWithoutLeakingExistence()
+    {
+        await using var scope = CreateAsyncScope();
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var stored = await RecordAsync(scope.ServiceProvider, "ScopedDetail", tenantId: tenantId);
+        var globalStored = await RecordAsync(scope.ServiceProvider, "GlobalDetail");
+        await FlushAsync(scope.ServiceProvider);
+
+        var repository = GetSecurityEventAdministrationRepository(scope.ServiceProvider);
+        var inScope = await repository.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(stored.Id, new TenantContext(tenantId)));
+        var outOfScope = await repository.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(stored.Id, new TenantContext(otherTenantId)));
+        var globalScope = await repository.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(stored.Id, TenantContext.Global));
+        var globalInScope = await repository.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(globalStored.Id, TenantContext.Global));
+        var allTenants = await repository.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(stored.Id, IncludeAllTenants: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inScope?.EventId, Is.EqualTo(stored.Id));
+            Assert.That(outOfScope, Is.Null);
+            Assert.That(globalScope, Is.Null);
+            Assert.That(globalInScope?.EventId, Is.EqualTo(globalStored.Id));
+            Assert.That(allTenants?.EventId, Is.EqualTo(stored.Id));
+        }
+    }
+
+    [Test]
+    public async Task SecurityEventAdministrationGetEventByIdRequiresExplicitTenantScopeOrAllTenantsMode()
+    {
+        await using var scope = CreateAsyncScope();
+        var repository = GetSecurityEventAdministrationRepository(scope.ServiceProvider);
+        var eventId = Guid.NewGuid();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<ArgumentException>(() => repository.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(eventId)));
+            Assert.ThrowsAsync<ArgumentException>(() => repository.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(eventId, TenantContext.Global, IncludeAllTenants: true)));
         }
     }
 
@@ -175,8 +233,8 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         await FlushAsync(scope.ServiceProvider);
 
         var repository = GetSecurityEventAdministrationRepository(scope.ServiceProvider);
-        var found = await repository.GetSecurityEventAsync(withProperties.Id);
-        var empty = await repository.GetSecurityEventAsync(withoutProperties.Id);
+        var found = await repository.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(withProperties.Id, IncludeAllTenants: true));
+        var empty = await repository.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(withoutProperties.Id, IncludeAllTenants: true));
 
         using (Assert.EnterMultipleScope())
         {

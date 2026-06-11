@@ -24,6 +24,11 @@ public sealed class AuthenticationSessionAdministrationService(
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        if (!TryValidateSearchRequest(request, out var validationFailure))
+        {
+            return validationFailure;
+        }
+
         if (request.Offset < 0)
         {
             return Result.Failure<AuthenticationSessionSearchResult>(AshlarFailureCodes.ValidationError, "Offset cannot be negative.");
@@ -45,16 +50,48 @@ public sealed class AuthenticationSessionAdministrationService(
     }
 
     /// <inheritdoc />
-    public async Task<Result<AuthenticationSessionAdministrationDetail>> GetAuthenticationSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    public async Task<Result<AuthenticationSessionAdministrationDetail>> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationDetailRequest request, CancellationToken cancellationToken = default)
     {
-        if (sessionId == Guid.Empty)
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!TryValidateDetailRequest(request, out var validationFailure))
         {
-            return Result.Failure<AuthenticationSessionAdministrationDetail>(AshlarFailureCodes.ValidationError, "Session ID cannot be empty.");
+            return validationFailure;
         }
 
-        var session = await _repository.GetAuthenticationSessionAsync(sessionId, _timeProvider.GetUtcNow(), cancellationToken);
-        return session == null
+        var session = await _repository.GetAuthenticationSessionAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
+        return session == null || (!request.IncludeAllTenants && !AdministrationScopeValidation.IncludesTenant(request.Tenant!, session.TenantId))
             ? Result.Failure<AuthenticationSessionAdministrationDetail>(AshlarFailureCodes.SessionNotFound, "Session was not found.")
             : Result.Success(session);
+    }
+
+    private static bool TryValidateSearchRequest(SearchAuthenticationSessionsRequest request, out Result<AuthenticationSessionSearchResult> failure)
+    {
+        try
+        {
+            SearchAuthenticationSessionsRequest.ThrowIfInvalid(request);
+            failure = null!;
+            return true;
+        }
+        catch (ArgumentException exception)
+        {
+            failure = Result.Failure<AuthenticationSessionSearchResult>(AshlarFailureCodes.ValidationError, exception.Message);
+            return false;
+        }
+    }
+
+    private static bool TryValidateDetailRequest(AuthenticationSessionAdministrationDetailRequest request, out Result<AuthenticationSessionAdministrationDetail> failure)
+    {
+        try
+        {
+            AuthenticationSessionAdministrationDetailRequest.ThrowIfInvalid(request);
+            failure = null!;
+            return true;
+        }
+        catch (ArgumentException exception)
+        {
+            failure = Result.Failure<AuthenticationSessionAdministrationDetail>(AshlarFailureCodes.ValidationError, exception.Message);
+            return false;
+        }
     }
 }

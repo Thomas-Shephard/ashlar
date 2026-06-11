@@ -15,7 +15,7 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
     {
         var repository = new RecordingAuthenticationSessionAdministrationRepository();
         var before = TimeProvider.System.GetUtcNow();
-        var result = await new AuthenticationSessionAdministrationService(repository).SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest());
+        var result = await new AuthenticationSessionAdministrationService(repository).SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true });
         var after = TimeProvider.System.GetUtcNow();
 
         using (Assert.EnterMultipleScope())
@@ -38,7 +38,7 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
     [TestCase(-1)]
     public async Task SearchAuthenticationSessionsAsyncRejectsInvalidLimit(int limit)
     {
-        var result = await CreateService().SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Limit = limit });
+        var result = await CreateService().SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true, Limit = limit });
 
         using (Assert.EnterMultipleScope())
         {
@@ -50,12 +50,27 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
     [Test]
     public async Task SearchAuthenticationSessionsAsyncRejectsNegativeOffset()
     {
-        var result = await CreateService().SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Offset = -1 });
+        var result = await CreateService().SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true, Offset = -1 });
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+        }
+    }
+
+    [Test]
+    public async Task SearchAuthenticationSessionsAsyncRejectsMissingAndConflictingTenantScope()
+    {
+        var service = CreateService();
+
+        var missing = await service.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Limit = 10 });
+        var conflicting = await service.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Tenant = TenantContext.Global, IncludeAllTenants = true, Limit = 10 });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missing.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(conflicting.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
         }
     }
 
@@ -68,7 +83,7 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
             repository.SearchResults.Add(CreateSummary());
         }
 
-        var result = await CreateService(repository).SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Limit = 500, Offset = 7 });
+        var result = await CreateService(repository).SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true, Limit = 500, Offset = 7 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -133,7 +148,7 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
     [Test]
     public async Task GetAuthenticationSessionAsyncRejectsEmptySessionId()
     {
-        var result = await CreateService().GetAuthenticationSessionAsync(Guid.Empty);
+        var result = await CreateService().GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(Guid.Empty, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -145,7 +160,7 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
     [Test]
     public async Task GetAuthenticationSessionAsyncMapsMissingSessionSafely()
     {
-        var result = await CreateService().GetAuthenticationSessionAsync(Guid.NewGuid());
+        var result = await CreateService().GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(Guid.NewGuid(), TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -160,14 +175,54 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
         var expected = CreateDetail();
         var repository = new RecordingAuthenticationSessionAdministrationRepository { GetResult = expected };
 
-        var result = await CreateService(repository).GetAuthenticationSessionAsync(expected.Id);
+        var request = new AuthenticationSessionAdministrationDetailRequest(expected.Id, TenantContext.Global);
+        var result = await CreateService(repository).GetAuthenticationSessionAsync(request);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value, Is.EqualTo(expected));
-            Assert.That(repository.LastGetSessionId, Is.EqualTo(expected.Id));
+            Assert.That(repository.LastGetRequest, Is.SameAs(request));
             Assert.That(repository.LastGetNow, Is.EqualTo(Now));
+        }
+    }
+
+    [Test]
+    public async Task GetAuthenticationSessionAsyncMapsOutOfScopeSessionSafely()
+    {
+        var tenantId = Guid.NewGuid();
+        var expected = CreateDetail() with { TenantId = tenantId };
+        var repository = new RecordingAuthenticationSessionAdministrationRepository { GetResult = expected };
+
+        var result = await CreateService(repository).GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(expected.Id, TenantContext.Global));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFound));
+    }
+
+    [Test]
+    public async Task GetAuthenticationSessionAsyncAllowsExplicitAllTenantDetail()
+    {
+        var expected = CreateDetail() with { TenantId = Guid.NewGuid() };
+        var repository = new RecordingAuthenticationSessionAdministrationRepository { GetResult = expected };
+
+        var result = await CreateService(repository).GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(expected.Id, IncludeAllTenants: true));
+
+        Assert.That(result.Value, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task GetAuthenticationSessionAsyncRejectsMissingAndConflictingTenantScope()
+    {
+        var service = CreateService();
+        var sessionId = Guid.NewGuid();
+
+        var missing = await service.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(sessionId));
+        var conflicting = await service.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(sessionId, TenantContext.Global, IncludeAllTenants: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missing.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(conflicting.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
         }
     }
 
@@ -234,7 +289,7 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
         public List<AuthenticationSessionAdministrationSummary> SearchResults { get; } = [];
         public SearchAuthenticationSessionsRequest? LastSearchRequest { get; private set; }
         public DateTimeOffset? LastSearchNow { get; private set; }
-        public Guid? LastGetSessionId { get; private set; }
+        public AuthenticationSessionAdministrationDetailRequest? LastGetRequest { get; private set; }
         public DateTimeOffset? LastGetNow { get; private set; }
         public AuthenticationSessionAdministrationDetail? GetResult { get; init; }
 
@@ -245,9 +300,9 @@ internal sealed class AuthenticationSessionAdministrationServiceTests
             return Task.FromResult<IReadOnlyList<AuthenticationSessionAdministrationSummary>>(SearchResults.AsReadOnly());
         }
 
-        public Task<AuthenticationSessionAdministrationDetail?> GetAuthenticationSessionAsync(Guid sessionId, DateTimeOffset now, CancellationToken cancellationToken = default)
+        public Task<AuthenticationSessionAdministrationDetail?> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
-            LastGetSessionId = sessionId;
+            LastGetRequest = request;
             LastGetNow = now;
             return Task.FromResult(GetResult);
         }

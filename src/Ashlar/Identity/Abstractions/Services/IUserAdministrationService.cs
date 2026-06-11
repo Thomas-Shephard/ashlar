@@ -3,6 +3,10 @@ namespace Ashlar.Identity.Abstractions.Services;
 /// <summary>
 /// Provides read-only administrator user search and detail operations.
 /// </summary>
+/// <remarks>
+/// These operations are intended for administrative and operations tooling and do not authorize the caller.
+/// Host applications must protect usage of this service with appropriate admin authorization and step-up policy.
+/// </remarks>
 public interface IUserAdministrationService
 {
     /// <summary>
@@ -16,9 +20,8 @@ public interface IUserAdministrationService
     /// <summary>
     /// Gets safe user detail with the existing security posture summary.
     /// </summary>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="postureRequest">The posture request value.</param>
+    /// <param name="request">The detail request value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    Task<Result<UserAdministrationDetail>> GetUserDetailAsync(Guid userId, UserSecurityPostureRequest? postureRequest = null, CancellationToken cancellationToken = default);
+    Task<Result<UserAdministrationDetail>> GetUserDetailAsync(UserAdministrationDetailRequest request, CancellationToken cancellationToken = default);
 }

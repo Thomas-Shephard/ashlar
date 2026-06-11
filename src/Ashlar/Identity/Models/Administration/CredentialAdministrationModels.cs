@@ -5,8 +5,11 @@ namespace Ashlar.Identity.Models.Administration;
 /// </summary>
 public sealed record SearchCredentialsRequest
 {
-    /// <summary>Optional tenant scope. <see langword="null" /> means unscoped/admin-wide search.</summary>
+    /// <summary>Tenant scope to search. Use <see cref="TenantContext.Global" /> for global users.</summary>
     public TenantContext? Tenant { get; init; }
+
+    /// <summary>Whether to search across all tenant scopes. Cannot be combined with <see cref="Tenant" />.</summary>
+    public bool IncludeAllTenants { get; init; }
 
     /// <summary>Optional user filter.</summary>
     public Guid? UserId { get; init; }
@@ -55,6 +58,16 @@ public sealed record SearchCredentialsRequest
 
     /// <summary>Number of credentials to skip.</summary>
     public int Offset { get; init; }
+
+    /// <summary>
+    /// Throws when the credential administration search request is not safe to execute.
+    /// </summary>
+    /// <param name="request">The search request value.</param>
+    public static void ThrowIfInvalid(SearchCredentialsRequest? request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+    }
 }
 
 /// <summary>
@@ -127,3 +140,29 @@ public sealed record CredentialSearchResult(
     int Limit,
     int Offset,
     bool HasMore);
+
+/// <summary>
+/// Request for administrator credential detail.
+/// </summary>
+/// <param name="CredentialId">The credential id value.</param>
+/// <param name="Tenant">The requested scope. Use <see cref="TenantContext.Global" /> for global users.</param>
+/// <param name="IncludeAllTenants">Whether to allow lookup across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+public sealed record CredentialAdministrationDetailRequest(
+    Guid CredentialId,
+    TenantContext? Tenant = null,
+    bool IncludeAllTenants = false)
+{
+    /// <summary>
+    /// Throws when the credential detail request is not safe to execute.
+    /// </summary>
+    /// <param name="request">The detail request value.</param>
+    public static void ThrowIfInvalid(CredentialAdministrationDetailRequest? request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+        if (request.CredentialId == Guid.Empty)
+        {
+            throw new ArgumentException("Credential ID cannot be empty.", nameof(request));
+        }
+    }
+}

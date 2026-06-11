@@ -26,7 +26,7 @@ internal sealed class UserAdministrationServiceTests
     {
         var service = CreateService();
 
-        var result = await service.SearchUsersAsync(new SearchUsersRequest { Limit = limit });
+        var result = await service.SearchUsersAsync(new SearchUsersRequest { IncludeAllTenants = true, Limit = limit });
 
         using (Assert.EnterMultipleScope())
         {
@@ -40,7 +40,7 @@ internal sealed class UserAdministrationServiceTests
     {
         var service = CreateService();
 
-        var result = await service.SearchUsersAsync(new SearchUsersRequest { Limit = 10, Offset = -1 });
+        var result = await service.SearchUsersAsync(new SearchUsersRequest { IncludeAllTenants = true, Limit = 10, Offset = -1 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -60,7 +60,7 @@ internal sealed class UserAdministrationServiceTests
 
         var service = CreateService(repository);
 
-        var result = await service.SearchUsersAsync(new SearchUsersRequest { Limit = 500, Offset = 2, Query = "user" });
+        var result = await service.SearchUsersAsync(new SearchUsersRequest { IncludeAllTenants = true, Limit = 500, Offset = 2, Query = "user" });
 
         using (Assert.EnterMultipleScope())
         {
@@ -112,10 +112,11 @@ internal sealed class UserAdministrationServiceTests
         var repository = new RecordingUserAdministrationRepository { UserSummary = CreateSummary("detail@example.com") with { UserId = userId } };
         var posture = CreatePosture(userId);
         var accountSecurity = new RecordingAccountSecurityService { PostureResult = Result.Success(posture) };
-        var request = new UserSecurityPostureRequest(TenantContext.Global);
+        var eventWindow = TimeSpan.FromDays(7);
+        var detailRequest = new UserAdministrationDetailRequest(userId, TenantContext.Global, RecentSecurityEventWindow: eventWindow);
         var service = CreateService(repository, accountSecurity);
 
-        var result = await service.GetUserDetailAsync(userId, request);
+        var result = await service.GetUserDetailAsync(detailRequest);
 
         using (Assert.EnterMultipleScope())
         {
@@ -123,7 +124,43 @@ internal sealed class UserAdministrationServiceTests
             Assert.That(result.Value?.User.UserId, Is.EqualTo(userId));
             Assert.That(result.Value?.SecurityPosture, Is.SameAs(posture));
             Assert.That(accountSecurity.LastPostureUserId, Is.EqualTo(userId));
-            Assert.That(accountSecurity.LastPostureRequest, Is.SameAs(request));
+            Assert.That(repository.LastGetRequest, Is.SameAs(detailRequest));
+            Assert.That(accountSecurity.LastPostureRequest?.Tenant, Is.EqualTo(TenantContext.Global));
+            Assert.That(accountSecurity.LastPostureRequest?.RecentSecurityEventWindow, Is.EqualTo(eventWindow));
+        }
+    }
+
+    [Test]
+    public async Task GetUserDetailAsyncReturnsTenantScopedUserDetailWithPosture()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var repository = new RecordingUserAdministrationRepository { UserSummary = CreateSummary("tenant-detail@example.com", tenantId) with { UserId = userId } };
+        var posture = CreatePosture(userId);
+        var accountSecurity = new RecordingAccountSecurityService { PostureResult = Result.Success(posture) };
+        var service = CreateService(repository, accountSecurity);
+
+        var result = await service.GetUserDetailAsync(new UserAdministrationDetailRequest(userId, new TenantContext(tenantId)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.SecurityPosture, Is.SameAs(posture));
+            Assert.That(accountSecurity.LastPostureRequest?.Tenant, Is.EqualTo(new TenantContext(tenantId)));
+        }
+    }
+
+    [Test]
+    public async Task SearchUsersAsyncRejectsMissingAndConflictingTenantScope()
+    {
+        var service = CreateService();
+
+        var missing = await service.SearchUsersAsync(new SearchUsersRequest { Limit = 10 });
+        var conflicting = await service.SearchUsersAsync(new SearchUsersRequest { Tenant = TenantContext.Global, IncludeAllTenants = true, Limit = 10 });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missing.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(conflicting.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
         }
     }
 
@@ -133,7 +170,7 @@ internal sealed class UserAdministrationServiceTests
         var accountSecurity = new RecordingAccountSecurityService();
         var service = CreateService(new RecordingUserAdministrationRepository(), accountSecurity);
 
-        var result = await service.GetUserDetailAsync(Guid.NewGuid());
+        var result = await service.GetUserDetailAsync(new UserAdministrationDetailRequest(Guid.NewGuid(), TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -154,7 +191,7 @@ internal sealed class UserAdministrationServiceTests
         };
         var service = CreateService(repository, accountSecurity);
 
-        var result = await service.GetUserDetailAsync(userId);
+        var result = await service.GetUserDetailAsync(new UserAdministrationDetailRequest(userId, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -174,7 +211,7 @@ internal sealed class UserAdministrationServiceTests
         };
         var service = CreateService(repository, accountSecurity);
 
-        var result = await service.GetUserDetailAsync(userId);
+        var result = await service.GetUserDetailAsync(new UserAdministrationDetailRequest(userId, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -188,12 +225,83 @@ internal sealed class UserAdministrationServiceTests
     {
         var service = CreateService();
 
-        var result = await service.GetUserDetailAsync(Guid.Empty);
+        var result = await service.GetUserDetailAsync(new UserAdministrationDetailRequest(Guid.Empty, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+        }
+    }
+
+    [Test]
+    public async Task GetUserDetailAsyncReturnsNotFoundWhenRepositoryReturnsOutOfScopeUser()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var repository = new RecordingUserAdministrationRepository { UserSummary = CreateSummary("out-of-scope@example.com", tenantId) with { UserId = userId } };
+        var accountSecurity = new RecordingAccountSecurityService { PostureResult = Result.Success(CreatePosture(userId)) };
+        var service = CreateService(repository, accountSecurity);
+
+        var result = await service.GetUserDetailAsync(new UserAdministrationDetailRequest(userId, TenantContext.Global));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(accountSecurity.PostureCalls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task GetUserDetailAsyncReturnsNotFoundWhenTenantScopeRequestsGlobalUser()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var repository = new RecordingUserAdministrationRepository { UserSummary = CreateSummary("global-user@example.com") with { UserId = userId } };
+        var accountSecurity = new RecordingAccountSecurityService { PostureResult = Result.Success(CreatePosture(userId)) };
+        var service = CreateService(repository, accountSecurity);
+
+        var result = await service.GetUserDetailAsync(new UserAdministrationDetailRequest(userId, new TenantContext(tenantId)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(accountSecurity.PostureCalls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task GetUserDetailAsyncAllowsExplicitAllTenantDetail()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var repository = new RecordingUserAdministrationRepository { UserSummary = CreateSummary("all-tenant@example.com", tenantId) with { UserId = userId } };
+        var posture = CreatePosture(userId);
+        var accountSecurity = new RecordingAccountSecurityService { PostureResult = Result.Success(posture) };
+        var service = CreateService(repository, accountSecurity);
+
+        var result = await service.GetUserDetailAsync(new UserAdministrationDetailRequest(userId, IncludeAllTenants: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.SecurityPosture, Is.SameAs(posture));
+            Assert.That(accountSecurity.LastPostureRequest?.Tenant, Is.EqualTo(new TenantContext(tenantId)));
+        }
+    }
+
+    [Test]
+    public async Task GetUserDetailAsyncRejectsMissingAndConflictingTenantScope()
+    {
+        var service = CreateService();
+        var userId = Guid.NewGuid();
+
+        var missing = await service.GetUserDetailAsync(new UserAdministrationDetailRequest(userId));
+        var conflicting = await service.GetUserDetailAsync(new UserAdministrationDetailRequest(userId, TenantContext.Global, IncludeAllTenants: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missing.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(conflicting.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
         }
     }
 
@@ -230,6 +338,7 @@ internal sealed class UserAdministrationServiceTests
     {
         public List<UserSummary> SearchResults { get; } = [];
         public SearchUsersRequest? LastSearchRequest { get; private set; }
+        public UserAdministrationDetailRequest? LastGetRequest { get; private set; }
         public UserSummary? UserSummary { get; init; }
 
         public Task<IReadOnlyList<UserSummary>> SearchUsersAsync(SearchUsersRequest request, CancellationToken cancellationToken = default)
@@ -238,8 +347,9 @@ internal sealed class UserAdministrationServiceTests
             return Task.FromResult<IReadOnlyList<UserSummary>>(SearchResults.AsReadOnly());
         }
 
-        public Task<UserSummary?> GetUserSummaryAsync(Guid userId, CancellationToken cancellationToken = default)
+        public Task<UserSummary?> GetUserSummaryAsync(UserAdministrationDetailRequest request, CancellationToken cancellationToken = default)
         {
+            LastGetRequest = request;
             return Task.FromResult(UserSummary);
         }
     }

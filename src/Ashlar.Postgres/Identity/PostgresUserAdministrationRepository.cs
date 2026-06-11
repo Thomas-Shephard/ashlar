@@ -18,7 +18,7 @@ public sealed class PostgresUserAdministrationRepository(IPostgresConnectionProv
     /// <returns>The operation result.</returns>
     public async Task<IReadOnlyList<UserSummary>> SearchUsersAsync(SearchUsersRequest request, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
+        SearchUsersRequest.ThrowIfInvalid(request);
 
         var sql = """
             SELECT id AS UserId, email, name, tenant_id AS TenantId, account_state AS AccountState,
@@ -60,19 +60,24 @@ public sealed class PostgresUserAdministrationRepository(IPostgresConnectionProv
     /// <summary>
     /// Gets a user summary by id.
     /// </summary>
-    /// <param name="userId">The user id value.</param>
+    /// <param name="request">The detail request value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public async Task<UserSummary?> GetUserSummaryAsync(Guid userId, CancellationToken cancellationToken = default)
+    public async Task<UserSummary?> GetUserSummaryAsync(UserAdministrationDetailRequest request, CancellationToken cancellationToken = default)
     {
-        const string sql = """
+        UserAdministrationDetailRequest.ThrowIfInvalid(request);
+
+        var sql = """
             SELECT id AS UserId, email, name, tenant_id AS TenantId, account_state AS AccountState,
                    (email_verified_at IS NOT NULL) AS IsEmailVerified, created_at AS CreatedAt, updated_at AS UpdatedAt
             FROM ashlar_users
             WHERE id = @UserId
             """;
+        var parameters = new DynamicParameters();
+        parameters.Add("UserId", request.UserId);
+        PostgresAdminQuery.AddTenantFilter(request.Tenant, "tenant_id", "TenantId", ref sql, parameters);
 
-        var row = await PostgresAdminQuery.QuerySingleAsync<UserAdministrationUserRow>(_connectionProvider, sql, new { UserId = userId }, cancellationToken);
+        var row = await PostgresAdminQuery.QuerySingleAsync<UserAdministrationUserRow>(_connectionProvider, sql, parameters, cancellationToken);
         return row == null ? null : ToUserSummary(row);
     }
 

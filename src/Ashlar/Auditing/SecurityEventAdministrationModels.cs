@@ -5,8 +5,11 @@ namespace Ashlar.Auditing;
 /// </summary>
 public sealed record SearchSecurityEventsRequest
 {
-    /// <summary>Optional tenant scope. <see langword="null" /> means unscoped/admin-wide search.</summary>
+    /// <summary>Tenant scope to search. Use <see cref="TenantContext.Global" /> for global events.</summary>
     public TenantContext? Tenant { get; init; }
+
+    /// <summary>Whether to search across all tenant scopes. Cannot be combined with <see cref="Tenant" />.</summary>
+    public bool IncludeAllTenants { get; init; }
 
     /// <summary>Optional user filter.</summary>
     public Guid? UserId { get; init; }
@@ -40,6 +43,16 @@ public sealed record SearchSecurityEventsRequest
 
     /// <summary>Number of events to skip.</summary>
     public int Offset { get; init; }
+
+    /// <summary>
+    /// Throws when the security event administration search request is not safe to execute.
+    /// </summary>
+    /// <param name="request">The search request value.</param>
+    public static void ThrowIfInvalid(SearchSecurityEventsRequest? request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+    }
 }
 
 /// <summary>
@@ -87,3 +100,29 @@ public sealed record SecurityEventSearchResult(
     int Limit,
     int Offset,
     bool HasMore);
+
+/// <summary>
+/// Request for administrator security event detail.
+/// </summary>
+/// <param name="EventId">The event id value.</param>
+/// <param name="Tenant">The requested scope. Use <see cref="TenantContext.Global" /> for global events.</param>
+/// <param name="IncludeAllTenants">Whether to allow lookup across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+public sealed record SecurityEventAdministrationDetailRequest(
+    Guid EventId,
+    TenantContext? Tenant = null,
+    bool IncludeAllTenants = false)
+{
+    /// <summary>
+    /// Throws when the security event detail request is not safe to execute.
+    /// </summary>
+    /// <param name="request">The detail request value.</param>
+    public static void ThrowIfInvalid(SecurityEventAdministrationDetailRequest? request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+        if (request.EventId == Guid.Empty)
+        {
+            throw new ArgumentException("Event ID cannot be empty.", nameof(request));
+        }
+    }
+}

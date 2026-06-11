@@ -847,6 +847,24 @@ await signInManager.RevokeOtherSessionsForCurrentUserAsync(httpContext);
 
 Session listing is ordered by `CreatedAt` descending (newest first). Sensitive fields like IP address and user agent are only populated if they were enabled during session creation. Token hashes are never exposed through these APIs. In the PostgreSQL store, last-seen writes are ignored once a session is revoked or expired, so a concurrent sign-out or expiry cannot be undone by validation telemetry.
 
+#### Admin User Browsing
+Use `IUserAdministrationService` for read-only admin and operations tooling that needs to browse users without querying provider tables directly:
+
+```csharp
+var users = await userAdministration.SearchUsersAsync(
+    new SearchUsersRequest
+    {
+        Tenant = new TenantContext(tenantId), // or TenantContext.Global, or IncludeAllTenants = true
+        Query = "alex@example.com",
+        Limit = 50
+    });
+
+var detail = await userAdministration.GetUserDetailAsync(
+    new UserAdministrationDetailRequest(userId, new TenantContext(tenantId)));
+```
+
+Search and detail requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. User admin detail includes the safe user summary and account security posture only; credential secrets and provider raw identifiers are never returned.
+
 #### Admin Session Browsing
 Use `IAuthenticationSessionAdministrationService` for read-only admin and operations tooling that needs to browse sessions across users and tenants without querying provider tables directly:
 
@@ -854,6 +872,7 @@ Use `IAuthenticationSessionAdministrationService` for read-only admin and operat
 var result = await sessionAdministration.SearchAuthenticationSessionsAsync(
     new SearchAuthenticationSessionsRequest
     {
+        Tenant = new TenantContext(tenantId), // or TenantContext.Global, or IncludeAllTenants = true
         UserId = userId,
         Active = true,
         Limit = 50
@@ -866,9 +885,12 @@ if (result.Succeeded)
         // session includes Id, UserId, TenantId, provider, timestamps, IpAddress, UserAgent, and IsActive.
     }
 }
+
+var detail = await sessionAdministration.GetAuthenticationSessionAsync(
+    new AuthenticationSessionAdministrationDetailRequest(sessionId, new TenantContext(tenantId)));
 ```
 
-These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. Raw session tokens and token hashes are never returned, and session metadata is not included in the admin read model.
+Search and detail requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. Raw session tokens and token hashes are never returned, and session metadata is not included in the admin read model.
 
 #### Admin Credential Inventory
 Use `ICredentialAdministrationService` for read-only admin and operations tooling that needs to browse credential inventory across users or tenants without querying provider tables directly:
@@ -877,6 +899,7 @@ Use `ICredentialAdministrationService` for read-only admin and operations toolin
 var result = await credentialAdministration.SearchCredentialsAsync(
     new SearchCredentialsRequest
     {
+        Tenant = new TenantContext(tenantId), // or TenantContext.Global, or IncludeAllTenants = true
         UserId = userId,
         Provider = AuthenticationProviderKey.Passkey,
         Available = true,
@@ -892,7 +915,7 @@ if (result.Succeeded)
 }
 ```
 
-Call `GetCredentialAsync(credentialId)` for the same safe fields for a single credential. These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. Raw credential values, provider keys, metadata, password hashes, token hashes, passkey payloads, recovery codes, OAuth/OIDC subject identifiers, provider-specific raw identifiers, and other secrets are never returned.
+Call `GetCredentialAsync(new CredentialAdministrationDetailRequest(credentialId, new TenantContext(tenantId)))` for the same safe fields for a single credential. Detail requests also require `TenantContext.Global` or `IncludeAllTenants = true` when appropriate. These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. Raw credential values, provider keys, metadata, password hashes, token hashes, passkey payloads, recovery codes, OAuth/OIDC subject identifiers, provider-specific raw identifiers, and other secrets are never returned.
 
 ### Admin Account Recovery
 Ashlar exposes framework-neutral administrator primitives through `IAccountSecurityService`. The service is intentionally small and composes existing identity, credential, MFA, recovery-code, session, and audit infrastructure.
@@ -1270,17 +1293,20 @@ Ashlar also exposes provider-neutral read APIs for admin and operations tooling:
 ```csharp
 var result = await securityEventAdministration.SearchSecurityEventsAsync(new SearchSecurityEventsRequest
 {
-    Tenant = null, // unscoped/admin-wide; use TenantContext.Global for only global events
+    Tenant = new TenantContext(tenantId), // or TenantContext.Global, or IncludeAllTenants = true
     UserId = userId,
     EventTypes = new HashSet<string> { AshlarSecurityEventTypes.SessionCreated },
     OccurredFrom = DateTimeOffset.UtcNow.AddDays(-7),
     Limit = 50
 });
+
+var detail = await securityEventAdministration.GetSecurityEventAsync(
+    new SecurityEventAdministrationDetailRequest(eventId, new TenantContext(tenantId)));
 ```
 
 Use `ISecurityEventAdministrationService` from application code and implement or register `ISecurityEventAdministrationRepository` for the backing store. `Ashlar.Postgres` and `Ashlar.Sqlite` provide repository implementations that query `ashlar_security_events` without exposing provider-specific row ids or JSON storage details.
 
-These APIs do not authorize callers by themselves. Host applications must protect any endpoint or job that uses them with admin authorization and an appropriate step-up policy. Event properties are intended only for operational diagnostics and must never contain secrets.
+Search and detail requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. These APIs do not authorize callers by themselves. Host applications must protect any endpoint or job that uses them with admin authorization and an appropriate step-up policy. Event properties are intended only for operational diagnostics and must never contain secrets.
 
 ## Security Notifications
 Ashlar includes generic opt-in security notifications to notify users about important account and security events, such as new sign-ins, session revocations, and MFA changes.

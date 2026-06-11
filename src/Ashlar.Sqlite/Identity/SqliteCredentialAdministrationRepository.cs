@@ -19,7 +19,7 @@ public sealed class SqliteCredentialAdministrationRepository(ISqliteConnectionPr
     /// <returns>The matching credentials.</returns>
     public async Task<IReadOnlyList<CredentialAdministrationSummary>> SearchCredentialsAsync(SearchCredentialsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
+        SearchCredentialsRequest.ThrowIfInvalid(request);
 
         return await SqliteQuery.QueryAsync(_connectionProvider, command =>
         {
@@ -37,18 +37,22 @@ public sealed class SqliteCredentialAdministrationRepository(ISqliteConnectionPr
     /// <summary>
     /// Gets safe credential detail by credential id.
     /// </summary>
-    /// <param name="credentialId">The credential id value.</param>
+    /// <param name="request">The detail request value.</param>
     /// <param name="now">The timestamp used for availability projection.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The credential, or <see langword="null" /> when it does not exist.</returns>
-    public async Task<CredentialAdministrationDetail?> GetCredentialAsync(Guid credentialId, DateTimeOffset now, CancellationToken cancellationToken = default)
+    public async Task<CredentialAdministrationDetail?> GetCredentialAsync(CredentialAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
+        CredentialAdministrationDetailRequest.ThrowIfInvalid(request);
+
         return await SqliteQuery.QuerySingleAsync(_connectionProvider, command =>
         {
-            command.AddGuidParameter("$credentialId", credentialId);
+            command.AddGuidParameter("$credentialId", request.CredentialId);
             command.AddDateTimeOffsetParameter("$now", now);
+            var sql = SelectSql + " WHERE c.id = $credentialId";
+            command.AddTenantFilter(request.Tenant, "u.tenant_id", "$tenantId", ref sql);
 
-            return SelectSql + " WHERE c.id = $credentialId;";
+            return sql + ";";
         }, ReadDetail, cancellationToken);
     }
 

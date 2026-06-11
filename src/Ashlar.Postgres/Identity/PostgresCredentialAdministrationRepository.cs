@@ -19,7 +19,7 @@ public sealed class PostgresCredentialAdministrationRepository(IPostgresConnecti
     /// <returns>The matching credentials.</returns>
     public async Task<IReadOnlyList<CredentialAdministrationSummary>> SearchCredentialsAsync(SearchCredentialsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
+        SearchCredentialsRequest.ThrowIfInvalid(request);
 
         var sql = SelectSql + " WHERE 1 = 1";
         var parameters = new DynamicParameters();
@@ -38,15 +38,21 @@ public sealed class PostgresCredentialAdministrationRepository(IPostgresConnecti
     /// <summary>
     /// Gets safe credential detail by credential id.
     /// </summary>
-    /// <param name="credentialId">The credential id value.</param>
+    /// <param name="request">The detail request value.</param>
     /// <param name="now">The timestamp used for availability projection.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The credential, or <see langword="null" /> when it does not exist.</returns>
-    public async Task<CredentialAdministrationDetail?> GetCredentialAsync(Guid credentialId, DateTimeOffset now, CancellationToken cancellationToken = default)
+    public async Task<CredentialAdministrationDetail?> GetCredentialAsync(CredentialAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        var sql = SelectSql + " WHERE c.id = @CredentialId";
+        CredentialAdministrationDetailRequest.ThrowIfInvalid(request);
 
-        var row = await PostgresAdminQuery.QuerySingleAsync<CredentialAdministrationRow>(_connectionProvider, sql, new { CredentialId = credentialId, Now = now }, cancellationToken);
+        var sql = SelectSql + " WHERE c.id = @CredentialId";
+        var parameters = new DynamicParameters();
+        parameters.Add("CredentialId", request.CredentialId);
+        parameters.Add("Now", now);
+        PostgresAdminQuery.AddTenantFilter(request.Tenant, "u.tenant_id", "TenantId", ref sql, parameters);
+
+        var row = await PostgresAdminQuery.QuerySingleAsync<CredentialAdministrationRow>(_connectionProvider, sql, parameters, cancellationToken);
         return row?.ToDetail();
     }
 
