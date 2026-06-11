@@ -1,3 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
+
 namespace Ashlar.Postgres.Tests.Identity;
 
 internal sealed class PostgresInvitationRepositoryContractTests : InvitationRepositoryContractTests
@@ -6,7 +9,8 @@ internal sealed class PostgresInvitationRepositoryContractTests : InvitationRepo
 
     protected override async Task<IServiceProvider> CreateInitializedServiceProviderAsync()
     {
-        _database = await PostgresContractDatabase.CreateInitializedServiceProviderAsync();
+        _database = await PostgresContractDatabase.CreateInitializedServiceProviderAsync(services =>
+            services.AddSingleton<TimeProvider>(new FakeTimeProvider(RepositoryNow)));
         return _database.ServiceProvider;
     }
 

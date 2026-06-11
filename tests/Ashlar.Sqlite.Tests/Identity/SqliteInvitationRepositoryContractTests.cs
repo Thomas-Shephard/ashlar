@@ -1,3 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
+
 namespace Ashlar.Sqlite.Tests.Identity;
 
 internal sealed class SqliteInvitationRepositoryContractTests : InvitationRepositoryContractTests
@@ -6,7 +9,8 @@ internal sealed class SqliteInvitationRepositoryContractTests : InvitationReposi
 
     protected override async Task<IServiceProvider> CreateInitializedServiceProviderAsync()
     {
-        _database = await SqliteContractDatabase.CreateAsync();
+        _database = await SqliteContractDatabase.CreateAsync(services =>
+            services.AddSingleton<TimeProvider>(new FakeTimeProvider(RepositoryNow)));
         return _database.ServiceProvider;
     }
 

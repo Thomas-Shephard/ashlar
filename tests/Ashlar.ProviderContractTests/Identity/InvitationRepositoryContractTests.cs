@@ -4,6 +4,8 @@ namespace Ashlar.ProviderContractTests.Identity;
 
 internal abstract class InvitationRepositoryContractTests : ProviderContractFixture
 {
+    protected static readonly DateTimeOffset RepositoryNow = new(2026, 6, 3, 12, 0, 0, TimeSpan.Zero);
+
     private static readonly DateTimeOffset CreatedAt = new(2026, 6, 2, 12, 0, 0, TimeSpan.Zero);
 
     [Test]
@@ -116,11 +118,11 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         var invitation = CreateInvitation(
             "expired@example.com",
             "expired-token",
-            createdAt: DateTimeOffset.UtcNow.AddDays(-2),
-            expiresAt: DateTimeOffset.UtcNow.AddDays(-1));
+            createdAt: RepositoryNow.AddDays(-2),
+            expiresAt: RepositoryNow.AddDays(-1));
         await repository.CreateInvitationAsync(invitation);
 
-        invitation.AcceptedAt = DateTimeOffset.UtcNow;
+        invitation.AcceptedAt = RepositoryNow;
         var accepted = await repository.UpdateInvitationAsync(invitation, invitation.Version);
 
         Assert.That(accepted, Is.False);
