@@ -75,7 +75,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         ValidateAccountState(request.AccountState);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
-        var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
+        var userResult = await GetUserForMutationAsync(userId, request, cancellationToken);
         if (!userResult.TryGetValue(out var user))
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
@@ -138,7 +138,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
     {
         ValidateUserId(userId);
         request = RequireAudit(request);
-        var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
+        var userResult = await GetUserForMutationAsync(userId, request, cancellationToken);
         if (!userResult.Succeeded)
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
@@ -159,7 +159,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         ValidateProvider(provider);
         request = RequireAudit(request);
 
-        var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
+        var userResult = await GetUserForMutationAsync(userId, request, cancellationToken);
         if (!userResult.Succeeded)
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
@@ -184,7 +184,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         ValidateUserId(userId);
         request = RequireAudit(request);
 
-        var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
+        var userResult = await GetUserForMutationAsync(userId, request, cancellationToken);
         if (!userResult.Succeeded)
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
@@ -269,6 +269,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
             throw new ArgumentNullException(nameof(request), "Admin account security operations require audit metadata.");
         }
 
+        request.ThrowIfInvalidScope();
         return request;
     }
 
@@ -294,6 +295,19 @@ public sealed class AccountSecurityService : IAccountSecurityService
         {
             throw new ArgumentOutOfRangeException(nameof(accountState), accountState, "Unknown user account state.");
         }
+    }
+
+    private async Task<Result<IUser>> GetUserForMutationAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken)
+    {
+        if (!request.IncludeAllTenants)
+        {
+            return await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
+        }
+
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
+        return user == null
+            ? Result.Failure<IUser>(AshlarFailureCodes.UserNotFound)
+            : Result.Success(user);
     }
 
     private CredentialPostureItem ClassifyCredential(UserCredential credential)
@@ -579,6 +593,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
             new RevokeAllRememberedMfaDevicesRequest
             {
                 Tenant = request.Tenant,
+                IncludeAllTenants = request.IncludeAllTenants,
                 Reason = reason,
                 Audit = request.Audit
             },

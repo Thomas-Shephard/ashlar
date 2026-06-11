@@ -226,6 +226,35 @@ internal sealed class RememberedMfaDeviceServiceTests
     }
 
     [Test]
+    public async Task RevokeAllAsyncShouldSupportExplicitAllTenantScope()
+    {
+        var fixture = CreateFixture(generator: new SequenceTokenGenerator("global", "global-verifier", "tenant", "tenant-verifier"));
+        var tenantId = Guid.NewGuid();
+        var user = fixture.Users.AddUser(tenantId);
+        await fixture.Service.CreateAsync(user.Id, new CreateRememberedMfaDeviceRequest { Tenant = new TenantContext(tenantId) });
+        fixture.Repository.Devices.Add(new RememberedMfaDevice
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TenantId = null,
+            TokenSelector = "global-device",
+            TokenHash = "hash",
+            CreatedAt = fixture.Time.GetUtcNow(),
+            ExpiresAt = fixture.Time.GetUtcNow().AddDays(30)
+        });
+        fixture.Events.Events.Clear();
+
+        var count = await fixture.Service.RevokeAllAsync(user.Id, new RevokeAllRememberedMfaDevicesRequest { IncludeAllTenants = true });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.EqualTo(2));
+            Assert.That(fixture.Repository.Devices.All(device => device.RevokedAt.HasValue), Is.True);
+            Assert.That(fixture.Events.Events.Single().TenantId, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task CreateAsyncRejectsDeviceLimitAndInvalidLifetimeSafely()
     {
         var fixture = CreateFixture(
@@ -268,6 +297,7 @@ internal sealed class RememberedMfaDeviceServiceTests
             Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RevokeAsync(user.Id, new RevokeRememberedMfaDeviceRequest(Guid.Empty)));
             Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RevokeAsync(user.Id, new RevokeRememberedMfaDeviceRequest(Guid.NewGuid()) { Reason = new string('x', 513) }));
             Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RevokeAllAsync(user.Id, new RevokeAllRememberedMfaDevicesRequest { Reason = new string('x', 513) }));
+            Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RevokeAllAsync(user.Id, new RevokeAllRememberedMfaDevicesRequest { Tenant = TenantContext.Global, IncludeAllTenants = true }));
             Assert.Throws<ArgumentException>(() => CreateFixture(options: new RememberedMfaDeviceOptions { DefaultLifetime = TimeSpan.Zero }));
             Assert.Throws<ArgumentException>(() => CreateFixture(options: new RememberedMfaDeviceOptions { DefaultLifetime = TimeSpan.FromDays(2), MaxLifetime = TimeSpan.FromDays(1) }));
             Assert.Throws<ArgumentException>(() => CreateFixture(options: new RememberedMfaDeviceOptions { MaxActiveDevicesPerUser = 0 }));

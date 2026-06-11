@@ -254,9 +254,14 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
     {
         if (userId == Guid.Empty) throw new ArgumentException(UserIdEmptyMessage, nameof(userId));
         ArgumentNullException.ThrowIfNull(request);
+        if (request.Tenant != null && request.IncludeAllTenants)
+        {
+            throw new ArgumentException("Tenant scope cannot be combined with IncludeAllTenants = true.", nameof(request));
+        }
+
         var reason = ValidateOptionalLength(request.Reason, _options.MaxRevocationReasonLength, $"{nameof(request)}.{nameof(request.Reason)}");
 
-        var tenant = request.Tenant ?? TenantContext.Global;
+        var tenant = request.IncludeAllTenants ? null : request.Tenant ?? TenantContext.Global;
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         var revokedAt = _timeProvider.GetUtcNow();
         var count = await _repository.RevokeAllForUserAsync(userId, revokedAt, reason, tenant, cancellationToken);
@@ -271,7 +276,7 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
             EventType = AshlarSecurityEventTypes.RememberedMfaDevicesRevoked,
             Outcome = SecurityEventOutcomes.Success,
             UserId = userId,
-            TenantId = tenant.TenantId,
+            TenantId = tenant?.TenantId,
             Audit = request.Audit,
             Properties = properties
         }, ct));
