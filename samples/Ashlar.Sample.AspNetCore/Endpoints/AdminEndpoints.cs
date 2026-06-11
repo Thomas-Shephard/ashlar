@@ -59,7 +59,7 @@ internal static partial class AdminEndpoints
             var adminRequest = ToAdminRequest(request, httpContext);
             var result = await accountSecurity.SetUserAccountStateAsync(
                 userId,
-                new SetUserAccountStateRequest(UserAccountState.Disabled, adminRequest.Audit, adminRequest.Tenant, adminRequest.Reason),
+                new SetUserAccountStateRequest(UserAccountState.Disabled, adminRequest.Audit, adminRequest.Tenant, adminRequest.Reason, IncludeAllTenants: adminRequest.IncludeAllTenants),
                 cancellationToken);
             return ToAdminSecurityResult(result);
         }).RequireAuthorization(AdminPolicy).RequireFreshMfa();
@@ -90,7 +90,7 @@ internal static partial class AdminEndpoints
             var adminRequest = ToAdminRequest(request, httpContext);
             var result = await accountSecurity.SetUserAccountStateAsync(
                 userId,
-                new SetUserAccountStateRequest(UserAccountState.Active, adminRequest.Audit, adminRequest.Tenant, adminRequest.Reason),
+                new SetUserAccountStateRequest(UserAccountState.Active, adminRequest.Audit, adminRequest.Tenant, adminRequest.Reason, IncludeAllTenants: adminRequest.IncludeAllTenants),
                 cancellationToken);
             return ToAdminSecurityResult(result);
         }).RequireAuthorization(AdminPolicy).RequireFreshMfa();
@@ -207,24 +207,26 @@ internal static partial class AdminEndpoints
 
     private static AccountSecurityOperationRequest ToAdminRequest(AdminUserSecurityRequest? request, HttpContext httpContext)
     {
-        return new AccountSecurityOperationRequest(httpContext.ToAuditContext(), ToTenantContext(httpContext), request?.Reason);
+        var tenant = ToTenantContext(httpContext);
+        return new AccountSecurityOperationRequest(httpContext.ToAuditContext(), tenant, request?.Reason);
     }
 
     private static SetUserAccountStateRequest ToSetAccountStateRequest(AdminSetUserAccountStateRequest request, HttpContext httpContext)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var tenant = ToTenantContext(httpContext);
         return new SetUserAccountStateRequest(
             request.AccountState,
             httpContext.ToAuditContext(),
-            ToTenantContext(httpContext),
+            tenant,
             request.Reason,
             request.RevokeSessionsAndRememberedMfaDevices ?? true);
     }
 
-    private static TenantContext? ToTenantContext(HttpContext httpContext)
+    private static TenantContext ToTenantContext(HttpContext httpContext)
     {
         var tenantId = httpContext.GetAshlarTenantId();
-        return tenantId.HasValue ? new TenantContext(tenantId.Value) : null;
+        return tenantId.HasValue ? new TenantContext(tenantId.Value) : TenantContext.Global;
     }
 
     private static IResult ToAdminSecurityResult(Result<AccountSecurityOperationResult> result)

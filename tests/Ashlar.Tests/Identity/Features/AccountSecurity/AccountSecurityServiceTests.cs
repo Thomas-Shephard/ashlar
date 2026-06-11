@@ -1341,27 +1341,87 @@ internal sealed class AccountSecurityServiceTests
         }
     }
 
-    private static AccountSecurityOperationRequest CreateRequest(string? reason = null, Guid? tenantId = null)
+    [Test]
+    public async Task MutatingOperationsShouldPreserveExplicitAllTenantScope()
     {
-        return new AccountSecurityOperationRequest(new AuditContext(Guid.NewGuid(), "127.0.0.1", "agent", "corr"), tenantId.HasValue ? new TenantContext(tenantId) : null, reason);
+        var tenantId = Guid.NewGuid();
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = tenantId };
+        _sessionRepository.Sessions.Add(CreateSession(_userId, tenantId));
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
+        _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode")));
+
+        var stateResult = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Suspended, includeAllTenants: true));
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = tenantId };
+        var sessionsResult = await _service.RevokeSessionsAsync(_userId, CreateRequest(includeAllTenants: true));
+        var credentialsResult = await _service.RevokeCredentialsAsync(_userId, AuthenticationProviderKey.Local, CreateRequest(includeAllTenants: true));
+        var mfaResult = await _service.ResetMfaAsync(_userId, CreateRequest(includeAllTenants: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateResult.Succeeded, Is.True);
+            Assert.That(sessionsResult.Succeeded, Is.True);
+            Assert.That(credentialsResult.Succeeded, Is.True);
+            Assert.That(mfaResult.Succeeded, Is.True);
+        }
     }
 
-    private static SetUserAccountStateRequest CreateStateRequest(UserAccountState accountState, string? reason = null, Guid? tenantId = null, bool revokeSessionsAndRememberedMfaDevices = true)
+    [Test]
+    public async Task MutatingOperationsShouldReturnUserNotFoundForAllTenantMissingUser()
     {
+        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled, includeAllTenants: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
+            Assert.That(_events.Events.Single().TenantId, Is.Null);
+        }
+    }
+
+    [Test]
+    public void AccountSecurityOperationRequestShouldRejectMissingAndConflictingScope()
+    {
+        var audit = new AuditContext(Guid.NewGuid(), "127.0.0.1", "agent", "corr");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentException>(() => _ = new AccountSecurityOperationRequest(audit));
+            Assert.Throws<ArgumentException>(() => _ = new AccountSecurityOperationRequest(audit, TenantContext.Global, IncludeAllTenants: true));
+            Assert.Throws<ArgumentException>(() => _ = new SetUserAccountStateRequest(UserAccountState.Disabled, audit));
+            Assert.Throws<ArgumentException>(() => _ = new SetUserAccountStateRequest(UserAccountState.Disabled, audit, TenantContext.Global, IncludeAllTenants: true));
+        }
+    }
+
+    private static AccountSecurityOperationRequest CreateRequest(string? reason = null, Guid? tenantId = null, bool includeAllTenants = false)
+    {
+        var tenant = includeAllTenants
+            ? null
+            : tenantId.HasValue ? new TenantContext(tenantId) : TenantContext.Global;
+        return new AccountSecurityOperationRequest(new AuditContext(Guid.NewGuid(), "127.0.0.1", "agent", "corr"), tenant, reason, includeAllTenants);
+    }
+
+    private static SetUserAccountStateRequest CreateStateRequest(UserAccountState accountState, string? reason = null, Guid? tenantId = null, bool revokeSessionsAndRememberedMfaDevices = true, bool includeAllTenants = false)
+    {
+        var tenant = includeAllTenants
+            ? null
+            : tenantId.HasValue ? new TenantContext(tenantId) : TenantContext.Global;
         return new SetUserAccountStateRequest(
             accountState,
             new AuditContext(Guid.NewGuid(), "127.0.0.1", "agent", "corr"),
-            tenantId.HasValue ? new TenantContext(tenantId) : null,
+            tenant,
             reason,
-            revokeSessionsAndRememberedMfaDevices);
+            revokeSessionsAndRememberedMfaDevices,
+            includeAllTenants);
     }
 
-    private AuthenticationSession CreateSession(Guid userId)
+    private AuthenticationSession CreateSession(Guid userId, Guid? tenantId = null)
     {
         return new AuthenticationSession
         {
             Id = Guid.NewGuid(),
             UserId = userId,
+            TenantId = tenantId,
             TokenHash = Guid.NewGuid().ToString("N"),
             CreatedAt = _timeProvider.GetUtcNow(),
             ExpiresAt = _timeProvider.GetUtcNow().AddHours(1)

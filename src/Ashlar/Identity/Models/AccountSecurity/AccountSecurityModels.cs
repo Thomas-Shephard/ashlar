@@ -3,30 +3,84 @@ using Ashlar.Auditing;
 namespace Ashlar.Identity.Models.AccountSecurity;
 
 /// <summary>
-/// Request metadata for administrator account security operations.
+/// Request metadata for administrator account-security operations.
 /// </summary>
-/// <param name="Audit">The audit context value.</param>
-/// <param name="Tenant">The tenant context value.</param>
-/// <param name="Reason">The reason value.</param>
-public record AccountSecurityOperationRequest(
-    AuditContext Audit,
-    TenantContext? Tenant = null,
-    string? Reason = null);
+public record AccountSecurityOperationRequest
+{
+    /// <summary>
+    /// Initializes account-security operation metadata and validates that its <paramref name="Tenant" /> scope is explicit.
+    /// </summary>
+    /// <param name="Audit">Audit metadata recorded with the account-security operation.</param>
+    /// <param name="Tenant">The <paramref name="Tenant" /> scope for the target user. Use <see cref="TenantContext.Global" /> for global users.</param>
+    /// <param name="Reason">Optional safe reason recorded with revocation and security events.</param>
+    /// <param name="IncludeAllTenants">Whether to run the operation across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+    public AccountSecurityOperationRequest(
+        AuditContext Audit,
+        TenantContext? Tenant = null,
+        string? Reason = null,
+        bool IncludeAllTenants = false)
+    {
+        this.Audit = Audit;
+        this.Tenant = Tenant;
+        this.Reason = Reason;
+        this.IncludeAllTenants = IncludeAllTenants;
+        ThrowIfInvalidScope();
+    }
+
+    /// <summary>Gets audit metadata recorded with the account-security operation.</summary>
+    public AuditContext Audit { get; }
+
+    /// <summary>Gets the tenant scope for the target user, or <see langword="null" /> when <see cref="IncludeAllTenants" /> is enabled.</summary>
+    public TenantContext? Tenant { get; }
+
+    /// <summary>Gets the optional safe reason recorded with revocation and security events.</summary>
+    public string? Reason { get; }
+
+    /// <summary>Gets whether the operation runs without tenant filtering.</summary>
+    public bool IncludeAllTenants { get; }
+
+    /// <summary>
+    /// Throws when the request does not identify exactly one mutation scope.
+    /// </summary>
+    public void ThrowIfInvalidScope()
+    {
+        AdministrationScopeValidation.ThrowIfInvalidScope(Tenant, IncludeAllTenants);
+    }
+}
 
 /// <summary>
 /// Request metadata for changing a user's account state.
 /// </summary>
-/// <param name="AccountState">The target account state.</param>
-/// <param name="Audit">The <paramref name="Audit" /> context for the administrator operation.</param>
-/// <param name="Tenant">Optional tenant scope for the target user.</param>
-/// <param name="Reason">Optional safe reason recorded with revocation and security events.</param>
-/// <param name="RevokeSessionsAndRememberedMfaDevices">Whether transitions to non-active states revoke active sessions and remembered MFA devices.</param>
-public sealed record SetUserAccountStateRequest(
-    UserAccountState AccountState,
-    AuditContext Audit,
-    TenantContext? Tenant = null,
-    string? Reason = null,
-    bool RevokeSessionsAndRememberedMfaDevices = true) : AccountSecurityOperationRequest(Audit, Tenant, Reason);
+public sealed record SetUserAccountStateRequest : AccountSecurityOperationRequest
+{
+    /// <summary>
+    /// Initializes account-state change metadata and validates that its <paramref name="Tenant" /> scope is explicit.
+    /// </summary>
+    /// <param name="AccountState">The target account state.</param>
+    /// <param name="Audit">Audit metadata recorded with the account-state operation.</param>
+    /// <param name="Tenant">The <paramref name="Tenant" /> scope for the target user. Use <see cref="TenantContext.Global" /> for global users.</param>
+    /// <param name="Reason">Optional safe reason recorded with revocation and security events.</param>
+    /// <param name="RevokeSessionsAndRememberedMfaDevices">Whether transitions to non-active states revoke active sessions and remembered MFA devices.</param>
+    /// <param name="IncludeAllTenants">Whether to run the operation across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+    public SetUserAccountStateRequest(
+        UserAccountState AccountState,
+        AuditContext Audit,
+        TenantContext? Tenant = null,
+        string? Reason = null,
+        bool RevokeSessionsAndRememberedMfaDevices = true,
+        bool IncludeAllTenants = false)
+        : base(Audit, Tenant, Reason, IncludeAllTenants)
+    {
+        this.AccountState = AccountState;
+        this.RevokeSessionsAndRememberedMfaDevices = RevokeSessionsAndRememberedMfaDevices;
+    }
+
+    /// <summary>Gets the requested account state.</summary>
+    public UserAccountState AccountState { get; }
+
+    /// <summary>Gets whether transitions to non-active states revoke active sessions and remembered MFA devices.</summary>
+    public bool RevokeSessionsAndRememberedMfaDevices { get; }
+}
 
 /// <summary>
 /// Result counts from an administrator account security operation.

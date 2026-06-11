@@ -219,6 +219,7 @@ public sealed class AshlarExternalAccountLinkService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        request.ThrowIfInvalidScope();
 
         if (currentUserId == Guid.Empty)
         {
@@ -237,15 +238,20 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.UserNotFound);
         }
 
-        if (!IsInRequestedTenant(user, request.Tenant))
+        if (!request.IncludeAllTenants)
         {
-            return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.TenantMismatch);
+            ArgumentNullException.ThrowIfNull(request.Tenant);
+            var tenant = request.Tenant;
+            if (!IsInRequestedTenant(user, tenant))
+            {
+                return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.TenantMismatch);
+            }
         }
 
         var provider = new AuthenticationProviderKey(providerOptions.Type, providerOptions.ProviderName);
         var postureResult = await _accountSecurityService.GetUserSecurityPostureAsync(
             currentUserId,
-            new AccountSecurityPostureRequest(request.Tenant),
+            new AccountSecurityPostureRequest(GetPostureTenant(user, request)),
             cancellationToken);
         if (!postureResult.Succeeded || postureResult.Value == null)
         {
@@ -288,18 +294,25 @@ public sealed class AshlarExternalAccountLinkService
         return user != null && IsInRequestedTenant(user, tenant);
     }
 
-    private static bool IsInRequestedTenant(IUser user, TenantContext? tenant)
+    private static bool IsInRequestedTenant(IUser user, TenantContext tenant)
     {
-        if (tenant == null)
-        {
-            return true;
-        }
-
         return user switch
         {
             ITenantUser tenantUser => tenantUser.TenantId == tenant.TenantId,
             _ => tenant.TenantId == null
         };
+    }
+
+    private static TenantContext? GetPostureTenant(IUser user, AccountSecurityOperationRequest request)
+    {
+        if (!request.IncludeAllTenants)
+        {
+            return request.Tenant;
+        }
+
+        return user is ITenantUser tenantUser
+            ? new TenantContext(tenantUser.TenantId)
+            : TenantContext.Global;
     }
 
     private static bool HasUsablePrimarySignInMethodAfterUnlink(AccountSecurityPosture posture, AuthenticationProviderKey provider)

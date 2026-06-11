@@ -665,6 +665,60 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         }
     }
 
+    [Test]
+    public async Task UnlinkExternalAccountShouldAllowExplicitAllTenantScope()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        AccountSecurityPostureRequest? observedPostureRequest = null;
+        AccountSecurityOperationRequest? observedRevokeRequest = null;
+        var accountSecurity = CreateAccountSecurityService(
+            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
+            revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
+        accountSecurity
+            .Setup(s => s.GetUserSecurityPostureAsync(userId, It.IsAny<AccountSecurityPostureRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, AccountSecurityPostureRequest, CancellationToken>((_, request, _) => observedPostureRequest = request)
+            .ReturnsAsync(Result.Success(CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local"))));
+        accountSecurity
+            .Setup(s => s.RevokeCredentialsAsync(userId, new AuthenticationProviderKey(ProviderType.Oidc, "Google"), It.IsAny<AccountSecurityOperationRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, AuthenticationProviderKey, AccountSecurityOperationRequest, CancellationToken>((_, _, request, _) => observedRevokeRequest = request)
+            .ReturnsAsync(Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
+        var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new TenantUser(userId, tenantId)));
+
+        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest(includeAllTenants: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Unlinked));
+            Assert.That(observedPostureRequest?.Tenant?.TenantId, Is.EqualTo(tenantId));
+            Assert.That(observedRevokeRequest?.IncludeAllTenants, Is.True);
+            Assert.That(observedRevokeRequest?.Tenant, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task UnlinkExternalAccountShouldUseGlobalPostureScopeForAllTenantGlobalUser()
+    {
+        var userId = Guid.NewGuid();
+        AccountSecurityPostureRequest? observedPostureRequest = null;
+        var accountSecurity = CreateAccountSecurityService(
+            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
+            revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
+        accountSecurity
+            .Setup(s => s.GetUserSecurityPostureAsync(userId, It.IsAny<AccountSecurityPostureRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, AccountSecurityPostureRequest, CancellationToken>((_, request, _) => observedPostureRequest = request)
+            .ReturnsAsync(Result.Success(CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local"))));
+        var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
+
+        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest(includeAllTenants: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Unlinked));
+            Assert.That(observedPostureRequest?.Tenant, Is.EqualTo(TenantContext.Global));
+        }
+    }
+
     [TestCase("")]
     [TestCase(" ")]
     [TestCase("Microsoft")]
@@ -1065,9 +1119,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         return accountSecurity;
     }
 
-    private static AccountSecurityOperationRequest CreateRequest(TenantContext? tenant = null)
+    private static AccountSecurityOperationRequest CreateRequest(TenantContext? tenant = null, bool includeAllTenants = false)
     {
-        return new AccountSecurityOperationRequest(new AuditContext(Guid.NewGuid(), "127.0.0.1", "NUnit", "corr"), tenant, "unlink");
+        return new AccountSecurityOperationRequest(new AuditContext(Guid.NewGuid(), "127.0.0.1", "NUnit", "corr"), includeAllTenants ? null : tenant ?? TenantContext.Global, "unlink", includeAllTenants);
     }
 
     private static AccountSecurityPosture CreatePosture(Guid userId, params CredentialPostureItem[] credentials)

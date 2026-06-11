@@ -93,8 +93,10 @@ public sealed record RevokeRememberedMfaDeviceRequest(Guid DeviceId)
 /// </summary>
 public sealed record RevokeAllRememberedMfaDevicesRequest
 {
-    /// <summary>Gets the tenant scope.</summary>
+    /// <summary>Gets the tenant scope. Use <see cref="TenantContext.Global" /> for global users.</summary>
     public TenantContext? Tenant { get; init; }
+    /// <summary>Gets whether revocation should apply across all tenant scopes.</summary>
+    public bool IncludeAllTenants { get; init; }
     /// <summary>Gets the revocation reason.</summary>
     public string? Reason { get; init; }
     /// <summary>Gets the audit context.</summary>
