@@ -775,7 +775,7 @@ internal sealed class AccountSecurityServiceTests
         _sessionRepository.Sessions.Add(CreateSession(_userId));
         await _events.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "test", UserId = _userId, OccurredAt = _timeProvider.GetUtcNow() });
 
-        var result = await _service.GetUserSecurityPostureAsync(_userId, new UserSecurityPostureRequest(RecentSecurityEventWindow: TimeSpan.FromDays(1)));
+        var result = await _service.GetUserSecurityPostureAsync(_userId, new AccountSecurityPostureRequest(RecentSecurityEventWindow: TimeSpan.FromDays(1)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -1173,7 +1173,7 @@ internal sealed class AccountSecurityServiceTests
         var evaluator = new CapturingMfaPolicyEvaluator();
         var service = CreateService(evaluator);
 
-        var result = await service.GetUserSecurityPostureAsync(_userId, new UserSecurityPostureRequest(new TenantContext(tenantId)));
+        var result = await service.GetUserSecurityPostureAsync(_userId, new AccountSecurityPostureRequest(new TenantContext(tenantId)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -1275,7 +1275,7 @@ internal sealed class AccountSecurityServiceTests
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active, TenantId = Guid.NewGuid() };
 
-        var result = await _service.GetUserSecurityPostureAsync(_userId, new UserSecurityPostureRequest(new TenantContext(Guid.NewGuid())));
+        var result = await _service.GetUserSecurityPostureAsync(_userId, new AccountSecurityPostureRequest(new TenantContext(Guid.NewGuid())));
 
         using (Assert.EnterMultipleScope())
         {

@@ -48,22 +48,13 @@ public sealed record AccountSecurityOperationResult(
     int RememberedMfaDevicesRevoked = 0);
 
 /// <summary>
-/// Request metadata for a user security posture lookup.
+/// Request metadata for an account-security posture lookup.
 /// </summary>
-/// <param name="Tenant">The tenant context value.</param>
-/// <param name="RecentSecurityEventWindow">The recent security event window value.</param>
+/// <param name="Tenant">Optional tenant scope for the account being inspected.</param>
+/// <param name="RecentSecurityEventWindow">Optional window used to count recent security events.</param>
 public record AccountSecurityPostureRequest(
     TenantContext? Tenant = null,
     TimeSpan? RecentSecurityEventWindow = null);
-
-/// <summary>
-/// Compatibility alias for account security posture lookups.
-/// </summary>
-/// <param name="Tenant">The tenant context value.</param>
-/// <param name="RecentSecurityEventWindow">The recent security event window value.</param>
-public sealed record UserSecurityPostureRequest(
-    TenantContext? Tenant = null,
-    TimeSpan? RecentSecurityEventWindow = null) : AccountSecurityPostureRequest(Tenant, RecentSecurityEventWindow);
 
 /// <summary>
 /// Describes how an account credential participates in sign-in and additional verification.
@@ -156,7 +147,7 @@ public sealed record AccountSecurityPolicyPosture(
     bool IsLockedOutByPolicy);
 
 /// <summary>
-/// Non-secret account security posture details for a user.
+/// Non-secret account-security posture details for a user account.
 /// </summary>
 /// <param name="UserId">The user id value.</param>
 /// <param name="AccountState">The account state value.</param>
@@ -165,7 +156,7 @@ public sealed record AccountSecurityPolicyPosture(
 /// <param name="PrimaryCredentials">The configured primary credentials.</param>
 /// <param name="AdditionalVerificationFactors">The configured additional verification factors.</param>
 /// <param name="Policy">The current policy posture.</param>
-/// <param name="CredentialInventory">The readable safe credential inventory.</param>
+/// <param name="CredentialInventory">The display-safe credential inventory, excluding secrets and provider raw identifiers.</param>
 /// <param name="ActiveSessionCount">The active session count.</param>
 /// <param name="RecentSecurityEventCount">The recent security event count.</param>
 public record AccountSecurityPosture(
@@ -186,7 +177,7 @@ public record AccountSecurityPosture(
     public bool IsMfaConfigured => AdditionalVerificationFactors.Any(factor => factor.IsConfigured);
 
     /// <summary>
-    /// Gets the configured credential providers for older consumers that only need provider identity.
+    /// Gets the configured credential provider keys represented in the display-safe inventory.
     /// </summary>
     /// <returns>The configured credential provider keys.</returns>
     public IReadOnlyList<AuthenticationProviderKey> GetConfiguredCredentials()
@@ -199,42 +190,6 @@ public record AccountSecurityPosture(
             .ToArray();
     }
 }
-
-/// <summary>
-/// Compatibility alias for account security posture results.
-/// </summary>
-/// <param name="UserId">The user id value.</param>
-/// <param name="AccountState">The account state value.</param>
-/// <param name="IsEmailVerified">Whether the email address is verified.</param>
-/// <param name="CanSignIn">Whether the account can sign in under current credential and <paramref name="Policy" /> state.</param>
-/// <param name="PrimaryCredentials">The configured primary credentials.</param>
-/// <param name="AdditionalVerificationFactors">The configured additional verification factors.</param>
-/// <param name="Policy">The current policy posture.</param>
-/// <param name="CredentialInventory">The readable safe credential inventory.</param>
-/// <param name="ActiveSessionCount">The active session count.</param>
-/// <param name="RecentSecurityEventCount">The recent security event count.</param>
-public sealed record UserSecurityPosture(
-    Guid UserId,
-    UserAccountState AccountState,
-    bool IsEmailVerified,
-    bool CanSignIn,
-    IReadOnlyList<CredentialPostureItem> PrimaryCredentials,
-    IReadOnlyList<AdditionalVerificationFactorPosture> AdditionalVerificationFactors,
-    AccountSecurityPolicyPosture Policy,
-    IReadOnlyList<CredentialPostureItem> CredentialInventory,
-    int ActiveSessionCount,
-    int? RecentSecurityEventCount)
-    : AccountSecurityPosture(
-        UserId,
-        AccountState,
-        IsEmailVerified,
-        CanSignIn,
-        PrimaryCredentials,
-        AdditionalVerificationFactors,
-        Policy,
-        CredentialInventory,
-        ActiveSessionCount,
-        RecentSecurityEventCount);
 
 /// <summary>
 /// Optional read model for stores that can efficiently count security events.
