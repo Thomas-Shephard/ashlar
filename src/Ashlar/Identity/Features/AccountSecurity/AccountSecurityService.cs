@@ -12,10 +12,10 @@ namespace Ashlar.Identity.Features.AccountSecurity;
 /// </summary>
 /// <param name="userRepository">Stores and retrieves users.</param>
 /// <param name="credentialRepository">Stores and retrieves credentials.</param>
-/// <param name="sessionService">The session service value.</param>
-/// <param name="transactionProvider">The transaction provider value.</param>
-/// <param name="accountSecurityGuard">The account security guard value.</param>
-/// <param name="dependencies">The dependencies value.</param>
+/// <param name="sessionService">Revokes and lists authentication sessions.</param>
+/// <param name="transactionProvider">Creates transactions for coordinated account security changes.</param>
+/// <param name="accountSecurityGuard">Authorizes account state changes before they are persisted.</param>
+/// <param name="dependencies">Optional account security collaborators and configuration.</param>
 public sealed class AccountSecurityService : IAccountSecurityService
 {
     private const string AdminReason = "admin";
@@ -38,10 +38,10 @@ public sealed class AccountSecurityService : IAccountSecurityService
     /// </summary>
     /// <param name="userRepository">Stores and retrieves users.</param>
     /// <param name="credentialRepository">Stores and retrieves credentials.</param>
-    /// <param name="sessionService">The session service value.</param>
-    /// <param name="transactionProvider">The transaction provider value.</param>
-    /// <param name="accountSecurityGuard">The account security guard value.</param>
-    /// <param name="dependencies">The dependencies value.</param>
+    /// <param name="sessionService">Revokes and lists authentication sessions.</param>
+    /// <param name="transactionProvider">Creates transactions for coordinated account security changes.</param>
+    /// <param name="accountSecurityGuard">Authorizes account state changes before they are persisted.</param>
+    /// <param name="dependencies">Optional account security collaborators and configuration.</param>
     public AccountSecurityService(
         IUserRepository userRepository,
         ICredentialRepository credentialRepository,
@@ -197,8 +197,11 @@ public sealed class AccountSecurityService : IAccountSecurityService
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         var revoked = await _credentialRepository.RevokeCredentialsAsync(userId, _totpProvider.Type, _totpProvider.Name, cancellationToken);
         revoked += await _credentialRepository.RevokeCredentialsAsync(userId, _recoveryCodeProvider.Type, _recoveryCodeProvider.Name, cancellationToken);
-        await RevokeRememberedMfaDevicesAsync(userId, request, request.Reason ?? AdminReason, cancellationToken);
-        var result = new AccountSecurityOperationResult(userId, CredentialsRevoked: revoked);
+        var rememberedMfaDevicesRevoked = await RevokeRememberedMfaDevicesAsync(userId, request, request.Reason ?? AdminReason, cancellationToken);
+        var result = new AccountSecurityOperationResult(
+            userId,
+            CredentialsRevoked: revoked,
+            RememberedMfaDevicesRevoked: rememberedMfaDevicesRevoked);
         transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserMfaReset, result, request, ct));
 
         await transaction.CommitAsync(cancellationToken);
@@ -595,14 +598,14 @@ public sealed class AccountSecurityService : IAccountSecurityService
 /// <summary>
 /// Dependencies for <see cref="AccountSecurityService"/>.
 /// </summary>
-/// <param name="TimeProvider">The time provider value.</param>
-/// <param name="SecurityEventSink">The security event sink value.</param>
-/// <param name="SecurityEventSummaryRepository">The security event summary repository value.</param>
-/// <param name="TotpOptions">The TOTP options value.</param>
-/// <param name="RecoveryCodeOptions">The recovery code options value.</param>
-/// <param name="MfaPolicyEvaluator">The MFA policy evaluator value.</param>
-/// <param name="ProviderRegistry">The authentication provider registry.</param>
-/// <param name="RememberedMfaDeviceService">The remembered MFA device service.</param>
+/// <param name="TimeProvider">Clock used for timestamps and security posture windows.</param>
+/// <param name="SecurityEventSink">Sink for account security audit events.</param>
+/// <param name="SecurityEventSummaryRepository">Optional read model for recent security event counts.</param>
+/// <param name="TotpOptions">Configured TOTP provider identity.</param>
+/// <param name="RecoveryCodeOptions">Configured recovery-code provider identity.</param>
+/// <param name="MfaPolicyEvaluator">Optional evaluator used to describe current MFA policy posture.</param>
+/// <param name="ProviderRegistry">Optional registry used to classify credential posture.</param>
+/// <param name="RememberedMfaDeviceService">Optional service used to revoke remembered MFA devices.</param>
 public sealed record AccountSecurityServiceDependencies(
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,
