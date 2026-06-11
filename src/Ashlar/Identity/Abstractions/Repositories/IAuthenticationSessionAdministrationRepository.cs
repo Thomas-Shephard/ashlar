@@ -20,9 +20,9 @@ public interface IAuthenticationSessionAdministrationRepository
     /// <summary>
     /// Gets an authentication session by id.
     /// </summary>
-    /// <param name="sessionId">The session id value.</param>
+    /// <param name="request">The detail request value.</param>
     /// <param name="now">The timestamp used for active-state projection.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The authentication session, or <see langword="null" /> when it does not exist.</returns>
-    Task<AuthenticationSessionAdministrationDetail?> GetAuthenticationSessionAsync(Guid sessionId, DateTimeOffset now, CancellationToken cancellationToken = default);
+    Task<AuthenticationSessionAdministrationDetail?> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
 }

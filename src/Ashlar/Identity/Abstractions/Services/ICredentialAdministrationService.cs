@@ -20,8 +20,8 @@ public interface ICredentialAdministrationService
     /// <summary>
     /// Gets safe credential detail by credential id.
     /// </summary>
-    /// <param name="credentialId">The credential id value.</param>
+    /// <param name="request">The detail request value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    Task<Result<CredentialAdministrationDetail>> GetCredentialAsync(Guid credentialId, CancellationToken cancellationToken = default);
+    Task<Result<CredentialAdministrationDetail>> GetCredentialAsync(CredentialAdministrationDetailRequest request, CancellationToken cancellationToken = default);
 }

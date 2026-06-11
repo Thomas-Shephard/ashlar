@@ -18,7 +18,7 @@ public sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvider
     /// <returns>The operation result.</returns>
     public async Task<IReadOnlyList<UserSummary>> SearchUsersAsync(SearchUsersRequest request, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
+        SearchUsersRequest.ThrowIfInvalid(request);
 
         return await SqliteQuery.QueryAsync(_connectionProvider, command =>
         {
@@ -60,21 +60,24 @@ public sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvider
     /// <summary>
     /// Gets a user summary by id.
     /// </summary>
-    /// <param name="userId">The user id value.</param>
+    /// <param name="request">The detail request value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public async Task<UserSummary?> GetUserSummaryAsync(Guid userId, CancellationToken cancellationToken = default)
+    public async Task<UserSummary?> GetUserSummaryAsync(UserAdministrationDetailRequest request, CancellationToken cancellationToken = default)
     {
-        const string sql = """
-            SELECT id, email, name, tenant_id, account_state, email_verified_at, created_at, updated_at
-            FROM ashlar_users
-            WHERE id = $userId;
-            """;
+        UserAdministrationDetailRequest.ThrowIfInvalid(request);
 
         return await SqliteQuery.QuerySingleAsync(_connectionProvider, command =>
         {
-            command.AddGuidParameter("$userId", userId);
-            return sql;
+            var sql = """
+            SELECT id, email, name, tenant_id, account_state, email_verified_at, created_at, updated_at
+            FROM ashlar_users
+            WHERE id = $userId
+            """;
+
+            command.AddGuidParameter("$userId", request.UserId);
+            command.AddTenantFilter(request.Tenant, "tenant_id", "$tenantId", ref sql);
+            return sql + ";";
         }, ReadUserSummary, cancellationToken);
     }
 

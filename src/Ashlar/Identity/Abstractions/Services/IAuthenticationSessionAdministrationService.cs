@@ -20,8 +20,8 @@ public interface IAuthenticationSessionAdministrationService
     /// <summary>
     /// Gets an authentication session by id.
     /// </summary>
-    /// <param name="sessionId">The session id value.</param>
+    /// <param name="request">The detail request value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    Task<Result<AuthenticationSessionAdministrationDetail>> GetAuthenticationSessionAsync(Guid sessionId, CancellationToken cancellationToken = default);
+    Task<Result<AuthenticationSessionAdministrationDetail>> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationDetailRequest request, CancellationToken cancellationToken = default);
 }

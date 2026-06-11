@@ -15,7 +15,7 @@ internal sealed class CredentialAdministrationServiceTests
     {
         var repository = new RecordingCredentialAdministrationRepository();
         var before = TimeProvider.System.GetUtcNow();
-        var result = await new CredentialAdministrationService(repository).SearchCredentialsAsync(new SearchCredentialsRequest());
+        var result = await new CredentialAdministrationService(repository).SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true });
         var after = TimeProvider.System.GetUtcNow();
 
         using (Assert.EnterMultipleScope())
@@ -38,7 +38,7 @@ internal sealed class CredentialAdministrationServiceTests
     [TestCase(-1)]
     public async Task SearchCredentialsAsyncRejectsInvalidLimit(int limit)
     {
-        var result = await CreateService().SearchCredentialsAsync(new SearchCredentialsRequest { Limit = limit });
+        var result = await CreateService().SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true, Limit = limit });
 
         using (Assert.EnterMultipleScope())
         {
@@ -50,12 +50,27 @@ internal sealed class CredentialAdministrationServiceTests
     [Test]
     public async Task SearchCredentialsAsyncRejectsNegativeOffset()
     {
-        var result = await CreateService().SearchCredentialsAsync(new SearchCredentialsRequest { Offset = -1 });
+        var result = await CreateService().SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true, Offset = -1 });
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+        }
+    }
+
+    [Test]
+    public async Task SearchCredentialsAsyncRejectsMissingAndConflictingTenantScope()
+    {
+        var service = CreateService();
+
+        var missing = await service.SearchCredentialsAsync(new SearchCredentialsRequest { Limit = 10 });
+        var conflicting = await service.SearchCredentialsAsync(new SearchCredentialsRequest { Tenant = TenantContext.Global, IncludeAllTenants = true, Limit = 10 });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missing.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(conflicting.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
         }
     }
 
@@ -68,7 +83,7 @@ internal sealed class CredentialAdministrationServiceTests
             repository.SearchResults.Add(CreateSummary());
         }
 
-        var result = await CreateService(repository).SearchCredentialsAsync(new SearchCredentialsRequest { Limit = 500, Offset = 7 });
+        var result = await CreateService(repository).SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true, Limit = 500, Offset = 7 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -89,7 +104,7 @@ internal sealed class CredentialAdministrationServiceTests
         var repository = new RecordingCredentialAdministrationRepository();
         repository.SearchResults.Add(CreateSummary());
 
-        var result = await CreateService(repository).SearchCredentialsAsync(new SearchCredentialsRequest { Limit = 50 });
+        var result = await CreateService(repository).SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true, Limit = 50 });
 
         using (Assert.EnterMultipleScope())
         {
@@ -166,7 +181,7 @@ internal sealed class CredentialAdministrationServiceTests
             }
         };
 
-        var result = await CreateService(repository).SearchCredentialsAsync(new SearchCredentialsRequest());
+        var result = await CreateService(repository).SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true });
 
         using (Assert.EnterMultipleScope())
         {
@@ -178,7 +193,7 @@ internal sealed class CredentialAdministrationServiceTests
     [Test]
     public async Task GetCredentialAsyncRejectsEmptyCredentialId()
     {
-        var result = await CreateService().GetCredentialAsync(Guid.Empty);
+        var result = await CreateService().GetCredentialAsync(new CredentialAdministrationDetailRequest(Guid.Empty, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -190,7 +205,7 @@ internal sealed class CredentialAdministrationServiceTests
     [Test]
     public async Task GetCredentialAsyncMapsMissingCredentialSafely()
     {
-        var result = await CreateService().GetCredentialAsync(Guid.NewGuid());
+        var result = await CreateService().GetCredentialAsync(new CredentialAdministrationDetailRequest(Guid.NewGuid(), TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -205,14 +220,54 @@ internal sealed class CredentialAdministrationServiceTests
         var expected = CreateDetail();
         var repository = new RecordingCredentialAdministrationRepository { GetResult = expected };
 
-        var result = await CreateService(repository).GetCredentialAsync(expected.CredentialId);
+        var request = new CredentialAdministrationDetailRequest(expected.CredentialId, TenantContext.Global);
+        var result = await CreateService(repository).GetCredentialAsync(request);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value, Is.EqualTo(expected));
-            Assert.That(repository.LastGetCredentialId, Is.EqualTo(expected.CredentialId));
+            Assert.That(repository.LastGetRequest, Is.SameAs(request));
             Assert.That(repository.LastGetNow, Is.EqualTo(Now));
+        }
+    }
+
+    [Test]
+    public async Task GetCredentialAsyncMapsOutOfScopeCredentialSafely()
+    {
+        var tenantId = Guid.NewGuid();
+        var expected = CreateDetail() with { TenantId = tenantId };
+        var repository = new RecordingCredentialAdministrationRepository { GetResult = expected };
+
+        var result = await CreateService(repository).GetCredentialAsync(new CredentialAdministrationDetailRequest(expected.CredentialId, TenantContext.Global));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.CredentialNotFound));
+    }
+
+    [Test]
+    public async Task GetCredentialAsyncAllowsExplicitAllTenantDetail()
+    {
+        var expected = CreateDetail() with { TenantId = Guid.NewGuid() };
+        var repository = new RecordingCredentialAdministrationRepository { GetResult = expected };
+
+        var result = await CreateService(repository).GetCredentialAsync(new CredentialAdministrationDetailRequest(expected.CredentialId, IncludeAllTenants: true));
+
+        Assert.That(result.Value, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task GetCredentialAsyncRejectsMissingAndConflictingTenantScope()
+    {
+        var service = CreateService();
+        var credentialId = Guid.NewGuid();
+
+        var missing = await service.GetCredentialAsync(new CredentialAdministrationDetailRequest(credentialId));
+        var conflicting = await service.GetCredentialAsync(new CredentialAdministrationDetailRequest(credentialId, TenantContext.Global, IncludeAllTenants: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missing.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(conflicting.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
         }
     }
 
@@ -279,7 +334,7 @@ internal sealed class CredentialAdministrationServiceTests
         public Func<DateTimeOffset, IReadOnlyList<CredentialAdministrationSummary>>? SearchFactory { get; init; }
         public SearchCredentialsRequest? LastSearchRequest { get; private set; }
         public DateTimeOffset? LastSearchNow { get; private set; }
-        public Guid? LastGetCredentialId { get; private set; }
+        public CredentialAdministrationDetailRequest? LastGetRequest { get; private set; }
         public DateTimeOffset? LastGetNow { get; private set; }
         public CredentialAdministrationDetail? GetResult { get; init; }
 
@@ -290,9 +345,9 @@ internal sealed class CredentialAdministrationServiceTests
             return Task.FromResult(SearchFactory?.Invoke(now) ?? SearchResults.AsReadOnly());
         }
 
-        public Task<CredentialAdministrationDetail?> GetCredentialAsync(Guid credentialId, DateTimeOffset now, CancellationToken cancellationToken = default)
+        public Task<CredentialAdministrationDetail?> GetCredentialAsync(CredentialAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
-            LastGetCredentialId = credentialId;
+            LastGetRequest = request;
             LastGetNow = now;
             return Task.FromResult(GetResult);
         }

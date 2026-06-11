@@ -24,6 +24,11 @@ public sealed class CredentialAdministrationService(
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        if (!TryValidateSearchRequest(request, out var validationFailure))
+        {
+            return validationFailure;
+        }
+
         if (request.Offset < 0)
         {
             return Result.Failure<CredentialSearchResult>(AshlarFailureCodes.ValidationError, "Offset cannot be negative.");
@@ -44,16 +49,48 @@ public sealed class CredentialAdministrationService(
     }
 
     /// <inheritdoc />
-    public async Task<Result<CredentialAdministrationDetail>> GetCredentialAsync(Guid credentialId, CancellationToken cancellationToken = default)
+    public async Task<Result<CredentialAdministrationDetail>> GetCredentialAsync(CredentialAdministrationDetailRequest request, CancellationToken cancellationToken = default)
     {
-        if (credentialId == Guid.Empty)
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!TryValidateDetailRequest(request, out var validationFailure))
         {
-            return Result.Failure<CredentialAdministrationDetail>(AshlarFailureCodes.ValidationError, "Credential ID cannot be empty.");
+            return validationFailure;
         }
 
-        var credential = await _repository.GetCredentialAsync(credentialId, _timeProvider.GetUtcNow(), cancellationToken);
-        return credential == null
+        var credential = await _repository.GetCredentialAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
+        return credential == null || (!request.IncludeAllTenants && !AdministrationScopeValidation.IncludesTenant(request.Tenant!, credential.TenantId))
             ? Result.Failure<CredentialAdministrationDetail>(AshlarFailureCodes.CredentialNotFound, "Credential was not found.")
             : Result.Success(credential);
+    }
+
+    private static bool TryValidateSearchRequest(SearchCredentialsRequest request, out Result<CredentialSearchResult> failure)
+    {
+        try
+        {
+            SearchCredentialsRequest.ThrowIfInvalid(request);
+            failure = null!;
+            return true;
+        }
+        catch (ArgumentException exception)
+        {
+            failure = Result.Failure<CredentialSearchResult>(AshlarFailureCodes.ValidationError, exception.Message);
+            return false;
+        }
+    }
+
+    private static bool TryValidateDetailRequest(CredentialAdministrationDetailRequest request, out Result<CredentialAdministrationDetail> failure)
+    {
+        try
+        {
+            CredentialAdministrationDetailRequest.ThrowIfInvalid(request);
+            failure = null!;
+            return true;
+        }
+        catch (ArgumentException exception)
+        {
+            failure = Result.Failure<CredentialAdministrationDetail>(AshlarFailureCodes.ValidationError, exception.Message);
+            return false;
+        }
     }
 }

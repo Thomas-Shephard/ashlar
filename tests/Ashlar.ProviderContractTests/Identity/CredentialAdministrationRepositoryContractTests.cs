@@ -19,8 +19,8 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         await credentialRepository.CreateCredentialAsync(second);
 
         var repository = GetCredentialAdministrationRepository(scope.ServiceProvider);
-        var all = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { Limit = 10 }, Now);
-        var filtered = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { UserId = firstUser.Id, Limit = 10 }, Now);
+        var all = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true, Limit = 10 }, Now);
+        var filtered = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true, UserId = firstUser.Id, Limit = 10 }, Now);
 
         using (Assert.EnterMultipleScope())
         {
@@ -50,7 +50,7 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         var repository = GetCredentialAdministrationRepository(scope.ServiceProvider);
         var scoped = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { Tenant = new TenantContext(tenantId), Limit = 10 }, Now);
         var global = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { Tenant = TenantContext.Global, Limit = 10 }, Now);
-        var unscoped = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { Limit = 10 }, Now);
+        var unscoped = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true, Limit = 10 }, Now);
 
         using (Assert.EnterMultipleScope())
         {
@@ -61,6 +61,19 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
             Assert.That(unscoped.Select(static credential => credential.CredentialId), Does.Contain(tenantCredential.Id));
             Assert.That(unscoped.Select(static credential => credential.CredentialId), Does.Contain(globalCredential.Id));
             Assert.That(unscoped.Select(static credential => credential.CredentialId), Does.Contain(otherTenantCredential.Id));
+        }
+    }
+
+    [Test]
+    public async Task SearchCredentialsRequiresExplicitTenantScopeOrAllTenantsMode()
+    {
+        await using var scope = CreateAsyncScope();
+        var repository = GetCredentialAdministrationRepository(scope.ServiceProvider);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<ArgumentException>(() => repository.SearchCredentialsAsync(new SearchCredentialsRequest { Limit = 10 }, Now));
+            Assert.ThrowsAsync<ArgumentException>(() => repository.SearchCredentialsAsync(new SearchCredentialsRequest { Tenant = TenantContext.Global, IncludeAllTenants = true, Limit = 10 }, Now));
         }
     }
 
@@ -83,12 +96,13 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         var repository = GetCredentialAdministrationRepository(scope.ServiceProvider);
         var active = await repository.SearchCredentialsAsync(new SearchCredentialsRequest
         {
+            IncludeAllTenants = true,
             Provider = AuthenticationProviderKey.Passkey,
             Purpose = "mfa",
             Status = CredentialStatus.Active,
             Limit = 10
         }, Now);
-        var revokedResult = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { Status = CredentialStatus.Revoked, Limit = 10 }, Now);
+        var revokedResult = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true, Status = CredentialStatus.Revoked, Limit = 10 }, Now);
 
         using (Assert.EnterMultipleScope())
         {
@@ -118,10 +132,10 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         await credentialRepository.CreateCredentialAsync(revoked);
 
         var repository = GetCredentialAdministrationRepository(scope.ServiceProvider);
-        var available = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { Available = true, Limit = 10 }, Now);
-        var unavailable = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { Available = false, Limit = 10 }, Now);
-        var revokedResult = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { Revoked = true, Limit = 10 }, Now);
-        var unrevoked = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { Revoked = false, Limit = 10 }, Now);
+        var available = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true, Available = true, Limit = 10 }, Now);
+        var unavailable = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true, Available = false, Limit = 10 }, Now);
+        var revokedResult = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true, Revoked = true, Limit = 10 }, Now);
+        var unrevoked = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true, Revoked = false, Limit = 10 }, Now);
 
         using (Assert.EnterMultipleScope())
         {
@@ -160,6 +174,7 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
 
         var result = await GetCredentialAdministrationRepository(scope.ServiceProvider).SearchCredentialsAsync(new SearchCredentialsRequest
         {
+            IncludeAllTenants = true,
             CreatedFrom = BaseTime.AddMinutes(5),
             CreatedTo = BaseTime.AddMinutes(15),
             UpdatedFrom = BaseTime.AddMinutes(10),
@@ -190,7 +205,7 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         await credentialRepository.CreateCredentialAsync(lowerTie);
         await credentialRepository.CreateCredentialAsync(higherTie);
 
-        var result = await GetCredentialAdministrationRepository(scope.ServiceProvider).SearchCredentialsAsync(new SearchCredentialsRequest { Limit = 10 }, Now);
+        var result = await GetCredentialAdministrationRepository(scope.ServiceProvider).SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true, Limit = 10 }, Now);
 
         Assert.That(result.Select(static credential => credential.CredentialId), Is.EqualTo(new[] { higherTie.Id, lowerTie.Id, olderLastUsed.Id, noLastUsed.Id }));
     }
@@ -218,8 +233,8 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         await credentialRepository.CreateCredentialAsync(credential);
 
         var repository = GetCredentialAdministrationRepository(scope.ServiceProvider);
-        var found = await repository.GetCredentialAsync(credential.Id, Now);
-        var missing = await repository.GetCredentialAsync(Guid.NewGuid(), Now);
+        var found = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credential.Id, IncludeAllTenants: true), Now);
+        var missing = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(Guid.NewGuid(), IncludeAllTenants: true), Now);
 
         using (Assert.EnterMultipleScope())
         {
@@ -240,6 +255,52 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
     }
 
     [Test]
+    public async Task GetCredentialAppliesExplicitTenantScopeWithoutLeakingExistence()
+    {
+        await using var scope = CreateAsyncScope();
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var credentialRepository = GetCredentialRepository(scope.ServiceProvider);
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var user = await CreateUserAsync(userRepository, tenantId: tenantId);
+        var globalUser = await CreateUserAsync(userRepository);
+        var credential = CreateCredential(user.Id, AuthenticationProviderKey.Local);
+        var globalCredential = CreateCredential(globalUser.Id, AuthenticationProviderKey.MagicLink);
+        await credentialRepository.CreateCredentialAsync(credential);
+        await credentialRepository.CreateCredentialAsync(globalCredential);
+
+        var repository = GetCredentialAdministrationRepository(scope.ServiceProvider);
+        var inScope = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credential.Id, new TenantContext(tenantId)), Now);
+        var outOfScope = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credential.Id, new TenantContext(otherTenantId)), Now);
+        var globalScope = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credential.Id, TenantContext.Global), Now);
+        var globalInScope = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(globalCredential.Id, TenantContext.Global), Now);
+        var allTenants = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credential.Id, IncludeAllTenants: true), Now);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inScope?.CredentialId, Is.EqualTo(credential.Id));
+            Assert.That(outOfScope, Is.Null);
+            Assert.That(globalScope, Is.Null);
+            Assert.That(globalInScope?.CredentialId, Is.EqualTo(globalCredential.Id));
+            Assert.That(allTenants?.CredentialId, Is.EqualTo(credential.Id));
+        }
+    }
+
+    [Test]
+    public async Task GetCredentialRequiresExplicitTenantScopeOrAllTenantsMode()
+    {
+        await using var scope = CreateAsyncScope();
+        var repository = GetCredentialAdministrationRepository(scope.ServiceProvider);
+        var credentialId = Guid.NewGuid();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<ArgumentException>(() => repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credentialId), Now));
+            Assert.ThrowsAsync<ArgumentException>(() => repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credentialId, TenantContext.Global, IncludeAllTenants: true), Now));
+        }
+    }
+
+    [Test]
     public async Task CredentialAdministrationDoesNotReturnSensitiveStorageFields()
     {
         await using var scope = CreateAsyncScope();
@@ -253,8 +314,8 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         await credentialRepository.CreateCredentialAsync(credential);
 
         var repository = GetCredentialAdministrationRepository(scope.ServiceProvider);
-        var search = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { Limit = 10 }, Now);
-        var detail = await repository.GetCredentialAsync(credential.Id, Now);
+        var search = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true, Limit = 10 }, Now);
+        var detail = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credential.Id, IncludeAllTenants: true), Now);
 
         using (Assert.EnterMultipleScope())
         {

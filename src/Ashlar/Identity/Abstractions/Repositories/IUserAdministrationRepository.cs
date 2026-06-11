@@ -16,8 +16,8 @@ public interface IUserAdministrationRepository
     /// <summary>
     /// Gets a user summary by id.
     /// </summary>
-    /// <param name="userId">The user id value.</param>
+    /// <param name="request">The detail request value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    Task<UserSummary?> GetUserSummaryAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<UserSummary?> GetUserSummaryAsync(UserAdministrationDetailRequest request, CancellationToken cancellationToken = default);
 }

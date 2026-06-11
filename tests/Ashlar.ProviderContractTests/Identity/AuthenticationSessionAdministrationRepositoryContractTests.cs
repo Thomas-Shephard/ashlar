@@ -19,8 +19,8 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         await sessionRepository.CreateSessionAsync(second);
 
         var repository = GetAuthenticationSessionAdministrationRepository(scope.ServiceProvider);
-        var all = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Limit = 10 }, Now);
-        var filtered = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { UserId = firstUser.Id, Limit = 10 }, Now);
+        var all = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true, Limit = 10 }, Now);
+        var filtered = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true, UserId = firstUser.Id, Limit = 10 }, Now);
 
         using (Assert.EnterMultipleScope())
         {
@@ -50,7 +50,7 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         var repository = GetAuthenticationSessionAdministrationRepository(scope.ServiceProvider);
         var scoped = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Tenant = new TenantContext(tenantId), Limit = 10 }, Now);
         var global = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Tenant = TenantContext.Global, Limit = 10 }, Now);
-        var unscoped = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Limit = 10 }, Now);
+        var unscoped = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true, Limit = 10 }, Now);
 
         using (Assert.EnterMultipleScope())
         {
@@ -59,6 +59,19 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
             Assert.That(unscoped.Select(static session => session.Id), Does.Contain(tenantSession.Id));
             Assert.That(unscoped.Select(static session => session.Id), Does.Contain(globalSession.Id));
             Assert.That(unscoped.Select(static session => session.Id), Does.Contain(otherTenantSession.Id));
+        }
+    }
+
+    [Test]
+    public async Task SearchAuthenticationSessionsRequiresExplicitTenantScopeOrAllTenantsMode()
+    {
+        await using var scope = CreateAsyncScope();
+        var repository = GetAuthenticationSessionAdministrationRepository(scope.ServiceProvider);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<ArgumentException>(() => repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Limit = 10 }, Now));
+            Assert.ThrowsAsync<ArgumentException>(() => repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Tenant = TenantContext.Global, IncludeAllTenants = true, Limit = 10 }, Now));
         }
     }
 
@@ -78,10 +91,10 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         await sessionRepository.RevokeSessionAsync(revoked.Id, BaseTime.AddMinutes(30), "manual");
 
         var repository = GetAuthenticationSessionAdministrationRepository(scope.ServiceProvider);
-        var activeResult = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Active = true, Limit = 10 }, Now);
-        var inactiveResult = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Active = false, Limit = 10 }, Now);
-        var revokedResult = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Revoked = true, Limit = 10 }, Now);
-        var unrevokedResult = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Revoked = false, Limit = 10 }, Now);
+        var activeResult = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true, Active = true, Limit = 10 }, Now);
+        var inactiveResult = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true, Active = false, Limit = 10 }, Now);
+        var revokedResult = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true, Revoked = true, Limit = 10 }, Now);
+        var unrevokedResult = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true, Revoked = false, Limit = 10 }, Now);
 
         using (Assert.EnterMultipleScope())
         {
@@ -124,6 +137,7 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
 
         var result = await GetAuthenticationSessionAdministrationRepository(scope.ServiceProvider).SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest
         {
+            IncludeAllTenants = true,
             PrimaryProvider = AuthenticationProviderKey.MagicLink,
             CreatedFrom = BaseTime.AddMinutes(5),
             CreatedTo = BaseTime.AddMinutes(15),
@@ -156,7 +170,7 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         await sessionRepository.CreateSessionAsync(lowerTie);
         await sessionRepository.CreateSessionAsync(higherTie);
 
-        var result = await GetAuthenticationSessionAdministrationRepository(scope.ServiceProvider).SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Limit = 10 }, Now);
+        var result = await GetAuthenticationSessionAdministrationRepository(scope.ServiceProvider).SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true, Limit = 10 }, Now);
 
         Assert.That(result.Select(static session => session.Id), Is.EqualTo(new[] { higherTie.Id, lowerTie.Id, olderLastSeen.Id, noLastSeen.Id }));
     }
@@ -181,8 +195,8 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         await sessionRepository.CreateSessionAsync(session);
 
         var repository = GetAuthenticationSessionAdministrationRepository(scope.ServiceProvider);
-        var found = await repository.GetAuthenticationSessionAsync(session.Id, Now);
-        var missing = await repository.GetAuthenticationSessionAsync(Guid.NewGuid(), Now);
+        var found = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(session.Id, IncludeAllTenants: true), Now);
+        var missing = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(Guid.NewGuid(), IncludeAllTenants: true), Now);
 
         using (Assert.EnterMultipleScope())
         {
@@ -200,6 +214,52 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
     }
 
     [Test]
+    public async Task GetAuthenticationSessionAppliesExplicitTenantScopeWithoutLeakingExistence()
+    {
+        await using var scope = CreateAsyncScope();
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var sessionRepository = GetAuthenticationSessionRepository(scope.ServiceProvider);
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var user = await CreateUserAsync(userRepository, tenantId: tenantId);
+        var globalUser = await CreateUserAsync(userRepository);
+        var session = CreateSession(user.Id, tenantId: tenantId);
+        var globalSession = CreateSession(globalUser.Id);
+        await sessionRepository.CreateSessionAsync(session);
+        await sessionRepository.CreateSessionAsync(globalSession);
+
+        var repository = GetAuthenticationSessionAdministrationRepository(scope.ServiceProvider);
+        var inScope = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(session.Id, new TenantContext(tenantId)), Now);
+        var outOfScope = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(session.Id, new TenantContext(otherTenantId)), Now);
+        var globalScope = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(session.Id, TenantContext.Global), Now);
+        var globalInScope = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(globalSession.Id, TenantContext.Global), Now);
+        var allTenants = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(session.Id, IncludeAllTenants: true), Now);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inScope?.Id, Is.EqualTo(session.Id));
+            Assert.That(outOfScope, Is.Null);
+            Assert.That(globalScope, Is.Null);
+            Assert.That(globalInScope?.Id, Is.EqualTo(globalSession.Id));
+            Assert.That(allTenants?.Id, Is.EqualTo(session.Id));
+        }
+    }
+
+    [Test]
+    public async Task GetAuthenticationSessionRequiresExplicitTenantScopeOrAllTenantsMode()
+    {
+        await using var scope = CreateAsyncScope();
+        var repository = GetAuthenticationSessionAdministrationRepository(scope.ServiceProvider);
+        var sessionId = Guid.NewGuid();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<ArgumentException>(() => repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(sessionId), Now));
+            Assert.ThrowsAsync<ArgumentException>(() => repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(sessionId, TenantContext.Global, IncludeAllTenants: true), Now));
+        }
+    }
+
+    [Test]
     public async Task AuthenticationSessionAdministrationDoesNotReturnTokenHash()
     {
         await using var scope = CreateAsyncScope();
@@ -210,8 +270,8 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         await sessionRepository.CreateSessionAsync(session);
 
         var repository = GetAuthenticationSessionAdministrationRepository(scope.ServiceProvider);
-        var search = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { Limit = 10 }, Now);
-        var detail = await repository.GetAuthenticationSessionAsync(session.Id, Now);
+        var search = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true, Limit = 10 }, Now);
+        var detail = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(session.Id, IncludeAllTenants: true), Now);
 
         using (Assert.EnterMultipleScope())
         {

@@ -18,7 +18,7 @@ public sealed class SqliteSecurityEventAdministrationRepository(ISqliteConnectio
     /// <returns>The matching security events.</returns>
     public async Task<IReadOnlyList<SecurityEventSummary>> SearchSecurityEventsAsync(SearchSecurityEventsRequest request, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
+        SearchSecurityEventsRequest.ThrowIfInvalid(request);
 
         return await SqliteQuery.QueryAsync(_connectionProvider, command =>
         {
@@ -35,15 +35,19 @@ public sealed class SqliteSecurityEventAdministrationRepository(ISqliteConnectio
     /// <summary>
     /// Gets a recorded security event by id.
     /// </summary>
-    /// <param name="eventId">The event id value.</param>
+    /// <param name="request">The detail request value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The security event, or <see langword="null" /> when it does not exist.</returns>
-    public async Task<SecurityEventSummary?> GetSecurityEventAsync(Guid eventId, CancellationToken cancellationToken = default)
+    public async Task<SecurityEventSummary?> GetSecurityEventAsync(SecurityEventAdministrationDetailRequest request, CancellationToken cancellationToken = default)
     {
+        SecurityEventAdministrationDetailRequest.ThrowIfInvalid(request);
+
         return await SqliteQuery.QuerySingleAsync(_connectionProvider, command =>
         {
-            command.AddGuidParameter("$eventId", eventId);
-            return SelectSql + " WHERE id = $eventId;";
+            command.AddGuidParameter("$eventId", request.EventId);
+            var sql = SelectSql + " WHERE id = $eventId";
+            command.AddTenantFilter(request.Tenant, "tenant_id", "$tenantId", ref sql);
+            return sql + ";";
         }, static reader => ReadStorageRecord(reader).ToSummary(), cancellationToken);
     }
 

@@ -19,7 +19,7 @@ public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteC
     /// <returns>The matching authentication sessions.</returns>
     public async Task<IReadOnlyList<AuthenticationSessionAdministrationSummary>> SearchAuthenticationSessionsAsync(SearchAuthenticationSessionsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
+        SearchAuthenticationSessionsRequest.ThrowIfInvalid(request);
 
         return await SqliteQuery.QueryAsync(_connectionProvider, command =>
         {
@@ -37,18 +37,22 @@ public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteC
     /// <summary>
     /// Gets an authentication session by id.
     /// </summary>
-    /// <param name="sessionId">The session id value.</param>
+    /// <param name="request">The detail request value.</param>
     /// <param name="now">The timestamp used for active-state projection.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The authentication session, or <see langword="null" /> when it does not exist.</returns>
-    public async Task<AuthenticationSessionAdministrationDetail?> GetAuthenticationSessionAsync(Guid sessionId, DateTimeOffset now, CancellationToken cancellationToken = default)
+    public async Task<AuthenticationSessionAdministrationDetail?> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
+        AuthenticationSessionAdministrationDetailRequest.ThrowIfInvalid(request);
+
         return await SqliteQuery.QuerySingleAsync(_connectionProvider, command =>
         {
-            command.AddGuidParameter("$id", sessionId);
+            command.AddGuidParameter("$id", request.SessionId);
             command.AddDateTimeOffsetParameter("$now", now);
+            var sql = SelectSql + " WHERE id = $id";
+            command.AddTenantFilter(request.Tenant, "tenant_id", "$tenantId", ref sql);
 
-            return SelectSql + " WHERE id = $id;";
+            return sql + ";";
         }, ReadDetail, cancellationToken);
     }
 

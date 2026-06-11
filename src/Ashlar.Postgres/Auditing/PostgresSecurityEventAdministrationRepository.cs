@@ -18,7 +18,7 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
     /// <returns>The matching security events.</returns>
     public async Task<IReadOnlyList<SecurityEventSummary>> SearchSecurityEventsAsync(SearchSecurityEventsRequest request, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
+        SearchSecurityEventsRequest.ThrowIfInvalid(request);
 
         var sql = SelectSql + " WHERE 1 = 1";
         var parameters = new DynamicParameters();
@@ -36,13 +36,19 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
     /// <summary>
     /// Gets a recorded security event by id.
     /// </summary>
-    /// <param name="eventId">The event id value.</param>
+    /// <param name="request">The detail request value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The security event, or <see langword="null" /> when it does not exist.</returns>
-    public async Task<SecurityEventSummary?> GetSecurityEventAsync(Guid eventId, CancellationToken cancellationToken = default)
+    public async Task<SecurityEventSummary?> GetSecurityEventAsync(SecurityEventAdministrationDetailRequest request, CancellationToken cancellationToken = default)
     {
+        SecurityEventAdministrationDetailRequest.ThrowIfInvalid(request);
+
         var sql = SelectSql + " WHERE id = @EventId";
-        var row = await PostgresAdminQuery.QuerySingleAsync<SecurityEventRow>(_connectionProvider, sql, new { EventId = eventId }, cancellationToken);
+        var parameters = new DynamicParameters();
+        parameters.Add("EventId", request.EventId);
+        PostgresAdminQuery.AddTenantFilter(request.Tenant, "tenant_id", "TenantId", ref sql, parameters);
+
+        var row = await PostgresAdminQuery.QuerySingleAsync<SecurityEventRow>(_connectionProvider, sql, parameters, cancellationToken);
         return row?.ToStorageRecord().ToSummary();
     }
 

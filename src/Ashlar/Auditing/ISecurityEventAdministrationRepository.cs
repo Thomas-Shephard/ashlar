@@ -16,8 +16,8 @@ public interface ISecurityEventAdministrationRepository
     /// <summary>
     /// Gets a recorded security event by id.
     /// </summary>
-    /// <param name="eventId">The event id value.</param>
+    /// <param name="request">The detail request value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The security event, or <see langword="null" /> when it does not exist.</returns>
-    Task<SecurityEventSummary?> GetSecurityEventAsync(Guid eventId, CancellationToken cancellationToken = default);
+    Task<SecurityEventSummary?> GetSecurityEventAsync(SecurityEventAdministrationDetailRequest request, CancellationToken cancellationToken = default);
 }

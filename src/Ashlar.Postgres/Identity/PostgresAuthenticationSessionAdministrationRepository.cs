@@ -19,7 +19,7 @@ public sealed class PostgresAuthenticationSessionAdministrationRepository(IPostg
     /// <returns>The matching authentication sessions.</returns>
     public async Task<IReadOnlyList<AuthenticationSessionAdministrationSummary>> SearchAuthenticationSessionsAsync(SearchAuthenticationSessionsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
+        SearchAuthenticationSessionsRequest.ThrowIfInvalid(request);
 
         var sql = SelectSql + " WHERE 1 = 1";
         var parameters = new DynamicParameters();
@@ -38,14 +38,21 @@ public sealed class PostgresAuthenticationSessionAdministrationRepository(IPostg
     /// <summary>
     /// Gets an authentication session by id.
     /// </summary>
-    /// <param name="sessionId">The session id value.</param>
+    /// <param name="request">The detail request value.</param>
     /// <param name="now">The timestamp used for active-state projection.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The authentication session, or <see langword="null" /> when it does not exist.</returns>
-    public async Task<AuthenticationSessionAdministrationDetail?> GetAuthenticationSessionAsync(Guid sessionId, DateTimeOffset now, CancellationToken cancellationToken = default)
+    public async Task<AuthenticationSessionAdministrationDetail?> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
+        AuthenticationSessionAdministrationDetailRequest.ThrowIfInvalid(request);
+
         var sql = SelectSql + " WHERE id = @Id";
-        var row = await PostgresAdminQuery.QuerySingleAsync<AuthenticationSessionAdministrationRow>(_connectionProvider, sql, new { Id = sessionId, Now = now }, cancellationToken);
+        var parameters = new DynamicParameters();
+        parameters.Add("Id", request.SessionId);
+        parameters.Add("Now", now);
+        PostgresAdminQuery.AddTenantFilter(request.Tenant, "tenant_id", "TenantId", ref sql, parameters);
+
+        var row = await PostgresAdminQuery.QuerySingleAsync<AuthenticationSessionAdministrationRow>(_connectionProvider, sql, parameters, cancellationToken);
         return row?.ToDetail();
     }
 
