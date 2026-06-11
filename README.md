@@ -925,7 +925,7 @@ Available operations:
 - `SetUserAccountStateAsync`: changes a user between `Active`, `Disabled`, `Locked`, and `Suspended`.
 - `RevokeSessionsAsync`: revokes all active sessions for a user.
 - `RevokeCredentialsAsync`: revokes active credentials for a specific provider key.
-- `ResetMfaAsync`: revokes configured TOTP and recovery-code credentials.
+- `ResetMfaAsync`: revokes configured TOTP credentials, recovery-code credentials, and remembered MFA devices.
 - `GetUserSecurityPostureAsync`: returns a non-secret `AccountSecurityPosture` read model containing active state, email verification state, primary sign-in methods, additional verification factors, policy readiness, missing required factors, readable credential inventory, active session count, and recent security event count when the persistence provider supports it.
 
 Transitions to non-active states revoke active sessions and remembered MFA devices by default, but they do not revoke credentials. Transitions back to `Active` do not restore sessions, credentials, or remembered MFA devices. No-op state transitions report `UserChanged = false` and do not revoke sessions or remembered MFA devices. `AccountSecurityOperationResult` includes the previous and current account states, whether the user row changed, session and credential revocation counts, and the remembered MFA device revocation count when a remembered-device service is registered.

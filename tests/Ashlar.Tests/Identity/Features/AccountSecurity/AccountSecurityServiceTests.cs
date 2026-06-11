@@ -88,11 +88,13 @@ internal sealed class AccountSecurityServiceTests
         var result = await service.SetUserAccountStateAsync(
             _userId,
             new SetUserAccountStateRequest(UserAccountState.Disabled, request.Audit, request.Tenant, request.Reason));
+        var accountStateChangedEvent = _events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserAccountStateChanged);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value?.RememberedMfaDevicesRevoked, Is.EqualTo(2));
+            Assert.That(accountStateChangedEvent.Properties?["remembered_mfa_devices_revoked"], Is.EqualTo("2"));
         }
 
         rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.Is<RevokeAllRememberedMfaDevicesRequest>(r =>
@@ -190,9 +192,17 @@ internal sealed class AccountSecurityServiceTests
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _sessionRepository.Sessions.Add(CreateSession(_userId));
+        var rememberedDevices = new Mock<IRememberedMfaDeviceService>();
         var request = CreateStateRequest(UserAccountState.Suspended, revokeSessionsAndRememberedMfaDevices: false);
+        var service = new AccountSecurityService(
+            _userRepository,
+            _userRepository,
+            Mock.Of<IAuthenticationSessionService>(),
+            new NullTransactionProvider(),
+            new AllowAccountSecurityGuard(),
+            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices.Object));
 
-        var result = await _service.SetUserAccountStateAsync(_userId, request);
+        var result = await service.SetUserAccountStateAsync(_userId, request);
 
         using (Assert.EnterMultipleScope())
         {
@@ -200,7 +210,10 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(_userRepository.Users[_userId].AccountState, Is.EqualTo(UserAccountState.Suspended));
             Assert.That(_sessionRepository.Sessions.Single().RevokedAt, Is.Null);
             Assert.That(result.Value?.SessionsRevoked, Is.Zero);
+            Assert.That(result.Value?.RememberedMfaDevicesRevoked, Is.Zero);
         }
+
+        rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -381,16 +394,27 @@ internal sealed class AccountSecurityServiceTests
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Disabled };
         _sessionRepository.Sessions.Add(CreateSession(_userId));
+        var rememberedDevices = new Mock<IRememberedMfaDeviceService>();
+        var service = new AccountSecurityService(
+            _userRepository,
+            _userRepository,
+            Mock.Of<IAuthenticationSessionService>(),
+            new NullTransactionProvider(),
+            new AllowAccountSecurityGuard(),
+            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices.Object));
 
-        var result = await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled));
+        var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value?.UserChanged, Is.False);
             Assert.That(result.Value?.SessionsRevoked, Is.Zero);
+            Assert.That(result.Value?.RememberedMfaDevicesRevoked, Is.Zero);
             Assert.That(_sessionRepository.Sessions.Single().RevokedAt, Is.Null);
         }
+
+        rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -587,19 +611,22 @@ internal sealed class AccountSecurityServiceTests
         _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
 
         var result = await _service.ResetMfaAsync(_userId, CreateRequest("lost-device"));
+        var resetEvent = _events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserMfaReset);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value?.CredentialsRevoked, Is.EqualTo(2));
+            Assert.That(result.Value?.RememberedMfaDevicesRevoked, Is.Zero);
             Assert.That(_userRepository.Credentials.Count(c => c.RevokedAt.HasValue), Is.EqualTo(2));
             Assert.That(_userRepository.Credentials.Single(c => c.ProviderType == ProviderType.Local).RevokedAt, Is.Null);
-            Assert.That(_events.Events.Any(e => e.EventType == AshlarSecurityEventTypes.UserMfaReset), Is.True);
+            Assert.That(resetEvent.Properties?["credentials_revoked"], Is.EqualTo("2"));
+            Assert.That(resetEvent.Properties?["remembered_mfa_devices_revoked"], Is.EqualTo("0"));
         }
     }
 
     [Test]
-    public async Task ResetMfaAsyncShouldRevokeRememberedMfaDevices()
+    public async Task ResetMfaAsyncShouldReportRememberedMfaDevicesRevoked()
     {
         var tenantId = Guid.NewGuid();
         var request = CreateRequest("mfa-reset", tenantId);
@@ -617,8 +644,15 @@ internal sealed class AccountSecurityServiceTests
             new AccountSecurityServiceDependencies(_timeProvider, _events, _events, RememberedMfaDeviceService: rememberedDevices.Object));
 
         var result = await service.ResetMfaAsync(_userId, request);
+        var resetEvent = _events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserMfaReset);
 
-        Assert.That(result.Succeeded, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value?.RememberedMfaDevicesRevoked, Is.EqualTo(3));
+            Assert.That(resetEvent.Properties?["remembered_mfa_devices_revoked"], Is.EqualTo("3"));
+        }
+
         rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.Is<RevokeAllRememberedMfaDevicesRequest>(r =>
             r.Tenant == request.Tenant &&
             r.Reason == "mfa-reset" &&
