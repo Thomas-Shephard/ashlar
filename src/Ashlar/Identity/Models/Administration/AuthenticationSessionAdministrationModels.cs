@@ -54,7 +54,7 @@ public sealed record SearchAuthenticationSessionsRequest
     public static void ThrowIfInvalid(SearchAuthenticationSessionsRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);
     }
 }
 
@@ -163,7 +163,7 @@ public sealed record AuthenticationSessionAdministrationDetailRequest(
     public static void ThrowIfInvalid(AuthenticationSessionAdministrationDetailRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);
         if (request.SessionId == Guid.Empty)
         {
             throw new ArgumentException("Session ID cannot be empty.", nameof(request));

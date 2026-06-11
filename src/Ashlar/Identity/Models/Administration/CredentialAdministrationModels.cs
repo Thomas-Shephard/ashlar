@@ -66,7 +66,7 @@ public sealed record SearchCredentialsRequest
     public static void ThrowIfInvalid(SearchCredentialsRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);
     }
 }
 
@@ -159,7 +159,7 @@ public sealed record CredentialAdministrationDetailRequest(
     public static void ThrowIfInvalid(CredentialAdministrationDetailRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);
         if (request.CredentialId == Guid.Empty)
         {
             throw new ArgumentException("Credential ID cannot be empty.", nameof(request));

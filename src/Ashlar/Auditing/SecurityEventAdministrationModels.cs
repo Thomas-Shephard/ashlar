@@ -51,7 +51,7 @@ public sealed record SearchSecurityEventsRequest
     public static void ThrowIfInvalid(SearchSecurityEventsRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);
     }
 }
 
@@ -119,7 +119,7 @@ public sealed record SecurityEventAdministrationDetailRequest(
     public static void ThrowIfInvalid(SecurityEventAdministrationDetailRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);
         if (request.EventId == Guid.Empty)
         {
             throw new ArgumentException("Event ID cannot be empty.", nameof(request));

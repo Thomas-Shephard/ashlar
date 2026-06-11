@@ -33,7 +33,7 @@ public sealed record SearchUsersRequest
     public static void ThrowIfInvalid(SearchUsersRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);
     }
 }
 
@@ -102,7 +102,7 @@ public sealed record UserAdministrationDetailRequest(
     public static void ThrowIfInvalid(UserAdministrationDetailRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants, request);
+        AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);
         if (request.UserId == Guid.Empty)
         {
             throw new ArgumentException("User ID cannot be empty.", nameof(request));
