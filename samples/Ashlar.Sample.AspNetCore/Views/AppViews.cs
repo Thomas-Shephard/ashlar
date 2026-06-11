@@ -611,7 +611,7 @@ internal static class AppViews
         """;
     }
 
-    private static AccountSecurityDisplayState CreateSecurityDisplay(UserSecurityPosture posture)
+    private static AccountSecurityDisplayState CreateSecurityDisplay(AccountSecurityPosture posture)
     {
         var hasAdditionalVerification = posture.AdditionalVerificationFactors.Any(f => f.IsConfigured);
         var isReadyForAdditionalVerification = posture.Policy.IsReadyForAdditionalVerification;
@@ -637,19 +637,19 @@ internal static class AppViews
         return "Blocked until setup";
     }
 
-    private static bool HasConfiguredFactor(UserSecurityPosture posture, string factorType)
+    private static bool HasConfiguredFactor(AccountSecurityPosture posture, string factorType)
     {
         return posture.AdditionalVerificationFactors.Any(factor =>
             string.Equals(factor.FactorType, factorType, StringComparison.OrdinalIgnoreCase) && factor.IsConfigured);
     }
 
-    private static string FormatSignInMethods(UserSecurityPosture posture)
+    private static string FormatSignInMethods(AccountSecurityPosture posture)
     {
         var methods = string.Join(", ", posture.PrimaryCredentials.Select(c => c.DisplayName).Distinct(StringComparer.Ordinal));
         return methods.Length > 0 ? methods : "None";
     }
 
-    private static string FormatMissingVerification(UserSecurityPosture posture, bool hasAdditionalVerification)
+    private static string FormatMissingVerification(AccountSecurityPosture posture, bool hasAdditionalVerification)
     {
         if (hasAdditionalVerification && posture.Policy.IsReadyForAdditionalVerification)
         {
@@ -664,7 +664,7 @@ internal static class AppViews
         return "Authenticator app or passkey";
     }
 
-    private static string FormatVerificationStatus(UserSecurityPosture posture, bool hasAdditionalVerification)
+    private static string FormatVerificationStatus(AccountSecurityPosture posture, bool hasAdditionalVerification)
     {
         if (hasAdditionalVerification)
         {
@@ -679,7 +679,7 @@ internal static class AppViews
         return "<span class=\"badge\">Not configured</span>";
     }
 
-    private static string FormatEmailVerificationBadge(UserSecurityPosture posture)
+    private static string FormatEmailVerificationBadge(AccountSecurityPosture posture)
     {
         if (posture.IsEmailVerified)
         {
@@ -689,7 +689,7 @@ internal static class AppViews
         return "<span class=\"badge badge-warning\">Unverified</span>";
     }
 
-    private static string RenderVerifyEmailForm(UserSecurityPosture posture)
+    private static string RenderVerifyEmailForm(AccountSecurityPosture posture)
     {
         if (posture.IsEmailVerified)
         {
@@ -759,7 +759,7 @@ internal static class AppViews
           """;
     }
 
-    private static bool HasExternalCredential(UserSecurityPosture posture, ProviderType providerType, string providerName)
+    private static bool HasExternalCredential(AccountSecurityPosture posture, ProviderType providerType, string providerName)
     {
         return posture.CredentialInventory.Any(c =>
             c.IsAvailable &&
@@ -767,7 +767,7 @@ internal static class AppViews
             string.Equals(c.Provider.Name, providerName, StringComparison.Ordinal));
     }
 
-    private static string RenderGoogleAccountItem(UserSecurityPosture posture, bool googleConfigured)
+    private static string RenderGoogleAccountItem(AccountSecurityPosture posture, bool googleConfigured)
     {
         if (!googleConfigured)
         {
@@ -802,7 +802,7 @@ internal static class AppViews
         """;
     }
 
-    private static string RenderGitHubAccountItem(UserSecurityPosture posture, bool githubConfigured)
+    private static string RenderGitHubAccountItem(AccountSecurityPosture posture, bool githubConfigured)
     {
         if (!githubConfigured)
         {
@@ -837,7 +837,7 @@ internal static class AppViews
         """;
     }
 
-    private static string RenderExternalAccountsSection(UserSecurityPosture posture, bool googleConfigured, bool githubConfigured)
+    private static string RenderExternalAccountsSection(AccountSecurityPosture posture, bool googleConfigured, bool githubConfigured)
     {
         var googleAccountItem = RenderGoogleAccountItem(posture, googleConfigured);
         var githubAccountItem = RenderGitHubAccountItem(posture, githubConfigured);
@@ -863,7 +863,7 @@ internal static class AppViews
         string MissingVerification,
         string VerificationStatus);
 
-    public static IResult RenderAccountSettings(string userEmail, string? userName, UserSecurityPosture posture, bool isAdmin, bool googleConfigured, bool githubConfigured)
+    public static IResult RenderAccountSettings(string userEmail, string? userName, AccountSecurityPosture posture, bool isAdmin, bool googleConfigured, bool githubConfigured)
     {
         var verifiedBadge = FormatEmailVerificationBadge(posture);
         var verifyForm = RenderVerifyEmailForm(posture);

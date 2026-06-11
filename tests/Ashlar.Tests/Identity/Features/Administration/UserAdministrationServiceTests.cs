@@ -187,7 +187,7 @@ internal sealed class UserAdministrationServiceTests
         var repository = new RecordingUserAdministrationRepository { UserSummary = CreateSummary("detail@example.com") with { UserId = userId } };
         var accountSecurity = new RecordingAccountSecurityService
         {
-            PostureResult = Result.Failure<UserSecurityPosture>(AshlarFailureCodes.UserNotFound)
+            PostureResult = Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.UserNotFound)
         };
         var service = CreateService(repository, accountSecurity);
 
@@ -207,7 +207,7 @@ internal sealed class UserAdministrationServiceTests
         var repository = new RecordingUserAdministrationRepository { UserSummary = CreateSummary("detail@example.com") with { UserId = userId } };
         var accountSecurity = new RecordingAccountSecurityService
         {
-            PostureResult = new Result<UserSecurityPosture>(true)
+            PostureResult = new Result<AccountSecurityPosture>(true)
         };
         var service = CreateService(repository, accountSecurity);
 
@@ -319,9 +319,9 @@ internal sealed class UserAdministrationServiceTests
         return new UserSummary(Guid.NewGuid(), email, "Test User", tenantId, UserAccountState.Active, true, true, DateTimeOffset.UtcNow, null);
     }
 
-    private static UserSecurityPosture CreatePosture(Guid userId)
+    private static AccountSecurityPosture CreatePosture(Guid userId)
     {
-        return new UserSecurityPosture(
+        return new AccountSecurityPosture(
             userId,
             UserAccountState.Active,
             true,
@@ -356,10 +356,10 @@ internal sealed class UserAdministrationServiceTests
 
     private sealed class RecordingAccountSecurityService : IAccountSecurityService
     {
-        public Result<UserSecurityPosture> PostureResult { get; init; } = Result.Failure<UserSecurityPosture>(AshlarFailureCodes.UserNotFound);
+        public Result<AccountSecurityPosture> PostureResult { get; init; } = Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.UserNotFound);
         public int PostureCalls { get; private set; }
         public Guid LastPostureUserId { get; private set; }
-        public UserSecurityPostureRequest? LastPostureRequest { get; private set; }
+        public AccountSecurityPostureRequest? LastPostureRequest { get; private set; }
 
         public Task<Result<AccountSecurityOperationResult>> SetUserAccountStateAsync(Guid userId, SetUserAccountStateRequest request, CancellationToken cancellationToken = default)
         {
@@ -381,7 +381,7 @@ internal sealed class UserAdministrationServiceTests
             throw new NotSupportedException();
         }
 
-        public Task<Result<UserSecurityPosture>> GetUserSecurityPostureAsync(Guid userId, UserSecurityPostureRequest? request = null, CancellationToken cancellationToken = default)
+        public Task<Result<AccountSecurityPosture>> GetUserSecurityPostureAsync(Guid userId, AccountSecurityPostureRequest? request = null, CancellationToken cancellationToken = default)
         {
             PostureCalls++;
             LastPostureUserId = userId;

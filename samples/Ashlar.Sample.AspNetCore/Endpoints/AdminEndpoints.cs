@@ -45,8 +45,8 @@ internal static partial class AdminEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var result = await accountSecurity.GetUserSecurityPostureAsync(userId, new UserSecurityPostureRequest(ToTenantContext(httpContext), TimeSpan.FromDays(30)), cancellationToken);
-            return ToUserSecurityPostureResult(result);
+            var result = await accountSecurity.GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(ToTenantContext(httpContext), TimeSpan.FromDays(30)), cancellationToken);
+            return ToAccountSecurityPostureResult(result);
         }).RequireAuthorization(AdminPolicy);
 
         app.MapPost("/api/admin/users/{userId:guid}/disable", async (
@@ -240,7 +240,7 @@ internal static partial class AdminEndpoints
             : Results.BadRequest(error);
     }
 
-    private static IResult ToUserSecurityPostureResult(Result<UserSecurityPosture> result)
+    private static IResult ToAccountSecurityPostureResult(Result<AccountSecurityPosture> result)
     {
         if (result.Succeeded)
         {

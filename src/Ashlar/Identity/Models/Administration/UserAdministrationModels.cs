@@ -74,13 +74,13 @@ public sealed record UserSearchResult(
     bool HasMore);
 
 /// <summary>
-/// Safe administrator <paramref name="User" /> detail.
+/// Display-safe administrator detail for a <paramref name="User" /> account.
 /// </summary>
 /// <param name="User">The user summary value.</param>
-/// <param name="SecurityPosture">The security posture value.</param>
+/// <param name="SecurityPosture">The non-secret account-security posture for the <paramref name="User" /> account.</param>
 public sealed record UserAdministrationDetail(
     UserSummary User,
-    UserSecurityPosture SecurityPosture);
+    AccountSecurityPosture SecurityPosture);
 
 /// <summary>
 /// Request for administrator user detail.
@@ -88,7 +88,7 @@ public sealed record UserAdministrationDetail(
 /// <param name="UserId">The user id value.</param>
 /// <param name="Tenant">The requested scope. Use <see cref="TenantContext.Global" /> for global users.</param>
 /// <param name="IncludeAllTenants">Whether to allow lookup across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
-/// <param name="RecentSecurityEventWindow">Optional recent security event window for the embedded security posture.</param>
+/// <param name="RecentSecurityEventWindow">Optional recent security event window for the embedded account-security posture.</param>
 public sealed record UserAdministrationDetailRequest(
     Guid UserId,
     TenantContext? Tenant = null,

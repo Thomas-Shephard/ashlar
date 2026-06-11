@@ -209,15 +209,15 @@ public sealed class AccountSecurityService : IAccountSecurityService
     }
 
     /// <inheritdoc />
-    public async Task<Result<UserSecurityPosture>> GetUserSecurityPostureAsync(Guid userId, UserSecurityPostureRequest? request = null, CancellationToken cancellationToken = default)
+    public async Task<Result<AccountSecurityPosture>> GetUserSecurityPostureAsync(Guid userId, AccountSecurityPostureRequest? request = null, CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
-        request ??= new UserSecurityPostureRequest();
+        request ??= new AccountSecurityPostureRequest();
 
         var userResult = await UserTenantValidator.GetUserInTenantAsync(_userRepository, userId, request.Tenant, cancellationToken);
         if (!userResult.TryGetValue(out var user))
         {
-            return Result.Failure<UserSecurityPosture>(userResult.GetFailureOr(AshlarFailureCodes.UserNotFound));
+            return Result.Failure<AccountSecurityPosture>(userResult.GetFailureOr(AshlarFailureCodes.UserNotFound));
         }
 
         var credentials = await _credentialRepository.ListCredentialsForUserAsync(userId, activeOnly: false, cancellationToken);
@@ -246,7 +246,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         var policyEvaluation = await _mfaPolicyEvaluator.EvaluateAsync(user, new AuthenticationContext(UserId: user.Id, TenantId: request.Tenant?.TenantId), cancellationToken);
         var policy = CreatePolicyPosture(policyEvaluation, factors);
 
-        var posture = new UserSecurityPosture(
+        var posture = new AccountSecurityPosture(
             userId,
             user.AccountState,
             user.EmailVerifiedAt.HasValue,

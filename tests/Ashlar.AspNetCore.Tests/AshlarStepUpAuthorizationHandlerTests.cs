@@ -362,9 +362,9 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         accountSecurity
             .Setup(service => service.GetUserSecurityPostureAsync(
                 session.UserId,
-                It.IsAny<UserSecurityPostureRequest?>(),
+                It.IsAny<AccountSecurityPostureRequest?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Failure<UserSecurityPosture>(AshlarFailureCodes.UserNotFound));
+            .ReturnsAsync(Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.UserNotFound));
         var context = CreateContext(
             session,
             new AshlarStepUpRequirement(
@@ -384,7 +384,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         session.AdditionalVerificationAt = Now.AddMinutes(-2);
         session.AdditionalVerificationProvider = new AuthenticationProviderKey(ProviderType.Mfa, AuthenticationFactorTypes.Totp);
         session.AdditionalVerificationFactor = AuthenticationFactorTypes.Totp;
-        var posture = new UserSecurityPosture(
+        var posture = new AccountSecurityPosture(
             session.UserId,
             AccountState: UserAccountState.Active,
             IsEmailVerified: true,
@@ -399,9 +399,9 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         accountSecurity
             .Setup(service => service.GetUserSecurityPostureAsync(
                 session.UserId,
-                It.IsAny<UserSecurityPostureRequest?>(),
+                It.IsAny<AccountSecurityPostureRequest?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Result<UserSecurityPosture>(false, posture));
+            .ReturnsAsync(new Result<AccountSecurityPosture>(false, posture));
         var context = CreateContext(
             session,
             new AshlarStepUpRequirement(
@@ -444,9 +444,9 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         accountSecurity
             .Setup(service => service.GetUserSecurityPostureAsync(
                 session.UserId,
-                It.IsAny<UserSecurityPostureRequest?>(),
+                It.IsAny<AccountSecurityPostureRequest?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Result<UserSecurityPosture>(true));
+            .ReturnsAsync(new Result<AccountSecurityPosture>(true));
         var context = CreateContext(
             session,
             new AshlarStepUpRequirement(
@@ -468,9 +468,9 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         accountSecurity
             .Setup(service => service.GetUserSecurityPostureAsync(
                 session.UserId,
-                It.Is<UserSecurityPostureRequest>(request => request.Tenant != null && request.Tenant.TenantId == tenantId),
+                It.Is<AccountSecurityPostureRequest>(request => request.Tenant != null && request.Tenant.TenantId == tenantId),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new UserSecurityPosture(
+            .ReturnsAsync(Result.Success(new AccountSecurityPosture(
                 session.UserId,
                 AccountState: UserAccountState.Active,
                 IsEmailVerified: true,
@@ -1079,9 +1079,9 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         accountSecurity
             .Setup(service => service.GetUserSecurityPostureAsync(
                 userId,
-                It.IsAny<UserSecurityPostureRequest?>(),
+                It.IsAny<AccountSecurityPostureRequest?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new UserSecurityPosture(
+            .ReturnsAsync(Result.Success(new AccountSecurityPosture(
                 userId,
                 AccountState: UserAccountState.Active,
                 IsEmailVerified: true,

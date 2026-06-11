@@ -103,7 +103,7 @@ public sealed class AshlarStepUpAuthorizationHandler(
             return null;
         }
 
-        var postureRequest = new UserSecurityPostureRequest(GetTenant(session));
+        var postureRequest = new AccountSecurityPostureRequest(GetTenant(session));
         var posture = await accountSecurityService.GetUserSecurityPostureAsync(
             session.UserId,
             postureRequest,

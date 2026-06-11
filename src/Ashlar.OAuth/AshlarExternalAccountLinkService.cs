@@ -245,7 +245,7 @@ public sealed class AshlarExternalAccountLinkService
         var provider = new AuthenticationProviderKey(providerOptions.Type, providerOptions.ProviderName);
         var postureResult = await _accountSecurityService.GetUserSecurityPostureAsync(
             currentUserId,
-            new UserSecurityPostureRequest(request.Tenant),
+            new AccountSecurityPostureRequest(request.Tenant),
             cancellationToken);
         if (!postureResult.Succeeded || postureResult.Value == null)
         {
@@ -302,7 +302,7 @@ public sealed class AshlarExternalAccountLinkService
         };
     }
 
-    private static bool HasUsablePrimarySignInMethodAfterUnlink(UserSecurityPosture posture, AuthenticationProviderKey provider)
+    private static bool HasUsablePrimarySignInMethodAfterUnlink(AccountSecurityPosture posture, AuthenticationProviderKey provider)
     {
         return posture.PrimaryCredentials.Any(item =>
             item.IsAvailable
@@ -310,7 +310,7 @@ public sealed class AshlarExternalAccountLinkService
             && item.Provider != provider);
     }
 
-    private static AshlarExternalAccountUnlinkStatus MapPostureFailure(Result<UserSecurityPosture> result)
+    private static AshlarExternalAccountUnlinkStatus MapPostureFailure(Result<AccountSecurityPosture> result)
     {
         return result.FailureCode?.Value == AshlarFailureCodes.UserNotFoundValue
             ? AshlarExternalAccountUnlinkStatus.UserNotFound

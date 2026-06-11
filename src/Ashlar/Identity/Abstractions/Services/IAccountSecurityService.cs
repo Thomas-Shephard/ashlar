@@ -43,11 +43,11 @@ public interface IAccountSecurityService
     Task<Result<AccountSecurityOperationResult>> ResetMfaAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns a non-secret security posture summary for a user.
+    /// Returns a non-secret account-security posture summary for a user account.
     /// </summary>
-    /// <param name="userId">The user whose posture should be returned.</param>
-    /// <param name="request">Tenant and recent-event window options for the lookup.</param>
+    /// <param name="userId">The user account whose posture should be returned.</param>
+    /// <param name="request">Tenant scope and recent-event window options for the lookup.</param>
     /// <param name="cancellationToken">Token used to cancel the operation.</param>
     /// <returns>The operation result.</returns>
-    Task<Result<UserSecurityPosture>> GetUserSecurityPostureAsync(Guid userId, UserSecurityPostureRequest? request = null, CancellationToken cancellationToken = default);
+    Task<Result<AccountSecurityPosture>> GetUserSecurityPostureAsync(Guid userId, AccountSecurityPostureRequest? request = null, CancellationToken cancellationToken = default);
 }

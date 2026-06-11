@@ -89,7 +89,7 @@ When enabled, the sample adds:
 - **Sign up with Google** on invitation acceptance. The invitation token is preserved in ASP.NET Core authentication properties during the Google challenge and is only consumed after OIDC validation and Ashlar invitation registration succeed.
 - **Link Google account** and **Unlink Google account** under Account -> Security. Both require fresh MFA when the current account has a usable eligible verification factor.
 
-Google uses the configured Ashlar provider name `Google`. The sample displays only friendly linked/not-linked state from `UserSecurityPosture.CredentialInventory`; it does not display provider keys, OIDC subjects, raw claims, or tokens. `Ashlar.OAuth` configures `SaveTokens = false`, and the sample does not persist OAuth access, refresh, or ID tokens.
+Google uses the configured Ashlar provider name `Google`. The sample displays only friendly linked/not-linked state from `AccountSecurityPosture.CredentialInventory`; it does not display provider keys, OIDC subjects, raw claims, or tokens. `Ashlar.OAuth` configures `SaveTokens = false`, and the sample does not persist OAuth access, refresh, or ID tokens.
 
 ### Optional GitHub OAuth
 
@@ -133,7 +133,7 @@ When enabled, the sample adds:
 - **Sign in with GitHub** for users who already have a linked GitHub OAuth credential.
 - **Link GitHub account** and **Unlink GitHub account** under Account -> Security. Both require fresh MFA when the current account has a usable eligible verification factor.
 
-GitHub uses the configured Ashlar provider name `GitHub` with `ProviderType.OAuth`. The sample displays only friendly linked/not-linked state from `UserSecurityPosture.CredentialInventory`; it does not display GitHub provider keys, raw GitHub IDs, raw claims, access tokens, or profile JSON. `Ashlar.OAuth` configures `SaveTokens = false`, and the sample does not persist OAuth access or refresh tokens.
+GitHub uses the configured Ashlar provider name `GitHub` with `ProviderType.OAuth`. The sample displays only friendly linked/not-linked state from `AccountSecurityPosture.CredentialInventory`; it does not display GitHub provider keys, raw GitHub IDs, raw claims, access tokens, or profile JSON. `Ashlar.OAuth` configures `SaveTokens = false`, and the sample does not persist OAuth access or refresh tokens.
 
 GitHub invitation acceptance is intentionally not enabled in this sample. The basic GitHub `/user` endpoint does not provide a reliable verified-email policy for invitation registration.
 

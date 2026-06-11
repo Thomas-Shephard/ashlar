@@ -42,7 +42,7 @@ Use `PrimaryCredentials` for sign-in methods, `AdditionalVerificationFactors` fo
 
 ## Admin User Reads
 
-`IUserAdministrationService` provides reusable read-only operations for admin and operations UIs: `SearchUsersAsync` returns safe `UserSummary` rows, and `GetUserDetailAsync` combines a summary with `UserSecurityPosture`. Search and detail requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. Provider packages implement the required `IUserAdministrationRepository`, so hosts do not need to query Ashlar provider tables directly.
+`IUserAdministrationService` provides reusable read-only operations for admin and operations UIs: `SearchUsersAsync` returns safe `UserSummary` rows, and `GetUserDetailAsync` combines a summary with `AccountSecurityPosture`. Search and detail requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. Provider packages implement the required `IUserAdministrationRepository`, so hosts do not need to query Ashlar provider tables directly.
 
 These APIs do not authorize callers by themselves. Host applications must protect any endpoints that expose them with their own admin authorization, audit policy, and step-up requirements.
 

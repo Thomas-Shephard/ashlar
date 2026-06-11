@@ -62,7 +62,7 @@ public sealed class UserAdministrationService(IUserAdministrationRepository repo
             return Result.Failure<UserAdministrationDetail>(AshlarFailureCodes.UserNotFound);
         }
 
-        var postureRequest = new UserSecurityPostureRequest(new TenantContext(user.TenantId), request.RecentSecurityEventWindow);
+        var postureRequest = new AccountSecurityPostureRequest(new TenantContext(user.TenantId), request.RecentSecurityEventWindow);
         var posture = await _accountSecurityService.GetUserSecurityPostureAsync(request.UserId, postureRequest, cancellationToken);
         if (!posture.Succeeded || posture.Value == null)
         {
