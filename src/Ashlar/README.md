@@ -42,13 +42,13 @@ Use `PrimaryCredentials` for sign-in methods, `AdditionalVerificationFactors` fo
 
 ## Admin User Reads
 
-`IUserAdministrationService` provides reusable read-only operations for admin and operations UIs: `SearchUsersAsync` returns safe `UserSummary` rows, and `GetUserDetailAsync` combines a summary with `UserSecurityPosture`. Search and detail requests require an explicit tenant scope, `TenantContext.Global`, or explicit all-tenant mode. Provider packages implement the required `IUserAdministrationRepository`, so hosts do not need to query Ashlar provider tables directly.
+`IUserAdministrationService` provides reusable read-only operations for admin and operations UIs: `SearchUsersAsync` returns safe `UserSummary` rows, and `GetUserDetailAsync` combines a summary with `UserSecurityPosture`. Search and detail requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. Provider packages implement the required `IUserAdministrationRepository`, so hosts do not need to query Ashlar provider tables directly.
 
 These APIs do not authorize callers by themselves. Host applications must protect any endpoints that expose them with their own admin authorization, audit policy, and step-up requirements.
 
 ## Admin Session Reads
 
-`IAuthenticationSessionAdministrationService` provides read-only session and device browsing for admin and operations UIs. Use `SearchAuthenticationSessionsAsync` to filter by tenant, user, provider, active/revoked state, and timestamp ranges, or `GetAuthenticationSessionAsync` for a single safe detail row. Search and detail requests require an explicit tenant scope, `TenantContext.Global`, or explicit all-tenant mode.
+`IAuthenticationSessionAdministrationService` provides read-only session and device browsing for admin and operations UIs. Use `SearchAuthenticationSessionsAsync` to filter by tenant, user, provider, active/revoked state, and timestamp ranges, or `GetAuthenticationSessionAsync` for a single safe detail row. Search and detail requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`.
 
 Provider packages implement `IAuthenticationSessionAdministrationRepository`, so hosts do not need to query session tables directly. These APIs do not authorize callers by themselves; protect endpoints with admin authorization and step-up policy. Raw session tokens, token hashes, and session metadata are not exposed.
 

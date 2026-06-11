@@ -6,12 +6,12 @@ internal static class AdministrationScopeValidation
     {
         if (tenant == null && !includeAllTenants)
         {
-            throw new ArgumentException("Tenant scope must be explicit.", nameof(request));
+            throw new ArgumentException("Tenant scope must be explicit. Set Tenant, TenantContext.Global, or IncludeAllTenants = true.", nameof(request));
         }
 
         if (tenant != null && includeAllTenants)
         {
-            throw new ArgumentException("Tenant scope cannot be combined with all-tenant search.", nameof(request));
+            throw new ArgumentException("Tenant scope cannot be combined with IncludeAllTenants = true.", nameof(request));
         }
     }
 
