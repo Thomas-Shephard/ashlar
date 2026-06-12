@@ -20,7 +20,7 @@ public record AccountSecurityOperationRequest
         string? Reason = null,
         bool IncludeAllTenants = false)
     {
-        this.Audit = Audit;
+        this.Audit = Audit ?? throw new ArgumentNullException(nameof(Audit), "Admin account security operations require audit metadata.");
         this.Tenant = Tenant;
         this.Reason = Reason;
         this.IncludeAllTenants = IncludeAllTenants;

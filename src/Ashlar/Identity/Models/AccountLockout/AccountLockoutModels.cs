@@ -196,6 +196,10 @@ public sealed record SearchAccountLockoutsRequest
         if (request.Provider is { } provider)
         {
             AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(request));
+            if (provider.Type.Value == ProviderType.UnknownValue)
+            {
+                throw new ArgumentException("Provider key must be fully initialized.", nameof(request));
+            }
         }
     }
 }
@@ -244,9 +248,29 @@ public sealed record AccountLockoutAdministrationRequest(TenantContext Tenant);
 /// Request for administrator account lockout reset.
 /// </summary>
 /// <param name="Tenant">The explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
-/// <param name="Audit">Optional safe audit metadata describing who requested reset.</param>
+/// <param name="Audit">Required safe audit metadata describing who requested reset.</param>
 /// <param name="Reason">Optional safe reason recorded with the reset event. Cannot exceed 512 characters.</param>
-public sealed record ResetAccountLockoutRequest(
-    TenantContext Tenant,
-    AuditContext? Audit = null,
-    string? Reason = null);
+public sealed record ResetAccountLockoutRequest
+{
+    /// <summary>
+    /// Initializes administrator account lockout reset metadata.
+    /// </summary>
+    /// <param name="Tenant">The explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
+    /// <param name="Audit">Required safe audit metadata describing who requested reset.</param>
+    /// <param name="Reason">Optional safe reason recorded with the reset event. Cannot exceed 512 characters.</param>
+    public ResetAccountLockoutRequest(TenantContext Tenant, AuditContext Audit, string? Reason = null)
+    {
+        this.Tenant = Tenant;
+        this.Audit = Audit ?? throw new ArgumentNullException(nameof(Audit), "Admin account lockout reset requires audit metadata.");
+        this.Reason = Reason;
+    }
+
+    /// <summary>Gets the explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</summary>
+    public TenantContext Tenant { get; init; }
+
+    /// <summary>Gets required safe audit metadata describing who requested reset.</summary>
+    public AuditContext Audit { get; }
+
+    /// <summary>Gets the optional safe reason recorded with the reset event.</summary>
+    public string? Reason { get; init; }
+}

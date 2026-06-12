@@ -3,6 +3,10 @@ namespace Ashlar.Identity.Abstractions.Services;
 /// <summary>
 /// Provides administrator-oriented account security operations.
 /// </summary>
+/// <remarks>
+/// These operations do not authorize callers. Host applications must enforce administrator authorization and fresh MFA
+/// or equivalent step-up policy before calling destructive account-security operations.
+/// </remarks>
 public interface IAccountSecurityService
 {
     /// <summary>

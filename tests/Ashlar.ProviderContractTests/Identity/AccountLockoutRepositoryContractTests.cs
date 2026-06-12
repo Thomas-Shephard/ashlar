@@ -309,6 +309,7 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
     {
         await using var scope = CreateAsyncScope();
         var lockouts = GetAccountLockoutRepository(scope.ServiceProvider);
+        var unknownProvider = new AuthenticationProviderKey((ProviderType)ProviderType.UnknownValue, "unknown");
 
         using (Assert.EnterMultipleScope())
         {
@@ -321,6 +322,7 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
             Assert.ThrowsAsync<ArgumentException>(() => lockouts.SearchAsync(new SearchAccountLockoutsRequest { Tenant = TenantContext.Global, IncludeAllTenants = true }, FirstFailure));
             Assert.ThrowsAsync<ArgumentException>(() => lockouts.SearchAsync(new SearchAccountLockoutsRequest { Tenant = TenantContext.Global, UserId = Guid.Empty }, FirstFailure));
             Assert.ThrowsAsync<ArgumentException>(() => lockouts.SearchAsync(new SearchAccountLockoutsRequest { Tenant = TenantContext.Global, Provider = default(AuthenticationProviderKey) }, FirstFailure));
+            Assert.ThrowsAsync<ArgumentException>(() => lockouts.SearchAsync(new SearchAccountLockoutsRequest { Tenant = TenantContext.Global, Provider = unknownProvider }, FirstFailure));
             Assert.ThrowsAsync<ArgumentException>(() => lockouts.ResetAsync(Guid.Empty, null, AuthenticationProviderKey.Local));
             Assert.ThrowsAsync<ArgumentException>(() => lockouts.ResetAsync(Guid.NewGuid(), null, default));
             Assert.ThrowsAsync<ArgumentException>(() => lockouts.RecordFailureAsync(Guid.Empty, null, AuthenticationProviderKey.Local, FirstFailure, 5, TimeSpan.FromMinutes(10)));

@@ -144,7 +144,9 @@ public sealed class AccountLockoutAdministrationService(
 
     private static bool IsInvalidProvider(AuthenticationProviderKey provider)
     {
-        return provider.Type == default || string.IsNullOrWhiteSpace(provider.Name);
+        return provider.Type == default
+            || provider.Type.Value == ProviderType.UnknownValue
+            || string.IsNullOrWhiteSpace(provider.Name);
     }
 
     private static AshlarFailure? ValidateScopedOperation(
