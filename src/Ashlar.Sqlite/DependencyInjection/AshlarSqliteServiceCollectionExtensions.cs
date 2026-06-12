@@ -24,6 +24,7 @@ public static class AshlarSqliteServiceCollectionExtensions
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="connectionString">The SQLite connection string used by Ashlar persistence repositories.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
+    /// <remarks>An explicitly supplied Ashlar SQLite connection string replaces any earlier Ashlar SQLite connection factory registration.</remarks>
     public static IServiceCollection AddAshlarSqlite(
         this IServiceCollection services,
         string connectionString)
@@ -31,7 +32,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
 
-        services.TryAddSingleton(new SqliteConnectionFactory(connectionString));
+        services.Replace(ServiceDescriptor.Singleton(new SqliteConnectionFactory(connectionString)));
         services.TryAddScoped<SqliteTransactionManager>();
         services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<SqliteTransactionManager>()));
         services.TryAddScoped<ISqliteConnectionProvider>(provider => provider.GetRequiredService<SqliteTransactionManager>());

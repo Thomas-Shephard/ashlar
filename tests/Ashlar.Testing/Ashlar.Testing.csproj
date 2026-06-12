@@ -8,6 +8,7 @@
     <InternalsVisibleTo Include="Ashlar.Tests" />
     <InternalsVisibleTo Include="Ashlar.Postgres.Tests" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
 </Project>

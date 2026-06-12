@@ -1,5 +1,6 @@
 using Ashlar.AspNetCore.Diagnostics;
 using Ashlar.Operational.Diagnostics;
+using Ashlar.Testing.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
@@ -750,6 +751,23 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
             }));
             Assert.That(report.Entries.Values.Select(entry => entry.Status), Is.All.EqualTo(HealthStatus.Degraded));
         }
+    }
+
+    [Test]
+    public void AddAshlarHealthChecksBuildsWithStrictValidationFromDiagnosticsAbstractions()
+    {
+        using var provider = ServiceProviderValidation.BuildValidatedServiceProvider(services =>
+        {
+            services.AddLogging();
+            services.AddSingleton<IAshlarSchemaDiagnostics>(_ => new SchemaDiagnostics(SchemaResult()));
+            services.AddSingleton<IEmailOutboxDiagnostics>(_ => new EmailOutboxDiagnostics(EmailOutboxResult()));
+            services.AddSingleton<ISecurityEventWebhookOutboxDiagnostics>(_ => new SecurityEventWebhookOutboxDiagnostics(SecurityEventWebhookOutboxResult()));
+            services.AddSingleton<IAshlarCleanupDiagnostics>(_ => new CleanupDiagnostics(CleanupResult()));
+            services.AddSingleton<IAuthenticationRateLimiterDiagnostics>(_ => new RateLimiterDiagnostics(RateLimiterResult()));
+            services.AddHealthChecks().AddAshlarHealthChecks();
+        }, typeof(HealthCheckService));
+
+        Assert.That(provider.GetRequiredService<HealthCheckService>(), Is.Not.Null);
     }
 
     [Test]

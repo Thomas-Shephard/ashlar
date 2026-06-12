@@ -1,8 +1,12 @@
 using System.Text.Json;
+using Ashlar.Auditing;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Operational.Configuration;
+using Ashlar.Security.Encryption;
+using Ashlar.Testing.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace Ashlar.Passkeys.Tests;
 
@@ -28,6 +32,42 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
             Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(IAuthenticationProvider) && descriptor.ImplementationType == typeof(PasskeyAuthenticationProvider)), Is.True);
             Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(IPasskeyCeremonyValidator) && descriptor.ImplementationType == typeof(Fido2PasskeyCeremonyValidator)), Is.True);
             Assert.That(services.Any(descriptor => descriptor.ServiceType == typeof(IPasskeyService) && descriptor.ImplementationType == typeof(PasskeyService)), Is.True);
+        }
+    }
+
+    [Test]
+    public void CorePasskeyCompositionBuildsWithStrictValidation()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddSingleton(Mock.Of<IUserAdministrationRepository>());
+        services.AddSingleton(Mock.Of<ICredentialAdministrationRepository>());
+        services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
+        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddSingleton(Mock.Of<IAuthenticationSessionAdministrationRepository>());
+        services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
+        services.AddSingleton(Mock.Of<IPasskeyChallengeRepository>());
+        services.AddSingleton(Mock.Of<ISecretProtector>());
+        services.AddAshlarPasskeys(options =>
+        {
+            options.Origin = "https://example.com";
+            options.RelyingPartyId = "example.com";
+        });
+
+        using var provider = ServiceProviderValidation.BuildValidatedServiceProvider(
+            services,
+            typeof(IPasskeyService),
+            typeof(IPasskeyCeremonyValidator),
+            typeof(IAuthenticationOrchestrator),
+            typeof(IAuthenticationHandshakeService));
+        using var scope = provider.CreateScope();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.ServiceProvider.GetRequiredService<IPasskeyService>(), Is.TypeOf<PasskeyService>());
+            Assert.That(scope.ServiceProvider.GetServices<IAuthenticationProvider>(), Has.Some.TypeOf<PasskeyAuthenticationProvider>());
         }
     }
 

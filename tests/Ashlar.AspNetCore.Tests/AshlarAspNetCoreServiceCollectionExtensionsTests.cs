@@ -1,8 +1,13 @@
 using Ashlar.AspNetCore.Security.Encryption;
+using Ashlar.AspNetCore.Sessions;
+using Ashlar.Auditing;
+using Ashlar.Authorization.Abstractions;
+using Ashlar.Testing.DependencyInjection;
 using Ashlar.Identity.Features.Credentials;
 using Ashlar.Security.Encryption;
 using Ashlar.AspNetCore.Authorization;
 using Ashlar.AspNetCore.Mfa;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -248,6 +253,44 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
         services.AddAshlarDataProtectionSecretProtector(ServiceLifetime.Singleton);
 
         AssertDescriptor<ISecretProtector, DataProtectionSecretProtector>(services, ServiceLifetime.Singleton);
+    }
+
+    [Test]
+    public void CoreAspNetCoreSessionAndAuthorizationCompositionBuildsWithStrictValidation()
+    {
+        var secretProtector = new Mock<ISecretProtector>().Object;
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddRouting();
+        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddSingleton(Mock.Of<IUserAdministrationRepository>());
+        services.AddSingleton(Mock.Of<ICredentialAdministrationRepository>());
+        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddSingleton(Mock.Of<IAuthenticationSessionAdministrationRepository>());
+        services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
+        services.AddSingleton(Mock.Of<IAuthorizationGrantRepository>());
+        services.AddSingleton<ISecretProtector>(secretProtector);
+        services.AddAshlarIdentity();
+        services.AddAshlarAuthorization();
+        services.AddAshlarDataProtectionSecretProtector();
+        services.AddAshlarAspNetCoreSessions();
+        services.AddAshlarAspNetCoreAuthorization(options => options.RequireFreshMfa());
+
+        using var provider = ServiceProviderValidation.BuildValidatedServiceProvider(
+            services,
+            typeof(IIdentityService),
+            typeof(IAshlarSignInManager),
+            typeof(IAuthorizationService));
+        using var scope = provider.CreateScope();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.ServiceProvider.GetRequiredService<ISecretProtector>(), Is.SameAs(secretProtector));
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarSignInManager>(), Is.TypeOf<AshlarSignInManager>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IEnumerable<IAuthorizationHandler>>(), Has.Some.TypeOf<AshlarAuthorizationHandler>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IEnumerable<IAuthorizationHandler>>(), Has.Some.TypeOf<AshlarStepUpAuthorizationHandler>());
+        }
     }
 
     private static void AssertDescriptor<TService, TImplementation>(IServiceCollection services, ServiceLifetime lifetime)

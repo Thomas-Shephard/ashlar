@@ -1,6 +1,10 @@
+using Ashlar.Auditing;
+using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Operational.Diagnostics;
+using Ashlar.Security.Encryption;
+using Ashlar.Testing.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -37,6 +41,41 @@ internal sealed class AshlarRedisServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<IOptions<RedisAuthenticationRateLimiterOptions>>().Value.KeyPrefix, Is.EqualTo("ashlar:rate-limits"));
+    }
+
+    [Test]
+    public void CoreAndRedisRateLimitingCompositionBuildsWithStrictValidation()
+    {
+        var customRateLimiter = Mock.Of<IAuthenticationRateLimiter>();
+        var connection = Mock.Of<IConnectionMultiplexer>();
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddSingleton(Mock.Of<IUserAdministrationRepository>());
+        services.AddSingleton(Mock.Of<ICredentialAdministrationRepository>());
+        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddSingleton(Mock.Of<IAuthenticationSessionAdministrationRepository>());
+        services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
+        services.AddSingleton(Mock.Of<ISecretProtector>());
+        services.AddSingleton(customRateLimiter);
+        services.AddAshlarIdentity();
+
+        using (var provider = ServiceProviderValidation.BuildValidatedServiceProvider(services, typeof(IAuthenticationRateLimiter)))
+        {
+            Assert.That(provider.GetRequiredService<IAuthenticationRateLimiter>(), Is.SameAs(customRateLimiter));
+        }
+
+        services.AddAshlarRedisRateLimiting(connection);
+        using var redisProvider = ServiceProviderValidation.BuildValidatedServiceProvider(
+            services,
+            typeof(IAuthenticationRateLimiter),
+            typeof(IAuthenticationRateLimiterDiagnostics));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(redisProvider.GetRequiredService<IAuthenticationRateLimiter>(), Is.TypeOf<RedisAuthenticationRateLimiter>());
+            Assert.That(redisProvider.GetRequiredService<IAuthenticationRateLimiterDiagnostics>(), Is.TypeOf<RedisAuthenticationRateLimiterDiagnostics>());
+        }
     }
 
     [Test]

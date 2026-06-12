@@ -17,7 +17,11 @@
     <ProjectReference Include="..\Ashlar.ProviderContractTests\Ashlar.ProviderContractTests.csproj" />
     <ProjectReference Include="..\Ashlar.Testing\Ashlar.Testing.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.AspNetCore\Ashlar.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\Ashlar.Email.Smtp\Ashlar.Email.Smtp.csproj" />
+    <ProjectReference Include="..\..\src\Ashlar.OAuth\Ashlar.OAuth.csproj" />
+    <ProjectReference Include="..\..\src\Ashlar.Passkeys\Ashlar.Passkeys.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.Postgres\Ashlar.Postgres.csproj" />
+    <ProjectReference Include="..\..\src\Ashlar.Webhooks\Ashlar.Webhooks.csproj" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
