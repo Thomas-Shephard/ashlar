@@ -929,6 +929,26 @@ Requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAl
 
 This service is read-only and does not authorize callers or execute recovery operations. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing it. Results are previews derived from existing account security posture and intentionally omit credential secrets, token hashes, session tokens, metadata payloads, audit internals, and raw provider identifiers beyond safe public provider keys.
 
+Use `IAccountRecoveryAdministrationExecutor` only after the host application has authorized the administrator, collected confirmation, and enforced fresh MFA or equivalent step-up policy. It provides named destructive helpers for recovery UI actions:
+
+```csharp
+var reset = await accountRecoveryExecutor.ResetMfaAsync(
+    new AccountRecoveryResetMfaRequest(userId, audit, new TenantContext(tenantId), "lost device"));
+
+var sessions = await accountRecoveryExecutor.RevokeSessionsAsync(
+    new AccountRecoveryRevokeSessionsRequest(userId, audit, new TenantContext(tenantId), "suspected compromise"));
+
+var credentials = await accountRecoveryExecutor.RevokeProviderCredentialsAsync(
+    new AccountRecoveryRevokeProviderCredentialsRequest(
+        userId,
+        new AuthenticationProviderKey(ProviderType.Oidc, "Google"),
+        audit,
+        new TenantContext(tenantId),
+        "provider compromise"));
+```
+
+Execution requests require a target user id, audit context, and explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. Provider credential revocation is limited to recovery-safe provider keys and rejects unknown or internal operational providers. Beyond facade-level request validation, the executor delegates tenant and user mutation rules, auditing, operation behavior, counts, and stable failure details to `IAccountSecurityService`; it does not authorize callers or run multiple unrelated destructive actions from a generic action enum.
+
 ### Admin Account Recovery
 Ashlar exposes framework-neutral administrator primitives through `IAccountSecurityService`. The service is intentionally small and composes existing identity, credential, MFA, recovery-code, session, and audit infrastructure.
 
