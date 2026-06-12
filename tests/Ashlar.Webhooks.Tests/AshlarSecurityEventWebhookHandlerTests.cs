@@ -63,6 +63,11 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             Assert.That(json, Does.Not.Contain("properties"));
             Assert.That(json, Does.Not.Contain("token_hash"));
             Assert.That(json, Does.Not.Contain("secret-token-hash"));
+            Assert.That(json, Does.Not.Contain("203.0.113.10"));
+            Assert.That(json, Does.Not.Contain("Sensitive Browser"));
+            Assert.That(json, Does.Not.Contain("shared-secret"));
+            Assert.That(json, Does.Not.Contain("signature"));
+            Assert.That(json, Does.Not.Contain("providerKey"));
         }
     }
 

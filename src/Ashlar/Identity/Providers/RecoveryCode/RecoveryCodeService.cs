@@ -23,8 +23,8 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
     /// </summary>
     /// <param name="userRepository">Stores and retrieves users.</param>
     /// <param name="credentialRepository">Stores and retrieves credentials.</param>
-    /// <param name="transactionProvider">The transaction provider value.</param>
-    /// <param name="hasherSelector">The hasher selector value.</param>
+    /// <param name="transactionProvider">Coordinates credential writes with committed audit and notification callbacks.</param>
+    /// <param name="hasherSelector">Selects the password hasher used to store recovery-code secret fragments.</param>
     /// <param name="dependencies">Options and operational dependencies used by recovery-code flows.</param>
     public RecoveryCodeService(
         IUserRepository userRepository,
@@ -207,12 +207,28 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
             TenantId = tenant.TenantId,
             Audit = audit,
             Provider = _options.ProviderKey,
-            Properties = reason != null ? new Dictionary<string, string> { ["reason"] = reason } : null
+            Properties = CreateRevocationProperties(count, reason)
         }, ct));
 
         await transaction.CommitAsync(cancellationToken);
 
         return count;
+    }
+
+    private static Dictionary<string, string> CreateRevocationProperties(int count, string? reason)
+    {
+        var properties = new Dictionary<string, string>
+        {
+            ["count"] = count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["revoked"] = count > 0 ? "true" : "false"
+        };
+
+        if (reason != null)
+        {
+            properties["reason"] = reason;
+        }
+
+        return properties;
     }
 
     private async Task<Result<IUser>> ValidateUserTenantAsync(
