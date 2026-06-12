@@ -105,7 +105,7 @@ public abstract record AccountRecoveryExecutionRequest
         this.Tenant = Tenant;
         this.Reason = Reason;
         this.IncludeAllTenants = IncludeAllTenants;
-        ThrowIfInvalidExecutionRequest();
+        ValidateExecutionRequest(UserId, Tenant, IncludeAllTenants);
     }
 
     /// <summary>Gets the target user id.</summary>
@@ -128,15 +128,15 @@ public abstract record AccountRecoveryExecutionRequest
     /// </summary>
     public virtual void ThrowIfInvalid()
     {
-        ThrowIfInvalidExecutionRequest();
+        ValidateExecutionRequest(UserId, Tenant, IncludeAllTenants);
     }
 
-    private void ThrowIfInvalidExecutionRequest()
+    private static void ValidateExecutionRequest(Guid userId, TenantContext? tenant, bool includeAllTenants)
     {
-        AdministrationScopeValidation.ThrowIfInvalidScope(Tenant, IncludeAllTenants);
-        if (UserId == Guid.Empty)
+        AdministrationScopeValidation.ThrowIfInvalidScope(tenant, includeAllTenants);
+        if (userId == Guid.Empty)
         {
-            throw new ArgumentException("User ID cannot be empty.", nameof(UserId));
+            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
         }
     }
 }
@@ -197,7 +197,7 @@ public sealed record AccountRecoveryRevokeProviderCredentialsRequest : AccountRe
         : base(UserId, Audit, Tenant, Reason, IncludeAllTenants)
     {
         this.Provider = Provider;
-        ThrowIfInvalid();
+        ValidateProvider(Provider);
     }
 
     /// <summary>Gets the credential provider key to revoke.</summary>
@@ -207,16 +207,21 @@ public sealed record AccountRecoveryRevokeProviderCredentialsRequest : AccountRe
     public override void ThrowIfInvalid()
     {
         base.ThrowIfInvalid();
-        if (Provider.Type == default
-            || Provider.Type.Value == ProviderType.UnknownValue
-            || string.IsNullOrWhiteSpace(Provider.Name))
+        ValidateProvider(Provider);
+    }
+
+    private static void ValidateProvider(AuthenticationProviderKey provider)
+    {
+        if (provider.Type == default
+            || provider.Type.Value == ProviderType.UnknownValue
+            || string.IsNullOrWhiteSpace(provider.Name))
         {
-            throw new ArgumentException("Provider key must be fully initialized.", nameof(Provider));
+            throw new ArgumentException("Provider key must be fully initialized.", nameof(provider));
         }
 
-        if (Provider.Type == ProviderType.Internal)
+        if (provider.Type == ProviderType.Internal)
         {
-            throw new ArgumentException("Internal credential providers are not account recovery revocation targets.", nameof(Provider));
+            throw new ArgumentException("Internal credential providers are not account recovery revocation targets.", nameof(provider));
         }
     }
 }
