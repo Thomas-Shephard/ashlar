@@ -29,7 +29,9 @@ $packageIds = @(
     "Ashlar.Passkeys",
     "Ashlar.Email.Smtp",
     "Ashlar.Observability",
-    "Ashlar.Webhooks"
+    "Ashlar.Webhooks",
+    "Ashlar.OAuth",
+    "Ashlar.Redis"
 )
 
 function Invoke-DotNet {
@@ -113,21 +115,48 @@ foreach ($packageId in $packageIds) {
 $projectXml.Save($projectFile)
 
 $program = @'
+using Ashlar.OAuth.Providers.Google;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Compile one representative registration per package to catch restore, asset, dependency, and public API breaks.
+// Ashlar
 builder.Services.AddDataProtection();
 builder.Services.AddAshlarIdentity();
+
+// Ashlar.AspNetCore
 builder.Services.AddAshlarAspNetCoreSessions();
+
+// Ashlar.Sqlite
 builder.Services.AddAshlarSqlite("Data Source=:memory:");
+
+// Ashlar.Postgres
 builder.Services.AddAshlarPostgres("Host=localhost;Database=ashlar_smoke;Username=ashlar;Password=ashlar");
+
+// Ashlar.Passkeys
 builder.Services.AddAshlarPasskeys();
+
+// Ashlar.Email.Smtp
 builder.Services.AddAshlarSmtpEmailSender(options =>
 {
     options.Host = "localhost";
 });
+
+// Ashlar.Observability
 builder.Services.AddAshlarSecurityEventMetrics();
+
+// Ashlar.Webhooks
 builder.Services.AddAshlarSecurityEventWebhooks();
+
+// Ashlar.OAuth
+builder.Services.AddAshlarOAuth(options => options.AddGoogle(oidc =>
+{
+    oidc.ClientId = "ashlar-smoke-client-id";
+    oidc.ClientSecret = "ashlar-smoke-client-secret";
+}));
+
+// Ashlar.Redis
+builder.Services.AddAshlarRedisRateLimiting("localhost:6379");
 
 var app = builder.Build();
 
