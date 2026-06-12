@@ -55,6 +55,8 @@ builder.Services.AddAshlarOAuth(options =>
 
 The second argument to `AddOAuth2Provider` is the claim type Ashlar will use as the stable provider key after the OAuth handler has validated and populated the external principal. The default is `id`, which matches GitHub, but other providers may require values such as `sub`, `uid`, or `user_id`. Do not configure an email, username, login, or display name claim as the provider key.
 
+`AddOAuth2Provider` rejects common mutable or non-unique claim names by default. If an unusual provider uses one of those claim names for a documented stable immutable user id, `AddOAuth2ProviderWithUnsafeProviderKeyClaimType` is available as an explicit opt-in; callers own the risk and should only use it after confirming the provider contract.
+
 ## Presets
 
 GitHub:

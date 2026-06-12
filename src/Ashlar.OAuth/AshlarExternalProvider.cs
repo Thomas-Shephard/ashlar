@@ -7,7 +7,8 @@ internal sealed record AshlarExternalProvider(
     string ProviderName,
     string SchemeName,
     AshlarOidcProviderKeyMode OidcProviderKeyMode = AshlarOidcProviderKeyMode.Subject,
-    string OAuth2ProviderKeyClaimType = "id");
+    string OAuth2ProviderKeyClaimType = "id",
+    bool AllowUnsafeOAuth2ProviderKeyClaimType = false);
 
 internal static class AshlarExternalProviderResolver
 {
@@ -34,7 +35,8 @@ internal static class AshlarExternalProviderResolver
                 ProviderType.OAuth,
                 oauthProvider.ProviderName,
                 oauthProvider.SchemeName,
-                OAuth2ProviderKeyClaimType: oauthProvider.ProviderKeyClaimType)
+                OAuth2ProviderKeyClaimType: oauthProvider.ProviderKeyClaimType,
+                AllowUnsafeOAuth2ProviderKeyClaimType: oauthProvider.AllowUnsafeProviderKeyClaimType)
             : null;
     }
 
@@ -42,7 +44,11 @@ internal static class AshlarExternalProviderResolver
     {
         return provider.Type == ProviderType.Oidc
             ? OidcExternalIdentityAssertionMapper.Map(provider.ProviderName, principal, provider.OidcProviderKeyMode)
-            : OAuth2ExternalIdentityAssertionMapper.Map(provider.ProviderName, principal, provider.OAuth2ProviderKeyClaimType);
+            : OAuth2ExternalIdentityAssertionMapper.Map(
+                provider.ProviderName,
+                principal,
+                provider.OAuth2ProviderKeyClaimType,
+                provider.AllowUnsafeOAuth2ProviderKeyClaimType);
     }
 
     public static bool MatchesProvider(AuthenticateResult result, AshlarExternalProvider provider)

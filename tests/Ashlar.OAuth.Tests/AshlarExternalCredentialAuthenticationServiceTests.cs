@@ -120,6 +120,26 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     }
 
     [Test]
+    public async Task CompleteExternalAssertionShouldUseExplicitUnsafeOAuth2ProviderKeyClaimType()
+    {
+        var limiter = CreateAllowingLimiter();
+        var service = CreateService(limiter.Object, options => options.AddOAuth2ProviderWithUnsafeProviderKeyClaimType("CustomOAuth", "email", _ => { }));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("email", "stable-provider-id")], "oauth"));
+        var httpContext = CreateHttpContextWithExternalTicket("CustomOAuth", "CustomOAuth", ProviderType.OAuth, principal);
+
+        var result = await service.CompleteExternalAssertionAsync(httpContext, "CustomOAuth");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAssertionStatus.Succeeded));
+            Assert.That(result.Assertion?.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey(ProviderType.OAuth, "CustomOAuth")));
+            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("stable-provider-id"));
+        }
+
+        limiter.VerifyNoOtherCalls();
+    }
+
+    [Test]
     public async Task CompleteExternalAssertionShouldLeaveSessionIssuanceToHostOrchestration()
     {
         var limiter = new Mock<IPrimaryAuthenticationRateLimiter>(MockBehavior.Strict);

@@ -13,17 +13,23 @@ public static class OAuth2ExternalIdentityAssertionMapper
     /// <param name="providerName">The configured Ashlar provider name.</param>
     /// <param name="principal">The validated external principal.</param>
     /// <param name="idClaimType">The claim type containing the stable provider user id.</param>
+    /// <param name="allowUnsafeProviderKeyClaimType">Whether the caller explicitly accepts responsibility for using a claim type that Ashlar normally rejects as mutable or non-unique.</param>
     /// <returns>An Ashlar OAuth assertion.</returns>
-    public static ExternalIdentityAssertion Map(string providerName, ClaimsPrincipal principal, string idClaimType = "id")
+    public static ExternalIdentityAssertion Map(
+        string providerName,
+        ClaimsPrincipal principal,
+        string idClaimType = "id",
+        bool allowUnsafeProviderKeyClaimType = false)
     {
         var normalizedProviderName = AshlarOAuthOptions.NormalizeProviderName(providerName);
         ArgumentNullException.ThrowIfNull(principal);
-        ArgumentException.ThrowIfNullOrWhiteSpace(idClaimType);
+        var normalizedIdClaimType = AshlarOAuthOptions.NormalizeProviderKeyClaimType(idClaimType);
+        AshlarOAuthOptions.ValidateOAuth2ProviderKeyClaimType(normalizedIdClaimType, allowUnsafeProviderKeyClaimType);
 
-        var providerKey = principal.FindFirstValue(idClaimType)?.Trim();
+        var providerKey = principal.FindFirstValue(normalizedIdClaimType)?.Trim();
         if (string.IsNullOrWhiteSpace(providerKey))
         {
-            throw new InvalidOperationException("The external OAuth2 principal did not contain a stable id claim.");
+            throw new InvalidOperationException("The external OAuth2 principal did not contain a stable provider key claim.");
         }
 
         return new ExternalIdentityAssertion(

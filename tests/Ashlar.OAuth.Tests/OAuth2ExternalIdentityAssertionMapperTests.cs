@@ -62,6 +62,36 @@ internal sealed class OAuth2ExternalIdentityAssertionMapperTests
     }
 
     [Test]
+    public void MapShouldRejectUnsafeProviderKeyClaimType()
+    {
+        var principal = CreatePrincipal(
+        [
+            new Claim("email", "octo@example.com")
+        ]);
+
+        var exception = Assert.Throws<ArgumentException>(() => OAuth2ExternalIdentityAssertionMapper.Map("GitHub", principal, " email "));
+
+        Assert.That(exception?.Message, Does.Contain("stable immutable provider user id"));
+    }
+
+    [Test]
+    public void MapShouldAllowExplicitUnsafeProviderKeyClaimType()
+    {
+        var principal = CreatePrincipal(
+        [
+            new Claim("email", "stable-provider-id")
+        ]);
+
+        var assertion = OAuth2ExternalIdentityAssertionMapper.Map(
+            "CustomOAuth",
+            principal,
+            " email ",
+            allowUnsafeProviderKeyClaimType: true);
+
+        Assert.That(assertion.ProviderKey, Is.EqualTo("stable-provider-id"));
+    }
+
+    [Test]
     public void MapShouldSkipSensitiveClaims()
     {
         var principal = CreatePrincipal(

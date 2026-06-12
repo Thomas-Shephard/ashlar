@@ -207,6 +207,7 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
         {
             Assert.That(provider.ProviderName, Is.EqualTo("GitHub"));
             Assert.That(provider.SchemeName, Is.EqualTo("GitHub"));
+            Assert.That(provider.ProviderKeyClaimType, Is.EqualTo(GitHubOAuthDefaults.IdClaimType));
             Assert.That(oauth.AuthorizationEndpoint, Is.EqualTo(GitHubOAuthDefaults.AuthorizationEndpoint));
             Assert.That(oauth.TokenEndpoint, Is.EqualTo(GitHubOAuthDefaults.TokenEndpoint));
             Assert.That(oauth.UserInformationEndpoint, Is.EqualTo(GitHubOAuthDefaults.UserInformationEndpoint));
@@ -275,6 +276,83 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
         Assert.That(options.OAuth2Providers["CustomOAuth"].ProviderKeyClaimType, Is.EqualTo("uid"));
     }
 
+    [TestCase("id")]
+    [TestCase("sub")]
+    [TestCase("uid")]
+    [TestCase("user_id")]
+    [TestCase("provider_specific_subject")]
+    public void AddOAuth2ProviderShouldAllowStableProviderKeyClaimTypes(string claimType)
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddOAuth2Provider("CustomOAuth", claimType, _ => { });
+
+        Assert.That(options.OAuth2Providers["CustomOAuth"].ProviderKeyClaimType, Is.EqualTo(claimType));
+    }
+
+    [TestCase("email")]
+    [TestCase("email_address")]
+    [TestCase("emailaddress")]
+    [TestCase("emails")]
+    [TestCase("mail")]
+    [TestCase("name")]
+    [TestCase("display_name")]
+    [TestCase("given_name")]
+    [TestCase("family_name")]
+    [TestCase("nickname")]
+    [TestCase("preferred_username")]
+    [TestCase("preferredUsername")]
+    [TestCase("screen_name")]
+    [TestCase("unique_name")]
+    [TestCase("username")]
+    [TestCase("userPrincipalName")]
+    [TestCase("login")]
+    [TestCase("upn")]
+    [TestCase(ClaimTypes.Email)]
+    [TestCase(ClaimTypes.Name)]
+    [TestCase(ClaimTypes.Upn)]
+    public void AddOAuth2ProviderShouldRejectUnsafeProviderKeyClaimTypes(string claimType)
+    {
+        var options = new AshlarOAuthOptions();
+
+        var exception = Assert.Throws<ArgumentException>(() => options.AddOAuth2Provider("CustomOAuth", claimType, _ => { }));
+
+        Assert.That(exception?.Message, Does.Contain("stable immutable provider user id"));
+    }
+
+    [TestCase(" EMAIL ")]
+    [TestCase(" Login ")]
+    [TestCase(" Preferred_UserName ")]
+    [TestCase(" http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress ")]
+    public void AddOAuth2ProviderShouldRejectUnsafeProviderKeyClaimTypesAfterTrimmingAndCaseNormalization(string claimType)
+    {
+        var options = new AshlarOAuthOptions();
+
+        Assert.Throws<ArgumentException>(() => options.AddOAuth2Provider("CustomOAuth", claimType, _ => { }));
+    }
+
+    [Test]
+    public void AddOAuth2ProviderWithUnsafeProviderKeyClaimTypeShouldAllowExplicitUnsafeProviderKeyClaimType()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddOAuth2ProviderWithUnsafeProviderKeyClaimType("CustomOAuth", " email ", _ => { });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.OAuth2Providers["CustomOAuth"].ProviderKeyClaimType, Is.EqualTo("email"));
+            Assert.That(options.OAuth2Providers["CustomOAuth"].AllowUnsafeProviderKeyClaimType, Is.True);
+        }
+    }
+
+    [Test]
+    public void AddOAuth2ProviderWithUnsafeProviderKeyClaimTypeShouldRejectNullConfigure()
+    {
+        var options = new AshlarOAuthOptions();
+
+        Assert.Throws<ArgumentNullException>(() => options.AddOAuth2ProviderWithUnsafeProviderKeyClaimType("CustomOAuth", "email", null!));
+    }
+
     [Test]
     public void AddOAuth2ProviderShouldNormalizeInternalSchemeName()
     {
@@ -287,7 +365,16 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             Assert.That(options.OAuth2Providers, Does.ContainKey("CustomOAuth"));
             Assert.That(options.OAuth2Providers["CustomOAuth"].SchemeName, Is.EqualTo("CustomScheme"));
             Assert.That(options.OAuth2Providers["CustomOAuth"].ProviderKeyClaimType, Is.EqualTo("uid"));
+            Assert.That(options.OAuth2Providers["CustomOAuth"].AllowUnsafeProviderKeyClaimType, Is.False);
         }
+    }
+
+    [Test]
+    public void AddOAuth2ProviderShouldRejectUnsafeProviderKeyClaimTypeFromInternalOptions()
+    {
+        var options = new AshlarOAuthOptions();
+
+        Assert.Throws<ArgumentException>(() => options.AddOAuth2Provider(new AshlarOAuth2ProviderOptions("CustomOAuth", "CustomScheme", _ => { }, "login")));
     }
 
     [Test]
