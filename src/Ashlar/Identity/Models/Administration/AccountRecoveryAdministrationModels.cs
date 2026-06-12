@@ -1,3 +1,5 @@
+using Ashlar.Auditing;
+
 namespace Ashlar.Identity.Models.Administration;
 
 /// <summary>
@@ -77,3 +79,144 @@ public sealed record AccountRecoveryWarning(
     string Code,
     string Message,
     AuthenticationProviderKey? Provider = null);
+
+/// <summary>
+/// Base request for destructive administrator account recovery execution.
+/// </summary>
+public abstract record AccountRecoveryExecutionRequest
+{
+    /// <summary>
+    /// Initializes destructive account recovery execution metadata and validates that its <paramref name="Tenant" /> scope is explicit.
+    /// </summary>
+    /// <param name="UserId">The target user id.</param>
+    /// <param name="Audit">Audit metadata recorded with the account recovery execution.</param>
+    /// <param name="Tenant">The tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users.</param>
+    /// <param name="Reason">Optional safe reason recorded with revocation and security events.</param>
+    /// <param name="IncludeAllTenants">Whether to run the operation across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+    protected AccountRecoveryExecutionRequest(
+        Guid UserId,
+        AuditContext Audit,
+        TenantContext? Tenant = null,
+        string? Reason = null,
+        bool IncludeAllTenants = false)
+    {
+        this.UserId = UserId;
+        this.Audit = Audit ?? throw new ArgumentNullException(nameof(Audit), "Destructive account recovery execution requires audit metadata.");
+        this.Tenant = Tenant;
+        this.Reason = Reason;
+        this.IncludeAllTenants = IncludeAllTenants;
+        ThrowIfInvalidExecutionRequest();
+    }
+
+    /// <summary>Gets the target user id.</summary>
+    public Guid UserId { get; }
+
+    /// <summary>Gets audit metadata recorded with the account recovery execution.</summary>
+    public AuditContext Audit { get; }
+
+    /// <summary>Gets the tenant scope for the target user, or <see langword="null" /> when <see cref="IncludeAllTenants" /> is enabled.</summary>
+    public TenantContext? Tenant { get; }
+
+    /// <summary>Gets the optional safe reason recorded with revocation and security events.</summary>
+    public string? Reason { get; }
+
+    /// <summary>Gets whether the operation runs without tenant filtering.</summary>
+    public bool IncludeAllTenants { get; }
+
+    /// <summary>
+    /// Throws when the request is not safe to execute.
+    /// </summary>
+    public virtual void ThrowIfInvalid()
+    {
+        ThrowIfInvalidExecutionRequest();
+    }
+
+    private void ThrowIfInvalidExecutionRequest()
+    {
+        AdministrationScopeValidation.ThrowIfInvalidScope(Tenant, IncludeAllTenants);
+        if (UserId == Guid.Empty)
+        {
+            throw new ArgumentException("User ID cannot be empty.", nameof(UserId));
+        }
+    }
+}
+
+/// <summary>
+/// Request for destructive administrator MFA reset execution.
+/// </summary>
+/// <param name="UserId">The target user id.</param>
+/// <param name="Audit">Audit metadata recorded with the MFA reset.</param>
+/// <param name="Tenant">The tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users.</param>
+/// <param name="Reason">Optional safe reason recorded with revocation and security events.</param>
+/// <param name="IncludeAllTenants">Whether to run the operation across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+public sealed record AccountRecoveryResetMfaRequest(
+    Guid UserId,
+    AuditContext Audit,
+    TenantContext? Tenant = null,
+    string? Reason = null,
+    bool IncludeAllTenants = false)
+    : AccountRecoveryExecutionRequest(UserId, Audit, Tenant, Reason, IncludeAllTenants);
+
+/// <summary>
+/// Request for destructive administrator session revocation execution.
+/// </summary>
+/// <param name="UserId">The target user id.</param>
+/// <param name="Audit">Audit metadata recorded with the session revocation.</param>
+/// <param name="Tenant">The tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users.</param>
+/// <param name="Reason">Optional safe reason recorded with revocation and security events.</param>
+/// <param name="IncludeAllTenants">Whether to run the operation across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+public sealed record AccountRecoveryRevokeSessionsRequest(
+    Guid UserId,
+    AuditContext Audit,
+    TenantContext? Tenant = null,
+    string? Reason = null,
+    bool IncludeAllTenants = false)
+    : AccountRecoveryExecutionRequest(UserId, Audit, Tenant, Reason, IncludeAllTenants);
+
+/// <summary>
+/// Request for destructive administrator provider credential revocation execution.
+/// </summary>
+public sealed record AccountRecoveryRevokeProviderCredentialsRequest : AccountRecoveryExecutionRequest
+{
+    /// <summary>
+    /// Initializes destructive <paramref name="Provider" /> credential revocation metadata.
+    /// </summary>
+    /// <param name="UserId">The target user id.</param>
+    /// <param name="Provider">The credential provider key to revoke.</param>
+    /// <param name="Audit">Audit metadata recorded with the <paramref name="Provider" /> credential revocation.</param>
+    /// <param name="Tenant">The tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users.</param>
+    /// <param name="Reason">Optional safe reason recorded with revocation and security events.</param>
+    /// <param name="IncludeAllTenants">Whether to run the operation across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+    public AccountRecoveryRevokeProviderCredentialsRequest(
+        Guid UserId,
+        AuthenticationProviderKey Provider,
+        AuditContext Audit,
+        TenantContext? Tenant = null,
+        string? Reason = null,
+        bool IncludeAllTenants = false)
+        : base(UserId, Audit, Tenant, Reason, IncludeAllTenants)
+    {
+        this.Provider = Provider;
+        ThrowIfInvalid();
+    }
+
+    /// <summary>Gets the credential provider key to revoke.</summary>
+    public AuthenticationProviderKey Provider { get; }
+
+    /// <inheritdoc />
+    public override void ThrowIfInvalid()
+    {
+        base.ThrowIfInvalid();
+        if (Provider.Type == default
+            || Provider.Type.Value == ProviderType.UnknownValue
+            || string.IsNullOrWhiteSpace(Provider.Name))
+        {
+            throw new ArgumentException("Provider key must be fully initialized.", nameof(Provider));
+        }
+
+        if (Provider.Type == ProviderType.Internal)
+        {
+            throw new ArgumentException("Internal credential providers are not account recovery revocation targets.", nameof(Provider));
+        }
+    }
+}

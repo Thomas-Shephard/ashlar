@@ -42,6 +42,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<ICredentialService, CredentialService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialAdministrationService, CredentialAdministrationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAccountRecoveryAdministrationService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IAccountRecoveryAdministrationExecutor, AccountRecoveryAdministrationExecutor>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAccountLockoutAdministrationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<AccountLockoutAdministrationServiceDependencies>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAuthenticationSessionService, AuthenticationSessionService>(services, ServiceLifetime.Scoped);
