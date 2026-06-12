@@ -11,6 +11,8 @@ internal static class AuthEndpoints
 {
     public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/antiforgery/token", AntiforgeryExtensions.GetSampleAntiforgeryToken).RequireAuthorization();
+
         app.MapPost("/api/auth/magic-link/request", async (
             MagicLinkRequest request,
             IMagicLinkSignInService magicLinks,
@@ -79,7 +81,7 @@ internal static class AuthEndpoints
         {
             await signInManager.SignOutAsync(httpContext, cancellationToken: cancellationToken);
             return Results.Redirect("/");
-        });
+        }).RequireAuthorization().RequireSampleAntiforgery();
     }
 
     private static async Task<IResult> HandleAuthResponse(MfaAuthenticationResult response, IAshlarSignInManager signInManager, HttpContext httpContext, AuthenticationProviderKey primaryProvider, CancellationToken cancellationToken)

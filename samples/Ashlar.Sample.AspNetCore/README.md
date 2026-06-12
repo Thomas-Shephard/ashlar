@@ -196,7 +196,13 @@ options.RequireFreshMfa();
 options.RequireFreshMfaIfAvailable();
 ```
 
-Routes use `.RequireFreshMfa()` for high-risk sensitive operations: passkey registration/rename/revoke, TOTP reset, recovery-code generation, email change requests, and administrator disable/reactivate/session-revoke/MFA-reset actions. User-owned session revocation and Google/GitHub account link/unlink endpoints use `.RequireFreshMfaIfAvailable()` to demonstrate adaptive protection: users with a usable eligible additional verification factor must complete fresh step-up, while users without one are not locked out of revoking old devices or adding another sign-in method. Ordinary sign-in, sign-out, email verification, invitation acceptance, account viewing, and session listing remain available with a normal authenticated session.
+Routes use `.RequireFreshMfa()` for high-risk sensitive operations: passkey registration/rename/revoke, TOTP reset, recovery-code generation, email change requests, and administrator disable/reactivate/session-revoke/MFA-reset actions. User-owned session revocation and Google/GitHub account link/unlink endpoints use `.RequireFreshMfaIfAvailable()` to demonstrate adaptive protection: users with a usable eligible additional verification factor must complete fresh step-up, while users without one are not locked out of revoking old devices or adding another sign-in method. Ordinary sign-in, email verification confirmation, invitation acceptance, account viewing, and session listing remain available with a normal authenticated session.
+
+## CSRF protection in the sample
+
+The sample registers ASP.NET Core antiforgery services and applies sample-local validation to cookie-authenticated unsafe browser mutations. Authenticated pages fetch a request token from `/api/antiforgery/token`, then send it on same-origin `POST` and `DELETE` requests with the `X-CSRF-TOKEN` header. Logout forms are submitted through the same helper so sign-out is also protected.
+
+The intentionally unauthenticated bootstrap, sign-in, MFA handshake, invitation acceptance, and token-bearing email confirmation routes do not require a CSRF token. Those flows rely on one-time tokens or handshake state and must remain reachable before a full authenticated browser session exists.
 
 The account and administration pages render Ashlar's account security posture model. They show sign-in methods separately from additional verification, use friendly labels such as "Authenticator app", "Recovery codes", and "Passkeys", and show whether protected actions are available or blocked until setup.
 

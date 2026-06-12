@@ -26,6 +26,7 @@ internal static class ServiceCollectionExtensions
             ?? throw new InvalidOperationException("Missing Ashlar configuration.");
 
         services.AddDataProtection();
+        services.AddAntiforgery(options => options.HeaderName = AntiforgeryExtensions.HeaderName);
 
         services.AddAshlarIdentity();
         services.Configure<UriValidationOptions>(options =>

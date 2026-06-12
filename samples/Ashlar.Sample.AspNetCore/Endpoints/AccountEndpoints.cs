@@ -13,15 +13,15 @@ internal static class AccountEndpoints
     {
         app.MapGet("/account", RenderAccountSettingsAsync).RequireAuthorization();
 
-        app.MapPost("/api/account/profile", UpdateProfileAsync).RequireAuthorization();
+        app.MapPost("/api/account/profile", UpdateProfileAsync).RequireAuthorization().RequireSampleAntiforgery();
 
         app.MapGet("/account/verify-email", (string? t, string? u) => AppViews.RenderEmailVerification(t, u));
 
-        app.MapPost("/api/account/verify-email/request", RequestEmailVerificationAsync).RequireAuthorization();
+        app.MapPost("/api/account/verify-email/request", RequestEmailVerificationAsync).RequireAuthorization().RequireSampleAntiforgery();
 
         app.MapPost("/api/account/verify-email/confirm", ConfirmEmailVerificationAsync);
 
-        app.MapPost("/api/account/change-email/request", RequestEmailChangeAsync).RequireAuthorization().RequireFreshMfa();
+        app.MapPost("/api/account/change-email/request", RequestEmailChangeAsync).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapGet("/account/change-email", (string? t, string? u) => AppViews.RenderEmailChangeConfirm(t, u));
 

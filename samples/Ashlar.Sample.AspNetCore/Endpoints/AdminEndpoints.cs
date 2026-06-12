@@ -62,7 +62,7 @@ internal static partial class AdminEndpoints
                 new SetUserAccountStateRequest(UserAccountState.Disabled, adminRequest.Audit, adminRequest.Tenant, adminRequest.Reason, IncludeAllTenants: adminRequest.IncludeAllTenants),
                 cancellationToken);
             return ToAdminSecurityResult(result);
-        }).RequireAuthorization(AdminPolicy).RequireFreshMfa();
+        }).RequireAuthorization(AdminPolicy).RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/admin/users/{userId:guid}/account-state", async (
             Guid userId,
@@ -78,7 +78,7 @@ internal static partial class AdminEndpoints
 
             var result = await accountSecurity.SetUserAccountStateAsync(userId, ToSetAccountStateRequest(request, httpContext), cancellationToken);
             return ToAdminSecurityResult(result);
-        }).RequireAuthorization(AdminPolicy).RequireFreshMfa();
+        }).RequireAuthorization(AdminPolicy).RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/admin/users/{userId:guid}/reactivate", async (
             Guid userId,
@@ -93,7 +93,7 @@ internal static partial class AdminEndpoints
                 new SetUserAccountStateRequest(UserAccountState.Active, adminRequest.Audit, adminRequest.Tenant, adminRequest.Reason, IncludeAllTenants: adminRequest.IncludeAllTenants),
                 cancellationToken);
             return ToAdminSecurityResult(result);
-        }).RequireAuthorization(AdminPolicy).RequireFreshMfa();
+        }).RequireAuthorization(AdminPolicy).RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/admin/users/{userId:guid}/sessions/revoke", async (
             Guid userId,
@@ -104,7 +104,7 @@ internal static partial class AdminEndpoints
         {
             var result = await accountSecurity.RevokeSessionsAsync(userId, ToAdminRequest(request, httpContext), cancellationToken);
             return ToAdminSecurityResult(result);
-        }).RequireAuthorization(AdminPolicy).RequireFreshMfa();
+        }).RequireAuthorization(AdminPolicy).RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/admin/users/{userId:guid}/mfa/reset", async (
             Guid userId,
@@ -115,7 +115,7 @@ internal static partial class AdminEndpoints
         {
             var result = await accountSecurity.ResetMfaAsync(userId, ToAdminRequest(request, httpContext), cancellationToken);
             return ToAdminSecurityResult(result);
-        }).RequireAuthorization(AdminPolicy).RequireFreshMfa();
+        }).RequireAuthorization(AdminPolicy).RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapGet("/api/admin/projects", async (
             IPostgresConnectionProvider connectionProvider,
@@ -166,7 +166,7 @@ internal static partial class AdminEndpoints
                     ? Results.Created($"/projects/{request.Id}", new { id = request.Id })
                     : Results.Conflict(new { error = "Project already exists." });
             }
-        }).RequireAuthorization(AdminPolicy);
+        }).RequireAuthorization(AdminPolicy).RequireSampleAntiforgery();
 
         app.MapPost("/api/projects/{projectId}/grants", async (
             string projectId,
@@ -189,7 +189,7 @@ internal static partial class AdminEndpoints
             }
 
             return Results.Ok(new { result.Value.Id });
-        }).RequireAuthorization(AdminPolicy);
+        }).RequireAuthorization(AdminPolicy).RequireSampleAntiforgery();
 
         app.MapGet("/projects/{projectId}", async (
             string projectId,

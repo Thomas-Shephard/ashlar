@@ -21,7 +21,7 @@ internal static class GoogleOidcEndpoints
 
         app.MapGet("/account/external/google/link", StartGoogleAccountLink).RequireAuthorization().RequireFreshMfaIfAvailable();
         app.MapGet("/account/external/google/link/callback", CompleteGoogleAccountLinkAsync).RequireAuthorization().RequireFreshMfaIfAvailable();
-        app.MapPost("/api/account/external/google/unlink", UnlinkGoogleAccountAsync).RequireAuthorization().RequireFreshMfaIfAvailable();
+        app.MapPost("/api/account/external/google/unlink", UnlinkGoogleAccountAsync).RequireAuthorization().RequireFreshMfaIfAvailable().RequireSampleAntiforgery();
     }
 
     private static IResult StartGoogleSignIn(IConfiguration configuration)

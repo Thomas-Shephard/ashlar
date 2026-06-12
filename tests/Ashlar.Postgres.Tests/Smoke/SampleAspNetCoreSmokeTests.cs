@@ -90,6 +90,8 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         await AssertGoogleUiHiddenWhenNotConfiguredAsync(AdminClient);
         await AssertGitHubUiHiddenWhenNotConfiguredAsync(AdminClient);
         await AssertAdminPageIncludesAccountSecurityPanelAsync(AdminClient);
+        await AssertSampleAntiforgeryProtectionAsync(AdminClient);
+        await AssertLogoutAntiforgeryProtectionAsync();
         await EnrollTotpAsync(AdminClient);
         await AssertLastAdminCannotBeDisabledAsync(AdminClient, adminUserId);
         await AssertSessionListingAndRevocationAsync(AdminClient);
@@ -322,8 +324,64 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             Assert.That(sessions.RootElement[0].GetProperty("isCurrent").GetBoolean(), Is.True);
         }
 
-        var revokeOthers = await client.DeleteAsync("/api/sessions/others");
+        var revokeOthers = await DeleteWithCsrfAsync(client, "/api/sessions/others");
         Assert.That(revokeOthers.StatusCode, Is.EqualTo(HttpStatusCode.NoContent));
+    }
+
+    private static async Task AssertSampleAntiforgeryProtectionAsync(HttpClient client)
+    {
+        var token = await GetCsrfTokenAsync(client);
+        Assert.That(token, Is.Not.Empty);
+
+        var missingToken = await client.PostAsJsonAsync("/api/account/profile", new { name = "Missing CSRF" });
+        var missingBody = await missingToken.Content.ReadAsStringAsync();
+
+        using var invalidRequest = new HttpRequestMessage(HttpMethod.Post, "/api/account/profile")
+        {
+            Content = JsonContent.Create(new { name = "Invalid CSRF" })
+        };
+        invalidRequest.Headers.Add("X-CSRF-TOKEN", "invalid-token");
+        var invalidToken = await client.SendAsync(invalidRequest);
+        var invalidBody = await invalidToken.Content.ReadAsStringAsync();
+
+        var validToken = await PostAsJsonWithCsrfAsync(client, "/api/account/security/verify", new { code = "000000" });
+        var validBody = await validToken.Content.ReadAsStringAsync();
+
+        var missingAdminToken = await client.PostAsJsonAsync("/api/invitations", new { email = "csrf-admin@example.com" });
+        var missingAdminBody = await missingAdminToken.Content.ReadAsStringAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missingToken.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+            Assert.That(missingBody, Does.Contain("invalid_csrf_token"));
+            Assert.That(invalidToken.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+            Assert.That(invalidBody, Does.Contain("invalid_csrf_token"));
+            Assert.That(validToken.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+            Assert.That(validBody, Does.Contain("invalid_totp"));
+            Assert.That(missingAdminToken.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+            Assert.That(missingAdminBody, Does.Contain("invalid_csrf_token"));
+        }
+    }
+
+    private async Task AssertLogoutAntiforgeryProtectionAsync()
+    {
+        using var client = _factory!.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        await SignInWithMagicLinkAsync(client, "admin@example.com");
+
+        var missingToken = await client.PostAsync("/api/auth/logout", null);
+        var missingBody = await missingToken.Content.ReadAsStringAsync();
+
+        var logout = await PostWithCsrfAsync(client, "/api/auth/logout");
+        var accountAfterLogout = await client.GetAsync("/account");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missingToken.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+            Assert.That(missingBody, Does.Contain("invalid_csrf_token"));
+            Assert.That(logout.StatusCode, Is.EqualTo(HttpStatusCode.Redirect));
+            Assert.That(logout.Headers.Location?.OriginalString, Is.EqualTo("/"));
+            Assert.That(accountAfterLogout.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+        }
     }
 
     private async Task RequestEmailCodeAsync(string email)
@@ -337,7 +395,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
 
     private async Task<Guid> InviteAndAcceptUserAsync(string email)
     {
-        var response = await AdminClient.PostAsJsonAsync("/api/invitations", new { email });
+        var response = await PostAsJsonWithCsrfAsync(AdminClient, "/api/invitations", new { email });
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Accepted));
 
         var token = ExtractQueryValue(await LatestOutboxBodyAsync(email, "Invitation to join"), "t");
@@ -352,7 +410,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
 
     private async Task GrantProjectAccessAsync(Guid userId, string projectId)
     {
-        var response = await AdminClient.PostAsJsonAsync($"/api/projects/{projectId}/grants", new { userId });
+        var response = await PostAsJsonWithCsrfAsync(AdminClient, $"/api/projects/{projectId}/grants", new { userId });
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
     }
 
@@ -368,7 +426,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
 
     private async Task VerifyEmailAsync(HttpClient client, string email)
     {
-        var request = await client.PostAsync("/api/account/verify-email/request", null);
+        var request = await PostWithCsrfAsync(client, "/api/account/verify-email/request");
         Assert.That(request.StatusCode, Is.EqualTo(HttpStatusCode.Accepted));
 
         var body = await LatestOutboxBodyAsync(email, "Verify your email address");
@@ -393,7 +451,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
 
     private async Task ChangeEmailAsync(HttpClient client, string oldEmail, string newEmail)
     {
-        var request = await client.PostAsJsonAsync("/api/account/change-email/request", new { newEmail });
+        var request = await PostAsJsonWithCsrfAsync(client, "/api/account/change-email/request", new { newEmail });
         Assert.That(request.StatusCode, Is.EqualTo(HttpStatusCode.Accepted));
 
         var body = await LatestOutboxBodyAsync(newEmail, "Confirm your new email address");
@@ -410,13 +468,14 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     private static async Task<string> EnrollTotpAsync(HttpClient client)
     {
         var page = await client.GetAsync("/account/mfa/enroll");
-        Assert.That(page.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        var pageBody = await page.Content.ReadAsStringAsync();
+        Assert.That(page.StatusCode, Is.EqualTo(HttpStatusCode.OK), pageBody);
 
-        var html = await page.Content.ReadAsStringAsync();
+        var html = pageBody;
         var sharedSecret = ExtractSharedSecret(html);
         var code = GenerateTotpCode(sharedSecret);
 
-        var verify = await client.PostAsJsonAsync("/api/mfa/totp/verify", new { sharedSecret, code });
+        var verify = await PostAsJsonWithCsrfAsync(client, "/api/mfa/totp/verify", new { sharedSecret, code });
         Assert.That(verify.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
         return sharedSecret;
@@ -424,7 +483,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
 
     private static async Task<IReadOnlyList<string>> GenerateRecoveryCodesAsync(HttpClient client)
     {
-        var response = await client.PostAsync("/api/mfa/recovery-codes", null);
+        var response = await PostWithCsrfAsync(client, "/api/mfa/recovery-codes");
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
         var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
@@ -447,7 +506,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
 
     private static async Task StepUpWithRecoveryCodeAsync(HttpClient client, string recoveryCode)
     {
-        var response = await client.PostAsJsonAsync("/api/account/security/verify", new { code = recoveryCode });
+        var response = await PostAsJsonWithCsrfAsync(client, "/api/account/security/verify", new { code = recoveryCode });
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), await response.Content.ReadAsStringAsync());
     }
 
@@ -493,7 +552,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
 
     private static async Task AssertLastAdminCannotBeDisabledAsync(HttpClient client, Guid adminUserId)
     {
-        var response = await client.PostAsJsonAsync($"/api/admin/users/{adminUserId}/disable", new { reason = "smoke-test" });
+        var response = await PostAsJsonWithCsrfAsync(client, $"/api/admin/users/{adminUserId}/disable", new { reason = "smoke-test" });
         var body = await response.Content.ReadAsStringAsync();
 
         using (Assert.EnterMultipleScope())
@@ -633,6 +692,39 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         var body = await response.Content.ReadAsStringAsync();
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), body);
         return JsonDocument.Parse(body);
+    }
+
+    private static async Task<string> GetCsrfTokenAsync(HttpClient client)
+    {
+        var response = await client.GetAsync("/api/antiforgery/token");
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), body);
+        using var json = JsonDocument.Parse(body);
+        return json.RootElement.GetProperty("token").GetString() ?? string.Empty;
+    }
+
+    private static async Task<HttpResponseMessage> PostWithCsrfAsync(HttpClient client, string path)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, path);
+        request.Headers.Add("X-CSRF-TOKEN", await GetCsrfTokenAsync(client));
+        return await client.SendAsync(request);
+    }
+
+    private static async Task<HttpResponseMessage> PostAsJsonWithCsrfAsync<T>(HttpClient client, string path, T body)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = JsonContent.Create(body)
+        };
+        request.Headers.Add("X-CSRF-TOKEN", await GetCsrfTokenAsync(client));
+        return await client.SendAsync(request);
+    }
+
+    private static async Task<HttpResponseMessage> DeleteWithCsrfAsync(HttpClient client, string path)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, path);
+        request.Headers.Add("X-CSRF-TOKEN", await GetCsrfTokenAsync(client));
+        return await client.SendAsync(request);
     }
 
     private async Task<string> LatestOutboxBodyAsync(string toAddress, string subject)
