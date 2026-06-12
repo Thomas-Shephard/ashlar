@@ -255,6 +255,35 @@ internal sealed class RememberedMfaDeviceServiceTests
     }
 
     [Test]
+    public async Task ListAsyncShouldSupportExplicitAllTenantScope()
+    {
+        var fixture = CreateFixture(generator: new SequenceTokenGenerator("global", "global-verifier", "tenant", "tenant-verifier"));
+        var tenantId = Guid.NewGuid();
+        var user = fixture.Users.AddUser(tenantId);
+        await fixture.Service.CreateAsync(user.Id, new CreateRememberedMfaDeviceRequest { Tenant = new TenantContext(tenantId) });
+        fixture.Repository.Devices.Add(new RememberedMfaDevice
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TenantId = null,
+            TokenSelector = "global-device",
+            TokenHash = "hash",
+            CreatedAt = fixture.Time.GetUtcNow(),
+            ExpiresAt = fixture.Time.GetUtcNow().AddDays(30)
+        });
+
+        var scoped = await fixture.Service.ListAsync(user.Id, new ListRememberedMfaDevicesRequest { Tenant = new TenantContext(tenantId) });
+        var all = await fixture.Service.ListAsync(user.Id, new ListRememberedMfaDevicesRequest { IncludeAllTenants = true });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scoped, Has.Count.EqualTo(1));
+            Assert.That(all, Has.Count.EqualTo(2));
+            Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.ListAsync(user.Id, new ListRememberedMfaDevicesRequest { Tenant = TenantContext.Global, IncludeAllTenants = true }));
+        }
+    }
+
+    [Test]
     public async Task CreateAsyncRejectsDeviceLimitAndInvalidLifetimeSafely()
     {
         var fixture = CreateFixture(

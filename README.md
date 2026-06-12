@@ -917,6 +917,18 @@ if (result.Succeeded)
 
 Call `GetCredentialAsync(new CredentialAdministrationDetailRequest(credentialId, new TenantContext(tenantId)))` for the same safe fields for a single credential. Detail requests also require `TenantContext.Global` or `IncludeAllTenants = true` when appropriate. These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. Raw credential values, provider keys, metadata, password hashes, token hashes, passkey payloads, recovery codes, OAuth/OIDC subject identifiers, provider-specific raw identifiers, and other secrets are never returned.
 
+#### Admin Account Recovery Options
+Use `IAccountRecoveryAdministrationService` when admin tooling needs a display-safe preview of account recovery actions before presenting destructive controls:
+
+```csharp
+var options = await accountRecoveryAdministration.GetAccountRecoveryOptionsAsync(
+    new AccountRecoveryOptionsRequest(userId, new TenantContext(tenantId)));
+```
+
+Requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`; missing or conflicting scope returns a validation failure, and missing or out-of-scope users return `UserNotFound`. The result carries the existing user detail and account-security posture in `Detail`, plus action previews in `Actions`: whether MFA reset or session revocation would currently do anything, provider-grouped credential revocation options, and warnings such as removing the last active primary sign-in method.
+
+This service is read-only and does not authorize callers or execute recovery operations. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing it. Results are previews derived from existing account security posture and intentionally omit credential secrets, token hashes, session tokens, metadata payloads, audit internals, and raw provider identifiers beyond safe public provider keys.
+
 ### Admin Account Recovery
 Ashlar exposes framework-neutral administrator primitives through `IAccountSecurityService`. The service is intentionally small and composes existing identity, credential, MFA, recovery-code, session, and audit infrastructure.
 
