@@ -1,3 +1,4 @@
+using Ashlar.Operational;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using System.Globalization;
@@ -76,5 +77,20 @@ internal sealed class SqliteSecurityEventWebhookOutboxCleanupContractTests : Sec
         command.CommandText = "SELECT count(*) FROM ashlar_security_event_webhook_outbox WHERE endpoint_name = $endpointName;";
         command.AddParameter("$endpointName", endpointName);
         return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
+    }
+
+    protected override async Task<AshlarCleanupResult> RunCleanupWithNullWebhookRetentionsAsync()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarSqlite(_database!.ConnectionString);
+        services.AddAshlarSqliteCleanup(options =>
+        {
+            options.RemoveSentSecurityEventWebhooksAfter = null;
+            options.RemoveFailedSecurityEventWebhooksAfter = null;
+            options.RemoveDiscardedSecurityEventWebhooksAfter = null;
+        });
+        services.AddSingleton<TimeProvider>(new FakeTimeProvider(CleanupNow));
+        await using var provider = services.BuildServiceProvider();
+        return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
     }
 }

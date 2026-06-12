@@ -1,5 +1,7 @@
+using Ashlar.Operational;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Ashlar.Postgres.Tests.Webhooks;
@@ -75,5 +77,20 @@ internal sealed class PostgresSecurityEventWebhookOutboxCleanupContractTests : S
         return await connection.ExecuteScalarAsync<int>(
             "SELECT count(*) FROM ashlar_security_event_webhook_outbox WHERE endpoint_name = @endpointName;",
             new { endpointName });
+    }
+
+    protected override async Task<AshlarCleanupResult> RunCleanupWithNullWebhookRetentionsAsync()
+    {
+        await using var dataSource = new Npgsql.NpgsqlDataSourceBuilder(_database!.ConnectionString).Build();
+        var service = new PostgresAshlarCleanupService(
+            dataSource,
+            new FakeTimeProvider(CleanupNow),
+            Options.Create(new AshlarCleanupOptions
+            {
+                RemoveSentSecurityEventWebhooksAfter = null,
+                RemoveFailedSecurityEventWebhooksAfter = null,
+                RemoveDiscardedSecurityEventWebhooksAfter = null
+            }));
+        return await service.CleanupAsync();
     }
 }
