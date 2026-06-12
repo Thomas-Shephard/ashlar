@@ -70,6 +70,8 @@ public sealed record ListRememberedMfaDevicesRequest
 {
     /// <summary>Gets the tenant scope.</summary>
     public TenantContext? Tenant { get; init; }
+    /// <summary>Gets whether the list should include every tenant scope.</summary>
+    public bool IncludeAllTenants { get; init; }
     /// <summary>Gets whether only active devices should be returned.</summary>
     public bool ActiveOnly { get; init; } = true;
 }

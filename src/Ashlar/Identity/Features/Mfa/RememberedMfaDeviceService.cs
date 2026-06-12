@@ -218,7 +218,12 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
     {
         if (userId == Guid.Empty) throw new ArgumentException(UserIdEmptyMessage, nameof(userId));
         ArgumentNullException.ThrowIfNull(request);
-        var tenant = request.Tenant ?? TenantContext.Global;
+        if (request.Tenant != null && request.IncludeAllTenants)
+        {
+            throw new ArgumentException("Tenant scope cannot be combined with IncludeAllTenants = true.", nameof(request));
+        }
+
+        var tenant = request.IncludeAllTenants ? null : request.Tenant ?? TenantContext.Global;
         var now = _timeProvider.GetUtcNow();
         var devices = await _repository.ListForUserAsync(userId, tenant, request.ActiveOnly, now, cancellationToken);
         return devices.Select(device => ToSummary(device, now)).ToList().AsReadOnly();
