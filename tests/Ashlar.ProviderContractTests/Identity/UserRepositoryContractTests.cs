@@ -2,6 +2,8 @@ namespace Ashlar.ProviderContractTests.Identity;
 
 internal abstract class UserRepositoryContractTests : ProviderContractFixture
 {
+    private const string PasswordResetProviderName = "password-reset";
+
     [Test]
     public async Task CreateAndFetchUserById()
     {
@@ -118,6 +120,48 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
         var fetchedUser = await users.GetUserByProviderKeyAsync(ProviderType.OAuth, "github", "gh-1");
 
         Assert.That(fetchedUser?.Id, Is.EqualTo(user.Id));
+    }
+
+    [Test]
+    public async Task ProviderKeyLookupIgnoresRevokedCredential()
+    {
+        await using var scope = CreateAsyncScope();
+        var users = GetUserRepository(scope.ServiceProvider);
+        var credentials = GetCredentialRepository(scope.ServiceProvider);
+        var user = await CreateUserAsync(users);
+        var credential = CreateCredential(user.Id, ProviderType.Internal, PasswordResetProviderName, "reset-token-hash");
+
+        await credentials.CreateCredentialAsync(credential);
+        var linkedUser = await users.GetUserByProviderKeyAsync(ProviderType.Internal, PasswordResetProviderName, credential.ProviderKey);
+        await credentials.RevokeCredentialsAsync(user.Id, ProviderType.Internal, PasswordResetProviderName);
+        var revokedUser = await users.GetUserByProviderKeyAsync(ProviderType.Internal, PasswordResetProviderName, credential.ProviderKey);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(linkedUser?.Id, Is.EqualTo(user.Id));
+            Assert.That(revokedUser, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task ProviderKeyLookupIgnoresConsumedCredential()
+    {
+        await using var scope = CreateAsyncScope();
+        var users = GetUserRepository(scope.ServiceProvider);
+        var credentials = GetCredentialRepository(scope.ServiceProvider);
+        var user = await CreateUserAsync(users);
+        var credential = CreateCredential(user.Id, ProviderType.Internal, PasswordResetProviderName, "reset-token-hash");
+
+        await credentials.CreateCredentialAsync(credential);
+        var linkedUser = await users.GetUserByProviderKeyAsync(ProviderType.Internal, PasswordResetProviderName, credential.ProviderKey);
+        await credentials.ConsumeCredentialAsync(credential.Id, credential.Version);
+        var consumedUser = await users.GetUserByProviderKeyAsync(ProviderType.Internal, PasswordResetProviderName, credential.ProviderKey);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(linkedUser?.Id, Is.EqualTo(user.Id));
+            Assert.That(consumedUser, Is.Null);
+        }
     }
 
     [Test]

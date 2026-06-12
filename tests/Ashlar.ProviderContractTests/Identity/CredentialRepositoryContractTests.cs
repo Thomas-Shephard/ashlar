@@ -2,6 +2,9 @@ namespace Ashlar.ProviderContractTests.Identity;
 
 internal abstract class CredentialRepositoryContractTests : ProviderContractFixture
 {
+    private const string PasswordResetProviderName = "password-reset";
+    private const string PasswordResetPurpose = "password-reset";
+
     [Test]
     public async Task CredentialCreateReadAndProviderKeyOwnershipWork()
     {
@@ -133,6 +136,121 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
     }
 
     [Test]
+    public async Task PasswordResetInternalCredentialPersistsLifecycleMetadataAndRevocationIsProviderScoped()
+    {
+        await using var scope = CreateAsyncScope();
+        var users = GetUserRepository(scope.ServiceProvider);
+        var credentials = GetCredentialRepository(scope.ServiceProvider);
+        var user = await CreateUserAsync(users);
+        var localPassword = CreateCredential(user.Id, ProviderType.Local, ProviderType.Local.Value, user.Id.ToString("D"));
+        var expiresAt = TruncateToMicroseconds(DateTimeOffset.UtcNow.AddHours(2));
+        var resetCredential = CreateCredential(user.Id, ProviderType.Internal, PasswordResetProviderName, "reset-token-hash");
+        resetCredential.Purpose = PasswordResetPurpose;
+        resetCredential.ExpiresAt = expiresAt;
+        await credentials.CreateCredentialAsync(localPassword);
+        await credentials.CreateOrReplaceCredentialAsync(resetCredential);
+
+        var fetched = await credentials.GetCredentialForUserAsync(user.Id, ProviderType.Internal, PasswordResetProviderName, resetCredential.ProviderKey);
+        var revoked = await credentials.RevokeCredentialsAsync(user.Id, ProviderType.Internal, PasswordResetProviderName);
+        var replayFetch = await credentials.GetCredentialForUserAsync(user.Id, ProviderType.Internal, PasswordResetProviderName, resetCredential.ProviderKey);
+        var passwordFetch = await credentials.GetCredentialForUserAsync(user.Id, ProviderType.Local, ProviderType.Local.Value, localPassword.ProviderKey);
+        var all = await credentials.ListCredentialsForUserAsync(user.Id, activeOnly: false);
+        var listedReset = all.Single(credential => credential.Id == resetCredential.Id);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fetched, Is.Not.Null);
+            Assert.That(fetched?.Purpose, Is.EqualTo(PasswordResetPurpose));
+            Assert.That(fetched?.Status, Is.EqualTo(CredentialStatus.Active));
+            Assert.That(fetched?.ExpiresAt, Is.EqualTo(expiresAt));
+            Assert.That(fetched?.CredentialValue, Is.Null);
+            Assert.That(revoked, Is.EqualTo(1));
+            Assert.That(replayFetch, Is.Null);
+            Assert.That(passwordFetch, Is.Not.Null);
+            Assert.That(listedReset.Status, Is.EqualTo(CredentialStatus.Revoked));
+            Assert.That(listedReset.Purpose, Is.EqualTo(PasswordResetPurpose));
+            Assert.That(listedReset.ExpiresAt, Is.EqualTo(expiresAt));
+            Assert.That(listedReset.RevokedAt, Is.Not.Null);
+            Assert.That(listedReset.CredentialValue, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task CreateOrReplaceCredentialReactivatesRevokedLocalPasswordCredential()
+    {
+        await using var scope = CreateAsyncScope();
+        var users = GetUserRepository(scope.ServiceProvider);
+        var credentials = GetCredentialRepository(scope.ServiceProvider);
+        var user = await CreateUserAsync(users);
+        var providerKey = user.Id.ToString("D");
+        var original = CreateCredential(user.Id, ProviderType.Local, ProviderType.Local.Value, providerKey);
+        original.CredentialValue = "old-password-hash";
+        var replacement = CreateCredential(user.Id, ProviderType.Local, ProviderType.Local.Value, providerKey);
+        replacement.CredentialValue = "new-password-hash";
+
+        await credentials.CreateCredentialAsync(original);
+        await credentials.RevokeCredentialsAsync(user.Id, ProviderType.Local, ProviderType.Local.Value);
+        await credentials.CreateOrReplaceCredentialAsync(replacement);
+
+        var fetched = await credentials.GetCredentialForUserAsync(user.Id, ProviderType.Local, ProviderType.Local.Value, providerKey);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fetched, Is.Not.Null);
+            Assert.That(fetched?.Id, Is.EqualTo(original.Id));
+            Assert.That(fetched?.Status, Is.EqualTo(CredentialStatus.Active));
+            Assert.That(fetched?.RevokedAt, Is.Null);
+            Assert.That(fetched?.CredentialValue, Is.EqualTo("new-password-hash"));
+        }
+    }
+
+    [Test]
+    public async Task CredentialListingSeparatesActiveRevokedAndExpiredLifecycleStates()
+    {
+        await using var scope = CreateAsyncScope();
+        var users = GetUserRepository(scope.ServiceProvider);
+        var credentials = GetCredentialRepository(scope.ServiceProvider);
+        var user = await CreateUserAsync(users);
+        var now = TruncateToMicroseconds(DateTimeOffset.UtcNow);
+        var active = CreateCredential(user.Id, ProviderType.Local, ProviderType.Local.Value);
+        active.ExpiresAt = now.AddHours(1);
+        var expired = CreateCredential(user.Id, ProviderType.MagicLink, ProviderType.MagicLink.Value);
+        expired.ExpiresAt = now.AddMilliseconds(-1);
+        var revoked = CreateCredential(user.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value);
+        revoked.Status = CredentialStatus.Revoked;
+        revoked.RevokedAt = now.AddMinutes(-5);
+        await credentials.CreateCredentialAsync(active);
+        await credentials.CreateCredentialAsync(expired);
+        await credentials.CreateCredentialAsync(revoked);
+
+        var activeOnly = await credentials.ListCredentialsForUserAsync(user.Id);
+        var all = await credentials.ListCredentialsForUserAsync(user.Id, activeOnly: false);
+        var expiredFetch = await credentials.GetCredentialForUserAsync(user.Id, ProviderType.MagicLink, ProviderType.MagicLink.Value, expired.ProviderKey);
+        var revokedFetch = await credentials.GetCredentialForUserAsync(user.Id, ProviderType.EmailCode, ProviderType.EmailCode.Value, revoked.ProviderKey);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(activeOnly.Select(static credential => credential.Id), Is.EquivalentTo(new[] { active.Id, expired.Id }));
+            Assert.That(all.Select(static credential => credential.Id), Is.EquivalentTo(new[] { active.Id, expired.Id, revoked.Id }));
+            Assert.That(expiredFetch?.Id, Is.EqualTo(expired.Id));
+            Assert.That(expiredFetch?.ExpiresAt, Is.EqualTo(expired.ExpiresAt));
+            Assert.That(revokedFetch, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task CreateCredentialPathsRequireExistingUser()
+    {
+        await using var scope = CreateAsyncScope();
+        var credentials = GetCredentialRepository(scope.ServiceProvider);
+        var credential = CreateCredential(Guid.NewGuid(), ProviderType.Local, ProviderType.Local.Value);
+        var replacement = CreateCredential(Guid.NewGuid(), ProviderType.Internal, PasswordResetProviderName, "reset-token-hash");
+
+        Assert.CatchAsync(async () => await credentials.CreateCredentialAsync(credential));
+        Assert.CatchAsync(async () => await credentials.CreateOrReplaceCredentialAsync(replacement));
+    }
+
+    [Test]
     public async Task CredentialListingOmitsSecretCredentialValues()
     {
         await using var scope = CreateAsyncScope();
@@ -188,5 +306,10 @@ internal abstract class CredentialRepositoryContractTests : ProviderContractFixt
             Assert.That(await verificationUsers.GetUserByIdAsync(userId), Is.Null);
             Assert.That(await verificationCredentials.ListCredentialsForUserAsync(userId, activeOnly: false), Is.Empty);
         }
+    }
+
+    private static DateTimeOffset TruncateToMicroseconds(DateTimeOffset value)
+    {
+        return new DateTimeOffset(value.Ticks - value.Ticks % 10, value.Offset);
     }
 }
