@@ -26,6 +26,7 @@ global using Ashlar.ProviderContractTests.Auditing;
 global using Ashlar.ProviderContractTests.Identity.RateLimiting;
 global using Ashlar.ProviderContractTests.Messaging;
 global using Ashlar.ProviderContractTests.Operational;
+global using Ashlar.ProviderContractTests.Webhooks;
 global using Ashlar.ProviderContractTests.Authorization;
 global using Ashlar.ProviderContractTests.Identity;
 

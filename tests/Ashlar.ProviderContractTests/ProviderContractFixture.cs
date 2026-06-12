@@ -157,6 +157,26 @@ internal abstract class ProviderContractFixture
         return serviceProvider.GetRequiredService<IEmailOutboxDispatcher>();
     }
 
+    protected static IAshlarSecurityEventWebhookEnqueuer GetSecurityEventWebhookEnqueuer(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>();
+    }
+
+    protected static IAshlarSecurityEventWebhookOutboxBrowser GetSecurityEventWebhookOutboxBrowser(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>();
+    }
+
+    protected static IAshlarSecurityEventWebhookOutboxOperations GetSecurityEventWebhookOutboxOperations(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookOutboxOperations>();
+    }
+
+    protected static ISecurityEventWebhookOutboxDiagnostics GetSecurityEventWebhookOutboxDiagnostics(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<ISecurityEventWebhookOutboxDiagnostics>();
+    }
+
     protected static RecordingEmailTransport GetRecordingEmailTransport(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<RecordingEmailTransport>();
