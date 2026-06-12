@@ -421,6 +421,7 @@ internal sealed class RecoveryCodeTests
         var transaction = new Mock<IAshlarTransaction>();
         var onCommitted = new List<Func<CancellationToken, Task>>();
         var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
+        var securityEvents = new RecordingSecurityEventSink();
         var options = Options.Create(new RecoveryCodeOptions());
         var userId = Guid.NewGuid();
 
@@ -444,7 +445,7 @@ internal sealed class RecoveryCodeTests
                 onCommitted.Clear();
             });
 
-        var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options));
+        var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, securityEventSink: securityEvents));
 
         var result1 = await service.RevokeRecoveryCodesAsync(userId, "test reason");
         Assert.That(result1, Is.EqualTo(10));
@@ -454,6 +455,66 @@ internal sealed class RecoveryCodeTests
 
         credentialRepository.Verify(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()), Times.Exactly(2));
         transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(securityEvents.Events, Has.Count.EqualTo(2));
+            Assert.That(securityEvents.Events[0].EventType, Is.EqualTo(AshlarSecurityEventTypes.RecoveryCodesRevoked));
+            Assert.That(securityEvents.Events[0].Outcome, Is.EqualTo(SecurityEventOutcomes.Success));
+            Assert.That(securityEvents.Events[0].FailureReason, Is.Null);
+            Assert.That(securityEvents.Events[0].Properties, Does.ContainKey("count").WithValue("10"));
+            Assert.That(securityEvents.Events[0].Properties, Does.ContainKey("revoked").WithValue("true"));
+            Assert.That(securityEvents.Events[0].Properties, Does.ContainKey("reason").WithValue("test reason"));
+            Assert.That(securityEvents.Events[1].Properties, Does.ContainKey("count").WithValue("10"));
+            Assert.That(securityEvents.Events[1].Properties, Does.ContainKey("revoked").WithValue("true"));
+            Assert.That(securityEvents.Events[1].Properties, Does.Not.ContainKey("reason"));
+            Assert.That(string.Join("|", securityEvents.Events.SelectMany(e => e.Properties?.Values ?? [])), Does.Not.Contain("RECOVERY-CODE").And.Not.Contain("hash"));
+        }
+    }
+
+    [Test]
+    public async Task ServiceRevokeRecoveryCodesAsyncAuditsNoOpCount()
+    {
+        var repository = new Mock<IUserRepository>();
+        var credentialRepository = new Mock<ICredentialRepository>();
+        var transactionProvider = new Mock<IAshlarTransactionProvider>();
+        var transaction = new Mock<IAshlarTransaction>();
+        var onCommitted = new List<Func<CancellationToken, Task>>();
+        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
+        var securityEvents = new RecordingSecurityEventSink();
+        var options = Options.Create(new RecoveryCodeOptions());
+        var userId = Guid.NewGuid();
+
+        repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, Email = "test@example.com", AccountState = UserAccountState.Active });
+        credentialRepository.Setup(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+        transactionProvider.Setup(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(transaction.Object);
+        transaction.Setup(t => t.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()))
+            .Callback<Func<CancellationToken, Task>>(onCommitted.Add);
+        transaction.Setup(t => t.CommitAsync(It.IsAny<CancellationToken>()))
+            .Returns<CancellationToken>(async ct =>
+            {
+                foreach (var action in onCommitted)
+                {
+                    await action(ct);
+                }
+            });
+        var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, securityEventSink: securityEvents));
+
+        var count = await service.RevokeRecoveryCodesAsync(userId, "admin cleanup");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.Zero);
+            var securityEvent = securityEvents.Events.Single();
+            Assert.That(securityEvent.EventType, Is.EqualTo(AshlarSecurityEventTypes.RecoveryCodesRevoked));
+            Assert.That(securityEvent.Outcome, Is.EqualTo(SecurityEventOutcomes.Success));
+            Assert.That(securityEvent.FailureReason, Is.Null);
+            Assert.That(securityEvent.Properties, Does.ContainKey("count").WithValue("0"));
+            Assert.That(securityEvent.Properties, Does.ContainKey("revoked").WithValue("false"));
+            Assert.That(securityEvent.Properties, Does.ContainKey("reason").WithValue("admin cleanup"));
+        }
     }
 
     [Test]
