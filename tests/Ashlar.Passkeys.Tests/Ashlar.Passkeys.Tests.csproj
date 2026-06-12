@@ -6,6 +6,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Ashlar.Testing\Ashlar.Testing.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.Passkeys\Ashlar.Passkeys.csproj" />
     <ProjectReference Include="..\..\src\Ashlar\Ashlar.csproj" />
   </ItemGroup>

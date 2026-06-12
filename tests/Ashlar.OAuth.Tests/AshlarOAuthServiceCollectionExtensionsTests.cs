@@ -9,10 +9,15 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Ashlar.Auditing;
+using Ashlar.Identity.Abstractions.Repositories;
+using Ashlar.Security.Encryption;
+using Ashlar.Testing.DependencyInjection;
 using Ashlar.OAuth.Providers.Apple;
 using Ashlar.OAuth.Providers.GitHub;
 using Ashlar.OAuth.Providers.Google;
 using Ashlar.OAuth.Providers.Microsoft;
+using Moq;
 
 namespace Ashlar.OAuth.Tests;
 
@@ -48,6 +53,41 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             Assert.That(services.Any(d => d.ServiceType == typeof(AshlarExternalAccountLinkService)), Is.True);
             Assert.That(services.Any(d => d.ServiceType == typeof(AshlarOidcInvitationRegistrationService)), Is.True);
             Assert.That(scope.ServiceProvider.GetRequiredService<IOidcInvitationEmailMatchPolicy>(), Is.TypeOf<StandardOidcVerifiedEmailMatchPolicy>());
+        }
+    }
+
+    [Test]
+    public void CoreOAuthCompositionBuildsWithStrictValidation()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddSingleton(Mock.Of<IUserAdministrationRepository>());
+        services.AddSingleton(Mock.Of<ICredentialAdministrationRepository>());
+        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddSingleton(Mock.Of<IAuthenticationSessionAdministrationRepository>());
+        services.AddSingleton(Mock.Of<IInvitationRepository>());
+        services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
+        services.AddSingleton(Mock.Of<ISecretProtector>());
+        services.AddAshlarOAuth(options => options.AddGitHub(oauth =>
+        {
+            oauth.ClientId = "client";
+            oauth.ClientSecret = "secret";
+        }));
+
+        using var provider = ServiceProviderValidation.BuildValidatedServiceProvider(
+            services,
+            typeof(AshlarExternalCredentialAuthenticationService),
+            typeof(AshlarExternalAccountLinkService),
+            typeof(AshlarOidcInvitationRegistrationService));
+        using var scope = provider.CreateScope();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.ServiceProvider.GetRequiredService<AshlarExternalCredentialAuthenticationService>(), Is.Not.Null);
+            Assert.That(scope.ServiceProvider.GetRequiredService<AshlarExternalAccountLinkService>(), Is.Not.Null);
+            Assert.That(scope.ServiceProvider.GetServices<IAuthenticationProvider>().Select(provider => provider.Key), Does.Contain(new AuthenticationProviderKey(ProviderType.OAuth, "GitHub")));
         }
     }
 

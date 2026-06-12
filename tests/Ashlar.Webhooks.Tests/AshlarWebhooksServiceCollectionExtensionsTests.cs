@@ -2,9 +2,14 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using Ashlar.Auditing;
+using Ashlar.Identity.Abstractions.Repositories;
+using Ashlar.Security.Encryption;
+using Ashlar.Testing.DependencyInjection;
 using Ashlar.Webhooks.SecurityEvents;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace Ashlar.Webhooks.Tests;
 
@@ -187,6 +192,56 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
 
         using var provider = services.BuildServiceProvider();
         Assert.That(provider.GetServices<ISecurityEventHandler>().Single(), Is.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+    }
+
+    [Test]
+    public void WebhookCompositionsBuildWithStrictValidationWithoutHostedServices()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddSingleton(Mock.Of<IUserAdministrationRepository>());
+        services.AddSingleton(Mock.Of<ICredentialAdministrationRepository>());
+        services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddSingleton(Mock.Of<IAuthenticationSessionAdministrationRepository>());
+        services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
+        services.AddSingleton(Mock.Of<ISecretProtector>());
+        services.AddSingleton<IAshlarSecurityEventWebhookEnqueuer, TestWebhookEnqueuer>();
+        services.AddAshlarSecurityEventWebhooks(options =>
+        {
+            options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions
+            {
+                Name = "best-effort",
+                Uri = new Uri("https://example.test/security-events"),
+                SharedSecret = "shared-secret"
+            });
+        });
+        services.AddAshlarSecurityEventWebhookOutbox(options =>
+        {
+            options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions
+            {
+                Name = "outbox",
+                Uri = new Uri("https://example.test/security-events/outbox"),
+                SharedSecret = "shared-secret"
+            });
+        });
+
+        using var provider = ServiceProviderValidation.BuildValidatedServiceProvider(
+            services,
+            typeof(ISecurityEventSink),
+            typeof(IAshlarSecurityEventWebhookSender),
+            typeof(IAshlarSecurityEventWebhookEndpointTester),
+            typeof(AshlarSecurityEventWebhookDeliveryFactory));
+
+        using var scope = provider.CreateScope();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.ServiceProvider.GetServices<ISecurityEventHandler>(), Has.Some.TypeOf<AshlarSecurityEventWebhookHandler>());
+            Assert.That(scope.ServiceProvider.GetServices<ISecurityEventHandler>(), Has.Some.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+            Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
+        }
     }
 
     private sealed class TestHttpClientFactory : IHttpClientFactory

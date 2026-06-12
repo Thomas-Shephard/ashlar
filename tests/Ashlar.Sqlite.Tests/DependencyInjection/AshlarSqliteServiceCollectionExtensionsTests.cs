@@ -1,12 +1,20 @@
 using Ashlar.Authorization.Abstractions;
+using Ashlar.Identity.Abstractions.Services;
+using Ashlar.Identity.Providers.Local;
+using Ashlar.Messaging;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Operational;
 using Ashlar.Operational.Configuration;
 using Ashlar.Operational.Diagnostics;
+using Ashlar.Security.Encryption;
+using Ashlar.Security.Hashing;
 using Ashlar.Sqlite.Schema;
+using Ashlar.Testing.DependencyInjection;
+using Ashlar.Webhooks.SecurityEvents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace Ashlar.Sqlite.Tests.DependencyInjection;
 
@@ -41,6 +49,68 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.That(scope.ServiceProvider.GetRequiredService<IPasskeyChallengeRepository>(), Is.TypeOf<SqlitePasskeyChallengeRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantRepository>(), Is.TypeOf<SqliteAuthorizationGrantRepository>());
             Assert.That(provider.GetRequiredService<TimeProvider>(), Is.EqualTo(TimeProvider.System));
+        }
+    }
+
+    [Test]
+    public void AddAshlarSqliteShouldReplaceAmbientConnectionFactory()
+    {
+        var services = new ServiceCollection();
+        var ambient = new SqliteConnectionFactory("Data Source=:memory:");
+        services.AddSingleton(ambient);
+
+        services.AddAshlarSqlite(GetConnectionString());
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetRequiredService<SqliteConnectionFactory>(), Is.Not.SameAs(ambient));
+    }
+
+    [Test]
+    public async Task AddAshlarSqliteCompositionBuildsWithStrictValidation()
+    {
+        var secretProtector = Mock.Of<ISecretProtector>();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(secretProtector);
+        services.AddAshlarIdentity();
+        services.AddPasswordHasher<PasswordHasherV1>();
+        services.AddAuthenticationProvider<LocalPasswordProvider>();
+        services.AddAshlarSqlite(GetConnectionString());
+        services.AddAshlarAuthorization();
+        services.AddAshlarSqliteAuditSink();
+        services.AddAshlarSqliteRateLimiting();
+        services.AddAshlarSqliteCleanup();
+        services.AddAshlarSqliteEmailOutboxDispatcher<TestEmailTransport>();
+        services.AddAshlarSqliteSecurityEventWebhookDispatcher(configureWebhooks: options =>
+        {
+            options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions
+            {
+                Name = "test",
+                Uri = new Uri("https://webhooks.example.test/ashlar"),
+                SharedSecret = "test-secret"
+            });
+        });
+
+        await using var provider = ServiceProviderValidation.BuildValidatedServiceProvider(
+            services,
+            typeof(IIdentityService),
+            typeof(IAuthorizationGrantService),
+            typeof(IAshlarCleanupService),
+            typeof(IEmailOutboxDispatcher),
+            typeof(SqliteSecurityEventWebhookOutboxDispatcher),
+            typeof(IAuthenticationRateLimiter),
+            typeof(IAshlarSchemaDiagnostics));
+        await using var scope = provider.CreateAsyncScope();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.ServiceProvider.GetRequiredService<ISecretProtector>(), Is.SameAs(secretProtector));
+            Assert.That(scope.ServiceProvider.GetRequiredService<IEmailSender>(), Is.TypeOf<SqliteEmailOutboxSender>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiter>(), Is.TypeOf<SqliteAuthenticationRateLimiter>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<SqliteTransactionManager>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IPersistentSecurityEventSink>(), Is.TypeOf<SqliteSecurityEventSink>());
+            Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
         }
     }
 
@@ -192,6 +262,21 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
     }
 
     [Test]
+    public void AddAshlarSqliteHostedServiceMethodsRegisterOnlyExplicitHostedServices()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarSqlite(GetConnectionString());
+        services.AddAshlarSqliteCleanupHostedService();
+        services.AddAshlarSqliteEmailOutboxHostedService<TestEmailTransport>();
+        services.AddAshlarSqliteSecurityEventWebhookHostedService();
+
+        using var provider = ServiceProviderValidation.BuildValidatedServiceProvider(services);
+
+        Assert.That(provider.GetServices<IHostedService>(), Has.Exactly(3).Items);
+    }
+
+    [Test]
     public void SqliteAshlarCleanupDiagnosticsRejectsNullArguments()
     {
         var options = Options.Create(new AshlarCleanupOptions());
@@ -238,6 +323,14 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.DoesNotThrow(() => _ = new SqliteCredentialRepository(connectionProvider));
             Assert.DoesNotThrow(() => _ = new SqliteInvitationRepository(connectionProvider));
             Assert.DoesNotThrow(() => _ = new SqliteAuthenticationHandshakeRepository(connectionProvider));
+        }
+    }
+
+    private sealed class TestEmailTransport : IEmailTransport
+    {
+        public Task DeliverAsync(EmailMessage message, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
         }
     }
 }

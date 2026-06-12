@@ -4,6 +4,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Ashlar.Testing\Ashlar.Testing.csproj" />
     <ProjectReference Include="..\..\src\Ashlar.Email.Smtp\Ashlar.Email.Smtp.csproj" />
   </ItemGroup>
 

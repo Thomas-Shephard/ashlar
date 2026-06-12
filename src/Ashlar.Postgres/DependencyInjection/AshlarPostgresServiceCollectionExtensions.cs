@@ -25,6 +25,7 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="connectionString">The PostgreSQL connection string used to create an <see cref="NpgsqlDataSource"/>.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
+    /// <remarks>An explicitly supplied Ashlar PostgreSQL connection replaces any earlier <see cref="NpgsqlDataSource"/> registration.</remarks>
     public static IServiceCollection AddAshlarPostgres(
         this IServiceCollection services,
         string connectionString)
@@ -32,7 +33,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
 
-        services.TryAddSingleton(_ => new NpgsqlDataSourceBuilder(connectionString).Build());
+        services.Replace(ServiceDescriptor.Singleton(_ => new NpgsqlDataSourceBuilder(connectionString).Build()));
         return services.AddAshlarPostgresPersistence();
     }
 
@@ -42,6 +43,7 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="dataSource">The PostgreSQL data source used by Ashlar persistence repositories.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
+    /// <remarks>An explicitly supplied Ashlar PostgreSQL data source replaces any earlier <see cref="NpgsqlDataSource"/> registration.</remarks>
     public static IServiceCollection AddAshlarPostgres(
         this IServiceCollection services,
         NpgsqlDataSource dataSource)
@@ -49,7 +51,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(dataSource);
 
-        services.TryAddSingleton(dataSource);
+        services.Replace(ServiceDescriptor.Singleton(dataSource));
         return services.AddAshlarPostgresPersistence();
     }
 
@@ -86,6 +88,7 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <param name="connectionString">The PostgreSQL connection string used to create an <see cref="NpgsqlDataSource"/>.</param>
     /// <param name="configure">Optional bootstrap configuration.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
+    /// <remarks>An explicitly supplied Ashlar PostgreSQL connection replaces any earlier <see cref="NpgsqlDataSource"/> registration.</remarks>
     public static IServiceCollection AddAshlarPostgresBootstrap(
         this IServiceCollection services,
         string connectionString,
@@ -94,7 +97,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
 
-        services.TryAddSingleton(_ => new NpgsqlDataSourceBuilder(connectionString).Build());
+        services.Replace(ServiceDescriptor.Singleton(_ => new NpgsqlDataSourceBuilder(connectionString).Build()));
         return services.AddAshlarPostgresBootstrapPersistence(configure);
     }
 
@@ -105,6 +108,7 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <param name="dataSource">The PostgreSQL data source used by bootstrap persistence.</param>
     /// <param name="configure">Optional bootstrap configuration.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
+    /// <remarks>An explicitly supplied Ashlar PostgreSQL data source replaces any earlier <see cref="NpgsqlDataSource"/> registration.</remarks>
     public static IServiceCollection AddAshlarPostgresBootstrap(
         this IServiceCollection services,
         NpgsqlDataSource dataSource,
@@ -113,7 +117,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(dataSource);
 
-        services.TryAddSingleton(dataSource);
+        services.Replace(ServiceDescriptor.Singleton(dataSource));
         return services.AddAshlarPostgresBootstrapPersistence(configure);
     }
 
@@ -136,6 +140,7 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="connectionString">The PostgreSQL connection string used to create an <see cref="NpgsqlDataSource"/>.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
+    /// <remarks>An explicitly supplied Ashlar PostgreSQL connection replaces any earlier <see cref="NpgsqlDataSource"/> registration.</remarks>
     public static IServiceCollection AddAshlarPostgresAuthorization(
         this IServiceCollection services,
         string connectionString)
@@ -143,7 +148,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
 
-        services.TryAddSingleton(_ => new NpgsqlDataSourceBuilder(connectionString).Build());
+        services.Replace(ServiceDescriptor.Singleton(_ => new NpgsqlDataSourceBuilder(connectionString).Build()));
         return services.AddAshlarPostgresAuthorizationPersistence();
     }
 
@@ -153,6 +158,7 @@ public static class AshlarPostgresServiceCollectionExtensions
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="dataSource">The PostgreSQL data source used by authorization persistence.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
+    /// <remarks>An explicitly supplied Ashlar PostgreSQL data source replaces any earlier <see cref="NpgsqlDataSource"/> registration.</remarks>
     public static IServiceCollection AddAshlarPostgresAuthorization(
         this IServiceCollection services,
         NpgsqlDataSource dataSource)
@@ -160,7 +166,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(dataSource);
 
-        services.TryAddSingleton(dataSource);
+        services.Replace(ServiceDescriptor.Singleton(dataSource));
         return services.AddAshlarPostgresAuthorizationPersistence();
     }
 
