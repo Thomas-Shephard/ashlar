@@ -17,6 +17,7 @@ app.UseStaticFiles();
 app.UseAshlarRequireIpAddress();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseAntiforgery();
 
 app.MapHomeEndpoints();
 app.MapBootstrapEndpoints();

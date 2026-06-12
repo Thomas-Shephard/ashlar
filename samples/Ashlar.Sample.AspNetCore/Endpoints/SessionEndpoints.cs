@@ -1,4 +1,5 @@
 using Ashlar.AspNetCore.Sessions;
+using Ashlar.Sample.AspNetCore.Extensions;
 
 namespace Ashlar.Sample.AspNetCore.Endpoints;
 
@@ -31,7 +32,7 @@ internal static class SessionEndpoints
         {
             var revoked = await signInManager.RevokeSessionForCurrentUserAsync(httpContext, sessionId, reason: "user-revoked", cancellationToken);
             return revoked ? Results.NoContent() : Results.NotFound();
-        }).RequireAuthorization().RequireFreshMfaIfAvailable();
+        }).RequireAuthorization().RequireFreshMfaIfAvailable().RequireSampleAntiforgery();
 
         app.MapDelete("/api/sessions/others", async (
             IAshlarSignInManager signInManager,
@@ -40,6 +41,6 @@ internal static class SessionEndpoints
         {
             await signInManager.RevokeOtherSessionsForCurrentUserAsync(httpContext, reason: "user-revoked-others", cancellationToken);
             return Results.NoContent();
-        }).RequireAuthorization().RequireFreshMfaIfAvailable();
+        }).RequireAuthorization().RequireFreshMfaIfAvailable().RequireSampleAntiforgery();
     }
 }

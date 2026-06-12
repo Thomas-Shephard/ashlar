@@ -17,7 +17,7 @@ internal static class GitHubOAuthEndpoints
 
         app.MapGet("/account/external/github/link", StartGitHubAccountLink).RequireAuthorization().RequireFreshMfaIfAvailable();
         app.MapGet("/account/external/github/link/callback", CompleteGitHubAccountLinkAsync).RequireAuthorization().RequireFreshMfaIfAvailable();
-        app.MapPost("/api/account/external/github/unlink", UnlinkGitHubAccountAsync).RequireAuthorization().RequireFreshMfaIfAvailable();
+        app.MapPost("/api/account/external/github/unlink", UnlinkGitHubAccountAsync).RequireAuthorization().RequireFreshMfaIfAvailable().RequireSampleAntiforgery();
     }
 
     private static IResult StartGitHubSignIn(IConfiguration configuration)

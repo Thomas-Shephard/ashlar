@@ -18,7 +18,7 @@ internal static class MfaEndpoints
     {
         app.MapPost("/api/mfa/verify", VerifyMfaAsync);
         app.MapGet("/api/account/security/step-up-options", GetStepUpOptionsAsync).RequireAuthorization();
-        app.MapPost("/api/account/security/verify", VerifyCurrentSessionAsync).RequireAuthorization();
+        app.MapPost("/api/account/security/verify", VerifyCurrentSessionAsync).RequireAuthorization().RequireSampleAntiforgery();
 
         app.MapGet("/account/mfa/enroll", async ([AsParameters] MfaEnrollServices services) =>
         {
@@ -66,7 +66,7 @@ internal static class MfaEndpoints
             }
 
             return Results.Ok();
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireSampleAntiforgery();
 
         app.MapPost("/api/mfa/totp/reset", async (
             ITotpService totp,
@@ -76,7 +76,7 @@ internal static class MfaEndpoints
         {
             await totp.DisableTotpAsync(user.GetAshlarUserId(), httpContext.ToTenantContext(), httpContext.ToAuditContext(), cancellationToken);
             return Results.Ok();
-        }).RequireAuthorization().RequireFreshMfa();
+        }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/mfa/recovery-codes", async (
             IRecoveryCodeService recoveryCodes,
@@ -89,7 +89,7 @@ internal static class MfaEndpoints
                 new RecoveryCodeGenerationRequest { Tenant = httpContext.ToTenantContext(), Audit = httpContext.ToAuditContext() },
                 cancellationToken);
             return result.Succeeded ? Results.Ok(new { codes = result.Value }) : Results.BadRequest(SampleResultErrors.From(result));
-        }).RequireAuthorization().RequireFreshMfa();
+        }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
     }
 
     private sealed record MfaEnrollServices(

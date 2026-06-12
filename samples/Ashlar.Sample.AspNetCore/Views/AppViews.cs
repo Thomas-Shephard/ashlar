@@ -25,7 +25,61 @@ internal static class AppViews
             return /[.!?]$/.test(message) ? message : message + '.';
         }
 
-        function setupForm(id, urlOrBuilder, method, bodyMapper, successMapper) {
+        let ashlarCsrfTokenPromise = null;
+
+        function isUnsafeMethod(method) {
+            return !['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes((method || 'GET').toUpperCase());
+        }
+
+        function isSameOriginUrl(url) {
+            return new URL(url, window.location.origin).origin === window.location.origin;
+        }
+
+        async function getAshlarCsrfToken() {
+            if (!ashlarCsrfTokenPromise) {
+                ashlarCsrfTokenPromise = fetch('/api/antiforgery/token')
+                    .then(response => {
+                        if (!response.ok) throw new Error('csrf_token_unavailable');
+                        return response.json();
+                    })
+                    .then(result => result.token);
+            }
+
+            return ashlarCsrfTokenPromise;
+        }
+
+        async function ashlarFetch(url, options = {}) {
+            const { csrf = true, ...requestOptions } = options;
+            const method = requestOptions.method || 'GET';
+            if (csrf !== false && isUnsafeMethod(method) && isSameOriginUrl(url)) {
+                const headers = new Headers(requestOptions.headers || {});
+                if (!headers.has('X-CSRF-TOKEN')) {
+                    headers.set('X-CSRF-TOKEN', await getAshlarCsrfToken());
+                }
+
+                requestOptions.headers = headers;
+            }
+
+            return await fetch(url, requestOptions);
+        }
+
+        function setupLogoutForms() {
+            document.querySelectorAll('form[action="/api/auth/logout"][method="POST"]').forEach(form => {
+                form.onsubmit = async event => {
+                    event.preventDefault();
+                    const button = form.querySelector('button');
+                    if (button) button.disabled = true;
+                    try {
+                        const response = await ashlarFetch('/api/auth/logout', { method: 'POST' });
+                        location.href = response.redirected ? response.url : '/';
+                    } catch (err) {
+                        if (button) button.disabled = false;
+                    }
+                };
+            });
+        }
+
+        function setupForm(id, urlOrBuilder, method, bodyMapper, successMapper, csrf = true) {
             const form = document.getElementById(id);
             if (!form) return;
             form.onsubmit = async (e) => {
@@ -38,6 +92,7 @@ internal static class AppViews
                     const url = typeof urlOrBuilder === 'function' ? urlOrBuilder(e.target) : urlOrBuilder;
                     const response = await ashlarFetchWithStepUp(url, {
                         method: method,
+                        csrf: csrf,
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(bodyMapper(e.target))
                     });
@@ -171,7 +226,7 @@ internal static class AppViews
                     result.style.color = '';
                     result.innerText = 'Verifying...';
                     try {
-                        const response = await fetch('/api/account/security/verify', {
+                        const response = await ashlarFetch('/api/account/security/verify', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ code: codeInput.value })
@@ -214,7 +269,7 @@ internal static class AppViews
         }
 
         async function ashlarFetchWithStepUp(url, options) {
-            const first = await fetch(url, options);
+            const first = await ashlarFetch(url, options);
             if (first.status !== 403 || first.headers.get('X-Ashlar-Step-Up') !== 'required') return first;
 
             try {
@@ -223,8 +278,10 @@ internal static class AppViews
                 return first;
             }
 
-            return await fetch(url, options);
+            return await ashlarFetch(url, options);
         }
+
+        setupLogoutForms();
 
         function base64UrlToBuffer(value) {
             const base64 = String(value).replace(/-/g, '+').replace(/_/g, '/');
@@ -417,12 +474,14 @@ internal static class AppViews
                 }),
                 (r, div) => {
                     div.innerHTML = '<p class="badge badge-success" style="margin-bottom: 1rem;">Bootstrap complete!</p><button onclick="location.href=\'/\'">Go to Dashboard</button>';
-                }
+                },
+                false
             );
 
             setupForm('signInForm', '/api/auth/magic-link/request', 'POST',
                 f => ({ email: f.querySelector('#signInEmail').value }),
-                (r, div) => { div.innerHTML = '<p class="badge badge-success">Magic link sent!</p>'; }
+                (r, div) => { div.innerHTML = '<p class="badge badge-success">Magic link sent!</p>'; },
+                false
             );
 
             const passkeySignInButton = document.getElementById('passkeySignInButton');
@@ -1876,6 +1935,8 @@ internal static class AppViews
             </div>
             <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
             <script>
+                {{SharedScripts}}
+
                 window.addEventListener('load', () => {
                     if (typeof QRCode !== 'undefined') {
                         QRCode.toCanvas(document.getElementById('qr-code'), '{{System.Web.HttpUtility.JavaScriptStringEncode(authenticatorUri)}}', {
@@ -1894,7 +1955,7 @@ internal static class AppViews
                     const resDiv = document.getElementById('result');
                     btn.disabled = true;
                     try {
-                        const response = await fetch('/api/mfa/totp/verify', {
+                        const response = await ashlarFetch('/api/mfa/totp/verify', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ sharedSecret: document.getElementById('secret').value, code: document.getElementById('code').value })
@@ -1927,6 +1988,9 @@ internal static class AppViews
                 <div class="badge badge-success">Manager</div>
                 <p style="margin-top: 1rem;">You have 'project.manage' permission for project '{System.Net.WebUtility.HtmlEncode(projectId)}'.</p>
             </div>
+            <script>
+                {SharedScripts}
+            </script>
         """, navLinks);
     }
 }
