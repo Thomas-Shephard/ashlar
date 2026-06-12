@@ -1,3 +1,4 @@
+using Ashlar.Operational;
 using System.Text;
 
 namespace Ashlar.ProviderContractTests.Webhooks;
@@ -11,6 +12,8 @@ internal abstract class SecurityEventWebhookOutboxCleanupContractTests : Provide
     protected abstract Task<int> CountWebhookOutboxRowsAsync();
 
     protected abstract Task<int> CountWebhookOutboxRowsByEndpointNameAsync(string endpointName);
+
+    protected abstract Task<AshlarCleanupResult> RunCleanupWithNullWebhookRetentionsAsync();
 
     [Test]
     public async Task CleanupAsyncRemovesOnlyTerminalWebhookRowsOlderThanRetentionAndReturnsCounts()
@@ -67,6 +70,26 @@ internal abstract class SecurityEventWebhookOutboxCleanupContractTests : Provide
             Assert.That(second.SentSecurityEventWebhooks, Is.EqualTo(1));
             Assert.That(third.SentSecurityEventWebhooks, Is.Zero);
             Assert.That(await CountWebhookOutboxRowsAsync(), Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task CleanupAsyncSkipsWebhookCategoriesWithNullRetention()
+    {
+        await SeedWebhookOutboxCleanupRowAsync(SeedWebhookCleanupRow.Sent("disabled-sent", CleanupNow.AddDays(-90)));
+        await SeedWebhookOutboxCleanupRowAsync(SeedWebhookCleanupRow.Failed("disabled-failed", CleanupNow.AddDays(-90)));
+        await SeedWebhookOutboxCleanupRowAsync(SeedWebhookCleanupRow.Discarded("disabled-discarded", CleanupNow.AddDays(-90)));
+
+        var result = await RunCleanupWithNullWebhookRetentionsAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.SentSecurityEventWebhooks, Is.Zero);
+            Assert.That(result.FailedSecurityEventWebhooks, Is.Zero);
+            Assert.That(result.DiscardedSecurityEventWebhooks, Is.Zero);
+            Assert.That(await CountWebhookOutboxRowsByEndpointNameAsync("disabled-sent"), Is.EqualTo(1));
+            Assert.That(await CountWebhookOutboxRowsByEndpointNameAsync("disabled-failed"), Is.EqualTo(1));
+            Assert.That(await CountWebhookOutboxRowsByEndpointNameAsync("disabled-discarded"), Is.EqualTo(1));
         }
     }
 
