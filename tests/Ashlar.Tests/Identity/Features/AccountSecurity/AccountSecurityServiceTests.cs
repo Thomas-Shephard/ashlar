@@ -603,6 +603,38 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
+    public void RevokeCredentialsAsyncShouldRejectUnknownProviderTypeBeforeMutation()
+    {
+        var provider = new AuthenticationProviderKey((ProviderType)ProviderType.UnknownValue, "unknown");
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
+        _userRepository.Credentials.Add(CreateCredential(_userId, provider));
+
+        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeCredentialsAsync(_userId, provider, CreateRequest()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_userRepository.Credentials.Single().RevokedAt, Is.Null);
+            Assert.That(_events.Events, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void RevokeCredentialsAsyncShouldRejectInternalProviderBeforeMutation()
+    {
+        var provider = new AuthenticationProviderKey(ProviderType.Internal, "password-reset");
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
+        _userRepository.Credentials.Add(CreateCredential(_userId, provider));
+
+        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeCredentialsAsync(_userId, provider, CreateRequest()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_userRepository.Credentials.Single().RevokedAt, Is.Null);
+            Assert.That(_events.Events, Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task ResetMfaAsyncShouldRevokeTotpAndRecoveryCodeCredentialsOnly()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
@@ -1386,6 +1418,8 @@ internal sealed class AccountSecurityServiceTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.Throws<ArgumentNullException>(() => _ = new AccountSecurityOperationRequest(null!, TenantContext.Global));
+            Assert.Throws<ArgumentNullException>(() => _ = new SetUserAccountStateRequest(UserAccountState.Disabled, null!, TenantContext.Global));
             Assert.Throws<ArgumentException>(() => _ = new AccountSecurityOperationRequest(audit));
             Assert.Throws<ArgumentException>(() => _ = new AccountSecurityOperationRequest(audit, TenantContext.Global, IncludeAllTenants: true));
             Assert.Throws<ArgumentException>(() => _ = new SetUserAccountStateRequest(UserAccountState.Disabled, audit));

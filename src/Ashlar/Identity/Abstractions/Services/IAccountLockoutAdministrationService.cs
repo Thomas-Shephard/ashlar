@@ -6,6 +6,7 @@ namespace Ashlar.Identity.Abstractions.Services;
 /// <remarks>
 /// These operations do not authorize callers. Host applications must protect usage with appropriate admin authorization and step-up policy.
 /// Returned models contain only safe operational metadata and never include credential values, secrets, token material, or repository versions.
+/// Reset operations are destructive administrative operations and require host applications to enforce fresh MFA or equivalent step-up policy.
 /// </remarks>
 public interface IAccountLockoutAdministrationService
 {
@@ -36,7 +37,7 @@ public interface IAccountLockoutAdministrationService
     /// </summary>
     /// <param name="userId">The user id.</param>
     /// <param name="provider">The authentication provider key.</param>
-    /// <param name="request">The tenant-scoped request.</param>
+    /// <param name="request">The tenant-scoped request with required audit metadata.</param>
     /// <param name="cancellationToken">A token that can cancel the operation.</param>
     /// <returns><see langword="true" /> when stored automatic lockout state was cleared.</returns>
     Task<Result<bool>> ResetLockoutAsync(
