@@ -121,6 +121,21 @@ public sealed class AshlarCleanupOptions
     public TimeSpan? RemoveFailedSensitiveEmailsAfter { get; set; } = TimeSpan.FromHours(1);
 
     /// <summary>
+    /// Retention period after security-event webhook deliveries are sent. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes sent rows on the next cleanup run.
+    /// </summary>
+    public TimeSpan? RemoveSentSecurityEventWebhooksAfter { get; set; } = TimeSpan.FromDays(7);
+
+    /// <summary>
+    /// Retention period after security-event webhook deliveries are marked as failed and not discarded. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes failed rows on the next cleanup run.
+    /// </summary>
+    public TimeSpan? RemoveFailedSecurityEventWebhooksAfter { get; set; } = TimeSpan.FromDays(30);
+
+    /// <summary>
+    /// Retention period after security-event webhook deliveries are discarded. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes discarded rows on the next cleanup run.
+    /// </summary>
+    public TimeSpan? RemoveDiscardedSecurityEventWebhooksAfter { get; set; } = TimeSpan.FromDays(30);
+
+    /// <summary>
     /// Performs the validate operation and returns the result.
     /// </summary>
     /// <param name="options">The options value.</param>
@@ -153,7 +168,10 @@ public sealed class AshlarCleanupOptions
             && IsValid(options.RemoveSentEmailsAfter)
             && IsValid(options.RemoveFailedEmailsAfter)
             && IsValid(options.RemoveSentSensitiveEmailsAfter)
-            && IsValid(options.RemoveFailedSensitiveEmailsAfter);
+            && IsValid(options.RemoveFailedSensitiveEmailsAfter)
+            && IsValid(options.RemoveSentSecurityEventWebhooksAfter)
+            && IsValid(options.RemoveFailedSecurityEventWebhooksAfter)
+            && IsValid(options.RemoveDiscardedSecurityEventWebhooksAfter);
     }
 
     private static bool IsValid(TimeSpan? value) => value == null || value.Value >= TimeSpan.Zero;

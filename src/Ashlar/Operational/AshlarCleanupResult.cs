@@ -23,6 +23,9 @@ namespace Ashlar.Operational;
 /// <param name="ConsumedPasskeyChallenges">The consumed passkey challenges value.</param>
 /// <param name="SentSensitiveEmails">The sent sensitive emails value.</param>
 /// <param name="FailedSensitiveEmails">The failed sensitive emails value.</param>
+/// <param name="SentSecurityEventWebhooks">The sent security-event webhook deliveries value.</param>
+/// <param name="FailedSecurityEventWebhooks">The failed security-event webhook deliveries value.</param>
+/// <param name="DiscardedSecurityEventWebhooks">The discarded security-event webhook deliveries value.</param>
 public sealed record AshlarCleanupResult(
     int ExpiredSessions,
     int RevokedSessions,
@@ -43,7 +46,10 @@ public sealed record AshlarCleanupResult(
     int ExpiredPasskeyChallenges = 0,
     int ConsumedPasskeyChallenges = 0,
     int SentSensitiveEmails = 0,
-    int FailedSensitiveEmails = 0)
+    int FailedSensitiveEmails = 0,
+    int SentSecurityEventWebhooks = 0,
+    int FailedSecurityEventWebhooks = 0,
+    int DiscardedSecurityEventWebhooks = 0)
 {
     /// <summary>
     /// Executes the new operation.
@@ -68,7 +74,10 @@ public sealed record AshlarCleanupResult(
         ExpiredPasskeyChallenges: 0,
         ConsumedPasskeyChallenges: 0,
         SentSensitiveEmails: 0,
-        FailedSensitiveEmails: 0);
+        FailedSensitiveEmails: 0,
+        SentSecurityEventWebhooks: 0,
+        FailedSecurityEventWebhooks: 0,
+        DiscardedSecurityEventWebhooks: 0);
 
     /// <summary>
     /// Gets or sets the total value.
@@ -93,7 +102,10 @@ public sealed record AshlarCleanupResult(
         + SentSensitiveEmails
         + FailedSensitiveEmails
         + ExpiredPasskeyChallenges
-        + ConsumedPasskeyChallenges;
+        + ConsumedPasskeyChallenges
+        + SentSecurityEventWebhooks
+        + FailedSecurityEventWebhooks
+        + DiscardedSecurityEventWebhooks;
 
     /// <summary>
     /// Performs the add operation and returns the result.
@@ -124,6 +136,9 @@ public sealed record AshlarCleanupResult(
             ExpiredPasskeyChallenges + other.ExpiredPasskeyChallenges,
             ConsumedPasskeyChallenges + other.ConsumedPasskeyChallenges,
             SentSensitiveEmails + other.SentSensitiveEmails,
-            FailedSensitiveEmails + other.FailedSensitiveEmails);
+            FailedSensitiveEmails + other.FailedSensitiveEmails,
+            SentSecurityEventWebhooks + other.SentSecurityEventWebhooks,
+            FailedSecurityEventWebhooks + other.FailedSecurityEventWebhooks,
+            DiscardedSecurityEventWebhooks + other.DiscardedSecurityEventWebhooks);
     }
 }
