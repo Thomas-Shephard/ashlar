@@ -93,7 +93,8 @@ public static class AshlarHealthChecksBuilderExtensions
 
         optionsBuilder.Validate(
             AshlarEmailOutboxHealthCheckOptions.Validate,
-            "Ashlar email outbox health check thresholds must be non-negative, and the oldest pending age threshold must be positive.");
+            "Ashlar email outbox health check thresholds must be non-negative, and the oldest pending age threshold must be positive.")
+            .ValidateOnStart();
 
         return builder.AddCheck<AshlarEmailOutboxHealthCheck>(name, failureStatus, tags ?? []);
     }
@@ -125,7 +126,8 @@ public static class AshlarHealthChecksBuilderExtensions
 
         optionsBuilder.Validate(
             AshlarSecurityEventWebhookOutboxHealthCheckOptions.Validate,
-            "Ashlar security event webhook outbox health check thresholds must be non-negative, and the oldest pending age threshold must be positive.");
+            "Ashlar security event webhook outbox health check thresholds must be non-negative, and the oldest pending age threshold must be positive.")
+            .ValidateOnStart();
 
         return builder.AddCheck<AshlarSecurityEventWebhookOutboxHealthCheck>(name, failureStatus, tags ?? []);
     }

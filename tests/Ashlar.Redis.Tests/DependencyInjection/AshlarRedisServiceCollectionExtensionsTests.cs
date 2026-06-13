@@ -44,6 +44,20 @@ internal sealed class AshlarRedisServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarRedisRateLimitingValidatesOptionsOnStart()
+    {
+        var connection = Mock.Of<IConnectionMultiplexer>();
+        var services = new ServiceCollection();
+
+        services.AddAshlarRedisRateLimiting(connection, options => options.KeyPrefix = "");
+
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(RedisAuthenticationRateLimiterOptions)));
+    }
+
+    [Test]
     public void CoreAndRedisRateLimitingCompositionBuildsWithStrictValidation()
     {
         var customRateLimiter = Mock.Of<IAuthenticationRateLimiter>();

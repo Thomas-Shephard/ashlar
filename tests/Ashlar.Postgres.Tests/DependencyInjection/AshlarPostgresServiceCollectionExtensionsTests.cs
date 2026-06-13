@@ -127,6 +127,19 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
     }
 
     [Test]
+    public void AddAshlarPostgresCleanupValidatesOptionsOnStart()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarPostgresCleanup(options => options.BatchSize = 0);
+
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(AshlarCleanupOptions)));
+    }
+
+    [Test]
     public async Task AddAshlarPostgresCleanupRegistersCleanupDiagnostics()
     {
         var services = new ServiceCollection();

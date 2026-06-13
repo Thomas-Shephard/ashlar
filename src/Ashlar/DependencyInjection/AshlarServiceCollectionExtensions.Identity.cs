@@ -52,11 +52,14 @@ public static partial class AshlarServiceCollectionExtensions
         }
 
         services.AddOptions<PrimaryAuthenticationRateLimitOptions>()
-            .Validate(PrimaryAuthenticationRateLimitOptions.Validate, "Primary authentication rate-limit options are invalid.");
+            .Validate(PrimaryAuthenticationRateLimitOptions.Validate, "Primary authentication rate-limit options are invalid.")
+            .ValidateOnStart();
         services.AddOptions<AuthenticationFactorRateLimitOptions>()
-            .Validate(AuthenticationFactorRateLimitOptions.Validate, "Secondary factor rate-limit options are invalid.");
+            .Validate(AuthenticationFactorRateLimitOptions.Validate, "Secondary factor rate-limit options are invalid.")
+            .ValidateOnStart();
         services.AddOptions<AccountLockoutOptions>()
-            .Validate(AccountLockoutOptions.Validate, "Account lockout options are invalid.");
+            .Validate(AccountLockoutOptions.Validate, "Account lockout options are invalid.")
+            .ValidateOnStart();
 
         services.TryAdd(new ServiceDescriptor(
             typeof(IIdentityService),

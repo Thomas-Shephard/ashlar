@@ -31,7 +31,8 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.AddOptions<RecoveryCodeOptions>()
-            .Validate(RecoveryCodeOptions.Validate, "Recovery code options are invalid.");
+            .Validate(RecoveryCodeOptions.Validate, "Recovery code options are invalid.")
+            .ValidateOnStart();
         if (configure != null)
         {
             services.Configure(configure);
@@ -63,7 +64,8 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.AddOptions<TotpOptions>()
-            .Validate(TotpOptions.Validate, "TOTP options are invalid.");
+            .Validate(TotpOptions.Validate, "TOTP options are invalid.")
+            .ValidateOnStart();
         if (configure != null)
         {
             services.Configure(configure);
@@ -94,7 +96,8 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.AddOptions<AuthenticationHandshakeOptions>()
-            .Validate(AuthenticationHandshakeOptions.Validate, "Authentication handshake options are invalid.");
+            .Validate(AuthenticationHandshakeOptions.Validate, "Authentication handshake options are invalid.")
+            .ValidateOnStart();
         if (configure != null)
         {
             services.Configure(configure);
@@ -127,7 +130,8 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.AddOptions<RememberedMfaDeviceOptions>()
-            .Validate(RememberedMfaDeviceOptions.Validate, "Remembered MFA device options are invalid.");
+            .Validate(RememberedMfaDeviceOptions.Validate, "Remembered MFA device options are invalid.")
+            .ValidateOnStart();
         if (configure != null)
         {
             services.Configure(configure);
@@ -205,7 +209,8 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.AddOptions<RequireMfaForAllUsersPolicyOptions>()
             .Configure(configure)
-            .Validate(RequireMfaForAllUsersPolicyOptions.Validate, "At least one non-empty required factor must be configured.");
+            .Validate(RequireMfaForAllUsersPolicyOptions.Validate, "At least one non-empty required factor must be configured.")
+            .ValidateOnStart();
 
         return services.AddAshlarMfaPolicyEvaluator<RequireMfaForAllUsersPolicyEvaluator>();
     }
@@ -225,7 +230,8 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.AddOptions<CredentialBackedMfaPolicyOptions>()
             .Configure(configure)
-            .Validate(CredentialBackedMfaPolicyOptions.Validate, "At least one credential provider key and one non-empty required factor must be configured.");
+            .Validate(CredentialBackedMfaPolicyOptions.Validate, "At least one credential provider key and one non-empty required factor must be configured.")
+            .ValidateOnStart();
 
         return services.AddAshlarMfaPolicyEvaluator<RequireMfaWhenCredentialExistsPolicyEvaluator>();
     }

@@ -5,6 +5,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
 using Ashlar.Identity.Features.AccountLockout;
 using Ashlar.Identity.Models.AccountLockout;
+using Ashlar.Identity.Models.Totp;
 using Ashlar.Identity.Providers.Email;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.Providers.Local;
@@ -123,6 +124,32 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarIdentityValidatesRateLimitAndLockoutOptionsOnStart()
+    {
+        AssertStartupValidationFails<PrimaryAuthenticationRateLimitOptions>(
+            services =>
+            {
+                services.AddAshlarIdentity();
+                services.Configure<PrimaryAuthenticationRateLimitOptions>(options =>
+                {
+                    options.DefaultRule = new RateLimitRule { PermitLimit = 0, Window = TimeSpan.FromMinutes(1) };
+                });
+            });
+        AssertStartupValidationFails<AuthenticationFactorRateLimitOptions>(
+            services =>
+            {
+                services.AddAshlarIdentity();
+                services.Configure<AuthenticationFactorRateLimitOptions>(options =>
+                {
+                    options.DefaultRule = new RateLimitRule { PermitLimit = 0, Window = TimeSpan.FromMinutes(1) };
+                });
+            });
+        AssertStartupValidationFails<AccountLockoutOptions>(
+            services => services.AddAshlarIdentity(configure: null, configureSessions: null)
+                .Configure<AccountLockoutOptions>(options => options.FailureThreshold = 0));
+    }
+
+    [Test]
     public void OptionalProviderRegistrationsAcceptNullConfiguration()
     {
         var services = new ServiceCollection();
@@ -154,6 +181,16 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarEmailCodeSignInValidatesOptionsOnStart()
+    {
+        AssertStartupValidationFails<EmailCodeSignInOptions>(
+            services => services.AddAshlarEmailCodeSignIn(options =>
+            {
+                options.RequestRateLimit = new RateLimitRule { PermitLimit = 0, Window = TimeSpan.FromMinutes(1) };
+            }));
+    }
+
+    [Test]
     public void AddAshlarMagicLinkSignInRegistersOptionsValidation()
     {
         var services = new ServiceCollection();
@@ -165,6 +202,16 @@ internal sealed class AshlarServiceCollectionExtensionsTests
 
         var exception = Assert.Throws<OptionsValidationException>(() => _ = options.Value);
         Assert.That(exception.Failures, Does.Contain("Magic-link sign-in options are invalid."));
+    }
+
+    [Test]
+    public void AddAshlarMagicLinkSignInValidatesOptionsOnStart()
+    {
+        AssertStartupValidationFails<MagicLinkSignInOptions>(
+            services => services.AddAshlarMagicLinkSignIn(options =>
+            {
+                options.VerificationRateLimit = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.Zero };
+            }));
     }
 
     [Test]
@@ -247,6 +294,30 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         Assert.Throws<OptionsValidationException>(() => _ = provider.GetRequiredService<IOptions<PasswordResetOptions>>().Value);
+    }
+
+    [Test]
+    public void AddAshlarPasswordResetValidatesOptionsOnStart()
+    {
+        AssertStartupValidationFails<PasswordResetOptions>(
+            services => services.AddAshlarPasswordReset(options => options.MinimumRequestDuration = TimeSpan.FromTicks(-1)));
+    }
+
+    [Test]
+    public void AddAshlarInvitationsValidatesOptionsOnStart()
+    {
+        AssertStartupValidationFails<InvitationOptions>(
+            services => services.AddAshlarInvitations(options => options.DefaultExpiry = TimeSpan.Zero));
+    }
+
+    [Test]
+    public void AddAshlarBootstrapValidatesOptionsOnStart()
+    {
+        AssertStartupValidationFails<BootstrapOptions>(
+            services => services.AddAshlarBootstrap(options =>
+            {
+                options.Grants.Add(new BootstrapGrantTemplate { Role = "admin", Permission = "users.read" });
+            }));
     }
 
     [Test]
@@ -443,6 +514,13 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarAuthorizationValidatesOptionsOnStart()
+    {
+        AssertStartupValidationFails<AuthorizationGrantOptions>(
+            services => services.AddAshlarAuthorization(options => options.MaxPermissionLength = 0));
+    }
+
+    [Test]
     public void AddAshlarAuthorizationResolvesGrantServiceWhenRequiredDependenciesArePresent()
     {
         var services = new ServiceCollection();
@@ -557,6 +635,23 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             Assert.That(dependencies.UserRepository, Is.SameAs(userRepository));
             Assert.That(dependencies.NotificationService, Is.SameAs(notificationService));
         }
+    }
+
+    [Test]
+    public void AddAshlarMfaRegistrationsValidateOptionsOnStart()
+    {
+        AssertStartupValidationFails<RecoveryCodeOptions>(
+            services => services.AddAshlarRecoveryCodes(options => options.CodeCount = 0));
+        AssertStartupValidationFails<TotpOptions>(
+            services => services.AddAshlarTotp(options => options.CodeDigits = 5));
+        AssertStartupValidationFails<AuthenticationHandshakeOptions>(
+            services => services.AddAshlarMfaHandshakes(options => options.Expiry = TimeSpan.Zero));
+        AssertStartupValidationFails<RememberedMfaDeviceOptions>(
+            services => services.AddAshlarRememberedMfaDevices(options => options.MaxActiveDevicesPerUser = 0));
+        AssertStartupValidationFails<RequireMfaForAllUsersPolicyOptions>(
+            services => services.AddAshlarRequireMfaForAllUsers(_ => { }));
+        AssertStartupValidationFails<CredentialBackedMfaPolicyOptions>(
+            services => services.AddAshlarRequireMfaWhenCredentialExists(options => options.RequiredFactors.Add("totp")));
     }
 
     [Test]
@@ -806,6 +901,16 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarEmailVerificationValidatesOptionsOnStart()
+    {
+        AssertStartupValidationFails<EmailVerificationOptions>(
+            services => services.AddAshlarEmailVerification(options =>
+            {
+                options.RequestRateLimit = new RateLimitRule { PermitLimit = 0, Window = TimeSpan.FromMinutes(1) };
+            }));
+    }
+
+    [Test]
     public void AddAshlarEmailChangeRegistersService()
     {
         var services = new ServiceCollection();
@@ -850,6 +955,16 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarEmailChangeValidatesOptionsOnStart()
+    {
+        AssertStartupValidationFails<EmailChangeOptions>(
+            services => services.AddAshlarEmailChange(options =>
+            {
+                options.VerificationRateLimit = new RateLimitRule { PermitLimit = 1, Window = TimeSpan.Zero };
+            }));
+    }
+
+    [Test]
     public void AddAshlarSecurityNotificationsRegistersService()
     {
         var services = new ServiceCollection();
@@ -874,5 +989,16 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<IOptions<SecurityNotificationOptions>>().Value.Enabled, Is.True);
+    }
+
+    private static void AssertStartupValidationFails<TOptions>(Action<IServiceCollection> configure)
+    {
+        var services = new ServiceCollection();
+        configure(services);
+
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(TOptions)));
     }
 }

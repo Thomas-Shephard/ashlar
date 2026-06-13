@@ -82,6 +82,19 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     }
 
     [Test]
+    public void AddAshlarPostgresSecurityEventWebhookOutboxValidatesOptionsOnStart()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarPostgresSecurityEventWebhookOutbox(options => options.BatchSize = 0);
+
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(PostgresSecurityEventWebhookOutboxOptions)));
+    }
+
+    [Test]
     public async Task EnqueueStoresSafeBodyHeadersAndSignatureWithoutSecret()
     {
         var delivery = CreateDelivery("shared-secret");

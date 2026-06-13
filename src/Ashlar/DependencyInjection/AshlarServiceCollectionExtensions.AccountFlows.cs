@@ -31,7 +31,8 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.AddOptions<InvitationOptions>()
-            .Validate(InvitationOptions.Validate, "Invitation options are invalid.");
+            .Validate(InvitationOptions.Validate, "Invitation options are invalid.")
+            .ValidateOnStart();
         if (configure != null)
         {
             services.Configure(configure);
@@ -58,7 +59,8 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.AddOptions<BootstrapOptions>()
-            .Validate(BootstrapOptions.Validate, "Bootstrap options are invalid.");
+            .Validate(BootstrapOptions.Validate, "Bootstrap options are invalid.")
+            .ValidateOnStart();
         if (configure != null)
         {
             services.Configure(configure);
@@ -85,7 +87,8 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.AddOptions<EmailVerificationOptions>()
-            .Validate(EmailVerificationOptions.Validate, "Email verification options are invalid.");
+            .Validate(EmailVerificationOptions.Validate, "Email verification options are invalid.")
+            .ValidateOnStart();
         if (configure != null)
         {
             services.Configure(configure);
@@ -116,7 +119,8 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.AddOptions<EmailChangeOptions>()
-            .Validate(EmailChangeOptions.Validate, "Email change options are invalid.");
+            .Validate(EmailChangeOptions.Validate, "Email change options are invalid.")
+            .ValidateOnStart();
         if (configure != null)
         {
             services.Configure(configure);
@@ -148,7 +152,8 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.AddAshlarIdentity();
         services.AddOptions<PasswordResetOptions>()
-            .Validate(PasswordResetOptions.Validate, "Password reset options are invalid.");
+            .Validate(PasswordResetOptions.Validate, "Password reset options are invalid.")
+            .ValidateOnStart();
         if (configure != null)
         {
             services.Configure(configure);

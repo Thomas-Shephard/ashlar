@@ -32,7 +32,9 @@ public static class AshlarPasskeysServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarMfaOrchestration();
-        services.AddOptions<PasskeyOptions>().Validate(PasskeyOptions.Validate, "Passkey options are invalid.");
+        services.AddOptions<PasskeyOptions>()
+            .Validate(PasskeyOptions.Validate, "Passkey options are invalid.")
+            .ValidateOnStart();
         if (configure != null)
         {
             services.Configure(configure);

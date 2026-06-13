@@ -348,6 +348,21 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
     }
 
     [Test]
+    public void SecurityEventWebhookOutboxThresholdOptionsShouldValidateOnStart()
+    {
+        using var provider = BuildProvider(services =>
+        {
+            services.AddHealthChecks().AddAshlarSecurityEventWebhookOutbox(options =>
+            {
+                options.PendingCountThreshold = -1;
+            });
+        });
+
+        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(AshlarSecurityEventWebhookOutboxHealthCheckOptions)));
+    }
+
+    [Test]
     public void SecurityEventWebhookOutboxThresholdOptionsShouldAcceptZeroCountThresholdsAndPositiveAgeThreshold()
     {
         using var provider = BuildProvider(services =>
@@ -387,6 +402,21 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
         });
 
         Assert.Throws<OptionsValidationException>(() => _ = provider.GetRequiredService<IOptions<AshlarEmailOutboxHealthCheckOptions>>().Value);
+    }
+
+    [Test]
+    public void EmailOutboxThresholdOptionsShouldValidateOnStart()
+    {
+        using var provider = BuildProvider(services =>
+        {
+            services.AddHealthChecks().AddAshlarEmailOutbox(options =>
+            {
+                options.PendingCountThreshold = -1;
+            });
+        });
+
+        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(AshlarEmailOutboxHealthCheckOptions)));
     }
 
     [Test]

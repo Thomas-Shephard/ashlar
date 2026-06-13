@@ -190,15 +190,32 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarAspNetCoreRememberedMfaDeviceCookiesShouldValidateOptionsOnStart()
+    {
+        var validServices = new ServiceCollection();
+        validServices.AddAshlarAspNetCoreRememberedMfaDeviceCookies();
+        using var validProvider = validServices.BuildServiceProvider();
+
+        Assert.DoesNotThrow(() => validProvider.GetRequiredService<IStartupValidator>().Validate());
+
+        var invalidServices = new ServiceCollection();
+        invalidServices.AddAshlarAspNetCoreRememberedMfaDeviceCookies(options => options.Cookie.Domain = "example.com");
+        using var invalidProvider = invalidServices.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => invalidProvider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(AshlarRememberedMfaDeviceCookieOptions)));
+    }
+
+    [Test]
     public void AddAshlarAspNetCoreRememberedMfaDeviceCookiesShouldRejectInvalidHostCookieOptions()
     {
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentNullException>(() => AshlarAspNetCoreServiceCollectionExtensions.AddAshlarAspNetCoreRememberedMfaDeviceCookies(null!));
-            Assert.Throws<ArgumentException>(() => ResolveRememberedMfaDeviceCookieOptions(options => options.CookieName = " "));
-            Assert.Throws<ArgumentException>(() => ResolveRememberedMfaDeviceCookieOptions(options => options.Cookie.Domain = "example.com"));
-            Assert.Throws<ArgumentException>(() => ResolveRememberedMfaDeviceCookieOptions(options => options.Cookie.Path = "/app"));
-            Assert.Throws<ArgumentException>(() => ResolveRememberedMfaDeviceCookieOptions(options => options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest));
+            Assert.Throws<OptionsValidationException>(() => ResolveRememberedMfaDeviceCookieOptions(options => options.CookieName = " "));
+            Assert.Throws<OptionsValidationException>(() => ResolveRememberedMfaDeviceCookieOptions(options => options.Cookie.Domain = "example.com"));
+            Assert.Throws<OptionsValidationException>(() => ResolveRememberedMfaDeviceCookieOptions(options => options.Cookie.Path = "/app"));
+            Assert.Throws<OptionsValidationException>(() => ResolveRememberedMfaDeviceCookieOptions(options => options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest));
             Assert.DoesNotThrow(() => new ServiceCollection().AddAshlarAspNetCoreRememberedMfaDeviceCookies(options =>
             {
                 options.CookieName = "Ashlar.RememberedMfaDevice";
