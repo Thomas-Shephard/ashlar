@@ -10,6 +10,8 @@ builder.Services.AddSampleServices(builder.Configuration, postgresStartup);
 
 var app = builder.Build();
 
+SampleDevelopmentSafetyWarnings.LogStartupWarnings(app.Services);
+
 await app.Services.InitializeAshlarPostgresSchemaAsync();
 await SampleSchemaInitializer.InitializeAsync(app.Services);
 

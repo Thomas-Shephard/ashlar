@@ -30,6 +30,7 @@
 
   <ItemGroup Condition="'$(TargetFramework)' != 'net10.0'">
     <Compile Remove="Smoke\SampleAspNetCoreSmokeTests.cs" />
+    <Compile Remove="Smoke\SampleDevelopmentSafetyWarningsTests.cs" />
   </ItemGroup>
 
 </Project>
