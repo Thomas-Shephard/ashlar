@@ -410,8 +410,8 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             issues.Add(new AshlarConfigurationIssue(
                 AshlarConfigurationIssueCodes.InMemoryAuthenticationRateLimiter,
                 AshlarConfigurationIssueSeverity.Warning,
-                "Authentication rate limiting uses the in-memory implementation.",
-                "This is fine for local development, but distributed production deployments should use a shared rate limiter.",
+                "Authentication rate limiting uses the in-memory implementation, which is process-local, resets on process restart, and does not coordinate across multiple app instances.",
+                "Use PostgreSQL, SQLite, or Redis-backed rate limiting depending on deployment shape. Use Redis or PostgreSQL for multi-instance deployments; SQLite is persistent but still single-instance oriented.",
                 "Authentication rate limiting"));
         }
     }
