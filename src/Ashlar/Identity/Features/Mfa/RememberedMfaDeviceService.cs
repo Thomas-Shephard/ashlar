@@ -211,7 +211,7 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
         }, ct));
 
         await transaction.CommitAsync(cancellationToken);
-        return new ValidateRememberedMfaDeviceResult(true, ToSummary(device, now), RememberedMfaDeviceValidationStatus.Success);
+        return new ValidateRememberedMfaDeviceResult(true, ToSummary(device, now), RememberedMfaDeviceValidationStatus.Succeeded);
     }
 
     public async Task<IReadOnlyList<RememberedMfaDeviceSummary>> ListAsync(Guid userId, ListRememberedMfaDevicesRequest request, CancellationToken cancellationToken = default)

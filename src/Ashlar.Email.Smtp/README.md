@@ -55,7 +55,7 @@ services.AddAshlarPostgresEmailOutboxHostedService<SmtpEmailTransport>();
       "Password": "your-password",
       "DefaultFromAddress": "noreply@example.com",
       "SecurityOptions": "StartTls",
-      "Timeout": 10000
+      "Timeout": "00:00:10"
     }
   }
 }

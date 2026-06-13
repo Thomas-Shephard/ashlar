@@ -466,7 +466,7 @@ internal sealed class AuthenticationSessionServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Success));
+            Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Succeeded));
             Assert.That(result.Session, Is.EqualTo(session));
             Assert.That(result.UserId, Is.EqualTo(session.UserId));
         }
@@ -713,7 +713,7 @@ internal sealed class AuthenticationSessionServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Success));
+            Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Succeeded));
             Assert.That(session.LastSeenAt, Is.Null);
         }
 

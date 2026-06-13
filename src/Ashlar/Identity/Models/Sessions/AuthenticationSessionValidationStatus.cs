@@ -10,9 +10,9 @@ public enum AuthenticationSessionValidationStatus
     /// </summary>
     Failed = 0,
     /// <summary>
-    /// Represents the success value.
+    /// Represents the succeeded value.
     /// </summary>
-    Success = 1,
+    Succeeded = 1,
     /// <summary>
     /// Represents the expired value.
     /// </summary>

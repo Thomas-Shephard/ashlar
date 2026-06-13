@@ -66,17 +66,17 @@ internal sealed class AuthenticationProviderKeyTests
     {
         var key = default(AuthenticationProviderKey);
 
-        Assert.That(key.TypeValueOrUnknown, Is.EqualTo(ProviderType.UnknownValue));
+        Assert.That(key.TypeValueOrDefault, Is.EqualTo(ProviderType.UnknownValue));
     }
 
     [Test]
-    public void GetTypeValueOrNullShouldHandleMissingDefaultAndInitializedProviders()
+    public void GetTypeValueOrDefaultShouldHandleMissingDefaultAndInitializedProviders()
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(AuthenticationProviderKey.GetTypeValueOrNull(null), Is.Null);
-            Assert.That(AuthenticationProviderKey.GetTypeValueOrNull(default(AuthenticationProviderKey)), Is.EqualTo(ProviderType.UnknownValue));
-            Assert.That(AuthenticationProviderKey.GetTypeValueOrNull(new AuthenticationProviderKey(ProviderType.Oidc, "Google")), Is.EqualTo("OIDC"));
+            Assert.That(AuthenticationProviderKey.GetTypeValueOrDefault(null), Is.Null);
+            Assert.That(AuthenticationProviderKey.GetTypeValueOrDefault(default(AuthenticationProviderKey)), Is.EqualTo(ProviderType.UnknownValue));
+            Assert.That(AuthenticationProviderKey.GetTypeValueOrDefault(new AuthenticationProviderKey(ProviderType.Oidc, "Google")), Is.EqualTo("OIDC"));
         }
     }
 

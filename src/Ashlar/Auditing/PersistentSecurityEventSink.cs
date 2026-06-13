@@ -103,7 +103,7 @@ public abstract class PersistentSecurityEventSink : IPersistentSecurityEventSink
             securityEvent.EventType,
             securityEvent.UserId,
             securityEvent.SessionId,
-            AuthenticationProviderKey.GetTypeValueOrNull(securityEvent.Provider),
+            AuthenticationProviderKey.GetTypeValueOrDefault(securityEvent.Provider),
             GetProviderName(securityEvent.Provider),
             null);
     }
@@ -115,7 +115,7 @@ public abstract class PersistentSecurityEventSink : IPersistentSecurityEventSink
             securityEvent.EventType,
             securityEvent.UserId,
             securityEvent.SessionId,
-            AuthenticationProviderKey.GetTypeValueOrNull(securityEvent.Provider),
+            AuthenticationProviderKey.GetTypeValueOrDefault(securityEvent.Provider),
             GetProviderName(securityEvent.Provider),
             exception);
     }

@@ -46,7 +46,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
             RelyingPartyName = "Example",
             Origin = "https://login.example.com",
             RegistrationUserVerification = PasskeyUserVerificationRequirement.Required,
-            Attestation = "none",
+            AttestationConveyancePreference = "none",
             RequireResidentKey = true
         };
         var existingCredentialId = Base64Url.Encode(RandomNumberGenerator.GetBytes(32));
@@ -159,7 +159,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
             RelyingPartyName = "Example",
             Origin = "https://login.example.com",
             RegistrationUserVerification = PasskeyUserVerificationRequirement.Discouraged,
-            Attestation = "direct",
+            AttestationConveyancePreference = "direct",
             RequireResidentKey = false
         };
         var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
@@ -189,7 +189,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
             RelyingPartyId = "example.com",
             RelyingPartyName = "Example",
             Origin = "https://login.example.com",
-            Attestation = configuredAttestation
+            AttestationConveyancePreference = configuredAttestation
         };
         var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
 
@@ -209,7 +209,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
             RelyingPartyId = "example.com",
             RelyingPartyName = "Example",
             Origin = "https://login.example.com",
-            Attestation = null!
+            AttestationConveyancePreference = null!
         };
         var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
 

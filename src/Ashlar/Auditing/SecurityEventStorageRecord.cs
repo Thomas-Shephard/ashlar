@@ -53,7 +53,7 @@ public sealed record SecurityEventStorageRecord(
             securityEvent.TenantId,
             securityEvent.ActorUserId,
             securityEvent.SessionId,
-            AuthenticationProviderKey.GetTypeValueOrNull(securityEvent.Provider),
+            AuthenticationProviderKey.GetTypeValueOrDefault(securityEvent.Provider),
             securityEvent.Provider?.Name,
             securityEvent.IpAddress,
             securityEvent.UserAgent,

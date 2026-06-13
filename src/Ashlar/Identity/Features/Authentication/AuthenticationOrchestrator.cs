@@ -327,7 +327,7 @@ public sealed class AuthenticationOrchestrator(
     private static Dictionary<string, string> BuildClaimMetadata(IReadOnlyDictionary<string, IReadOnlyList<string>>? claims, IAuthenticationAssertion primaryAssertion)
     {
         var metadata = claims?.ToDictionary(claim => $"claim:{claim.Key}", claim => JsonSerializer.Serialize(claim.Value)) ?? [];
-        metadata[PrimaryProviderTypeMetadataKey] = primaryAssertion.ProviderIdentity.TypeValueOrUnknown;
+        metadata[PrimaryProviderTypeMetadataKey] = primaryAssertion.ProviderIdentity.TypeValueOrDefault;
         metadata[PrimaryProviderNameMetadataKey] = primaryAssertion.ProviderIdentity.Name;
         if (primaryAssertion is ICredentialKeyAuthenticationAssertion credentialAssertion)
         {

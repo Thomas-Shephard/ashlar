@@ -143,7 +143,7 @@ public sealed record RememberedMfaDeviceCreated(RememberedMfaDeviceSummary Devic
 public enum RememberedMfaDeviceValidationStatus
 {
     /// <summary>The token was valid.</summary>
-    Success = 0,
+    Succeeded = 0,
     /// <summary>The token could not be validated.</summary>
     Failed = 1,
     /// <summary>The device is expired.</summary>

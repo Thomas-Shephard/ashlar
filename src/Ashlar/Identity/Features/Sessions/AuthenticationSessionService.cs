@@ -268,7 +268,7 @@ public sealed class AuthenticationSessionService(
         }, ct));
 
         await transaction.CommitAsync(cancellationToken);
-        return new ValidateAuthenticationSessionResult(true, session, session.UserId, AuthenticationSessionValidationStatus.Success);
+        return new ValidateAuthenticationSessionResult(true, session, session.UserId, AuthenticationSessionValidationStatus.Succeeded);
     }
 
     public async Task<Result<AuthenticationSession>> MarkStepUpVerifiedAsync(

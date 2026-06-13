@@ -105,7 +105,7 @@ public static class AuthenticationRateLimitKeyBuilder
     /// <returns>The normalized selector.</returns>
     public static string NormalizeProviderSelector(AuthenticationProviderKey providerKey)
     {
-        return $"{providerKey.TypeValueOrUnknown.Trim().ToLowerInvariant()}:{providerKey.Name.Trim().ToLowerInvariant()}";
+        return $"{providerKey.TypeValueOrDefault.Trim().ToLowerInvariant()}:{providerKey.Name.Trim().ToLowerInvariant()}";
     }
 
     /// <summary>

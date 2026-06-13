@@ -19,8 +19,13 @@ public class SmtpEmailTransport : IEmailTransport
     /// <param name="options">The options value.</param>
     public SmtpEmailTransport(IOptions<SmtpEmailOptions> options)
     {
+        ArgumentNullException.ThrowIfNull(options);
+
         _options = options.Value;
-        _options.Validate();
+        if (!SmtpEmailOptions.Validate(_options))
+        {
+            throw new ArgumentException("SMTP email options are invalid.", nameof(options));
+        }
     }
 
     /// <summary>
@@ -35,15 +40,16 @@ public class SmtpEmailTransport : IEmailTransport
         using var mimeMessage = CreateMimeMessage(message);
 
         using var client = CreateSmtpClient();
-        client.Timeout = _options.Timeout;
+        client.Timeout = (int)_options.Timeout.TotalMilliseconds;
 
         try
         {
             await client.ConnectAsync(host, _options.Port, _options.SecurityOptions, cancellationToken);
 
-            if (!string.IsNullOrWhiteSpace(_options.Username))
+            var username = _options.Username;
+            if (!string.IsNullOrWhiteSpace(username))
             {
-                await client.AuthenticateAsync(_options.Username, _options.Password ?? string.Empty, cancellationToken);
+                await client.AuthenticateAsync(username, _options.Password, cancellationToken);
             }
 
             await client.SendAsync(mimeMessage, cancellationToken);

@@ -43,7 +43,7 @@ public sealed class PostgresAccountLockoutRepository(IPostgresConnectionProvider
         {
             conditions.Add("provider_type = @ProviderType");
             conditions.Add("provider_name = @ProviderName");
-            parameters.Add("ProviderType", provider.TypeValueOrUnknown);
+            parameters.Add("ProviderType", provider.TypeValueOrDefault);
             parameters.Add("ProviderName", provider.Name);
         }
 
@@ -229,7 +229,7 @@ public sealed class PostgresAccountLockoutRepository(IPostgresConnectionProvider
         var parameters = new DynamicParameters();
         parameters.Add("UserId", userId);
         parameters.Add(TenantIdName, tenantId);
-        parameters.Add("ProviderType", provider.TypeValueOrUnknown);
+        parameters.Add("ProviderType", provider.TypeValueOrDefault);
         parameters.Add("ProviderName", provider.Name);
         return parameters;
     }

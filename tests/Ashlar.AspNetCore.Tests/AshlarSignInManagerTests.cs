@@ -191,7 +191,7 @@ internal sealed class AshlarSignInManagerTests
                 Succeeded: true,
                 Session: null,
                 UserId: Guid.NewGuid(),
-                Status: AuthenticationSessionValidationStatus.Success));
+                Status: AuthenticationSessionValidationStatus.Succeeded));
         var manager = new AshlarSignInManager(
             sessionService.Object,
             CreateOptionsMonitor(),

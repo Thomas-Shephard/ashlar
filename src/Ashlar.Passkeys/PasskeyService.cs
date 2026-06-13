@@ -12,17 +12,7 @@ namespace Ashlar.Passkeys;
 /// <summary>
 /// Provides passkey registration, authentication, and credential management operations.
 /// </summary>
-/// <param name="userRepository">Stores and retrieves users.</param>
-/// <param name="credentialRepository">Stores and retrieves credentials.</param>
-/// <param name="challengeRepository">The passkey challenge repository.</param>
-/// <param name="ceremonyValidator">The passkey ceremony validator.</param>
-/// <param name="dependencies">The passkey service dependencies.</param>
-public sealed class PasskeyService(
-    IUserRepository userRepository,
-    ICredentialRepository credentialRepository,
-    IPasskeyChallengeRepository challengeRepository,
-    IPasskeyCeremonyValidator ceremonyValidator,
-    PasskeyServiceDependencies dependencies) : IPasskeyService
+public sealed class PasskeyService : IPasskeyService
 {
     private const string RegistrationPurpose = "passkey-registration";
     private const string AuthenticationPurpose = "passkey-authentication";
@@ -30,21 +20,46 @@ public sealed class PasskeyService(
     private const string PrimaryProviderTypeMetadataKey = "primary_provider_type";
     private const string PrimaryProviderNameMetadataKey = "primary_provider_name";
     private const string PrimaryCredentialKeyMetadataKey = "primary_credential_key";
-    private readonly IUserRepository _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
-    private readonly ICredentialRepository _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
-    private readonly IPasskeyChallengeRepository _challengeRepository = challengeRepository;
-    private readonly IPasskeyCeremonyValidator _ceremonyValidator = ceremonyValidator;
-    private readonly IAuthenticationOrchestrator _authenticationOrchestrator = ValidateDependencies(dependencies).AuthenticationOrchestrator;
-    private readonly IAuthenticationHandshakeService _handshakeService = ValidateDependencies(dependencies).HandshakeService;
-    private readonly ISecureTokenHasher _tokenHasher = ValidateDependencies(dependencies).TokenHasher;
-    private readonly AuthenticationRateLimitChecker _rateLimitChecker = new(ValidateDependencies(dependencies).RateLimiter);
-    private readonly PasskeyOptions _options = ValidateDependencies(dependencies).Options.Value;
-    private readonly TimeProvider _timeProvider = ValidateDependencies(dependencies).TimeProvider;
-    private readonly ISecurityEventSink? _securityEventSink = ValidateDependencies(dependencies).SecurityEventSink;
+    private readonly IUserRepository _userRepository;
+    private readonly ICredentialRepository _credentialRepository;
+    private readonly IPasskeyChallengeRepository _challengeRepository;
+    private readonly IPasskeyCeremonyValidator _ceremonyValidator;
+    private readonly IAuthenticationOrchestrator _authenticationOrchestrator;
+    private readonly IAuthenticationHandshakeService _handshakeService;
+    private readonly ISecureTokenHasher _tokenHasher;
+    private readonly AuthenticationRateLimitChecker _rateLimitChecker;
+    private readonly PasskeyOptions _options;
+    private readonly TimeProvider _timeProvider;
+    private readonly ISecurityEventSink? _securityEventSink;
 
-    private static PasskeyServiceDependencies ValidateDependencies(PasskeyServiceDependencies? dependencies)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PasskeyService" /> class.
+    /// </summary>
+    /// <param name="userRepository">Stores and retrieves users.</param>
+    /// <param name="credentialRepository">Stores and retrieves credentials.</param>
+    /// <param name="challengeRepository">The passkey challenge repository.</param>
+    /// <param name="ceremonyValidator">The passkey ceremony validator.</param>
+    /// <param name="dependencies">The passkey service dependencies.</param>
+    public PasskeyService(
+        IUserRepository userRepository,
+        ICredentialRepository credentialRepository,
+        IPasskeyChallengeRepository challengeRepository,
+        IPasskeyCeremonyValidator ceremonyValidator,
+        PasskeyServiceDependencies dependencies)
     {
-        return dependencies ?? throw new ArgumentNullException(nameof(dependencies));
+        ArgumentNullException.ThrowIfNull(dependencies);
+
+        _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
+        _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
+        _challengeRepository = challengeRepository ?? throw new ArgumentNullException(nameof(challengeRepository));
+        _ceremonyValidator = ceremonyValidator ?? throw new ArgumentNullException(nameof(ceremonyValidator));
+        _authenticationOrchestrator = dependencies.AuthenticationOrchestrator;
+        _handshakeService = dependencies.HandshakeService;
+        _tokenHasher = dependencies.TokenHasher;
+        _rateLimitChecker = new AuthenticationRateLimitChecker(dependencies.RateLimiter);
+        _options = dependencies.Options.Value;
+        _timeProvider = dependencies.TimeProvider;
+        _securityEventSink = dependencies.SecurityEventSink;
     }
 
     public async Task<PasskeyCeremonyOptions> StartRegistrationAsync(StartPasskeyRegistrationRequest request, CancellationToken cancellationToken = default)
@@ -166,51 +181,59 @@ public sealed class PasskeyService(
         var challenge = await GetChallengeAsync(request.ChallengeId, AuthenticationPurpose, cancellationToken);
         if (challenge == null)
         {
-            return new PasskeyAuthenticationResult(false, null, null, AshlarFailureCodes.PasskeyChallengeInvalid);
+            return FailedAuthentication(AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
         var ceremony = await CompleteAssertionCeremonyAsync(challenge, request.AssertionResponse, request.Audit, cancellationToken);
-        if (ceremony.Failure != null)
+        if (ceremony is FailedPasskeyAssertion failed)
         {
-            return ceremony.Failure;
+            return failed.Failure;
         }
 
-        if (IsUserVerificationRequired(_options.AuthenticationUserVerification) && !ceremony.Verified.UserVerified)
+        var succeededCeremony = (SucceededPasskeyAssertion)ceremony;
+
+        if (IsUserVerificationRequired(_options.AuthenticationUserVerification) && !succeededCeremony.Verified.UserVerified)
         {
-            await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, ceremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
-            return new PasskeyAuthenticationResult(false, ceremony.User, null, AshlarFailureCodes.PasskeyValidationFailed);
+            await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, succeededCeremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
+            return FailedAuthentication(AshlarFailureCodes.PasskeyValidationFailed, succeededCeremony.User);
         }
 
         try
         {
-            var response = await _authenticationOrchestrator.AuthenticateAsync(ToAuthenticationContext(request.Audit) with { TenantId = request.TenantId, UserId = ceremony.User.Id }, ceremony.ToAssertion(_options.ProviderKey), cancellationToken: cancellationToken);
+            var response = await _authenticationOrchestrator.AuthenticateAsync(ToAuthenticationContext(request.Audit) with { TenantId = request.TenantId, UserId = succeededCeremony.User.Id }, succeededCeremony.ToAssertion(_options.ProviderKey), cancellationToken: cancellationToken);
             var succeeded = response.Status == MfaAuthenticationStatus.Succeeded;
             var mfaRequired = response.Status == MfaAuthenticationStatus.MfaRequired;
             var failureCode = succeeded || mfaRequired ? (AshlarFailureCode?)null : AshlarFailureCodes.PasskeyValidationFailed;
             if (failureCode is not null)
             {
-                await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, ceremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
-                return new PasskeyAuthenticationResult(false, response.User, null, failureCode, response.Status, ErrorMessage: response.ErrorMessage);
+                await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, succeededCeremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
+                return new PasskeyAuthenticationResult(
+                    Succeeded: false,
+                    User: response.User,
+                    Credential: null,
+                    FailureCode: failureCode,
+                    AuthenticationStatus: response.Status,
+                    ErrorMessage: response.ErrorMessage);
             }
 
-            await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Success, ceremony.User.Id, null, request.Audit, cancellationToken);
-            var summaryCredential = ceremony.Credential.Clone();
+            await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Success, succeededCeremony.User.Id, null, request.Audit, cancellationToken);
+            var summaryCredential = succeededCeremony.Credential.Clone();
             summaryCredential.LastUsedAt = _timeProvider.GetUtcNow();
             var summary = ToSummary(summaryCredential);
             return new PasskeyAuthenticationResult(
-                succeeded,
-                response.User,
-                summary,
-                failureCode,
-                response.Status,
-                response.HandshakeToken,
-                response.RequiredFactors,
-                response.ErrorMessage);
+                Succeeded: succeeded,
+                User: response.User,
+                Credential: summary,
+                FailureCode: null,
+                AuthenticationStatus: response.Status,
+                HandshakeToken: response.HandshakeToken,
+                RequiredFactors: response.RequiredFactors,
+                ErrorMessage: response.ErrorMessage);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, ceremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
-            return new PasskeyAuthenticationResult(false, null, null, AshlarFailureCodes.PasskeyValidationFailed);
+            await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, succeededCeremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
+            return FailedAuthentication(AshlarFailureCodes.PasskeyValidationFailed);
         }
     }
 
@@ -271,18 +294,18 @@ public sealed class PasskeyService(
     {
         if (string.IsNullOrWhiteSpace(request.FactorType))
         {
-            return new PasskeyAuthenticationResult(false, null, null, AshlarFailureCodes.PasskeyChallengeInvalid);
+            return FailedAuthentication(AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
         var factorType = NormalizeFactorType(request.FactorType);
         if (factorType == null)
         {
-            return new PasskeyAuthenticationResult(false, null, null, AshlarFailureCodes.PasskeyChallengeInvalid);
+            return FailedAuthentication(AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
         if (!SecureTokenHashing.TryHashToken(_tokenHasher, request.HandshakeToken, out var handshakeTokenHash))
         {
-            return new PasskeyAuthenticationResult(false, null, null, AshlarFailureCodes.PasskeyChallengeInvalid);
+            return FailedAuthentication(AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
         var challenge = await GetChallengeAsync(request.ChallengeId, AuthenticationPurpose, cancellationToken);
@@ -291,19 +314,21 @@ public sealed class PasskeyService(
             || !string.Equals(challenge.HandshakeTokenHash, handshakeTokenHash, StringComparison.Ordinal)
             || !string.Equals(challenge.FactorType, factorType, StringComparison.Ordinal))
         {
-            return new PasskeyAuthenticationResult(false, null, null, AshlarFailureCodes.PasskeyChallengeInvalid);
+            return FailedAuthentication(AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
         var ceremony = await CompleteAssertionCeremonyAsync(challenge, request.AssertionResponse, request.Audit, cancellationToken);
-        if (ceremony.Failure != null)
+        if (ceremony is FailedPasskeyAssertion failed)
         {
-            return ceremony.Failure;
+            return failed.Failure;
         }
 
-        if (!ceremony.Verified.UserVerified)
+        var succeededCeremony = (SucceededPasskeyAssertion)ceremony;
+
+        if (!succeededCeremony.Verified.UserVerified)
         {
-            await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, ceremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
-            return new PasskeyAuthenticationResult(false, ceremony.User, null, AshlarFailureCodes.PasskeyValidationFailed);
+            await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, succeededCeremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
+            return FailedAuthentication(AshlarFailureCodes.PasskeyValidationFailed, succeededCeremony.User);
         }
 
         try
@@ -311,35 +336,43 @@ public sealed class PasskeyService(
             var response = await _authenticationOrchestrator.VerifyFactorAsync(
                 request.HandshakeToken,
                 factorType,
-                ToAuthenticationContext(request.Audit) with { TenantId = request.TenantId, UserId = ceremony.User.Id },
-                ceremony.ToAssertion(_options.ProviderKey),
+                ToAuthenticationContext(request.Audit) with { TenantId = request.TenantId, UserId = succeededCeremony.User.Id },
+                succeededCeremony.ToAssertion(_options.ProviderKey),
                 cancellationToken);
 
             var succeeded = response.Status == MfaAuthenticationStatus.Succeeded;
             var incomplete = response.Status == MfaAuthenticationStatus.HandshakeIncomplete;
             if (!succeeded && !incomplete)
             {
-                await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, ceremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
-                return new PasskeyAuthenticationResult(false, response.User, null, AshlarFailureCodes.PasskeyValidationFailed, response.Status, response.HandshakeToken, response.RequiredFactors, response.ErrorMessage);
+                await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, succeededCeremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
+                return new PasskeyAuthenticationResult(
+                    Succeeded: false,
+                    User: response.User,
+                    Credential: null,
+                    FailureCode: AshlarFailureCodes.PasskeyValidationFailed,
+                    AuthenticationStatus: response.Status,
+                    HandshakeToken: response.HandshakeToken,
+                    RequiredFactors: response.RequiredFactors,
+                    ErrorMessage: response.ErrorMessage);
             }
 
-            await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Success, ceremony.User.Id, null, request.Audit, cancellationToken);
-            var summaryCredential = ceremony.Credential.Clone();
+            await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Success, succeededCeremony.User.Id, null, request.Audit, cancellationToken);
+            var summaryCredential = succeededCeremony.Credential.Clone();
             summaryCredential.LastUsedAt = _timeProvider.GetUtcNow();
             return new PasskeyAuthenticationResult(
-                succeeded,
-                response.User,
-                ToSummary(summaryCredential),
-                null,
-                response.Status,
-                response.HandshakeToken,
-                response.RequiredFactors,
-                response.ErrorMessage);
+                Succeeded: succeeded,
+                User: response.User,
+                Credential: ToSummary(summaryCredential),
+                FailureCode: null,
+                AuthenticationStatus: response.Status,
+                HandshakeToken: response.HandshakeToken,
+                RequiredFactors: response.RequiredFactors,
+                ErrorMessage: response.ErrorMessage);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, ceremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
-            return new PasskeyAuthenticationResult(false, null, null, AshlarFailureCodes.PasskeyValidationFailed);
+            await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, succeededCeremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
+            return FailedAuthentication(AshlarFailureCodes.PasskeyValidationFailed);
         }
     }
 
@@ -393,17 +426,17 @@ public sealed class PasskeyService(
             : null;
     }
 
-    private async Task<CompletedPasskeyAssertion> CompleteAssertionCeremonyAsync(PasskeyChallenge challenge, JsonElement assertionResponse, AuditContext? audit, CancellationToken cancellationToken)
+    private async Task<PasskeyAssertionCompletion> CompleteAssertionCeremonyAsync(PasskeyChallenge challenge, JsonElement assertionResponse, AuditContext? audit, CancellationToken cancellationToken)
     {
         if (!await _challengeRepository.ConsumeAsync(challenge.Id, challenge.Version, _timeProvider.GetUtcNow(), cancellationToken))
         {
-            return CompletedPasskeyAssertion.Failed(AshlarFailureCodes.PasskeyChallengeInvalid);
+            return FailedAssertion(AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
         var credentialId = assertionResponse.TryGetProperty("id", out var id) ? id.GetString() : null;
         if (string.IsNullOrWhiteSpace(credentialId))
         {
-            return CompletedPasskeyAssertion.Failed(AshlarFailureCodes.PasskeyValidationFailed);
+            return FailedAssertion(AshlarFailureCodes.PasskeyValidationFailed);
         }
 
         var user = challenge.UserId.HasValue
@@ -411,24 +444,24 @@ public sealed class PasskeyService(
             : await _userRepository.GetUserByProviderKeyAsync(_options.ProviderKey.Type, _options.ProviderKey.Name, credentialId, cancellationToken);
         if (user == null)
         {
-            return CompletedPasskeyAssertion.Failed(AshlarFailureCodes.PasskeyCredentialNotFound);
+            return FailedAssertion(AshlarFailureCodes.PasskeyCredentialNotFound);
         }
 
         var credential = await _credentialRepository.GetCredentialForUserAsync(user.Id, _options.ProviderKey.Type, _options.ProviderKey.Name, credentialId, cancellationToken);
         if (credential == null)
         {
-            return CompletedPasskeyAssertion.Failed(AshlarFailureCodes.PasskeyCredentialNotFound);
+            return FailedAssertion(AshlarFailureCodes.PasskeyCredentialNotFound);
         }
 
         try
         {
             var verified = await _ceremonyValidator.VerifyAuthenticationAsync(_options, challenge, credential, assertionResponse, cancellationToken);
-            return CompletedPasskeyAssertion.Succeeded(user, credential, verified);
+            return new SucceededPasskeyAssertion(user, credential, verified);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, user.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, audit, cancellationToken);
-            return CompletedPasskeyAssertion.Failed(AshlarFailureCodes.PasskeyValidationFailed);
+            return FailedAssertion(AshlarFailureCodes.PasskeyValidationFailed);
         }
     }
 
@@ -540,24 +573,31 @@ public sealed class PasskeyService(
         }, cancellationToken);
     }
 
+    private static PasskeyAuthenticationResult FailedAuthentication(AshlarFailureCode failureCode, IUser? user = null)
+    {
+        return new PasskeyAuthenticationResult(
+            Succeeded: false,
+            User: user,
+            Credential: null,
+            FailureCode: failureCode);
+    }
+
+    private static FailedPasskeyAssertion FailedAssertion(AshlarFailureCode failureCode)
+    {
+        return new FailedPasskeyAssertion(FailedAuthentication(failureCode));
+    }
+
 }
 
-internal sealed record CompletedPasskeyAssertion(
-    PasskeyAuthenticationResult? Failure,
+internal abstract record PasskeyAssertionCompletion;
+
+internal sealed record FailedPasskeyAssertion(PasskeyAuthenticationResult Failure) : PasskeyAssertionCompletion;
+
+internal sealed record SucceededPasskeyAssertion(
     IUser User,
     UserCredential Credential,
-    PasskeyAuthenticationVerificationResult Verified)
+    PasskeyAuthenticationVerificationResult Verified) : PasskeyAssertionCompletion
 {
-    public static CompletedPasskeyAssertion Failed(AshlarFailureCode failureCode)
-    {
-        return new CompletedPasskeyAssertion(new PasskeyAuthenticationResult(false, null, null, failureCode), null!, null!, null!);
-    }
-
-    public static CompletedPasskeyAssertion Succeeded(IUser user, UserCredential credential, PasskeyAuthenticationVerificationResult verified)
-    {
-        return new CompletedPasskeyAssertion(null, user, credential, verified);
-    }
-
     public PasskeyAssertion ToAssertion(AuthenticationProviderKey providerKey)
     {
         return new PasskeyAssertion(Verified.CredentialId, Verified.SignCount, Verified.UserVerified, providerKey);

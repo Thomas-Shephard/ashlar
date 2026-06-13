@@ -184,7 +184,7 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
                 Id = sessionId,
                 UserId = userId,
                 VerifiedAt = verifiedAt,
-                VerifiedProviderType = AuthenticationProviderKey.GetTypeValueOrNull(verifiedProvider),
+                VerifiedProviderType = AuthenticationProviderKey.GetTypeValueOrDefault(verifiedProvider),
                 VerifiedProviderName = verifiedProvider.Name,
                 VerifiedFactor = verifiedFactor
             }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
@@ -378,10 +378,10 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
             session.TokenHash,
             session.CreatedAt,
             session.AuthenticatedAt,
-            PrimaryProviderType = AuthenticationProviderKey.GetTypeValueOrNull(session.PrimaryProvider),
+            PrimaryProviderType = AuthenticationProviderKey.GetTypeValueOrDefault(session.PrimaryProvider),
             PrimaryProviderName = session.PrimaryProvider?.Name,
             session.AdditionalVerificationAt,
-            AdditionalVerificationProviderType = AuthenticationProviderKey.GetTypeValueOrNull(session.AdditionalVerificationProvider),
+            AdditionalVerificationProviderType = AuthenticationProviderKey.GetTypeValueOrDefault(session.AdditionalVerificationProvider),
             AdditionalVerificationProviderName = session.AdditionalVerificationProvider?.Name,
             session.AdditionalVerificationFactor,
             session.ExpiresAt,
