@@ -126,6 +126,6 @@ public sealed class AshlarSecurityEventWebhookMetricsObserver : IAshlarSecurityE
 
     private static string GetTagValue(string? value)
     {
-        return string.IsNullOrWhiteSpace(value) ? UnknownTagValue : value;
+        return AshlarSecurityEventWebhookOutboxBrowser.SanitizeSafeText(value) ?? UnknownTagValue;
     }
 }

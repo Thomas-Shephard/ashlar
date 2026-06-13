@@ -104,6 +104,26 @@ internal sealed class AshlarSecurityEventWebhookMetricsObserverTests
     }
 
     [Test]
+    public void RecordDeliveryAttemptSanitizesUnsafeOutcomeTagAndIgnoresOutcomeCounters()
+    {
+        using var listener = new RecordingMeterListener();
+        using var observer = CreateObserver(new AshlarSecurityEventWebhookMetricsOptions
+        {
+            MeterName = listener.MeterName,
+            EmitDurationHistogram = false
+        });
+
+        observer.RecordDeliveryAttempt(CreateTelemetry("failure\r\nraw exception text"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(listener.LongMeasurements.Single().InstrumentName, Is.EqualTo(AshlarSecurityEventWebhookMetricsObserver.DeliveryAttemptsCounterName));
+            Assert.That(listener.LongMeasurements.Single().Tags["ashlar.outcome"], Is.EqualTo("unknown"));
+            Assert.That(listener.DoubleMeasurements, Is.Empty);
+        }
+    }
+
+    [Test]
     public void RecordDeliveryAttemptUsesUnknownTagsAndDefaultMeterName()
     {
         using var listener = new RecordingMeterListener(AshlarSecurityEventWebhookMetricsOptions.DefaultMeterName);
@@ -126,6 +146,35 @@ internal sealed class AshlarSecurityEventWebhookMetricsObserverTests
         {
             Assert.That(tags["ashlar.delivery_mode"], Is.EqualTo("unknown"));
             Assert.That(tags["ashlar.event_type"], Is.EqualTo("unknown"));
+            Assert.That(tags["ashlar.failure_kind"], Is.EqualTo("unknown"));
+            Assert.That(tags["ashlar.endpoint_name"], Is.EqualTo("unknown"));
+        }
+    }
+
+    [Test]
+    public void RecordDeliveryAttemptSanitizesUnsafeTelemetryTagValues()
+    {
+        using var listener = new RecordingMeterListener();
+        using var observer = CreateObserver(new AshlarSecurityEventWebhookMetricsOptions
+        {
+            MeterName = listener.MeterName,
+            IncludeEndpointName = true
+        });
+
+        observer.RecordDeliveryAttempt(new AshlarSecurityEventWebhookDeliveryTelemetry(
+            "durable\r\noutbox",
+            "security.test\r\nbody-secret",
+            "audit\r\nshared-secret",
+            AshlarSecurityEventWebhookDeliveryTelemetry.FailureOutcome,
+            "timeout\r\nraw exception text",
+            TimeSpan.FromMilliseconds(12.5)));
+
+        var tags = listener.LongMeasurements.First(measurement => measurement.InstrumentName == AshlarSecurityEventWebhookMetricsObserver.DeliveryFailuresCounterName).Tags;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tags["ashlar.delivery_mode"], Is.EqualTo("unknown"));
+            Assert.That(tags["ashlar.event_type"], Is.EqualTo("unknown"));
+            Assert.That(tags["ashlar.outcome"], Is.EqualTo(AshlarSecurityEventWebhookDeliveryTelemetry.FailureOutcome));
             Assert.That(tags["ashlar.failure_kind"], Is.EqualTo("unknown"));
             Assert.That(tags["ashlar.endpoint_name"], Is.EqualTo("unknown"));
         }

@@ -52,15 +52,27 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
     {
         var failed = await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Failed("failed", lastError: "secret https://example.test"));
         var pending = await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Pending("pending"));
+        var sent = await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Sent("sent"));
+        var retryable = await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Retryable("retryable"));
         var discarded = await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Discarded("discarded"));
         await using var scope = CreateAsyncScope();
         var operations = GetSecurityEventWebhookOutboxOperations(scope.ServiceProvider);
 
         var missingRetry = await operations.RetryAsync(CreateOperationRequest(Guid.NewGuid()));
+        var missingDiscard = await operations.DiscardAsync(CreateOperationRequest(Guid.NewGuid()));
         var retry = await operations.RetryAsync(CreateOperationRequest(failed));
         var retriedState = await ReadWebhookOutboxRowStateAsync(failed);
+        var retriedRetry = await operations.RetryAsync(CreateOperationRequest(failed));
+        var retriedDiscard = await operations.DiscardAsync(CreateOperationRequest(failed));
+        var pendingRetry = await operations.RetryAsync(CreateOperationRequest(pending));
         var pendingDiscard = await operations.DiscardAsync(CreateOperationRequest(pending));
+        var sentRetry = await operations.RetryAsync(CreateOperationRequest(sent));
+        var sentDiscard = await operations.DiscardAsync(CreateOperationRequest(sent));
+        var retryableRetry = await operations.RetryAsync(CreateOperationRequest(retryable));
+        var retryableDiscard = await operations.DiscardAsync(CreateOperationRequest(retryable));
+        var retryableState = await ReadWebhookOutboxRowStateAsync(retryable);
         var discardedRetry = await operations.RetryAsync(CreateOperationRequest(discarded));
+        var discardedDiscard = await operations.DiscardAsync(CreateOperationRequest(discarded));
         var failedAgain = await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Failed("failed-discard"));
         var discard = await operations.DiscardAsync(CreateOperationRequest(failedAgain));
         var discardedState = await ReadWebhookOutboxRowStateAsync(failedAgain);
@@ -68,6 +80,7 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         using (Assert.EnterMultipleScope())
         {
             Assert.That(missingRetry.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.NotFound));
+            Assert.That(missingDiscard.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.NotFound));
             Assert.That(retry.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.Retried));
             Assert.That(retry.EndpointName, Is.EqualTo("failed"));
             Assert.That(retry.EventType, Is.EqualTo("security.test"));
@@ -77,8 +90,21 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
             Assert.That(retriedState.LockedBy, Is.Null);
             Assert.That(retriedState.LockedUntil, Is.Null);
             Assert.That(retriedState.AvailableAt, Is.EqualTo(Now));
+            Assert.That(retriedRetry.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed));
+            Assert.That(retriedDiscard.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed));
+            Assert.That(pendingRetry.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed));
             Assert.That(pendingDiscard.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed));
+            Assert.That(sentRetry.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed));
+            Assert.That(sentDiscard.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed));
+            Assert.That(retryableRetry.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed));
+            Assert.That(retryableDiscard.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed));
+            Assert.That(retryableState.FailedAt, Is.Null);
+            Assert.That(retryableState.LastError, Is.Null);
+            Assert.That(retryableState.LockedBy, Is.Null);
+            Assert.That(retryableState.LockedUntil, Is.Null);
+            Assert.That(retryableState.AvailableAt, Is.EqualTo(Now));
             Assert.That(discardedRetry.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.AlreadyDiscarded));
+            Assert.That(discardedDiscard.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.AlreadyDiscarded));
             Assert.That(discard.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.Discarded));
             Assert.That(discardedState.DiscardedAt, Is.EqualTo(Now));
             Assert.That(discardedState.LockedBy, Is.Null);
@@ -98,6 +124,7 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Locked("expired", Now.AddMinutes(-1)));
         await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Failed("failed-old", failedAt: oldestFailed));
         await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Failed("failed-new", failedAt: Now.AddDays(-1)));
+        await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Sent("sent"));
         await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Discarded("discarded"));
         await using var scope = CreateAsyncScope();
 
@@ -224,6 +251,11 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         public static SeedWebhookOutboxRow Sent(string endpointName)
         {
             return new SeedWebhookOutboxRow(endpointName, Now, Now, Now, null, null, null, null, 1, null);
+        }
+
+        public static SeedWebhookOutboxRow Retryable(string endpointName)
+        {
+            return new SeedWebhookOutboxRow(endpointName, Now, Now, null, null, null, null, null, 1, null);
         }
 
         public static SeedWebhookOutboxRow Discarded(string endpointName)
