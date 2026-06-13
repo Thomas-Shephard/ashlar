@@ -53,7 +53,7 @@ internal sealed class SecurityEventEmitter(ISecurityEventSink? sink, TimeProvide
                 descriptor.EventType,
                 descriptor.UserId,
                 descriptor.SessionId,
-                AuthenticationProviderKey.GetTypeValueOrNull(descriptor.Provider),
+                AuthenticationProviderKey.GetTypeValueOrDefault(descriptor.Provider),
                 GetProviderName(descriptor.Provider),
                 null);
         }
@@ -66,7 +66,7 @@ internal sealed class SecurityEventEmitter(ISecurityEventSink? sink, TimeProvide
                 descriptor.EventType,
                 descriptor.UserId,
                 descriptor.SessionId,
-                AuthenticationProviderKey.GetTypeValueOrNull(descriptor.Provider),
+                AuthenticationProviderKey.GetTypeValueOrDefault(descriptor.Provider),
                 GetProviderName(descriptor.Provider),
                 ex);
         }

@@ -49,7 +49,7 @@ internal sealed class RememberedMfaDeviceServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(repeated.Succeeded, Is.True);
-            Assert.That(result.Status, Is.EqualTo(RememberedMfaDeviceValidationStatus.Success));
+            Assert.That(result.Status, Is.EqualTo(RememberedMfaDeviceValidationStatus.Succeeded));
             Assert.That(result.Device!.LastUsedAt, Is.EqualTo(Now));
             Assert.That(fixture.Repository.Devices.Single().LastUsedAt, Is.EqualTo(Now));
             Assert.That(fixture.Events.Events.Select(e => e.EventType), Is.EqualTo(new[] { AshlarSecurityEventTypes.RememberedMfaDeviceUsed, AshlarSecurityEventTypes.RememberedMfaDeviceUsed }));

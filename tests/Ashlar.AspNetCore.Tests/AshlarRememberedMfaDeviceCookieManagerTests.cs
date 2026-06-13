@@ -272,7 +272,7 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
         var service = new Mock<IRememberedMfaDeviceService>();
         service
             .Setup(s => s.ValidateAsync(userId, It.IsAny<ValidateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidateRememberedMfaDeviceResult(true, device, RememberedMfaDeviceValidationStatus.Success));
+            .ReturnsAsync(new ValidateRememberedMfaDeviceResult(true, device, RememberedMfaDeviceValidationStatus.Succeeded));
         service
             .Setup(s => s.RevokeAsync(userId, It.IsAny<RevokeRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -310,7 +310,7 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
         var service = new Mock<IRememberedMfaDeviceService>();
         service
             .Setup(s => s.ValidateAsync(userId, It.IsAny<ValidateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidateRememberedMfaDeviceResult(true, device, RememberedMfaDeviceValidationStatus.Success));
+            .ReturnsAsync(new ValidateRememberedMfaDeviceResult(true, device, RememberedMfaDeviceValidationStatus.Succeeded));
         service
             .Setup(s => s.RevokeAsync(userId, It.IsAny<RevokeRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);

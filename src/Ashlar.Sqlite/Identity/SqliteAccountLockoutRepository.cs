@@ -274,7 +274,7 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
     {
         command.AddGuidParameter(UserIdParameter, userId);
         command.AddNullableGuidParameter(TenantIdParameter, tenantId);
-        command.AddParameter(ProviderTypeParameter, provider.TypeValueOrUnknown);
+        command.AddParameter(ProviderTypeParameter, provider.TypeValueOrDefault);
         command.AddParameter(ProviderNameParameter, provider.Name);
     }
 
@@ -299,7 +299,7 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
 
         if (request.Provider is { } provider)
         {
-            command.AddParameter(ProviderTypeParameter, provider.TypeValueOrUnknown);
+            command.AddParameter(ProviderTypeParameter, provider.TypeValueOrDefault);
             command.AddParameter(ProviderNameParameter, provider.Name);
         }
     }

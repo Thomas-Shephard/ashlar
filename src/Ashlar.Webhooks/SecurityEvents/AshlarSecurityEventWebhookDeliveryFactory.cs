@@ -227,7 +227,7 @@ public sealed class AshlarSecurityEventWebhookDeliveryFactory
             TenantId = securityEvent.TenantId,
             ActorUserId = securityEvent.ActorUserId,
             SessionId = securityEvent.SessionId,
-            ProviderType = AuthenticationProviderKey.GetTypeValueOrNull(securityEvent.Provider),
+            ProviderType = AuthenticationProviderKey.GetTypeValueOrDefault(securityEvent.Provider),
             ProviderName = securityEvent.Provider?.Name,
             CorrelationId = securityEvent.CorrelationId
         };

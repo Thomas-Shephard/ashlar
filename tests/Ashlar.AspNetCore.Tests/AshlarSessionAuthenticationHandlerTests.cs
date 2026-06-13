@@ -40,7 +40,7 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
         var sessionService = new Mock<IAuthenticationSessionService>();
         sessionService
             .Setup(s => s.ValidateSessionAsync("raw-token", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidateAuthenticationSessionResult(true, session, userId, AuthenticationSessionValidationStatus.Success));
+            .ReturnsAsync(new ValidateAuthenticationSessionResult(true, session, userId, AuthenticationSessionValidationStatus.Succeeded));
         await using var provider = CreateProvider(sessionService.Object);
         var context = CreateContext(provider);
         context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=raw-token";
@@ -140,7 +140,7 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
         var sessionService = new Mock<IAuthenticationSessionService>();
         sessionService
             .Setup(s => s.ValidateSessionAsync("raw-token", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidateAuthenticationSessionResult(true, session, userId, AuthenticationSessionValidationStatus.Success));
+            .ReturnsAsync(new ValidateAuthenticationSessionResult(true, session, userId, AuthenticationSessionValidationStatus.Succeeded));
         await using var provider = CreateProvider(sessionService.Object, options => options.CookieName = "Custom.Session");
         var context = CreateContext(provider);
         context.Request.Headers.Cookie = "Custom.Session=raw-token";
@@ -159,7 +159,7 @@ internal sealed class AshlarSessionAuthenticationHandlerTests
         var sessionService = new Mock<IAuthenticationSessionService>();
         sessionService
             .Setup(s => s.ValidateSessionAsync("raw-token", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidateAuthenticationSessionResult(true, session, userId, AuthenticationSessionValidationStatus.Success));
+            .ReturnsAsync(new ValidateAuthenticationSessionResult(true, session, userId, AuthenticationSessionValidationStatus.Succeeded));
         await using var provider = CreateProvider(sessionService.Object, options => options.SchemeName = scheme);
         var context = CreateContext(provider);
         context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=raw-token";

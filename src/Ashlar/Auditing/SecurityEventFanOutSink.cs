@@ -88,7 +88,7 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
             securityEvent.EventType,
             securityEvent.UserId,
             securityEvent.SessionId,
-            AuthenticationProviderKey.GetTypeValueOrNull(securityEvent.Provider),
+            AuthenticationProviderKey.GetTypeValueOrDefault(securityEvent.Provider),
             GetProviderName(securityEvent.Provider),
             exception);
     }
@@ -100,7 +100,7 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
             securityEvent.EventType,
             securityEvent.UserId,
             securityEvent.SessionId,
-            AuthenticationProviderKey.GetTypeValueOrNull(securityEvent.Provider),
+            AuthenticationProviderKey.GetTypeValueOrDefault(securityEvent.Provider),
             GetProviderName(securityEvent.Provider),
             exception);
     }

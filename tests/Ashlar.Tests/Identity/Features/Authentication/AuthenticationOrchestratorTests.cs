@@ -182,7 +182,7 @@ internal sealed class AuthenticationOrchestratorTests
             new ValidateRememberedMfaDeviceResult(
                 true,
                 CreateRememberedDeviceSummary(_userMock.Object.Id, tenantId),
-                RememberedMfaDeviceValidationStatus.Success));
+                RememberedMfaDeviceValidationStatus.Succeeded));
         var orchestrator = CreateOrchestratorWithRememberedDevices(rememberedMfaDeviceService.Object);
 
         var result = await orchestrator.AuthenticateAsync(
@@ -259,7 +259,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(
                 new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>()),
                 "handshake-token")));
-        var rememberedMfaDeviceService = CreateRememberedDeviceService(new ValidateRememberedMfaDeviceResult(true, CreateRememberedDeviceSummary(_userMock.Object.Id, null), RememberedMfaDeviceValidationStatus.Success));
+        var rememberedMfaDeviceService = CreateRememberedDeviceService(new ValidateRememberedMfaDeviceResult(true, CreateRememberedDeviceSummary(_userMock.Object.Id, null), RememberedMfaDeviceValidationStatus.Succeeded));
         var orchestrator = CreateOrchestratorWithRememberedDevices(rememberedMfaDeviceService.Object);
 
         var result = await orchestrator.AuthenticateAsync(
@@ -288,7 +288,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(
                 new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>()),
                 "handshake-token")));
-        var rememberedMfaDeviceService = CreateRememberedDeviceService(new ValidateRememberedMfaDeviceResult(true, CreateRememberedDeviceSummary(_userMock.Object.Id, null), RememberedMfaDeviceValidationStatus.Success));
+        var rememberedMfaDeviceService = CreateRememberedDeviceService(new ValidateRememberedMfaDeviceResult(true, CreateRememberedDeviceSummary(_userMock.Object.Id, null), RememberedMfaDeviceValidationStatus.Succeeded));
         var orchestrator = CreateOrchestratorWithRememberedDevices(rememberedMfaDeviceService.Object);
 
         var result = await orchestrator.AuthenticateAsync(context, _assertionMock.Object);
@@ -346,7 +346,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(
                 new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>()),
                 "handshake-token")));
-        var rememberedMfaDeviceService = CreateRememberedDeviceService(new ValidateRememberedMfaDeviceResult(true, CreateRememberedDeviceSummary(_userMock.Object.Id, null), RememberedMfaDeviceValidationStatus.Success));
+        var rememberedMfaDeviceService = CreateRememberedDeviceService(new ValidateRememberedMfaDeviceResult(true, CreateRememberedDeviceSummary(_userMock.Object.Id, null), RememberedMfaDeviceValidationStatus.Succeeded));
         var orchestrator = CreateOrchestratorWithRememberedDevices(rememberedMfaDeviceService.Object);
 
         var result = await orchestrator.AuthenticateAsync(

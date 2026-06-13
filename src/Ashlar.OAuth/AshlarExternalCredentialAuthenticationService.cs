@@ -160,7 +160,7 @@ public sealed class AshlarExternalCredentialAuthenticationService
 
     private static AuthenticationProviderKey CreateUnsupportedProviderKey(string providerName)
     {
-        var normalizedProviderName = string.IsNullOrWhiteSpace(providerName) ? "UNKNOWN" : providerName.Trim();
+        var normalizedProviderName = string.IsNullOrWhiteSpace(providerName) ? ProviderType.UnknownValue : providerName.Trim();
         return new AuthenticationProviderKey((ProviderType)"EXTERNAL_UNSUPPORTED", normalizedProviderName);
     }
 

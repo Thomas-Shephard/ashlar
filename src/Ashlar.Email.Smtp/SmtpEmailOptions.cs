@@ -25,7 +25,7 @@ public sealed class SmtpEmailOptions
     /// <summary>
     /// Gets or sets the password for authentication.
     /// </summary>
-    public string? Password { get; set; }
+    public string Password { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets or sets the security options for the SMTP connection.
@@ -38,29 +38,37 @@ public sealed class SmtpEmailOptions
     public string? DefaultFromAddress { get; set; }
 
     /// <summary>
-    /// Gets or sets the connection timeout in milliseconds.
+    /// Gets or sets the connection timeout.
     /// </summary>
-    public int Timeout { get; set; } = 10000;
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
-    /// Validates the current options.
+    /// Validates SMTP email options.
     /// </summary>
-    /// <exception cref="ArgumentException">Thrown when options are invalid.</exception>
-    public void Validate()
+    /// <param name="options">The options to validate.</param>
+    /// <returns><see langword="true" /> when the options are valid.</returns>
+    public static bool Validate(SmtpEmailOptions? options)
     {
-        if (string.IsNullOrWhiteSpace(Host))
+        if (options == null || string.IsNullOrWhiteSpace(options.Host))
         {
-            throw new ArgumentException("SMTP Host is required.");
+            return false;
         }
 
-        if (Port <= 0)
+        if (options.Port <= 0)
         {
-            throw new ArgumentException("SMTP Port must be a positive integer.");
+            return false;
         }
 
-        if (!string.IsNullOrWhiteSpace(Username) && string.IsNullOrWhiteSpace(Password))
+        if (options.Timeout.TotalMilliseconds is < 1 or > int.MaxValue)
         {
-            throw new ArgumentException("SMTP Password is required when Username is provided.");
+            return false;
         }
+
+        if (!string.IsNullOrWhiteSpace(options.Username) && string.IsNullOrWhiteSpace(options.Password))
+        {
+            return false;
+        }
+
+        return true;
     }
 }

@@ -56,7 +56,7 @@ internal static class SqliteCommandExtensions
         }
 
         sql += $" AND {typeColumn} = {typeParameterName} AND {nameColumn} = {nameParameterName}";
-        command.AddParameter(typeParameterName, provider.Value.TypeValueOrUnknown);
+        command.AddParameter(typeParameterName, provider.Value.TypeValueOrDefault);
         command.AddParameter(nameParameterName, provider.Value.Name);
     }
 

@@ -165,7 +165,7 @@ public sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionProvi
         command.AddGuidParameter(IdParameter, sessionId);
         command.AddGuidParameter(UserIdParameter, userId);
         command.AddDateTimeOffsetParameter(VerifiedAtParameter, verifiedAt);
-        command.AddParameter(VerifiedProviderTypeParameter, AuthenticationProviderKey.GetTypeValueOrNull(verifiedProvider));
+        command.AddParameter(VerifiedProviderTypeParameter, AuthenticationProviderKey.GetTypeValueOrDefault(verifiedProvider));
         command.AddParameter(VerifiedProviderNameParameter, verifiedProvider.Name);
         command.AddParameter(VerifiedFactorParameter, verifiedFactor);
 
@@ -318,10 +318,10 @@ public sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionProvi
         command.AddParameter(TokenHashParameter, session.TokenHash);
         command.AddDateTimeOffsetParameter(CreatedAtParameter, session.CreatedAt);
         command.AddNullableDateTimeOffsetParameter(AuthenticatedAtParameter, session.AuthenticatedAt);
-        command.AddParameter(PrimaryProviderTypeParameter, AuthenticationProviderKey.GetTypeValueOrNull(session.PrimaryProvider));
+        command.AddParameter(PrimaryProviderTypeParameter, AuthenticationProviderKey.GetTypeValueOrDefault(session.PrimaryProvider));
         command.AddParameter(PrimaryProviderNameParameter, session.PrimaryProvider?.Name);
         command.AddNullableDateTimeOffsetParameter(AdditionalVerificationAtParameter, session.AdditionalVerificationAt);
-        command.AddParameter(AdditionalVerificationProviderTypeParameter, AuthenticationProviderKey.GetTypeValueOrNull(session.AdditionalVerificationProvider));
+        command.AddParameter(AdditionalVerificationProviderTypeParameter, AuthenticationProviderKey.GetTypeValueOrDefault(session.AdditionalVerificationProvider));
         command.AddParameter(AdditionalVerificationProviderNameParameter, session.AdditionalVerificationProvider?.Name);
         command.AddParameter(AdditionalVerificationFactorParameter, session.AdditionalVerificationFactor);
         command.AddDateTimeOffsetParameter(ExpiresAtParameter, session.ExpiresAt);

@@ -31,14 +31,31 @@ internal sealed class SmtpEmailTransportTests
     [Test]
     public void ConstructorShouldValidateOptions()
     {
+        Assert.Throws<ArgumentNullException>(() => _ = new SmtpEmailTransport(null!));
+
         var options = new SmtpEmailOptions { Host = "" };
         Assert.Throws<ArgumentException>(() => _ = new SmtpEmailTransport(Options.Create(options)));
 
         options = new SmtpEmailOptions { Host = "localhost", Port = 0 };
         Assert.Throws<ArgumentException>(() => _ = new SmtpEmailTransport(Options.Create(options)));
 
+        options = new SmtpEmailOptions { Host = "localhost", Timeout = TimeSpan.Zero };
+        Assert.Throws<ArgumentException>(() => _ = new SmtpEmailTransport(Options.Create(options)));
+
+        options = new SmtpEmailOptions { Host = "localhost", Timeout = TimeSpan.FromTicks(1) };
+        Assert.Throws<ArgumentException>(() => _ = new SmtpEmailTransport(Options.Create(options)));
+
+        options = new SmtpEmailOptions { Host = "localhost", Timeout = TimeSpan.FromMilliseconds((double)int.MaxValue + 1) };
+        Assert.Throws<ArgumentException>(() => _ = new SmtpEmailTransport(Options.Create(options)));
+
         options = new SmtpEmailOptions { Host = "localhost", Username = "user", Password = "" };
         Assert.Throws<ArgumentException>(() => _ = new SmtpEmailTransport(Options.Create(options)));
+    }
+
+    [Test]
+    public void ValidateShouldReturnFalseForMissingOptions()
+    {
+        Assert.That(SmtpEmailOptions.Validate(null), Is.False);
     }
 
     [Test]
@@ -243,18 +260,6 @@ internal sealed class SmtpEmailTransportTests
     }
 
     [Test]
-    public async Task DeliverAsyncShouldAuthenticateWithEmptyPasswordWhenPasswordIsNull()
-    {
-        _options.Username = "user";
-        _options.Password = null;
-        var message = new EmailMessage(to: "r@e.com", subject: "S", textBody: "B");
-
-        await _transport.DeliverAsync(message);
-
-        _mockSmtpClient.Verify(x => x.AuthenticateAsync("user", string.Empty, It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Test]
     public void DeliverAsyncShouldSanitizeExceptionWhenPasswordIsLeakedInOuterMessage()
     {
         _options.Username = "user";
@@ -314,7 +319,7 @@ internal sealed class SmtpEmailTransportTests
     [Test]
     public async Task DeliverAsyncShouldSetTimeoutAndSecurityOptions()
     {
-        _options.Timeout = 5000;
+        _options.Timeout = TimeSpan.FromSeconds(5);
         _options.SecurityOptions = MailKit.Security.SecureSocketOptions.SslOnConnect;
         var message = new EmailMessage(to: "r@e.com", subject: "S", textBody: "B");
 

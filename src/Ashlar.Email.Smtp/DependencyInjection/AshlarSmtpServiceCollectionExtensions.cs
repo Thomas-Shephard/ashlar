@@ -27,7 +27,7 @@ public static class AshlarSmtpServiceCollectionExtensions
 
         services.AddOptions<SmtpEmailOptions>()
             .Configure(configure)
-            .Validate(ValidateOptions, "SMTP email options are invalid.")
+            .Validate(SmtpEmailOptions.Validate, "SMTP email options are invalid.")
             .ValidateOnStart();
         services.TryAddTransient<IEmailTransport, SmtpEmailTransport>();
 
@@ -51,18 +51,5 @@ public static class AshlarSmtpServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Transient<IEmailSender, SmtpEmailSender>());
 
         return services;
-    }
-
-    private static bool ValidateOptions(SmtpEmailOptions options)
-    {
-        try
-        {
-            options.Validate();
-            return true;
-        }
-        catch (ArgumentException)
-        {
-            return false;
-        }
     }
 }

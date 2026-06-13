@@ -328,7 +328,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
             Assert.That(observedContext?.IpAddress, Is.EqualTo("127.0.0.1"));
             Assert.That(observedContext?.CorrelationId, Is.EqualTo("trace-unsupported"));
             Assert.That(observedAssertion, Is.Not.InstanceOf<ICredentialKeyAuthenticationAssertion>());
-            Assert.That(observedAssertion?.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey((ProviderType)"EXTERNAL_UNSUPPORTED", "UNKNOWN")));
+            Assert.That(observedAssertion?.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey((ProviderType)"EXTERNAL_UNSUPPORTED", ProviderType.UnknownValue)));
             Assert.That(authService.SignOutCount, Is.EqualTo(1));
         }
 

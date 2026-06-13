@@ -235,7 +235,7 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
     [TestCase("unexpected")]
     public void PasskeyOptionsShouldRejectInvalidAttestation(string attestation)
     {
-        var options = new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com", Attestation = attestation };
+        var options = new PasskeyOptions { Origin = "https://example.com", RelyingPartyId = "example.com", AttestationConveyancePreference = attestation };
 
         Assert.That(PasskeyOptions.Validate(options), Is.False);
     }
@@ -251,6 +251,12 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
         };
 
         Assert.That(PasskeyOptions.Validate(options), Is.False);
+    }
+
+    [Test]
+    public void PasskeyOptionsShouldRejectNullOptions()
+    {
+        Assert.That(PasskeyOptions.Validate(null), Is.False);
     }
 
     [TestCase("https://login.example.com", "example.com")]

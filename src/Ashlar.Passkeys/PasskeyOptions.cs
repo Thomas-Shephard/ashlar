@@ -43,7 +43,7 @@ public sealed class PasskeyOptions
     /// <summary>
     /// Gets or sets the WebAuthn attestation conveyance preference.
     /// </summary>
-    public string Attestation { get; set; } = "none";
+    public string AttestationConveyancePreference { get; set; } = "none";
     /// <summary>
     /// Gets or sets whether resident/discoverable credentials are required.
     /// </summary>
@@ -58,9 +58,10 @@ public sealed class PasskeyOptions
     /// </summary>
     /// <param name="options">The options value.</param>
     /// <returns><see langword="true" /> when the options are valid.</returns>
-    public static bool Validate(PasskeyOptions options)
+    public static bool Validate(PasskeyOptions? options)
     {
-        return options.ProviderKey.Type != default
+        return options != null
+            && options.ProviderKey.Type != default
             && !string.IsNullOrWhiteSpace(options.ProviderKey.Name)
             && !string.IsNullOrWhiteSpace(options.RelyingPartyName)
             && Uri.TryCreate(options.Origin, UriKind.Absolute, out var origin)
@@ -73,7 +74,7 @@ public sealed class PasskeyOptions
             && AuthenticationRateLimitRuleValidator.IsValid(options.AuthenticationChallengeStartRateLimit)
             && IsUserVerificationValid(options.RegistrationUserVerification)
             && IsUserVerificationValid(options.AuthenticationUserVerification)
-            && IsAttestationValid(options.Attestation);
+            && IsAttestationValid(options.AttestationConveyancePreference);
     }
 
     private static bool IsUserVerificationValid(string? value)

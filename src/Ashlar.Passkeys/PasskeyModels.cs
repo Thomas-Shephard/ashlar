@@ -80,7 +80,7 @@ public sealed record PasskeyCeremonyOptions(Guid ChallengeId, string OptionsJson
 /// <param name="User">The authenticated user, when available.</param>
 /// <param name="Credential">The passkey credential summary, when available.</param>
 /// <param name="FailureCode">The failure code, when authentication failed.</param>
-/// <param name="Status">The MFA-aware authentication status.</param>
+/// <param name="AuthenticationStatus">The MFA-aware authentication status.</param>
 /// <param name="HandshakeToken">The MFA handshake token, when additional factors are required.</param>
 /// <param name="RequiredFactors">The remaining required factors.</param>
 /// <param name="ErrorMessage">The display-safe error message.</param>
@@ -89,7 +89,7 @@ public sealed record PasskeyAuthenticationResult(
     IUser? User,
     PasskeyCredentialSummary? Credential,
     AshlarFailureCode? FailureCode = null,
-    MfaAuthenticationStatus Status = MfaAuthenticationStatus.Failed,
+    MfaAuthenticationStatus AuthenticationStatus = MfaAuthenticationStatus.Failed,
     string? HandshakeToken = null,
     IEnumerable<string>? RequiredFactors = null,
     string? ErrorMessage = null);

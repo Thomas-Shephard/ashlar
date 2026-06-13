@@ -53,7 +53,7 @@ public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
                 ResidentKey = options.RequireResidentKey ? ResidentKeyRequirement.Required : ResidentKeyRequirement.Preferred,
                 UserVerification = ParseUserVerification(options.RegistrationUserVerification)
             },
-            AttestationPreference = ParseAttestation(options.Attestation)
+            AttestationPreference = ParseAttestation(options.AttestationConveyancePreference)
         });
         credentialOptions.Challenge = Base64Url.Decode(challenge);
         return credentialOptions.ToJson();

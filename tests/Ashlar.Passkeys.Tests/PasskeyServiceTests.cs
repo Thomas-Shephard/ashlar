@@ -84,6 +84,20 @@ internal sealed class PasskeyServiceTests
         Assert.Throws<ArgumentNullException>(() => _ = new PasskeyService(
             new Mock<IUserRepository>().Object,
             new Mock<ICredentialRepository>().Object,
+            null!,
+            new Mock<IPasskeyCeremonyValidator>().Object,
+            CreateDependencies()));
+
+        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyService(
+            new Mock<IUserRepository>().Object,
+            new Mock<ICredentialRepository>().Object,
+            new Mock<IPasskeyChallengeRepository>().Object,
+            null!,
+            CreateDependencies()));
+
+        Assert.Throws<ArgumentNullException>(() => _ = new PasskeyService(
+            new Mock<IUserRepository>().Object,
+            new Mock<ICredentialRepository>().Object,
             new Mock<IPasskeyChallengeRepository>().Object,
             new Mock<IPasskeyCeremonyValidator>().Object,
             null!));
@@ -778,7 +792,7 @@ internal sealed class PasskeyServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mfa.Succeeded, Is.False);
-            Assert.That(mfa.Status, Is.EqualTo(MfaAuthenticationStatus.MfaRequired));
+            Assert.That(mfa.AuthenticationStatus, Is.EqualTo(MfaAuthenticationStatus.MfaRequired));
             Assert.That(mfa.HandshakeToken, Is.EqualTo("handshake"));
             Assert.That(failed.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyValidationFailed));
             Assert.That(thrown.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyValidationFailed));
@@ -1258,7 +1272,7 @@ internal sealed class PasskeyServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.HandshakeIncomplete));
+            Assert.That(result.AuthenticationStatus, Is.EqualTo(MfaAuthenticationStatus.HandshakeIncomplete));
             Assert.That(result.HandshakeToken, Is.EqualTo("token"));
         }
     }
