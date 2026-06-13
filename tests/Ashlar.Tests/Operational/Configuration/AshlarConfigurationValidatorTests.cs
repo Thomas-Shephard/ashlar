@@ -511,6 +511,7 @@ internal sealed class AshlarConfigurationValidatorTests
         services.Configure<UriValidationOptions>(options =>
         {
             options.AllowedCallbackUris.Add(" ");
+            options.AllowedCallbackUris.Add("not a callback URI");
             options.AllowedCallbackUris.Add("/relative?token=secret-token");
             options.AllowedCallbackUris.Add("https://user:password@app.example.com/callback?token=secret-token#fragment");
             options.AllowedCallbackUris.Add("secret-token://app.example.com/callback");
@@ -527,8 +528,9 @@ internal sealed class AshlarConfigurationValidatorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Issues.Count(issue => issue.Code == AshlarConfigurationIssueCodes.CallbackUriAllowListInvalidEntry), Is.EqualTo(4));
+            Assert.That(result.Issues.Count(issue => issue.Code == AshlarConfigurationIssueCodes.CallbackUriAllowListInvalidEntry), Is.EqualTo(5));
             Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.CallbackUriAllowListMissing));
+            Assert.That(callbackMessages, Has.Some.Contains("malformed entry"));
             Assert.That(callbackMessages, Has.None.Contains("secret-token"));
             Assert.That(callbackMessages, Has.None.Contains("password"));
             Assert.That(callbackMessages, Has.None.Contains("?"));
