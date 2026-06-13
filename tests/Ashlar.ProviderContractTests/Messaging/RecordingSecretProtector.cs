@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Ashlar.Security.Encryption;
 
 namespace Ashlar.ProviderContractTests.Messaging;
@@ -19,6 +20,11 @@ internal sealed class RecordingSecretProtector : ISecretProtector
     public byte[] Unprotect(byte[] data)
     {
         ArgumentNullException.ThrowIfNull(data);
+
+        if (data.Length < Prefix.Length || !data.Take(Prefix.Length).SequenceEqual(Prefix))
+        {
+            throw new CryptographicException("The protected payload is invalid.");
+        }
 
         return data.Skip(Prefix.Length).ToArray();
     }

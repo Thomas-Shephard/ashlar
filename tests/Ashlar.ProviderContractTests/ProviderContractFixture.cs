@@ -157,6 +157,11 @@ internal abstract class ProviderContractFixture
         return serviceProvider.GetRequiredService<IEmailOutboxDispatcher>();
     }
 
+    protected static IEmailOutboxDiagnostics GetEmailOutboxDiagnostics(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IEmailOutboxDiagnostics>();
+    }
+
     protected static IAshlarSecurityEventWebhookEnqueuer GetSecurityEventWebhookEnqueuer(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>();
