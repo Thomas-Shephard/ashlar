@@ -91,6 +91,26 @@ public static class AshlarConfigurationIssueCodes
     public const string EmailSenderNotConfigured = "ASHLAR-CONFIG-EMAIL-SENDER-NOT-CONFIGURED";
 
     /// <summary>
+    /// Callback URI validation is required but no callback URI allow-list is configured.
+    /// </summary>
+    public const string CallbackUriAllowListMissing = "ASHLAR-CONFIG-CALLBACK-URI-ALLOWLIST-MISSING";
+
+    /// <summary>
+    /// A callback URI allow-list entry is structurally invalid.
+    /// </summary>
+    public const string CallbackUriAllowListInvalidEntry = "ASHLAR-CONFIG-CALLBACK-URI-ALLOWLIST-INVALID-ENTRY";
+
+    /// <summary>
+    /// A callback URI allow-list entry uses HTTP instead of HTTPS.
+    /// </summary>
+    public const string CallbackUriAllowListInsecureScheme = "ASHLAR-CONFIG-CALLBACK-URI-ALLOWLIST-INSECURE-SCHEME";
+
+    /// <summary>
+    /// A callback URI allow-list entry targets a local, private, link-local, multicast, or unspecified host.
+    /// </summary>
+    public const string CallbackUriAllowListLocalAddress = "ASHLAR-CONFIG-CALLBACK-URI-ALLOWLIST-LOCAL-ADDRESS";
+
+    /// <summary>
     /// Security event auditing is configured with the <see langword="null" /> sink.
     /// </summary>
     public const string NullSecurityEventSink = "ASHLAR-CONFIG-NULL-SECURITY-EVENT-SINK";

@@ -15,6 +15,7 @@ namespace Ashlar.Tests.Operational.Configuration;
 internal sealed class AshlarConfigurationValidatorTests
 {
     private static readonly string[] ExpectedAggregatedIssueCodes = ["ONE", "TWO"];
+    private const string CallbackUriIssueCodePrefix = "ASHLAR-CONFIG-CALLBACK-URI-";
 
     [Test]
     public async Task ValidatorAggregatesMultipleChecks()
@@ -436,6 +437,245 @@ internal sealed class AshlarConfigurationValidatorTests
     }
 
     [Test]
+    public async Task CoreCheckDoesNotReportCallbackUriIssuesWhenNoCallbackFlowIsRegistered()
+    {
+        var services = new ServiceCollection();
+        services.Configure<UriValidationOptions>(options =>
+        {
+            options.AllowedCallbackUris.Add("not a callback URI");
+        });
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Has.None.StartsWith(CallbackUriIssueCodePrefix));
+    }
+
+    [TestCase("magic-link")]
+    [TestCase("email-verification")]
+    [TestCase("email-change")]
+    [TestCase("invitation")]
+    [TestCase("password-reset")]
+    public async Task CoreCheckReportsMissingCallbackUriAllowListWhenCallbackFlowIsRegistered(string flow)
+    {
+        var services = new ServiceCollection();
+        RegisterCallbackFlow(services, flow);
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        AssertIssue(result, AshlarConfigurationIssueCodes.CallbackUriAllowListMissing, AshlarConfigurationIssueSeverity.Error);
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotRequireCallbackUriAllowListForEmailCodeSignIn()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IEmailCodeSignInService>());
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Has.None.StartsWith(CallbackUriIssueCodePrefix));
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotReportCallbackUriIssuesForValidHttpsAllowList()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IMagicLinkSignInService>());
+        services.Configure<UriValidationOptions>(options =>
+        {
+            options.AllowedCallbackUris.Add("https://app.example.com/account/callback");
+        });
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Has.None.StartsWith(CallbackUriIssueCodePrefix));
+    }
+
+    [Test]
+    public async Task CoreCheckReportsInvalidCallbackUriAllowListEntriesWithoutExposingSecrets()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IMagicLinkSignInService>());
+        services.Configure<UriValidationOptions>(options =>
+        {
+            options.AllowedCallbackUris.Add(" ");
+            options.AllowedCallbackUris.Add("/relative?token=secret-token");
+            options.AllowedCallbackUris.Add("https://user:password@app.example.com/callback?token=secret-token#fragment");
+            options.AllowedCallbackUris.Add("secret-token://app.example.com/callback");
+            options.AllowedCallbackUris.Add("https://app.example.com/reset/secret-token");
+        });
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+        var callbackMessages = result.Issues
+            .Where(issue => issue.Code.StartsWith(CallbackUriIssueCodePrefix, StringComparison.Ordinal))
+            .Select(issue => issue.Message);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Issues.Count(issue => issue.Code == AshlarConfigurationIssueCodes.CallbackUriAllowListInvalidEntry), Is.EqualTo(4));
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.CallbackUriAllowListMissing));
+            Assert.That(callbackMessages, Has.None.Contains("secret-token"));
+            Assert.That(callbackMessages, Has.None.Contains("password"));
+            Assert.That(callbackMessages, Has.None.Contains("?"));
+            Assert.That(callbackMessages, Has.None.Contains("#"));
+        }
+    }
+
+    [Test]
+    public async Task CoreCheckReportsMissingCallbackUriAllowListWhenAllowListIsNull()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IMagicLinkSignInService>());
+        services.Configure<UriValidationOptions>(options => options.AllowedCallbackUris = null!);
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        AssertIssue(result, AshlarConfigurationIssueCodes.CallbackUriAllowListMissing, AshlarConfigurationIssueSeverity.Error);
+    }
+
+    [Test]
+    public async Task CoreCheckReportsInsecureSchemeWarningForHttpCallbackUriAllowList()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IMagicLinkSignInService>());
+        services.Configure<UriValidationOptions>(options =>
+        {
+            options.AllowedCallbackUris.Add("http://app.example.com/");
+            options.AllowedCallbackUris.Add("http://app.example.com/reset/secret-token");
+        });
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        var issues = AssertIssues(result, AshlarConfigurationIssueCodes.CallbackUriAllowListInsecureScheme, AshlarConfigurationIssueSeverity.Warning);
+        Assert.That(issues.Select(issue => issue.Message), Has.None.Contains("secret-token"));
+    }
+
+    [TestCase("https://localhost/callback")]
+    [TestCase("https://127.0.0.1/callback")]
+    [TestCase("https://10.0.0.1/callback")]
+    [TestCase("https://172.16.0.1/callback")]
+    [TestCase("https://172.31.0.1/callback")]
+    [TestCase("https://192.168.0.1/callback")]
+    [TestCase("https://169.254.0.1/callback")]
+    [TestCase("https://224.0.0.1/callback")]
+    [TestCase("https://0.0.0.0/callback")]
+    [TestCase("https://[::ffff:192.168.0.1]/callback")]
+    [TestCase("https://[::1]/callback")]
+    [TestCase("https://[::]/callback")]
+    [TestCase("https://[fe80::1]/callback")]
+    [TestCase("https://[fec0::1]/callback")]
+    [TestCase("https://[fc00::1]/callback")]
+    [TestCase("https://[ff02::1]/callback")]
+    public async Task CoreCheckReportsLocalAddressWarningForLocalPrivateLinkLocalMulticastOrUnspecifiedCallbackUriAllowList(string callbackUri)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IMagicLinkSignInService>());
+        services.Configure<UriValidationOptions>(options =>
+        {
+            options.AllowedCallbackUris.Add(callbackUri);
+        });
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        AssertIssue(result, AshlarConfigurationIssueCodes.CallbackUriAllowListLocalAddress, AshlarConfigurationIssueSeverity.Warning);
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotExposeCallbackUriPathInLocalAddressWarning()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IMagicLinkSignInService>());
+        services.Configure<UriValidationOptions>(options =>
+        {
+            options.AllowedCallbackUris.Add("https://localhost/reset/secret-token");
+        });
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        var issue = AssertIssue(result, AshlarConfigurationIssueCodes.CallbackUriAllowListLocalAddress, AshlarConfigurationIssueSeverity.Warning);
+        Assert.That(issue.Message, Does.Not.Contain("secret-token"));
+    }
+
+    [TestCase("https://app.example.com/callback")]
+    [TestCase("https://8.8.8.8/callback")]
+    [TestCase("https://11.0.0.1/callback")]
+    [TestCase("https://172.15.0.1/callback")]
+    [TestCase("https://172.32.0.1/callback")]
+    [TestCase("https://192.167.0.1/callback")]
+    [TestCase("https://169.253.0.1/callback")]
+    [TestCase("https://223.255.255.255/callback")]
+    [TestCase("https://240.0.0.1/callback")]
+    [TestCase("https://[::ffff:8.8.8.8]/callback")]
+    [TestCase("https://[2001:4860:4860::8888]/callback")]
+    public async Task CoreCheckDoesNotReportLocalAddressWarningForNonLocalCallbackUriAllowList(string callbackUri)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IMagicLinkSignInService>());
+        services.Configure<UriValidationOptions>(options =>
+        {
+            options.AllowedCallbackUris.Add(callbackUri);
+        });
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.CallbackUriAllowListLocalAddress));
+    }
+
+    [Test]
+    public async Task CoreCheckReportsMultipleCallbackUriDiagnostics()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IMagicLinkSignInService>());
+        services.Configure<UriValidationOptions>(options =>
+        {
+            options.AllowedCallbackUris.Add("/relative");
+            options.AllowedCallbackUris.Add("http://localhost/callback");
+        });
+        services.AddAshlarConfigurationValidation();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertIssue(result, AshlarConfigurationIssueCodes.CallbackUriAllowListInvalidEntry, AshlarConfigurationIssueSeverity.Error);
+            AssertIssue(result, AshlarConfigurationIssueCodes.CallbackUriAllowListInsecureScheme, AshlarConfigurationIssueSeverity.Warning);
+            AssertIssue(result, AshlarConfigurationIssueCodes.CallbackUriAllowListLocalAddress, AshlarConfigurationIssueSeverity.Warning);
+        }
+    }
+
+    [Test]
     public async Task CoreCheckReportsSharedRepositoryIssuesWhenEmailSignInServicesAreRegisteredWithoutIdentityService()
     {
         var services = new ServiceCollection();
@@ -713,30 +953,78 @@ internal sealed class AshlarConfigurationValidatorTests
         Assert.That(exception.ParamName, Is.EqualTo("serviceType"));
     }
 
-    private static void AssertIssue(
+    private static AshlarConfigurationIssue AssertIssue(
         AshlarConfigurationValidationResult result,
         string code,
         AshlarConfigurationIssueSeverity severity)
     {
-        Assert.That(result.Issues, Has.Some.Matches<AshlarConfigurationIssue>(issue =>
-            issue.Code == code
-            && issue.Severity == severity
-            && !string.IsNullOrWhiteSpace(issue.Message)
-            && !string.IsNullOrWhiteSpace(issue.Recommendation)
-            && !string.IsNullOrWhiteSpace(issue.Component)));
+        var issue = result.Issues.FirstOrDefault(item =>
+            item.Code == code
+            && item.Severity == severity
+            && !string.IsNullOrWhiteSpace(item.Message)
+            && !string.IsNullOrWhiteSpace(item.Recommendation)
+            && !string.IsNullOrWhiteSpace(item.Component));
+
+        Assert.That(issue, Is.Not.Null);
+        return issue!;
     }
 
-    private static void AssertIssue(
+    private static List<AshlarConfigurationIssue> AssertIssues(
+        AshlarConfigurationValidationResult result,
+        string code,
+        AshlarConfigurationIssueSeverity severity)
+    {
+        var issues = result.Issues
+            .Where(item =>
+                item.Code == code
+                && item.Severity == severity
+                && !string.IsNullOrWhiteSpace(item.Message)
+                && !string.IsNullOrWhiteSpace(item.Recommendation)
+                && !string.IsNullOrWhiteSpace(item.Component))
+            .ToList();
+
+        Assert.That(issues, Is.Not.Empty);
+        return issues;
+    }
+
+    private static AshlarConfigurationIssue AssertIssue(
         IReadOnlyList<AshlarConfigurationIssue> issues,
         string code,
         AshlarConfigurationIssueSeverity severity)
     {
-        Assert.That(issues, Has.Some.Matches<AshlarConfigurationIssue>(issue =>
-            issue.Code == code
-            && issue.Severity == severity
-            && !string.IsNullOrWhiteSpace(issue.Message)
-            && !string.IsNullOrWhiteSpace(issue.Recommendation)
-            && !string.IsNullOrWhiteSpace(issue.Component)));
+        var issue = issues.FirstOrDefault(item =>
+            item.Code == code
+            && item.Severity == severity
+            && !string.IsNullOrWhiteSpace(item.Message)
+            && !string.IsNullOrWhiteSpace(item.Recommendation)
+            && !string.IsNullOrWhiteSpace(item.Component));
+
+        Assert.That(issue, Is.Not.Null);
+        return issue!;
+    }
+
+    private static void RegisterCallbackFlow(IServiceCollection services, string flow)
+    {
+        switch (flow)
+        {
+            case "magic-link":
+                services.AddSingleton(Mock.Of<IMagicLinkSignInService>());
+                break;
+            case "email-verification":
+                services.AddSingleton(Mock.Of<IEmailVerificationService>());
+                break;
+            case "email-change":
+                services.AddSingleton(Mock.Of<IEmailChangeService>());
+                break;
+            case "invitation":
+                services.AddSingleton(Mock.Of<IInvitationService>());
+                break;
+            case "password-reset":
+                services.AddSingleton(Mock.Of<IPasswordResetService>());
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(flow), flow, "Unknown callback flow.");
+        }
     }
 
     private sealed class StubConfigurationCheck(params AshlarConfigurationIssue[] issues) : IAshlarConfigurationCheck
