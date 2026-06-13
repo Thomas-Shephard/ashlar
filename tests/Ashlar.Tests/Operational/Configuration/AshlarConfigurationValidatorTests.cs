@@ -116,6 +116,32 @@ internal sealed class AshlarConfigurationValidatorTests
     }
 
     [Test]
+    public async Task CoreCheckReportsDetailedInMemoryRateLimiterWarning()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarIdentity();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        var issue = AssertIssue(result, AshlarConfigurationIssueCodes.InMemoryAuthenticationRateLimiter, AshlarConfigurationIssueSeverity.Warning);
+        var text = $"{issue.Message} {issue.Recommendation}";
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(text, Does.Contain("process-local"));
+            Assert.That(text, Does.Contain("resets on process restart"));
+            Assert.That(text, Does.Contain("does not coordinate across multiple app instances"));
+            Assert.That(text, Does.Contain("PostgreSQL"));
+            Assert.That(text, Does.Contain("SQLite"));
+            Assert.That(text, Does.Contain("Redis"));
+            Assert.That(text, Does.Contain("Redis or PostgreSQL for multi-instance deployments"));
+            Assert.That(text, Does.Contain("SQLite is persistent but still single-instance oriented"));
+        }
+    }
+
+    [Test]
     public async Task CoreCheckReportsWarningForNullTransactionProviderWithRepositories()
     {
         var services = new ServiceCollection();

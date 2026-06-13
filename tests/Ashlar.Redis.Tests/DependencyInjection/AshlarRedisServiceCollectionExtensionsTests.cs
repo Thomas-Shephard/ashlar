@@ -2,6 +2,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
+using Ashlar.Operational.Configuration;
 using Ashlar.Operational.Diagnostics;
 using Ashlar.Security.Encryption;
 using Ashlar.Testing.DependencyInjection;
@@ -41,6 +42,20 @@ internal sealed class AshlarRedisServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<IOptions<RedisAuthenticationRateLimiterOptions>>().Value.KeyPrefix, Is.EqualTo("ashlar:rate-limits"));
+    }
+
+    [Test]
+    public async Task AddAshlarRedisRateLimitingClearsInMemoryRateLimiterWarning()
+    {
+        var connection = Mock.Of<IConnectionMultiplexer>();
+        var services = new ServiceCollection();
+        services.AddAshlarIdentity();
+        services.AddAshlarRedisRateLimiting(connection);
+        using var provider = services.BuildServiceProvider();
+
+        var issueCodes = (await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync()).Issues.Select(issue => issue.Code);
+
+        Assert.That(issueCodes, Does.Not.Contain(AshlarConfigurationIssueCodes.InMemoryAuthenticationRateLimiter));
     }
 
     [Test]

@@ -1,5 +1,6 @@
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
+using Ashlar.Operational.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
@@ -373,7 +374,7 @@ internal sealed class PostgresAuthenticationRateLimiterTests : PostgresTestBase
     }
 
     [Test]
-    public async Task AddAshlarPostgresRateLimitingReplacesDefaultIdentityRateLimiter()
+    public async Task AddAshlarPostgresRateLimitingReplacesDefaultIdentityRateLimiterAndClearsWarning()
     {
         var services = new ServiceCollection();
         services.AddAshlarIdentity();
@@ -383,8 +384,13 @@ internal sealed class PostgresAuthenticationRateLimiterTests : PostgresTestBase
         await using var provider = services.BuildServiceProvider();
 
         var limiter = provider.GetRequiredService<IAuthenticationRateLimiter>();
+        var issueCodes = (await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync()).Issues.Select(issue => issue.Code);
 
-        Assert.That(limiter, Is.TypeOf<PostgresAuthenticationRateLimiter>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(limiter, Is.TypeOf<PostgresAuthenticationRateLimiter>());
+            Assert.That(issueCodes, Does.Not.Contain(AshlarConfigurationIssueCodes.InMemoryAuthenticationRateLimiter));
+        }
     }
 
     [Test]
