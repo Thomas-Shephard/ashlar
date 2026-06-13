@@ -193,19 +193,9 @@ public sealed class AuthenticationSessionService(
     }
 
     public async Task<ValidateAuthenticationSessionResult> ValidateSessionAsync(
-        string token,
+        string? token,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            await RecordSessionValidationFailedAsync(
-                AuthenticationSessionValidationStatus.Failed,
-                null,
-                SecurityEventFailureReasons.SessionValidationFailed,
-                cancellationToken);
-            return ValidateAuthenticationSessionResult.Failed;
-        }
-
         if (!SecureTokenHashing.TryHashToken(_tokenHasher, token, out var tokenHash))
         {
             await RecordSessionValidationFailedAsync(

@@ -179,7 +179,6 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         ArgumentNullException.ThrowIfNull(request);
         var userId = request.UserId;
         var token = request.Token;
-        ArgumentException.ThrowIfNullOrWhiteSpace(token);
 
         var context = EmailFlowRateLimitHelpers.ToAuthenticationContext(request.Audit);
         var rateLimit = await _verificationRateLimits.CheckAsync(AuthenticationRateLimitDimensions.Source(context), userId, context, _options.Value.VerificationRateLimit, cancellationToken);

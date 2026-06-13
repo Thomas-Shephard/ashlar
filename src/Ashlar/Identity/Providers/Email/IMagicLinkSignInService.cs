@@ -21,5 +21,5 @@ public interface IMagicLinkSignInService
     /// <param name="context">Optional request context for auditing and rate limiting.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>The MFA-aware authentication result. Issue an application session only when the status is <see cref="MfaAuthenticationStatus.Succeeded" />.</returns>
-    Task<MfaAuthenticationResult> VerifyLinkAsync(string token, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
+    Task<MfaAuthenticationResult> VerifyLinkAsync(string? token, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 }

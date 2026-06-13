@@ -26,7 +26,7 @@ public interface IAuthenticationSessionService
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
     Task<ValidateAuthenticationSessionResult> ValidateSessionAsync(
-        string token,
+        string? token,
         CancellationToken cancellationToken = default);
 
     /// <summary>

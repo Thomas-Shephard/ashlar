@@ -74,7 +74,7 @@ public sealed class PasswordResetRequest
     /// <summary>
     /// Gets or sets the one-time reset token.
     /// </summary>
-    public required string Token { get; init; }
+    public required string? Token { get; init; }
     /// <summary>
     /// Gets or sets the replacement password.
     /// </summary>

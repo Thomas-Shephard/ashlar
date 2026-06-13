@@ -197,11 +197,46 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.ThrowsAsync<ArgumentException>(() => service.RegisterOidcInvitationAsync(" ", "Google", CreatePrincipal("subject", "invitee@example.com", "true")));
             Assert.ThrowsAsync<ArgumentNullException>(() => service.RegisterOidcInvitationAsync("token", "Google", (ClaimsPrincipal)null!));
             Assert.ThrowsAsync<ArgumentNullException>(() => service.RegisterOidcInvitationAsync("token", "Google", (AuthenticateResult)null!));
             Assert.ThrowsAsync<ArgumentNullException>(() => service.CompleteOidcInvitationRegistrationAsync(null!, "token", "Google"));
         }
+    }
+
+    [TestCase(null)]
+    [TestCase(" ")]
+    public async Task RegisterShouldReturnInvalidInvitationForMissingInvitationToken(string? token)
+    {
+        var invitations = CreateInvitations(preview: Result.Failure<InvitationAcceptancePreview>(AshlarFailureCodes.InvalidInvitation), token: token);
+        var service = CreateService(invitations.Object);
+
+        var result = await service.RegisterOidcInvitationAsync(token!, "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidInvitation));
+            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("subject"));
+        }
+
+        invitations.Verify(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task RegisterShouldReturnInvalidInvitationForOverlongInvitationToken()
+    {
+        var overlongToken = new string('a', 257);
+        var invitations = CreateInvitations(preview: Result.Failure<InvitationAcceptancePreview>(AshlarFailureCodes.InvalidInvitation), token: overlongToken);
+        var service = CreateService(invitations.Object);
+
+        var result = await service.RegisterOidcInvitationAsync(overlongToken, "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidInvitation));
+            Assert.That(result.Assertion?.ProviderKey, Is.EqualTo("subject"));
+        }
+
+        invitations.Verify(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -757,12 +792,13 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
 
     private static Mock<IInvitationService> CreateInvitations(
         Result<InvitationAcceptancePreview>? preview = null,
-        Result<Guid>? acceptance = null)
+        Result<Guid>? acceptance = null,
+        string? token = "token")
     {
         var invitations = new Mock<IInvitationService>();
-        invitations.Setup(s => s.GetInvitationAcceptancePreviewAsync("token", It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()))
+        invitations.Setup(s => s.GetInvitationAcceptancePreviewAsync(token!, It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(preview ?? Result.Success(new InvitationAcceptancePreview("invitee@example.com", null)));
-        invitations.Setup(s => s.AcceptInvitationAsync(It.Is<AcceptInvitationRequest>(r => r.Token == "token"), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()))
+        invitations.Setup(s => s.AcceptInvitationAsync(It.Is<AcceptInvitationRequest>(r => r.Token == token), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(acceptance ?? Result.Failure<Guid>(AshlarFailureCodes.InvalidInvitation));
         return invitations;
     }

@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Ashlar.Security.Tokens;
 
 /// <summary>
@@ -12,9 +14,15 @@ public static class SecureTokenHashing
     /// <param name="token">The caller-supplied token.</param>
     /// <param name="tokenHash">The hashed token when hashing succeeds.</param>
     /// <returns><see langword="true" /> when the token was hashed; otherwise, <see langword="false" />.</returns>
-    public static bool TryHashToken(ISecureTokenHasher hasher, string token, out string tokenHash)
+    public static bool TryHashToken(ISecureTokenHasher hasher, [NotNullWhen(true)] string? token, out string tokenHash)
     {
         ArgumentNullException.ThrowIfNull(hasher);
+
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            tokenHash = string.Empty;
+            return false;
+        }
 
         try
         {

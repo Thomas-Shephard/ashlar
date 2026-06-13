@@ -105,13 +105,12 @@ public sealed class AuthenticationOrchestrator(
     }
 
     public async Task<MfaAuthenticationResult> VerifyFactorAsync(
-        string handshakeToken,
+        string? handshakeToken,
         string factorType,
         AuthenticationContext context,
         IAuthenticationAssertion assertion,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(handshakeToken);
         ArgumentException.ThrowIfNullOrWhiteSpace(factorType);
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(assertion);
@@ -185,7 +184,7 @@ public sealed class AuthenticationOrchestrator(
         return new MfaAuthenticationResult(status, ErrorMessage: GetHandshakeVerificationFailureMessage(failureCode));
     }
 
-    private static MfaAuthenticationResult CreateResultFromHandshake(AuthenticationHandshake handshake, IUser user, string handshakeToken)
+    private static MfaAuthenticationResult CreateResultFromHandshake(AuthenticationHandshake handshake, IUser user, string? handshakeToken)
     {
         if (handshake.IsCompleted)
         {

@@ -116,10 +116,8 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
     /// <param name="context">The context value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public async Task<MfaAuthenticationResult> VerifyLinkAsync(string token, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
+    public async Task<MfaAuthenticationResult> VerifyLinkAsync(string? token, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(token);
-
         context ??= new AuthenticationContext();
 
         var sourceRateLimit = await CheckRateLimitAsync(AuthenticationRateLimitDimensions.Source(context), VerifyPurpose, context, _options.Value.VerificationRateLimit, cancellationToken);

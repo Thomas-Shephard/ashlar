@@ -55,7 +55,7 @@ public sealed record CreateRememberedMfaDeviceRequest
 /// Request to validate a remembered MFA <paramref name="Token" />.
 /// </summary>
 /// <param name="Token">The raw remembered MFA entry token.</param>
-public sealed record ValidateRememberedMfaDeviceRequest(string Token)
+public sealed record ValidateRememberedMfaDeviceRequest(string? Token)
 {
     /// <summary>Gets the tenant scope.</summary>
     public TenantContext? Tenant { get; init; }

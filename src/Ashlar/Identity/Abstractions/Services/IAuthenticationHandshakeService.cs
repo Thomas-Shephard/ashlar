@@ -44,5 +44,5 @@ public interface IAuthenticationHandshakeService
     /// <param name="context">Optional authentication request context for auditing.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>A result describing whether the handshake was revoked.</returns>
-    Task<Result> RevokeHandshakeAsync(string handshakeToken, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
+    Task<Result> RevokeHandshakeAsync(string? handshakeToken, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 }

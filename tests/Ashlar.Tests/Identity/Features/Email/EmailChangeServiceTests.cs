@@ -459,6 +459,29 @@ internal sealed class EmailChangeServiceTests
         }
     }
 
+    [TestCase(null)]
+    [TestCase(" ")]
+    public async Task ConfirmChangeReturnsInvalidOrExpiredForMissingTokenWithoutMutatingState(string? token)
+    {
+        var user = CreateUser();
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        fixture.Audit.Events.Clear();
+
+        var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token! });
+        var unchangedUser = await fixture.UserCredentialStore.GetUserByIdAsync(user.Id);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidOrExpiredToken));
+            Assert.That(unchangedUser?.Email, Is.EqualTo("old@example.com"));
+            Assert.That(fixture.UserCredentialStore.Credentials.Single().Status, Is.EqualTo(CredentialStatus.Active));
+            Assert.That(fixture.SessionRepository.RevokedUserId, Is.Null);
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.EmailChangeFailed).FailureReason, Is.EqualTo(AshlarFailureCodes.InvalidOrExpiredToken.Value));
+        }
+    }
+
     [Test]
     public async Task ConfirmChangeFailsForInvalidTokenData()
     {

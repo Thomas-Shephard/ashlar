@@ -215,12 +215,6 @@ internal sealed class PasswordResetService : IPasswordResetService
         ArgumentNullException.ThrowIfNull(request);
         context ??= new AuthenticationContext();
 
-        if (string.IsNullOrWhiteSpace(request.Token))
-        {
-            await RecordFailureAsync(context, null, AshlarFailureCodes.EmptyToken.Value, cancellationToken);
-            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.EmptyToken, TokenRequiredMessage);
-        }
-
         if (string.IsNullOrWhiteSpace(request.NewPassword))
         {
             await RecordFailureAsync(context, null, AshlarFailureCodes.InvalidSecret.Value, cancellationToken);
