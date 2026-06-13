@@ -1,60 +1,60 @@
 namespace Ashlar.Authorization.Models;
 
 /// <summary>
-/// Provides authorization grant behavior.
+/// Describes a role or permission grant assigned to a user within an optional tenant and resource scope.
 /// </summary>
 public sealed class AuthorizationGrant
 {
     /// <summary>
-    /// Gets or sets the id value.
+    /// Unique identifier for this grant.
     /// </summary>
     public required Guid Id { get; init; }
     /// <summary>
-    /// Gets or sets the user id value.
+    /// User that receives the role or permission.
     /// </summary>
     public required Guid UserId { get; init; }
     /// <summary>
-    /// Gets or sets the tenant id value.
+    /// Tenant that bounds the grant. A <see langword="null" /> value represents global scope.
     /// </summary>
     public Guid? TenantId { get; init; }
     /// <summary>
-    /// Gets or sets the scope type value.
+    /// Optional resource type that further constrains where the grant applies.
     /// </summary>
     public string? ScopeType { get; init; }
     /// <summary>
-    /// Gets or sets the scope id value.
+    /// Optional resource identifier within <see cref="ScopeType" />.
     /// </summary>
     public string? ScopeId { get; init; }
     /// <summary>
-    /// Gets or sets the role value.
+    /// Role assigned by this grant. A grant should use either a role or a permission, not both.
     /// </summary>
     public string? Role { get; init; }
     /// <summary>
-    /// Gets or sets the permission value.
+    /// Permission assigned by this grant. A grant should use either a permission or a role, not both.
     /// </summary>
     public string? Permission { get; init; }
     /// <summary>
-    /// Gets or sets the created at value.
+    /// Time the grant was created.
     /// </summary>
     public required DateTimeOffset CreatedAt { get; init; }
     /// <summary>
-    /// Gets or sets the expires at value.
+    /// Optional time after which the grant no longer applies.
     /// </summary>
     public DateTimeOffset? ExpiresAt { get; init; }
     /// <summary>
-    /// Gets or sets the revoked at value.
+    /// Time the grant was revoked, or <see langword="null" /> while it remains usable.
     /// </summary>
     public DateTimeOffset? RevokedAt { get; set; }
     /// <summary>
-    /// Gets or sets the metadata value.
+    /// Provider-neutral metadata for administrative display. Do not store secrets or credentials in this value.
     /// </summary>
     public string? Metadata { get; init; }
 
     /// <summary>
-    /// Performs the is active operation and returns the result.
+    /// Determines whether the grant is currently usable.
     /// </summary>
-    /// <param name="now">The now value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="now">UTC time used for expiry evaluation.</param>
+    /// <returns><see langword="true" /> when the grant is not revoked and has not expired.</returns>
     public bool IsActive(DateTimeOffset now)
     {
         if (RevokedAt != null)

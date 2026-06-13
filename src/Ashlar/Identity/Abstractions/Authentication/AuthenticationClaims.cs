@@ -42,11 +42,11 @@ public static class AuthenticationClaims
     }
 
     /// <summary>
-    /// Gets the first value for a claim, or <see langword="null" /> when the claim is missing or empty.
+    /// Gets the first claim entry, or <see langword="null" /> when the claim is missing or empty.
     /// </summary>
     /// <param name="claims">The claims.</param>
-    /// <param name="claimType">The claim type.</param>
-    /// <returns>The first value.</returns>
+    /// <param name="claimType">Claim key to read from the provider claims collection.</param>
+    /// <returns>The first claim entry, or <see langword="null" />.</returns>
     public static string? FirstValueOrDefault(IReadOnlyDictionary<string, IReadOnlyList<string>>? claims, string claimType)
     {
         return claims != null &&

@@ -8,17 +8,17 @@ namespace Ashlar.Identity.Models.Sessions;
 public sealed record RevokeAuthenticationSessionRequest
 {
     /// <summary>
-    /// The unique identifier of the session to revoke.
+    /// Application session to revoke.
     /// </summary>
     public required Guid SessionId { get; init; }
 
     /// <summary>
-    /// An optional reason for revocation.
+    /// Optional provider-neutral, display-safe reason for audit events and notifications. Do not include secrets, tokens, or credentials.
     /// </summary>
     public string? Reason { get; init; }
 
     /// <summary>
-    /// Tenant scope for the revocation event.
+    /// Tenant scope the target session must belong to. Use <see cref="TenantContext.Global" /> for global users; omit only when intentionally applying revocation across all tenant scopes.
     /// </summary>
     public TenantContext? Tenant { get; init; }
 

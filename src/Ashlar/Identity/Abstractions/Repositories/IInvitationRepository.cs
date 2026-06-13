@@ -1,38 +1,38 @@
 namespace Ashlar.Identity.Abstractions.Repositories;
 
 /// <summary>
-/// Defines the contract for iinvitation repository operations.
+/// Stores invitations and supports token-hash lookup for invitation acceptance.
 /// </summary>
 public interface IInvitationRepository
 {
     /// <summary>
-    /// Performs the create invitation <see langword="async" /> operation and returns the result.
+    /// Stores a newly issued invitation.
     /// </summary>
-    /// <param name="invitation">The invitation value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="invitation">Invitation to persist. It contains a token hash, not the raw invitation token.</param>
+    /// <param name="cancellationToken">A token that can cancel persistence.</param>
+    /// <returns>A task that completes when the invitation has been stored.</returns>
     Task CreateInvitationAsync(UserInvitation invitation, CancellationToken cancellationToken = default);
     /// <summary>
-    /// Performs the get invitation by token hash <see langword="async" /> operation and returns the result.
+    /// Finds an invitation by its storage-safe token hash.
     /// </summary>
-    /// <param name="tokenHash">The token hash value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="tokenHash">Storage-safe hash of the raw invitation token presented by a caller.</param>
+    /// <param name="cancellationToken">A token that can cancel lookup.</param>
+    /// <returns>The matching invitation, or <see langword="null" /> when no invitation exists.</returns>
     Task<UserInvitation?> GetInvitationByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default);
     /// <summary>
-    /// Performs the update invitation <see langword="async" /> operation and returns the result.
+    /// Updates invitation state after acceptance or revocation.
     /// </summary>
-    /// <param name="invitation">The invitation value.</param>
-    /// <param name="expectedVersion">The expected version value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="invitation">Updated invitation to persist.</param>
+    /// <param name="expectedVersion">Version expected by optimistic concurrency checks.</param>
+    /// <param name="cancellationToken">A token that can cancel the update.</param>
+    /// <returns><see langword="true" /> when the invitation was updated.</returns>
     Task<bool> UpdateInvitationAsync(UserInvitation invitation, string expectedVersion, CancellationToken cancellationToken = default);
     /// <summary>
-    /// Performs the revoke invitations by email <see langword="async" /> operation and returns the result.
+    /// Revokes outstanding invitations for an email address.
     /// </summary>
-    /// <param name="email">The email value.</param>
-    /// <param name="tenantId">The tenant id value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="email">Normalized email address whose invitations should be revoked.</param>
+    /// <param name="tenantId">Tenant scope to revoke within, or <see langword="null" /> for unrestricted revocation across all tenant scopes.</param>
+    /// <param name="cancellationToken">A token that can cancel revocation.</param>
+    /// <returns>The number of invitations newly revoked.</returns>
     Task<int> RevokeInvitationsByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default);
 }

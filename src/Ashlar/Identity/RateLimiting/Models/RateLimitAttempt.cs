@@ -1,37 +1,37 @@
 namespace Ashlar.Identity.RateLimiting.Models;
 
 /// <summary>
-/// Represents an attempt to perform an action that may be rate limited.
+/// Provider-neutral metadata for one rate-limited authentication attempt.
 /// </summary>
 public sealed class RateLimitAttempt
 {
     /// <summary>
-    /// The primary key identifying the resource being limited (e.g., "email:test@example.com").
+    /// Hashed persistence key identifying the limited bucket.
     /// </summary>
     public required string Key { get; init; }
 
     /// <summary>
-    /// An optional identifier for the purpose or flow of the attempt (e.g., "PasswordlessEmail", "MfaChallenge").
+    /// Authentication flow or operation being limited.
     /// </summary>
     public string? Purpose { get; init; }
 
     /// <summary>
-    /// The IP address of the client making the attempt, if available and relevant.
+    /// Client IP address associated with the attempt, when available. Treat as personal data.
     /// </summary>
     public string? IpAddress { get; init; }
 
     /// <summary>
-    /// The user ID associated with the attempt, if known.
+    /// User identifier associated with the attempt, when known.
     /// </summary>
     public string? UserId { get; init; }
 
     /// <summary>
-    /// The email address associated with the attempt, if relevant.
+    /// Normalized email associated with the attempt, when relevant.
     /// </summary>
     public string? Email { get; init; }
 
     /// <summary>
-    /// A correlation ID for tracking the attempt across logs or audit events.
+    /// Host-defined request or trace correlation identifier, when available.
     /// </summary>
     public string? CorrelationId { get; init; }
 }

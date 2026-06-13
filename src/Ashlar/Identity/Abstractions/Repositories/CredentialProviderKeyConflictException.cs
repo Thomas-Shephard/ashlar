@@ -6,7 +6,7 @@ namespace Ashlar.Identity.Abstractions.Repositories;
 public sealed class CredentialProviderKeyConflictException : InvalidOperationException
 {
     /// <summary>
-    /// Initializes a new instance of the credential provider key conflict exception.
+    /// Creates an exception for a credential provider key already linked to another user.
     /// </summary>
     public CredentialProviderKeyConflictException()
         : base("Credential provider key is already linked to another user.")

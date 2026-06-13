@@ -3,8 +3,8 @@ namespace Ashlar.Identity.Features.Administration;
 /// <summary>
 /// Implements read-only administrator credential search and detail operations.
 /// </summary>
-/// <param name="repository">The repository value.</param>
-/// <param name="timeProvider">The time provider value.</param>
+/// <param name="repository">Repository used for safe administrator credential lookup.</param>
+/// <param name="timeProvider">Clock used for credential availability projection.</param>
 /// <remarks>
 /// These operations are intended for administrative diagnostics and operations tooling and do not authorize the caller.
 /// Host applications must protect usage of this service with appropriate admin authorization and step-up policy.

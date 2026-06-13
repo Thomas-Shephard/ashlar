@@ -10,12 +10,12 @@ namespace Ashlar.Identity.Features.Sessions;
 /// <summary>
 /// Implements provider-neutral authentication session lifecycle operations.
 /// </summary>
-/// <param name="repository">The repository value.</param>
-/// <param name="tokenHasher">The token hasher value.</param>
-/// <param name="tokenGenerator">The token generator value.</param>
-/// <param name="transactionProvider">The transaction provider value.</param>
-/// <param name="dependencies">The dependencies value.</param>
-/// <param name="logger">The logger value.</param>
+/// <param name="repository">Session repository that stores token hashes and session state.</param>
+/// <param name="tokenHasher">Hasher used before looking up or persisting session tokens.</param>
+/// <param name="tokenGenerator">Generator used to issue raw session tokens.</param>
+/// <param name="transactionProvider">Transaction provider used for session mutations.</param>
+/// <param name="dependencies">Session options, user lookup, audit, and notification dependencies.</param>
+/// <param name="logger">Optional logger for non-critical session lifecycle failures.</param>
 public sealed class AuthenticationSessionService(
     IAuthenticationSessionRepository repository,
     ISecureTokenHasher tokenHasher,
@@ -740,13 +740,13 @@ public sealed class AuthenticationSessionService(
 }
 
 /// <summary>
-/// Represents the authentication session service dependencies data model.
+/// Groups dependencies used by the authentication session service.
 /// </summary>
 /// <param name="UserRepository">Looks up users for session tenant ownership validation and notification context.</param>
-/// <param name="Options">The options value.</param>
-/// <param name="TimeProvider">The time provider value.</param>
-/// <param name="SecurityEventSink">The security event sink value.</param>
-/// <param name="NotificationService">The notification service value.</param>
+/// <param name="Options">Session lifetime and validation options.</param>
+/// <param name="TimeProvider">Clock used for timestamps and expiration checks.</param>
+/// <param name="SecurityEventSink">Optional sink used to record session security events.</param>
+/// <param name="NotificationService">Optional service used to send session security notifications.</param>
 /// <param name="Logger">Receives operational messages emitted directly by the session service.</param>
 /// <param name="LoggerFactory">Creates diagnostics for embedded security event sink failures.</param>
 public sealed record AuthenticationSessionServiceDependencies(

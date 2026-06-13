@@ -5,7 +5,7 @@ using Ashlar.Identity.RateLimiting.Models;
 namespace Ashlar.Identity.RateLimiting;
 
 /// <summary>
-/// Builds safe, stable authentication rate-limit attempts.
+/// Builds safe, stable authentication rate-limit buckets.
 /// </summary>
 public static class AuthenticationRateLimitKeyBuilder
 {
@@ -13,10 +13,10 @@ public static class AuthenticationRateLimitKeyBuilder
     private const string NoProvider = "none";
 
     /// <summary>
-    /// Builds a rate-limit attempt for the supplied bucket.
+    /// Builds a hashed rate-limit bucket for the supplied check.
     /// </summary>
     /// <param name="check">The rate-limit bucket check.</param>
-    /// <returns>The rate-limit attempt.</returns>
+    /// <returns>Safe attempt metadata containing a hashed persistence key.</returns>
     public static RateLimitAttempt BuildAttempt(AuthenticationRateLimitCheck check)
     {
         ArgumentNullException.ThrowIfNull(check);
@@ -43,12 +43,12 @@ public static class AuthenticationRateLimitKeyBuilder
     }
 
     /// <summary>
-    /// Builds a rate-limit attempt for the supplied bucket.
+    /// Builds a hashed rate-limit bucket from explicit dimension values.
     /// </summary>
     /// <param name="purpose">The operation purpose being limited.</param>
-    /// <param name="dimensionName">The safe bucket dimension name.</param>
-    /// <param name="dimensionValue">The safe bucket dimension value.</param>
-    /// <returns>The rate-limit attempt.</returns>
+    /// <param name="dimensionName">Normalized dimension name used to partition rate-limit buckets.</param>
+    /// <param name="dimensionValue">Safe bucket value, such as a normalized email, source, or token hash.</param>
+    /// <returns>Safe attempt metadata containing a hashed persistence key.</returns>
     public static RateLimitAttempt BuildAttempt(
         string purpose,
         string dimensionName,
@@ -58,10 +58,10 @@ public static class AuthenticationRateLimitKeyBuilder
     }
 
     /// <summary>
-    /// Builds a rate-limit attempt for the supplied descriptor.
+    /// Builds a hashed rate-limit bucket from a descriptor.
     /// </summary>
     /// <param name="descriptor">The rate-limit attempt descriptor.</param>
-    /// <returns>The rate-limit attempt.</returns>
+    /// <returns>Safe attempt metadata containing a hashed persistence key.</returns>
     public static RateLimitAttempt BuildAttempt(AuthenticationRateLimitAttemptDescriptor descriptor)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
@@ -109,7 +109,7 @@ public static class AuthenticationRateLimitKeyBuilder
     }
 
     /// <summary>
-    /// Hashes a composed key before handing it to persistence-backed limiters.
+    /// Hashes a composed bucket key before handing it to persistence-backed limiters.
     /// </summary>
     /// <param name="value">The composed key.</param>
     /// <returns>The lower-case SHA-256 hexadecimal hash.</returns>
@@ -185,47 +185,47 @@ public static class AuthenticationRateLimitKeyBuilder
 /// Describes a rate-limit attempt to build.
 /// </summary>
 /// <param name="purpose">The operation purpose being limited.</param>
-/// <param name="dimensionName">The safe bucket dimension name.</param>
-/// <param name="dimensionValue">The safe bucket dimension value.</param>
+/// <param name="dimensionName">Normalized dimension name used to partition rate-limit buckets.</param>
+/// <param name="dimensionValue">Safe bucket value, such as a normalized email, source, or token hash.</param>
 public sealed class AuthenticationRateLimitAttemptDescriptor(string purpose, string dimensionName, string dimensionValue)
 {
     /// <summary>
-    /// Gets the operation purpose being limited.
+    /// Operation purpose being limited.
     /// </summary>
     public string Purpose { get; } = purpose;
 
     /// <summary>
-    /// Gets the safe bucket dimension name.
+    /// Normalized dimension name used to partition rate-limit buckets.
     /// </summary>
     public string DimensionName { get; } = dimensionName;
 
     /// <summary>
-    /// Gets the safe bucket dimension value.
+    /// Safe bucket identifier for this dimension.
     /// </summary>
     public string DimensionValue { get; } = dimensionValue;
 
     /// <summary>
-    /// Gets the optional authentication context.
+    /// Optional authentication context used for source, tenant, and correlation metadata.
     /// </summary>
     public AuthenticationContext? Context { get; init; }
 
     /// <summary>
-    /// Gets the optional provider identity.
+    /// Optional provider identity for provider-scoped buckets.
     /// </summary>
     public AuthenticationProviderKey? ProviderKey { get; init; }
 
     /// <summary>
-    /// Gets the optional normalized tenant scope override.
+    /// Optional normalized tenant scope override.
     /// </summary>
     public Guid? TenantId { get; init; }
 
     /// <summary>
-    /// Gets the optional user identity metadata.
+    /// Optional user identity metadata.
     /// </summary>
     public Guid? UserId { get; init; }
 
     /// <summary>
-    /// Gets the optional email metadata.
+    /// Optional normalized email metadata for rate-limit bucketing.
     /// </summary>
     public string? Email { get; init; }
 }

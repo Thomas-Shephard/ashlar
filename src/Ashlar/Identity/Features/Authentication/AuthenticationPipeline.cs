@@ -7,11 +7,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Ashlar.Identity.Features.Authentication;
 
 /// <summary>
-/// Provides authentication pipeline behavior.
+/// Authenticates primary credentials and secondary factors through registered providers.
 /// </summary>
-/// <param name="providerRegistry">The provider registry value.</param>
-/// <param name="credentialService">The credential service value.</param>
-/// <param name="transactionProvider">The transaction provider value.</param>
+/// <param name="providerRegistry">Registry used to resolve providers for submitted assertions.</param>
+/// <param name="credentialService">Credential lifecycle service used after provider authentication.</param>
+/// <param name="transactionProvider">Transaction provider used for credential lifecycle mutations.</param>
 /// <param name="primaryRateLimiter">The provider-neutral primary authentication rate limiter.</param>
 /// <param name="factorRateLimiter">The provider-neutral secondary factor verification rate limiter.</param>
 /// <param name="dependencies">Optional operational dependencies used by the pipeline.</param>
@@ -65,7 +65,7 @@ public sealed class AuthenticationPipeline(
     /// Performs primary sign-in authentication and returns the result.
     /// </summary>
     /// <param name="context">Request metadata used for auditing, tenant checks, and primary rate limiting.</param>
-    /// <param name="assertion">The primary credential or provider assertion to authenticate.</param>
+    /// <param name="assertion">Primary credential or provider assertion to authenticate. Treat as sensitive unless the provider documents otherwise.</param>
     /// <param name="cancellationToken">A token that can cancel authentication.</param>
     /// <returns>The primary authentication outcome.</returns>
     public Task<AuthenticationResponse> LoginAsync(
@@ -80,7 +80,7 @@ public sealed class AuthenticationPipeline(
     /// Verifies a secondary factor without applying primary sign-in throttles.
     /// </summary>
     /// <param name="context">Request metadata used for auditing, tenant checks, and factor rate limiting.</param>
-    /// <param name="assertion">The secondary factor assertion to verify.</param>
+    /// <param name="assertion">Secondary factor assertion to verify. Treat as sensitive unless the provider documents otherwise.</param>
     /// <param name="cancellationToken">A token that can cancel factor verification.</param>
     /// <returns>The factor verification outcome.</returns>
     public Task<AuthenticationResponse> VerifyFactorAsync(
@@ -484,9 +484,9 @@ public sealed class AuthenticationPipeline(
 /// </summary>
 /// <param name="SecurityEventSink">The optional sink that receives authentication security events.</param>
 /// <param name="TimeProvider">The optional clock.</param>
-/// <param name="Logger">The optional <paramref name="Logger" /> for pipeline operational failures.</param>
-/// <param name="LoggerFactory">The optional <paramref name="LoggerFactory" /> used by the security event emitter.</param>
-/// <param name="AccountLockoutService">The optional automatic account lockout service for local password authentication.</param>
+/// <param name="Logger">Optional <paramref name="Logger" /> for authentication pipeline operational failures.</param>
+/// <param name="LoggerFactory">Optional <paramref name="LoggerFactory" /> used by security-event emission.</param>
+/// <param name="AccountLockoutService">Optional automatic account lockout service used for local password authentication.</param>
 public sealed record AuthenticationPipelineDependencies(
     ISecurityEventSink? SecurityEventSink = null,
     TimeProvider? TimeProvider = null,

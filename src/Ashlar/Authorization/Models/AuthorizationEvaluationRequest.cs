@@ -1,14 +1,14 @@
 namespace Ashlar.Authorization.Models;
 
 /// <summary>
-/// Represents the authorization evaluation request data model.
+/// Request to evaluate whether a user has a matching authorization grant.
 /// </summary>
-/// <param name="UserId">The user id value.</param>
-/// <param name="Permission">The permission value.</param>
-/// <param name="Role">The role value.</param>
-/// <param name="TenantId">The tenant id value.</param>
-/// <param name="ScopeType">The scope type value.</param>
-/// <param name="ScopeId">The scope id value.</param>
+/// <param name="UserId">The user whose grants are evaluated.</param>
+/// <param name="Permission">Permission to require. Callers should supply either <paramref name="Permission" /> or <paramref name="Role" />.</param>
+/// <param name="Role">Role to require. Callers should supply either <paramref name="Role" /> or <paramref name="Permission" />.</param>
+/// <param name="TenantId">Tenant boundary for the decision, or <see langword="null" /> for global grants.</param>
+/// <param name="ScopeType">Optional resource type required by the decision.</param>
+/// <param name="ScopeId">Optional resource identifier within <paramref name="ScopeType" />.</param>
 public sealed record AuthorizationEvaluationRequest(
     Guid UserId,
     string? Permission = null,

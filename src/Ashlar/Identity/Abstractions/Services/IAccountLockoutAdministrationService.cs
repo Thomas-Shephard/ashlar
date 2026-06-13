@@ -13,19 +13,19 @@ public interface IAccountLockoutAdministrationService
     /// <summary>
     /// Searches automatic account lockout state for administrator and operations interfaces.
     /// </summary>
-    /// <param name="request">The search request.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
-    /// <returns>The paged lockout search result.</returns>
+    /// <param name="request">Tenant scope, filters, and paging limits for the administrator search.</param>
+    /// <param name="cancellationToken">A token that can cancel lockout search.</param>
+    /// <returns>The matching lockout rows and paging metadata.</returns>
     Task<Result<AccountLockoutSearchResult>> SearchLockoutsAsync(SearchAccountLockoutsRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets current automatic lockout status for a user and provider in an explicit tenant scope.
     /// </summary>
-    /// <param name="userId">The user id.</param>
+    /// <param name="userId">User whose automatic lockout status should be returned.</param>
     /// <param name="provider">The authentication provider key.</param>
-    /// <param name="request">The tenant-scoped request.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
-    /// <returns>The current lockout status, or an unlocked empty status when no failure state is stored.</returns>
+    /// <param name="request">Explicit tenant scope for the lookup.</param>
+    /// <param name="cancellationToken">A token that can cancel lockout lookup.</param>
+    /// <returns>Current lockout status, or an unlocked empty status when no failure state is stored.</returns>
     Task<Result<AccountLockoutStatus>> GetLockoutStatusAsync(
         Guid userId,
         AuthenticationProviderKey provider,
@@ -35,10 +35,10 @@ public interface IAccountLockoutAdministrationService
     /// <summary>
     /// Clears stored automatic lockout failures for a user and provider in an explicit tenant scope.
     /// </summary>
-    /// <param name="userId">The user id.</param>
+    /// <param name="userId">User whose automatic lockout state should be cleared.</param>
     /// <param name="provider">The authentication provider key.</param>
-    /// <param name="request">The tenant-scoped request with required audit metadata.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
+    /// <param name="request">Explicit tenant scope and required audit metadata for the reset.</param>
+    /// <param name="cancellationToken">A token that can cancel lockout reset.</param>
     /// <returns><see langword="true" /> when stored automatic lockout state was cleared.</returns>
     Task<Result<bool>> ResetLockoutAsync(
         Guid userId,

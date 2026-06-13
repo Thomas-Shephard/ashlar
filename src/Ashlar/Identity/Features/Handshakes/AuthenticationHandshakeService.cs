@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.Identity.Features.Handshakes;
 
 /// <summary>
-/// Provides authentication handshake service behavior.
+/// Creates and verifies short-lived authentication handshakes for MFA and step-up flows.
 /// </summary>
 public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeService
 {
@@ -41,11 +41,11 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
     /// <summary>
     /// Initializes a configured service instance.
     /// </summary>
-    /// <param name="repository">The repository value.</param>
-    /// <param name="tokenGenerator">The token generator value.</param>
-    /// <param name="tokenHasher">The token hasher value.</param>
-    /// <param name="transactionProvider">The transaction provider value.</param>
-    /// <param name="dependencies">The dependencies value.</param>
+    /// <param name="repository">Handshake repository that stores token hashes and handshake state.</param>
+    /// <param name="tokenGenerator">Generator used to issue raw handshake tokens.</param>
+    /// <param name="tokenHasher">Hasher used before looking up or persisting handshake tokens.</param>
+    /// <param name="transactionProvider">Transaction provider used for handshake mutations.</param>
+    /// <param name="dependencies">Handshake options, rate limiting, audit, user lookup, and notification dependencies.</param>
     public AuthenticationHandshakeService(
         IAuthenticationHandshakeRepository repository,
         ISecureTokenGenerator tokenGenerator,
@@ -320,12 +320,12 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
     }
 
     /// <summary>
-    /// Performs the revoke handshake <see langword="async" /> operation and returns the result.
+    /// Revokes an in-progress handshake by raw token.
     /// </summary>
-    /// <param name="handshakeToken">The handshake token value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="handshakeToken">Raw handshake token presented by the caller. Do not log or persist this value.</param>
+    /// <param name="context">Authentication request context used for audit and notifications.</param>
+    /// <param name="cancellationToken">A token that can cancel revocation.</param>
+    /// <returns>A result indicating whether revocation succeeded or the handshake was not found.</returns>
     public async Task<Result> RevokeHandshakeAsync(string? handshakeToken, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         if (!SecureTokenHashing.TryHashToken(_tokenHasher, handshakeToken, out var tokenHash))
@@ -569,14 +569,14 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
 }
 
 /// <summary>
-/// Represents the authentication handshake service dependencies data model.
+/// Groups optional dependencies used by the authentication handshake service.
 /// </summary>
-/// <param name="Options">The options value.</param>
-/// <param name="TimeProvider">The time provider value.</param>
-/// <param name="SecurityEventSink">The security event sink value.</param>
-/// <param name="RateLimiter">The rate limiter value.</param>
+/// <param name="Options">Handshake lifetime and verification rate-limit options.</param>
+/// <param name="TimeProvider">Clock used for timestamps and expiration checks.</param>
+/// <param name="SecurityEventSink">Optional sink used to record handshake security events.</param>
+/// <param name="RateLimiter">Optional rate limiter used for handshake lookup and verification attempts.</param>
 /// <param name="UserRepository">Looks up users when operations need notification context.</param>
-/// <param name="NotificationService">The notification service value.</param>
+/// <param name="NotificationService">Optional service used to send handshake-related security notifications.</param>
 public sealed record AuthenticationHandshakeServiceDependencies(
     IOptions<AuthenticationHandshakeOptions>? Options = null,
     TimeProvider? TimeProvider = null,

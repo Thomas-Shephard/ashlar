@@ -3,7 +3,7 @@ namespace Ashlar.Operational.Diagnostics;
 /// <summary>
 /// Provides shared cleanup diagnostics result mapping for Ashlar persistence providers.
 /// </summary>
-/// <param name="providerName">The provider name value.</param>
+/// <param name="providerName">Persistence provider name reported in diagnostic results.</param>
 public sealed class AshlarCleanupDiagnosticsRunner(string providerName)
 {
     private const string NotConfiguredReason = "Ashlar cleanup services are not configured.";
@@ -12,10 +12,10 @@ public sealed class AshlarCleanupDiagnosticsRunner(string providerName)
     /// <summary>
     /// Checks cleanup configuration and returns a sanitized diagnostics result.
     /// </summary>
-    /// <param name="timeProvider">The time provider value.</param>
-    /// <param name="options">The cleanup options, or <see langword="null" /> when cleanup is not configured.</param>
+    /// <param name="timeProvider">Clock used to stamp the diagnostic result.</param>
+    /// <param name="options">Cleanup configuration to validate, or <see langword="null" /> when cleanup is not configured.</param>
     /// <param name="configured">Whether cleanup services are configured.</param>
-    /// <returns>The diagnostic result.</returns>
+    /// <returns>Provider-neutral cleanup diagnostic result.</returns>
     public AshlarCleanupDiagnosticResult Check(
         TimeProvider timeProvider,
         AshlarCleanupOptions? options,

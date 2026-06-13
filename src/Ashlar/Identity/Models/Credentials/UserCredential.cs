@@ -1,25 +1,24 @@
 namespace Ashlar.Identity.Models.Credentials;
 
 /// <summary>
-/// Provides user credential behavior.
+/// Represents a stored authentication credential for one user and provider.
 /// </summary>
-/// <returns>The operation result.</returns>
 public sealed class UserCredential
 {
     /// <summary>
-    /// Gets or sets the id value.
+    /// Unique identifier for this credential.
     /// </summary>
     public required Guid Id { get; init; }
     /// <summary>
-    /// Gets or sets the user id value.
+    /// User that owns this credential.
     /// </summary>
     public required Guid UserId { get; init; }
     /// <summary>
-    /// Gets or sets the provider type value.
+    /// Provider family that owns this credential.
     /// </summary>
     public required ProviderType ProviderType { get; init; }
     /// <summary>
-    /// Gets or sets the provider name value.
+    /// Provider name within <see cref="ProviderType" />.
     /// </summary>
     public required string ProviderName { get; init; }
 
@@ -37,8 +36,8 @@ public sealed class UserCredential
     /// <summary>
     /// Indicates whether the credential is active, not revoked, and has not yet expired.
     /// </summary>
-    /// <param name="now">The now value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="now">UTC time used for expiry evaluation.</param>
+    /// <returns><see langword="true" /> when the credential is active, unrevoked, and unexpired.</returns>
     public bool IsAvailable(DateTimeOffset now)
     {
         if (Status != CredentialStatus.Active)
@@ -62,7 +61,7 @@ public sealed class UserCredential
     /// <summary>
     /// Creates a detached copy of this credential.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>A detached credential copy with the same persisted values.</returns>
     public UserCredential Clone()
     {
         return new UserCredential
@@ -86,7 +85,7 @@ public sealed class UserCredential
     }
 
     /// <summary>
-    /// The time this credential was created.
+    /// UTC time when the credential was created.
     /// </summary>
     public required DateTimeOffset CreatedAt { get; init; }
 
@@ -96,17 +95,17 @@ public sealed class UserCredential
     public DateTimeOffset? UpdatedAt { get; set; }
 
     /// <summary>
-    /// The time this credential expires. Expiry is derived from this value rather than stored as a status.
+    /// UTC time after which the credential is unavailable.
     /// </summary>
     public DateTimeOffset? ExpiresAt { get; set; }
 
     /// <summary>
-    /// The time this credential was revoked.
+    /// UTC time when the credential was revoked, when applicable.
     /// </summary>
     public DateTimeOffset? RevokedAt { get; set; }
 
     /// <summary>
-    /// The lifecycle status for this credential.
+    /// Current credential lifecycle status.
     /// </summary>
     public required CredentialStatus Status { get; set; }
 
@@ -116,8 +115,8 @@ public sealed class UserCredential
     public string? Purpose { get; set; }
 
     /// <summary>
-    /// For local passwords, this stores the hashed password. For other providers, it might store refresh tokens or other metadata.
-    /// Ensure any sensitive metadata stored here is appropriately protected by the repository layer.
+    /// Stores the provider credential payload. Values can include password hashes or protected provider secrets;
+    /// do not store raw tokens, plaintext passwords, or unprotected credentials.
     /// </summary>
     public string? CredentialValue { get; set; }
 
@@ -127,8 +126,9 @@ public sealed class UserCredential
     public DateTimeOffset? LastUsedAt { get; set; }
 
     /// <summary>
-    /// Provider-specific metadata stored as a JSON blob.
-    /// e.g., device AAGUID, backup state, or FIDO2 signature counters.
+    /// Provider-specific non-secret metadata stored as a JSON blob, such as device AAGUID, backup state,
+    /// or FIDO2 signature counters.
+    /// Do not include secrets, raw tokens, hashes, credentials, or protected payloads.
     /// Providers should use <c>System.Text.Json</c> for consistent serialization and deserialization of this field.
     /// </summary>
     public string? Metadata { get; set; }

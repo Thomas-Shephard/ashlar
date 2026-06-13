@@ -1,16 +1,16 @@
 namespace Ashlar.Identity.Features.Mfa;
 
 /// <summary>
-/// Provides composite mfa policy evaluator behavior.
+/// Combines MFA requirements from registered policy evaluators.
 /// </summary>
 public sealed class CompositeMfaPolicyEvaluator : IMfaPolicyEvaluator
 {
     private readonly IReadOnlyList<IMfaPolicyEvaluatorComponent> _evaluators;
 
     /// <summary>
-    /// Initializes a new instance of the composite mfa policy evaluator class.
+    /// Initializes the composite evaluator from registered evaluator components.
     /// </summary>
-    /// <param name="evaluators">The evaluators value.</param>
+    /// <param name="evaluators">Policy evaluator components to combine.</param>
     public CompositeMfaPolicyEvaluator(IEnumerable<IMfaPolicyEvaluatorComponent> evaluators)
     {
         ArgumentNullException.ThrowIfNull(evaluators);
@@ -19,12 +19,12 @@ public sealed class CompositeMfaPolicyEvaluator : IMfaPolicyEvaluator
     }
 
     /// <summary>
-    /// Performs the evaluate <see langword="async" /> operation and returns the result.
+    /// Evaluates all registered policies and merges required factors.
     /// </summary>
-    /// <param name="user">The user value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="user">User being authenticated.</param>
+    /// <param name="context">Authentication request context supplied by the host application.</param>
+    /// <param name="cancellationToken">A token that can cancel policy evaluation.</param>
+    /// <returns>The combined MFA requirement for the user.</returns>
     public async Task<MfaPolicyEvaluation> EvaluateAsync(IUser user, AuthenticationContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
@@ -54,27 +54,27 @@ public sealed class CompositeMfaPolicyEvaluator : IMfaPolicyEvaluator
 }
 
 /// <summary>
-/// Defines the contract for imfa policy evaluator component operations.
+/// Marker interface for MFA policy evaluators registered as composite components.
 /// </summary>
 public interface IMfaPolicyEvaluatorComponent : IMfaPolicyEvaluator;
 
 /// <summary>
-/// Provides mfa policy evaluator component behavior.
+/// Adapts an MFA policy evaluator into a composite evaluator component.
 /// </summary>
-/// <typeparam name="T">The result value type.</typeparam>
-/// <param name="evaluator">The evaluator value.</param>
+/// <typeparam name="T">Policy implementation type.</typeparam>
+/// <param name="evaluator">Policy component to invoke.</param>
 public sealed class MfaPolicyEvaluatorComponent<T>(T evaluator) : IMfaPolicyEvaluatorComponent
     where T : IMfaPolicyEvaluator
 {
     private readonly T _evaluator = evaluator ?? throw new ArgumentNullException(nameof(evaluator));
 
     /// <summary>
-    /// Performs the evaluate <see langword="async" /> operation and returns the result.
+    /// Delegates policy evaluation to the wrapped evaluator.
     /// </summary>
-    /// <param name="user">The user value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="user">User being authenticated.</param>
+    /// <param name="context">Authentication request context supplied by the host application.</param>
+    /// <param name="cancellationToken">A token that can cancel policy evaluation.</param>
+    /// <returns>The wrapped evaluator's MFA requirement.</returns>
     public Task<MfaPolicyEvaluation> EvaluateAsync(IUser user, AuthenticationContext context, CancellationToken cancellationToken = default)
     {
         return _evaluator.EvaluateAsync(user, context, cancellationToken);

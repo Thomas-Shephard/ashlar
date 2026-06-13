@@ -31,7 +31,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
     private readonly EmailFlowVerificationRateLimitChecker _verificationRateLimits;
 
     /// <summary>
-    /// Initializes a new instance of the email verification service class.
+    /// Creates the email verification service with the dependencies for token issuance, delivery, and confirmation.
     /// </summary>
     /// <param name="dependencies">The dependencies required by the email verification workflow.</param>
     public EmailVerificationService(EmailVerificationServiceDependencies dependencies)
@@ -53,9 +53,9 @@ internal sealed class EmailVerificationService : IEmailVerificationService
     /// <summary>
     /// Requests a verification email for an active, unverified user.
     /// </summary>
-    /// <param name="request">The verification request.</param>
+    /// <param name="request">User, callback base URI, and audit context for issuing the verification message.</param>
     /// <param name="cancellationToken">A token that can cancel the request.</param>
-    /// <returns>A success result when a verification message is queued; otherwise, a failure describing the problem.</returns>
+    /// <returns>A success result when the verification message is queued or sent; otherwise, a failure describing why the request was rejected.</returns>
     public async Task<Result> RequestVerificationAsync(EmailVerificationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -171,9 +171,9 @@ internal sealed class EmailVerificationService : IEmailVerificationService
     /// <summary>
     /// Confirms a verification token and marks the user's email address as verified.
     /// </summary>
-    /// <param name="request">The confirmation request containing the token and user id.</param>
+    /// <param name="request">Confirmation request containing the raw token and user identifier. Do not log or persist the token.</param>
     /// <param name="cancellationToken">A token that can cancel confirmation.</param>
-    /// <returns>A success result when the token is consumed; otherwise, a failure describing the problem.</returns>
+    /// <returns>A success result when the token is consumed and the email is marked verified; otherwise, a failure describing why confirmation was rejected.</returns>
     public async Task<Result> ConfirmVerificationAsync(ConfirmEmailVerificationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -308,31 +308,31 @@ internal sealed class EmailVerificationService : IEmailVerificationService
     private sealed class UpdatedUserWrapper(IUser original, DateTimeOffset? emailVerifiedAt) : ITenantUser, IHasAuditMetadata
     {
         /// <summary>
-        /// Gets the user identifier.
+        /// Existing user identifier.
         /// </summary>
         public Guid Id => original.Id;
         /// <summary>
-        /// Gets the user's email address.
+        /// Existing email address.
         /// </summary>
         public string Email => original.Email;
         /// <summary>
-        /// Gets the user's display name.
+        /// Existing display name.
         /// </summary>
         public string? Name => original.Name;
         /// <summary>
-        /// Gets the user's account state.
+        /// Existing account state.
         /// </summary>
         public UserAccountState AccountState => original.AccountState;
         /// <summary>
-        /// Gets the tenant that owns the user.
+        /// Tenant that owns the user.
         /// </summary>
         public Guid? TenantId => (original as ITenantUser)?.TenantId;
         /// <summary>
-        /// Gets the timestamp assigned when the email address is verified.
+        /// Timestamp assigned when the email address is verified.
         /// </summary>
         public DateTimeOffset? EmailVerifiedAt { get; } = emailVerifiedAt;
         /// <summary>
-        /// Gets the original user creation timestamp.
+        /// Original user creation timestamp.
         /// </summary>
         public DateTimeOffset CreatedAt => (original as IHasAuditMetadata)?.CreatedAt ?? default;
         public DateTimeOffset? UpdatedAt

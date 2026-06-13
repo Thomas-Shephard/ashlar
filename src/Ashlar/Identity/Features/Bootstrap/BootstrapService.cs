@@ -29,10 +29,10 @@ internal sealed class BootstrapService(
     private readonly AuthenticationRateLimitChecker _rateLimitChecker = new(dependencies.RateLimiter);
 
     /// <summary>
-    /// Gets whether the installation has already been initialized.
+    /// Checks whether first-admin bootstrap has already initialized the installation.
     /// </summary>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
-    /// <returns>The current bootstrap status.</returns>
+    /// <param name="cancellationToken">A token that can cancel bootstrap status lookup.</param>
+    /// <returns>Current bootstrap initialization state.</returns>
     public Task<BootstrapStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
         return _dependencies.StateRepository.GetBootstrapStatusAsync(cancellationToken);
@@ -41,9 +41,9 @@ internal sealed class BootstrapService(
     /// <summary>
     /// Creates the first administrator for an uninitialized installation.
     /// </summary>
-    /// <param name="request">The first-admin details and setup secret supplied by the operator.</param>
+    /// <param name="request">The first-admin details and setup secret supplied by the operator. Do not log the setup secret.</param>
     /// <param name="context">Optional request context for auditing and notifications.</param>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <param name="cancellationToken">A token that can cancel first-admin bootstrap.</param>
     /// <returns>The created administrator user ID when bootstrap succeeds; otherwise a failure describing why bootstrap was rejected.</returns>
     public async Task<Result<Guid>> BootstrapFirstAdminAsync(BootstrapFirstAdminRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {

@@ -10,15 +10,15 @@ public interface IUserRepository
     /// </summary>
     /// <param name="email">The email address to search for.</param>
     /// <param name="tenantId">The tenant boundary for the lookup, or <see langword="null" /> for tenantless users.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
+    /// <param name="cancellationToken">A token that can cancel email lookup.</param>
     /// <returns>The matching user, or <see langword="null" /> when no user exists.</returns>
     Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Finds a user by its stable identifier.
     /// </summary>
-    /// <param name="userId">The user identifier.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
+    /// <param name="userId">Stable identifier of the user to retrieve.</param>
+    /// <param name="cancellationToken">A token that can cancel user lookup.</param>
     /// <returns>The matching user, or <see langword="null" /> when no user exists.</returns>
     Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default);
 
@@ -28,7 +28,7 @@ public interface IUserRepository
     /// <param name="type">The provider category.</param>
     /// <param name="providerName">The provider name within the category.</param>
     /// <param name="providerKey">The provider's stable key for the credential.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
+    /// <param name="cancellationToken">A token that can cancel provider-key lookup.</param>
     /// <returns>The linked user, or <see langword="null" /> when the key is not linked.</returns>
     Task<IUser?> GetUserByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default);
 
@@ -36,13 +36,13 @@ public interface IUserRepository
     /// Persists a new user.
     /// </summary>
     /// <param name="user">The user to create.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
+    /// <param name="cancellationToken">A token that can cancel user creation.</param>
     Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Persists updates to an existing user.
     /// </summary>
     /// <param name="user">The user state to save.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
+    /// <param name="cancellationToken">A token that can cancel user updates.</param>
     Task UpdateUserAsync(IUser user, CancellationToken cancellationToken = default);
 }

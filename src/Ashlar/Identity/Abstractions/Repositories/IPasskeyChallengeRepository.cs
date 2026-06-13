@@ -11,24 +11,24 @@ public interface IPasskeyChallengeRepository
     /// Stores a passkey challenge.
     /// </summary>
     /// <param name="challenge">The challenge to store.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="cancellationToken">A token that can cancel challenge persistence.</param>
     Task CreateAsync(PasskeyChallenge challenge, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets a challenge by id. Callers are responsible for validating consumed and expiry state.
     /// </summary>
-    /// <param name="id">The challenge id.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="id">The public challenge identifier to load.</param>
+    /// <param name="cancellationToken">A token that can cancel challenge lookup.</param>
     /// <returns>The challenge when found; otherwise, <see langword="null" />.</returns>
     Task<PasskeyChallenge?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Atomically marks a challenge consumed when the expected version still matches.
     /// </summary>
-    /// <param name="id">The challenge id.</param>
-    /// <param name="expectedVersion">The expected version.</param>
-    /// <param name="consumedAt">The application-observed consumption timestamp.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="id">The public challenge identifier to consume.</param>
+    /// <param name="expectedVersion">The version observed before the consume attempt.</param>
+    /// <param name="consumedAt">UTC time observed by the application when the ceremony completed.</param>
+    /// <param name="cancellationToken">A token that can cancel challenge consumption.</param>
     /// <returns><see langword="true" /> when the challenge was consumed.</returns>
     /// <remarks>
     /// Implementations must atomically verify the expected version, unconsumed state, and unexpired state using

@@ -6,13 +6,13 @@ namespace Ashlar.Identity.Abstractions.Services;
 public interface IAccountLockoutService
 {
     /// <summary>
-    /// Gets the current automatic lockout status for a user and provider.
+    /// Reads automatic lockout status for the resolved user and authentication provider.
     /// </summary>
     /// <param name="user">The resolved user.</param>
     /// <param name="provider">The authentication provider key.</param>
     /// <param name="context">Optional tenant and audit metadata.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
-    /// <returns>The current lockout status.</returns>
+    /// <param name="cancellationToken">A token that can cancel lockout status lookup.</param>
+    /// <returns>Current automatic lockout status for the user/provider pair.</returns>
     Task<AccountLockoutStatus> GetStatusAsync(
         IUser user,
         AuthenticationProviderKey provider,
@@ -25,7 +25,7 @@ public interface IAccountLockoutService
     /// <param name="user">The resolved user.</param>
     /// <param name="provider">The authentication provider key.</param>
     /// <param name="context">Optional tenant and audit metadata.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
+    /// <param name="cancellationToken">A token that can cancel failure recording.</param>
     /// <returns>The updated failure and lockout state.</returns>
     Task<AccountLockoutFailureResult> RecordFailureAsync(
         IUser user,
@@ -39,7 +39,7 @@ public interface IAccountLockoutService
     /// <param name="user">The resolved user.</param>
     /// <param name="provider">The authentication provider key.</param>
     /// <param name="context">Optional tenant and audit metadata.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
+    /// <param name="cancellationToken">A token that can cancel lockout reset.</param>
     /// <returns><see langword="true" /> when stored automatic lockout state was cleared.</returns>
     Task<bool> ResetAsync(
         IUser user,

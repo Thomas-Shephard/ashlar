@@ -1,32 +1,32 @@
 namespace Ashlar.Identity.Notifications;
 
 /// <summary>
-/// Provides security notification options behavior.
+/// Configures which security notifications are sent and how they are rendered.
 /// </summary>
 public sealed class SecurityNotificationOptions
 {
     /// <summary>
-    /// Gets or sets the enabled value.
+    /// Whether security notifications are sent.
     /// </summary>
     public bool Enabled { get; set; }
     /// <summary>
-    /// Gets or sets the enabled types value.
+    /// Notification types sent when security notifications are enabled.
     /// </summary>
     public HashSet<SecurityNotificationType> EnabledTypes { get; } = [];
     /// <summary>
-    /// Gets or sets the template overrides value.
+    /// Per-type templates that replace built-in notification content.
     /// </summary>
     public Dictionary<SecurityNotificationType, SecurityNotificationTemplate> TemplateOverrides { get; } = [];
     /// <summary>
-    /// Executes the create default cooldowns operation.
+    /// Per-type suppression windows used to avoid duplicate notifications.
     /// </summary>
     public Dictionary<SecurityNotificationType, TimeSpan> Cooldowns { get; } = CreateDefaultCooldowns();
     /// <summary>
-    /// Gets or sets the include ip address value.
+    /// Whether templates may include client IP addresses. Treat as personal data.
     /// </summary>
     public bool IncludeIpAddress { get; set; } = true;
     /// <summary>
-    /// Gets or sets the include user agent value.
+    /// Whether templates may include user-agent text. Treat as user supplied.
     /// </summary>
     public bool IncludeUserAgent { get; set; } = true;
 
@@ -36,7 +36,7 @@ public sealed class SecurityNotificationOptions
     public string? FromAddress { get; set; }
 
     /// <summary>
-    /// Executes the new operation.
+    /// Built-in templates used when no override is configured.
     /// </summary>
     public static Dictionary<SecurityNotificationType, SecurityNotificationTemplate> DefaultTemplates { get; } = new()
     {

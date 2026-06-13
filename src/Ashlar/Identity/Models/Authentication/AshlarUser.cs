@@ -1,32 +1,32 @@
 namespace Ashlar.Identity.Models.Authentication;
 
 /// <summary>
-/// Represents the ashlar user data model.
+/// Represents a user account known to Ashlar.
 /// </summary>
 public sealed record AshlarUser : ITenantUser
 {
     /// <summary>
-    /// Gets or sets the id value.
+    /// Stable user identifier.
     /// </summary>
     public required Guid Id { get; init; }
     /// <summary>
-    /// Gets or sets the email value.
+    /// Normalized email address used for account lookup and notifications.
     /// </summary>
     public required string Email { get; init; }
     /// <summary>
-    /// Gets or sets the name value.
+    /// Optional display name supplied by the host application.
     /// </summary>
     public string? Name { get; init; }
     /// <summary>
-    /// Gets or sets the account state value.
+    /// Account state that controls whether authentication can continue.
     /// </summary>
     public UserAccountState AccountState { get; init; } = UserAccountState.Active;
     /// <summary>
-    /// Gets or sets the tenant id value.
+    /// Tenant scope for the user, or <see langword="null" /> for a global account.
     /// </summary>
     public Guid? TenantId { get; init; }
     /// <summary>
-    /// Gets or sets the email verified at value.
+    /// UTC time when the email address was verified, when known.
     /// </summary>
     public DateTimeOffset? EmailVerifiedAt { get; init; }
 }

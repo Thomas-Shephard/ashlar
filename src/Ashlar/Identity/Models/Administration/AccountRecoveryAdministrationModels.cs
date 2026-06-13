@@ -5,8 +5,8 @@ namespace Ashlar.Identity.Models.Administration;
 /// <summary>
 /// Request for administrator account recovery option lookup.
 /// </summary>
-/// <param name="UserId">The user id value.</param>
-/// <param name="Tenant">The requested scope. Use <see cref="TenantContext.Global" /> for global users.</param>
+/// <param name="UserId">User whose recovery options should be loaded.</param>
+/// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
 /// <param name="IncludeAllTenants">Whether to allow lookup across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
 /// <param name="RecentSecurityEventWindow">Optional recent security event window for the embedded account-security posture.</param>
 public sealed record AccountRecoveryOptionsRequest(
@@ -18,7 +18,7 @@ public sealed record AccountRecoveryOptionsRequest(
     /// <summary>
     /// Throws when the account recovery options request is not safe to execute.
     /// </summary>
-    /// <param name="request">The recovery options request value.</param>
+    /// <param name="request">Recovery options request to validate before querying administrator data.</param>
     public static void ThrowIfInvalid(AccountRecoveryOptionsRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -55,8 +55,8 @@ public sealed record AccountRecoveryActionOptions(
 /// <summary>
 /// Display-safe credential option that can be revoked by <paramref name="Provider" />.
 /// </summary>
-/// <param name="Provider">The provider key value.</param>
-/// <param name="DisplayName">The display name value.</param>
+/// <param name="Provider">Provider key for revocable credentials.</param>
+/// <param name="DisplayName">Display-safe label for <paramref name="Provider" />.</param>
 /// <param name="CredentialCount">The number of revocable credentials for this <paramref name="Provider" />.</param>
 /// <param name="PrimaryCredentialCount">The number of revocable primary credentials for this <paramref name="Provider" />.</param>
 /// <param name="AdditionalVerificationCredentialCount">The number of revocable additional verification credentials for this <paramref name="Provider" />.</param>
@@ -88,11 +88,11 @@ public abstract record AccountRecoveryExecutionRequest
     /// <summary>
     /// Initializes destructive account recovery execution metadata and validates that its <paramref name="Tenant" /> scope is explicit.
     /// </summary>
-    /// <param name="UserId">The target user id.</param>
+    /// <param name="UserId">User targeted by the destructive recovery operation.</param>
     /// <param name="Audit">Audit metadata recorded with the account recovery execution.</param>
-    /// <param name="Tenant">The tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users.</param>
-    /// <param name="Reason">Optional safe reason recorded with revocation and security events.</param>
-    /// <param name="IncludeAllTenants">Whether to run the operation across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+    /// <param name="Tenant">Tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
+    /// <param name="Reason">Optional display-safe reason recorded with revocation and security events. Do not include secrets, tokens, or credentials.</param>
+    /// <param name="IncludeAllTenants">Whether to remove scope filtering for the specified <paramref name="UserId" />. Cannot be combined with <paramref name="Tenant" />.</param>
     protected AccountRecoveryExecutionRequest(
         Guid UserId,
         AuditContext Audit,
@@ -108,19 +108,19 @@ public abstract record AccountRecoveryExecutionRequest
         ValidateExecutionRequest(UserId, Tenant, IncludeAllTenants);
     }
 
-    /// <summary>Gets the target user id.</summary>
+    /// <summary>User targeted by the destructive recovery operation.</summary>
     public Guid UserId { get; }
 
-    /// <summary>Gets audit metadata recorded with the account recovery execution.</summary>
+    /// <summary>Audit metadata recorded with the account recovery execution.</summary>
     public AuditContext Audit { get; }
 
-    /// <summary>Gets the tenant scope for the target user, or <see langword="null" /> when <see cref="IncludeAllTenants" /> is enabled.</summary>
+    /// <summary>Tenant scope for the target user, or <see langword="null" /> when <see cref="IncludeAllTenants" /> is enabled.</summary>
     public TenantContext? Tenant { get; }
 
-    /// <summary>Gets the optional safe reason recorded with revocation and security events.</summary>
+    /// <summary>Optional provider-neutral, display-safe reason recorded with revocation and security events. Do not include secrets, tokens, or credentials.</summary>
     public string? Reason { get; }
 
-    /// <summary>Gets whether the operation runs without tenant filtering.</summary>
+    /// <summary>Whether scope filtering is removed for the specified <see cref="UserId" />.</summary>
     public bool IncludeAllTenants { get; }
 
     /// <summary>
@@ -144,11 +144,11 @@ public abstract record AccountRecoveryExecutionRequest
 /// <summary>
 /// Request for destructive administrator MFA reset execution.
 /// </summary>
-/// <param name="UserId">The target user id.</param>
+/// <param name="UserId">User whose MFA recovery state should be reset.</param>
 /// <param name="Audit">Audit metadata recorded with the MFA reset.</param>
-/// <param name="Tenant">The tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users.</param>
-/// <param name="Reason">Optional safe reason recorded with revocation and security events.</param>
-/// <param name="IncludeAllTenants">Whether to run the operation across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+/// <param name="Tenant">Tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
+/// <param name="Reason">Optional provider-neutral, display-safe reason recorded with revocation and security events. Do not include secrets, tokens, or credentials.</param>
+/// <param name="IncludeAllTenants">Whether to remove scope filtering for the specified <paramref name="UserId" />. Cannot be combined with <paramref name="Tenant" />.</param>
 public sealed record AccountRecoveryResetMfaRequest(
     Guid UserId,
     AuditContext Audit,
@@ -160,11 +160,11 @@ public sealed record AccountRecoveryResetMfaRequest(
 /// <summary>
 /// Request for destructive administrator session revocation execution.
 /// </summary>
-/// <param name="UserId">The target user id.</param>
+/// <param name="UserId">User whose sessions should be revoked.</param>
 /// <param name="Audit">Audit metadata recorded with the session revocation.</param>
-/// <param name="Tenant">The tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users.</param>
-/// <param name="Reason">Optional safe reason recorded with revocation and security events.</param>
-/// <param name="IncludeAllTenants">Whether to run the operation across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+/// <param name="Tenant">Tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
+/// <param name="Reason">Optional provider-neutral, display-safe reason recorded with revocation and security events. Do not include secrets, tokens, or credentials.</param>
+/// <param name="IncludeAllTenants">Whether to remove scope filtering for the specified <paramref name="UserId" />. Cannot be combined with <paramref name="Tenant" />.</param>
 public sealed record AccountRecoveryRevokeSessionsRequest(
     Guid UserId,
     AuditContext Audit,
@@ -181,12 +181,12 @@ public sealed record AccountRecoveryRevokeProviderCredentialsRequest : AccountRe
     /// <summary>
     /// Initializes destructive <paramref name="Provider" /> credential revocation metadata.
     /// </summary>
-    /// <param name="UserId">The target user id.</param>
-    /// <param name="Provider">The credential provider key to revoke.</param>
+    /// <param name="UserId">User whose <paramref name="Provider" /> credentials should be revoked.</param>
+    /// <param name="Provider">Credential provider key to revoke.</param>
     /// <param name="Audit">Audit metadata recorded with the <paramref name="Provider" /> credential revocation.</param>
-    /// <param name="Tenant">The tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users.</param>
-    /// <param name="Reason">Optional safe reason recorded with revocation and security events.</param>
-    /// <param name="IncludeAllTenants">Whether to run the operation across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+    /// <param name="Tenant">Tenant scope for the target user. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
+    /// <param name="Reason">Optional display-safe reason recorded with revocation and security events. Do not include secrets, tokens, or credentials.</param>
+    /// <param name="IncludeAllTenants">Whether to remove scope filtering for the specified <paramref name="UserId" />. Cannot be combined with <paramref name="Tenant" />.</param>
     public AccountRecoveryRevokeProviderCredentialsRequest(
         Guid UserId,
         AuthenticationProviderKey Provider,
@@ -200,7 +200,7 @@ public sealed record AccountRecoveryRevokeProviderCredentialsRequest : AccountRe
         ValidateProvider(Provider);
     }
 
-    /// <summary>Gets the credential provider key to revoke.</summary>
+    /// <summary>Credential provider key whose credentials should be revoked.</summary>
     public AuthenticationProviderKey Provider { get; }
 
     /// <inheritdoc />

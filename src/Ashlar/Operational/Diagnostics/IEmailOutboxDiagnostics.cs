@@ -8,7 +8,7 @@ public interface IEmailOutboxDiagnostics
     /// <summary>
     /// Checks the Ashlar email outbox state.
     /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The diagnostic result.</returns>
+    /// <param name="cancellationToken">Token for aborting diagnostics work.</param>
+    /// <returns>Provider-neutral email outbox diagnostic result with aggregate counts only.</returns>
     Task<EmailOutboxDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default);
 }

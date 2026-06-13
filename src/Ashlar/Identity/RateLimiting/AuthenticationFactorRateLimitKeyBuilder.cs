@@ -12,9 +12,9 @@ public static class AuthenticationFactorRateLimitKeyBuilder
     /// <summary>
     /// Builds layered rate-limit attempts for a secondary factor verification operation.
     /// </summary>
-    /// <param name="context">The authentication context.</param>
+    /// <param name="context">Authentication request context used to derive source and user buckets.</param>
     /// <param name="providerKey">The secondary factor provider identity.</param>
-    /// <returns>The layered attempts to evaluate.</returns>
+    /// <returns>Layered source and user attempts to evaluate for factor verification.</returns>
     public static IReadOnlyList<RateLimitAttempt> BuildAttempts(AuthenticationContext context, AuthenticationProviderKey providerKey)
     {
         ArgumentNullException.ThrowIfNull(context);

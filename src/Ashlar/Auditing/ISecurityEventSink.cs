@@ -6,10 +6,10 @@ namespace Ashlar.Auditing;
 public interface ISecurityEventSink
 {
     /// <summary>
-    /// Performs the record <see langword="async" /> operation and returns the result.
+    /// Records a security event in durable or application-provided audit storage.
     /// </summary>
-    /// <param name="securityEvent">The security event value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="securityEvent">The provider-neutral security event to persist or forward.</param>
+    /// <param name="cancellationToken">A token that can cancel event recording.</param>
+    /// <returns>A task that completes after the sink has accepted the event for persistence or forwarding.</returns>
     Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default);
 }

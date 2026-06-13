@@ -6,32 +6,32 @@ namespace Ashlar.Identity.Models.Sessions;
 public sealed record AuthenticationSessionSummary
 {
     /// <summary>
-    /// The unique identifier for the session.
+    /// Stable identifier used by session management APIs.
     /// </summary>
     public required Guid Id { get; init; }
 
     /// <summary>
-    /// When the session was created.
+    /// UTC time when the session was issued.
     /// </summary>
     public required DateTimeOffset CreatedAt { get; init; }
 
     /// <summary>
-    /// When the session expires.
+    /// UTC time after which the session is no longer accepted.
     /// </summary>
     public required DateTimeOffset ExpiresAt { get; init; }
 
     /// <summary>
-    /// When the session was last observed.
+    /// UTC time when validation last observed this session.
     /// </summary>
     public DateTimeOffset? LastSeenAt { get; init; }
 
     /// <summary>
-    /// When the session was revoked, if applicable.
+    /// UTC time when the session was revoked, if applicable.
     /// </summary>
     public DateTimeOffset? RevokedAt { get; init; }
 
     /// <summary>
-    /// The reason for revocation, if applicable.
+    /// The provider-neutral, display-safe reason for revocation, if applicable.
     /// </summary>
     public string? RevocationReason { get; init; }
 
@@ -46,7 +46,7 @@ public sealed record AuthenticationSessionSummary
     public string? UserAgent { get; init; }
 
     /// <summary>
-    /// Optional metadata associated with the session.
+    /// Provider-neutral session metadata safe for display; should not contain secrets or raw tokens.
     /// </summary>
     public string? Metadata { get; init; }
 

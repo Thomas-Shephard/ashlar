@@ -5,47 +5,47 @@ using Ashlar.Identity.RateLimiting.Models;
 namespace Ashlar.Identity.Models.Email;
 
 /// <summary>
-/// Provides email verification options behavior.
+/// Configures email verification token lifetime, throttling, and message content.
 /// </summary>
 public sealed class EmailVerificationOptions
 {
     /// <summary>
-    /// Gets or sets the expiration value.
+    /// Lifetime of the raw verification token.
     /// </summary>
     public TimeSpan Expiration { get; set; } = TimeSpan.FromHours(24);
     /// <summary>
-    /// Gets or sets the verification email request rate limit.
+    /// Rate limit applied when requesting verification messages.
     /// </summary>
     public RateLimitRule RequestRateLimit { get; set; } = new() { PermitLimit = 3, Window = TimeSpan.FromHours(1) };
     /// <summary>
-    /// Gets or sets the verification token confirmation rate limit.
+    /// Rate limit applied when confirming verification tokens.
     /// </summary>
     public RateLimitRule VerificationRateLimit { get; set; } = new() { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) };
     /// <summary>
-    /// Gets or sets the subject value.
+    /// Subject used for verification emails.
     /// </summary>
     public string Subject { get; set; } = "Verify your email address";
     /// <summary>
-    /// Gets or sets the email text template value.
+    /// Plain-text message template. The first placeholder receives the callback URL containing the raw token.
     /// </summary>
     public string EmailTextTemplate { get; set; } = "Click the following link to verify your email address: {0}";
     /// <summary>
-    /// Gets or sets the from address value.
+    /// Optional sender address for verification emails.
     /// </summary>
     public string? FromAddress { get; set; }
     /// <summary>
-    /// Gets or sets the token parameter name value.
+    /// Query string parameter name used for the raw verification token.
     /// </summary>
     public string TokenParameterName { get; set; } = "t";
     /// <summary>
-    /// Gets or sets the user id parameter name value.
+    /// Query string parameter name used for the user identifier.
     /// </summary>
     public string UserIdParameterName { get; set; } = "u";
 
     /// <summary>
     /// Validates email verification options.
     /// </summary>
-    /// <param name="options">The options value.</param>
+    /// <param name="options">The options instance to validate.</param>
     /// <returns><see langword="true" /> when options are valid.</returns>
     public static bool Validate(EmailVerificationOptions? options)
     {
@@ -61,43 +61,43 @@ public sealed class EmailVerificationOptions
 }
 
 /// <summary>
-/// Provides email verification request behavior.
+/// Request to send or enqueue an email verification message.
 /// </summary>
 public sealed class EmailVerificationRequest
 {
     /// <summary>
-    /// Gets or sets the user id value.
+    /// User whose email address should be verified.
     /// </summary>
     public required Guid UserId { get; init; }
 
     /// <summary>
-    /// The base URI for the callback. This value is validated against a trusted allowlist to prevent Open Redirect and Phishing attacks.
+    /// Base URI used to build the callback URL.
     /// </summary>
     /// <remarks>
-    /// WARNING: This URI must be validated using <see cref="Ashlar.Identity.Abstractions.Services.IUriValidator"/> before use.
+    /// The service validates this URI with <see cref="Ashlar.Identity.Abstractions.Services.IUriValidator"/> before it appends the raw token.
     /// </remarks>
     public required Uri CallbackBaseUri { get; init; }
     /// <summary>
-    /// Gets or sets audit metadata for the request.
+    /// Audit context to include in emitted security events.
     /// </summary>
     public AuditContext? Audit { get; init; }
 }
 
 /// <summary>
-/// Provides email verification confirmation request behavior.
+/// Request to confirm an email verification token.
 /// </summary>
 public sealed class ConfirmEmailVerificationRequest
 {
     /// <summary>
-    /// Gets or sets the user id value.
+    /// User associated with the verification token.
     /// </summary>
     public required Guid UserId { get; init; }
     /// <summary>
-    /// Gets or sets the token value.
+    /// Raw verification token from the callback URL. Do not log or persist this value.
     /// </summary>
     public required string? Token { get; init; }
     /// <summary>
-    /// Gets or sets audit metadata for the request.
+    /// Audit context to include in emitted security events.
     /// </summary>
     public AuditContext? Audit { get; init; }
 }

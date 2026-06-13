@@ -1,16 +1,16 @@
 namespace Ashlar.Identity.Models.Credentials;
 
 /// <summary>
-/// Defines the available credential status values.
+/// Lists credential lifecycle states used by authentication and administration APIs.
 /// </summary>
 public enum CredentialStatus
 {
     /// <summary>
-    /// Represents the active value.
+    /// The credential can be used for authentication.
     /// </summary>
     Active = 0,
     /// <summary>
-    /// Represents the revoked value.
+    /// The credential has been revoked and must not authenticate future requests.
     /// </summary>
     Revoked = 1
 }

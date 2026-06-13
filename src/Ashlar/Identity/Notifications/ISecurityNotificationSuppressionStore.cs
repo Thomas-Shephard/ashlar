@@ -1,16 +1,16 @@
 namespace Ashlar.Identity.Notifications;
 
 /// <summary>
-/// Defines the contract for isecurity notification suppression store operations.
+/// Tracks notification cooldowns to avoid repeatedly emailing the same recipient.
 /// </summary>
 public interface ISecurityNotificationSuppressionStore
 {
     /// <summary>
-    /// Performs the should send operation and returns the result.
+    /// Records a send attempt and determines whether the notification may be delivered.
     /// </summary>
-    /// <param name="notification">The notification value.</param>
-    /// <param name="cooldown">The cooldown value.</param>
-    /// <param name="now">The now value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="notification">Notification whose recipient and type define the suppression key.</param>
+    /// <param name="cooldown">Minimum time between duplicate notifications.</param>
+    /// <param name="now">Current UTC time used for suppression expiry.</param>
+    /// <returns><see langword="true" /> when the notification should be sent; otherwise, <see langword="false" />.</returns>
     bool ShouldSend(SecurityNotification notification, TimeSpan cooldown, DateTimeOffset now);
 }

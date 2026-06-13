@@ -3,16 +3,16 @@ using System.Diagnostics.CodeAnalysis;
 namespace Ashlar.Identity.Features.Authentication;
 
 /// <summary>
-/// Provides authentication provider registry behavior.
+/// Resolves registered authentication providers by assertion or provider key.
 /// </summary>
 public sealed class AuthenticationProviderRegistry : IAuthenticationProviderRegistry
 {
     private readonly IReadOnlyDictionary<AuthenticationProviderKey, IAuthenticationProvider> _providers;
 
     /// <summary>
-    /// Initializes a new instance of the authentication provider registry class.
+    /// Initializes a registry from the configured provider collection.
     /// </summary>
-    /// <param name="providers">The providers value.</param>
+    /// <param name="providers">Authentication providers registered in dependency injection.</param>
     public AuthenticationProviderRegistry(IEnumerable<IAuthenticationProvider> providers)
     {
         var dict = new Dictionary<AuthenticationProviderKey, IAuthenticationProvider>();
@@ -33,16 +33,16 @@ public sealed class AuthenticationProviderRegistry : IAuthenticationProviderRegi
     }
 
     /// <summary>
-    /// Gets or sets the supported provider keys value.
+    /// Gets the provider keys registered in this registry.
     /// </summary>
     public IEnumerable<AuthenticationProviderKey> SupportedProviderKeys => _providers.Keys;
 
     /// <summary>
-    /// Performs the try get provider operation and returns the result.
+    /// Attempts to resolve the provider that can validate an assertion.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="provider">The provider value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">Authentication assertion submitted by the caller.</param>
+    /// <param name="provider">Resolved provider when the assertion is supported.</param>
+    /// <returns><see langword="true" /> when a matching provider is registered.</returns>
     public bool TryGetProvider(IAuthenticationAssertion assertion, [NotNullWhen(true)] out IAuthenticationProvider? provider)
     {
         ArgumentNullException.ThrowIfNull(assertion);
@@ -51,11 +51,11 @@ public sealed class AuthenticationProviderRegistry : IAuthenticationProviderRegi
     }
 
     /// <summary>
-    /// Performs the try get provider operation by canonical provider key and returns the result.
+    /// Attempts to resolve a provider by its canonical provider key.
     /// </summary>
     /// <param name="providerKey">The provider key.</param>
-    /// <param name="provider">The provider value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="provider">Resolved provider when the key is registered.</param>
+    /// <returns><see langword="true" /> when a matching provider is registered.</returns>
     public bool TryGetProvider(AuthenticationProviderKey providerKey, [NotNullWhen(true)] out IAuthenticationProvider? provider)
     {
         return _providers.TryGetValue(providerKey, out provider);

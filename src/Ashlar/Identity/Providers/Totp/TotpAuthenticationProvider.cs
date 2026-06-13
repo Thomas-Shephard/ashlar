@@ -16,8 +16,8 @@ public sealed class TotpAuthenticationProvider : ISecondaryAuthenticationFactorP
     /// <summary>
     /// Initializes a configured service instance.
     /// </summary>
-    /// <param name="options">The options value.</param>
-    /// <param name="timeProvider">The time provider value.</param>
+    /// <param name="options">TOTP provider configuration.</param>
+    /// <param name="timeProvider">Clock used to evaluate time-step windows, or <see langword="null" /> to use the system clock.</param>
     public TotpAuthenticationProvider(
         IOptions<TotpOptions> options,
         TimeProvider? timeProvider = null)
@@ -130,7 +130,7 @@ public sealed class TotpAuthenticationProvider : ISecondaryAuthenticationFactorP
     private sealed class TotpMetadata
     {
         /// <summary>
-        /// Gets or sets the last used step value.
+        /// Gets the last accepted TOTP time step used for replay protection.
         /// </summary>
         public long LastUsedStep { get; init; }
     }

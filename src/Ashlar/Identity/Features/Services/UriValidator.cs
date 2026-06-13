@@ -11,9 +11,9 @@ public sealed class UriValidator : IUriValidator
     private readonly List<Uri> _allowedUris;
 
     /// <summary>
-    /// Initializes a new instance of the uri validator class.
+    /// Creates a URI validator from configured callback allow-list entries.
     /// </summary>
-    /// <param name="options">The options value.</param>
+    /// <param name="options">Configured URI validation options.</param>
     public UriValidator(IOptions<UriValidationOptions> options)
     {
         ArgumentNullException.ThrowIfNull(options);

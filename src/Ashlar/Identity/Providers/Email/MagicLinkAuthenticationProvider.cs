@@ -15,24 +15,24 @@ public sealed class MagicLinkAuthenticationProvider(ISecureTokenHasher tokenHash
     private readonly ISecureTokenHasher _tokenHasher = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
 
     /// <summary>
-    /// Gets the provider key.
+    /// Provider identity used for magic-link credentials.
     /// </summary>
     public AuthenticationProviderKey Key => AuthenticationProviderKey.MagicLink;
 
     /// <summary>
-    /// Gets whether credential values should be encrypted before storage.
+    /// Whether stored credential values require reversible protection. Magic-link credentials store token hashes.
     /// </summary>
     public bool ProtectsCredentials => false;
 
     /// <summary>
-    /// Gets the typical raw token length.
+    /// Typical raw magic-link token length used for dummy credential work.
     /// </summary>
     public int TypicalCredentialLength => 71;
 
     /// <summary>
     /// Hashes the magic link token into the provider key.
     /// </summary>
-    /// <param name="assertion">The magic link assertion.</param>
+    /// <param name="assertion">Caller-supplied magic-link assertion containing the raw token.</param>
     /// <param name="userId">Unused for magic link tokens.</param>
     /// <returns>The token hash, or an empty string for unsupported assertions.</returns>
     public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId)
@@ -48,11 +48,11 @@ public sealed class MagicLinkAuthenticationProvider(ISecureTokenHasher tokenHash
     }
 
     /// <summary>
-    /// Returns the raw token hash value to store with the credential.
+    /// Returns the precomputed token hash that should be stored with the one-time credential.
     /// </summary>
-    /// <param name="assertion">The magic link assertion.</param>
-    /// <param name="rawValue">The raw value prepared by the sign-in flow.</param>
-    /// <returns>The value to store for later authentication.</returns>
+    /// <param name="assertion">Caller-supplied magic-link assertion containing the raw token.</param>
+    /// <param name="rawValue">Precomputed token hash prepared by the sign-in flow.</param>
+    /// <returns>The storage lookup hash for the magic-link credential.</returns>
     public string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue)
     {
         return rawValue;
@@ -61,8 +61,8 @@ public sealed class MagicLinkAuthenticationProvider(ISecureTokenHasher tokenHash
     /// <summary>
     /// Finds the user linked to the magic link token.
     /// </summary>
-    /// <param name="assertion">The magic link assertion.</param>
-    /// <param name="context">The authentication request context.</param>
+    /// <param name="assertion">Caller-supplied magic-link assertion containing the raw token.</param>
+    /// <param name="context">Authentication request context used for tenant-aware user lookup.</param>
     /// <param name="repository">The user repository.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
     /// <returns>The linked user, or <see langword="null" /> when the assertion is unsupported or unlinked.</returns>
@@ -84,10 +84,10 @@ public sealed class MagicLinkAuthenticationProvider(ISecureTokenHasher tokenHash
     /// <summary>
     /// Validates that the resolved credential was issued for magic link sign-in.
     /// </summary>
-    /// <param name="assertion">The magic link assertion.</param>
+    /// <param name="assertion">Magic-link assertion containing the raw token. Do not log this value.</param>
     /// <param name="credential">The credential resolved by provider key.</param>
     /// <param name="cancellationToken">A token that can cancel authentication.</param>
-    /// <returns>The authentication result.</returns>
+    /// <returns>A successful consumed-credential result when the credential is a valid magic-link credential; otherwise, a failed result.</returns>
     public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default)
     {
         if (assertion is not MagicLinkAssertion)

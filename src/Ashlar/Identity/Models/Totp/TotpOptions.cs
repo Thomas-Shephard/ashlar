@@ -6,43 +6,40 @@ namespace Ashlar.Identity.Models.Totp;
 public sealed class TotpOptions
 {
     /// <summary>
-    /// The default authentication provider key for TOTP.
+    /// Default authentication provider key for TOTP credentials.
     /// </summary>
-    /// <returns>The operation result.</returns>
     public static readonly AuthenticationProviderKey DefaultProviderKey = new(ProviderType.Mfa, "totp");
 
     /// <summary>
-    /// The authentication provider key used for TOTP.
+    /// Authentication provider key used for TOTP credentials.
     /// </summary>
     public AuthenticationProviderKey ProviderKey { get; set; } = DefaultProviderKey;
 
     /// <summary>
-    /// The length of the generated shared secret in bytes. Defaults to 20 (160 bits) as per RFC 4226/6238 recommendation.
+    /// Generated shared-secret length in bytes.
     /// </summary>
     public int SecretLengthBytes { get; set; } = 20;
 
     /// <summary>
-    /// The number of digits in the TOTP code. Defaults to 6.
+    /// Number of digits expected in TOTP codes.
     /// </summary>
     public int CodeDigits { get; set; } = 6;
 
     /// <summary>
-    /// The duration of a single TOTP step in seconds. Defaults to 30.
+    /// Duration of a single TOTP time step in seconds.
     /// </summary>
     public int StepSeconds { get; set; } = 30;
 
     /// <summary>
-    /// The number of steps (windows) to allow before and after the current time to account for clock skew.
-    /// A value of 1 allows one step before and one step after (e.g., +/- 30 seconds if StepSeconds is 30).
-    /// Defaults to 1.
+    /// Number of time steps accepted before and after the current step.
     /// </summary>
     public int AllowedSkewSteps { get; set; } = 1;
 
     /// <summary>
     /// Validates TOTP options that are required by enrollment and authentication.
     /// </summary>
-    /// <param name="options">The options value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="options">Options instance to validate.</param>
+    /// <returns><see langword="true" /> when enrollment and authentication can use the supplied settings; otherwise, <see langword="false" />.</returns>
     public static bool Validate(TotpOptions options)
     {
         return options is { SecretLengthBytes: > 0, CodeDigits: >= 6 and <= 8, StepSeconds: > 0, AllowedSkewSteps: >= 0 }

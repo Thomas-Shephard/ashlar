@@ -3,17 +3,17 @@ using System.Collections.ObjectModel;
 namespace Ashlar.Messaging;
 
 /// <summary>
-/// Represents an email message produced by framework-neutral Ashlar flows.
+/// Framework-neutral email envelope produced by Ashlar flows.
 /// </summary>
 public sealed record EmailMessage
 {
     /// <summary>
     /// Creates an email message.
     /// </summary>
-    /// <param name="to">The recipient address.</param>
-    /// <param name="subject">The message subject.</param>
-    /// <param name="textBody">The plain text body.</param>
-    /// <param name="htmlBody">The HTML body.</param>
+    /// <param name="to">Recipient address after header-injection validation.</param>
+    /// <param name="subject">Message subject after header-injection validation.</param>
+    /// <param name="textBody">Plain-text body, required when no HTML body is supplied.</param>
+    /// <param name="htmlBody">HTML body, required when no plain-text body is supplied.</param>
     /// <param name="options">Optional sender, routing, headers, and metadata.</param>
     public EmailMessage(
         string to,
@@ -101,57 +101,57 @@ public sealed record EmailMessage
     }
 
     /// <summary>
-    /// Gets the recipient address.
+    /// Recipient address after header-injection validation.
     /// </summary>
     public string To { get; }
 
     /// <summary>
-    /// Gets the message subject.
+    /// Message subject after header-injection validation.
     /// </summary>
     public string Subject { get; }
 
     /// <summary>
-    /// Gets the plain text body.
+    /// Plain-text body, required when no HTML body is supplied.
     /// </summary>
     public string? TextBody { get; }
 
     /// <summary>
-    /// Gets the HTML body.
+    /// HTML body, required when no plain-text body is supplied.
     /// </summary>
     public string? HtmlBody { get; }
 
     /// <summary>
-    /// Gets the optional sender address.
+    /// Optional sender address after header-injection validation.
     /// </summary>
     public string? From { get; }
 
     /// <summary>
-    /// Gets the optional reply-to address.
+    /// Optional reply-to address after header-injection validation.
     /// </summary>
     public string? ReplyTo { get; }
 
     /// <summary>
-    /// Gets the cc value.
+    /// Optional CC recipients after header-injection validation.
     /// </summary>
     public string? Cc { get; }
 
     /// <summary>
-    /// Gets the bcc value.
+    /// Optional BCC recipients after header-injection validation.
     /// </summary>
     public string? Bcc { get; }
 
     /// <summary>
-    /// Gets the headers value.
+    /// Additional message headers. Do not include credentials or bearer tokens.
     /// </summary>
     public IReadOnlyDictionary<string, string>? Headers { get; }
 
     /// <summary>
-    /// Gets the metadata value.
+    /// Provider-neutral metadata for transports and diagnostics. Do not include secrets.
     /// </summary>
     public IReadOnlyDictionary<string, string>? Metadata { get; }
 
     /// <summary>
-    /// Gets the sensitivity classification for the message body.
+    /// Whether the body contains live secret material such as tokens, links, or codes.
     /// </summary>
     public EmailMessageSensitivity Sensitivity { get; }
 }
@@ -181,37 +181,37 @@ public enum EmailMessageSensitivity
 public sealed record EmailMessageOptions
 {
     /// <summary>
-    /// Gets or sets the from value.
+    /// Optional sender address after header-injection validation.
     /// </summary>
     public string? From { get; init; }
 
     /// <summary>
-    /// Gets or sets the reply to value.
+    /// Optional reply-to address after header-injection validation.
     /// </summary>
     public string? ReplyTo { get; init; }
 
     /// <summary>
-    /// Gets or sets the cc value.
+    /// Optional CC recipients after header-injection validation.
     /// </summary>
     public string? Cc { get; init; }
 
     /// <summary>
-    /// Gets or sets the bcc value.
+    /// Optional BCC recipients after header-injection validation.
     /// </summary>
     public string? Bcc { get; init; }
 
     /// <summary>
-    /// Gets or sets the headers value.
+    /// Additional message headers. Do not include credentials or bearer tokens.
     /// </summary>
     public IReadOnlyDictionary<string, string>? Headers { get; init; }
 
     /// <summary>
-    /// Gets or sets the metadata value.
+    /// Provider-neutral metadata for transports and diagnostics. Do not include secrets.
     /// </summary>
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
 
     /// <summary>
-    /// Gets or sets the sensitivity classification for the message body.
+    /// Whether the body contains live secret material such as tokens, links, or codes.
     /// </summary>
     public EmailMessageSensitivity Sensitivity { get; init; } = EmailMessageSensitivity.Normal;
 }

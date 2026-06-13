@@ -6,63 +6,62 @@ namespace Ashlar.Identity.Abstractions.Authentication;
 public interface IAuthenticationProvider
 {
     /// <summary>
-    /// Gets the canonical identity for this provider implementation.
+    /// Canonical identity for this provider implementation.
     /// </summary>
     AuthenticationProviderKey Key { get; }
 
     /// <summary>
-    /// Gets a value indicating whether the credentials managed by this provider should be protected (encrypted) by the identity service.
+    /// Whether credentials managed by this provider should be encrypted by the identity service.
     /// Defaults to <c><see langword="true" /></c>.
     /// </summary>
     bool ProtectsCredentials => true;
 
     /// <summary>
-    /// Gets the typical length of a credential value for this provider.
-    /// Used to generate timing-safe dummy values for protection.
+    /// Typical credential length used for timing-safe dummy values.
     /// </summary>
     int TypicalCredentialLength => 256;
 
     /// <summary>
-    /// Gets the unique key for the user within this provider.
+    /// Derives the provider-specific credential key for a user.
     /// </summary>
-    /// <param name="assertion">The assertion supplied by the caller.</param>
+    /// <param name="assertion">Provider-supplied assertion used to derive the credential key. Treat as sensitive unless the provider documents otherwise.</param>
     /// <param name="userId">The user that will own the credential.</param>
-    /// <returns>The provider-specific credential key.</returns>
+    /// <returns>Provider-specific credential key used for lookup and storage.</returns>
     string GetProviderKey(IAuthenticationAssertion assertion, Guid userId);
 
     /// <summary>
     /// Prepares a raw credential value for storage.
     /// </summary>
-    /// <param name="assertion">The assertion supplied by the caller.</param>
-    /// <param name="rawValue">The raw credential value before provider-specific preparation.</param>
-    /// <returns>The value to store for the credential, or <see langword="null" /> when no value should be stored.</returns>
+    /// <param name="assertion">Provider-supplied assertion associated with the raw credential value.</param>
+    /// <param name="rawValue">The raw credential value before provider-specific preparation. Treat this value as sensitive.</param>
+    /// <returns>The provider-prepared credential value to store, or <see langword="null" /> when no value should be stored.</returns>
     string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue);
 
     /// <summary>
     /// Attempts to resolve the user associated with the given assertion.
     /// </summary>
-    /// <param name="assertion">The assertion supplied by the caller.</param>
-    /// <param name="context">The authentication request context.</param>
+    /// <param name="assertion">Provider-supplied assertion used to identify the user. Treat as sensitive unless the provider documents otherwise.</param>
+    /// <param name="context">Tenant, audit, and request metadata for the authentication attempt.</param>
     /// <param name="repository">The user repository.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
     /// <returns>The matching user, or <see langword="null" /> when the assertion does not identify a user.</returns>
     Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Performs the authentication against the provided credential.
+    /// Authenticates an assertion against the resolved provider credential.
     /// </summary>
-    /// <param name="assertion">The assertion supplied by the caller.</param>
+    /// <param name="assertion">Provider-supplied credential or factor assertion to verify.</param>
     /// <param name="credential">The credential resolved for the assertion, when one exists.</param>
     /// <param name="cancellationToken">A token that can cancel authentication.</param>
-    /// <returns>The authentication result.</returns>
+    /// <returns>The provider authentication status, claims, and any credential update or consumption requirement. This result does not issue an application session.</returns>
     Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Resolves the credential associated with the given assertion and user.
     /// </summary>
     /// <param name="userId">The user that must own the credential.</param>
-    /// <param name="assertion">The assertion supplied by the caller.</param>
-    /// <param name="context">The authentication request context, when available.</param>
+    /// <param name="assertion">Provider-supplied assertion used to locate the credential. Treat as sensitive unless the provider documents otherwise.</param>
+    /// <param name="context">Tenant, audit, and request metadata for the authentication attempt, when available.</param>
     /// <param name="repository">The credential repository.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
     /// <returns>The matching credential, or <see langword="null" /> when the provider uses the default lookup.</returns>
@@ -88,14 +87,14 @@ public interface IPrimaryAuthenticationProvider : IAuthenticationProvider;
 public interface ISecondaryAuthenticationFactorProvider : IAuthenticationProvider
 {
     /// <summary>
-    /// Gets the normalized factor family represented by this provider.
+    /// Normalized factor family represented by this provider.
     /// </summary>
     string FactorType { get; }
 
     /// <summary>
     /// Determines whether this provider can satisfy a pending authentication factor.
     /// </summary>
-    /// <param name="factorType">The required factor type.</param>
+    /// <param name="factorType">Additional-verification factor family required by the pending challenge.</param>
     /// <returns><see langword="true" /> when this provider can satisfy the required factor.</returns>
     bool CanSatisfyFactor(string factorType);
 }
@@ -103,7 +102,7 @@ public interface ISecondaryAuthenticationFactorProvider : IAuthenticationProvide
 /// <summary>
 /// Represents the result of an authentication attempt.
 /// </summary>
-/// <param name="Status">The outcome of the authentication attempt.</param>
+/// <param name="Status">Outcome of the authentication attempt.</param>
 /// <param name="Claims">Claims produced by the provider.</param>
 /// <param name="NewCredentialValue">A replacement credential value to persist after successful authentication.</param>
 /// <param name="NewMetadata">Replacement credential metadata to persist after successful authentication.</param>
@@ -118,7 +117,7 @@ public sealed record AuthenticationResult(
     CredentialUpdateRequirement CredentialUpdateRequirement = CredentialUpdateRequirement.BestEffort)
 {
     /// <summary>
-    /// Initializes a new instance of the authentication result class from single-value claims.
+    /// Initializes an authentication result from single-value provider claims.
     /// </summary>
     /// <param name="status">The outcome of the authentication attempt.</param>
     /// <param name="claims">The single-value claims.</param>
@@ -150,19 +149,19 @@ public sealed record AuthenticationResult(
 public enum AuthenticationResultStatus
 {
     /// <summary>
-    /// Represents the failed value.
+    /// Authentication failed.
     /// </summary>
     Failed = 0,
     /// <summary>
-    /// Represents the succeeded value.
+    /// Authentication succeeded without credential changes.
     /// </summary>
     Succeeded = 1,
     /// <summary>
-    /// Represents the succeeded with credential update value.
+    /// Authentication succeeded and returned a credential update to persist.
     /// </summary>
     SucceededWithCredentialUpdate = 2,
     /// <summary>
-    /// Represents the mfa required value.
+    /// Authentication requires MFA before a session is issued.
     /// </summary>
     MfaRequired = 3
 }

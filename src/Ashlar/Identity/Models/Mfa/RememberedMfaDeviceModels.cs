@@ -4,31 +4,31 @@ using Ashlar.Security.Tokens;
 namespace Ashlar.Identity.Models.Mfa;
 
 /// <summary>
-/// Represents a durable remembered MFA device record.
+/// Persisted remembered-device record used to skip additional verification for a trusted device.
 /// </summary>
 public sealed record RememberedMfaDevice
 {
-    /// <summary>Gets the public device identifier.</summary>
+    /// <summary>Public identifier for remembered-device management APIs.</summary>
     public required Guid Id { get; init; }
-    /// <summary>Gets the owning user identifier.</summary>
+    /// <summary>User that owns this remembered device.</summary>
     public required Guid UserId { get; init; }
-    /// <summary>Gets the tenant identifier, or <see langword="null" /> for global users.</summary>
+    /// <summary>Tenant boundary for the owner, or <see langword="null" /> for a global user.</summary>
     public Guid? TenantId { get; init; }
-    /// <summary>Gets the public token selector used for lookup.</summary>
+    /// <summary>Non-secret lookup selector paired with the client token.</summary>
     public required string TokenSelector { get; init; }
-    /// <summary>Gets the hash of the secret verifier.</summary>
+    /// <summary>Storage-safe hash of the secret verifier; the raw remembered-device token is returned only at creation.</summary>
     public required string TokenHash { get; init; }
-    /// <summary>Gets the informational display name.</summary>
+    /// <summary>User-facing label for the remembered device.</summary>
     public string? DisplayName { get; init; }
-    /// <summary>Gets the creation timestamp.</summary>
+    /// <summary>UTC time when the device was remembered.</summary>
     public required DateTimeOffset CreatedAt { get; init; }
-    /// <summary>Gets or sets the last successful use timestamp.</summary>
+    /// <summary>UTC time when the token last satisfied additional verification.</summary>
     public DateTimeOffset? LastUsedAt { get; set; }
-    /// <summary>Gets the expiry timestamp.</summary>
+    /// <summary>UTC time after which the device is no longer accepted.</summary>
     public required DateTimeOffset ExpiresAt { get; init; }
-    /// <summary>Gets or sets the revocation timestamp.</summary>
+    /// <summary>UTC time when the device was revoked, when applicable.</summary>
     public DateTimeOffset? RevokedAt { get; set; }
-    /// <summary>Gets or sets the revocation reason.</summary>
+    /// <summary>Provider-neutral, display-safe revocation reason. Do not include secrets, tokens, or credentials.</summary>
     public string? RevocationReason { get; set; }
     /// <summary>Returns whether the device is active at the supplied timestamp.</summary>
     /// <param name="now">The timestamp used for expiry evaluation.</param>
@@ -41,25 +41,25 @@ public sealed record RememberedMfaDevice
 /// </summary>
 public sealed record CreateRememberedMfaDeviceRequest
 {
-    /// <summary>Gets the tenant scope.</summary>
+    /// <summary>Tenant scope. Omit or use <see cref="TenantContext.Global" /> for global users; this API does not use <see langword="null" /> as an all-tenant scope.</summary>
     public TenantContext? Tenant { get; init; }
-    /// <summary>Gets the informational display name.</summary>
+    /// <summary>Optional user-facing label for the remembered device.</summary>
     public string? DisplayName { get; init; }
-    /// <summary>Gets the requested device lifetime.</summary>
+    /// <summary>Requested lifetime, capped by configured remembered-device limits.</summary>
     public TimeSpan? Lifetime { get; init; }
-    /// <summary>Gets the audit context.</summary>
+    /// <summary>Audit metadata recorded with the remembered-device operation.</summary>
     public AuditContext? Audit { get; init; }
 }
 
 /// <summary>
 /// Request to validate a remembered MFA <paramref name="Token" />.
 /// </summary>
-/// <param name="Token">The raw remembered MFA entry token.</param>
+/// <param name="Token">The raw remembered MFA device token presented by the client. Do not log or persist this value.</param>
 public sealed record ValidateRememberedMfaDeviceRequest(string? Token)
 {
-    /// <summary>Gets the tenant scope.</summary>
+    /// <summary>Tenant scope. Omit or use <see cref="TenantContext.Global" /> for global users; this API does not use <see langword="null" /> as an all-tenant scope.</summary>
     public TenantContext? Tenant { get; init; }
-    /// <summary>Gets the audit context.</summary>
+    /// <summary>Audit metadata recorded with the remembered-device operation.</summary>
     public AuditContext? Audit { get; init; }
 }
 
@@ -68,25 +68,25 @@ public sealed record ValidateRememberedMfaDeviceRequest(string? Token)
 /// </summary>
 public sealed record ListRememberedMfaDevicesRequest
 {
-    /// <summary>Gets the tenant scope.</summary>
+    /// <summary>Tenant scope. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <see cref="IncludeAllTenants" /> is enabled.</summary>
     public TenantContext? Tenant { get; init; }
-    /// <summary>Gets whether the list should include every tenant scope.</summary>
+    /// <summary>Whether the list should include every tenant scope. Cannot be combined with <see cref="Tenant" />.</summary>
     public bool IncludeAllTenants { get; init; }
-    /// <summary>Gets whether only active devices should be returned.</summary>
+    /// <summary>Whether only active devices should be returned.</summary>
     public bool ActiveOnly { get; init; } = true;
 }
 
 /// <summary>
 /// Request to revoke one remembered MFA device.
 /// </summary>
-/// <param name="DeviceId">The public device identifier.</param>
+/// <param name="DeviceId">Public identifier returned by remembered-device management APIs.</param>
 public sealed record RevokeRememberedMfaDeviceRequest(Guid DeviceId)
 {
-    /// <summary>Gets the tenant scope.</summary>
+    /// <summary>Tenant scope. Omit or use <see cref="TenantContext.Global" /> for global users; this API does not use <see langword="null" /> as an all-tenant scope.</summary>
     public TenantContext? Tenant { get; init; }
-    /// <summary>Gets the revocation reason.</summary>
+    /// <summary>Optional provider-neutral, display-safe reason recorded with audit events. Do not include secrets, tokens, or credentials.</summary>
     public string? Reason { get; init; }
-    /// <summary>Gets the audit context.</summary>
+    /// <summary>Audit metadata recorded with the remembered-device operation.</summary>
     public AuditContext? Audit { get; init; }
 }
 
@@ -95,28 +95,28 @@ public sealed record RevokeRememberedMfaDeviceRequest(Guid DeviceId)
 /// </summary>
 public sealed record RevokeAllRememberedMfaDevicesRequest
 {
-    /// <summary>Gets the tenant scope. Use <see cref="TenantContext.Global" /> for global users.</summary>
+    /// <summary>Tenant scope. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <see cref="IncludeAllTenants" /> is enabled.</summary>
     public TenantContext? Tenant { get; init; }
-    /// <summary>Gets whether revocation should apply across all tenant scopes.</summary>
+    /// <summary>Whether revocation should apply across every tenant scope. Cannot be combined with <see cref="Tenant" />.</summary>
     public bool IncludeAllTenants { get; init; }
-    /// <summary>Gets the revocation reason.</summary>
+    /// <summary>Optional provider-neutral, display-safe reason recorded with audit events. Do not include secrets, tokens, or credentials.</summary>
     public string? Reason { get; init; }
-    /// <summary>Gets the audit context.</summary>
+    /// <summary>Audit metadata recorded with the remembered-device operation.</summary>
     public AuditContext? Audit { get; init; }
 }
 
 /// <summary>
 /// Safe remembered MFA device metadata.
 /// </summary>
-/// <param name="Id">The public device identifier.</param>
-/// <param name="UserId">The owning user identifier.</param>
-/// <param name="TenantId">The tenant identifier.</param>
-/// <param name="DisplayName">The informational display name.</param>
-/// <param name="CreatedAt">The creation timestamp.</param>
-/// <param name="LastUsedAt">The last successful use timestamp.</param>
-/// <param name="ExpiresAt">The expiry timestamp.</param>
-/// <param name="RevokedAt">The revocation timestamp.</param>
-/// <param name="RevocationReason">The revocation reason.</param>
+/// <param name="Id">Public identifier returned by remembered-device management APIs.</param>
+/// <param name="UserId">User that owns the remembered device.</param>
+/// <param name="TenantId">Tenant boundary for the owner, or <see langword="null" /> for a global user.</param>
+/// <param name="DisplayName">User-facing label for the remembered device, when supplied.</param>
+/// <param name="CreatedAt">UTC time when the device was remembered.</param>
+/// <param name="LastUsedAt">UTC time when the token last satisfied additional verification, when known.</param>
+/// <param name="ExpiresAt">UTC time after which the device is no longer accepted.</param>
+/// <param name="RevokedAt">UTC time when the device was revoked, when applicable.</param>
+/// <param name="RevocationReason">Provider-neutral, display-safe revocation reason.</param>
 /// <param name="IsActive">Whether the device is active.</param>
 public sealed record RememberedMfaDeviceSummary(
     Guid Id,
@@ -133,8 +133,8 @@ public sealed record RememberedMfaDeviceSummary(
 /// <summary>
 /// Creation result containing the raw <paramref name="Token" /> exactly once.
 /// </summary>
-/// <param name="Device">The safe remembered MFA entry summary.</param>
-/// <param name="Token">The raw remembered MFA entry token.</param>
+/// <param name="Device">Safe remembered MFA entry summary returned to the caller.</param>
+/// <param name="Token">The raw remembered MFA token. Return it once to the client; do not log or persist this value.</param>
 public sealed record RememberedMfaDeviceCreated(RememberedMfaDeviceSummary Device, string Token);
 
 /// <summary>
@@ -160,8 +160,8 @@ public enum RememberedMfaDeviceValidationStatus
 /// Result of remembered MFA <paramref name="Device" /> validation.
 /// </summary>
 /// <param name="Succeeded">Whether validation succeeded.</param>
-/// <param name="Device">The safe device summary.</param>
-/// <param name="Status">The validation status.</param>
+/// <param name="Device">Safe remembered MFA entry summary, when validation can expose one.</param>
+/// <param name="Status">Outcome of remembered MFA token validation.</param>
 public sealed record ValidateRememberedMfaDeviceResult(
     bool Succeeded,
     RememberedMfaDeviceSummary? Device,
@@ -176,19 +176,19 @@ public sealed record ValidateRememberedMfaDeviceResult(
 /// </summary>
 public sealed class RememberedMfaDeviceOptions
 {
-    /// <summary>Gets or sets the default device lifetime.</summary>
+    /// <summary>Lifetime used when create requests do not specify one.</summary>
     public TimeSpan DefaultLifetime { get; set; } = TimeSpan.FromDays(30);
-    /// <summary>Gets or sets the maximum allowed device lifetime.</summary>
+    /// <summary>Upper bound for caller-requested remembered-device lifetimes.</summary>
     public TimeSpan MaxLifetime { get; set; } = TimeSpan.FromDays(365);
-    /// <summary>Gets or sets the maximum active remembered devices per user and tenant scope.</summary>
+    /// <summary>Maximum active remembered devices allowed per user and tenant scope.</summary>
     public int MaxActiveDevicesPerUser { get; set; } = 20;
-    /// <summary>Gets or sets the selector byte length.</summary>
+    /// <summary>Random byte length for the non-secret token selector.</summary>
     public int SelectorByteLength { get; set; } = 32;
-    /// <summary>Gets or sets the verifier byte length.</summary>
+    /// <summary>Random byte length for the secret token verifier.</summary>
     public int VerifierByteLength { get; set; } = 32;
-    /// <summary>Gets or sets the maximum display name length.</summary>
+    /// <summary>Maximum stored length for user-facing device labels.</summary>
     public int MaxDisplayNameLength { get; set; } = 128;
-    /// <summary>Gets or sets the maximum revocation reason length.</summary>
+    /// <summary>Maximum stored length for display-safe revocation reasons.</summary>
     public int MaxRevocationReasonLength { get; set; } = 512;
 
     /// <summary>Returns whether the options are valid.</summary>

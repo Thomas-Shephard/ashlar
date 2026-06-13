@@ -10,10 +10,10 @@ internal static class Base32
     private const string Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
     /// <summary>
-    /// Performs the encode operation and returns the result.
+    /// Encodes bytes using unpadded RFC 4648 Base32.
     /// </summary>
-    /// <param name="data">The data value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="data">The bytes to encode.</param>
+    /// <returns>The Base32 encoded text.</returns>
     public static string Encode(ReadOnlySpan<byte> data)
     {
         if (data.IsEmpty) return string.Empty;
@@ -71,11 +71,11 @@ internal static class Base32
     }
 
     /// <summary>
-    /// Performs the try decode operation and returns the result.
+    /// Attempts to decode RFC 4648 Base32 text.
     /// </summary>
-    /// <param name="base32">The base32 value.</param>
-    /// <param name="result">The converted result value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="base32">The Base32 text to decode.</param>
+    /// <param name="result">The decoded bytes when the input is valid.</param>
+    /// <returns><see langword="true" /> when the input was valid Base32.</returns>
     public static bool TryDecode(string? base32, [NotNullWhen(true)] out byte[]? result)
     {
         result = null;

@@ -9,6 +9,6 @@ public interface IAshlarConfigurationValidator
     /// Validates the current Ashlar configuration.
     /// </summary>
     /// <param name="cancellationToken">The token used to cancel configuration validation.</param>
-    /// <returns>The aggregate validation result.</returns>
+    /// <returns>The validation issues and aggregate validity flags for the current configuration.</returns>
     Task<AshlarConfigurationValidationResult> ValidateAsync(CancellationToken cancellationToken = default);
 }

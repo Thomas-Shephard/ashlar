@@ -27,7 +27,7 @@ public abstract class PersistentSecurityEventSink : IPersistentSecurityEventSink
     /// <summary>
     /// Initializes a new persistent security event sink.
     /// </summary>
-    /// <param name="logger">The logger value.</param>
+    /// <param name="logger">Logger used when queueing or persistence fails.</param>
     protected PersistentSecurityEventSink(ILogger logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -53,9 +53,9 @@ public abstract class PersistentSecurityEventSink : IPersistentSecurityEventSink
     }
 
     /// <summary>
-    /// Performs the dispose <see langword="async" /> operation and waits for queued events to drain.
+    /// Completes the sink and waits for queued events to drain.
     /// </summary>
-    /// <returns>A task that represents the asynchronous dispose operation.</returns>
+    /// <returns>A task that completes after the background persistence loop has drained queued events.</returns>
     public async ValueTask DisposeAsync()
     {
         _channel.Writer.TryComplete();
@@ -67,8 +67,8 @@ public abstract class PersistentSecurityEventSink : IPersistentSecurityEventSink
     /// Persists a security event.
     /// </summary>
     /// <param name="securityEvent">The security event.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task that represents the asynchronous persistence operation.</returns>
+    /// <param name="cancellationToken">A token that can cancel persistence.</param>
+    /// <returns>A task that completes after the event has been written to durable audit storage.</returns>
     protected abstract Task PersistAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken);
 
     /// <summary>

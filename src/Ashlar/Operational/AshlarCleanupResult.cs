@@ -1,31 +1,31 @@
 namespace Ashlar.Operational;
 
 /// <summary>
-/// Represents the ashlar cleanup result data model.
+/// Reports how many operational records were removed or discarded by a cleanup run.
 /// </summary>
-/// <param name="ExpiredSessions">The expired sessions value.</param>
-/// <param name="RevokedSessions">The revoked sessions value.</param>
-/// <param name="ExpiredCredentials">The expired credentials value.</param>
-/// <param name="RevokedCredentials">The revoked credentials value.</param>
-/// <param name="ExpiredInvitations">The expired invitations value.</param>
-/// <param name="AcceptedInvitations">The accepted invitations value.</param>
-/// <param name="RevokedInvitations">The revoked invitations value.</param>
-/// <param name="ExpiredHandshakes">The expired handshakes value.</param>
-/// <param name="CompletedHandshakes">The completed handshakes value.</param>
-/// <param name="RevokedHandshakes">The revoked handshakes value.</param>
-/// <param name="ExpiredRateLimits">The expired rate limits value.</param>
-/// <param name="AuditEvents">The audit events value.</param>
-/// <param name="SentEmails">The sent emails value.</param>
-/// <param name="FailedEmails">The failed emails value.</param>
-/// <param name="ExpiredAuthorizationGrants">The expired authorization grants value.</param>
-/// <param name="RevokedAuthorizationGrants">The revoked authorization grants value.</param>
-/// <param name="ExpiredPasskeyChallenges">The expired passkey challenges value.</param>
-/// <param name="ConsumedPasskeyChallenges">The consumed passkey challenges value.</param>
-/// <param name="SentSensitiveEmails">The sent sensitive emails value.</param>
-/// <param name="FailedSensitiveEmails">The failed sensitive emails value.</param>
-/// <param name="SentSecurityEventWebhooks">The sent security-event webhook deliveries value.</param>
-/// <param name="FailedSecurityEventWebhooks">The failed security-event webhook deliveries value.</param>
-/// <param name="DiscardedSecurityEventWebhooks">The discarded security-event webhook deliveries value.</param>
+/// <param name="ExpiredSessions">Expired authentication sessions removed.</param>
+/// <param name="RevokedSessions">Revoked authentication sessions removed.</param>
+/// <param name="ExpiredCredentials">Expired credentials removed.</param>
+/// <param name="RevokedCredentials">Revoked credentials removed.</param>
+/// <param name="ExpiredInvitations">Expired invitations removed.</param>
+/// <param name="AcceptedInvitations">Accepted invitations removed.</param>
+/// <param name="RevokedInvitations">Revoked invitations removed.</param>
+/// <param name="ExpiredHandshakes">Expired authentication handshakes removed.</param>
+/// <param name="CompletedHandshakes">Completed authentication handshakes removed.</param>
+/// <param name="RevokedHandshakes">Revoked authentication handshakes removed.</param>
+/// <param name="ExpiredRateLimits">Expired rate-limit records removed.</param>
+/// <param name="AuditEvents">Retained audit events removed according to policy.</param>
+/// <param name="SentEmails">Sent non-sensitive outbox emails removed.</param>
+/// <param name="FailedEmails">Failed non-sensitive outbox emails removed.</param>
+/// <param name="ExpiredAuthorizationGrants">Expired authorization grants removed.</param>
+/// <param name="RevokedAuthorizationGrants">Revoked authorization grants removed.</param>
+/// <param name="ExpiredPasskeyChallenges">Expired passkey challenges removed.</param>
+/// <param name="ConsumedPasskeyChallenges">Consumed passkey challenges removed.</param>
+/// <param name="SentSensitiveEmails">Sent sensitive outbox emails removed.</param>
+/// <param name="FailedSensitiveEmails">Failed sensitive outbox emails removed.</param>
+/// <param name="SentSecurityEventWebhooks">Sent security-event webhook deliveries removed.</param>
+/// <param name="FailedSecurityEventWebhooks">Failed security-event webhook deliveries removed.</param>
+/// <param name="DiscardedSecurityEventWebhooks">Discarded security-event webhook deliveries removed.</param>
 public sealed record AshlarCleanupResult(
     int ExpiredSessions,
     int RevokedSessions,
@@ -52,7 +52,7 @@ public sealed record AshlarCleanupResult(
     int DiscardedSecurityEventWebhooks = 0)
 {
     /// <summary>
-    /// Executes the new operation.
+    /// Gets a cleanup result with all counts set to zero.
     /// </summary>
     public static AshlarCleanupResult Empty { get; } = new(
         ExpiredSessions: 0,
@@ -80,7 +80,7 @@ public sealed record AshlarCleanupResult(
         DiscardedSecurityEventWebhooks: 0);
 
     /// <summary>
-    /// Gets or sets the total value.
+    /// Gets the total number of records affected by cleanup.
     /// </summary>
     public int Total =>
         ExpiredSessions
@@ -108,10 +108,10 @@ public sealed record AshlarCleanupResult(
         + DiscardedSecurityEventWebhooks;
 
     /// <summary>
-    /// Performs the add operation and returns the result.
+    /// Adds another cleanup result to this result.
     /// </summary>
-    /// <param name="other">The other value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="other">Cleanup result to add.</param>
+    /// <returns>A cleanup result whose counts are the sum of both inputs.</returns>
     public AshlarCleanupResult Add(AshlarCleanupResult other)
     {
         ArgumentNullException.ThrowIfNull(other);

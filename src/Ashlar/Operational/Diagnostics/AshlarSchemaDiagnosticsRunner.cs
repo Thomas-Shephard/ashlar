@@ -5,9 +5,9 @@ namespace Ashlar.Operational.Diagnostics;
 /// <summary>
 /// Provides shared schema diagnostics result mapping for Ashlar persistence providers.
 /// </summary>
-/// <param name="providerName">The provider name value.</param>
-/// <param name="expectedMigrationNames">The expected migration names value.</param>
-/// <param name="minimumProviderVersion">The minimum provider version value.</param>
+/// <param name="providerName">Persistence provider name reported in diagnostic results.</param>
+/// <param name="expectedMigrationNames">Ordered migration resource names expected by the current Ashlar package.</param>
+/// <param name="minimumProviderVersion">Minimum provider schema or engine version expected by Ashlar.</param>
 public sealed class AshlarSchemaDiagnosticsRunner(
     string providerName,
     IReadOnlyCollection<string> expectedMigrationNames,
@@ -20,15 +20,15 @@ public sealed class AshlarSchemaDiagnosticsRunner(
     /// <summary>
     /// Checks provider schema state and returns a sanitized diagnostics result.
     /// </summary>
-    /// <typeparam name="TConnection">The provider connection type.</typeparam>
-    /// <param name="timeProvider">The time provider value.</param>
-    /// <param name="openConnectionAsync">The open connection callback.</param>
-    /// <param name="getProviderVersionAsync">The provider version callback.</param>
-    /// <param name="getSchemaJournalCountAsync">The schema journal count callback.</param>
-    /// <param name="getAppliedMigrationNamesAsync">The applied migration names callback.</param>
-    /// <param name="logException">The exception logging callback.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The schema diagnostics result.</returns>
+    /// <typeparam name="TConnection">Provider connection type used by diagnostics queries.</typeparam>
+    /// <param name="timeProvider">Clock used to stamp the diagnostic result.</param>
+    /// <param name="openConnectionAsync">Callback that opens a provider connection for diagnostics.</param>
+    /// <param name="getProviderVersionAsync">Callback that reads the provider schema or engine version.</param>
+    /// <param name="getSchemaJournalCountAsync">Callback that counts schema journal entries.</param>
+    /// <param name="getAppliedMigrationNamesAsync">Callback that reads applied migration names.</param>
+    /// <param name="logException">Callback that records diagnostics failures without exposing provider query details.</param>
+    /// <param name="cancellationToken">Token for aborting provider diagnostics work.</param>
+    /// <returns>Sanitized provider schema health status and migration details.</returns>
     public async Task<AshlarSchemaDiagnosticResult> CheckAsync<TConnection>(
         TimeProvider timeProvider,
         Func<CancellationToken, ValueTask<TConnection>> openConnectionAsync,
@@ -80,7 +80,7 @@ public sealed class AshlarSchemaDiagnosticsRunner(
     /// <summary>
     /// Gets embedded schema migration names from an assembly.
     /// </summary>
-    /// <param name="assembly">The assembly value.</param>
+    /// <param name="assembly">Assembly containing embedded Ashlar schema migration resources.</param>
     /// <returns>The ordered embedded schema migration resource names.</returns>
     public static string[] GetExpectedMigrationNames(Assembly assembly)
     {

@@ -1,12 +1,12 @@
 namespace Ashlar.Identity.Abstractions.Tenancy;
 
 /// <summary>
-/// Defines the contract for itenant user operations.
+/// Describes a user that may belong to a tenant scope.
 /// </summary>
 public interface ITenantUser : IUser
 {
     /// <summary>
-    /// Gets the tenant id value.
+    /// Tenant identifier for tenant-scoped users, or <see langword="null" /> for global users.
     /// </summary>
     Guid? TenantId { get; }
 }

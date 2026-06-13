@@ -1,22 +1,22 @@
 namespace Ashlar.Operational.Diagnostics;
 
 /// <summary>
-/// Represents safe aggregate authentication rate limiter state.
+/// Display-safe aggregate state used to evaluate authentication rate limiter health.
 /// </summary>
 public sealed record AuthenticationRateLimiterDiagnosticSnapshot
 {
     /// <summary>
-    /// Gets or sets the expired row count value.
+    /// Expired rate-limit rows observed by the provider, when the diagnostic can count them.
     /// </summary>
     public long? ExpiredRowCount { get; init; }
 
     /// <summary>
-    /// Gets or sets the active key count value.
+    /// Active rate-limit buckets observed by the provider, when the diagnostic can count them.
     /// </summary>
     public long? ActiveKeyCount { get; init; }
 
     /// <summary>
-    /// Gets or sets the blocked key count value.
+    /// Currently blocked rate-limit buckets observed by the provider, when the diagnostic can count them.
     /// </summary>
     public long? BlockedKeyCount { get; init; }
 }

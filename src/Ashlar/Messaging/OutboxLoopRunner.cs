@@ -11,14 +11,14 @@ public static class OutboxLoopRunner
     /// <summary>
     /// Runs a hosted outbox polling loop.
     /// </summary>
-    /// <param name="serviceProvider">The service provider.</param>
+    /// <param name="serviceProvider">Root service provider used to create a scope for each polling iteration.</param>
     /// <param name="batchSize">The configured batch size.</param>
     /// <param name="pollingInterval">The polling interval.</param>
-    /// <param name="logger">The logger.</param>
+    /// <param name="logger">Logger used to record polling loop failures.</param>
     /// <param name="processBatchAsync">The provider-specific scoped batch processor.</param>
     /// <param name="logBatchFailed">The provider-specific failure logger.</param>
-    /// <param name="stoppingToken">The stopping token.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
+    /// <param name="stoppingToken">Token that stops the hosted polling loop.</param>
+    /// <returns>A task that completes when the hosted polling loop stops.</returns>
     public static async Task RunHostedLoopAsync(
         IServiceProvider serviceProvider,
         int batchSize,

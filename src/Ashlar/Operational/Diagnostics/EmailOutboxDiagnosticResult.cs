@@ -1,26 +1,26 @@
 namespace Ashlar.Operational.Diagnostics;
 
 /// <summary>
-/// Represents a provider-neutral diagnostic result for the Ashlar email outbox.
+/// Describes aggregate diagnostic state for the Ashlar email outbox.
 /// </summary>
-/// <param name="Status">The diagnostic status value.</param>
-/// <param name="ProviderName">The provider name value.</param>
-/// <param name="Reason">The reason value.</param>
-/// <param name="CheckedAt">The checked at value.</param>
-/// <param name="PendingCount">The pending count value.</param>
-/// <param name="ScheduledCount">The scheduled count value.</param>
-/// <param name="LockedCount">The locked count value.</param>
-/// <param name="ExpiredLockCount">The expired lock count value.</param>
-/// <param name="FailedCount">The failed count value.</param>
-/// <param name="SensitivePendingCount">The sensitive pending count value.</param>
-/// <param name="SensitiveScheduledCount">The sensitive scheduled count value.</param>
-/// <param name="SensitiveLockedCount">The sensitive locked count value.</param>
-/// <param name="SensitiveFailedCount">The sensitive failed count value.</param>
-/// <param name="OldestPendingAt">The oldest pending at value.</param>
-/// <param name="OldestFailedAt">The oldest failed at value.</param>
-/// <param name="MaxAttempts">The max attempts value.</param>
-/// <param name="PollingInterval">The polling interval value.</param>
-/// <param name="BatchSize">The batch size value.</param>
+/// <param name="Status">Overall diagnostic status for the outbox check.</param>
+/// <param name="ProviderName">Persistence provider that produced the diagnostic result.</param>
+/// <param name="Reason">Optional provider-safe reason when the check is unavailable, degraded, or failed.</param>
+/// <param name="CheckedAt">UTC time when the diagnostic check completed.</param>
+/// <param name="PendingCount">Number of messages ready for delivery.</param>
+/// <param name="ScheduledCount">Number of messages scheduled for future delivery.</param>
+/// <param name="LockedCount">Number of messages currently locked by a dispatcher.</param>
+/// <param name="ExpiredLockCount">Number of locked messages whose delivery lock has expired.</param>
+/// <param name="FailedCount">Number of messages that exhausted delivery attempts.</param>
+/// <param name="SensitivePendingCount">Pending messages marked as containing sensitive body content.</param>
+/// <param name="SensitiveScheduledCount">Scheduled messages marked as containing sensitive body content.</param>
+/// <param name="SensitiveLockedCount">Locked messages marked as containing sensitive body content.</param>
+/// <param name="SensitiveFailedCount">Failed messages marked as containing sensitive body content.</param>
+/// <param name="OldestPendingAt">Oldest pending message timestamp, when available.</param>
+/// <param name="OldestFailedAt">Oldest failed message timestamp, when available.</param>
+/// <param name="MaxAttempts">Configured maximum delivery attempts.</param>
+/// <param name="PollingInterval">Configured dispatcher polling interval.</param>
+/// <param name="BatchSize">Configured dispatcher batch size.</param>
 public sealed record EmailOutboxDiagnosticResult(
     AshlarDiagnosticStatus Status,
     string ProviderName,

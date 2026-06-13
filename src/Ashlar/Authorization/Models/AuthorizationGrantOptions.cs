@@ -1,36 +1,36 @@
 namespace Ashlar.Authorization.Models;
 
 /// <summary>
-/// Provides authorization grant options behavior.
+/// Configures validation limits for authorization grant values.
 /// </summary>
 public sealed class AuthorizationGrantOptions
 {
     /// <summary>
-    /// Gets or sets the max role length value.
+    /// Maximum allowed length for role names.
     /// </summary>
     public int MaxRoleLength { get; set; } = 128;
     /// <summary>
-    /// Gets or sets the max permission length value.
+    /// Maximum allowed length for permission names.
     /// </summary>
     public int MaxPermissionLength { get; set; } = 256;
     /// <summary>
-    /// Gets or sets the max scope type length value.
+    /// Maximum allowed length for scope type names.
     /// </summary>
     public int MaxScopeTypeLength { get; set; } = 128;
     /// <summary>
-    /// Gets or sets the max scope id length value.
+    /// Maximum allowed length for scope identifiers.
     /// </summary>
     public int MaxScopeIdLength { get; set; } = 256;
     /// <summary>
-    /// Gets or sets the max metadata length value.
+    /// Maximum allowed length for provider-neutral grant metadata.
     /// </summary>
     public int MaxMetadataLength { get; set; } = 8192;
 
     /// <summary>
-    /// Performs the validate operation and returns the result.
+    /// Validates authorization grant options.
     /// </summary>
-    /// <param name="options">The options value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="options">The options instance to validate.</param>
+    /// <returns><see langword="true" /> when all configured limits are positive.</returns>
     public static bool Validate(AuthorizationGrantOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);

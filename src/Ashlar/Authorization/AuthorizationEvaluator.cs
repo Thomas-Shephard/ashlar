@@ -4,11 +4,11 @@ using Ashlar.Authorization.Models;
 namespace Ashlar.Authorization;
 
 /// <summary>
-/// Provides authorization evaluator behavior.
+/// Evaluates whether a user has an active role or permission grant.
 /// </summary>
-/// <param name="repository">The repository value.</param>
-/// <param name="options">The options value.</param>
-/// <param name="timeProvider">The time provider value.</param>
+/// <param name="repository">Grant storage used for authorization lookups.</param>
+/// <param name="options">Validation limits for requested grant fields.</param>
+/// <param name="timeProvider">Clock used for expiration checks.</param>
 public sealed class AuthorizationEvaluator(
     IAuthorizationGrantRepository repository,
     AuthorizationGrantOptions? options = null,
@@ -19,11 +19,11 @@ public sealed class AuthorizationEvaluator(
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
     /// <summary>
-    /// Performs the evaluate <see langword="async" /> operation and returns the result.
+    /// Checks the requested role or permission against active grants.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">User, tenant, role or permission, and optional scope to evaluate.</param>
+    /// <param name="cancellationToken">A token that can cancel the evaluation.</param>
+    /// <returns>The evaluation result, including the matching grant when access is allowed.</returns>
     public async Task<AuthorizationEvaluationResult> EvaluateAsync(AuthorizationEvaluationRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

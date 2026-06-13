@@ -45,8 +45,8 @@ internal sealed class EmailChangeService(
     /// Creates an email-change verification credential and sends the confirmation message.
     /// </summary>
     /// <param name="request">Email-change request details.</param>
-    /// <param name="cancellationToken">Token used to cancel the operation.</param>
-    /// <returns>The result of the request operation.</returns>
+    /// <param name="cancellationToken">A token that can cancel credential creation, message delivery, or audit work.</param>
+    /// <returns>A success result when the email-change confirmation message is queued; otherwise, a failure describing why the request was rejected.</returns>
     public async Task<Result> RequestChangeAsync(RequestEmailChangeRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -206,8 +206,8 @@ internal sealed class EmailChangeService(
     /// Consumes an email-change credential and updates the user's email address.
     /// </summary>
     /// <param name="request">Email-change confirmation details.</param>
-    /// <param name="cancellationToken">Token used to cancel the operation.</param>
-    /// <returns>The result of the confirmation operation.</returns>
+    /// <param name="cancellationToken">A token that can cancel token verification or email update work.</param>
+    /// <returns>A success result when the token is consumed and the email address is updated; otherwise, a failure describing why confirmation was rejected.</returns>
     public async Task<Result> ConfirmChangeAsync(ConfirmEmailChangeRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -401,31 +401,31 @@ internal sealed class EmailChangeService(
     private sealed class UpdatedUserWrapper(IUser original, string newEmail, DateTimeOffset? emailVerifiedAt) : ITenantUser, IHasAuditMetadata
     {
         /// <summary>
-        /// Gets the existing user identifier.
+        /// Existing user identifier.
         /// </summary>
         public Guid Id => original.Id;
         /// <summary>
-        /// Gets the replacement email address.
+        /// Replacement email address.
         /// </summary>
         public string Email { get; } = newEmail;
         /// <summary>
-        /// Gets the existing display name.
+        /// Existing display name.
         /// </summary>
         public string? Name => original.Name;
         /// <summary>
-        /// Gets the existing account state.
+        /// Existing account state.
         /// </summary>
         public UserAccountState AccountState => original.AccountState;
         /// <summary>
-        /// Gets the existing tenant identifier.
+        /// Existing tenant identifier.
         /// </summary>
         public Guid? TenantId => (original as ITenantUser)?.TenantId;
         /// <summary>
-        /// Gets the updated email verification timestamp.
+        /// Updated email verification timestamp.
         /// </summary>
         public DateTimeOffset? EmailVerifiedAt { get; } = emailVerifiedAt;
         /// <summary>
-        /// Gets the existing creation timestamp.
+        /// Existing creation timestamp.
         /// </summary>
         public DateTimeOffset CreatedAt => (original as IHasAuditMetadata)?.CreatedAt ?? default;
         public DateTimeOffset? UpdatedAt

@@ -1,14 +1,14 @@
 namespace Ashlar.Authorization.Models;
 
 /// <summary>
-/// Represents the list authorization grants request data model.
+/// Request to list authorization grants for a user and optional scope.
 /// </summary>
-/// <param name="UserId">The user id value.</param>
-/// <param name="TenantId">The tenant id value.</param>
-/// <param name="ScopeType">The scope type value.</param>
-/// <param name="ScopeId">The scope id value.</param>
-/// <param name="ActiveOnly">The active only value.</param>
-/// <param name="ExactMatch">The exact match value.</param>
+/// <param name="UserId">The user whose grants are listed.</param>
+/// <param name="TenantId">Tenant boundary for the query, or <see langword="null" /> for global grants.</param>
+/// <param name="ScopeType">Optional resource type filter.</param>
+/// <param name="ScopeId">Optional resource identifier within <paramref name="ScopeType" />.</param>
+/// <param name="ActiveOnly">Whether revoked and expired grants should be omitted.</param>
+/// <param name="ExactMatch">Whether scope filters must match exactly instead of allowing broader grants.</param>
 public sealed record ListAuthorizationGrantsRequest(
     Guid UserId,
     Guid? TenantId = null,

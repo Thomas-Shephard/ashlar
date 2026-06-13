@@ -6,9 +6,9 @@ namespace Ashlar.Operational;
 public interface IAshlarCleanupService
 {
     /// <summary>
-    /// Performs the cleanup <see langword="async" /> operation and returns the result.
+    /// Removes expired or retained operational records according to provider cleanup policy.
     /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="cancellationToken">A token that can cancel cleanup execution.</param>
+    /// <returns>Counts for records removed or discarded by cleanup.</returns>
     Task<AshlarCleanupResult> CleanupAsync(CancellationToken cancellationToken = default);
 }

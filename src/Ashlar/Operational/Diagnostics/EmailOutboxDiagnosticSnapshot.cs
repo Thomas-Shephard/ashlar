@@ -1,62 +1,62 @@
 namespace Ashlar.Operational.Diagnostics;
 
 /// <summary>
-/// Represents provider-specific email outbox aggregate state used to build diagnostics.
+/// Display-safe aggregate state used to evaluate email outbox health.
 /// </summary>
 public sealed record EmailOutboxDiagnosticSnapshot
 {
     /// <summary>
-    /// Gets the pending count.
+    /// Messages ready to dispatch now.
     /// </summary>
     public long PendingCount { get; init; }
 
     /// <summary>
-    /// Gets the scheduled count.
+    /// Messages scheduled for future dispatch.
     /// </summary>
     public long ScheduledCount { get; init; }
 
     /// <summary>
-    /// Gets the locked count.
+    /// Messages currently claimed by a dispatcher.
     /// </summary>
     public long LockedCount { get; init; }
 
     /// <summary>
-    /// Gets the expired lock count.
+    /// Locked messages whose lease has expired.
     /// </summary>
     public long ExpiredLockCount { get; init; }
 
     /// <summary>
-    /// Gets the failed count.
+    /// Messages that exhausted dispatch attempts.
     /// </summary>
     public long FailedCount { get; init; }
 
     /// <summary>
-    /// Gets the sensitive pending count.
+    /// Ready-to-dispatch messages whose body contains live secret material.
     /// </summary>
     public long SensitivePendingCount { get; init; }
 
     /// <summary>
-    /// Gets the sensitive scheduled count.
+    /// Future-dispatch messages whose body contains live secret material.
     /// </summary>
     public long SensitiveScheduledCount { get; init; }
 
     /// <summary>
-    /// Gets the sensitive locked count.
+    /// Claimed messages whose body contains live secret material.
     /// </summary>
     public long SensitiveLockedCount { get; init; }
 
     /// <summary>
-    /// Gets the sensitive failed count.
+    /// Failed messages whose body contains live secret material.
     /// </summary>
     public long SensitiveFailedCount { get; init; }
 
     /// <summary>
-    /// Gets the oldest pending timestamp.
+    /// Oldest ready-to-dispatch message timestamp, when any exist.
     /// </summary>
     public DateTimeOffset? OldestPendingAt { get; init; }
 
     /// <summary>
-    /// Gets the oldest failed timestamp.
+    /// Oldest failed message timestamp, when any exist.
     /// </summary>
     public DateTimeOffset? OldestFailedAt { get; init; }
 }

@@ -11,7 +11,7 @@ public sealed record ListAuthenticationSessionsRequest
     public bool ActiveOnly { get; init; } = true;
 
     /// <summary>
-    /// The session ID that should be marked as "current" in the results.
+    /// Session identifier to mark as current in user-facing results.
     /// </summary>
     public Guid? CurrentSessionId { get; init; }
 }

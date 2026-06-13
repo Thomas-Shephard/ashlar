@@ -3,41 +3,41 @@ using Ashlar.Authorization.Models;
 namespace Ashlar.Authorization.Abstractions;
 
 /// <summary>
-/// Defines the contract for iauthorization grant repository operations.
+/// Persists and queries provider-neutral authorization grants.
 /// </summary>
 public interface IAuthorizationGrantRepository
 {
     /// <summary>
-    /// Performs the create grant <see langword="async" /> operation and returns the result.
+    /// Persists a new authorization grant.
     /// </summary>
-    /// <param name="grant">The grant value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="grant">Validated grant to store.</param>
+    /// <param name="cancellationToken">A token that can cancel persistence.</param>
+    /// <returns>A task that completes after the grant has been persisted.</returns>
     Task CreateGrantAsync(AuthorizationGrant grant, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Performs the list grants <see langword="async" /> operation and returns the result.
+    /// Lists grants matching a user, tenant, and optional resource scope.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">Provider-neutral user, tenant, and optional scope criteria.</param>
+    /// <param name="cancellationToken">A token that can cancel the query.</param>
+    /// <returns>Matching grants. Repository implementations must not return secrets in metadata.</returns>
     Task<IReadOnlyList<AuthorizationGrant>> ListGrantsAsync(ListAuthorizationGrantsRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Performs the get grant <see langword="async" /> operation and returns the result.
+    /// Gets one grant by identifier.
     /// </summary>
-    /// <param name="grantId">The grant id value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="grantId">Identifier of the grant to retrieve.</param>
+    /// <param name="cancellationToken">A token that can cancel the lookup.</param>
+    /// <returns>Matching grant, or <see langword="null" /> when no grant exists.</returns>
     Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Performs the revoke grant <see langword="async" /> operation and returns the result.
+    /// Marks an active grant as revoked.
     /// </summary>
-    /// <param name="grantId">The grant id value.</param>
-    /// <param name="tenantId">The tenant id value. A <see langword="null" /> value matches only global grants.</param>
-    /// <param name="revokedAt">The revoked at value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="grantId">Identifier of the grant to revoke.</param>
+    /// <param name="tenantId">Tenant boundary that must match the grant. A <see langword="null" /> value matches only global grants.</param>
+    /// <param name="revokedAt">UTC time to record as the revocation timestamp.</param>
+    /// <param name="cancellationToken">A token that can cancel revocation.</param>
+    /// <returns><see langword="true" /> when an active matching grant was revoked.</returns>
     Task<bool> RevokeGrantAsync(Guid grantId, Guid? tenantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default);
 }

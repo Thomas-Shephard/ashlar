@@ -6,11 +6,11 @@ namespace Ashlar.Auditing;
 public sealed class NullSecurityEventSink : ISecurityEventSink
 {
     /// <summary>
-    /// Performs the record <see langword="async" /> operation and returns the result.
+    /// Accepts a security event without persisting or forwarding it.
     /// </summary>
-    /// <param name="securityEvent">The security event value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="securityEvent">Security event that would otherwise be recorded.</param>
+    /// <param name="cancellationToken">A token observed before completing the no-op task.</param>
+    /// <returns>A completed task.</returns>
     public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(securityEvent);

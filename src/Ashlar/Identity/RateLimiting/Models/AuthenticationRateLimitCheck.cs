@@ -4,8 +4,8 @@ namespace Ashlar.Identity.RateLimiting.Models;
 /// Describes one authentication rate-limit bucket check.
 /// </summary>
 /// <param name="Purpose">The operation purpose being limited.</param>
-/// <param name="DimensionName">The safe bucket dimension name.</param>
-/// <param name="DimensionValue">The safe bucket dimension value.</param>
+/// <param name="DimensionName">Normalized dimension name used to partition rate-limit buckets.</param>
+/// <param name="DimensionValue">Safe bucket value, such as a normalized email, source, or token hash.</param>
 /// <param name="Rule">The rule to enforce.</param>
 public sealed record AuthenticationRateLimitCheck(
     string Purpose,
@@ -14,27 +14,27 @@ public sealed record AuthenticationRateLimitCheck(
     RateLimitRule Rule)
 {
     /// <summary>
-    /// Gets the optional provider identity for provider-scoped buckets.
+    /// Optional provider identity for provider-scoped buckets.
     /// </summary>
     public AuthenticationProviderKey? ProviderKey { get; init; }
 
     /// <summary>
-    /// Gets the optional authentication context.
+    /// Optional authentication context used for source, tenant, and correlation metadata.
     /// </summary>
     public AuthenticationContext? Context { get; init; }
 
     /// <summary>
-    /// Gets the optional normalized tenant scope override.
+    /// Optional normalized tenant scope override.
     /// </summary>
     public Guid? TenantId { get; init; }
 
     /// <summary>
-    /// Gets the optional user identity metadata.
+    /// Optional user identity metadata.
     /// </summary>
     public Guid? UserId { get; init; }
 
     /// <summary>
-    /// Gets the optional email metadata. This value is normalized before it reaches the rate limiter.
+    /// Optional email metadata after normalization for rate-limit bucketing.
     /// </summary>
     public string? Email { get; init; }
 }

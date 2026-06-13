@@ -8,7 +8,7 @@ public interface ISecurityEventWebhookOutboxDiagnostics
     /// <summary>
     /// Checks the Ashlar security event webhook outbox state.
     /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The diagnostic result.</returns>
+    /// <param name="cancellationToken">Token for aborting diagnostics work.</param>
+    /// <returns>Provider-neutral webhook outbox diagnostic result with aggregate counts only.</returns>
     Task<SecurityEventWebhookOutboxDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default);
 }

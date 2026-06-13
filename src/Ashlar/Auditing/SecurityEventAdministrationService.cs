@@ -3,7 +3,7 @@ namespace Ashlar.Auditing;
 /// <summary>
 /// Implements read-only administrator security event search and detail operations.
 /// </summary>
-/// <param name="repository">The repository value.</param>
+/// <param name="repository">Repository used for safe administrator security event lookup.</param>
 /// <remarks>
 /// These operations are intended for administrative diagnostics and do not authorize the caller.
 /// Host applications must protect usage of this service with appropriate admin authorization and step-up policy.

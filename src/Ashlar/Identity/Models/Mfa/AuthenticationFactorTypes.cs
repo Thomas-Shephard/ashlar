@@ -23,9 +23,9 @@ public static class AuthenticationFactorTypes
     /// <summary>
     /// Determines whether two factor type values represent the same factor family.
     /// </summary>
-    /// <param name="left">The first factor type value.</param>
-    /// <param name="right">The second factor type value.</param>
-    /// <returns><see langword="true" /> when the factor type values match.</returns>
+    /// <param name="left">First factor type to compare.</param>
+    /// <param name="right">Second factor type to compare.</param>
+    /// <returns><see langword="true" /> when both inputs describe the same factor family.</returns>
     public static bool Matches(string? left, string? right)
     {
         return StringComparer.OrdinalIgnoreCase.Equals(left, right) ||

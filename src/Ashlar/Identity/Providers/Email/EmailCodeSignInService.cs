@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.Identity.Providers.Email;
 
 /// <summary>
-/// Provides email code sign in service behavior.
+/// Issues and verifies email sign-in codes.
 /// </summary>
 internal sealed class EmailCodeSignInService : IEmailCodeSignInService
 {
@@ -24,8 +24,8 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
     /// <summary>
     /// Initializes a configured service instance.
     /// </summary>
-    /// <param name="dependencies">The dependencies value.</param>
-    /// <param name="options">The options value.</param>
+    /// <param name="dependencies">Repositories, providers, messaging, audit, and rate limiting services used by email-code sign-in.</param>
+    /// <param name="options">Email-code sign-in configuration, or <see langword="null" /> to use defaults.</param>
     public EmailCodeSignInService(
         EmailCodeSignInDependencies dependencies,
         IOptions<EmailCodeSignInOptions>? options = null)
@@ -37,12 +37,12 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
     }
 
     /// <summary>
-    /// Performs the request code <see langword="async" /> operation and returns the result.
+    /// Creates a transient code credential and sends it to the user when the account can sign in.
     /// </summary>
-    /// <param name="email">The email value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="email">Email address receiving the sign-in code.</param>
+    /// <param name="context">Authentication context used for tenant scope, rate limiting, and audit metadata.</param>
+    /// <param name="cancellationToken">Token for aborting repository, messaging, and audit work.</param>
+    /// <returns>A task that completes after the request has been handled. Missing or disabled accounts are deliberately suppressed.</returns>
     public async Task RequestCodeAsync(string email, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
@@ -104,13 +104,13 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
     }
 
     /// <summary>
-    /// Performs the verify code <see langword="async" /> operation through MFA-aware orchestration and returns the result.
+    /// Verifies a submitted email code through MFA-aware authentication orchestration.
     /// </summary>
-    /// <param name="email">The email value.</param>
-    /// <param name="code">The code value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="email">Email address associated with the sign-in request.</param>
+    /// <param name="code">User-submitted sign-in code. Do not log this value.</param>
+    /// <param name="context">Authentication context used for tenant scope, rate limiting, and audit metadata.</param>
+    /// <param name="cancellationToken">Token for aborting verification work.</param>
+    /// <returns>MFA-aware result that may succeed, require additional factors, fail, or indicate rate limiting.</returns>
     public Task<MfaAuthenticationResult> VerifyCodeAsync(string email, string code, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         var normalizedEmail = IdentityNormalization.NormalizeEmail(email);

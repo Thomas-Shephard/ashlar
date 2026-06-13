@@ -8,10 +8,10 @@ namespace Ashlar.Security.Tokens;
 public sealed class SecureTokenGenerator : ISecureTokenGenerator
 {
     /// <summary>
-    /// Performs the generate token operation and returns the result.
+    /// Generates a URL-safe raw bearer token.
     /// </summary>
-    /// <param name="byteLength">The byte length value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="byteLength">The number of random bytes to encode.</param>
+    /// <returns>A raw token value. Return it only to the intended recipient and store only a hash when possible.</returns>
     public string GenerateToken(int byteLength = ISecureTokenGenerator.DefaultByteLength)
     {
         if (byteLength is < ISecureTokenGenerator.MinimumByteLength or > ISecureTokenGenerator.MaximumByteLength)

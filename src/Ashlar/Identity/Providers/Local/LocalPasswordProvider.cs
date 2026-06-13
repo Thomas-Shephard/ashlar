@@ -3,30 +3,30 @@ using Ashlar.Security.Hashing;
 namespace Ashlar.Identity.Providers.Local;
 
 /// <summary>
-/// Provides local password provider behavior.
+/// Authenticates local passwords against stored password hashes.
 /// </summary>
-/// <param name="hasherSelector">The password hasher selector.</param>
+/// <param name="hasherSelector">Hashing component used to verify submitted passwords and produce upgraded hashes.</param>
 public sealed class LocalPasswordProvider(PasswordHasherSelector hasherSelector) : PasswordHashAuthenticationProvider(hasherSelector)
 {
     /// <summary>
-    /// Gets or sets the key value.
+    /// Gets the local password provider key.
     /// </summary>
     public override AuthenticationProviderKey Key => AuthenticationProviderKey.Local;
 
     /// <summary>
-    /// Executes the supports assertion operation.
+    /// Determines whether the assertion contains a local password submission.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">Assertion supplied to the authentication pipeline.</param>
+    /// <returns><see langword="true" /> when this provider can validate the assertion; otherwise, <see langword="false" />.</returns>
     protected override bool SupportsAssertion(IAuthenticationAssertion assertion) => assertion is LocalPasswordAssertion;
 
     /// <summary>
-    /// Performs the authenticate <see langword="async" /> operation and returns the result.
+    /// Verifies the submitted password against the stored hash.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="credential">The credential value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">Local password assertion containing the plaintext password.</param>
+    /// <param name="credential">Stored local password credential containing the encoded hash.</param>
+    /// <param name="cancellationToken">Token for aborting authentication work.</param>
+    /// <returns>Authentication status and an upgraded credential value when the hash version should be replaced.</returns>
     public override Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default)
     {
         if (assertion is not LocalPasswordAssertion passwordAssertion)

@@ -6,7 +6,7 @@ namespace Ashlar.Operational.Configuration;
 public sealed class AshlarConfigurationValidationResult
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="AshlarConfigurationValidationResult"/> class.
+    /// Creates a validation result from discovered configuration issues.
     /// </summary>
     /// <param name="issues">The validation issues that were found.</param>
     public AshlarConfigurationValidationResult(IEnumerable<AshlarConfigurationIssue> issues)

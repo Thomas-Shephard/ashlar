@@ -8,23 +8,23 @@ namespace Ashlar.Identity.Models.Sessions;
 public sealed record MarkSessionStepUpVerifiedRequest
 {
     /// <summary>
-    /// Gets or initializes the session id to update.
+    /// Application session to mark as freshly step-up verified.
     /// </summary>
     public required Guid SessionId { get; init; }
     /// <summary>
-    /// Gets or initializes the provider that completed additional verification.
+    /// Provider that satisfied the additional verification challenge.
     /// </summary>
     public required AuthenticationProviderKey VerifiedProvider { get; init; }
     /// <summary>
-    /// Gets or initializes the verified factor family.
+    /// Provider-neutral factor family that satisfied step-up verification.
     /// </summary>
     public required string VerifiedFactor { get; init; }
     /// <summary>
-    /// Gets or initializes the tenant context associated with the update.
+    /// Tenant scope used to validate the session owner and audit context. Use <see cref="TenantContext.Global" /> for global users; this API does not use <see langword="null" /> to skip ownership checks.
     /// </summary>
     public TenantContext? Tenant { get; init; }
     /// <summary>
-    /// Gets or initializes request audit metadata.
+    /// Audit metadata recorded with the step-up verification update.
     /// </summary>
     public AuditContext? Audit { get; init; }
 }

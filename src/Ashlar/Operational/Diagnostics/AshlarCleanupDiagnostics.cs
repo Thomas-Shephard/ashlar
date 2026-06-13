@@ -5,9 +5,9 @@ namespace Ashlar.Operational.Diagnostics;
 /// <summary>
 /// Provides cleanup diagnostics from configured Ashlar cleanup options.
 /// </summary>
-/// <param name="providerName">The provider name value.</param>
-/// <param name="options">The cleanup options value.</param>
-/// <param name="timeProvider">The time provider value.</param>
+/// <param name="providerName">Persistence provider name reported in diagnostic results.</param>
+/// <param name="options">Configured cleanup options to validate and surface.</param>
+/// <param name="timeProvider">Clock used to stamp diagnostic results.</param>
 public abstract class AshlarCleanupDiagnostics(
     string providerName,
     IOptions<AshlarCleanupOptions> options,

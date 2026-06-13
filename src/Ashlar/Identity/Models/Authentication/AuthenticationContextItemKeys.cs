@@ -6,7 +6,7 @@ namespace Ashlar.Identity.Models.Authentication;
 public static class AuthenticationContextItemKeys
 {
     /// <summary>
-    /// The raw remembered MFA device token supplied by the transport layer.
+    /// The raw remembered MFA device token supplied by the transport layer. Do not log or persist this value.
     /// </summary>
     public const string RememberedMfaDeviceToken = "ashlar.remembered_mfa_device_token";
 }
@@ -19,9 +19,9 @@ public static class AuthenticationContextItemExtensions
     /// <summary>
     /// Returns a copy of the context with the remembered MFA device token item set.
     /// </summary>
-    /// <param name="context">The authentication context.</param>
-    /// <param name="token">The raw remembered MFA device token.</param>
-    /// <returns>The updated context.</returns>
+    /// <param name="context">Authentication context to copy and augment with the raw remembered-device token.</param>
+    /// <param name="token">The raw remembered MFA device token. Do not log or persist this value.</param>
+    /// <returns>Updated authentication context containing the raw remembered-device token.</returns>
     public static AuthenticationContext WithRememberedMfaDeviceToken(this AuthenticationContext context, string token)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -37,8 +37,8 @@ public static class AuthenticationContextItemExtensions
     /// <summary>
     /// Gets a non-empty remembered MFA device token from the context when one is present.
     /// </summary>
-    /// <param name="context">The authentication context.</param>
-    /// <param name="token">The remembered MFA device token.</param>
+    /// <param name="context">Authentication context that may carry a raw remembered-device token.</param>
+    /// <param name="token">The remembered MFA device token, when present. Do not log or persist this value.</param>
     /// <returns><see langword="true" /> when a token was present.</returns>
     public static bool TryGetRememberedMfaDeviceToken(this AuthenticationContext context, out string token)
     {

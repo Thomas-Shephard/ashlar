@@ -5,21 +5,21 @@ namespace Ashlar.Auditing;
 /// <summary>
 /// Represents a security event projected into provider-neutral storage values.
 /// </summary>
-/// <param name="Id">The event identifier.</param>
-/// <param name="EventType">The event type.</param>
-/// <param name="OccurredAt">The occurrence time.</param>
-/// <param name="UserId">The user identifier.</param>
-/// <param name="TenantId">The tenant identifier.</param>
-/// <param name="ActorUserId">The actor user identifier.</param>
-/// <param name="SessionId">The session identifier.</param>
-/// <param name="ProviderType">The provider type.</param>
-/// <param name="ProviderName">The provider name.</param>
-/// <param name="IpAddress">The IP address.</param>
-/// <param name="UserAgent">The user agent.</param>
-/// <param name="CorrelationId">The correlation identifier.</param>
-/// <param name="Outcome">The event outcome.</param>
-/// <param name="FailureReason">The failure reason.</param>
-/// <param name="PropertiesJson">The serialized event properties.</param>
+/// <param name="Id">Stable identifier for this recorded audit event.</param>
+/// <param name="EventType">Normalized security event type.</param>
+/// <param name="OccurredAt">UTC time when the event occurred.</param>
+/// <param name="UserId">Affected user identifier, when the event is user-scoped.</param>
+/// <param name="TenantId">Tenant scope associated with the event, when available.</param>
+/// <param name="ActorUserId">Administrator or actor user identifier, when available.</param>
+/// <param name="SessionId">Related application session identifier, when available.</param>
+/// <param name="ProviderType">Authentication provider type captured for storage, when available.</param>
+/// <param name="ProviderName">Authentication provider name captured for storage, when available.</param>
+/// <param name="IpAddress">Client IP address captured for audit. Treat as personal data.</param>
+/// <param name="UserAgent">Client user-agent text captured for audit. It may be user supplied.</param>
+/// <param name="CorrelationId">Host-defined request or trace correlation identifier, when available.</param>
+/// <param name="Outcome">Provider-neutral event outcome, such as success or failure.</param>
+/// <param name="FailureReason">Provider-neutral failure reason safe for logs and administrator display.</param>
+/// <param name="PropertiesJson">Serialized provider-neutral event properties. Values must not contain secrets, tokens, hashes, credentials, or protected payloads.</param>
 public sealed record SecurityEventStorageRecord(
     Guid Id,
     string EventType,

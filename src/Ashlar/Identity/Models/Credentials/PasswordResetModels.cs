@@ -11,47 +11,47 @@ public sealed class PasswordResetOptions
     private static readonly TimeSpan MaximumMinimumRequestDuration = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Gets or sets the reset token lifetime.
+    /// Lifetime of an issued password reset token.
     /// </summary>
     public TimeSpan Expiration { get; set; } = TimeSpan.FromHours(2);
     /// <summary>
-    /// Gets or sets the request rate limit.
+    /// Rate-limit rule for password reset requests.
     /// </summary>
     public RateLimitRule RequestRateLimit { get; set; } = new() { PermitLimit = 3, Window = TimeSpan.FromHours(1) };
     /// <summary>
-    /// Gets or sets the reset verification rate limit.
+    /// Rate-limit rule for password reset verification attempts.
     /// </summary>
     public RateLimitRule VerificationRateLimit { get; set; } = new() { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) };
     /// <summary>
-    /// Gets or sets the reset email subject.
+    /// Subject for password reset emails.
     /// </summary>
     public string Subject { get; set; } = "Reset your password";
     /// <summary>
-    /// Gets or sets the reset email body template. The first placeholder receives the callback URL.
+    /// Plain-text password reset email template. The first placeholder receives the callback URL.
     /// </summary>
     public string EmailTextTemplate { get; set; } = "Click the following link to reset your password: {0}";
     /// <summary>
-    /// Gets or sets the from address.
+    /// Optional sender address for password reset emails.
     /// </summary>
     public string? FromAddress { get; set; }
     /// <summary>
-    /// Gets or sets the reset token query parameter name.
+    /// Query string parameter name used for the raw reset token.
     /// </summary>
     public string TokenParameterName { get; set; } = "t";
     /// <summary>
-    /// Gets or sets whether existing sessions are revoked after a successful password reset.
+    /// Whether existing sessions are revoked after a successful password reset.
     /// </summary>
     public bool RevokeSessions { get; set; } = true;
     /// <summary>
-    /// Gets or sets the minimum externally visible duration for generic reset request outcomes.
+    /// Minimum externally visible duration for generic reset request outcomes.
     /// </summary>
     public TimeSpan MinimumRequestDuration { get; set; } = TimeSpan.FromMilliseconds(250);
 
     /// <summary>
     /// Validates password reset options.
     /// </summary>
-    /// <param name="options">The options value.</param>
-    /// <returns><see langword="true" /> when options are valid.</returns>
+    /// <param name="options">Password reset settings to validate.</param>
+    /// <returns><see langword="true" /> when reset requests and completions can use the supplied settings.</returns>
     public static bool Validate(PasswordResetOptions options)
     {
         return options is { RequestRateLimit: { }, VerificationRateLimit: { } }
@@ -72,11 +72,11 @@ public sealed class PasswordResetOptions
 public sealed class PasswordResetRequest
 {
     /// <summary>
-    /// Gets or sets the one-time reset token.
+    /// One-time reset token from the callback URL. Do not log or persist this value.
     /// </summary>
     public required string? Token { get; init; }
     /// <summary>
-    /// Gets or sets the replacement password.
+    /// Replacement password supplied by the user. Do not log this value.
     /// </summary>
     public required string NewPassword { get; init; }
 }

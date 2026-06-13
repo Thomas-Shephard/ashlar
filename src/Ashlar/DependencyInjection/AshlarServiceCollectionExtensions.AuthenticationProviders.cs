@@ -12,9 +12,9 @@ public static partial class AshlarServiceCollectionExtensions
     /// Registers an authentication provider implementation.
     /// </summary>
     /// <typeparam name="TProvider">The authentication provider implementation type.</typeparam>
-    /// <param name="services">The services value.</param>
-    /// <param name="lifetime">The lifetime value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">Service collection to add the provider registration to.</param>
+    /// <param name="lifetime">Service lifetime for the provider implementation.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAuthenticationProvider<TProvider>(
         this IServiceCollection services,
         ServiceLifetime lifetime = ServiceLifetime.Scoped)
@@ -31,10 +31,10 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers an authentication provider factory.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="implementationFactory">The implementation factory value.</param>
-    /// <param name="lifetime">The lifetime value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">Service collection to add the provider registration to.</param>
+    /// <param name="implementationFactory">Factory that creates the provider instance.</param>
+    /// <param name="lifetime">Service lifetime for provider instances produced by the factory.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     /// <remarks>
     /// Use this overload when multiple named providers are backed by the same implementation type.
     /// </remarks>
@@ -56,9 +56,9 @@ public static partial class AshlarServiceCollectionExtensions
     /// Registers a password hasher implementation.
     /// </summary>
     /// <typeparam name="THasher">The password hasher implementation type.</typeparam>
-    /// <param name="services">The services value.</param>
-    /// <param name="lifetime">The lifetime value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">Service collection to add the password hasher registration to.</param>
+    /// <param name="lifetime">Service lifetime for the password hasher implementation.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddPasswordHasher<THasher>(
         this IServiceCollection services,
         ServiceLifetime lifetime = ServiceLifetime.Singleton)
@@ -75,10 +75,10 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers a password hasher factory.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="implementationFactory">The implementation factory value.</param>
-    /// <param name="lifetime">The lifetime value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">Service collection to add the password hasher registration to.</param>
+    /// <param name="implementationFactory">Factory that creates the password hasher instance.</param>
+    /// <param name="lifetime">Service lifetime for password hasher instances produced by the factory.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddPasswordHasher(
         this IServiceCollection services,
         Func<IServiceProvider, IPasswordHasher> implementationFactory,

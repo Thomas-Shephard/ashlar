@@ -18,9 +18,9 @@ public sealed class InMemoryAuthenticationRateLimiter : IAuthenticationRateLimit
     internal int StateCount => _cache.Count;
 
     /// <summary>
-    /// Initializes a new instance of the in memory authentication rate limiter class.
+    /// Creates an in-memory authentication rate limiter.
     /// </summary>
-    /// <param name="timeProvider">The time provider value.</param>
+    /// <param name="timeProvider">Clock used to evaluate rate-limit windows and block expiry.</param>
     public InMemoryAuthenticationRateLimiter(TimeProvider timeProvider)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -39,12 +39,12 @@ public sealed class InMemoryAuthenticationRateLimiter : IAuthenticationRateLimit
     }
 
     /// <summary>
-    /// Performs the check <see langword="async" /> operation and returns the result.
+    /// Evaluates the attempt against the supplied rule and consumes a permit when allowed.
     /// </summary>
-    /// <param name="attempt">The attempt value.</param>
-    /// <param name="rule">The rule value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="attempt">Safe, normalized bucket metadata for the authentication attempt.</param>
+    /// <param name="rule">Rate-limit rule to enforce for the bucket.</param>
+    /// <param name="cancellationToken">Token for aborting rate-limit work before state mutation.</param>
+    /// <returns>Decision indicating whether the attempt is allowed or blocked.</returns>
     public Task<RateLimitDecision> CheckAsync(RateLimitAttempt attempt, RateLimitRule rule, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(attempt);
@@ -99,7 +99,7 @@ public sealed class InMemoryAuthenticationRateLimiter : IAuthenticationRateLimit
     }
 
     /// <summary>
-    /// Performs the dispose operation and returns the result.
+    /// Releases the in-memory rate-limit cache.
     /// </summary>
     public void Dispose()
     {
@@ -109,11 +109,11 @@ public sealed class InMemoryAuthenticationRateLimiter : IAuthenticationRateLimit
     private sealed class CacheEntry(RateLimitState state)
     {
         /// <summary>
-        /// Gets or sets the state value.
+        /// Gets the mutable rate-limit state for the cache entry.
         /// </summary>
         public RateLimitState State { get; } = state;
         /// <summary>
-        /// Gets or sets the cache entry expiration tracked by the memory cache.
+        /// Cache entry expiration tracked by the memory cache.
         /// </summary>
         public DateTimeOffset? ExpiresAt { get; set; }
     }
@@ -121,7 +121,7 @@ public sealed class InMemoryAuthenticationRateLimiter : IAuthenticationRateLimit
     private sealed class TimeProviderSystemClock(TimeProvider timeProvider) : ISystemClock
     {
         /// <summary>
-        /// Gets or sets the utc now value.
+        /// Gets the current UTC time from the configured time provider.
         /// </summary>
         public DateTimeOffset UtcNow => timeProvider.GetUtcNow();
     }

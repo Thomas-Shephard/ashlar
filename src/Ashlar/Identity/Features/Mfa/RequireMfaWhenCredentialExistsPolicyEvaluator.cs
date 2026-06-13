@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.Identity.Features.Mfa;
 
 /// <summary>
-/// Provides require mfa when credential exists policy evaluator behavior.
+/// Requires MFA when the user has an active credential for a configured provider.
 /// </summary>
 public sealed class RequireMfaWhenCredentialExistsPolicyEvaluator : IMfaPolicyEvaluator
 {
@@ -14,9 +14,9 @@ public sealed class RequireMfaWhenCredentialExistsPolicyEvaluator : IMfaPolicyEv
     /// <summary>
     /// Initializes a configured service instance.
     /// </summary>
-    /// <param name="repository">The repository value.</param>
-    /// <param name="options">The options value.</param>
-    /// <param name="timeProvider">The time provider value.</param>
+    /// <param name="repository">Credential repository used to check factor availability.</param>
+    /// <param name="options">Configured credential-backed MFA requirements.</param>
+    /// <param name="timeProvider">Clock used for credential availability checks.</param>
     /// <exception cref="OptionsValidationException">Thrown when the configured credential-backed MFA policy options are invalid.</exception>
     public RequireMfaWhenCredentialExistsPolicyEvaluator(
         ICredentialRepository repository,
@@ -38,12 +38,12 @@ public sealed class RequireMfaWhenCredentialExistsPolicyEvaluator : IMfaPolicyEv
     }
 
     /// <summary>
-    /// Performs the evaluate <see langword="async" /> operation and returns the result.
+    /// Evaluates whether matching active credentials require MFA.
     /// </summary>
-    /// <param name="user">The user value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="user">User being authenticated.</param>
+    /// <param name="context">Authentication request context supplied by the host application.</param>
+    /// <param name="cancellationToken">A token that can cancel policy evaluation.</param>
+    /// <returns>The MFA requirement for the user.</returns>
     public async Task<MfaPolicyEvaluation> EvaluateAsync(IUser user, AuthenticationContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);

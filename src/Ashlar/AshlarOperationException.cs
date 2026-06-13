@@ -6,9 +6,9 @@ namespace Ashlar;
 public sealed class AshlarOperationException : InvalidOperationException
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="AshlarOperationException" /> class.
+    /// Creates an exception for a controlled Ashlar operation failure.
     /// </summary>
-    /// <param name="failureCode">The stable failure code.</param>
+    /// <param name="failureCode">Stable failure identifier carried by the exception.</param>
     /// <param name="message">The failure message.</param>
     public AshlarOperationException(AshlarFailureCode failureCode, string message)
         : base(message)

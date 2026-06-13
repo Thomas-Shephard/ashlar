@@ -4,42 +4,41 @@ using Ashlar.Identity.RateLimiting;
 namespace Ashlar.Identity.Providers.Email;
 
 /// <summary>
-/// Provides magic link sign in options behavior.
+/// Configures magic-link sign-in issuance, delivery, and verification limits.
 /// </summary>
 public sealed class MagicLinkSignInOptions
 {
     /// <summary>
-    /// Gets or sets the link lifetime value.
+    /// Lifetime of an issued magic-link token.
     /// </summary>
     public TimeSpan LinkLifetime { get; set; } = TimeSpan.FromMinutes(10);
     /// <summary>
-    /// Executes the new operation.
+    /// Rate-limit rule for magic-link requests.
     /// </summary>
-    /// <param name="PermitLimit">The permit limit value.</param>
     public RateLimitRule RequestRateLimit { get; set; } = new() { PermitLimit = 3, Window = TimeSpan.FromMinutes(15) };
     /// <summary>
-    /// Executes the new operation.
+    /// Rate-limit rule for magic-link verification attempts.
     /// </summary>
-    /// <param name="PermitLimit">The permit limit value.</param>
     public RateLimitRule VerificationRateLimit { get; set; } = new() { PermitLimit = 30, Window = TimeSpan.FromMinutes(15) };
     /// <summary>
-    /// Gets or sets the email subject value.
+    /// Subject for magic-link emails.
     /// </summary>
     public string EmailSubject { get; set; } = "Sign in to our application";
     /// <summary>
-    /// Gets or sets the email text template value.
+    /// Plain-text template for magic-link emails.
+    /// The first placeholder receives the callback URL containing the live token.
     /// </summary>
     public string EmailTextTemplate { get; set; } = "Click the following link to sign in: {0}";
     /// <summary>
-    /// Gets or sets the link token parameter name value.
+    /// Callback query parameter name that carries the live token.
     /// </summary>
     public string LinkTokenParameterName { get; set; } = "token";
 
     /// <summary>
     /// Validates magic-link sign-in options.
     /// </summary>
-    /// <param name="options">The options value.</param>
-    /// <returns><see langword="true" /> when options are valid.</returns>
+    /// <param name="options">Options instance to validate.</param>
+    /// <returns><see langword="true" /> when magic links can be issued and verified with the supplied settings.</returns>
     public static bool Validate(MagicLinkSignInOptions? options)
     {
         return options is

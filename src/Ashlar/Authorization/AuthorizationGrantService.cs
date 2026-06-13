@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace Ashlar.Authorization;
 
 /// <summary>
-/// Provides documented behavior for this member.
+/// Creates, revokes, and lists authorization grants for users.
 /// </summary>
 public sealed class AuthorizationGrantService : IAuthorizationGrantService
 {
@@ -16,12 +16,12 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
     private readonly SecurityEventEmitter _securityEvents;
     private readonly IUserRepository _userRepository;
 
-    /// <summary>Provides documented behavior for this member.</summary>
-    /// <param name="repository">The repository value.</param>
-    /// <param name="userRepository">The user repository used to verify tenant ownership.</param>
-    /// <param name="options">The options value.</param>
-    /// <param name="timeProvider">The time provider value.</param>
-    /// <param name="securityEventSink">The security event sink value.</param>
+    /// <summary>Initializes the grant service with storage, validation, and audit dependencies.</summary>
+    /// <param name="repository">Grant storage used for authorization assignments.</param>
+    /// <param name="userRepository">User repository used to verify tenant ownership.</param>
+    /// <param name="options">Validation limits for grant fields.</param>
+    /// <param name="timeProvider">Clock used for timestamps and expiration checks.</param>
+    /// <param name="securityEventSink">Optional sink that receives grant creation and revocation audit events.</param>
     public AuthorizationGrantService(
         IAuthorizationGrantRepository repository,
         IUserRepository userRepository,
@@ -42,11 +42,11 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
     }
 
     /// <summary>
-    /// Performs the create grant <see langword="async" /> operation and returns the result.
+    /// Creates a role or permission grant after validating user and tenant ownership.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">Grant details supplied by an authorized caller.</param>
+    /// <param name="cancellationToken">A token that can cancel the create operation.</param>
+    /// <returns>Created grant, or a failure when validation or tenant checks fail.</returns>
     public async Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -218,11 +218,11 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
     }
 
     /// <summary>
-    /// Performs the revoke grant <see langword="async" /> operation and returns the result.
+    /// Revokes an authorization grant in the requested tenant scope.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">Grant identifier, tenant scope, and audit context for the revocation.</param>
+    /// <param name="cancellationToken">A token that can cancel the revoke operation.</param>
+    /// <returns><see langword="true" /> when the grant was revoked; otherwise, <see langword="false" />.</returns>
     public async Task<bool> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -260,11 +260,11 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
     }
 
     /// <summary>
-    /// Performs the list grants <see langword="async" /> operation and returns the result.
+    /// Lists grants for a user, optionally narrowed to a tenant and resource scope.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">User, tenant, and optional scope filters for the query.</param>
+    /// <param name="cancellationToken">A token that can cancel the list operation.</param>
+    /// <returns>Grants visible for the supplied filters.</returns>
     public Task<IReadOnlyList<AuthorizationGrant>> ListGrantsAsync(ListAuthorizationGrantsRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

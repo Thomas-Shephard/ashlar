@@ -9,6 +9,6 @@ public interface IEmailSender
     /// Sends or queues an email message.
     /// </summary>
     /// <param name="message">The message to send or queue.</param>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <param name="cancellationToken">A token that can cancel sending or queueing before the message is accepted.</param>
     Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default);
 }

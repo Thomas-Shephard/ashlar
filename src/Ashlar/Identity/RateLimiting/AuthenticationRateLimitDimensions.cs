@@ -35,7 +35,7 @@ public static class AuthenticationRateLimitDimensions
     /// <summary>
     /// Builds a source bucket key from the authentication context.
     /// </summary>
-    /// <param name="context">The authentication context.</param>
+    /// <param name="context">Authentication context containing the client source captured by the host application.</param>
     /// <returns>The source bucket key.</returns>
     public static string Source(AuthenticationContext? context)
     {
@@ -47,7 +47,7 @@ public static class AuthenticationRateLimitDimensions
     /// <summary>
     /// Builds a user bucket key.
     /// </summary>
-    /// <param name="userId">The user identifier.</param>
+    /// <param name="userId">User identifier used to build a rate-limit bucket value.</param>
     /// <returns>The user bucket key.</returns>
     public static string User(Guid userId)
     {
@@ -57,8 +57,8 @@ public static class AuthenticationRateLimitDimensions
     /// <summary>
     /// Resolves the metric-safe dimension name for a bucket key.
     /// </summary>
-    /// <param name="key">The bucket key.</param>
-    /// <returns>The dimension name.</returns>
+    /// <param name="key">Rate-limit bucket key to classify for metrics.</param>
+    /// <returns>Metric-safe dimension name derived from the bucket key.</returns>
     public static string DimensionName(string key)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);

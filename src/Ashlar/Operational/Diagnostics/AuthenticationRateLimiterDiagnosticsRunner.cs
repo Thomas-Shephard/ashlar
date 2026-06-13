@@ -3,7 +3,7 @@ namespace Ashlar.Operational.Diagnostics;
 /// <summary>
 /// Provides shared authentication rate limiter diagnostics result mapping for Ashlar providers.
 /// </summary>
-/// <param name="providerName">The provider name value.</param>
+/// <param name="providerName">Persistence provider name reported in diagnostic results.</param>
 public sealed class AuthenticationRateLimiterDiagnosticsRunner(string providerName)
 {
     private const string MissingTableReason = "Authentication rate limiter table has not been initialized.";
@@ -12,12 +12,12 @@ public sealed class AuthenticationRateLimiterDiagnosticsRunner(string providerNa
     /// <summary>
     /// Checks provider authentication rate limiter state and returns a sanitized diagnostics result.
     /// </summary>
-    /// <typeparam name="TConnection">The provider connection type.</typeparam>
-    /// <param name="timeProvider">The time provider value.</param>
-    /// <param name="context">The provider diagnostics context value.</param>
-    /// <param name="options">The diagnostic options value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The diagnostic result.</returns>
+    /// <typeparam name="TConnection">Provider connection type used by diagnostics queries.</typeparam>
+    /// <param name="timeProvider">Clock used to stamp the diagnostic result.</param>
+    /// <param name="context">Provider callbacks used to query aggregate limiter state.</param>
+    /// <param name="options">Provider capability and cleanup settings to surface in the result.</param>
+    /// <param name="cancellationToken">Token for aborting provider diagnostics work.</param>
+    /// <returns>Provider-neutral rate limiter diagnostic result with aggregate counts only.</returns>
     public async Task<AuthenticationRateLimiterDiagnosticResult> CheckAsync<TConnection>(
         TimeProvider timeProvider,
         AuthenticationRateLimiterDiagnosticsContext<TConnection> context,
@@ -51,10 +51,10 @@ public sealed class AuthenticationRateLimiterDiagnosticsRunner(string providerNa
     /// <summary>
     /// Creates a diagnostics result from already available aggregate state.
     /// </summary>
-    /// <param name="timeProvider">The time provider value.</param>
-    /// <param name="options">The diagnostic options value.</param>
-    /// <param name="snapshot">The snapshot value.</param>
-    /// <returns>The diagnostic result.</returns>
+    /// <param name="timeProvider">Clock used to stamp the diagnostic result.</param>
+    /// <param name="options">Provider capability and cleanup settings to surface in the result.</param>
+    /// <param name="snapshot">Safe aggregate limiter state.</param>
+    /// <returns>Healthy provider-neutral rate limiter diagnostic result.</returns>
     public AuthenticationRateLimiterDiagnosticResult Healthy(
         TimeProvider timeProvider,
         AuthenticationRateLimiterDiagnosticOptions options,

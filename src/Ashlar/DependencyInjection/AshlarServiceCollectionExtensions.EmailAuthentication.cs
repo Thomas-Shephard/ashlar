@@ -12,9 +12,9 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's passwordless email code sign-in provider and issuing service.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">Service collection to add email-code sign-in services to.</param>
+    /// <param name="configure">Optional email-code sign-in configuration callback.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarEmailCodeSignIn(
         this IServiceCollection services,
         Action<EmailCodeSignInOptions>? configure = null)
@@ -42,9 +42,9 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's magic-link email sign-in provider and issuing service.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">Service collection to add magic-link sign-in services to.</param>
+    /// <param name="configure">Optional magic-link sign-in configuration callback.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarMagicLinkSignIn(
         this IServiceCollection services,
         Action<MagicLinkSignInOptions>? configure = null)

@@ -10,9 +10,9 @@ public static class SecureTokenHashing
     /// <summary>
     /// Attempts to hash a caller-supplied token without surfacing token validation exceptions.
     /// </summary>
-    /// <param name="hasher">The token hasher.</param>
-    /// <param name="token">The caller-supplied token.</param>
-    /// <param name="tokenHash">The hashed token when hashing succeeds.</param>
+    /// <param name="hasher">Hasher used to derive the storage lookup value.</param>
+    /// <param name="token">The raw caller-supplied bearer token. Do not log or persist this value.</param>
+    /// <param name="tokenHash">The storage lookup hash when hashing succeeds; otherwise, an empty string.</param>
     /// <returns><see langword="true" /> when the token was hashed; otherwise, <see langword="false" />.</returns>
     public static bool TryHashToken(ISecureTokenHasher hasher, [NotNullWhen(true)] string? token, out string tokenHash)
     {

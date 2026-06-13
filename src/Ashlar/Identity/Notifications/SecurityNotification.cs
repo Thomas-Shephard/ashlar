@@ -1,49 +1,49 @@
 namespace Ashlar.Identity.Notifications;
 
 /// <summary>
-/// Represents the security notification data model.
+/// Describes a security-sensitive account event that may be sent to a user.
 /// </summary>
 public sealed record SecurityNotification
 {
     /// <summary>
-    /// Gets or sets the type value.
+    /// Kind of account event being reported.
     /// </summary>
     public required SecurityNotificationType Type { get; init; }
     /// <summary>
-    /// Gets or sets the recipient email value.
+    /// Email address that should receive the notification.
     /// </summary>
     public required string RecipientEmail { get; init; }
     /// <summary>
-    /// Gets or sets the occurred at value.
+    /// UTC time when the event occurred.
     /// </summary>
     public required DateTimeOffset OccurredAt { get; init; }
     /// <summary>
-    /// Gets or sets the ip address value.
+    /// Client IP address to include when configured. Treat as personal data.
     /// </summary>
     public string? IpAddress { get; init; }
     /// <summary>
-    /// Gets or sets the user agent value.
+    /// Client user-agent text to include when configured. It may be user supplied.
     /// </summary>
     public string? UserAgent { get; init; }
     /// <summary>
-    /// Gets or sets the session id value.
+    /// Related application session identifier, when the event concerns a session.
     /// </summary>
     public Guid? SessionId { get; init; }
     /// <summary>
-    /// Gets or sets the metadata value.
+    /// Optional event metadata for templates and delivery decisions. Do not include secrets.
     /// </summary>
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
 
     /// <summary>
     /// Creates a security notification from an authentication context.
     /// </summary>
-    /// <param name="type">The notification type.</param>
+    /// <param name="type">Kind of account event being reported.</param>
     /// <param name="recipientEmail">The recipient email address.</param>
-    /// <param name="occurredAt">The occurrence time.</param>
-    /// <param name="context">The authentication context.</param>
-    /// <param name="sessionId">The session id value.</param>
-    /// <param name="metadata">The metadata value.</param>
-    /// <returns>The created security notification.</returns>
+    /// <param name="occurredAt">UTC time when the account event occurred.</param>
+    /// <param name="context">Authentication context used to copy client IP address and user-agent values into the notification.</param>
+    /// <param name="sessionId">Related application session identifier, when available.</param>
+    /// <param name="metadata">Optional event metadata. Do not include secrets.</param>
+    /// <returns>Security notification populated with request context values when available.</returns>
     public static SecurityNotification FromContext(
         SecurityNotificationType type,
         string recipientEmail,

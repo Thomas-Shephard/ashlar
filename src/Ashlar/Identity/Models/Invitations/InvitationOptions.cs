@@ -4,38 +4,38 @@ using Ashlar.Identity.RateLimiting;
 namespace Ashlar.Identity.Models.Invitations;
 
 /// <summary>
-/// Provides invitation options behavior.
+/// Configures invitation token lifetime, throttling, and message content.
 /// </summary>
 public sealed class InvitationOptions
 {
     /// <summary>
-    /// Gets or sets the default expiry value.
+    /// Default lifetime for newly created invitation tokens.
     /// </summary>
     public TimeSpan DefaultExpiry { get; set; } = TimeSpan.FromDays(7);
     /// <summary>
-    /// Gets or sets the email subject value.
+    /// Subject used for invitation emails.
     /// </summary>
     public string EmailSubject { get; set; } = "Invitation to join";
     /// <summary>
-    /// Gets or sets the email text template value.
+    /// Plain-text message template. The first placeholder receives the acceptance URL containing the raw token.
     /// </summary>
     public string EmailTextTemplate { get; set; } = "You have been invited. Use this link to join: {0}";
 
     /// <summary>
-    /// Gets or sets the rate limit rule for creating invitations.
+    /// Rate-limit rule for creating invitations.
     /// </summary>
     public RateLimitRule CreationRateLimit { get; set; } = new() { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) };
     /// <summary>
-    /// Gets or sets the rate limit rule for previewing invitations before acceptance.
+    /// Rate-limit rule for previewing invitations before acceptance.
     /// </summary>
     public RateLimitRule PreviewRateLimit { get; set; } = new() { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) };
     /// <summary>
-    /// Gets or sets the rate limit rule for accepting invitations.
+    /// Rate-limit rule for accepting invitations.
     /// </summary>
     public RateLimitRule AcceptanceRateLimit { get; set; } = new() { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) };
 
     /// <summary>
-    /// Gets or sets the token parameter name value.
+    /// Query string parameter name used for the raw invitation token.
     /// </summary>
     public string TokenParameterName { get; set; } = "t";
 
@@ -54,7 +54,7 @@ public sealed class InvitationOptions
     /// <summary>
     /// Validates invitation options.
     /// </summary>
-    /// <param name="options">The options value.</param>
+    /// <param name="options">The options instance to validate.</param>
     /// <returns><see langword="true" /> when options are valid.</returns>
     public static bool Validate(InvitationOptions? options)
     {

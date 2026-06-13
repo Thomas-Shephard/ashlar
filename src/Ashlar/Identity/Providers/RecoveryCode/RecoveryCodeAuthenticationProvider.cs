@@ -15,9 +15,9 @@ public sealed class RecoveryCodeAuthenticationProvider : ISecondaryAuthenticatio
     /// <summary>
     /// Initializes a configured service instance.
     /// </summary>
-    /// <param name="hasherSelector">The hasher selector value.</param>
-    /// <param name="options">The options value.</param>
-    /// <param name="timeProvider">The time provider value.</param>
+    /// <param name="hasherSelector">Hashing component used to verify submitted recovery-code secrets.</param>
+    /// <param name="options">Recovery-code provider configuration.</param>
+    /// <param name="timeProvider">Clock used to evaluate credential availability, or <see langword="null" /> to use the system clock.</param>
     public RecoveryCodeAuthenticationProvider(
         PasswordHasherSelector hasherSelector,
         IOptions<RecoveryCodeOptions> options,
@@ -33,17 +33,17 @@ public sealed class RecoveryCodeAuthenticationProvider : ISecondaryAuthenticatio
     }
 
     /// <summary>
-    /// Gets or sets the key value.
+    /// Gets the provider key used for recovery-code credentials.
     /// </summary>
     public AuthenticationProviderKey Key => _options.ProviderKey;
 
     /// <summary>
-    /// Gets or sets the protects credentials value.
+    /// Gets a value indicating that recovery-code credentials are stored as hashes.
     /// </summary>
     public bool ProtectsCredentials => false;
 
     /// <summary>
-    /// Gets or sets the typical credential length value.
+    /// Gets the typical persisted hash payload length for recovery-code credentials.
     /// </summary>
     public int TypicalCredentialLength => 128; // Hashed password length
 
@@ -55,24 +55,24 @@ public sealed class RecoveryCodeAuthenticationProvider : ISecondaryAuthenticatio
     /// <summary>
     /// Determines whether recovery codes can satisfy a pending factor.
     /// </summary>
-    /// <param name="factorType">The required factor type.</param>
+    /// <param name="factorType">Additional-verification factor family required by the pending challenge.</param>
     /// <returns><see langword="true" /> when the factor value is present.</returns>
     public bool CanSatisfyFactor(string factorType) => !string.IsNullOrWhiteSpace(factorType);
 
     /// <summary>
-    /// Executes the get provider key operation.
+    /// Returns an empty key because recovery-code lookup derives the stored key from the submitted code.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="userId">The user id value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">Recovery-code assertion associated with the lookup.</param>
+    /// <param name="userId">User whose recovery-code credentials are being resolved.</param>
+    /// <returns>An empty string. Use <see cref="ResolveCredentialAsync" /> for recovery-code credential resolution.</returns>
     public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId) => string.Empty;
 
     /// <summary>
-    /// Performs the prepare credential value operation and returns the result.
+    /// Hashes a raw recovery-code secret before persistence.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="rawValue">The raw value value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">Recovery-code assertion associated with the credential.</param>
+    /// <param name="rawValue">Raw recovery-code secret. Do not log this value.</param>
+    /// <returns>Encoded hash payload for storage, or <see langword="null" /> when no raw value was supplied.</returns>
     public string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue)
     {
         if (string.IsNullOrWhiteSpace(rawValue))
@@ -85,13 +85,13 @@ public sealed class RecoveryCodeAuthenticationProvider : ISecondaryAuthenticatio
     }
 
     /// <summary>
-    /// Performs the find user <see langword="async" /> operation and returns the result.
+    /// Resolves a user by the email in the authentication context.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="repository">The repository value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">Recovery-code assertion supplied to the authentication pipeline.</param>
+    /// <param name="context">Authentication context containing the normalized email and tenant scope.</param>
+    /// <param name="repository">User repository used to resolve the account.</param>
+    /// <param name="cancellationToken">Token for aborting lookup work.</param>
+    /// <returns>The matching user, or <see langword="null" /> when the assertion or email cannot resolve an account.</returns>
     public Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -112,14 +112,14 @@ public sealed class RecoveryCodeAuthenticationProvider : ISecondaryAuthenticatio
     }
 
     /// <summary>
-    /// Performs the resolve credential <see langword="async" /> operation and returns the result.
+    /// Resolves and verifies the recovery-code credential for the submitted code.
     /// </summary>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="context">The authentication context value.</param>
-    /// <param name="repository">The repository value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="userId">User whose recovery-code credentials should be searched.</param>
+    /// <param name="assertion">Recovery-code assertion containing the raw submitted code.</param>
+    /// <param name="context">Authentication context for the current attempt.</param>
+    /// <param name="repository">Credential repository used to load the candidate recovery-code credential.</param>
+    /// <param name="cancellationToken">Token for aborting credential lookup work.</param>
+    /// <returns>The matching credential when the code is valid and available; otherwise, <see langword="null" />.</returns>
     public async Task<UserCredential?> ResolveCredentialAsync(Guid userId, IAuthenticationAssertion assertion, AuthenticationContext? context, ICredentialRepository repository, CancellationToken cancellationToken = default)
     {
         if (assertion is not RecoveryCodeAssertion recoveryCodeAssertion)
@@ -162,12 +162,12 @@ public sealed class RecoveryCodeAuthenticationProvider : ISecondaryAuthenticatio
     }
 
     /// <summary>
-    /// Performs the authenticate <see langword="async" /> operation and returns the result.
+    /// Marks a previously resolved recovery-code credential as successful and consumed.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="credential">The credential value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">Recovery-code assertion supplied to the authentication pipeline.</param>
+    /// <param name="credential">Credential returned from <see cref="ResolveCredentialAsync" />.</param>
+    /// <param name="cancellationToken">Token for aborting authentication work.</param>
+    /// <returns>Authentication status indicating success only when a matching credential was resolved.</returns>
     public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default)
     {
         if (assertion is not RecoveryCodeAssertion)

@@ -1,48 +1,48 @@
 namespace Ashlar.Identity.Models.Invitations;
 
 /// <summary>
-/// Provides user invitation behavior.
+/// Represents a persisted invitation that can create or attach a user to a tenant.
 /// </summary>
 public sealed class UserInvitation
 {
     /// <summary>
-    /// Gets or sets the id value.
+    /// Unique identifier for this invitation.
     /// </summary>
     public required Guid Id { get; init; }
     /// <summary>
-    /// Gets or sets the email value.
+    /// Invited email address. Treat as personal data.
     /// </summary>
     public required string Email { get; init; }
     /// <summary>
-    /// Gets or sets the tenant id value.
+    /// Tenant the invite applies to, or <see langword="null" /> for a global invitation.
     /// </summary>
     public Guid? TenantId { get; init; }
     /// <summary>
-    /// Gets or sets the token hash value.
+    /// Hash of the raw invitation token. The raw token is not stored on the invitation.
     /// </summary>
     public required string TokenHash { get; init; }
     /// <summary>
-    /// Gets or sets the created at value.
+    /// Time the invitation was created.
     /// </summary>
     public required DateTimeOffset CreatedAt { get; init; }
     /// <summary>
-    /// Gets or sets the updated at value.
+    /// Most recent time the invitation was updated.
     /// </summary>
     public DateTimeOffset? UpdatedAt { get; set; }
     /// <summary>
-    /// Gets or sets the expires at value.
+    /// Time after which the invitation can no longer be accepted.
     /// </summary>
     public required DateTimeOffset ExpiresAt { get; init; }
     /// <summary>
-    /// Gets or sets the accepted at value.
+    /// Time the invitation was accepted, or <see langword="null" /> while it remains unused.
     /// </summary>
     public DateTimeOffset? AcceptedAt { get; set; }
     /// <summary>
-    /// Gets or sets the revoked at value.
+    /// Time the invitation was revoked, or <see langword="null" /> while it remains usable.
     /// </summary>
     public DateTimeOffset? RevokedAt { get; set; }
     /// <summary>
-    /// Gets or sets the metadata value.
+    /// Provider-neutral invitation metadata. Do not store secrets or raw invitation tokens in this value.
     /// </summary>
     public string? Metadata { get; set; }
 
@@ -53,10 +53,10 @@ public sealed class UserInvitation
     public required string Version { get; set; }
 
     /// <summary>
-    /// Performs the is available operation and returns the result.
+    /// Determines whether the invitation can currently be accepted.
     /// </summary>
-    /// <param name="now">The now value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="now">UTC time used for expiry evaluation.</param>
+    /// <returns><see langword="true" /> when the invitation is unaccepted, unrevoked, and unexpired.</returns>
     public bool IsAvailable(DateTimeOffset now)
     {
         return AcceptedAt == null && RevokedAt == null && ExpiresAt > now;

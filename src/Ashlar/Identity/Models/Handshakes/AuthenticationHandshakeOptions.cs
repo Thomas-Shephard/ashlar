@@ -4,17 +4,17 @@ using Ashlar.Identity.RateLimiting.Models;
 namespace Ashlar.Identity.Models.Handshakes;
 
 /// <summary>
-/// Provides authentication handshake options behavior.
+/// Configures handshake lifetime and verification throttling.
 /// </summary>
 public sealed class AuthenticationHandshakeOptions
 {
     /// <summary>
-    /// Gets or sets the expiry value.
+    /// Lifetime of an issued handshake token.
     /// </summary>
     public TimeSpan Expiry { get; set; } = TimeSpan.FromMinutes(15);
 
     /// <summary>
-    /// Gets or sets the rate-limit rule applied to handshake verification attempts.
+    /// Rate-limit rule applied to handshake verification attempts.
     /// </summary>
     public RateLimitRule VerificationRateLimit { get; set; } = new()
     {
@@ -25,7 +25,7 @@ public sealed class AuthenticationHandshakeOptions
     /// <summary>
     /// Validates authentication handshake options.
     /// </summary>
-    /// <param name="options">The options value.</param>
+    /// <param name="options">Options instance to validate.</param>
     /// <returns><see langword="true" /> when options are valid.</returns>
     public static bool Validate(AuthenticationHandshakeOptions? options)
     {

@@ -1,60 +1,60 @@
 namespace Ashlar.Identity.Notifications;
 
 /// <summary>
-/// Defines the available security notification type values.
+/// Lists security notification events that may be sent to users.
 /// </summary>
 public enum SecurityNotificationType
 {
     /// <summary>
-    /// Represents the sign in value.
+    /// A successful sign-in occurred.
     /// </summary>
     SignIn,
     /// <summary>
-    /// Represents the session revoked value.
+    /// One application session was revoked.
     /// </summary>
     SessionRevoked,
     /// <summary>
-    /// Represents the all other sessions revoked value.
+    /// All sessions except the current one were revoked.
     /// </summary>
     AllOtherSessionsRevoked,
     /// <summary>
-    /// Represents the all sessions revoked value.
+    /// All application sessions for the account were revoked.
     /// </summary>
     AllSessionsRevoked,
     /// <summary>
-    /// Represents the totp enrolled value.
+    /// TOTP MFA was enabled for the account.
     /// </summary>
     TotpEnrolled,
     /// <summary>
-    /// Represents the totp disabled value.
+    /// TOTP MFA was disabled for the account.
     /// </summary>
     TotpDisabled,
     /// <summary>
-    /// Represents the recovery codes generated value.
+    /// A new set of MFA recovery codes was generated.
     /// </summary>
     RecoveryCodesGenerated,
     /// <summary>
-    /// Represents the invitation accepted value.
+    /// An invitation was accepted.
     /// </summary>
     InvitationAccepted,
     /// <summary>
-    /// Represents the bootstrap completed value.
+    /// Initial system bootstrap was completed.
     /// </summary>
     BootstrapCompleted,
     /// <summary>
-    /// Represents the email changed value.
+    /// The account email address was changed.
     /// </summary>
     EmailChanged,
     /// <summary>
-    /// Represents the email verification completed value.
+    /// Email verification completed for the account.
     /// </summary>
     EmailVerificationCompleted,
     /// <summary>
-    /// Represents the password reset completed value.
+    /// Password reset completed for the account.
     /// </summary>
     PasswordResetCompleted,
     /// <summary>
-    /// Represents the suspicious authentication attempt value.
+    /// A suspicious authentication attempt was detected.
     /// </summary>
     SuspiciousAuthenticationAttempt
 }

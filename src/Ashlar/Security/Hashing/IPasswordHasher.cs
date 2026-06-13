@@ -1,29 +1,29 @@
 namespace Ashlar.Security.Hashing;
 
 /// <summary>
-/// Defines the contract for ipassword hasher operations.
+/// Hashes and verifies user-chosen passwords.
 /// </summary>
 public interface IPasswordHasher
 {
     /// <summary>
-    /// Defines the version length value.
+    /// Number of bytes reserved for the hash format version.
     /// </summary>
     public const int VersionLength = 1;
     /// <summary>
-    /// Gets the version value.
+    /// Hash format version produced by this hasher.
     /// </summary>
     byte Version { get; }
     /// <summary>
-    /// Performs the hash password operation and returns the result.
+    /// Hashes a plaintext password for credential storage.
     /// </summary>
-    /// <param name="password">The password value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="password">The plaintext password. Do not log this value.</param>
+    /// <returns>An encoded password hash suitable for storage.</returns>
     byte[] HashPassword(ReadOnlySpan<char> password);
     /// <summary>
-    /// Performs the verify password operation and returns the result.
+    /// Verifies a plaintext password against an encoded hash.
     /// </summary>
-    /// <param name="password">The password value.</param>
-    /// <param name="encodedHash">The encoded hash value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="password">The plaintext password. Do not log this value.</param>
+    /// <param name="encodedHash">The stored encoded hash.</param>
+    /// <returns><see langword="true" /> when the password matches the hash.</returns>
     bool VerifyPassword(ReadOnlySpan<char> password, ReadOnlySpan<byte> encodedHash);
 }

@@ -3,8 +3,8 @@ namespace Ashlar.Identity.Features.Mfa;
 /// <summary>
 /// Implements framework-neutral step-up authentication freshness evaluation.
 /// </summary>
-/// <param name="sessionService">The session service value.</param>
-/// <param name="timeProvider">The time provider value.</param>
+/// <param name="sessionService">Optional session service used to persist successful step-up verification.</param>
+/// <param name="timeProvider">Clock used to evaluate freshness windows.</param>
 public sealed class StepUpAuthenticationService(IAuthenticationSessionService? sessionService = null, TimeProvider? timeProvider = null) : IStepUpAuthenticationService
 {
     private readonly IAuthenticationSessionService? _sessionService = sessionService;
@@ -13,7 +13,7 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
     /// <summary>
     /// Initializes an evaluator-only service instance.
     /// </summary>
-    /// <param name="timeProvider">The time provider value.</param>
+    /// <param name="timeProvider">Clock used to evaluate freshness windows.</param>
     public StepUpAuthenticationService(TimeProvider timeProvider)
         : this(null, timeProvider)
     {

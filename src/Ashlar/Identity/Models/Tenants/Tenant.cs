@@ -1,24 +1,24 @@
 namespace Ashlar.Identity.Models.Tenants;
 
 /// <summary>
-/// Provides tenant behavior.
+/// Represents a tenant that can scope users, credentials, and authorization grants.
 /// </summary>
 public sealed class Tenant
 {
     /// <summary>
-    /// Gets or sets the id value.
+    /// Stable tenant identifier.
     /// </summary>
     public required Guid Id { get; init; }
     /// <summary>
-    /// Gets or sets the name value.
+    /// Display name for administrator and user-facing tenant selection.
     /// </summary>
     public required string Name { get; set; }
     /// <summary>
-    /// Gets or sets the identifier value.
+    /// Host-defined unique tenant identifier.
     /// </summary>
-    public required string Identifier { get; set; } // e.g., "acme-corp"
+    public required string Identifier { get; set; }
     /// <summary>
-    /// Gets or sets the is active value.
+    /// Whether the tenant can participate in authentication flows.
     /// </summary>
     public bool IsActive { get; set; } = true;
 }
