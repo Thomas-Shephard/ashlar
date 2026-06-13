@@ -16,6 +16,8 @@ namespace Ashlar.Operational.Configuration;
 
 internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
 {
+    private const string CallbackUriValidationComponent = "Callback URI validation";
+
     public async ValueTask<IReadOnlyList<AshlarConfigurationIssue>> CheckAsync(
         IServiceProvider serviceProvider,
         CancellationToken cancellationToken = default)
@@ -283,7 +285,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
                     AshlarConfigurationIssueSeverity.Warning,
                     $"Callback URI allow-list entry {SummarizeCallbackUriEntry(uri)} uses HTTP.",
                     "Use HTTPS callback URI allow-list entries for production deployments. Keep HTTP entries only for explicit local development scenarios.",
-                    "Callback URI validation"));
+                    CallbackUriValidationComponent));
             }
 
             if (IsLocalCallbackAddress(uri))
@@ -293,7 +295,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
                     AshlarConfigurationIssueSeverity.Warning,
                     $"Callback URI allow-list entry {SummarizeCallbackUriEntry(uri)} targets a local, private, link-local, multicast, or unspecified host.",
                     "Use public application hosts for production callback URI allow-list entries. Keep local, private, link-local, multicast, or unspecified entries only for explicit development or internal deployments.",
-                    "Callback URI validation"));
+                    CallbackUriValidationComponent));
             }
         }
 
@@ -304,7 +306,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
                 AshlarConfigurationIssueSeverity.Error,
                 "Callback URI validation is required but no valid callback URI allow-list entries are configured.",
                 "Configure UriValidationOptions.AllowedCallbackUris with at least one trusted callback base URI before enabling token-bearing callback flows.",
-                "Callback URI validation"));
+                CallbackUriValidationComponent));
         }
     }
 
@@ -315,7 +317,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             AshlarConfigurationIssueSeverity.Error,
             $"Callback URI allow-list contains an invalid entry ({summary}).",
             "Use absolute http or https callback base URIs without credentials, query strings, or fragments.",
-            "Callback URI validation"));
+            CallbackUriValidationComponent));
     }
 
     private static string SummarizeCallbackUriEntry(Uri uri)
