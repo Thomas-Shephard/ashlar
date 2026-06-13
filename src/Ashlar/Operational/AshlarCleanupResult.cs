@@ -26,6 +26,8 @@ namespace Ashlar.Operational;
 /// <param name="SentSecurityEventWebhooks">Sent security-event webhook deliveries removed.</param>
 /// <param name="FailedSecurityEventWebhooks">Failed security-event webhook deliveries removed.</param>
 /// <param name="DiscardedSecurityEventWebhooks">Discarded security-event webhook deliveries removed.</param>
+/// <param name="ExpiredRememberedMfaDevices">Expired remembered MFA devices removed.</param>
+/// <param name="RevokedRememberedMfaDevices">Revoked remembered MFA devices removed.</param>
 public sealed record AshlarCleanupResult(
     int ExpiredSessions,
     int RevokedSessions,
@@ -49,7 +51,9 @@ public sealed record AshlarCleanupResult(
     int FailedSensitiveEmails = 0,
     int SentSecurityEventWebhooks = 0,
     int FailedSecurityEventWebhooks = 0,
-    int DiscardedSecurityEventWebhooks = 0)
+    int DiscardedSecurityEventWebhooks = 0,
+    int ExpiredRememberedMfaDevices = 0,
+    int RevokedRememberedMfaDevices = 0)
 {
     /// <summary>
     /// Gets a cleanup result with all counts set to zero.
@@ -77,7 +81,9 @@ public sealed record AshlarCleanupResult(
         FailedSensitiveEmails: 0,
         SentSecurityEventWebhooks: 0,
         FailedSecurityEventWebhooks: 0,
-        DiscardedSecurityEventWebhooks: 0);
+        DiscardedSecurityEventWebhooks: 0,
+        ExpiredRememberedMfaDevices: 0,
+        RevokedRememberedMfaDevices: 0);
 
     /// <summary>
     /// Gets the total number of records affected by cleanup.
@@ -95,6 +101,8 @@ public sealed record AshlarCleanupResult(
         + ExpiredHandshakes
         + CompletedHandshakes
         + RevokedHandshakes
+        + ExpiredRememberedMfaDevices
+        + RevokedRememberedMfaDevices
         + ExpiredRateLimits
         + AuditEvents
         + SentEmails
@@ -139,6 +147,8 @@ public sealed record AshlarCleanupResult(
             FailedSensitiveEmails + other.FailedSensitiveEmails,
             SentSecurityEventWebhooks + other.SentSecurityEventWebhooks,
             FailedSecurityEventWebhooks + other.FailedSecurityEventWebhooks,
-            DiscardedSecurityEventWebhooks + other.DiscardedSecurityEventWebhooks);
+            DiscardedSecurityEventWebhooks + other.DiscardedSecurityEventWebhooks,
+            ExpiredRememberedMfaDevices + other.ExpiredRememberedMfaDevices,
+            RevokedRememberedMfaDevices + other.RevokedRememberedMfaDevices);
     }
 }

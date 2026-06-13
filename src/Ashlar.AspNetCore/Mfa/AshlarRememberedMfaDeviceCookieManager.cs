@@ -32,11 +32,10 @@ public sealed class AshlarRememberedMfaDeviceCookieManager(
             throw new ArgumentException("A successful fresh MFA authentication result with a user is required.", nameof(mfaResult));
         }
 
-        var userId = mfaResult.User.Id;
-        if (userId == Guid.Empty) throw new ArgumentException("The MFA authentication result user ID cannot be empty.", nameof(mfaResult));
+        if (mfaResult.User.Id == Guid.Empty) throw new ArgumentException("The MFA authentication result user ID cannot be empty.", nameof(mfaResult));
 
-        var creationRequest = request ?? CreateRequestFromAuthenticationContext(context, userId);
-        var result = await _rememberedMfaDevices.CreateAsync(userId, creationRequest, cancellationToken);
+        var creationRequest = request ?? CreateRequestFromAuthenticationContext(context, mfaResult.User.Id);
+        var result = await _rememberedMfaDevices.CreateAfterSuccessfulMfaAsync(mfaResult, creationRequest, cancellationToken);
         if (!result.Succeeded || result.Value == null)
         {
             throw new AshlarOperationException(result.FailureCode ?? AshlarFailureCodes.ValidationError, result.FailureReason ?? "Failed to create remembered MFA device.");

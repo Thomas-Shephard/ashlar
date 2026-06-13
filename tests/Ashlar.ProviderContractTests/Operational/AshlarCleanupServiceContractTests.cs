@@ -10,6 +10,8 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
 
     protected abstract Task SeedOldAuditEventAsync();
 
+    protected abstract Task SeedOldRememberedMfaDevicesAsync();
+
     protected abstract Task SeedSensitiveEmailCleanupRowsAsync();
 
     protected abstract Task<int> CountRowsAsync(string tableName);
@@ -17,6 +19,8 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
     protected abstract Task<int> CountEmailRowsBySubjectAsync(string subject);
 
     protected abstract Task<AshlarCleanupResult> RunCleanupWithNullAuditRetentionAsync();
+
+    protected abstract Task<AshlarCleanupResult> RunCleanupWithNullRememberedMfaDeviceRetentionsAsync();
 
     protected virtual bool SupportsCleanupTransactionRollback => false;
 
@@ -50,6 +54,8 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
             Assert.That(result.ExpiredHandshakes, Is.EqualTo(1));
             Assert.That(result.CompletedHandshakes, Is.EqualTo(1));
             Assert.That(result.RevokedHandshakes, Is.EqualTo(1));
+            Assert.That(result.ExpiredRememberedMfaDevices, Is.EqualTo(1));
+            Assert.That(result.RevokedRememberedMfaDevices, Is.EqualTo(1));
             Assert.That(result.ExpiredRateLimits, Is.EqualTo(1));
             Assert.That(result.ExpiredPasskeyChallenges, Is.EqualTo(1));
             Assert.That(result.ConsumedPasskeyChallenges, Is.EqualTo(1));
@@ -63,6 +69,7 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
             Assert.That(await CountRowsAsync("ashlar_authorization_grants"), Is.EqualTo(2));
             Assert.That(await CountRowsAsync("ashlar_invitations"), Is.EqualTo(3));
             Assert.That(await CountRowsAsync("ashlar_mfa_handshakes"), Is.EqualTo(3));
+            Assert.That(await CountRowsAsync("ashlar_remembered_mfa_devices"), Is.EqualTo(2));
             Assert.That(await CountRowsAsync("ashlar_rate_limits"), Is.EqualTo(1));
             Assert.That(await CountRowsAsync("ashlar_passkey_challenges"), Is.EqualTo(2));
             Assert.That(await CountRowsAsync("ashlar_security_events"), Is.EqualTo(1));
@@ -100,6 +107,21 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
         {
             Assert.That(result.AuditEvents, Is.Zero);
             Assert.That(await CountRowsAsync("ashlar_security_events"), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task CleanupAsyncSkipsRememberedMfaDeviceCategoriesWithNullRetention()
+    {
+        await SeedOldRememberedMfaDevicesAsync();
+
+        var result = await RunCleanupWithNullRememberedMfaDeviceRetentionsAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ExpiredRememberedMfaDevices, Is.Zero);
+            Assert.That(result.RevokedRememberedMfaDevices, Is.Zero);
+            Assert.That(await CountRowsAsync("ashlar_remembered_mfa_devices"), Is.EqualTo(2));
         }
     }
 

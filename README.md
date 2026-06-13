@@ -411,7 +411,9 @@ To enroll a user, generate a new shared secret and an authenticator URI:
 
 ```csharp
 // 1. Start enrollment (totpService is ITotpService)
-var enrollment = await totpService.StartEnrollmentAsync(userId, "Ashlar", "user@example.com");
+// actorUserId must come from the authenticated session owner, not request input.
+var enrollment = await totpService.StartEnrollmentAsync(
+    new StartTotpEnrollmentRequest(actorUserId, "Ashlar", "user@example.com"));
 
 // 2. Return enrollment.AuthenticatorUri to the client for QR code generation.
 // 3. Keep enrollment.SharedSecret temporarily to verify the first code.
@@ -420,11 +422,13 @@ var enrollment = await totpService.StartEnrollmentAsync(userId, "Ashlar", "user@
 The user must verify a code from their authenticator app to finalize enrollment:
 
 ```csharp
-// 4. Verify first code and finalize enrollment
-bool success = await totpService.VerifyAndEnrollAsync(userId, sharedSecret, userInputCode);
+// 4. Verify first code and finalize enrollment for the authenticated owner
+var result = await totpService.CompleteEnrollmentAsync(
+    new VerifyTotpEnrollmentRequest(actorUserId, sharedSecret, userInputCode));
+bool success = result.Succeeded;
 ```
 
-`VerifyAndEnrollAsync` replaces any existing TOTP credential for the user and stores the new secret as a protected credential value.
+`CompleteEnrollmentAsync` replaces any existing TOTP credential for the user and stores the new secret as a protected credential value.
 
 ### Verification
 To verify a TOTP code during sign-in, use the standard `AuthenticationPipeline` or `AuthenticationOrchestrator` with a `TotpAssertion`:
@@ -445,10 +449,10 @@ if (result.Status == MfaAuthenticationStatus.Succeeded)
 ```
 
 ### Management
-To disable TOTP for a user:
+To disable TOTP for the authenticated account owner:
 
 ```csharp
-await totpService.DisableTotpAsync(userId);
+await totpService.DisableAsync(new DisableTotpRequest(actorUserId));
 ```
 
 TOTP verification is automatically throttled by `IAuthenticationRateLimiter` to protect against brute-force attacks. Shared secrets are never stored in raw form; they are always encrypted using `ISecretProtector`.

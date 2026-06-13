@@ -487,7 +487,7 @@ internal sealed class AccountRecoveryAdministrationServiceTests
         public Guid LastUserId { get; private set; }
         public ListRememberedMfaDevicesRequest? LastRequest { get; private set; }
 
-        public Task<Result<RememberedMfaDeviceCreated>> CreateAsync(Guid userId, CreateRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
+        public Task<Result<RememberedMfaDeviceCreated>> CreateAfterSuccessfulMfaAsync(MfaAuthenticationResult mfaResult, CreateRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }

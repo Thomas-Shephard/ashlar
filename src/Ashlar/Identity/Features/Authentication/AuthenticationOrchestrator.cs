@@ -194,7 +194,10 @@ public sealed class AuthenticationOrchestrator(
                 MfaAuthenticationStatus.Succeeded,
                 User: user,
                 Claims: claims,
-                FreshMfaSatisfied: true);
+                FreshMfaSatisfied: true)
+            {
+                RememberedDeviceCreationProof = FreshMfaProof.Instance
+            };
         }
 
         return new MfaAuthenticationResult(

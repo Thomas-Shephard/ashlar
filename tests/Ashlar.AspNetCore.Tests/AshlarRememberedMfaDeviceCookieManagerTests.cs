@@ -33,14 +33,15 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
     {
         var userId = Guid.NewGuid();
         var device = CreateSummary(userId, null);
+        var mfaResult = CreatePublicFreshMfaSignalOnlyResult(userId);
         var service = new Mock<IRememberedMfaDeviceService>();
         service
-            .Setup(s => s.CreateAsync(userId, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.CreateAfterSuccessfulMfaAsync(mfaResult, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(new RememberedMfaDeviceCreated(device, "raw-remembered-token")));
         var manager = CreateManager(service.Object);
         var context = CreateContext();
 
-        var result = await manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), CreateSuccessfulMfaResult(userId));
+        var result = await manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), mfaResult);
 
         var setCookie = context.Response.Headers.SetCookie.ToString();
         using (Assert.EnterMultipleScope())
@@ -55,7 +56,7 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
             Assert.That(setCookie, Does.Not.Contain(AshlarSessionAuthenticationDefaults.CookieName));
         }
 
-        service.Verify(s => s.CreateAsync(userId, It.Is<CreateRememberedMfaDeviceRequest>(r =>
+        service.Verify(s => s.CreateAfterSuccessfulMfaAsync(mfaResult, It.Is<CreateRememberedMfaDeviceRequest>(r =>
             r.Audit != null &&
             r.Audit.IpAddress == "127.0.0.1" &&
             r.Audit.UserAgent == "unit-test"), It.IsAny<CancellationToken>()), Times.Once);
@@ -67,15 +68,16 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
         var userId = Guid.NewGuid();
         var expiresAt = new DateTimeOffset(2026, 7, 1, 0, 0, 0, TimeSpan.Zero);
         var device = CreateSummary(userId, null) with { ExpiresAt = expiresAt };
+        var mfaResult = CreatePublicFreshMfaSignalOnlyResult(userId);
         var service = new Mock<IRememberedMfaDeviceService>();
         service
-            .Setup(s => s.CreateAsync(userId, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.CreateAfterSuccessfulMfaAsync(mfaResult, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(new RememberedMfaDeviceCreated(device, "raw-remembered-token")));
         var manager = CreateManager(service.Object);
         var context = CreateContext();
         context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=existing-session-token";
 
-        await manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), CreateSuccessfulMfaResult(userId));
+        await manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), mfaResult);
 
         var setCookie = context.Response.Headers.SetCookie.ToString();
         using (Assert.EnterMultipleScope())
@@ -87,21 +89,22 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
     }
 
     [Test]
-    public void IssueAsyncThrowsWhenServiceFailsWithoutWritingCookie()
+    public void IssueAsyncThrowsWhenServiceRejectsPublicFreshSignalWithoutWritingCookie()
     {
         var userId = Guid.NewGuid();
+        var mfaResult = CreatePublicFreshMfaSignalOnlyResult(userId);
         var service = new Mock<IRememberedMfaDeviceService>();
         service
-            .Setup(s => s.CreateAsync(userId, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Failure<RememberedMfaDeviceCreated>(AshlarFailureCodes.RememberedMfaDeviceLimitExceeded));
+            .Setup(s => s.CreateAfterSuccessfulMfaAsync(mfaResult, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure<RememberedMfaDeviceCreated>(AshlarFailureCodes.ValidationError));
         var manager = CreateManager(service.Object);
         var context = CreateContext();
 
-        var exception = Assert.ThrowsAsync<AshlarOperationException>(() => manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), CreateSuccessfulMfaResult(userId)));
+        var exception = Assert.ThrowsAsync<AshlarOperationException>(() => manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), mfaResult));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exception!.FailureCode, Is.EqualTo(AshlarFailureCodes.RememberedMfaDeviceLimitExceeded));
+            Assert.That(exception!.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That(context.Response.Headers.SetCookie.ToString(), Is.Empty);
         }
     }
@@ -110,14 +113,15 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
     public void IssueAsyncUsesDefaultFailureWhenServiceFailsWithoutDetails()
     {
         var userId = Guid.NewGuid();
+        var mfaResult = CreatePublicFreshMfaSignalOnlyResult(userId);
         var service = new Mock<IRememberedMfaDeviceService>();
         service
-            .Setup(s => s.CreateAsync(userId, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.CreateAfterSuccessfulMfaAsync(mfaResult, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Result<RememberedMfaDeviceCreated>(false));
         var manager = CreateManager(service.Object);
         var context = CreateContext();
 
-        var exception = Assert.ThrowsAsync<AshlarOperationException>(() => manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), CreateSuccessfulMfaResult(userId)));
+        var exception = Assert.ThrowsAsync<AshlarOperationException>(() => manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), mfaResult));
 
         using (Assert.EnterMultipleScope())
         {
@@ -133,17 +137,18 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
         var userId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
         var device = CreateSummary(userId, tenantId);
+        var mfaResult = CreatePublicFreshMfaSignalOnlyResult(userId);
         var service = new Mock<IRememberedMfaDeviceService>();
         service
-            .Setup(s => s.CreateAsync(userId, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.CreateAfterSuccessfulMfaAsync(mfaResult, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(new RememberedMfaDeviceCreated(device, "raw-remembered-token")));
         var manager = CreateManager(service.Object);
         var context = CreateContext();
         var authenticationContext = CreateAuthenticationContext(tenantId);
 
-        await manager.IssueAfterSuccessfulMfaAsync(context, authenticationContext, CreateSuccessfulMfaResult(userId));
+        await manager.IssueAfterSuccessfulMfaAsync(context, authenticationContext, mfaResult);
 
-        service.Verify(s => s.CreateAsync(userId, It.Is<CreateRememberedMfaDeviceRequest>(r =>
+        service.Verify(s => s.CreateAfterSuccessfulMfaAsync(mfaResult, It.Is<CreateRememberedMfaDeviceRequest>(r =>
             r.Tenant != null &&
             r.Tenant.TenantId == tenantId &&
             r.Audit != null &&
@@ -158,17 +163,18 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
     {
         var userId = Guid.NewGuid();
         var device = CreateSummary(userId, null);
+        var mfaResult = CreatePublicFreshMfaSignalOnlyResult(userId);
         var service = new Mock<IRememberedMfaDeviceService>();
         service
-            .Setup(s => s.CreateAsync(userId, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.CreateAfterSuccessfulMfaAsync(mfaResult, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(new RememberedMfaDeviceCreated(device, "raw-remembered-token")));
         var manager = CreateManager(service.Object);
         var context = new DefaultHttpContext();
         context.Request.Headers.UserAgent = "unit-test";
 
-        await manager.IssueAfterSuccessfulMfaAsync(context, new AuthenticationContext(UserAgent: "unit-test"), CreateSuccessfulMfaResult(userId));
+        await manager.IssueAfterSuccessfulMfaAsync(context, new AuthenticationContext(UserAgent: "unit-test"), mfaResult);
 
-        service.Verify(s => s.CreateAsync(userId, It.Is<CreateRememberedMfaDeviceRequest>(r =>
+        service.Verify(s => s.CreateAfterSuccessfulMfaAsync(mfaResult, It.Is<CreateRememberedMfaDeviceRequest>(r =>
             r.Audit != null &&
             r.Audit.IpAddress == null &&
             r.Audit.UserAgent == "unit-test"), It.IsAny<CancellationToken>()), Times.Once);
@@ -179,9 +185,10 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
     {
         var userId = Guid.NewGuid();
         var device = CreateSummary(userId, null);
+        var mfaResult = CreatePublicFreshMfaSignalOnlyResult(userId);
         var service = new Mock<IRememberedMfaDeviceService>();
         service
-            .Setup(s => s.CreateAsync(userId, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.CreateAfterSuccessfulMfaAsync(mfaResult, It.IsAny<CreateRememberedMfaDeviceRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(new RememberedMfaDeviceCreated(device, "raw-remembered-token")));
         var manager = CreateManager(service.Object);
         var context = CreateContext();
@@ -191,9 +198,9 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
             new Claim(Ashlar.AspNetCore.Authentication.AshlarClaimTypes.TenantId, "not-a-guid")
         ]));
 
-        await manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), CreateSuccessfulMfaResult(userId));
+        await manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), mfaResult);
 
-        service.Verify(s => s.CreateAsync(userId, It.Is<CreateRememberedMfaDeviceRequest>(r =>
+        service.Verify(s => s.CreateAfterSuccessfulMfaAsync(mfaResult, It.Is<CreateRememberedMfaDeviceRequest>(r =>
             r.Tenant == null &&
             r.Audit != null &&
             r.Audit.ActorUserId == userId), It.IsAny<CancellationToken>()), Times.Once);
@@ -401,14 +408,14 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.ThrowsAsync<ArgumentNullException>(() => manager.IssueAfterSuccessfulMfaAsync(null!, CreateAuthenticationContext(), CreateSuccessfulMfaResult(Guid.NewGuid())));
-            Assert.ThrowsAsync<ArgumentNullException>(() => manager.IssueAfterSuccessfulMfaAsync(context, null!, CreateSuccessfulMfaResult(Guid.NewGuid())));
+            Assert.ThrowsAsync<ArgumentNullException>(() => manager.IssueAfterSuccessfulMfaAsync(null!, CreateAuthenticationContext(), CreatePublicFreshMfaSignalOnlyResult(Guid.NewGuid())));
+            Assert.ThrowsAsync<ArgumentNullException>(() => manager.IssueAfterSuccessfulMfaAsync(context, null!, CreatePublicFreshMfaSignalOnlyResult(Guid.NewGuid())));
             Assert.ThrowsAsync<ArgumentNullException>(() => manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), null!));
             Assert.ThrowsAsync<ArgumentException>(() => manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), new MfaAuthenticationResult(MfaAuthenticationStatus.MfaRequired, Mock.Of<IUser>())));
             Assert.ThrowsAsync<ArgumentException>(() => manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, FreshMfaSatisfied: true)));
             Assert.ThrowsAsync<ArgumentException>(() => manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, Mock.Of<IUser>())));
             Assert.ThrowsAsync<ArgumentException>(() => manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, Mock.Of<IUser>(), FreshMfaSatisfied: true)));
-            Assert.ThrowsAsync<ArgumentException>(() => manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), CreateSuccessfulMfaResult(Guid.Empty)));
+            Assert.ThrowsAsync<ArgumentException>(() => manager.IssueAfterSuccessfulMfaAsync(context, CreateAuthenticationContext(), CreatePublicFreshMfaSignalOnlyResult(Guid.Empty)));
             Assert.Throws<ArgumentNullException>(() => manager.EnrichContext(null!, new AuthenticationContext()));
             Assert.Throws<ArgumentNullException>(() => manager.EnrichContext(context, null!));
             Assert.Throws<ArgumentNullException>(() => manager.Clear(null!));
@@ -416,6 +423,7 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
             Assert.ThrowsAsync<ArgumentException>(() => manager.RevokeCurrentAsync(context, Guid.Empty));
             Assert.Throws<ArgumentNullException>(() => new AshlarRememberedMfaDeviceCookieManager(null!, Options.Create(new AshlarRememberedMfaDeviceCookieOptions())));
             Assert.Throws<ArgumentNullException>(() => new AshlarRememberedMfaDeviceCookieManager(Mock.Of<IRememberedMfaDeviceService>(), null!));
+            Assert.Throws<ArgumentNullException>(() => new AshlarRememberedMfaDeviceCookieManager(Mock.Of<IRememberedMfaDeviceService>(), Mock.Of<IOptions<AshlarRememberedMfaDeviceCookieOptions>>(o => o.Value == null!)));
         }
     }
 
@@ -424,7 +432,7 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
         return new AshlarRememberedMfaDeviceCookieManager(service, Options.Create(new AshlarRememberedMfaDeviceCookieOptions()));
     }
 
-    private static MfaAuthenticationResult CreateSuccessfulMfaResult(Guid userId)
+    private static MfaAuthenticationResult CreatePublicFreshMfaSignalOnlyResult(Guid userId)
     {
         var user = new Mock<IUser>();
         user.SetupGet(u => u.Id).Returns(userId);
@@ -504,3 +512,4 @@ internal sealed class AshlarRememberedMfaDeviceCookieManagerTests
         }
     }
 }
+
