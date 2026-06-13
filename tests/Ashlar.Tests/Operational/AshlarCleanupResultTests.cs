@@ -13,18 +13,82 @@ internal sealed class AshlarCleanupResultTests
     [Test]
     public void TotalSumsAllCategories()
     {
-        var result = new AshlarCleanupResult(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23);
+        var result = new AshlarCleanupResult(
+            ExpiredSessions: 1,
+            RevokedSessions: 2,
+            ExpiredCredentials: 3,
+            RevokedCredentials: 4,
+            ExpiredInvitations: 5,
+            AcceptedInvitations: 6,
+            RevokedInvitations: 7,
+            ExpiredHandshakes: 8,
+            CompletedHandshakes: 9,
+            RevokedHandshakes: 10,
+            ExpiredRateLimits: 11,
+            AuditEvents: 12,
+            SentEmails: 13,
+            FailedEmails: 14,
+            ExpiredAuthorizationGrants: 15,
+            RevokedAuthorizationGrants: 16,
+            ExpiredPasskeyChallenges: 17,
+            ConsumedPasskeyChallenges: 18,
+            SentSensitiveEmails: 19,
+            FailedSensitiveEmails: 20,
+            SentSecurityEventWebhooks: 21,
+            FailedSecurityEventWebhooks: 22,
+            DiscardedSecurityEventWebhooks: 23,
+            ExpiredRememberedMfaDevices: 24,
+            RevokedRememberedMfaDevices: 25);
 
-        Assert.That(result.Total, Is.EqualTo(276));
+        Assert.That(result.Total, Is.EqualTo(325));
     }
 
     [Test]
     public void AddSumsCategoryCounts()
     {
-        var result = new AshlarCleanupResult(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
-            .Add(new AshlarCleanupResult(2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2));
+        var result = new AshlarCleanupResult(
+                ExpiredSessions: 1,
+                RevokedSessions: 1,
+                ExpiredCredentials: 1,
+                RevokedCredentials: 1,
+                ExpiredInvitations: 1,
+                AcceptedInvitations: 1,
+                RevokedInvitations: 1,
+                ExpiredHandshakes: 1,
+                CompletedHandshakes: 1,
+                RevokedHandshakes: 1,
+                ExpiredRateLimits: 1,
+                AuditEvents: 1,
+                SentEmails: 1,
+                FailedEmails: 1,
+                ExpiredRememberedMfaDevices: 1,
+                RevokedRememberedMfaDevices: 1)
+            .Add(new AshlarCleanupResult(
+                ExpiredSessions: 2,
+                RevokedSessions: 2,
+                ExpiredCredentials: 2,
+                RevokedCredentials: 2,
+                ExpiredInvitations: 2,
+                AcceptedInvitations: 2,
+                RevokedInvitations: 2,
+                ExpiredHandshakes: 2,
+                CompletedHandshakes: 2,
+                RevokedHandshakes: 2,
+                ExpiredRateLimits: 2,
+                AuditEvents: 2,
+                SentEmails: 2,
+                FailedEmails: 2,
+                ExpiredRememberedMfaDevices: 2,
+                RevokedRememberedMfaDevices: 2));
 
-        Assert.That(result, Is.EqualTo(new AshlarCleanupResult(3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ExpiredSessions, Is.EqualTo(3));
+            Assert.That(result.RevokedSessions, Is.EqualTo(3));
+            Assert.That(result.ExpiredRememberedMfaDevices, Is.EqualTo(3));
+            Assert.That(result.RevokedRememberedMfaDevices, Is.EqualTo(3));
+            Assert.That(result.Total, Is.EqualTo(48));
+        }
     }
 
     [Test]

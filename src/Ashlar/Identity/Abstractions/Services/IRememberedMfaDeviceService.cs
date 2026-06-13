@@ -6,13 +6,20 @@ namespace Ashlar.Identity.Abstractions.Services;
 public interface IRememberedMfaDeviceService
 {
     /// <summary>
-    /// Creates a remembered MFA device and returns the raw token once.
+    /// Creates a remembered MFA device after the same user has completed a fresh MFA ceremony.
     /// </summary>
-    /// <param name="userId">User that will own the remembered device.</param>
+    /// <param name="mfaResult">Successful fresh MFA result for the session owner that will own the remembered device.</param>
     /// <param name="request">Tenant scope, audit context, device label, and lifetime for the remembered device.</param>
     /// <param name="cancellationToken">A token that can cancel device creation.</param>
     /// <returns>Created device metadata and raw token returned once to the caller, or a failure status.</returns>
-    Task<Result<RememberedMfaDeviceCreated>> CreateAsync(Guid userId, CreateRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default);
+    /// <remarks>
+    /// Hosts must pass the result produced by Ashlar's MFA orchestration for the current sign-in or
+    /// step-up flow. The service rejects missing users, unsuccessful results, and results that did
+    /// not satisfy fresh MFA; remembered devices are never created as an administrative action and
+    /// are not valid for strict step-up. Raw remembered-device tokens are returned only in the
+    /// successful creation result and must not be logged or persisted by host code.
+    /// </remarks>
+    Task<Result<RememberedMfaDeviceCreated>> CreateAfterSuccessfulMfaAsync(MfaAuthenticationResult mfaResult, CreateRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Validates a raw remembered MFA device token for the supplied user context.

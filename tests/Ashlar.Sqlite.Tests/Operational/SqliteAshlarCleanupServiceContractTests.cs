@@ -9,7 +9,7 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
 {
     private static readonly Guid TestUserId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly DateTimeOffset Now = new(2026, 5, 8, 12, 0, 0, TimeSpan.Zero);
-    private static readonly string[] SeedPrefixes = ["s", "c", "g", "i", "h", "p", "e"];
+    private static readonly string[] SeedPrefixes = ["s", "c", "g", "i", "h", "r", "p", "e"];
     private SqliteContractDatabase? _database;
     private FakeTimeProvider _timeProvider = null!;
 
@@ -76,6 +76,12 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
             ($h5, $userId, 'recent-completed-handshake', $now, $future, 0, 1, NULL, $recent, '[]', '[]'),
             ($h6, $userId, 'recent-revoked-handshake', $now, $future, 1, 0, $recent, NULL, '[]', '[]');
 
+            INSERT INTO ashlar_remembered_mfa_devices (id, user_id, token_selector, token_hash, created_at, expires_at, revoked_at) VALUES
+            ($r1, $userId, 'expired-remembered-device', 'hash-1', $old, $old, NULL),
+            ($r2, $userId, 'revoked-remembered-device', 'hash-2', $old, $future, $old),
+            ($r3, $userId, 'active-remembered-device', 'hash-3', $now, $future, NULL),
+            ($r4, $userId, 'recent-revoked-remembered-device', 'hash-4', $now, $future, $recent);
+
             INSERT INTO ashlar_rate_limits (purpose, rate_limit_key, count, window_start, expires_at) VALUES
             ('login', 'expired-rate', 1, $old, $old),
             ('login', 'active-rate', 1, $now, $future);
@@ -119,6 +125,23 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
                 command.AddGuidParameter("$id", Guid.NewGuid());
                 command.AddDateTimeOffsetParameter("$occurred", Now.AddYears(-10));
             });
+    }
+
+    protected override async Task SeedOldRememberedMfaDevicesAsync()
+    {
+        await SeedUserAsync();
+        await ExecuteAsync("""
+            INSERT INTO ashlar_remembered_mfa_devices (id, user_id, token_selector, token_hash, created_at, expires_at, revoked_at) VALUES
+            ($expired, $userId, 'expired-remembered-device-null-retention', 'hash-expired', $old, $old, NULL),
+            ($revoked, $userId, 'revoked-remembered-device-null-retention', 'hash-revoked', $old, $future, $old);
+            """, command =>
+        {
+            command.AddGuidParameter("$expired", Guid.NewGuid());
+            command.AddGuidParameter("$revoked", Guid.NewGuid());
+            command.AddGuidParameter("$userId", TestUserId);
+            command.AddDateTimeOffsetParameter("$old", Now.AddDays(-60));
+            command.AddDateTimeOffsetParameter("$future", Now.AddDays(1));
+        });
     }
 
     protected override Task SeedSensitiveEmailCleanupRowsAsync()
@@ -188,6 +211,25 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
         return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
     }
 
+    protected override async Task<AshlarCleanupResult> RunCleanupWithNullRememberedMfaDeviceRetentionsAsync()
+    {
+        if (_database == null)
+        {
+            throw new InvalidOperationException("Contract database is not initialized.");
+        }
+
+        var services = new ServiceCollection();
+        services.AddAshlarSqlite(_database.ConnectionString);
+        services.AddAshlarSqliteCleanup(options =>
+        {
+            options.RemoveExpiredRememberedMfaDevicesAfter = null;
+            options.RemoveRevokedRememberedMfaDevicesAfter = null;
+        });
+        services.AddSingleton<TimeProvider>(_timeProvider);
+        await using var provider = services.BuildServiceProvider();
+        return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+    }
+
     private async Task<Microsoft.Data.Sqlite.SqliteConnection> OpenConnectionAsync()
     {
         if (_database == null)
@@ -231,7 +273,7 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
         command.AddDateTimeOffsetParameter("$future", Now.AddDays(1));
         foreach (var prefix in SeedPrefixes)
         {
-            var count = prefix is "s" or "c" or "g" or "p" ? 4 : prefix == "e" ? 2 : 6;
+            var count = prefix is "s" or "c" or "g" or "r" or "p" ? 4 : prefix == "e" ? 2 : 6;
             for (var index = 1; index <= count; index++)
             {
                 command.AddGuidParameter($"${prefix}{index}", Guid.NewGuid());

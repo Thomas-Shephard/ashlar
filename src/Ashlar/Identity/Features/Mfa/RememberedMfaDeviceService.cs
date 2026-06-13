@@ -65,9 +65,23 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
         _logger = logger ?? NullLogger<RememberedMfaDeviceService>.Instance;
     }
 
-    public async Task<Result<RememberedMfaDeviceCreated>> CreateAsync(Guid userId, CreateRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<RememberedMfaDeviceCreated>> CreateAfterSuccessfulMfaAsync(MfaAuthenticationResult mfaResult, CreateRememberedMfaDeviceRequest request, CancellationToken cancellationToken = default)
     {
-        if (userId == Guid.Empty) throw new ArgumentException(UserIdEmptyMessage, nameof(userId));
+        ArgumentNullException.ThrowIfNull(mfaResult);
+        ArgumentNullException.ThrowIfNull(request);
+        var tenant = request.Tenant ?? TenantContext.Global;
+        var userId = mfaResult.User?.Id ?? Guid.Empty;
+        if (mfaResult.Status != MfaAuthenticationStatus.Succeeded || !mfaResult.CanCreateRememberedMfaDevice || userId == Guid.Empty)
+        {
+            await RecordCreateRejectedAsync(userId, tenant, request.Audit, AshlarFailureCodes.ValidationError, cancellationToken);
+            return Result.Failure<RememberedMfaDeviceCreated>(AshlarFailureCodes.ValidationError);
+        }
+
+        return await CreateForVerifiedOwnerAsync(userId, request, cancellationToken);
+    }
+
+    private async Task<Result<RememberedMfaDeviceCreated>> CreateForVerifiedOwnerAsync(Guid userId, CreateRememberedMfaDeviceRequest request, CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(request);
         var tenant = request.Tenant ?? TenantContext.Global;
         var displayName = ValidateOptionalLength(request.DisplayName, _options.MaxDisplayNameLength, $"{nameof(request)}.{nameof(request.DisplayName)}");

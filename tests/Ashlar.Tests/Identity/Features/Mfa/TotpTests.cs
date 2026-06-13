@@ -72,6 +72,58 @@ internal sealed class TotpTests
             new TotpServiceDependencies(Options.Create(_options), _timeProvider, _securityEvents.Object));
     }
 
+    private static Task<TotpEnrollment> StartEnrollmentAsync(
+        TotpService service,
+        Guid userId,
+        string issuer,
+        string accountName,
+        TenantContext? tenant = null,
+        AuditContext? audit = null,
+        CancellationToken cancellationToken = default)
+    {
+        return service.StartEnrollmentAsync(
+            new StartTotpEnrollmentRequest(userId, issuer, accountName)
+            {
+                Tenant = tenant,
+                Audit = audit
+            },
+            cancellationToken);
+    }
+
+    private static Task<Result> CompleteEnrollmentAsync(
+        TotpService service,
+        Guid userId,
+        string sharedSecret,
+        string code,
+        TenantContext? tenant = null,
+        AuditContext? audit = null,
+        CancellationToken cancellationToken = default)
+    {
+        return service.CompleteEnrollmentAsync(
+            new VerifyTotpEnrollmentRequest(userId, sharedSecret, code)
+            {
+                Tenant = tenant,
+                Audit = audit
+            },
+            cancellationToken);
+    }
+
+    private static Task<bool> DisableAsync(
+        TotpService service,
+        Guid userId,
+        TenantContext? tenant = null,
+        AuditContext? audit = null,
+        CancellationToken cancellationToken = default)
+    {
+        return service.DisableAsync(
+            new DisableTotpRequest(userId)
+            {
+                Tenant = tenant,
+                Audit = audit
+            },
+            cancellationToken);
+    }
+
     private TotpAuthenticationProvider CreateProvider()
     {
         return new TotpAuthenticationProvider(
@@ -311,7 +363,7 @@ internal sealed class TotpTests
         var service = CreateService();
         var userId = Guid.NewGuid();
 
-        var enrollment = await service.StartEnrollmentAsync(userId, "Ashlar", "user@example.com");
+        var enrollment = await StartEnrollmentAsync(service, userId, "Ashlar", "user@example.com");
 
         using (Assert.EnterMultipleScope())
         {
@@ -336,7 +388,7 @@ internal sealed class TotpTests
             .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = userTenantId });
 
         var exception = Assert.ThrowsAsync<AshlarOperationException>(() =>
-            service.StartEnrollmentAsync(userId, "Ashlar", "user@example.com", new TenantContext(requestedTenantId)));
+            StartEnrollmentAsync(service, userId, "Ashlar", "user@example.com", new TenantContext(requestedTenantId)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -352,11 +404,27 @@ internal sealed class TotpTests
     }
 
     [Test]
+    public void StartEnrollmentAsyncShouldRejectMissingActorBeforeReturningSecret()
+    {
+        var service = CreateService();
+
+        var exception = Assert.ThrowsAsync<ArgumentException>(() =>
+            service.StartEnrollmentAsync(new StartTotpEnrollmentRequest(Guid.Empty, "Ashlar", "user@example.com")));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception?.ParamName, Is.EqualTo("request.ActorUserId"));
+            _repository.Verify(x => x.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+            _securityEvents.Verify(x => x.RecordAsync(It.IsAny<AshlarSecurityEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
     public void StartEnrollmentAsyncWithEmptyUserIdShouldThrow()
     {
         var service = CreateService();
 
-        Assert.ThrowsAsync<ArgumentException>(() => service.StartEnrollmentAsync(Guid.Empty, "Ashlar", "user@example.com"));
+        Assert.ThrowsAsync<ArgumentException>(() => StartEnrollmentAsync(service, Guid.Empty, "Ashlar", "user@example.com"));
     }
 
     [TestCase(null)]
@@ -368,7 +436,7 @@ internal sealed class TotpTests
 
         Assert.That(
             // ReSharper disable once NullableWarningSuppressionIsUsed
-            Assert.CatchAsync(() => service.StartEnrollmentAsync(Guid.NewGuid(), issuer!, "user@example.com")),
+            Assert.CatchAsync(() => StartEnrollmentAsync(service, Guid.NewGuid(), issuer!, "user@example.com")),
             Is.TypeOf<ArgumentException>().Or.TypeOf<ArgumentNullException>());
     }
 
@@ -381,12 +449,12 @@ internal sealed class TotpTests
 
         Assert.That(
             // ReSharper disable once NullableWarningSuppressionIsUsed
-            Assert.CatchAsync(() => service.StartEnrollmentAsync(Guid.NewGuid(), "Ashlar", accountName!)),
+            Assert.CatchAsync(() => StartEnrollmentAsync(service, Guid.NewGuid(), "Ashlar", accountName!)),
             Is.TypeOf<ArgumentException>().Or.TypeOf<ArgumentNullException>());
     }
 
     [Test]
-    public async Task VerifyAndEnrollAsyncSucceedsWithCorrectCode()
+    public async Task CompleteEnrollmentAsyncSucceedsWithCorrectCode()
     {
         var service = CreateService();
         var userId = Guid.NewGuid();
@@ -398,7 +466,7 @@ internal sealed class TotpTests
         _credentialRepository.Setup(x => x.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, It.IsAny<CancellationToken>()))
             .ReturnsAsync(0);
 
-        var result = await service.VerifyAndEnrollAsync(userId, secret, code);
+        var result = await CompleteEnrollmentAsync(service, userId, secret, code);
 
         Assert.That(result.Succeeded, Is.True);
         _credentialService.Verify(x => x.LinkCredentialAsync(userId, It.IsAny<TotpAssertion>(), It.IsAny<IAuthenticationProvider>(), secret, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
@@ -409,7 +477,7 @@ internal sealed class TotpTests
     }
 
     [Test]
-    public async Task VerifyAndEnrollAsyncPropagatesAuditToEventAndNotification()
+    public async Task CompleteEnrollmentAsyncPropagatesAuditToEventAndNotification()
     {
         var userId = Guid.NewGuid();
         var audit = new AuditContext(ActorUserId: userId, IpAddress: "203.0.113.40", UserAgent: "totp-agent", CorrelationId: "totp-correlation");
@@ -430,7 +498,7 @@ internal sealed class TotpTests
         _repository.Setup(x => x.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, Email = "user@example.com", TenantId = tenantId });
 
-        var result = await service.VerifyAndEnrollAsync(userId, secret, code, new TenantContext(tenantId), audit);
+        var result = await CompleteEnrollmentAsync(service, userId, secret, code, new TenantContext(tenantId), audit);
 
         Assert.That(result.Succeeded, Is.True);
         _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(d =>
@@ -447,7 +515,7 @@ internal sealed class TotpTests
     }
 
     [Test]
-    public async Task VerifyAndEnrollAsyncUsesReplaceCredentialPath()
+    public async Task CompleteEnrollmentAsyncUsesReplaceCredentialPath()
     {
         var service = CreateService();
         var userId = Guid.NewGuid();
@@ -459,14 +527,14 @@ internal sealed class TotpTests
         _credentialRepository.Setup(x => x.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
 
-        var result = await service.VerifyAndEnrollAsync(userId, secret, code);
+        var result = await CompleteEnrollmentAsync(service, userId, secret, code);
 
         Assert.That(result.Succeeded, Is.True);
         _credentialService.Verify(x => x.LinkCredentialAsync(userId, It.IsAny<TotpAssertion>(), It.IsAny<IAuthenticationProvider>(), secret, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task VerifyAndEnrollAsyncShouldRejectTenantMismatchBeforeReplacingCredential()
+    public async Task CompleteEnrollmentAsyncShouldRejectTenantMismatchBeforeReplacingCredential()
     {
         var service = CreateService();
         var userId = Guid.NewGuid();
@@ -479,7 +547,7 @@ internal sealed class TotpTests
         _repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = Guid.NewGuid() });
 
-        var result = await service.VerifyAndEnrollAsync(userId, secret, code, new TenantContext(requestedTenantId));
+        var result = await CompleteEnrollmentAsync(service, userId, secret, code, new TenantContext(requestedTenantId));
 
         using (Assert.EnterMultipleScope())
         {
@@ -497,7 +565,24 @@ internal sealed class TotpTests
     }
 
     [Test]
-    public async Task VerifyAndEnrollAsyncReplacesExistingCredential()
+    public void CompleteEnrollmentAsyncShouldRejectMissingActorBeforeReplacingCredential()
+    {
+        var service = CreateService();
+
+        var exception = Assert.ThrowsAsync<ArgumentException>(() =>
+            service.CompleteEnrollmentAsync(new VerifyTotpEnrollmentRequest(Guid.Empty, "secret", "123456")));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception?.ParamName, Is.EqualTo("request.ActorUserId"));
+            _credentialRepository.Verify(x => x.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _credentialService.Verify(x => x.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _securityEvents.Verify(x => x.RecordAsync(It.IsAny<AshlarSecurityEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task CompleteEnrollmentAsyncReplacesExistingCredential()
     {
         var service = CreateService();
         var userId = Guid.NewGuid();
@@ -509,14 +594,14 @@ internal sealed class TotpTests
         _credentialRepository.Setup(x => x.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
 
-        var result = await service.VerifyAndEnrollAsync(userId, secret, code);
+        var result = await CompleteEnrollmentAsync(service, userId, secret, code);
 
         Assert.That(result.Succeeded, Is.True);
         _credentialRepository.Verify(x => x.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task VerifyAndEnrollAsyncFailsWithIncorrectCode()
+    public async Task CompleteEnrollmentAsyncFailsWithIncorrectCode()
     {
         var service = CreateService();
         var userId = Guid.NewGuid();
@@ -524,7 +609,7 @@ internal sealed class TotpTests
         System.Security.Cryptography.RandomNumberGenerator.Fill(secretBytes);
         var secret = Base32.Encode(secretBytes);
 
-        var result = await service.VerifyAndEnrollAsync(userId, secret, "000000");
+        var result = await CompleteEnrollmentAsync(service, userId, secret, "000000");
 
         using (Assert.EnterMultipleScope())
         {
@@ -536,7 +621,7 @@ internal sealed class TotpTests
 
     [TestCase("link_failed")]
     [TestCase(null)]
-    public async Task VerifyAndEnrollAsyncFailsWhenCredentialLinkFails(string? failureReason)
+    public async Task CompleteEnrollmentAsyncFailsWhenCredentialLinkFails(string? failureReason)
     {
         var service = CreateService();
         var userId = Guid.NewGuid();
@@ -554,7 +639,7 @@ internal sealed class TotpTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Result(false, failureReason is null ? null : new AshlarFailure(new AshlarFailureCode(failureReason))));
 
-        var result = await service.VerifyAndEnrollAsync(userId, secret, code);
+        var result = await CompleteEnrollmentAsync(service, userId, secret, code);
 
         using (Assert.EnterMultipleScope())
         {
@@ -570,10 +655,10 @@ internal sealed class TotpTests
     }
 
     [Test]
-    public async Task VerifyAndEnrollAsyncFailsWithEmptyCode()
+    public async Task CompleteEnrollmentAsyncFailsWithEmptyCode()
     {
         var service = CreateService();
-        var result = await service.VerifyAndEnrollAsync(Guid.NewGuid(), "secret", "");
+        var result = await CompleteEnrollmentAsync(service, Guid.NewGuid(), "secret", "");
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
@@ -582,10 +667,10 @@ internal sealed class TotpTests
     }
 
     [Test]
-    public async Task VerifyAndEnrollAsyncFailsWithInvalidSecret()
+    public async Task CompleteEnrollmentAsyncFailsWithInvalidSecret()
     {
         var service = CreateService();
-        var result = await service.VerifyAndEnrollAsync(Guid.NewGuid(), "invalid-base32!", "123456");
+        var result = await CompleteEnrollmentAsync(service, Guid.NewGuid(), "invalid-base32!", "123456");
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
@@ -596,12 +681,12 @@ internal sealed class TotpTests
     [TestCase(null)]
     [TestCase("")]
     [TestCase("   ")]
-    public async Task VerifyAndEnrollAsyncFailsWithMissingSharedSecret(string? sharedSecret)
+    public async Task CompleteEnrollmentAsyncFailsWithMissingSharedSecret(string? sharedSecret)
     {
         var service = CreateService();
 
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        var result = await service.VerifyAndEnrollAsync(Guid.NewGuid(), sharedSecret!, "123456");
+        var result = await CompleteEnrollmentAsync(service, Guid.NewGuid(), sharedSecret!, "123456");
 
         using (Assert.EnterMultipleScope())
         {
@@ -611,12 +696,12 @@ internal sealed class TotpTests
     }
 
     [Test]
-    public async Task VerifyAndEnrollAsyncFailsWithTooLongSharedSecret()
+    public async Task CompleteEnrollmentAsyncFailsWithTooLongSharedSecret()
     {
         var service = CreateService();
         var sharedSecret = new string('A', 257);
 
-        var result = await service.VerifyAndEnrollAsync(Guid.NewGuid(), sharedSecret, "123456");
+        var result = await CompleteEnrollmentAsync(service, Guid.NewGuid(), sharedSecret, "123456");
 
         using (Assert.EnterMultipleScope())
         {
@@ -626,15 +711,15 @@ internal sealed class TotpTests
     }
 
     [Test]
-    public void VerifyAndEnrollAsyncWithEmptyUserIdShouldThrow()
+    public void CompleteEnrollmentAsyncWithEmptyUserIdShouldThrow()
     {
         var service = CreateService();
 
-        Assert.ThrowsAsync<ArgumentException>(() => service.VerifyAndEnrollAsync(Guid.Empty, "secret", "123456"));
+        Assert.ThrowsAsync<ArgumentException>(() => CompleteEnrollmentAsync(service, Guid.Empty, "secret", "123456"));
     }
 
     [Test]
-    public async Task DisableTotpAsyncSucceedsWhenCredentialExists()
+    public async Task DisableAsyncSucceedsWhenCredentialExists()
     {
         var notificationService = new Mock<ISecurityNotificationService>();
         var service = new TotpService(
@@ -651,7 +736,7 @@ internal sealed class TotpTests
         _repository.Setup(x => x.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
 
-        var result = await service.DisableTotpAsync(userId);
+        var result = await DisableAsync(service, userId);
 
         Assert.That(result, Is.True);
         _credentialRepository.Verify(x => x.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, It.IsAny<CancellationToken>()), Times.Once);
@@ -665,7 +750,7 @@ internal sealed class TotpTests
     }
 
     [Test]
-    public async Task DisableTotpAsyncFailsWhenNoCredentialExists()
+    public async Task DisableAsyncFailsWhenNoCredentialExists()
     {
         var service = CreateService();
         var userId = Guid.NewGuid();
@@ -673,13 +758,13 @@ internal sealed class TotpTests
         _credentialRepository.Setup(x => x.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, It.IsAny<CancellationToken>()))
             .ReturnsAsync(0);
 
-        var result = await service.DisableTotpAsync(userId);
+        var result = await DisableAsync(service, userId);
 
         Assert.That(result, Is.False);
     }
 
     [Test]
-    public async Task DisableTotpAsyncShouldRejectTenantMismatchBeforeRevokingCredential()
+    public async Task DisableAsyncShouldRejectTenantMismatchBeforeRevokingCredential()
     {
         var service = CreateService();
         var userId = Guid.NewGuid();
@@ -687,7 +772,7 @@ internal sealed class TotpTests
         _repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = Guid.NewGuid() });
 
-        var result = await service.DisableTotpAsync(userId, new TenantContext(requestedTenantId));
+        var result = await DisableAsync(service, userId, new TenantContext(requestedTenantId));
 
         using (Assert.EnterMultipleScope())
         {
@@ -703,11 +788,27 @@ internal sealed class TotpTests
     }
 
     [Test]
-    public void DisableTotpAsyncWithEmptyUserIdShouldThrow()
+    public void DisableAsyncShouldRejectMissingActorBeforeRevokingCredential()
     {
         var service = CreateService();
 
-        Assert.ThrowsAsync<ArgumentException>(() => service.DisableTotpAsync(Guid.Empty));
+        var exception = Assert.ThrowsAsync<ArgumentException>(() =>
+            service.DisableAsync(new DisableTotpRequest(Guid.Empty)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception?.ParamName, Is.EqualTo("request.ActorUserId"));
+            _credentialRepository.Verify(x => x.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _securityEvents.Verify(x => x.RecordAsync(It.IsAny<AshlarSecurityEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public void DisableAsyncWithEmptyUserIdShouldThrow()
+    {
+        var service = CreateService();
+
+        Assert.ThrowsAsync<ArgumentException>(() => DisableAsync(service, Guid.Empty));
     }
 
     [TestCase(0, 6, 30, 1)]
@@ -1077,3 +1178,4 @@ internal sealed class TotpTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 }
+

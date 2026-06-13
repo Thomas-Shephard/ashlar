@@ -1,3 +1,5 @@
+using Ashlar.Auditing;
+
 namespace Ashlar.Identity.Models.Totp;
 
 /// <summary>
@@ -8,3 +10,43 @@ namespace Ashlar.Identity.Models.Totp;
 public sealed record TotpEnrollment(
     string SharedSecret,
     string AuthenticatorUri);
+
+/// <summary>
+/// Request to begin self-service TOTP enrollment for the authenticated account owner.
+/// </summary>
+/// <param name="ActorUserId">Authenticated user performing the self-service operation. This user owns the pending TOTP enrollment.</param>
+/// <param name="Issuer">Issuer label shown by authenticator applications.</param>
+/// <param name="AccountName">Account label shown by authenticator applications.</param>
+public sealed record StartTotpEnrollmentRequest(Guid ActorUserId, string Issuer, string AccountName)
+{
+    /// <summary>Tenant scope for the enrollment. Omit or use <see cref="TenantContext.Global" /> for global users; this is not an all-tenant scope.</summary>
+    public TenantContext? Tenant { get; init; }
+    /// <summary>Audit metadata recorded with the enrollment attempt. Do not include TOTP secrets or codes.</summary>
+    public AuditContext? Audit { get; init; }
+}
+
+/// <summary>
+/// Request to verify a pending self-service TOTP enrollment for the authenticated account owner.
+/// </summary>
+/// <param name="ActorUserId">Authenticated user performing the self-service operation. This user owns the finalized TOTP credential.</param>
+/// <param name="SharedSecret">Raw shared secret from enrollment setup. Do not log this value.</param>
+/// <param name="Code">TOTP code supplied by the user. Do not log this value.</param>
+public sealed record VerifyTotpEnrollmentRequest(Guid ActorUserId, string SharedSecret, string Code)
+{
+    /// <summary>Tenant scope for the enrollment. Omit or use <see cref="TenantContext.Global" /> for global users; this is not an all-tenant scope.</summary>
+    public TenantContext? Tenant { get; init; }
+    /// <summary>Audit metadata recorded with the enrollment attempt. Do not include TOTP secrets or codes.</summary>
+    public AuditContext? Audit { get; init; }
+}
+
+/// <summary>
+/// Request to disable the authenticated account owner's self-service TOTP credential.
+/// </summary>
+/// <param name="ActorUserId">Authenticated user performing the self-service operation. This user owns the TOTP credential being disabled.</param>
+public sealed record DisableTotpRequest(Guid ActorUserId)
+{
+    /// <summary>Tenant scope for the credential. Omit or use <see cref="TenantContext.Global" /> for global users; this is not an all-tenant scope.</summary>
+    public TenantContext? Tenant { get; init; }
+    /// <summary>Audit metadata recorded with the disable attempt. Do not include TOTP secrets or codes.</summary>
+    public AuditContext? Audit { get; init; }
+}

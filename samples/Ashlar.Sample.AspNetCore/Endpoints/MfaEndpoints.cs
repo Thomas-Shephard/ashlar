@@ -31,7 +31,13 @@ internal static class MfaEndpoints
 
             if (!hasTotp)
             {
-                var enrollment = await services.Totp.StartEnrollmentAsync(userId, services.Options.Value.AppName, ashlarUser.Email, services.HttpContext.ToTenantContext(), services.HttpContext.ToAuditContext(), services.CancellationToken);
+                var enrollment = await services.Totp.StartEnrollmentAsync(
+                    new StartTotpEnrollmentRequest(userId, services.Options.Value.AppName, ashlarUser.Email)
+                    {
+                        Tenant = services.HttpContext.ToTenantContext(),
+                        Audit = services.HttpContext.ToAuditContext()
+                    },
+                    services.CancellationToken);
                 var isAdmin = (await services.Auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), services.CancellationToken)).Succeeded;
                 return AppViews.RenderMfaSetup(enrollment.SharedSecret, enrollment.AuthenticatorUri, isAdmin);
             }
@@ -47,15 +53,22 @@ internal static class MfaEndpoints
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
-            var result = await totp.VerifyAndEnrollAsync(user.GetAshlarUserId(), request.SharedSecret, request.Code, httpContext.ToTenantContext(), httpContext.ToAuditContext(), cancellationToken);
+            var userId = user.GetAshlarUserId();
+            var result = await totp.CompleteEnrollmentAsync(
+                new VerifyTotpEnrollmentRequest(userId, request.SharedSecret, request.Code)
+                {
+                    Tenant = httpContext.ToTenantContext(),
+                    Audit = httpContext.ToAuditContext()
+                },
+                cancellationToken);
             if (!result.Succeeded)
             {
                 return Results.BadRequest(new { error = "invalid_totp" });
             }
 
-            if (httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out var tenant))
+            if (httpContext.TryGetAshlarSessionContext(out var sessionUserId, out var sessionId, out var tenant))
             {
-                await stepUp.MarkVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
+                await stepUp.MarkVerifiedAsync(sessionUserId, new MarkSessionStepUpVerifiedRequest
                 {
                     SessionId = sessionId,
                     VerifiedProvider = TotpOptions.DefaultProviderKey,
@@ -74,7 +87,14 @@ internal static class MfaEndpoints
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
-            await totp.DisableTotpAsync(user.GetAshlarUserId(), httpContext.ToTenantContext(), httpContext.ToAuditContext(), cancellationToken);
+            var userId = user.GetAshlarUserId();
+            await totp.DisableAsync(
+                new DisableTotpRequest(userId)
+                {
+                    Tenant = httpContext.ToTenantContext(),
+                    Audit = httpContext.ToAuditContext()
+                },
+                cancellationToken);
             return Results.Ok();
         }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
 

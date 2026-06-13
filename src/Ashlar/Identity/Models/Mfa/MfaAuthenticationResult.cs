@@ -36,7 +36,7 @@ public enum MfaAuthenticationStatus
 /// <param name="RequiredFactors">The MFA factors still required for the handshake.</param>
 /// <param name="Claims">Additional claims produced by the authentication provider.</param>
 /// <param name="ErrorMessage">A generic, display-safe error message when authentication fails.</param>
-/// <param name="FreshMfaSatisfied">Whether this result came from a fresh MFA ceremony suitable for step-up decisions.</param>
+/// <param name="FreshMfaSatisfied">Whether this result came from a fresh MFA ceremony suitable for step-up decisions. This public signal is not proof for remembered-device token issuance.</param>
 public sealed record MfaAuthenticationResult(
     MfaAuthenticationStatus Status,
     IUser? User = null,
@@ -65,6 +65,19 @@ public sealed record MfaAuthenticationResult(
         string? errorMessage = null,
         bool freshMfaSatisfied = false)
         : this(status, user, handshakeToken, requiredFactors, AuthenticationClaims.FromSingleValues(claims), errorMessage, freshMfaSatisfied)
+    {
+    }
+
+    internal FreshMfaProof? RememberedDeviceCreationProof { get; init; }
+
+    internal bool CanCreateRememberedMfaDevice => FreshMfaSatisfied && RememberedDeviceCreationProof != null;
+}
+
+internal sealed class FreshMfaProof
+{
+    internal static FreshMfaProof Instance { get; } = new();
+
+    private FreshMfaProof()
     {
     }
 }

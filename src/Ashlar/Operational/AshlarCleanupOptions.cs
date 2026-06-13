@@ -81,6 +81,16 @@ public sealed class AshlarCleanupOptions
     public TimeSpan? RemoveRevokedHandshakesAfter { get; set; } = TimeSpan.FromDays(1);
 
     /// <summary>
+    /// Retention period after remembered MFA device expiration. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
+    /// </summary>
+    public TimeSpan? RemoveExpiredRememberedMfaDevicesAfter { get; set; } = TimeSpan.FromDays(30);
+
+    /// <summary>
+    /// Retention period after remembered MFA device revocation. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes revoked rows on the next cleanup run.
+    /// </summary>
+    public TimeSpan? RemoveRevokedRememberedMfaDevicesAfter { get; set; } = TimeSpan.FromDays(30);
+
+    /// <summary>
     /// Retention period after rate-limit row expiration. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes expired rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveExpiredRateLimitsAfter { get; set; } = TimeSpan.FromDays(1);
@@ -161,6 +171,8 @@ public sealed class AshlarCleanupOptions
             && IsValid(options.RemoveExpiredHandshakesAfter)
             && IsValid(options.RemoveCompletedHandshakesAfter)
             && IsValid(options.RemoveRevokedHandshakesAfter)
+            && IsValid(options.RemoveExpiredRememberedMfaDevicesAfter)
+            && IsValid(options.RemoveRevokedRememberedMfaDevicesAfter)
             && IsValid(options.RemoveExpiredRateLimitsAfter)
             && IsValid(options.RemoveExpiredPasskeyChallengesAfter)
             && IsValid(options.RemoveConsumedPasskeyChallengesAfter)

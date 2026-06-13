@@ -78,6 +78,12 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
             (@h5, @userId, 'recent-completed-handshake', @now, @future, false, true, NULL, @recent, '[]'::jsonb, '[]'::jsonb),
             (@h6, @userId, 'recent-revoked-handshake', @now, @future, true, false, @recent, NULL, '[]'::jsonb, '[]'::jsonb);
 
+            INSERT INTO ashlar_remembered_mfa_devices (id, user_id, token_selector, token_hash, created_at, expires_at, revoked_at) VALUES
+            (@r1, @userId, 'expired-remembered-device', 'hash-1', @old, @old, NULL),
+            (@r2, @userId, 'revoked-remembered-device', 'hash-2', @old, @future, @old),
+            (@r3, @userId, 'active-remembered-device', 'hash-3', @now, @future, NULL),
+            (@r4, @userId, 'recent-revoked-remembered-device', 'hash-4', @now, @future, @recent);
+
             INSERT INTO ashlar_rate_limits (purpose, rate_limit_key, count, window_start, expires_at) VALUES
             ('login', 'expired-rate', 1, @old, @old),
             ('login', 'active-rate', 1, @now, @future);
@@ -112,6 +118,24 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
         await connection.ExecuteAsync(
             "INSERT INTO ashlar_security_events (id, event_type, occurred_at) VALUES (@id, 'old-event', @occurred)",
             new { id = Guid.NewGuid(), occurred = Now.AddYears(-10) });
+    }
+
+    protected override async Task SeedOldRememberedMfaDevicesAsync()
+    {
+        await SeedUserAsync();
+        await using var connection = await OpenConnectionAsync();
+        await connection.ExecuteAsync("""
+            INSERT INTO ashlar_remembered_mfa_devices (id, user_id, token_selector, token_hash, created_at, expires_at, revoked_at) VALUES
+            (@expired, @userId, 'expired-remembered-device-null-retention', 'hash-expired', @old, @old, NULL),
+            (@revoked, @userId, 'revoked-remembered-device-null-retention', 'hash-revoked', @old, @future, @old);
+            """, new
+        {
+            expired = Guid.NewGuid(),
+            revoked = Guid.NewGuid(),
+            userId = TestUserId,
+            old = Now.AddDays(-60),
+            future = Now.AddDays(1)
+        });
     }
 
     protected override async Task SeedSensitiveEmailCleanupRowsAsync()
@@ -179,6 +203,25 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
         return await service.CleanupAsync();
     }
 
+    protected override async Task<AshlarCleanupResult> RunCleanupWithNullRememberedMfaDeviceRetentionsAsync()
+    {
+        if (_database == null)
+        {
+            throw new InvalidOperationException("Contract database is not initialized.");
+        }
+
+        await using var dataSource = new NpgsqlDataSourceBuilder(_database.ConnectionString).Build();
+        var service = new PostgresAshlarCleanupService(
+            dataSource,
+            _timeProvider,
+            Options.Create(new AshlarCleanupOptions
+            {
+                RemoveExpiredRememberedMfaDevicesAfter = null,
+                RemoveRevokedRememberedMfaDevicesAfter = null
+            }));
+        return await service.CleanupAsync();
+    }
+
     private async Task<NpgsqlConnection> OpenConnectionAsync()
     {
         if (_database == null)
@@ -232,6 +275,10 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
         h4 = Guid.NewGuid(),
         h5 = Guid.NewGuid(),
         h6 = Guid.NewGuid(),
+        r1 = Guid.NewGuid(),
+        r2 = Guid.NewGuid(),
+        r3 = Guid.NewGuid(),
+        r4 = Guid.NewGuid(),
         p1 = Guid.NewGuid(),
         p2 = Guid.NewGuid(),
         p3 = Guid.NewGuid(),

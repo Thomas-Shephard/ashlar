@@ -40,6 +40,7 @@ public static class AshlarCleanupPlan
     private const string AuthorizationGrantsTable = "ashlar_authorization_grants";
     private const string InvitationsTable = "ashlar_invitations";
     private const string HandshakesTable = "ashlar_mfa_handshakes";
+    private const string RememberedMfaDevicesTable = "ashlar_remembered_mfa_devices";
     private const string RateLimitsTable = "ashlar_rate_limits";
     private const string PasskeyChallengesTable = "ashlar_passkey_challenges";
     private const string SecurityEventsTable = "ashlar_security_events";
@@ -72,6 +73,8 @@ public static class AshlarCleanupPlan
         new("expired_handshakes", HandshakesTable, $"expires_at < {CutoffToken} AND is_revoked = {FalseToken} AND is_completed = {FalseToken}", ExpiresAtColumn, options => options.RemoveExpiredHandshakesAfter, result => result.ExpiredHandshakes, (result, count) => result with { ExpiredHandshakes = result.ExpiredHandshakes + count }),
         new("completed_handshakes", HandshakesTable, $"is_completed = {TrueToken} AND completed_at IS NOT NULL AND completed_at < {CutoffToken}", CompletedAtColumn, options => options.RemoveCompletedHandshakesAfter, result => result.CompletedHandshakes, (result, count) => result with { CompletedHandshakes = result.CompletedHandshakes + count }),
         new("revoked_handshakes", HandshakesTable, $"is_revoked = {TrueToken} AND revoked_at IS NOT NULL AND revoked_at < {CutoffToken}", RevokedAtColumn, options => options.RemoveRevokedHandshakesAfter, result => result.RevokedHandshakes, (result, count) => result with { RevokedHandshakes = result.RevokedHandshakes + count }),
+        new("expired_remembered_mfa_devices", RememberedMfaDevicesTable, $"expires_at < {CutoffToken} AND revoked_at IS NULL", ExpiresAtColumn, options => options.RemoveExpiredRememberedMfaDevicesAfter, result => result.ExpiredRememberedMfaDevices, (result, count) => result with { ExpiredRememberedMfaDevices = result.ExpiredRememberedMfaDevices + count }),
+        new("revoked_remembered_mfa_devices", RememberedMfaDevicesTable, $"revoked_at IS NOT NULL AND revoked_at < {CutoffToken}", RevokedAtColumn, options => options.RemoveRevokedRememberedMfaDevicesAfter, result => result.RevokedRememberedMfaDevices, (result, count) => result with { RevokedRememberedMfaDevices = result.RevokedRememberedMfaDevices + count }),
         new("expired_rate_limits", RateLimitsTable, $"expires_at < {CutoffToken}", ExpiresAtColumn, options => options.RemoveExpiredRateLimitsAfter, result => result.ExpiredRateLimits, (result, count) => result with { ExpiredRateLimits = result.ExpiredRateLimits + count }),
         new("audit_events", SecurityEventsTable, $"occurred_at < {CutoffToken}", OccurredAtColumn, options => options.RemoveAuditEventsAfter, result => result.AuditEvents, (result, count) => result with { AuditEvents = result.AuditEvents + count }),
         new("sent_emails", EmailOutboxTable, $"sensitivity = '{NormalEmailSensitivity}' AND sent_at IS NOT NULL AND sent_at < {CutoffToken}", SentAtColumn, options => options.RemoveSentEmailsAfter, result => result.SentEmails, (result, count) => result with { SentEmails = result.SentEmails + count }),
