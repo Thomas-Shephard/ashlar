@@ -426,7 +426,7 @@ public sealed class PasskeyService : IPasskeyService
             : null;
     }
 
-    private async Task<PasskeyAssertionCompletion> CompleteAssertionCeremonyAsync(PasskeyChallenge challenge, JsonElement assertionResponse, AuditContext? audit, CancellationToken cancellationToken)
+    private async Task<IPasskeyAssertionCompletion> CompleteAssertionCeremonyAsync(PasskeyChallenge challenge, JsonElement assertionResponse, AuditContext? audit, CancellationToken cancellationToken)
     {
         if (!await _challengeRepository.ConsumeAsync(challenge.Id, challenge.Version, _timeProvider.GetUtcNow(), cancellationToken))
         {
@@ -589,14 +589,14 @@ public sealed class PasskeyService : IPasskeyService
 
 }
 
-internal abstract record PasskeyAssertionCompletion;
+internal interface IPasskeyAssertionCompletion;
 
-internal sealed record FailedPasskeyAssertion(PasskeyAuthenticationResult Failure) : PasskeyAssertionCompletion;
+internal sealed record FailedPasskeyAssertion(PasskeyAuthenticationResult Failure) : IPasskeyAssertionCompletion;
 
 internal sealed record SucceededPasskeyAssertion(
     IUser User,
     UserCredential Credential,
-    PasskeyAuthenticationVerificationResult Verified) : PasskeyAssertionCompletion
+    PasskeyAuthenticationVerificationResult Verified) : IPasskeyAssertionCompletion
 {
     public PasskeyAssertion ToAssertion(AuthenticationProviderKey providerKey)
     {
