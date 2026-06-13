@@ -9,11 +9,15 @@ using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using System.Net;
+using System.Net.Sockets;
 
 namespace Ashlar.Operational.Configuration;
 
 internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
 {
+    private const string CallbackUriValidationComponent = "Callback URI validation";
+
     public async ValueTask<IReadOnlyList<AshlarConfigurationIssue>> CheckAsync(
         IServiceProvider serviceProvider,
         CancellationToken cancellationToken = default)
@@ -177,6 +181,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
         AddInMemorySecurityNotificationSuppressionStoreIssue(serviceProvider, issues);
         AddNullTransactionProviderIssue(serviceProvider, issues);
         AddBootstrapOptionIssues(serviceProvider, issues);
+        AddCallbackUriAllowListIssues(serviceProvider, issues);
     }
 
     private static void AddMissingServiceIssue<TService>(
@@ -232,6 +237,157 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             || serviceProvider.IsServiceRegistered<IMagicLinkSignInService>()
             || serviceProvider.IsServiceRegistered<IInvitationService>()
             || serviceProvider.IsServiceRegistered<ISecurityNotificationService>();
+    }
+
+    private static bool IsCallbackUriValidationRequired(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.IsServiceRegistered<IEmailVerificationService>()
+            || serviceProvider.IsServiceRegistered<IEmailChangeService>()
+            || serviceProvider.IsServiceRegistered<IMagicLinkSignInService>()
+            || serviceProvider.IsServiceRegistered<IInvitationService>()
+            || serviceProvider.IsServiceRegistered<IPasswordResetService>();
+    }
+
+    private static void AddCallbackUriAllowListIssues(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
+    {
+        if (!IsCallbackUriValidationRequired(serviceProvider))
+        {
+            return;
+        }
+
+        var options = serviceProvider.GetService<IOptions<UriValidationOptions>>()?.Value ?? new UriValidationOptions();
+        var hasValidEntry = false;
+        var allowedCallbackUris = options.AllowedCallbackUris ?? [];
+
+        foreach (var configuredEntry in allowedCallbackUris)
+        {
+            var entry = CallbackUriAllowListEntry.Parse(configuredEntry);
+
+            if (entry.Failure == CallbackUriAllowListEntryFailure.Blank)
+            {
+                AddInvalidCallbackUriAllowListEntryIssue(issues, "blank entry");
+                continue;
+            }
+
+            if (entry.Failure != CallbackUriAllowListEntryFailure.None)
+            {
+                AddInvalidCallbackUriAllowListEntryIssue(issues, SummarizeInvalidCallbackUriEntry(entry.Uri));
+                continue;
+            }
+
+            hasValidEntry = true;
+            var uri = entry.Uri!;
+
+            if (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+            {
+                issues.Add(new AshlarConfigurationIssue(
+                    AshlarConfigurationIssueCodes.CallbackUriAllowListInsecureScheme,
+                    AshlarConfigurationIssueSeverity.Warning,
+                    $"Callback URI allow-list entry {SummarizeCallbackUriEntry(uri)} uses HTTP.",
+                    "Use HTTPS callback URI allow-list entries for production deployments. Keep HTTP entries only for explicit local development scenarios.",
+                    CallbackUriValidationComponent));
+            }
+
+            if (IsLocalCallbackAddress(uri))
+            {
+                issues.Add(new AshlarConfigurationIssue(
+                    AshlarConfigurationIssueCodes.CallbackUriAllowListLocalAddress,
+                    AshlarConfigurationIssueSeverity.Warning,
+                    $"Callback URI allow-list entry {SummarizeCallbackUriEntry(uri)} targets a local, private, link-local, multicast, or unspecified host.",
+                    "Use public application hosts for production callback URI allow-list entries. Keep local, private, link-local, multicast, or unspecified entries only for explicit development or internal deployments.",
+                    CallbackUriValidationComponent));
+            }
+        }
+
+        if (!hasValidEntry)
+        {
+            issues.Add(new AshlarConfigurationIssue(
+                AshlarConfigurationIssueCodes.CallbackUriAllowListMissing,
+                AshlarConfigurationIssueSeverity.Error,
+                "Callback URI validation is required but no valid callback URI allow-list entries are configured.",
+                "Configure UriValidationOptions.AllowedCallbackUris with at least one trusted callback base URI before enabling token-bearing callback flows.",
+                CallbackUriValidationComponent));
+        }
+    }
+
+    private static void AddInvalidCallbackUriAllowListEntryIssue(List<AshlarConfigurationIssue> issues, string summary)
+    {
+        issues.Add(new AshlarConfigurationIssue(
+            AshlarConfigurationIssueCodes.CallbackUriAllowListInvalidEntry,
+            AshlarConfigurationIssueSeverity.Error,
+            $"Callback URI allow-list contains an invalid entry ({summary}).",
+            "Use absolute http or https callback base URIs without credentials, query strings, or fragments.",
+            CallbackUriValidationComponent));
+    }
+
+    private static string SummarizeCallbackUriEntry(Uri uri)
+    {
+        var pathSummary = uri.AbsolutePath == "/" ? "root path" : "non-root path";
+        return $"scheme '{uri.Scheme}', host '{uri.Host}', {pathSummary}";
+    }
+
+    private static string SummarizeInvalidCallbackUriEntry(Uri? uri)
+    {
+        if (uri is null)
+        {
+            return "malformed entry";
+        }
+
+        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return "unsupported scheme";
+        }
+
+        return SummarizeCallbackUriEntry(uri);
+    }
+
+    private static bool IsLocalCallbackAddress(Uri uri)
+    {
+        if (uri.IsLoopback)
+        {
+            return true;
+        }
+
+        if (!IPAddress.TryParse(uri.Host, out var address))
+        {
+            return false;
+        }
+
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        if (address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any))
+        {
+            return true;
+        }
+
+        if (address.IsIPv6Multicast)
+        {
+            return true;
+        }
+
+        if (address.AddressFamily == AddressFamily.InterNetwork)
+        {
+            return IsPrivateLinkLocalOrMulticastIPv4(address);
+        }
+
+        var ipv6Bytes = address.GetAddressBytes();
+        return address.IsIPv6LinkLocal
+            || address.IsIPv6SiteLocal
+            || (ipv6Bytes[0] & 0xfe) == 0xfc;
+    }
+
+    private static bool IsPrivateLinkLocalOrMulticastIPv4(IPAddress address)
+    {
+        var bytes = address.GetAddressBytes();
+        return bytes[0] == 10
+            || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
+            || (bytes[0] == 192 && bytes[1] == 168)
+            || (bytes[0] == 169 && bytes[1] == 254)
+            || (bytes[0] >= 224 && bytes[0] <= 239);
     }
 
     private static void AddNullSecurityEventSinkIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)

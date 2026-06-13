@@ -9,11 +9,6 @@ public sealed class UriValidator : IUriValidator
 {
     private readonly UriValidationOptions _options;
     private readonly List<Uri> _allowedUris;
-    private static readonly HashSet<string> AllowedSchemes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        Uri.UriSchemeHttps,
-        Uri.UriSchemeHttp
-    };
 
     /// <summary>
     /// Initializes a new instance of the uri validator class.
@@ -27,22 +22,23 @@ public sealed class UriValidator : IUriValidator
 
         foreach (var allowedUri in _options.AllowedCallbackUris)
         {
-            if (string.IsNullOrWhiteSpace(allowedUri))
+            var parsed = CallbackUriAllowListEntry.Parse(allowedUri);
+            if (parsed.Failure == CallbackUriAllowListEntryFailure.Blank)
             {
                 continue;
             }
 
-            if (!Uri.TryCreate(allowedUri, UriKind.Absolute, out var baseUri))
+            if (parsed.Failure == CallbackUriAllowListEntryFailure.NotAbsoluteOrMalformed)
             {
                 throw new InvalidOperationException($"The configured allowed callback URI '{allowedUri}' is not a valid absolute URI.");
             }
 
-            if (!IsSafeAbsoluteUri(baseUri))
+            if (parsed.Failure != CallbackUriAllowListEntryFailure.None)
             {
                 throw new InvalidOperationException($"The configured allowed callback URI '{allowedUri}' must use http or https and must not include a query string or fragment.");
             }
 
-            _allowedUris.Add(baseUri);
+            _allowedUris.Add(parsed.Uri!);
         }
     }
 
@@ -63,12 +59,7 @@ public sealed class UriValidator : IUriValidator
             return _options.AllowNull;
         }
 
-        if (!uri.IsAbsoluteUri)
-        {
-            return false;
-        }
-
-        if (!IsSafeAbsoluteUri(uri))
+        if (!CallbackUriAllowListEntry.IsSafeAbsoluteUri(uri))
         {
             return false;
         }
@@ -101,7 +92,45 @@ public sealed class UriValidator : IUriValidator
         });
     }
 
-    private static bool IsSafeAbsoluteUri(Uri uri)
+}
+
+internal enum CallbackUriAllowListEntryFailure
+{
+    None,
+    Blank,
+    NotAbsoluteOrMalformed,
+    UnsafeComponents
+}
+
+internal sealed record CallbackUriAllowListEntry(Uri? Uri, CallbackUriAllowListEntryFailure Failure)
+{
+    private static readonly HashSet<string> AllowedSchemes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        Uri.UriSchemeHttps,
+        Uri.UriSchemeHttp
+    };
+
+    public static CallbackUriAllowListEntry Parse(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return new CallbackUriAllowListEntry(null, CallbackUriAllowListEntryFailure.Blank);
+        }
+
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        {
+            return new CallbackUriAllowListEntry(null, CallbackUriAllowListEntryFailure.NotAbsoluteOrMalformed);
+        }
+
+        if (!IsSafeAbsoluteUri(uri))
+        {
+            return new CallbackUriAllowListEntry(uri, CallbackUriAllowListEntryFailure.UnsafeComponents);
+        }
+
+        return new CallbackUriAllowListEntry(uri, CallbackUriAllowListEntryFailure.None);
+    }
+
+    public static bool IsSafeAbsoluteUri(Uri uri)
     {
         return uri.IsAbsoluteUri &&
             AllowedSchemes.Contains(uri.Scheme) &&
