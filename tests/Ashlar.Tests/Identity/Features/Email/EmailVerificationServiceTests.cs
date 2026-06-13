@@ -224,6 +224,28 @@ internal sealed class EmailVerificationServiceTests
         }
     }
 
+    [TestCase(null)]
+    [TestCase(" ")]
+    public async Task VerifyTokenReturnsInvalidOrExpiredForMissingTokenWithoutMutatingState(string? token)
+    {
+        var user = new AshlarUser { Id = Guid.NewGuid(), Email = "user@example.com", AccountState = UserAccountState.Active };
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = user.Id, CallbackBaseUri = new Uri("https://example.com/callback") });
+        fixture.Audit.Events.Clear();
+
+        var result = await fixture.Service.ConfirmVerificationAsync(new ConfirmEmailVerificationRequest { UserId = user.Id, Token = token! });
+        var unchangedUser = await fixture.UserCredentialStore.GetUserByIdAsync(user.Id);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidOrExpiredToken));
+            Assert.That(unchangedUser?.EmailVerifiedAt, Is.Null);
+            Assert.That(fixture.UserCredentialStore.Credentials.Single().Status, Is.EqualTo(CredentialStatus.Active));
+            Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.EmailVerificationFailed).FailureReason, Is.EqualTo(AshlarFailureCodes.InvalidOrExpiredToken.Value));
+        }
+    }
+
     [Test]
     public async Task VerifyTokenFailsForExpiredToken()
     {

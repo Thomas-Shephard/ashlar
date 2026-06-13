@@ -140,7 +140,6 @@ internal sealed class InvitationService(
     public async Task<Result<Guid>> AcceptInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        ArgumentException.ThrowIfNullOrWhiteSpace(request.Token);
 
         if (!await CheckInvitationRateLimitAsync("accept", _options.Value.AcceptanceRateLimit, context, cancellationToken))
         {
@@ -221,10 +220,8 @@ internal sealed class InvitationService(
     }
 
     /// <inheritdoc />
-    public async Task<Result<InvitationAcceptancePreview>> GetInvitationAcceptancePreviewAsync(string token, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
+    public async Task<Result<InvitationAcceptancePreview>> GetInvitationAcceptancePreviewAsync(string? token, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(token);
-
         if (!await CheckInvitationRateLimitAsync("preview", _options.Value.PreviewRateLimit, context, cancellationToken))
         {
             return Result.Failure<InvitationAcceptancePreview>(AshlarFailureCodes.RateLimited);
@@ -252,7 +249,7 @@ internal sealed class InvitationService(
     }
 
     private async Task<(UserInvitation? AvailableInvitation, Guid? AuditTenantId, DateTimeOffset Now)> ResolveAvailableInvitationAsync(
-        string token,
+        string? token,
         AuthenticationContext? context,
         CancellationToken cancellationToken)
     {

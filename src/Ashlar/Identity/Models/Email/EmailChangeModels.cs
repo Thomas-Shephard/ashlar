@@ -103,7 +103,7 @@ public sealed class ConfirmEmailChangeRequest
     /// <summary>
     /// Gets or sets the token value.
     /// </summary>
-    public required string Token { get; init; }
+    public required string? Token { get; init; }
     /// <summary>
     /// Gets or sets audit metadata for the request.
     /// </summary>

@@ -395,22 +395,41 @@ internal sealed class PasswordResetServiceTests
         Assert.That(result.Succeeded, Is.True);
     }
 
+    [TestCase(null)]
+    [TestCase(" ")]
+    public async Task ResetPasswordAsyncRejectsMissingTokenWithGenericFailure(string? token)
+    {
+        var fixture = CreateFixture(CreateUser());
+
+        var result = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidOrExpiredToken));
+            Assert.That(result.FailureMessage, Is.EqualTo("Invalid or expired token."));
+            Assert.That(fixture.Store.Credentials.Any(credential =>
+                credential.ProviderType == ProviderType.Internal &&
+                credential.ProviderName == PasswordResetService.ProviderName &&
+                credential.Purpose == PasswordResetService.CredentialPurpose), Is.False);
+            Assert.That(fixture.Audit.Events.Single().FailureReason, Is.EqualTo(AshlarFailureCodes.InvalidOrExpiredToken.Value));
+        }
+    }
+
     [Test]
-    public async Task ResetPasswordAsyncRejectsEmptyTokenBlankPasswordAndConsumeConcurrencyFailure()
+    public async Task ResetPasswordAsyncRejectsBlankPasswordAndConsumeConcurrencyFailure()
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
         await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
         var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
 
-        var emptyToken = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = " ", NewPassword = NewPassword });
         var blankPassword = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = " " });
         fixture.Store.ConsumeSucceeds = false;
         var consumeFailure = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword });
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(emptyToken.FailureCode, Is.EqualTo(AshlarFailureCodes.EmptyToken));
             Assert.That(blankPassword.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidSecret));
             Assert.That(consumeFailure.FailureCode, Is.EqualTo(AshlarFailureCodes.TokenConsumptionFailed));
         }

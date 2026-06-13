@@ -24,7 +24,7 @@ public interface IInvitationService
     /// <param name="context">Optional request context for auditing.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
     /// <returns>The acceptable invitation details, or an invalid invitation failure.</returns>
-    Task<Result<InvitationAcceptancePreview>> GetInvitationAcceptancePreviewAsync(string token, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
+    Task<Result<InvitationAcceptancePreview>> GetInvitationAcceptancePreviewAsync(string? token, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Accepts an invitation token and creates the invited user.

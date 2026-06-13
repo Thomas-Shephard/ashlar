@@ -211,7 +211,6 @@ internal sealed class EmailChangeService(
     public async Task<Result> ConfirmChangeAsync(ConfirmEmailChangeRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        ArgumentException.ThrowIfNullOrWhiteSpace(request.Token);
 
         var context = EmailFlowRateLimitHelpers.ToAuthenticationContext(request.Audit);
         var rateLimit = await _verificationRateLimits.CheckAsync(AuthenticationRateLimitDimensions.Source(context), request.UserId, context, _options.Value.VerificationRateLimit, cancellationToken);

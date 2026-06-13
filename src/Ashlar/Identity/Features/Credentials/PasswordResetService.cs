@@ -23,7 +23,6 @@ internal sealed class PasswordResetService : IPasswordResetService
     private const string SessionRevocationReason = "Password reset";
     private const string EmailRequiredMessage = "Email is required.";
     private const string TooManyRequestsMessage = "Too many requests.";
-    private const string TokenRequiredMessage = "Token is required.";
     private const string PasswordRequiredMessage = "Password is required.";
     private const string TooManyAttemptsMessage = "Too many attempts.";
     private const string InvalidOrExpiredTokenMessage = "Invalid or expired token.";
@@ -214,12 +213,6 @@ internal sealed class PasswordResetService : IPasswordResetService
     {
         ArgumentNullException.ThrowIfNull(request);
         context ??= new AuthenticationContext();
-
-        if (string.IsNullOrWhiteSpace(request.Token))
-        {
-            await RecordFailureAsync(context, null, AshlarFailureCodes.EmptyToken.Value, cancellationToken);
-            return Result.Failure<PasswordResetResult>(AshlarFailureCodes.EmptyToken, TokenRequiredMessage);
-        }
 
         if (string.IsNullOrWhiteSpace(request.NewPassword))
         {

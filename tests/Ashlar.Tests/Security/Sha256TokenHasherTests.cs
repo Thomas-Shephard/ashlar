@@ -95,12 +95,13 @@ internal sealed class Sha256TokenHasherTests
         }
     }
 
-    [Test]
-    public void TryHashTokenShouldReturnFalseForBlankToken()
+    [TestCase(null)]
+    [TestCase(" ")]
+    public void TryHashTokenShouldReturnFalseForBlankToken(string? token)
     {
         var hasher = new Sha256TokenHasher();
 
-        var hashed = SecureTokenHashing.TryHashToken(hasher, " ", out var tokenHash);
+        var hashed = SecureTokenHashing.TryHashToken(hasher, token, out var tokenHash);
 
         using (Assert.EnterMultipleScope())
         {

@@ -234,17 +234,6 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (string.IsNullOrWhiteSpace(request.HandshakeToken))
-        {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.AuthenticationHandshakeFailed,
-                Outcome = SecurityEventOutcomes.Failure,
-                Context = request.Context,
-                FailureReason = AshlarFailureCodes.EmptyToken.Value
-            }, cancellationToken);
-            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.EmptyToken);
-        }
 
         if (rateLimitMode != HandshakeRateLimitMode.None)
         {
@@ -337,9 +326,8 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
     /// <param name="context">The context value.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
-    public async Task<Result> RevokeHandshakeAsync(string handshakeToken, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
+    public async Task<Result> RevokeHandshakeAsync(string? handshakeToken, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(handshakeToken)) return Result.Failure(AshlarFailureCodes.EmptyToken);
         if (!SecureTokenHashing.TryHashToken(_tokenHasher, handshakeToken, out var tokenHash))
         {
             return Result.Failure(AshlarFailureCodes.HandshakeNotFound);

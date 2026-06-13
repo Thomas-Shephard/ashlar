@@ -52,7 +52,7 @@ public sealed class AshlarOidcInvitationRegistrationService
     /// <returns>The invitation registration result.</returns>
     public async Task<AshlarOidcInvitationRegistrationResult> CompleteOidcInvitationRegistrationAsync(
         HttpContext httpContext,
-        string invitationToken,
+        string? invitationToken,
         string providerName,
         string? displayName = null,
         AuthenticationContext? context = null,
@@ -93,7 +93,7 @@ public sealed class AshlarOidcInvitationRegistrationService
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The invitation registration result.</returns>
     public Task<AshlarOidcInvitationRegistrationResult> RegisterOidcInvitationAsync(
-        string invitationToken,
+        string? invitationToken,
         string providerName,
         AuthenticateResult authenticateResult,
         string? displayName = null,
@@ -132,14 +132,13 @@ public sealed class AshlarOidcInvitationRegistrationService
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The invitation registration result.</returns>
     public async Task<AshlarOidcInvitationRegistrationResult> RegisterOidcInvitationAsync(
-        string invitationToken,
+        string? invitationToken,
         string providerName,
         ClaimsPrincipal principal,
         string? displayName = null,
         AuthenticationContext? context = null,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(invitationToken);
         ArgumentNullException.ThrowIfNull(principal);
 
         var providerOptions = GetOidcProvider(providerName);

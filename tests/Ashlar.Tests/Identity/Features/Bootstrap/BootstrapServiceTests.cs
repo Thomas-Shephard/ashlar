@@ -267,6 +267,58 @@ internal sealed class BootstrapServiceTests
     }
 
     [Test]
+    public async Task BootstrapFirstAdminAsyncFailsWithOverlongSuppliedSetupSecretWithoutMutatingUsers()
+    {
+        var overlongSecret = new string('a', 257);
+        _tokenHasher.Setup(h => h.HashToken(overlongSecret)).Throws(new ArgumentException("Token exceeds maximum allowed length.", "token"));
+        ArrangeBootstrapStatus(BootstrapStatus.Uninitialized);
+
+        var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            SetupSecret = overlongSecret
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidSecret));
+        }
+
+        _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
+        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.BootstrapRequested &&
+            e.FailureReason == SecurityEventFailureReasons.BootstrapSetupAuthorizationInvalid), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task BootstrapFirstAdminAsyncFailsClosedWhenConfiguredSetupSecretIsOverlong()
+    {
+        var overlongSecret = new string('a', 257);
+        _options.SetupSecret = overlongSecret;
+        _tokenHasher.Setup(h => h.HashToken(overlongSecret)).Throws(new ArgumentException("Token exceeds maximum allowed length.", "token"));
+        ArrangeBootstrapStatus(BootstrapStatus.Uninitialized);
+
+        var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            SetupSecret = SetupSecret
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidSecret));
+        }
+
+        _tokenHasher.Verify(h => h.HashToken(SetupSecret), Times.Never);
+        _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<IUser>(), It.IsAny<CancellationToken>()), Times.Never);
+        _securityEventSink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+            e.EventType == AshlarSecurityEventTypes.BootstrapRequested &&
+            e.FailureReason == SecurityEventFailureReasons.BootstrapSetupAuthorizationMissing), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
     public async Task BootstrapFirstAdminAsyncFailsBeforeSetupAuthorizationWhenRateLimited()
     {
         ArrangeBootstrapStatus(BootstrapStatus.Uninitialized);

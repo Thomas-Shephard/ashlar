@@ -867,7 +867,6 @@ internal sealed class PasskeyServiceTests
         validator.VerifyAll();
     }
 
-    [TestCase("", "passkey")]
     [TestCase("token", "")]
     [TestCase("token", "totp")]
     public async Task StartFactorAsyncShouldRejectInvalidRequestShape(string token, string factorType)
@@ -877,6 +876,36 @@ internal sealed class PasskeyServiceTests
         var result = await service.StartFactorAsync(new StartPasskeyFactorRequest(token, factorType));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
+    }
+
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase(" ")]
+    public async Task StartFactorAsyncShouldDelegateMissingHandshakeTokenNormalizationWithoutCreatingChallenge(string? token)
+    {
+        var handshakes = new Mock<IAuthenticationHandshakeService>();
+        handshakes.Setup(h => h.BeginFactorChallengeAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeNotFound));
+        var credentials = new Mock<ICredentialRepository>();
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var service = new PasskeyService(
+            new Mock<IUserRepository>().Object,
+            credentials.Object,
+            challenges.Object,
+            new Mock<IPasskeyCeremonyValidator>().Object,
+            CreateDependencies(
+                authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object,
+                handshakeService: handshakes.Object,
+                tokenHasher: new TestTokenHasher()));
+
+        var result = await service.StartFactorAsync(new StartPasskeyFactorRequest(token));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
+        handshakes.Verify(h => h.BeginFactorChallengeAsync(It.Is<VerifyAuthenticationHandshakeRequest>(request =>
+            request.HandshakeToken == token &&
+            request.FactorType == "passkey"), It.IsAny<CancellationToken>()), Times.Once);
+        credentials.Verify(r => r.ListCredentialsForUserAsync(It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        challenges.Verify(r => r.CreateAsync(It.IsAny<PasskeyChallenge>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -1310,7 +1339,6 @@ internal sealed class PasskeyServiceTests
         orchestrator.Verify(o => o.VerifyFactorAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    [TestCase("", "passkey")]
     [TestCase("token", "")]
     [TestCase("token", "totp")]
     public async Task CompleteFactorAsyncShouldRejectInvalidRequestShape(string token, string factorType)
@@ -1320,6 +1348,33 @@ internal sealed class PasskeyServiceTests
         var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(Guid.NewGuid(), JsonDocument.Parse("{}").RootElement, token, factorType));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
+    }
+
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase(" ")]
+    public async Task CompleteFactorAsyncShouldRejectMissingHandshakeTokenWithoutReadingChallenge(string? token)
+    {
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var validator = new Mock<IPasskeyCeremonyValidator>();
+        var orchestrator = new Mock<IAuthenticationOrchestrator>();
+        var service = new PasskeyService(
+            new Mock<IUserRepository>().Object,
+            new Mock<ICredentialRepository>().Object,
+            challenges.Object,
+            validator.Object,
+            CreateDependencies(
+                authenticationOrchestrator: orchestrator.Object,
+                handshakeService: new Mock<IAuthenticationHandshakeService>().Object,
+                tokenHasher: new TestTokenHasher()));
+
+        var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(Guid.NewGuid(), JsonDocument.Parse("""{"id":"cred"}""").RootElement, token));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
+        challenges.Verify(r => r.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        challenges.Verify(r => r.ConsumeAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        validator.Verify(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), It.IsAny<PasskeyChallenge>(), It.IsAny<UserCredential>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()), Times.Never);
+        orchestrator.Verify(o => o.VerifyFactorAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]

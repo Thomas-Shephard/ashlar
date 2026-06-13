@@ -472,10 +472,11 @@ internal sealed class AuthenticationSessionServiceTests
         }
     }
 
-    [Test]
-    public async Task ValidateSessionAsyncShouldFailForMissingToken()
+    [TestCase(null)]
+    [TestCase(" ")]
+    public async Task ValidateSessionAsyncShouldFailForMissingToken(string? token)
     {
-        var result = await _service.ValidateSessionAsync(" ");
+        var result = await _service.ValidateSessionAsync(token);
 
         using (Assert.EnterMultipleScope())
         {

@@ -639,15 +639,24 @@ internal sealed class AuthenticationHandshakeServiceTests
         Assert.ThrowsAsync<ArgumentNullException>(() => _service.CompleteFactorVerificationAsync(null!));
     }
 
-    [Test]
-    public async Task CompleteFactorVerificationAsyncShouldFailWhenTokenMissing()
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase(" ")]
+    public async Task CompleteFactorVerificationAsyncShouldReturnHandshakeNotFoundWhenTokenMissing(string? token)
     {
-        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("", "totp"));
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(token, "totp"));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.EmptyToken));
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeNotFound));
         }
+
+        _repositoryMock.Verify(r => r.FindByTokenHashAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.UpdateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()), Times.Never);
+        _eventSinkMock.Verify(sink => sink.RecordAsync(It.Is<AshlarSecurityEvent>(securityEvent =>
+            securityEvent.EventType == AshlarSecurityEventTypes.AuthenticationHandshakeFailed &&
+            securityEvent.Outcome == SecurityEventOutcomes.Failure &&
+            securityEvent.FailureReason == AshlarFailureCodes.HandshakeNotFound.Value), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -672,6 +681,74 @@ internal sealed class AuthenticationHandshakeServiceTests
         _tokenHasherMock.Setup(h => h.HashToken(overlongToken)).Throws(new ArgumentException("Token exceeds maximum allowed length.", "token"));
 
         var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(overlongToken, "totp"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeNotFound));
+        }
+
+        _repositoryMock.Verify(r => r.FindByTokenHashAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.UpdateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task BeginFactorChallengeAsyncShouldReturnHandshakeNotFoundForOverlongTokenWithoutLookup()
+    {
+        var overlongToken = new string('a', 257);
+        _tokenHasherMock.Setup(h => h.HashToken(overlongToken)).Throws(new ArgumentException("Token exceeds maximum allowed length.", "token"));
+
+        var result = await _service.BeginFactorChallengeAsync(new VerifyAuthenticationHandshakeRequest(overlongToken, "passkey"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeNotFound));
+        }
+
+        _repositoryMock.Verify(r => r.FindByTokenHashAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.UpdateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [TestCase(null)]
+    [TestCase(" ")]
+    public async Task BeginFactorChallengeAsyncShouldReturnHandshakeNotFoundForMissingTokenWithoutLookup(string? token)
+    {
+        var result = await _service.BeginFactorChallengeAsync(new VerifyAuthenticationHandshakeRequest(token, "passkey"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeNotFound));
+        }
+
+        _repositoryMock.Verify(r => r.FindByTokenHashAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.UpdateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task BeginFactorVerificationAsyncShouldReturnHandshakeNotFoundForOverlongTokenWithoutLookup()
+    {
+        var overlongToken = new string('a', 257);
+        _tokenHasherMock.Setup(h => h.HashToken(overlongToken)).Throws(new ArgumentException("Token exceeds maximum allowed length.", "token"));
+
+        var result = await _service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(overlongToken, "totp"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeNotFound));
+        }
+
+        _repositoryMock.Verify(r => r.FindByTokenHashAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.UpdateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [TestCase(null)]
+    [TestCase(" ")]
+    public async Task BeginFactorVerificationAsyncShouldReturnHandshakeNotFoundForMissingTokenWithoutLookup(string? token)
+    {
+        var result = await _service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(token, "totp"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -1238,11 +1315,21 @@ internal sealed class AuthenticationHandshakeServiceTests
             securityEvent.Outcome == SecurityEventOutcomes.Success), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    [Test]
-    public async Task RevokeHandshakeAsyncShouldDoNothingWhenTokenMissing()
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase(" ")]
+    public async Task RevokeHandshakeAsyncShouldReturnHandshakeNotFoundWhenTokenMissing(string? token)
     {
-        await _service.RevokeHandshakeAsync("");
+        var result = await _service.RevokeHandshakeAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeNotFound));
+        }
+
         _repositoryMock.Verify(r => r.FindByTokenHashAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(r => r.UpdateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]

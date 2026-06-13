@@ -216,7 +216,7 @@ public sealed class PasskeyService(
 
     public async Task<Result<PasskeyCeremonyOptions>> StartFactorAsync(StartPasskeyFactorRequest request, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(request.HandshakeToken) || string.IsNullOrWhiteSpace(request.FactorType))
+        if (string.IsNullOrWhiteSpace(request.FactorType))
         {
             return Result.Failure<PasskeyCeremonyOptions>(AshlarFailureCodes.PasskeyChallengeInvalid);
         }
@@ -269,7 +269,7 @@ public sealed class PasskeyService(
 
     public async Task<PasskeyAuthenticationResult> CompleteFactorAsync(CompletePasskeyFactorRequest request, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(request.HandshakeToken) || string.IsNullOrWhiteSpace(request.FactorType))
+        if (string.IsNullOrWhiteSpace(request.FactorType))
         {
             return new PasskeyAuthenticationResult(false, null, null, AshlarFailureCodes.PasskeyChallengeInvalid);
         }

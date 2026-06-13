@@ -305,6 +305,28 @@ internal sealed class MagicLinkSignInTests
         }
     }
 
+    [TestCase(null)]
+    [TestCase(" ")]
+    public async Task VerifyLinkFailsGenericallyForMissingTokenWithoutMutatingState(string? token)
+    {
+        var fixture = CreateFixture(_user);
+        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"));
+        fixture.Audit.Events.Clear();
+        fixture.RateLimiter.Attempts.Clear();
+
+        var response = await fixture.Service.VerifyLinkAsync(token!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
+            Assert.That(response.ErrorMessage, Is.EqualTo("Authentication failed."));
+            Assert.That(fixture.Repository.Credentials, Has.Count.EqualTo(1));
+            Assert.That(fixture.RateLimiter.Attempts.Single().Purpose, Is.EqualTo("magic-link-verify"));
+            var auditEvent = fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.AuthenticationFailed);
+            Assert.That(auditEvent.FailureReason, Is.EqualTo("invalid_token"));
+        }
+    }
+
     [Test]
     public async Task VerifyLinkFailsForExpiredCredential()
     {
@@ -520,7 +542,6 @@ internal sealed class MagicLinkSignInTests
             // ReSharper disable once NullableWarningSuppressionIsUsed
             Assert.ThrowsAsync<ArgumentNullException>(() => fixture.Service.RequestLinkAsync(_user.Email, null!));
             Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RequestLinkAsync(" ", new Uri("https://myapp.com/verify")));
-            Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.VerifyLinkAsync(" "));
         }
     }
 

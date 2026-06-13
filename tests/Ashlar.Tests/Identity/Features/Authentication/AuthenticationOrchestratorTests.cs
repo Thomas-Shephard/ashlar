@@ -103,16 +103,35 @@ internal sealed class AuthenticationOrchestratorTests
 
     [Test]
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
-    public void VerifyFactorAsyncThrowsWhenArgumentsAreNullOrWhiteSpace()
+    public void VerifyFactorAsyncThrowsWhenNonTokenArgumentsAreNullOrWhiteSpace()
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.ThrowsAsync<ArgumentNullException>(() => _orchestrator.VerifyFactorAsync(null!, "totp", _context, _assertionMock.Object));
-            Assert.ThrowsAsync<ArgumentException>(() => _orchestrator.VerifyFactorAsync("", "totp", _context, _assertionMock.Object));
             Assert.ThrowsAsync<ArgumentNullException>(() => _orchestrator.VerifyFactorAsync("token", null!, _context, _assertionMock.Object));
             Assert.ThrowsAsync<ArgumentException>(() => _orchestrator.VerifyFactorAsync("token", "", _context, _assertionMock.Object));
             Assert.ThrowsAsync<ArgumentNullException>(() => _orchestrator.VerifyFactorAsync("token", "totp", null!, _assertionMock.Object));
         }
+    }
+
+    [TestCase(null)]
+    [TestCase(" ")]
+    public async Task VerifyFactorAsyncReturnsGenericHandshakeFailureForMissingToken(string? token)
+    {
+        _handshakeServiceMock
+            .Setup(h => h.BeginFactorVerificationAsync(
+                It.Is<VerifyAuthenticationHandshakeRequest>(request => request.HandshakeToken == token),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.EmptyToken));
+
+        var result = await _orchestrator.VerifyFactorAsync(token!, "totp", _context, _assertionMock.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
+            Assert.That(result.ErrorMessage, Is.EqualTo("Handshake token is required."));
+        }
+
+        _factorPipelineMock.Verify(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]

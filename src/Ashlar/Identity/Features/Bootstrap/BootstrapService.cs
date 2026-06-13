@@ -321,7 +321,7 @@ internal sealed class BootstrapService(
             return SecurityEventFailureReasons.BootstrapSetupAuthorizationMissing;
         }
 
-        if (!SecureTokenHashing.TryHashToken(_dependencies.TokenContext.Hasher, setupSecret ?? string.Empty, out var suppliedHash))
+        if (!SecureTokenHashing.TryHashToken(_dependencies.TokenContext.Hasher, setupSecret, out var suppliedHash))
         {
             return SecurityEventFailureReasons.BootstrapSetupAuthorizationInvalid;
         }

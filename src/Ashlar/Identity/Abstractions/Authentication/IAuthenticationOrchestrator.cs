@@ -29,7 +29,7 @@ public interface IAuthenticationOrchestrator
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The operation result.</returns>
     Task<MfaAuthenticationResult> VerifyFactorAsync(
-        string handshakeToken,
+        string? handshakeToken,
         string factorType,
         AuthenticationContext context,
         IAuthenticationAssertion assertion,
