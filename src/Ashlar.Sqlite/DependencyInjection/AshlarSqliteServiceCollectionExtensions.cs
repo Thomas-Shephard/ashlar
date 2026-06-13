@@ -103,7 +103,8 @@ public static class AshlarSqliteServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddOptions<AshlarCleanupOptions>()
-            .Validate(AshlarCleanupOptions.Validate, "Cleanup options are invalid.");
+            .Validate(AshlarCleanupOptions.Validate, "Cleanup options are invalid.")
+            .ValidateOnStart();
 
         if (configure != null)
         {
@@ -163,7 +164,8 @@ public static class AshlarSqliteServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddOptions<SqliteEmailOutboxOptions>()
-            .Validate(SqliteEmailOutboxOptions.Validate, "Email outbox options are invalid.");
+            .Validate(SqliteEmailOutboxOptions.Validate, "Email outbox options are invalid.")
+            .ValidateOnStart();
 
         if (configure != null)
         {
@@ -236,7 +238,8 @@ public static class AshlarSqliteServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddOptions<SqliteSecurityEventWebhookOutboxOptions>()
-            .Validate(SqliteSecurityEventWebhookOutboxOptions.Validate, "Security event webhook outbox options are invalid.");
+            .Validate(SqliteSecurityEventWebhookOutboxOptions.Validate, "Security event webhook outbox options are invalid.")
+            .ValidateOnStart();
 
         if (configure != null)
         {

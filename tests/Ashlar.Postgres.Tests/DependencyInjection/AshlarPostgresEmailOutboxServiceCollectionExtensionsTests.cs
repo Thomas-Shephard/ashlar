@@ -43,6 +43,19 @@ internal sealed class AshlarPostgresEmailOutboxServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarPostgresEmailOutboxSenderValidatesOptionsOnStart()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarPostgresEmailOutboxSender(options => options.BatchSize = 0);
+
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(PostgresEmailOutboxOptions)));
+    }
+
+    [Test]
     public void AddAshlarPostgresEmailOutboxSenderRegistersEnqueueSender()
     {
         var services = new ServiceCollection();

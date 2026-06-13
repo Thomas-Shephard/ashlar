@@ -78,6 +78,19 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     }
 
     [Test]
+    public void AddAshlarSqliteSecurityEventWebhookOutboxValidatesOptionsOnStart()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarSqliteSecurityEventWebhookOutbox(options => options.BatchSize = 0);
+
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(SqliteSecurityEventWebhookOutboxOptions)));
+    }
+
+    [Test]
     public async Task EnqueueStoresSafeBodyHeadersAndSignatureWithoutSecret()
     {
         var delivery = CreateDelivery("shared-secret");

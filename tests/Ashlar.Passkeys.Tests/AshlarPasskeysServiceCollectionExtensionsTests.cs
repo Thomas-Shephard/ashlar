@@ -36,6 +36,23 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarPasskeysValidatesOptionsOnStart()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarPasskeys(options =>
+        {
+            options.Origin = "https://example.com";
+            options.RelyingPartyId = "evil.test";
+        });
+
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(PasskeyOptions)));
+    }
+
+    [Test]
     public void CorePasskeyCompositionBuildsWithStrictValidation()
     {
         var services = new ServiceCollection();

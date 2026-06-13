@@ -402,6 +402,19 @@ internal sealed class PostgresAuthenticationRateLimiterTests : PostgresTestBase
     }
 
     [Test]
+    public void AddAshlarPostgresRateLimitingValidatesOptionsOnStart()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarPostgresRateLimiting(options => options.CleanupInterval = TimeSpan.Zero);
+
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(PostgresAuthenticationRateLimiterOptions)));
+    }
+
+    [Test]
     public void AddAshlarPostgresRateLimitingRejectsInvalidMaxCleanupRows()
     {
         var services = new ServiceCollection();

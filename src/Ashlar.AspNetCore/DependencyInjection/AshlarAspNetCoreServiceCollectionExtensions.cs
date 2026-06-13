@@ -73,7 +73,8 @@ public static class AshlarAspNetCoreServiceCollectionExtensions
         services.TryAddScoped<IAshlarRememberedMfaDeviceCookieManager, AshlarRememberedMfaDeviceCookieManager>();
         services.AddOptions<AshlarRememberedMfaDeviceCookieOptions>()
             .Configure(options => configure?.Invoke(options))
-            .PostConfigure(ValidateRememberedMfaDeviceCookieOptions);
+            .Validate(ValidateRememberedMfaDeviceCookieOptionsForStartup, "Remembered MFA device cookie options are invalid.")
+            .ValidateOnStart();
 
         return services;
     }
@@ -171,6 +172,19 @@ public static class AshlarAspNetCoreServiceCollectionExtensions
         ArgumentException.ThrowIfNullOrWhiteSpace(options.CookieName);
 
         ValidateHostCookieOptions(options.CookieName, options.Cookie, nameof(options));
+    }
+
+    private static bool ValidateRememberedMfaDeviceCookieOptionsForStartup(AshlarRememberedMfaDeviceCookieOptions options)
+    {
+        try
+        {
+            ValidateRememberedMfaDeviceCookieOptions(options);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 
     private static void ValidateHostCookieOptions(string cookieName, CookieBuilder cookie, string parameterName)

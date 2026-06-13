@@ -28,6 +28,22 @@ internal sealed class AshlarSmtpServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarSmtpEmailTransportValidatesOptionsOnStart()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarSmtpEmailTransport(options =>
+        {
+            options.Host = "";
+        });
+
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(SmtpEmailOptions)));
+    }
+
+    [Test]
     public void AddAshlarSmtpEmailSenderShouldRegisterServices()
     {
         var services = new ServiceCollection();

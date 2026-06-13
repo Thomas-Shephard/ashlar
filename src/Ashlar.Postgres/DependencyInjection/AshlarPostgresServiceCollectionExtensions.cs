@@ -209,7 +209,8 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddOptions<PostgresAuthenticationRateLimiterOptions>()
-            .Validate(PostgresAuthenticationRateLimiter.ValidateOptions, "CleanupInterval must be greater than zero and MaxCleanupRows must be greater than zero.");
+            .Validate(PostgresAuthenticationRateLimiter.ValidateOptions, "CleanupInterval must be greater than zero and MaxCleanupRows must be greater than zero.")
+            .ValidateOnStart();
 
         if (configure != null)
         {
@@ -235,7 +236,8 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddOptions<AshlarCleanupOptions>()
-            .Validate(AshlarCleanupOptions.Validate, "Cleanup options are invalid.");
+            .Validate(AshlarCleanupOptions.Validate, "Cleanup options are invalid.")
+            .ValidateOnStart();
 
         if (configure != null)
         {
@@ -298,7 +300,8 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddOptions<PostgresEmailOutboxOptions>()
-            .Validate(PostgresEmailOutboxOptions.Validate, "Email outbox options are invalid.");
+            .Validate(PostgresEmailOutboxOptions.Validate, "Email outbox options are invalid.")
+            .ValidateOnStart();
 
         if (configure != null)
         {
@@ -369,7 +372,8 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddOptions<PostgresSecurityEventWebhookOutboxOptions>()
-            .Validate(PostgresSecurityEventWebhookOutboxOptions.Validate, "Security event webhook outbox options are invalid.");
+            .Validate(PostgresSecurityEventWebhookOutboxOptions.Validate, "Security event webhook outbox options are invalid.")
+            .ValidateOnStart();
 
         if (configure != null)
         {

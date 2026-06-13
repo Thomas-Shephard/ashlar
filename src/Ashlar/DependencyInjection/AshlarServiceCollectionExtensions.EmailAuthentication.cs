@@ -28,7 +28,8 @@ public static partial class AshlarServiceCollectionExtensions
         }
 
         services.AddOptions<EmailCodeSignInOptions>()
-            .Validate(EmailCodeSignInOptions.Validate, "Email code sign-in options are invalid.");
+            .Validate(EmailCodeSignInOptions.Validate, "Email code sign-in options are invalid.")
+            .ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, EmailCodeAuthenticationProvider>());
         services.TryAddScoped(provider => provider.GetServices<IAuthenticationProvider>().OfType<EmailCodeAuthenticationProvider>().First());
         services.TryAddScoped<EmailCodeSignInDependencies>();
@@ -57,7 +58,8 @@ public static partial class AshlarServiceCollectionExtensions
         }
 
         services.AddOptions<MagicLinkSignInOptions>()
-            .Validate(MagicLinkSignInOptions.Validate, "Magic-link sign-in options are invalid.");
+            .Validate(MagicLinkSignInOptions.Validate, "Magic-link sign-in options are invalid.")
+            .ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAuthenticationProvider, MagicLinkAuthenticationProvider>());
         services.TryAddScoped(provider => provider.GetServices<IAuthenticationProvider>().OfType<MagicLinkAuthenticationProvider>().First());
         services.TryAddScoped<MagicLinkSignInDependencies>();

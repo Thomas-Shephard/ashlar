@@ -25,6 +25,19 @@ internal sealed class AshlarSqliteEmailOutboxServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarSqliteEmailOutboxSenderValidatesOptionsOnStart()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarSqliteEmailOutboxSender(options => options.BatchSize = 0);
+
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(SqliteEmailOutboxOptions)));
+    }
+
+    [Test]
     public async Task AddAshlarSqliteEmailOutboxDispatcherRegistersDispatcherAndTransport()
     {
         var services = new ServiceCollection();

@@ -250,6 +250,19 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
     }
 
     [Test]
+    public void AddAshlarSqliteCleanupValidatesOptionsOnStart()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarSqliteCleanup(options => options.BatchSize = 0);
+
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(AshlarCleanupOptions)));
+    }
+
+    [Test]
     public void AddAshlarSqliteCleanupHostedServiceRegistersHostedService()
     {
         var services = new ServiceCollection();
