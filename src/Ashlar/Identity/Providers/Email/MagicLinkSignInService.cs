@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.Identity.Providers.Email;
 
 /// <summary>
-/// Provides magic link sign in service behavior.
+/// Issues and verifies magic-link sign-in tokens.
 /// </summary>
 internal sealed class MagicLinkSignInService : IMagicLinkSignInService
 {
@@ -22,8 +22,8 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
     /// <summary>
     /// Initializes a configured service instance.
     /// </summary>
-    /// <param name="dependencies">The dependencies value.</param>
-    /// <param name="options">The options value.</param>
+    /// <param name="dependencies">Repositories, providers, messaging, audit, token, and rate limiting services used by magic-link sign-in.</param>
+    /// <param name="options">Magic-link sign-in configuration, or <see langword="null" /> to use defaults.</param>
     public MagicLinkSignInService(
         MagicLinkSignInDependencies dependencies,
         IOptions<MagicLinkSignInOptions>? options = null)
@@ -35,13 +35,13 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
     }
 
     /// <summary>
-    /// Performs the request link <see langword="async" /> operation and returns the result.
+    /// Creates a transient token credential and sends a live magic link when the account can sign in.
     /// </summary>
-    /// <param name="email">The email value.</param>
-    /// <param name="callbackBaseUri">The callback base uri value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="email">Email address receiving the magic link.</param>
+    /// <param name="callbackBaseUri">Host-validated callback URI that receives the raw token query parameter.</param>
+    /// <param name="context">Authentication context used for tenant scope, rate limiting, and audit metadata.</param>
+    /// <param name="cancellationToken">Token for aborting repository, messaging, and audit work.</param>
+    /// <returns>A task that completes after the request has been handled. Missing or disabled accounts are deliberately suppressed.</returns>
     public async Task RequestLinkAsync(string email, Uri callbackBaseUri, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(callbackBaseUri);
@@ -110,12 +110,12 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
     }
 
     /// <summary>
-    /// Performs the verify link <see langword="async" /> operation through MFA-aware orchestration and returns the result.
+    /// Verifies a magic-link token through MFA-aware authentication orchestration.
     /// </summary>
-    /// <param name="token">The token value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="token">Raw token from the magic link. Do not log or persist this value.</param>
+    /// <param name="context">Authentication context used for rate limiting and audit metadata.</param>
+    /// <param name="cancellationToken">Token for aborting verification work.</param>
+    /// <returns>MFA-aware result that may succeed, require additional factors, fail, or indicate rate limiting.</returns>
     public async Task<MfaAuthenticationResult> VerifyLinkAsync(string? token, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         context ??= new AuthenticationContext();

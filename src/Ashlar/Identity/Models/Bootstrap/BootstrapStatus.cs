@@ -1,16 +1,16 @@
 namespace Ashlar.Identity.Models.Bootstrap;
 
 /// <summary>
-/// Defines the available bootstrap status values.
+/// Lists whether first-administrator bootstrap has completed.
 /// </summary>
 public enum BootstrapStatus
 {
     /// <summary>
-    /// Represents the uninitialized value.
+    /// Bootstrap has not completed and first-admin setup may still be available.
     /// </summary>
     Uninitialized,
     /// <summary>
-    /// Represents the initialized value.
+    /// Bootstrap has completed and first-admin setup should no longer be accepted.
     /// </summary>
     Initialized
 }

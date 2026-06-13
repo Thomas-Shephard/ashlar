@@ -9,22 +9,22 @@ namespace Ashlar.Identity.Models.Bootstrap;
 public sealed class BootstrapOptions
 {
     /// <summary>
-    /// Gets or sets the operator-controlled setup secret required to authorize first-admin bootstrap.
+    /// Operator-controlled setup secret required to authorize first-admin bootstrap. Do not log this value.
     /// </summary>
     public string? SetupSecret { get; set; }
 
     /// <summary>
-    /// Gets or sets the grants assigned to the first administrator after setup authorization succeeds.
+    /// Grants assigned to the first administrator after setup authorization succeeds.
     /// </summary>
     public List<BootstrapGrantTemplate> Grants { get; set; } = [];
 
     /// <summary>
-    /// Gets or sets the source-based rate limit for first-admin bootstrap attempts.
+    /// Source-based rate limit for first-admin bootstrap attempts.
     /// </summary>
     public RateLimitRule AttemptRateLimit { get; set; } = new() { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) };
 
     /// <summary>
-    /// Gets or sets whether bootstrap request audit events may include the requested email address.
+    /// Whether bootstrap request audit events may include the requested email address.
     /// </summary>
     public bool StoreEmailInAudit { get; set; } = true;
 
@@ -50,23 +50,23 @@ public sealed class BootstrapOptions
 public sealed class BootstrapGrantTemplate
 {
     /// <summary>
-    /// Gets or sets the role to assign. Mutually exclusive with <see cref="Permission" />.
+    /// Role to assign. Mutually exclusive with <see cref="Permission" />.
     /// </summary>
     public string? Role { get; set; }
     /// <summary>
-    /// Gets or sets the permission to assign. Mutually exclusive with <see cref="Role" />.
+    /// Permission to assign. Mutually exclusive with <see cref="Role" />.
     /// </summary>
     public string? Permission { get; set; }
     /// <summary>
-    /// Gets or sets the optional scope type. Must be supplied together with <see cref="ScopeId" />.
+    /// Optional scope type. Must be supplied together with <see cref="ScopeId" />.
     /// </summary>
     public string? ScopeType { get; set; }
     /// <summary>
-    /// Gets or sets the optional scope identifier. Must be supplied together with <see cref="ScopeType" />.
+    /// Optional scope identifier. Must be supplied together with <see cref="ScopeType" />.
     /// </summary>
     public string? ScopeId { get; set; }
     /// <summary>
-    /// Gets or sets the tenant boundary for the grant.
+    /// Tenant boundary for the grant.
     /// </summary>
     public Guid? TenantId { get; set; }
 }

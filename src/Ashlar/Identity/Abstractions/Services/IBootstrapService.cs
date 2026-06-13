@@ -6,10 +6,10 @@ namespace Ashlar.Identity.Abstractions.Services;
 public interface IBootstrapService
 {
     /// <summary>
-    /// Gets whether the installation has already been initialized.
+    /// Checks whether first-admin bootstrap has already initialized the installation.
     /// </summary>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
-    /// <returns>The current bootstrap status.</returns>
+    /// <param name="cancellationToken">A token that can cancel bootstrap status lookup.</param>
+    /// <returns>Current bootstrap initialization state.</returns>
     Task<BootstrapStatus> GetStatusAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -17,7 +17,7 @@ public interface IBootstrapService
     /// </summary>
     /// <param name="request">The first-admin bootstrap details.</param>
     /// <param name="context">Optional request context for auditing and notifications.</param>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <param name="cancellationToken">A token that can cancel first-admin bootstrap.</param>
     /// <returns>The created user ID when bootstrap succeeds.</returns>
     Task<Result<Guid>> BootstrapFirstAdminAsync(BootstrapFirstAdminRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default);
 }

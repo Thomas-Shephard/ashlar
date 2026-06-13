@@ -68,7 +68,7 @@ public sealed class IdentityService(
     /// Authenticates a user with the configured authentication pipeline.
     /// </summary>
     /// <param name="context">Request context for the authentication attempt.</param>
-    /// <param name="assertion">The provider assertion to validate.</param>
+    /// <param name="assertion">Provider assertion to validate. Treat as sensitive unless the provider documents otherwise.</param>
     /// <param name="cancellationToken">A token that can cancel authentication.</param>
     /// <returns>The authentication response produced by the pipeline.</returns>
     public async Task<AuthenticationResponse> LoginAsync(AuthenticationContext context, IAuthenticationAssertion assertion, CancellationToken cancellationToken = default)
@@ -106,7 +106,7 @@ public sealed class IdentityService(
     /// Links an authentication credential to an existing user.
     /// </summary>
     /// <param name="userId">The user that will own the credential.</param>
-    /// <param name="assertion">The assertion describing the credential provider and key.</param>
+    /// <param name="assertion">Assertion describing the credential provider and key. Treat as sensitive unless the provider documents otherwise.</param>
     /// <param name="credentialValue">Optional protected credential value to store.</param>
     /// <param name="cancellationToken">A token that can cancel credential linking.</param>
     /// <returns>A success result when the credential is linked; otherwise, a failure describing the problem.</returns>
@@ -133,23 +133,23 @@ public sealed class IdentityService(
     private sealed class SanitizedUserWrapper(IUser original, string email) : ITenantUser, IHasAuditMetadata
     {
         /// <summary>
-        /// Gets the user identifier.
+        /// Existing user identifier.
         /// </summary>
         public Guid Id => original.Id;
         /// <summary>
-        /// Gets the sanitized email address.
+        /// Sanitized email address.
         /// </summary>
         public string Email { get; } = email;
         /// <summary>
-        /// Gets the user's display name.
+        /// Existing display name.
         /// </summary>
         public string? Name => original.Name;
         /// <summary>
-        /// Gets the user's account state.
+        /// Existing account state.
         /// </summary>
         public UserAccountState AccountState => original.AccountState;
         /// <summary>
-        /// Gets the tenant that owns the user.
+        /// Tenant that owns the user.
         /// </summary>
         public Guid? TenantId => (original as ITenantUser)?.TenantId;
         /// <summary>
@@ -179,7 +179,7 @@ public sealed class IdentityService(
 /// </summary>
 /// <param name="SecurityEventSink">The optional security event sink.</param>
 /// <param name="TimeProvider">The optional clock.</param>
-/// <param name="LoggerFactory">The optional logger factory used by the security event emitter.</param>
+/// <param name="LoggerFactory">Optional <paramref name="LoggerFactory" /> used by security-event emission.</param>
 public sealed record IdentityServiceDependencies(
     ISecurityEventSink? SecurityEventSink = null,
     TimeProvider? TimeProvider = null,

@@ -1,12 +1,12 @@
 namespace Ashlar.Identity.Models.Handshakes;
 
 /// <summary>
-/// Represents the create authentication handshake request data model.
+/// Requests creation of a short-lived handshake for pending factor verification.
 /// </summary>
-/// <param name="UserId">The user id value.</param>
-/// <param name="RequiredFactors">The required factors value.</param>
-/// <param name="Metadata">The metadata value.</param>
-/// <param name="Context">The authentication request context value.</param>
+/// <param name="UserId">User that must complete the handshake.</param>
+/// <param name="RequiredFactors">Factor types required before the handshake can complete.</param>
+/// <param name="Metadata">Optional host-defined metadata. Do not include secrets or credential material.</param>
+/// <param name="Context">Authentication request context used for audit and rate limiting.</param>
 public sealed record CreateAuthenticationHandshakeRequest(
     Guid UserId,
     IEnumerable<string> RequiredFactors,

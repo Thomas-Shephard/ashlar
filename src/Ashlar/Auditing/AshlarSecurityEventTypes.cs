@@ -6,319 +6,320 @@ namespace Ashlar.Auditing;
 public static class AshlarSecurityEventTypes
 {
     /// <summary>
-    /// Defines the authentication succeeded value.
+    /// Emitted when a primary credential is authenticated successfully.
     /// </summary>
     public const string AuthenticationSucceeded = "ashlar.authentication.succeeded";
     /// <summary>
-    /// Defines the authentication failed value.
+    /// Emitted when a primary credential authentication attempt fails.
     /// </summary>
     public const string AuthenticationFailed = "ashlar.authentication.failed";
     /// <summary>
-    /// Defines the authentication rate limited value.
+    /// Emitted when primary authentication is rejected by rate limiting.
     /// </summary>
     public const string AuthenticationRateLimited = "ashlar.authentication.rate_limited";
     /// <summary>
-    /// Defines the account lockout activated value.
+    /// Emitted when automatic account lockout is activated for a user and provider.
     /// </summary>
     public const string AccountLockoutActivated = "ashlar.account_lockout.activated";
     /// <summary>
-    /// Defines the account lockout reset value.
+    /// Emitted when stored automatic account lockout state is cleared.
     /// </summary>
     public const string AccountLockoutReset = "ashlar.account_lockout.reset";
     /// <summary>
-    /// Defines the user created value.
+    /// Emitted when Ashlar creates a user account.
     /// </summary>
     public const string UserCreated = "ashlar.user.created";
     /// <summary>
-    /// Defines the user account state changed value.
+    /// Emitted when a user's account state is changed.
     /// </summary>
     public const string UserAccountStateChanged = "ashlar.user.account_state_changed";
     /// <summary>
-    /// Defines the user credentials revoked value.
+    /// Emitted when credentials are revoked for a user.
     /// </summary>
     public const string UserCredentialsRevoked = "ashlar.user.credentials_revoked";
     /// <summary>
-    /// Defines the user mfa reset value.
+    /// Emitted when MFA artifacts are reset for a user.
     /// </summary>
     public const string UserMfaReset = "ashlar.user.mfa_reset";
     /// <summary>
-    /// Defines the credential linked value.
+    /// Emitted when a provider-derived credential is linked to a user.
     /// </summary>
     public const string CredentialLinked = "ashlar.credential.linked";
     /// <summary>
-    /// Defines the credential consumed value.
+    /// Emitted when a one-time credential is consumed after successful authentication.
     /// </summary>
     public const string CredentialConsumed = "ashlar.credential.consumed";
     /// <summary>
-    /// Defines the credential update persisted value.
+    /// Emitted when provider-requested credential usage or replacement is persisted.
     /// </summary>
     public const string CredentialUpdatePersisted = "ashlar.credential.updated";
     /// <summary>
-    /// Defines the credential update failed value.
+    /// Emitted when provider-requested credential usage or replacement cannot be persisted.
     /// </summary>
     public const string CredentialUpdateFailed = "ashlar.credential.update_failed";
     /// <summary>
-    /// Defines the email code requested value.
+    /// Emitted when an email-code sign-in message is requested.
     /// </summary>
     public const string EmailCodeRequested = "ashlar.email_code.requested";
     /// <summary>
-    /// Defines the email code request suppressed value.
+    /// Emitted when an email-code request is accepted but message delivery is suppressed.
     /// </summary>
     public const string EmailCodeRequestSuppressed = "ashlar.email_code.request_suppressed";
     /// <summary>
-    /// Defines the email code request rate limited value.
+    /// Emitted when an email-code request is rejected by rate limiting.
     /// </summary>
     public const string EmailCodeRequestRateLimited = "ashlar.email_code.request_rate_limited";
     /// <summary>
-    /// Defines the email code verification rate limited value.
+    /// Emitted when email-code verification is rejected by rate limiting.
     /// </summary>
     public const string EmailCodeVerificationRateLimited = "ashlar.email_code.verification_rate_limited";
     /// <summary>
-    /// Defines the magic link requested value.
+    /// Emitted when a magic-link sign-in message is requested.
     /// </summary>
     public const string MagicLinkRequested = "ashlar.magic_link.requested";
     /// <summary>
-    /// Defines the magic link request suppressed value.
+    /// Emitted when a magic-link request is accepted but message delivery is suppressed.
     /// </summary>
     public const string MagicLinkRequestSuppressed = "ashlar.magic_link.request_suppressed";
     /// <summary>
-    /// Defines the magic link request rate limited value.
+    /// Emitted when a magic-link request is rejected by rate limiting.
     /// </summary>
     public const string MagicLinkRequestRateLimited = "ashlar.magic_link.request_rate_limited";
     /// <summary>
-    /// Defines the magic link verification rate limited value.
+    /// Emitted when magic-link verification is rejected by rate limiting.
     /// </summary>
     public const string MagicLinkVerificationRateLimited = "ashlar.magic_link.verification_rate_limited";
     /// <summary>
-    /// Defines the recovery codes generated value.
+    /// Emitted when recovery codes are generated for a user.
     /// </summary>
     public const string RecoveryCodesGenerated = "ashlar.recovery_codes.generated";
     /// <summary>
-    /// Defines the recovery codes revoked value.
+    /// Emitted when recovery codes are revoked for a user.
     /// </summary>
     public const string RecoveryCodesRevoked = "ashlar.recovery_codes.revoked";
     /// <summary>
-    /// Defines the session created value.
+    /// Emitted when Ashlar issues an application session.
     /// </summary>
     public const string SessionCreated = "ashlar.session.created";
     /// <summary>
-    /// Defines the session validated value.
+    /// Emitted when an application session bearer token is validated.
     /// </summary>
     public const string SessionValidated = "ashlar.session.validated";
     /// <summary>
-    /// Defines the session step-up verified value.
+    /// Emitted when an application session is updated with step-up verification metadata.
     /// </summary>
     public const string SessionStepUpVerified = "ashlar.session.step_up_verified";
     /// <summary>
-    /// Defines the session validation failed value.
+    /// Emitted when application session bearer-token validation fails.
     /// </summary>
     public const string SessionValidationFailed = "ashlar.session.validation_failed";
     /// <summary>
-    /// Defines the session expired value.
+    /// Emitted when application session validation finds an expired session.
     /// </summary>
     public const string SessionExpired = "ashlar.session.expired";
     /// <summary>
-    /// Defines the session revoked value.
+    /// Emitted when an application session is revoked.
     /// </summary>
     public const string SessionRevoked = "ashlar.session.revoked";
     /// <summary>
-    /// Defines the sessions revoked for user value.
+    /// Emitted when application sessions are revoked for a user.
     /// </summary>
     public const string SessionsRevokedForUser = "ashlar.session.revoked_for_user";
     /// <summary>
-    /// Defines the invitation created value.
+    /// Emitted when an invitation is created and queued for delivery.
     /// </summary>
     public const string InvitationCreated = "ashlar.invitation.created";
     /// <summary>
-    /// Defines the invitation accepted value.
+    /// Emitted when an invitation is accepted and a user is created or linked.
     /// </summary>
     public const string InvitationAccepted = "ashlar.invitation.accepted";
     /// <summary>
-    /// Defines the invitation previewed value.
+    /// Emitted when an invitation token is previewed without accepting it.
     /// </summary>
     public const string InvitationPreviewed = "ashlar.invitation.previewed";
     /// <summary>
-    /// Defines the invitation revoked value.
+    /// Emitted when pending invitations are revoked.
     /// </summary>
     public const string InvitationRevoked = "ashlar.invitation.revoked";
     /// <summary>
-    /// Defines the invitation rate limited value.
+    /// Emitted when invitation creation is rejected by rate limiting.
     /// </summary>
     public const string InvitationRateLimited = "ashlar.invitation.rate_limited";
     /// <summary>
-    /// Defines the authentication handshake created value.
+    /// Emitted when an MFA or step-up authentication handshake is created.
     /// </summary>
     public const string AuthenticationHandshakeCreated = "ashlar.authentication.handshake.created";
     /// <summary>
-    /// Defines the authentication handshake factor verified value.
+    /// Emitted when a factor challenge in an authentication handshake is verified.
     /// </summary>
     public const string AuthenticationHandshakeFactorVerified = "ashlar.authentication.handshake.factor_verified";
     /// <summary>
-    /// Defines the authentication handshake completed value.
+    /// Emitted when an authentication handshake is completed.
     /// </summary>
     public const string AuthenticationHandshakeCompleted = "ashlar.authentication.handshake.completed";
     /// <summary>
-    /// Defines the authentication handshake revoked value.
+    /// Emitted when an authentication handshake is revoked.
     /// </summary>
     public const string AuthenticationHandshakeRevoked = "ashlar.authentication.handshake.revoked";
     /// <summary>
-    /// Defines the authentication handshake expired value.
+    /// Emitted when an authentication handshake is rejected because it expired.
     /// </summary>
     public const string AuthenticationHandshakeExpired = "ashlar.authentication.handshake.expired";
     /// <summary>
-    /// Defines the authentication handshake failed value.
+    /// Emitted when authentication handshake verification fails.
     /// </summary>
     public const string AuthenticationHandshakeFailed = "ashlar.authentication.handshake.failed";
     /// <summary>
-    /// Defines the authentication handshake verification rate limited value.
+    /// Emitted when authentication handshake verification is rejected by rate limiting.
     /// </summary>
     public const string AuthenticationHandshakeVerificationRateLimited = "ashlar.authentication.handshake.verification_rate_limited";
     /// <summary>
-    /// Defines the authorization grant created value.
+    /// Emitted when an authorization grant is created.
     /// </summary>
     public const string AuthorizationGrantCreated = "ashlar.authorization.grant.created";
     /// <summary>
-    /// Defines the authorization grant revoked value.
+    /// Emitted when an authorization grant is revoked.
     /// </summary>
     public const string AuthorizationGrantRevoked = "ashlar.authorization.grant.revoked";
     /// <summary>
-    /// Defines the totp enrollment started value.
+    /// Emitted when TOTP enrollment starts and a shared secret is generated.
     /// </summary>
     public const string TotpEnrollmentStarted = "ashlar.totp.enrollment_started";
     /// <summary>
-    /// Defines the totp enrollment completed value.
+    /// Emitted when TOTP enrollment is verified and persisted.
     /// </summary>
     public const string TotpEnrollmentCompleted = "ashlar.totp.enrollment_completed";
     /// <summary>
-    /// Defines the totp disabled value.
+    /// Emitted when a TOTP credential is disabled.
     /// </summary>
     public const string TotpDisabled = "ashlar.totp.disabled";
     /// <summary>
-    /// Defines the remembered MFA device created value.
+    /// Emitted when a remembered MFA device token is created.
     /// </summary>
     public const string RememberedMfaDeviceCreated = "ashlar.remembered_mfa_device.created";
     /// <summary>
-    /// Defines the remembered MFA device used value.
+    /// Emitted when a remembered MFA device token satisfies additional verification.
     /// </summary>
     public const string RememberedMfaDeviceUsed = "ashlar.remembered_mfa_device.used";
     /// <summary>
-    /// Defines the remembered MFA device rejected value.
+    /// Emitted when a remembered MFA device token is rejected.
     /// </summary>
     public const string RememberedMfaDeviceRejected = "ashlar.remembered_mfa_device.rejected";
     /// <summary>
-    /// Defines the remembered MFA device revoked value.
+    /// Emitted when one remembered MFA device token is revoked.
     /// </summary>
     public const string RememberedMfaDeviceRevoked = "ashlar.remembered_mfa_device.revoked";
     /// <summary>
-    /// Defines the remembered MFA devices revoked value.
+    /// Emitted when remembered MFA device tokens are revoked for a user.
     /// </summary>
     public const string RememberedMfaDevicesRevoked = "ashlar.remembered_mfa_device.revoked_for_user";
     /// <summary>
-    /// Defines the passkey registration started value.
+    /// Emitted when passkey registration options are created.
     /// </summary>
     public const string PasskeyRegistrationStarted = "ashlar.passkey.registration_started";
     /// <summary>
-    /// Defines the passkey registration completed value.
+    /// Emitted when passkey registration is verified and persisted.
     /// </summary>
     public const string PasskeyRegistrationCompleted = "ashlar.passkey.registration_completed";
     /// <summary>
-    /// Defines the passkey authentication started value.
+    /// Emitted when passkey authentication options are created.
     /// </summary>
     public const string PasskeyAuthenticationStarted = "ashlar.passkey.authentication_started";
     /// <summary>
-    /// Defines the passkey authentication completed value.
+    /// Emitted when passkey authentication is verified successfully.
     /// </summary>
     public const string PasskeyAuthenticationCompleted = "ashlar.passkey.authentication_completed";
     /// <summary>
-    /// Defines the passkey renamed value.
+    /// Emitted when a passkey display name is changed.
     /// </summary>
     public const string PasskeyRenamed = "ashlar.passkey.renamed";
     /// <summary>
-    /// Defines the passkey revoked value.
+    /// Emitted when a passkey credential is revoked.
     /// </summary>
     public const string PasskeyRevoked = "ashlar.passkey.revoked";
     /// <summary>
-    /// Defines the bootstrap first-admin setup requested value.
+    /// Emitted when first-admin bootstrap setup is requested.
     /// </summary>
     public const string BootstrapRequested = "ashlar.bootstrap.requested";
     /// <summary>
-    /// Defines the bootstrap completed value.
+    /// Emitted when first-admin bootstrap completes and the installation is initialized.
     /// </summary>
     public const string BootstrapCompleted = "ashlar.bootstrap.completed";
     /// <summary>
-    /// Defines the email verification requested value.
+    /// Emitted when an email-verification message is requested.
     /// </summary>
     public const string EmailVerificationRequested = "ashlar.email_verification.requested";
     /// <summary>
-    /// Defines the email verified value.
+    /// Emitted when an email-verification token is accepted and the email is marked verified.
     /// </summary>
     public const string EmailVerified = "ashlar.email_verification.verified";
     /// <summary>
-    /// Defines the email verification failed value.
+    /// Emitted when email-verification token confirmation fails.
     /// </summary>
     public const string EmailVerificationFailed = "ashlar.email_verification.failed";
     /// <summary>
-    /// Defines the email verification rate limited value.
+    /// Emitted when an email-verification request is rejected by rate limiting.
     /// </summary>
     public const string EmailVerificationRateLimited = "ashlar.email_verification.rate_limited";
     /// <summary>
-    /// Defines the email verification verification rate limited value.
+    /// Emitted when email-verification token confirmation is rejected by rate limiting.
     /// </summary>
     public const string EmailVerificationVerificationRateLimited = "ashlar.email_verification.verification_rate_limited";
     /// <summary>
-    /// Defines the email change requested value.
+    /// Emitted when an email-change confirmation message is requested.
     /// </summary>
     public const string EmailChangeRequested = "ashlar.email_change.requested";
     /// <summary>
-    /// Defines the email change request suppressed value.
+    /// Emitted when an email-change request is accepted but message delivery is suppressed.
     /// </summary>
     public const string EmailChangeRequestSuppressed = "ashlar.email_change.request_suppressed";
     /// <summary>
-    /// Defines the email changed value.
+    /// Emitted when an email-change token is accepted and the email address is updated.
     /// </summary>
     public const string EmailChanged = "ashlar.email_change.changed";
     /// <summary>
-    /// Defines the email change failed value.
+    /// Emitted when email-change token confirmation fails.
     /// </summary>
     public const string EmailChangeFailed = "ashlar.email_change.failed";
     /// <summary>
-    /// Defines the email change rate limited value.
+    /// Emitted when an email-change request is rejected by rate limiting.
     /// </summary>
     public const string EmailChangeRateLimited = "ashlar.email_change.rate_limited";
     /// <summary>
-    /// Defines the email change verification rate limited value.
+    /// Emitted when email-change token confirmation is rejected by rate limiting.
     /// </summary>
     public const string EmailChangeVerificationRateLimited = "ashlar.email_change.verification_rate_limited";
     /// <summary>
-    /// Defines the password reset requested value.
+    /// Emitted when a password-reset message is requested.
     /// </summary>
     public const string PasswordResetRequested = "ashlar.password_reset.requested";
     /// <summary>
-    /// Defines the password reset request suppressed value.
+    /// Emitted when a password-reset request is accepted but message delivery is suppressed.
     /// </summary>
     public const string PasswordResetRequestSuppressed = "ashlar.password_reset.request_suppressed";
     /// <summary>
-    /// Defines the password reset request rate limited value.
+    /// Emitted when a password-reset request is rejected by rate limiting.
     /// </summary>
     public const string PasswordResetRequestRateLimited = "ashlar.password_reset.request_rate_limited";
     /// <summary>
-    /// Defines the password reset completed value.
+    /// Emitted when a password-reset token is accepted and the credential is changed.
     /// </summary>
     public const string PasswordResetCompleted = "ashlar.password_reset.completed";
     /// <summary>
-    /// Defines the password reset failed value.
+    /// Emitted when password-reset token confirmation fails.
     /// </summary>
     public const string PasswordResetFailed = "ashlar.password_reset.failed";
     /// <summary>
-    /// Defines the password reset verification rate limited value.
+    /// Emitted when password-reset token confirmation is rejected by rate limiting.
     /// </summary>
     public const string PasswordResetVerificationRateLimited = "ashlar.password_reset.verification_rate_limited";
     /// <summary>
-    /// Defines the security event webhook outbox delivery retried value.
+    /// Emitted when security-event webhook delivery fails and will be retried.
     /// </summary>
     public const string SecurityEventWebhookOutboxDeliveryRetried = "ashlar.security_event_webhook.outbox.delivery_retried";
     /// <summary>
-    /// Defines the security event webhook outbox delivery discarded value.
+    /// Emitted when security-event webhook delivery fails and is discarded.
     /// </summary>
     public const string SecurityEventWebhookOutboxDeliveryDiscarded = "ashlar.security_event_webhook.outbox.delivery_discarded";
 }
+

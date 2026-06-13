@@ -1,84 +1,84 @@
 namespace Ashlar.Identity.Models.Sessions;
 
 /// <summary>
-/// Provides authentication session behavior.
+/// Persisted bearer session issued after primary authentication and optional additional verification.
 /// </summary>
 public sealed class AuthenticationSession
 {
     /// <summary>
-    /// Gets or sets the id value.
+    /// Unique identifier for this session.
     /// </summary>
     public required Guid Id { get; init; }
     /// <summary>
-    /// Gets or sets the user id value.
+    /// User that owns the session.
     /// </summary>
     public required Guid UserId { get; init; }
     /// <summary>
-    /// Gets or sets the tenant id value.
+    /// Tenant that bounds the session, or <see langword="null" /> for a global session.
     /// </summary>
     public Guid? TenantId { get; init; }
     /// <summary>
-    /// Gets or sets the token hash value.
+    /// Hash of the raw bearer session token. The raw token is not stored on the session.
     /// </summary>
     public required string TokenHash { get; init; }
     /// <summary>
-    /// Gets or sets the created at value.
+    /// UTC time when the session was issued.
     /// </summary>
     public required DateTimeOffset CreatedAt { get; init; }
     /// <summary>
-    /// Gets or sets when the user authenticated for this session.
+    /// UTC time when primary authentication completed for this session.
     /// </summary>
     public DateTimeOffset? AuthenticatedAt { get; set; }
     /// <summary>
-    /// Gets or sets the primary provider used to create this session.
+    /// Provider that verified the primary sign-in credential, when captured.
     /// </summary>
     public AuthenticationProviderKey? PrimaryProvider { get; set; }
     /// <summary>
-    /// Gets or sets when additional verification was completed for this session.
+    /// UTC time when MFA or step-up verification was satisfied, when captured.
     /// </summary>
     public DateTimeOffset? AdditionalVerificationAt { get; set; }
     /// <summary>
-    /// Gets or sets the provider used for additional verification.
+    /// Provider that satisfied the additional verification challenge, when captured.
     /// </summary>
     public AuthenticationProviderKey? AdditionalVerificationProvider { get; set; }
     /// <summary>
-    /// Gets or sets the verified factor family used for additional verification.
+    /// Provider-neutral factor family that satisfied MFA or step-up verification.
     /// </summary>
     public string? AdditionalVerificationFactor { get; set; }
     /// <summary>
-    /// Gets or sets the expires at value.
+    /// UTC time after which the session is no longer valid.
     /// </summary>
     public required DateTimeOffset ExpiresAt { get; init; }
     /// <summary>
-    /// Gets or sets the last seen at value.
+    /// UTC time when validation last observed this session.
     /// </summary>
     public DateTimeOffset? LastSeenAt { get; set; }
     /// <summary>
-    /// Gets or sets the revoked at value.
+    /// UTC time when the session was revoked, or <see langword="null" /> while it remains usable.
     /// </summary>
     public DateTimeOffset? RevokedAt { get; set; }
     /// <summary>
-    /// Gets or sets the revocation reason value.
+    /// Provider-neutral, display-safe reason recorded when the session is revoked. Do not include secrets, tokens, or credentials.
     /// </summary>
     public string? RevocationReason { get; set; }
     /// <summary>
-    /// Gets or sets the ip address value.
+    /// Client IP address captured for audit and session display. Treat as personal data.
     /// </summary>
     public string? IpAddress { get; set; }
     /// <summary>
-    /// Gets or sets the user agent value.
+    /// Client user-agent captured for audit and session display. Treat as user-supplied data.
     /// </summary>
     public string? UserAgent { get; set; }
     /// <summary>
-    /// Gets or sets the metadata value.
+    /// Provider-neutral session metadata. Do not store secrets or raw tokens in this value.
     /// </summary>
     public string? Metadata { get; set; }
 
     /// <summary>
-    /// Performs the is active operation and returns the result.
+    /// Determines whether the session can currently be used.
     /// </summary>
-    /// <param name="now">The now value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="now">UTC time used for expiry evaluation.</param>
+    /// <returns><see langword="true" /> when the session is not revoked and has not expired.</returns>
     public bool IsActive(DateTimeOffset now)
     {
         return RevokedAt == null && ExpiresAt > now;

@@ -3,18 +3,17 @@ using Ashlar.Identity.RateLimiting.Models;
 namespace Ashlar.Identity.RateLimiting;
 
 /// <summary>
-/// Evaluates rate limit state transitions for authentication rate limiter implementations.
+/// Evaluates rate-limit state transitions for authentication rate limiter implementations.
 /// </summary>
-/// <returns>The operation result.</returns>
 public static class RateLimitEvaluator
 {
     /// <summary>
     /// Applies the rate limit rule to the current state and returns the resulting decision.
     /// </summary>
-    /// <param name="state">The state value.</param>
-    /// <param name="rule">The rule value.</param>
-    /// <param name="now">The now value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="state">Mutable state for the rate-limit bucket.</param>
+    /// <param name="rule">Rule to enforce for the bucket.</param>
+    /// <param name="now">Current UTC time used to evaluate windows and blocks.</param>
+    /// <returns>Decision indicating whether the attempt is allowed or blocked.</returns>
     /// <remarks>
     /// This method mutates the provided state. Implementations MUST ensure thread-safe access to the state
     /// object across the load, evaluate, and persist cycle.

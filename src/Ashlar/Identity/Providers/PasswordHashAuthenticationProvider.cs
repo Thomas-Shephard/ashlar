@@ -3,31 +3,31 @@ using Ashlar.Security.Hashing;
 namespace Ashlar.Identity.Providers;
 
 /// <summary>
-/// Provides password hash authentication provider behavior.
+/// Base class for authentication providers that validate raw submissions against stored hashes.
 /// </summary>
-/// <param name="hasherSelector">The hasher selector value.</param>
+/// <param name="hasherSelector">Hashing component used to verify submissions and produce upgraded hashes.</param>
 public abstract class PasswordHashAuthenticationProvider(PasswordHasherSelector hasherSelector) : IPrimaryAuthenticationProvider
 {
     /// <summary>
-    /// Gets the configured dependency value.
+    /// Gets the hashing component used by derived providers.
     /// </summary>
     protected PasswordHasherSelector HasherSelector { get; } = hasherSelector ?? throw new ArgumentNullException(nameof(hasherSelector));
 
     /// <summary>
-    /// Gets or sets the key value.
+    /// Gets the provider key for credentials handled by the derived provider.
     /// </summary>
     public abstract AuthenticationProviderKey Key { get; }
     /// <summary>
-    /// Gets or sets the protects credentials value.
+    /// Gets a value indicating that derived providers store already-hashed credential payloads.
     /// </summary>
     public bool ProtectsCredentials => false;
 
     /// <summary>
-    /// Performs the get provider key operation and returns the result.
+    /// Uses the user id as the storage key for password-hash credentials.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="userId">The user id value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">Authentication assertion associated with the credential.</param>
+    /// <param name="userId">User whose credential is being resolved.</param>
+    /// <returns>Stable provider key for the user's password-hash credential.</returns>
     public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId)
     {
         ArgumentNullException.ThrowIfNull(assertion);
@@ -35,11 +35,11 @@ public abstract class PasswordHashAuthenticationProvider(PasswordHasherSelector 
     }
 
     /// <summary>
-    /// Performs the prepare credential value operation and returns the result.
+    /// Hashes a raw credential value before persistence.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="rawValue">The raw value value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">Authentication assertion associated with the credential.</param>
+    /// <param name="rawValue">Raw credential value. Do not log this value.</param>
+    /// <returns>Encoded credential hash safe for persistence.</returns>
     public string PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rawValue);
@@ -47,13 +47,13 @@ public abstract class PasswordHashAuthenticationProvider(PasswordHasherSelector 
     }
 
     /// <summary>
-    /// Performs the find user <see langword="async" /> operation and returns the result.
+    /// Resolves a user by the email in the authentication context.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="repository">The repository value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">Assertion that must be supported by the derived provider.</param>
+    /// <param name="context">Authentication context containing the normalized email and tenant scope.</param>
+    /// <param name="repository">User repository used to resolve the account.</param>
+    /// <param name="cancellationToken">Token for aborting lookup work.</param>
+    /// <returns>The matching user, or <see langword="null" /> when the assertion or email cannot resolve an account.</returns>
     public async Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -68,17 +68,17 @@ public abstract class PasswordHashAuthenticationProvider(PasswordHasherSelector 
     }
 
     /// <summary>
-    /// Performs the supports assertion operation and returns the result.
+    /// Determines whether the derived provider can validate the assertion.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">Assertion supplied to the authentication pipeline.</param>
+    /// <returns><see langword="true" /> when the derived provider can validate the assertion; otherwise, <see langword="false" />.</returns>
     protected abstract bool SupportsAssertion(IAuthenticationAssertion assertion);
     /// <summary>
-    /// Performs the authenticate <see langword="async" /> operation and returns the result.
+    /// Validates the assertion against the stored credential.
     /// </summary>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="credential">The credential value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="assertion">Assertion containing the raw submission to validate.</param>
+    /// <param name="credential">Stored credential containing the encoded hash payload.</param>
+    /// <param name="cancellationToken">Token for aborting authentication work.</param>
+    /// <returns>Authentication status and any credential hash update requested by the derived provider.</returns>
     public abstract Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default);
 }

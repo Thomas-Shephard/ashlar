@@ -1,20 +1,20 @@
 namespace Ashlar.Operational.Diagnostics;
 
 /// <summary>
-/// Represents a provider-neutral result for Ashlar storage schema diagnostics.
+/// Describes the provider-neutral outcome of an Ashlar storage schema check.
 /// </summary>
-/// <param name="Status">The diagnostic status value.</param>
-/// <param name="ProviderName">The provider name value.</param>
-/// <param name="Reason">The reason value.</param>
-/// <param name="CheckedAt">The checked at value.</param>
-/// <param name="SchemaStatus">The provider-neutral schema state value.</param>
-/// <param name="AppliedMigrationCount">The applied migration count value.</param>
-/// <param name="ExpectedMigrationCount">The expected migration count value.</param>
-/// <param name="MissingMigrationCount">The missing migration count value.</param>
-/// <param name="LatestAppliedMigrationName">The latest applied migration name value.</param>
-/// <param name="LatestExpectedMigrationName">The latest expected migration name value.</param>
-/// <param name="MinimumProviderVersion">The minimum provider version value.</param>
-/// <param name="ProviderVersion">The provider version value.</param>
+/// <param name="Status">Overall diagnostic status for the schema check.</param>
+/// <param name="ProviderName">Persistence provider that produced the diagnostic result.</param>
+/// <param name="Reason">Optional provider-safe reason when the check is unavailable, degraded, or failed.</param>
+/// <param name="CheckedAt">UTC time when the diagnostic check completed.</param>
+/// <param name="SchemaStatus">Provider-neutral schema state inferred from migration metadata.</param>
+/// <param name="AppliedMigrationCount">Number of migrations already applied by the provider.</param>
+/// <param name="ExpectedMigrationCount">Number of migrations expected by the current Ashlar package.</param>
+/// <param name="MissingMigrationCount">Number of expected migrations not yet applied.</param>
+/// <param name="LatestAppliedMigrationName">Latest applied migration name, when the provider can report it.</param>
+/// <param name="LatestExpectedMigrationName">Latest migration name expected by the current Ashlar package.</param>
+/// <param name="MinimumProviderVersion">Minimum provider schema or engine version expected by Ashlar.</param>
+/// <param name="ProviderVersion">Provider schema or engine version observed during the check.</param>
 public sealed record AshlarSchemaDiagnosticResult(
     AshlarDiagnosticStatus Status,
     string ProviderName,

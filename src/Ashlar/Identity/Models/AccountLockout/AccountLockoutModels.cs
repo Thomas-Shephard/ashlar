@@ -8,12 +8,12 @@ namespace Ashlar.Identity.Models.AccountLockout;
 public sealed class AccountLockoutOptions
 {
     /// <summary>
-    /// Gets or sets the failed-attempt threshold that activates lockout.
+    /// Failed primary-credential attempt threshold that activates automatic lockout.
     /// </summary>
     public int FailureThreshold { get; set; } = 5;
 
     /// <summary>
-    /// Gets or sets how long an automatic lockout remains active.
+    /// Duration applied to newly activated automatic lockouts.
     /// </summary>
     public TimeSpan LockoutDuration { get; set; } = TimeSpan.FromMinutes(15);
 
@@ -50,9 +50,9 @@ public sealed class AccountLockoutOptions
 /// <summary>
 /// Durable automatic lockout state for a user and authentication <paramref name="Provider" />.
 /// </summary>
-/// <param name="UserId">The user that owns the lockout state.</param>
-/// <param name="TenantId">The tenant scope for the user, or <see langword="null" /> for global users.</param>
-/// <param name="Provider">The authentication provider key.</param>
+/// <param name="UserId">User whose failed primary credential attempts are tracked.</param>
+/// <param name="TenantId">Tenant scope for the user, or <see langword="null" /> for global users.</param>
+/// <param name="Provider">Authenticator key whose failed attempts are tracked.</param>
 /// <param name="FailedAttemptCount">The number of recorded failures in the current lockout window.</param>
 /// <param name="FirstFailedAt">The first failure timestamp in the current lockout window.</param>
 /// <param name="LastFailedAt">The most recent failure timestamp in the current lockout window.</param>
@@ -71,7 +71,7 @@ public sealed record AccountLockoutRecord(
 /// <summary>
 /// Result of atomically recording a failed credential verification in durable lockout state.
 /// </summary>
-/// <param name="Record">The updated durable lockout record.</param>
+/// <param name="Record">Durable lockout record after the failed attempt was applied.</param>
 /// <param name="LockoutActivated">Whether this write activated a new automatic lockout.</param>
 public sealed record AccountLockoutRecordUpdate(
     AccountLockoutRecord Record,
@@ -80,9 +80,9 @@ public sealed record AccountLockoutRecordUpdate(
 /// <summary>
 /// Current automatic lockout status for a user and <paramref name="Provider" />.
 /// </summary>
-/// <param name="UserId">The user that owns the lockout state.</param>
-/// <param name="TenantId">The tenant scope for the user, or <see langword="null" /> for global users.</param>
-/// <param name="Provider">The authentication provider key.</param>
+/// <param name="UserId">User whose automatic lockout status was evaluated.</param>
+/// <param name="TenantId">Tenant scope for the user, or <see langword="null" /> for global users.</param>
+/// <param name="Provider">Authenticator key whose automatic lockout status was evaluated.</param>
 /// <param name="FailedAttemptCount">The number of recorded failures in the current lockout window.</param>
 /// <param name="FirstFailedAt">The first failure timestamp in the current lockout window.</param>
 /// <param name="LastFailedAt">The most recent failure timestamp in the current lockout window.</param>
@@ -101,9 +101,9 @@ public sealed record AccountLockoutStatus(
     /// <summary>
     /// Creates an unlocked empty status.
     /// </summary>
-    /// <param name="userId">The user id.</param>
-    /// <param name="tenantId">The tenant id, when scoped.</param>
-    /// <param name="provider">The provider key.</param>
+    /// <param name="userId">User whose automatic lockout status is being represented.</param>
+    /// <param name="tenantId">Tenant scope for the user, or <see langword="null" /> for a global user.</param>
+    /// <param name="provider">Authentication provider key for the credential family being evaluated.</param>
     /// <returns>An unlocked status with no failures.</returns>
     public static AccountLockoutStatus None(Guid userId, Guid? tenantId, AuthenticationProviderKey provider)
     {
@@ -114,7 +114,7 @@ public sealed record AccountLockoutStatus(
 /// <summary>
 /// Result of recording a failed credential verification.
 /// </summary>
-/// <param name="Status">The updated lockout status.</param>
+/// <param name="Status">Automatic lockout status after the failed attempt was applied.</param>
 /// <param name="ThresholdReached">Whether the updated failure count meets or exceeds the configured threshold.</param>
 /// <param name="LockoutActivated">Whether this failure activated a new automatic lockout.</param>
 public sealed record AccountLockoutFailureResult(
@@ -136,7 +136,7 @@ public sealed record AccountLockoutContext(
 /// </summary>
 public sealed record SearchAccountLockoutsRequest
 {
-    /// <summary>Tenant scope to search. Use <see cref="TenantContext.Global" /> for global users.</summary>
+    /// <summary>Tenant scope to search. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <see cref="IncludeAllTenants" /> is enabled.</summary>
     public TenantContext? Tenant { get; init; }
 
     /// <summary>Whether to search across all tenant scopes. Cannot be combined with <see cref="Tenant" />.</summary>
@@ -162,7 +162,7 @@ public sealed record SearchAccountLockoutsRequest
     /// </summary>
     /// <param name="request">The search request to validate.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="request" /> is <see langword="null" />.</exception>
-    /// <exception cref="ArgumentException">Thrown when the tenant scope, user id, or provider filter is invalid.</exception>
+    /// <exception cref="ArgumentException">Thrown when the tenant scope, user identifier, or provider filter is invalid.</exception>
     /// <exception cref="ArgumentOutOfRangeException">Thrown when paging values are invalid.</exception>
     public static void ThrowIfInvalid(SearchAccountLockoutsRequest? request)
     {
@@ -207,9 +207,9 @@ public sealed record SearchAccountLockoutsRequest
 /// <summary>
 /// Safe administrator summary of automatic account lockout state.
 /// </summary>
-/// <param name="UserId">The user that owns the lockout state.</param>
-/// <param name="TenantId">The tenant scope for the user, or <see langword="null" /> for a global user.</param>
-/// <param name="Provider">The authentication provider key.</param>
+/// <param name="UserId">User whose automatic lockout status is shown.</param>
+/// <param name="TenantId">Tenant scope for the user, or <see langword="null" /> for a global user.</param>
+/// <param name="Provider">Authenticator key shown in the administrator summary.</param>
 /// <param name="FailedAttemptCount">The number of recorded failures in the current lockout window.</param>
 /// <param name="FirstFailedAt">The first failure timestamp in the current lockout window.</param>
 /// <param name="LastFailedAt">The most recent failure timestamp in the current lockout window.</param>
@@ -228,7 +228,7 @@ public sealed record AccountLockoutAdministrationSummary(
 /// <summary>
 /// Paged account lockout search result.
 /// </summary>
-/// <param name="Items">The lockout items.</param>
+/// <param name="Items">Lockout summaries returned for the requested page.</param>
 /// <param name="Limit">The effective page size.</param>
 /// <param name="Offset">The number of skipped records.</param>
 /// <param name="HasMore">Whether another page may exist.</param>
@@ -241,23 +241,23 @@ public sealed record AccountLockoutSearchResult(
 /// <summary>
 /// Request for administrator account lockout status.
 /// </summary>
-/// <param name="Tenant">The explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
+/// <param name="Tenant">Explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
 public sealed record AccountLockoutAdministrationRequest(TenantContext Tenant);
 
 /// <summary>
 /// Request for administrator account lockout reset.
 /// </summary>
-/// <param name="Tenant">The explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
+/// <param name="Tenant">Explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
 /// <param name="Audit">Required safe audit metadata describing who requested reset.</param>
-/// <param name="Reason">Optional safe reason recorded with the reset event. Cannot exceed 512 characters.</param>
+/// <param name="Reason">Optional provider-neutral, display-safe reason recorded with the reset event. Do not include secrets, tokens, or credentials. Cannot exceed 512 characters.</param>
 public sealed record ResetAccountLockoutRequest
 {
     /// <summary>
     /// Initializes administrator account lockout reset metadata.
     /// </summary>
-    /// <param name="Tenant">The explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
+    /// <param name="Tenant">Explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
     /// <param name="Audit">Required safe audit metadata describing who requested reset.</param>
-    /// <param name="Reason">Optional safe reason recorded with the reset event. Cannot exceed 512 characters.</param>
+    /// <param name="Reason">Optional provider-neutral, display-safe reason recorded with the reset event. Do not include secrets, tokens, or credentials. Cannot exceed 512 characters.</param>
     public ResetAccountLockoutRequest(TenantContext Tenant, AuditContext Audit, string? Reason = null)
     {
         this.Tenant = Tenant;
@@ -265,12 +265,12 @@ public sealed record ResetAccountLockoutRequest
         this.Reason = Reason;
     }
 
-    /// <summary>Gets the explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</summary>
+    /// <summary>Explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</summary>
     public TenantContext Tenant { get; init; }
 
-    /// <summary>Gets required safe audit metadata describing who requested reset.</summary>
+    /// <summary>Required safe audit metadata describing who requested the reset.</summary>
     public AuditContext Audit { get; }
 
-    /// <summary>Gets the optional safe reason recorded with the reset event.</summary>
+    /// <summary>Optional provider-neutral, display-safe reason recorded with the reset event. Do not include secrets, tokens, or credentials.</summary>
     public string? Reason { get; init; }
 }

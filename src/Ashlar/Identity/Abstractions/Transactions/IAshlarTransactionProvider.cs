@@ -13,8 +13,8 @@ public interface IAshlarTransactionProvider
     /// <summary>
     /// Starts a new transaction.
     /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="cancellationToken">A token that can cancel transaction creation.</param>
+    /// <returns>An active transaction that must be disposed by the caller.</returns>
     /// <exception cref="InvalidOperationException">Thrown if a transaction is already in progress.</exception>
     Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
 }

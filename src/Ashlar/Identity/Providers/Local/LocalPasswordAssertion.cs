@@ -1,13 +1,13 @@
 namespace Ashlar.Identity.Providers.Local;
 
 /// <summary>
-/// Represents the local <paramref name="Password" /> assertion data model.
+/// Carries a plaintext <paramref name="Password" /> for local authentication.
 /// </summary>
-/// <param name="Password">The password value.</param>
+/// <param name="Password">Plaintext password submitted by the user. Do not log this value.</param>
 public sealed record LocalPasswordAssertion(string Password) : IAuthenticationAssertion
 {
     /// <summary>
-    /// Gets or sets the provider identity value.
+    /// Gets the local password provider key.
     /// </summary>
     public AuthenticationProviderKey ProviderIdentity => AuthenticationProviderKey.Local;
 }

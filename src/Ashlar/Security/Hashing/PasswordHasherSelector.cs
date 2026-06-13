@@ -1,20 +1,20 @@
 namespace Ashlar.Security.Hashing;
 
 /// <summary>
-/// Provides password hasher selector behavior.
+/// Selects a password hasher by encoded hash version.
 /// </summary>
 public sealed class PasswordHasherSelector
 {
     /// <summary>
-    /// Gets or sets the default hasher value.
+    /// Hasher used for new password hashes and unknown legacy formats.
     /// </summary>
     public IPasswordHasher DefaultHasher { get; }
     private readonly Dictionary<byte, IPasswordHasher> _hashers = [];
 
     /// <summary>
-    /// Initializes a new instance of the password hasher selector class.
+    /// Initializes a selector from the available password hashers.
     /// </summary>
-    /// <param name="hashers">The hashers value.</param>
+    /// <param name="hashers">Hasher implementations keyed by unique version.</param>
     public PasswordHasherSelector(IEnumerable<IPasswordHasher> hashers)
     {
         ArgumentNullException.ThrowIfNull(hashers);
@@ -39,10 +39,10 @@ public sealed class PasswordHasherSelector
     }
 
     /// <summary>
-    /// Performs the get hasher operation and returns the result.
+    /// Gets the hasher that should verify an encoded hash.
     /// </summary>
-    /// <param name="encodedHash">The encoded hash value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="encodedHash">The stored encoded hash.</param>
+    /// <returns>The matching hasher, or <see cref="DefaultHasher" /> when the version is unknown.</returns>
     public IPasswordHasher GetHasher(ReadOnlySpan<byte> encodedHash)
     {
         if (encodedHash.Length >= IPasswordHasher.VersionLength && _hashers.TryGetValue(encodedHash[0], out var hasher))
@@ -54,11 +54,11 @@ public sealed class PasswordHasherSelector
     }
 
     /// <summary>
-    /// Performs the verify password operation and returns the result.
+    /// Verifies a password and reports whether the credential should be upgraded.
     /// </summary>
-    /// <param name="password">The password value.</param>
-    /// <param name="encodedHash">The encoded hash value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="password">The plaintext password. Do not log this value.</param>
+    /// <param name="encodedHash">The stored encoded hash.</param>
+    /// <returns>The verification outcome, including whether a stronger/current hash should replace the stored value.</returns>
     public PasswordVerificationResult VerifyPassword(ReadOnlySpan<char> password, ReadOnlySpan<byte> encodedHash)
     {
         var hasher = GetHasher(encodedHash);

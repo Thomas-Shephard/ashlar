@@ -1,34 +1,34 @@
 namespace Ashlar.Identity.Models.Authentication;
 
 /// <summary>
-/// Represents the struct data model.
+/// Identifies an authentication provider by provider type and provider name.
 /// </summary>
 public readonly record struct AuthenticationProviderKey
 {
     /// <summary>
-    /// Gets or sets the type value.
+    /// Provider category, such as local, email-code, passkey, or external.
     /// </summary>
     public ProviderType Type { get; }
     /// <summary>
-    /// Gets or sets the name value.
+    /// Provider name within its provider type.
     /// </summary>
     public string Name => field ?? string.Empty;
 
     /// <summary>
-    /// Gets the provider type value, or a stable sentinel when this key's provider type was not initialized.
+    /// Serialized provider type, or a stable sentinel when this key was not initialized.
     /// </summary>
     public string TypeValueOrDefault => Type.ValueOrUnknown;
 
     /// <summary>
-    /// Gets a value indicating whether this provider key has a provider type and name.
+    /// Whether this provider key has both a provider type and provider name.
     /// </summary>
     public bool IsInitialized => Type != default && !string.IsNullOrWhiteSpace(Name);
 
     /// <summary>
-    /// Gets the provider type value for an optional provider key, or <see langword="null" /> when no provider key was supplied.
+    /// Gets the serialized provider type for an optional provider key, or <see langword="null" /> when no provider key was supplied.
     /// </summary>
-    /// <param name="provider">The provider key value.</param>
-    /// <returns>The provider type value, the unknown sentinel, or <see langword="null" />.</returns>
+    /// <param name="provider">Optional provider key to inspect.</param>
+    /// <returns>The serialized provider type, the unknown sentinel, or <see langword="null" />.</returns>
     public static string? GetTypeValueOrDefault(AuthenticationProviderKey? provider)
     {
         return provider.HasValue ? provider.Value.TypeValueOrDefault : null;
@@ -37,7 +37,7 @@ public readonly record struct AuthenticationProviderKey
     /// <summary>
     /// Throws when an authentication provider key has not been fully initialized.
     /// </summary>
-    /// <param name="provider">The provider key value.</param>
+    /// <param name="provider">Provider key to validate.</param>
     /// <param name="parameterName">The parameter name to include in the exception.</param>
     /// <exception cref="ArgumentException">Thrown when the provider key is uninitialized.</exception>
     public static void ThrowIfUninitialized(AuthenticationProviderKey provider, string parameterName)
@@ -49,10 +49,10 @@ public readonly record struct AuthenticationProviderKey
     }
 
     /// <summary>
-    /// Initializes a new instance of the authentication provider key class.
+    /// Initializes a provider key from a type and provider name.
     /// </summary>
-    /// <param name="type">The type value.</param>
-    /// <param name="name">The name value.</param>
+    /// <param name="type">Provider category for this key.</param>
+    /// <param name="name">Provider name within the category.</param>
     public AuthenticationProviderKey(ProviderType type, string name)
     {
         if (type == default)
@@ -67,45 +67,45 @@ public readonly record struct AuthenticationProviderKey
     }
 
     /// <summary>
-    /// Executes the new operation.
+    /// Built-in local password provider key.
     /// </summary>
     public static AuthenticationProviderKey Local { get; } = new(ProviderType.Local, ProviderType.Local.Value);
     /// <summary>
-    /// Executes the new operation.
+    /// Built-in email-code provider key.
     /// </summary>
     public static AuthenticationProviderKey EmailCode { get; } = new(ProviderType.EmailCode, ProviderType.EmailCode.Value);
     /// <summary>
-    /// Executes the new operation.
+    /// Built-in magic-link provider key.
     /// </summary>
     public static AuthenticationProviderKey MagicLink { get; } = new(ProviderType.MagicLink, ProviderType.MagicLink.Value);
     /// <summary>
-    /// Executes the new operation.
+    /// Built-in passkey provider key.
     /// </summary>
     public static AuthenticationProviderKey Passkey { get; } = new(ProviderType.Passkey, ProviderType.Passkey.Value);
 
     /// <summary>
-    /// Performs the equals operation and returns the result.
+    /// Compares provider keys using case-insensitive provider names.
     /// </summary>
-    /// <param name="other">The other value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="other">Provider key to compare with this key.</param>
+    /// <returns><see langword="true" /> when both keys identify the same provider.</returns>
     public bool Equals(AuthenticationProviderKey other)
     {
         return Type == other.Type && StringComparer.OrdinalIgnoreCase.Equals(Name, other.Name);
     }
 
     /// <summary>
-    /// Performs the get hash code operation and returns the result.
+    /// Returns a hash code compatible with case-insensitive provider name comparison.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>A hash code for this provider key.</returns>
     public override int GetHashCode()
     {
         return HashCode.Combine(Type, StringComparer.OrdinalIgnoreCase.GetHashCode(Name));
     }
 
     /// <summary>
-    /// Performs the to string operation and returns the result.
+    /// Formats the provider key as <c>type:name</c>.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>A provider key string suitable for diagnostics, but not for authorization decisions.</returns>
     public override string ToString()
     {
         return Type == default

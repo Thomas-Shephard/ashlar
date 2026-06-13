@@ -15,22 +15,22 @@ public interface IAshlarTransaction : IAsyncDisposable
     /// <summary>
     /// Commits the transaction.
     /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="cancellationToken">A token that can cancel the commit attempt.</param>
+    /// <returns>A task that completes after durable changes and commit hooks have finished.</returns>
     Task CommitAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Rolls back the transaction.
     /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="cancellationToken">A token that can cancel the rollback attempt.</param>
+    /// <returns>A task that completes after pending durable changes have been abandoned.</returns>
     Task RollbackAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Registers an action to be executed only after the transaction has successfully committed.
     /// Actions are executed in the order they were registered.
     /// </summary>
-    /// <param name="action">The action value.</param>
+    /// <param name="action">Callback to run after a successful commit.</param>
     /// <remarks>
     /// Registered actions are executed after the transaction commit has completed and receive a cancellation token
     /// that is not linked to the caller's commit token. Non-cancellation failures are isolated from later actions

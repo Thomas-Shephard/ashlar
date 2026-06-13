@@ -25,11 +25,11 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
     private readonly ILogger<SecurityEventFanOutSink> _logger;
 
     /// <summary>
-    /// Initializes a new instance of the security event fan-out sink class.
+    /// Initializes a sink that persists events and invokes registered handlers.
     /// </summary>
     /// <param name="persistentSink">The optional durable audit sink.</param>
     /// <param name="handlers">The registered security event handlers.</param>
-    /// <param name="logger">The logger value.</param>
+    /// <param name="logger">Logger used when persistence or handler delivery fails.</param>
     public SecurityEventFanOutSink(
         IPersistentSecurityEventSink? persistentSink = null,
         IEnumerable<ISecurityEventHandler>? handlers = null,

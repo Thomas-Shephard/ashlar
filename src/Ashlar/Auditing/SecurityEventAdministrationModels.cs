@@ -5,7 +5,7 @@ namespace Ashlar.Auditing;
 /// </summary>
 public sealed record SearchSecurityEventsRequest
 {
-    /// <summary>Tenant scope to search. Use <see cref="TenantContext.Global" /> for global events.</summary>
+    /// <summary>Tenant scope to search. Use <see cref="TenantContext.Global" /> for global events; leave <see langword="null" /> only when <see cref="IncludeAllTenants" /> is enabled.</summary>
     public TenantContext? Tenant { get; init; }
 
     /// <summary>Whether to search across all tenant scopes. Cannot be combined with <see cref="Tenant" />.</summary>
@@ -47,7 +47,7 @@ public sealed record SearchSecurityEventsRequest
     /// <summary>
     /// Throws when the security event administration search request is not safe to execute.
     /// </summary>
-    /// <param name="request">The search request value.</param>
+    /// <param name="request">Request to validate before repository access.</param>
     public static void ThrowIfInvalid(SearchSecurityEventsRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -58,20 +58,20 @@ public sealed record SearchSecurityEventsRequest
 /// <summary>
 /// Safe summary of a security event for administrator display.
 /// </summary>
-/// <param name="EventId">The event id value.</param>
-/// <param name="EventType">The event type value.</param>
-/// <param name="OccurredAt">The occurrence time.</param>
-/// <param name="UserId">The user id value.</param>
-/// <param name="TenantId">The tenant id value.</param>
-/// <param name="ActorUserId">The actor user id value.</param>
-/// <param name="SessionId">The session id value.</param>
-/// <param name="Provider">The authentication provider value.</param>
-/// <param name="IpAddress">The IP address value.</param>
-/// <param name="UserAgent">The user agent value.</param>
-/// <param name="CorrelationId">The correlation id value.</param>
-/// <param name="Outcome">The outcome value.</param>
-/// <param name="FailureReason">The failure reason value.</param>
-/// <param name="Properties">The safe diagnostic properties.</param>
+/// <param name="EventId">Stable identifier of the recorded event.</param>
+/// <param name="EventType">Normalized security event type.</param>
+/// <param name="OccurredAt">UTC time when the event occurred.</param>
+/// <param name="UserId">Affected user identifier, when the event is user-scoped.</param>
+/// <param name="TenantId">Tenant scope associated with the event, when available.</param>
+/// <param name="ActorUserId">Administrator or actor user identifier, when available.</param>
+/// <param name="SessionId">Related application session identifier, when available.</param>
+/// <param name="Provider">Authentication source associated with the event, when available.</param>
+/// <param name="IpAddress">Client IP address captured for the event. Treat as personal data.</param>
+/// <param name="UserAgent">Client user-agent text captured for the event. It may be user supplied.</param>
+/// <param name="CorrelationId">Host-defined correlation identifier, when available.</param>
+/// <param name="Outcome">Normalized outcome for the event.</param>
+/// <param name="FailureReason">Normalized failure reason, when the event failed.</param>
+/// <param name="Properties">Diagnostic properties safe for administrator display.</param>
 public sealed record SecurityEventSummary(
     Guid EventId,
     string EventType,
@@ -91,9 +91,9 @@ public sealed record SecurityEventSummary(
 /// <summary>
 /// Paged security event search result.
 /// </summary>
-/// <param name="Events">The events value.</param>
-/// <param name="Limit">The limit value.</param>
-/// <param name="Offset">The offset value.</param>
+/// <param name="Events">Security summaries in the current page.</param>
+/// <param name="Limit">Maximum number of summaries requested for the page.</param>
+/// <param name="Offset">Number of records skipped before this page.</param>
 /// <param name="HasMore">Whether another page may exist.</param>
 public sealed record SecurityEventSearchResult(
     IReadOnlyList<SecurityEventSummary> Events,
@@ -104,8 +104,8 @@ public sealed record SecurityEventSearchResult(
 /// <summary>
 /// Request for administrator security event detail.
 /// </summary>
-/// <param name="EventId">The event id value.</param>
-/// <param name="Tenant">The requested scope. Use <see cref="TenantContext.Global" /> for global events.</param>
+/// <param name="EventId">Identifier of the event to retrieve.</param>
+/// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global events; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
 /// <param name="IncludeAllTenants">Whether to allow lookup across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
 public sealed record SecurityEventAdministrationDetailRequest(
     Guid EventId,
@@ -115,7 +115,7 @@ public sealed record SecurityEventAdministrationDetailRequest(
     /// <summary>
     /// Throws when the security event detail request is not safe to execute.
     /// </summary>
-    /// <param name="request">The detail request value.</param>
+    /// <param name="request">Request to validate before repository access.</param>
     public static void ThrowIfInvalid(SecurityEventAdministrationDetailRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);

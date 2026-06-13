@@ -1,42 +1,42 @@
 namespace Ashlar.Operational.Diagnostics;
 
 /// <summary>
-/// Represents provider-specific security event webhook outbox aggregate state used to build diagnostics.
+/// Display-safe aggregate state used to evaluate security event webhook outbox health.
 /// </summary>
 public sealed record SecurityEventWebhookOutboxDiagnosticSnapshot
 {
     /// <summary>
-    /// Gets the pending count.
+    /// Webhook deliveries ready to dispatch now.
     /// </summary>
     public long PendingCount { get; init; }
 
     /// <summary>
-    /// Gets the scheduled count.
+    /// Webhook deliveries scheduled for future dispatch.
     /// </summary>
     public long ScheduledCount { get; init; }
 
     /// <summary>
-    /// Gets the locked count.
+    /// Webhook deliveries currently claimed by a dispatcher.
     /// </summary>
     public long LockedCount { get; init; }
 
     /// <summary>
-    /// Gets the expired lock count.
+    /// Claimed webhook deliveries whose lease has expired.
     /// </summary>
     public long ExpiredLockCount { get; init; }
 
     /// <summary>
-    /// Gets the failed count.
+    /// Webhook deliveries that exhausted dispatch attempts.
     /// </summary>
     public long FailedCount { get; init; }
 
     /// <summary>
-    /// Gets the oldest pending timestamp.
+    /// Oldest ready-to-dispatch webhook delivery timestamp, when any exist.
     /// </summary>
     public DateTimeOffset? OldestPendingAt { get; init; }
 
     /// <summary>
-    /// Gets the oldest failed timestamp.
+    /// Oldest failed webhook delivery timestamp, when any exist.
     /// </summary>
     public DateTimeOffset? OldestFailedAt { get; init; }
 }

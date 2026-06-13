@@ -11,18 +11,18 @@ public interface ICredentialAdministrationRepository
     /// <summary>
     /// Searches credentials using safe administrator-display fields.
     /// </summary>
-    /// <param name="request">The search request value.</param>
+    /// <param name="request">Search filters and tenant scope supplied by an authorized administrator flow.</param>
     /// <param name="now">The timestamp used for availability filtering and projection.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <param name="cancellationToken">A token that can cancel the search.</param>
     /// <returns>The matching credentials.</returns>
     Task<IReadOnlyList<CredentialAdministrationSummary>> SearchCredentialsAsync(SearchCredentialsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets safe credential detail by credential id.
     /// </summary>
-    /// <param name="request">The detail request value.</param>
+    /// <param name="request">Credential identifier and tenant scope supplied by an authorized administrator flow.</param>
     /// <param name="now">The timestamp used for availability projection.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <param name="cancellationToken">A token that can cancel lookup.</param>
     /// <returns>The credential, or <see langword="null" /> when it does not exist.</returns>
     Task<CredentialAdministrationDetail?> GetCredentialAsync(CredentialAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
 }

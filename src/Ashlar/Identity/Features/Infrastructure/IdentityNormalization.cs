@@ -8,8 +8,8 @@ public static class IdentityNormalization
     /// <summary>
     /// Normalizes an email address for consistent storage and lookup.
     /// </summary>
-    /// <param name="email">The email value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="email">Email address to normalize.</param>
+    /// <returns>The normalized email address.</returns>
     /// <exception cref="ArgumentException">Thrown if the email is <see langword="null" /> or whitespace.</exception>
     public static string NormalizeEmail(string email)
     {
@@ -20,8 +20,8 @@ public static class IdentityNormalization
     /// <summary>
     /// Trims an email address and rejects values that could escape email headers.
     /// </summary>
-    /// <param name="email">The email value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="email">Email address to prepare for outbound delivery.</param>
+    /// <returns>The sanitized email address.</returns>
     /// <exception cref="ArgumentException">Thrown if the email is <see langword="null" />, whitespace, or contains line breaks.</exception>
     public static string SanitizeEmailForDelivery(string email)
     {

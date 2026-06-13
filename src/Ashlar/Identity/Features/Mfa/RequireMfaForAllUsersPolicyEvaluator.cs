@@ -3,16 +3,16 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.Identity.Features.Mfa;
 
 /// <summary>
-/// Provides require mfa for all users policy evaluator behavior.
+/// Requires configured MFA factors for every user that can sign in.
 /// </summary>
 public sealed class RequireMfaForAllUsersPolicyEvaluator : IMfaPolicyEvaluator
 {
     private readonly RequireMfaForAllUsersPolicyOptions _options;
 
     /// <summary>
-    /// Initializes a new instance of the require mfa for all users policy evaluator class.
+    /// Initializes the policy evaluator from configured MFA requirements.
     /// </summary>
-    /// <param name="options">The options value.</param>
+    /// <param name="options">Configured MFA requirements.</param>
     /// <exception cref="OptionsValidationException">Thrown when the configured MFA policy options are invalid.</exception>
     public RequireMfaForAllUsersPolicyEvaluator(IOptions<RequireMfaForAllUsersPolicyOptions> options)
     {
@@ -28,12 +28,12 @@ public sealed class RequireMfaForAllUsersPolicyEvaluator : IMfaPolicyEvaluator
     }
 
     /// <summary>
-    /// Performs the evaluate <see langword="async" /> operation and returns the result.
+    /// Evaluates whether the user must complete the configured factors.
     /// </summary>
-    /// <param name="user">The user value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="user">User being authenticated.</param>
+    /// <param name="context">Authentication request context supplied by the host application.</param>
+    /// <param name="cancellationToken">A token that can cancel policy evaluation.</param>
+    /// <returns>The MFA requirement for the user.</returns>
     public Task<MfaPolicyEvaluation> EvaluateAsync(IUser user, AuthenticationContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);

@@ -3,12 +3,12 @@ using System.Security.Cryptography;
 namespace Ashlar.Security.Hashing;
 
 /// <summary>
-/// Provides password hasher v1 behavior.
+/// Hashes passwords using Ashlar's version 1 PBKDF2 format.
 /// </summary>
 public sealed class PasswordHasherV1 : IPasswordHasher
 {
     /// <summary>
-    /// Gets or sets the version value.
+    /// Hash format version produced by this hasher.
     /// </summary>
     public byte Version => 0x01;
     private const int SaltLength = 16;
@@ -21,10 +21,10 @@ public sealed class PasswordHasherV1 : IPasswordHasher
     private readonly ReadOnlyMemory<byte> _dummyHash = RandomNumberGenerator.GetBytes(HashLength);
 
     /// <summary>
-    /// Performs the hash password operation and returns the result.
+    /// Hashes a plaintext password using PBKDF2 with a new random salt.
     /// </summary>
-    /// <param name="password">The password value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="password">The plaintext password. Do not log this value.</param>
+    /// <returns>An encoded versioned hash suitable for storage.</returns>
     public byte[] HashPassword(ReadOnlySpan<char> password)
     {
         byte[] encodedHash = new byte[TotalLength];
@@ -39,11 +39,11 @@ public sealed class PasswordHasherV1 : IPasswordHasher
     }
 
     /// <summary>
-    /// Performs the verify password operation and returns the result.
+    /// Verifies a plaintext password against a version 1 encoded hash.
     /// </summary>
-    /// <param name="password">The password value.</param>
-    /// <param name="encodedHash">The encoded hash value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="password">The plaintext password. Do not log this value.</param>
+    /// <param name="encodedHash">The stored encoded hash.</param>
+    /// <returns><see langword="true" /> when the password matches a valid version 1 hash.</returns>
     public bool VerifyPassword(ReadOnlySpan<char> password, ReadOnlySpan<byte> encodedHash)
     {
         bool isValidFormat = encodedHash is { Length: TotalLength } && encodedHash[0] == Version;

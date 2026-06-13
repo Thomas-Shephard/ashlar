@@ -1,24 +1,24 @@
 namespace Ashlar.Identity.Models.Invitations;
 
 /// <summary>
-/// Provides create invitation request behavior.
+/// Request to create an invitation and send an acceptance link.
 /// </summary>
 public sealed class CreateInvitationRequest
 {
     /// <summary>
-    /// Gets or sets the email value.
+    /// Email address that will receive the invitation. Treat as personal data.
     /// </summary>
     public required string Email { get; init; }
     /// <summary>
-    /// Gets or sets the tenant id value.
+    /// Tenant the invitation applies to, or <see langword="null" /> for a global invitation.
     /// </summary>
     public Guid? TenantId { get; init; }
     /// <summary>
-    /// Gets or sets the expiry value.
+    /// Optional lifetime for the invitation token.
     /// </summary>
     public TimeSpan? Expiry { get; init; }
     /// <summary>
-    /// Gets or sets the metadata value.
+    /// Provider-neutral invitation metadata. Do not include secrets or raw tokens.
     /// </summary>
     public string? Metadata { get; init; }
 }

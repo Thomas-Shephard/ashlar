@@ -19,10 +19,10 @@ public sealed class Sha256TokenHasher : ISecureTokenHasher
     private const int MaxTokenUtf8Bytes = MaxTokenLength * 3;
 
     /// <summary>
-    /// Performs the hash token operation and returns the result.
+    /// Hashes a high-entropy raw token for deterministic lookup.
     /// </summary>
-    /// <param name="token">The token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="token">The raw token presented by a caller. Do not log or persist this value.</param>
+    /// <returns>A prefixed SHA-256 hash suitable for storage and equality lookup.</returns>
     public string HashToken(string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);

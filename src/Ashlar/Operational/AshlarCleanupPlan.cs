@@ -5,22 +5,22 @@ namespace Ashlar.Operational;
 /// <summary>
 /// Describes a provider-specific cleanup delete command target.
 /// </summary>
-/// <param name="Category">The cleanup <paramref name="Category" /> name.</param>
-/// <param name="TableName">The table name.</param>
-/// <param name="Predicate">The provider-specific cleanup predicate.</param>
-/// <param name="OrderColumn">The column used to order bounded cleanup deletes.</param>
+/// <param name="Category">Stable cleanup <paramref name="Category" /> name reported in cleanup results.</param>
+/// <param name="TableName">Provider table targeted by the <paramref name="Category" /> cleanup plan.</param>
+/// <param name="Predicate">Provider-specific delete predicate for rows older than the retention cutoff.</param>
+/// <param name="OrderColumn">Provider column used to make bounded deletes deterministic.</param>
 public sealed record AshlarCleanupDeleteDefinition(string Category, string TableName, string Predicate, string OrderColumn);
 
 /// <summary>
 /// Describes a provider-neutral Ashlar cleanup <paramref name="Category" />.
 /// </summary>
-/// <param name="Category">The cleanup <paramref name="Category" /> name.</param>
-/// <param name="TableName">The table name.</param>
+/// <param name="Category">Stable cleanup <paramref name="Category" /> name reported in cleanup results.</param>
+/// <param name="TableName">Provider table targeted by the <paramref name="Category" /> cleanup plan.</param>
 /// <param name="PredicateTemplate">The provider-neutral predicate template.</param>
-/// <param name="OrderColumn">The column used to order bounded cleanup deletes.</param>
-/// <param name="Retention">The retention option selector.</param>
-/// <param name="GetCount">The cleanup result count selector.</param>
-/// <param name="AddCount">The cleanup result count accumulator.</param>
+/// <param name="OrderColumn">Provider column used to make bounded deletes deterministic.</param>
+/// <param name="Retention">Option selector that returns the retention window for this <paramref name="Category" />.</param>
+/// <param name="GetCount">Reads this <paramref name="Category" /> deleted-row count from a cleanup result.</param>
+/// <param name="AddCount">Adds this <paramref name="Category" /> deleted-row count to a cleanup result.</param>
 public sealed record AshlarCleanupCategoryDefinition(
     string Category,
     string TableName,
@@ -90,14 +90,14 @@ public static class AshlarCleanupPlan
     /// <summary>
     /// Runs the shared Ashlar cleanup plan with a provider-specific delete callback.
     /// </summary>
-    /// <typeparam name="TContext">The provider-specific execution context type.</typeparam>
-    /// <param name="options">The cleanup options.</param>
-    /// <param name="now">The current UTC time.</param>
-    /// <param name="context">The provider-specific execution context.</param>
-    /// <param name="deleteAsync">The provider-specific bounded delete callback.</param>
-    /// <param name="createDefinition">The provider-specific definition renderer.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The cleanup result.</returns>
+    /// <typeparam name="TContext">Provider-specific execution context type.</typeparam>
+    /// <param name="options">Configured retention windows, batch sizes, and cleanup toggles.</param>
+    /// <param name="now">UTC time used to calculate retention cutoffs.</param>
+    /// <param name="context">Provider-specific execution context used to render and execute cleanup deletes.</param>
+    /// <param name="deleteAsync">Provider-specific bounded delete callback.</param>
+    /// <param name="createDefinition">Provider-specific renderer for cleanup delete definitions.</param>
+    /// <param name="cancellationToken">Token for aborting cleanup work.</param>
+    /// <returns>Number of rows deleted in each cleanup category.</returns>
     public static async Task<AshlarCleanupResult> RunAsync<TContext>(
         AshlarCleanupOptions options,
         DateTimeOffset now,
@@ -140,8 +140,8 @@ public static class AshlarCleanupPlan
     /// <summary>
     /// Counts enabled and disabled cleanup categories for the provided options.
     /// </summary>
-    /// <param name="options">The cleanup options.</param>
-    /// <returns>The enabled and disabled cleanup category counts.</returns>
+    /// <param name="options">Configured retention windows and cleanup toggles to inspect.</param>
+    /// <returns>Enabled and disabled cleanup category counts.</returns>
     public static (int EnabledCategoryCount, int DisabledCategoryCount) CountCategories(AshlarCleanupOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -153,11 +153,11 @@ public static class AshlarCleanupPlan
     /// <summary>
     /// Renders a provider-neutral predicate template for a database provider.
     /// </summary>
-    /// <param name="template">The predicate template.</param>
-    /// <param name="cutoffParameter">The provider-specific cutoff parameter token.</param>
+    /// <param name="template">Provider-neutral predicate template to render.</param>
+    /// <param name="cutoffParameter">Provider-specific parameter token used for the retention cutoff.</param>
     /// <param name="trueLiteral">The provider-specific boolean <see langword="true" /> literal.</param>
     /// <param name="falseLiteral">The provider-specific boolean <see langword="false" /> literal.</param>
-    /// <returns>The rendered provider-specific predicate.</returns>
+    /// <returns>Rendered provider-specific predicate.</returns>
     public static string RenderPredicate(string template, string cutoffParameter, string trueLiteral, string falseLiteral)
     {
         return template

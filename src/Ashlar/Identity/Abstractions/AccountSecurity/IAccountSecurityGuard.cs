@@ -9,9 +9,9 @@ public interface IAccountSecurityGuard
     /// Determines whether a user's account state can be changed.
     /// </summary>
     /// <param name="user">The user whose account state would change.</param>
-    /// <param name="targetState">The requested account state.</param>
+    /// <param name="targetState">State the caller wants to apply to the account.</param>
     /// <param name="request">Audit metadata and optional tenant scope.</param>
-    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <param name="cancellationToken">A token that can cancel guard evaluation.</param>
     /// <returns>The guard decision.</returns>
     Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default);
 }

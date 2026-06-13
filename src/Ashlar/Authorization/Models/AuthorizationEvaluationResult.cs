@@ -1,14 +1,14 @@
 namespace Ashlar.Authorization.Models;
 
 /// <summary>
-/// Represents the authorization evaluation result data model.
+/// Result of evaluating a role or permission grant.
 /// </summary>
-/// <param name="Succeeded">The succeeded value.</param>
-/// <param name="MatchingGrant">The matching grant value.</param>
+/// <param name="Succeeded">Whether a currently active grant satisfied the request.</param>
+/// <param name="MatchingGrant">The grant that satisfied the request, when one was found.</param>
 public sealed record AuthorizationEvaluationResult(bool Succeeded, AuthorizationGrant? MatchingGrant)
 {
     /// <summary>
-    /// Executes the new operation.
+    /// A failed authorization decision with no matching grant.
     /// </summary>
     public static AuthorizationEvaluationResult Failed { get; } = new(false, null);
 }

@@ -3,7 +3,7 @@ namespace Ashlar.Operational.Diagnostics;
 /// <summary>
 /// Provides shared email outbox diagnostics result mapping for Ashlar persistence providers.
 /// </summary>
-/// <param name="providerName">The provider name value.</param>
+/// <param name="providerName">Persistence provider name reported in diagnostic results.</param>
 public sealed class AshlarEmailOutboxDiagnosticsRunner(string providerName)
 {
     private const string MissingTableReason = "Email outbox table has not been initialized.";
@@ -12,12 +12,12 @@ public sealed class AshlarEmailOutboxDiagnosticsRunner(string providerName)
     /// <summary>
     /// Checks provider email outbox state and returns a sanitized diagnostics result.
     /// </summary>
-    /// <typeparam name="TConnection">The provider connection type.</typeparam>
-    /// <param name="timeProvider">The time provider value.</param>
-    /// <param name="context">The provider diagnostics context value.</param>
-    /// <param name="options">The diagnostic options value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The diagnostic result.</returns>
+    /// <typeparam name="TConnection">Provider connection type used by diagnostics queries.</typeparam>
+    /// <param name="timeProvider">Clock used to stamp the diagnostic result.</param>
+    /// <param name="context">Provider callbacks used to query aggregate outbox state.</param>
+    /// <param name="options">Configured outbox dispatcher settings to surface in the result.</param>
+    /// <param name="cancellationToken">Token for aborting provider diagnostics work.</param>
+    /// <returns>Provider-neutral outbox diagnostic result with aggregate counts only.</returns>
     public async Task<EmailOutboxDiagnosticResult> CheckAsync<TConnection>(
         TimeProvider timeProvider,
         EmailOutboxDiagnosticsContext<TConnection> context,

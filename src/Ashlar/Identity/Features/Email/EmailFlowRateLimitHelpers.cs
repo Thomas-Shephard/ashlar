@@ -13,7 +13,7 @@ internal static class EmailFlowRateLimitHelpers
     /// Converts an audit context into authentication context metadata for rate-limit keys.
     /// </summary>
     /// <param name="audit">The optional audit context.</param>
-    /// <returns>The authentication context metadata.</returns>
+    /// <returns>Metadata copied from the authentication context for rate-limit attempts.</returns>
     public static AuthenticationContext? ToAuthenticationContext(AuditContext? audit)
     {
         return audit == null
@@ -28,7 +28,7 @@ internal static class EmailFlowRateLimitHelpers
     /// <param name="purpose">The verification purpose.</param>
     /// <param name="key">The safe dimension key.</param>
     /// <param name="userId">The user being verified.</param>
-    /// <param name="context">The authentication context metadata.</param>
+    /// <param name="context">Authentication context metadata used to populate rate-limit attempt fields.</param>
     /// <param name="rule">The rate-limit rule.</param>
     /// <param name="cancellationToken">A token that can cancel the check.</param>
     /// <returns>The rate-limit decision.</returns>
@@ -70,7 +70,7 @@ internal sealed class EmailFlowVerificationRateLimitChecker(AuthenticationRateLi
     /// </summary>
     /// <param name="key">The safe dimension key.</param>
     /// <param name="userId">The user being verified.</param>
-    /// <param name="context">The authentication context metadata.</param>
+    /// <param name="context">Authentication context metadata used to populate rate-limit attempt fields.</param>
     /// <param name="rule">The rate-limit rule.</param>
     /// <param name="cancellationToken">A token that can cancel the check.</param>
     /// <returns>The rate-limit decision.</returns>

@@ -14,8 +14,8 @@ public interface IIdentityService
     /// Finds a user by normalized email address and optional tenant.
     /// </summary>
     /// <param name="email">The email address to look up.</param>
-    /// <param name="tenantId">The tenant to search, or <see langword="null" /> for a global lookup.</param>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <param name="tenantId">The tenant boundary for the lookup, or <see langword="null" /> for tenantless users.</param>
+    /// <param name="cancellationToken">A token that can cancel email lookup.</param>
     /// <returns>The matching user, or <see langword="null" /> when no user exists.</returns>
     Task<IUser?> FindByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default);
 
@@ -24,7 +24,7 @@ public interface IIdentityService
     /// </summary>
     /// <param name="provider">The authentication provider that owns the credential.</param>
     /// <param name="providerKey">The provider-specific credential key.</param>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <param name="cancellationToken">A token that can cancel provider-key lookup.</param>
     /// <returns>The matching user, or <see langword="null" /> when no user exists.</returns>
     Task<IUser?> FindByProviderKeyAsync(AuthenticationProviderKey provider, string providerKey, CancellationToken cancellationToken = default);
 
@@ -32,16 +32,16 @@ public interface IIdentityService
     /// Authenticates an assertion with the matching authentication provider.
     /// </summary>
     /// <param name="context">Request context used for auditing, tenant lookup, and rate limiting.</param>
-    /// <param name="assertion">The credentials or provider assertion to authenticate.</param>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
-    /// <returns>The authentication response.</returns>
+    /// <param name="assertion">Credentials or provider assertion to authenticate. Treat as sensitive unless the provider documents otherwise.</param>
+    /// <param name="cancellationToken">A token that can cancel provider authentication.</param>
+    /// <returns>The authentication response. This does not by itself issue an application session.</returns>
     Task<AuthenticationResponse> LoginAsync(AuthenticationContext context, IAuthenticationAssertion assertion, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Creates a user in the configured user repository.
     /// </summary>
     /// <param name="user">The user to create.</param>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <param name="cancellationToken">A token that can cancel user creation.</param>
     /// <returns>The created user.</returns>
     Task<IUser> CreateUserAsync(IUser user, CancellationToken cancellationToken = default);
 
@@ -49,15 +49,15 @@ public interface IIdentityService
     /// Links a credential for the specified user using the provider selected by the assertion.
     /// </summary>
     /// <param name="userId">The user that will own the credential.</param>
-    /// <param name="assertion">The assertion used to derive the provider key and metadata.</param>
-    /// <param name="credentialValue">The raw credential value to protect before storage, when required by the provider.</param>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <param name="assertion">Authentication assertion used to derive the provider key and metadata.</param>
+    /// <param name="credentialValue">The raw credential value to protect before storage, when required by the provider. Treat this value as sensitive.</param>
+    /// <param name="cancellationToken">A token that can cancel credential linking.</param>
     /// <returns>A result describing whether the credential was linked.</returns>
     Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// Defines the available authentication status values.
+/// Lists the outcomes of a credential authentication attempt.
 /// </summary>
 public enum AuthenticationStatus
 {
@@ -92,7 +92,7 @@ public enum AuthenticationStatus
 /// </summary>
 /// <param name="Succeeded">Whether authentication completed successfully.</param>
 /// <param name="User">The authenticated user when available.</param>
-/// <param name="Status">The authentication outcome.</param>
+/// <param name="Status">Outcome of the credential authentication attempt.</param>
 /// <param name="Claims">Additional claims produced by the authentication provider.</param>
 public sealed record AuthenticationResponse(
     bool Succeeded,
@@ -101,11 +101,11 @@ public sealed record AuthenticationResponse(
     IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims = null)
 {
     /// <summary>
-    /// Initializes a new instance of the authentication response class from single-value claims.
+    /// Creates an authentication response from single-value provider claims.
     /// </summary>
     /// <param name="succeeded">Whether authentication completed successfully.</param>
     /// <param name="user">The authenticated user when available.</param>
-    /// <param name="status">The authentication outcome.</param>
+    /// <param name="status">Outcome of the credential authentication attempt.</param>
     /// <param name="claims">Additional single-value claims produced by the authentication provider.</param>
     public AuthenticationResponse(
         bool succeeded,

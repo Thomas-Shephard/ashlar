@@ -1,17 +1,17 @@
 namespace Ashlar.Identity.Abstractions.Services;
 
 /// <summary>
-/// Provides services for resolving, linking, and managing the lifecycle of user credentials.
+/// Resolves protected user credentials, links new credentials, and persists provider-requested credential usage, consumption, or replacement.
 /// </summary>
 public interface ICredentialService
 {
     /// <summary>
-    /// Resolves the user and their associated credential based on the provided authentication context and assertion.
+    /// Resolves the user and provider-owned credential for an authentication attempt.
     /// </summary>
-    /// <param name="context">The authentication context.</param>
-    /// <param name="assertion">The authentication assertion.</param>
-    /// <param name="provider">The authentication provider.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <param name="context">Tenant, audit, and rate-limit context for the authentication attempt.</param>
+    /// <param name="assertion">Credential material supplied for the assertion. Treat as sensitive unless documented otherwise.</param>
+    /// <param name="provider">Authenticator implementation that owns the credential lookup.</param>
+    /// <param name="cancellationToken">A token that can cancel credential resolution.</param>
     /// <returns>A tuple containing:
     /// <list type="bullet">
     /// <item><description><c>User</c>: The resolved user, or <see langword="null" /> if not found.</description></item>
@@ -23,36 +23,36 @@ public interface ICredentialService
     Task<(IUser? User, UserCredential? Credential, UserCredential? OriginalCredential, bool UnprotectFailed)> ResolveAsync(AuthenticationContext context, IAuthenticationAssertion assertion, IAuthenticationProvider provider, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Provides behavior for task.
+    /// Resolves a provider-owned credential for a known user.
     /// </summary>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="assertion">The authentication assertion.</param>
-    /// <param name="provider">The authentication provider.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <param name="userId">The user that must own the credential.</param>
+    /// <param name="assertion">Credential material supplied for the assertion. Treat as sensitive unless documented otherwise.</param>
+    /// <param name="provider">Authenticator implementation that owns the credential lookup.</param>
+    /// <param name="cancellationToken">A token that can cancel credential resolution.</param>
     /// <returns>A tuple containing the resolved user, unprotected credential, original credential, and unprotect status.
     /// </returns>
     Task<(IUser? User, UserCredential? Credential, UserCredential? OriginalCredential, bool UnprotectFailed)> ResolveAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Links a new credential to an existing user.
+    /// Persists a provider-derived credential for an existing user.
     /// </summary>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="provider">The provider value.</param>
-    /// <param name="credentialValue">The credential value.</param>
+    /// <param name="userId">The user that will own the credential.</param>
+    /// <param name="assertion">Authentication assertion used to derive the provider key.</param>
+    /// <param name="provider">Authenticator implementation that owns the credential.</param>
+    /// <param name="credentialValue">Optional credential material to store. Treat as sensitive unless documented otherwise.</param>
     /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the credential. Callers must not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="cancellationToken">A token that can cancel linking.</param>
+    /// <returns>Success when the credential is linked; otherwise, a stable failure describing why linking was rejected.</returns>
     Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue = null, string? credentialMetadata = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates the usage information, consumes, or potentially changes the secret value of a credential after a successful authentication attempt.
     /// </summary>
-    /// <param name="unprotectedCredential">The unprotected credential value.</param>
-    /// <param name="originalCredential">The original credential value.</param>
-    /// <param name="result">The converted result value.</param>
-    /// <param name="provider">The provider value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="unprotectedCredential">The credential used during authentication after any repository protection has been removed.</param>
+    /// <param name="originalCredential">The original repository credential, when different from <paramref name="unprotectedCredential" />.</param>
+    /// <param name="result">Authentication decision that may request credential consumption or replacement.</param>
+    /// <param name="provider">Authenticator implementation that owns the credential.</param>
+    /// <param name="cancellationToken">A token that can cancel the update.</param>
+    /// <returns><see langword="true" /> when credential usage or mutation was persisted.</returns>
     Task<bool> UpdateCredentialUsageAsync(UserCredential unprotectedCredential, UserCredential? originalCredential, AuthenticationResult result, IAuthenticationProvider provider, CancellationToken cancellationToken = default);
 }

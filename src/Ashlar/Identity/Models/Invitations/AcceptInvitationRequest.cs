@@ -1,16 +1,16 @@
 namespace Ashlar.Identity.Models.Invitations;
 
 /// <summary>
-/// Provides accept invitation request behavior.
+/// Request to accept an invitation token.
 /// </summary>
 public sealed class AcceptInvitationRequest
 {
     /// <summary>
-    /// Gets or sets the token value.
+    /// Raw invitation token from the acceptance link. Do not log or persist this value.
     /// </summary>
     public required string? Token { get; init; }
     /// <summary>
-    /// Gets or sets the user name value.
+    /// Optional display name for the user created from the invitation.
     /// </summary>
     public string? UserName { get; init; }
 }

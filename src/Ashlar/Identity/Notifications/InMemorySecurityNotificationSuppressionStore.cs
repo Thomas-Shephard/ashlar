@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 namespace Ashlar.Identity.Notifications;
 
 /// <summary>
-/// Provides in memory security notification suppression store behavior.
+/// Suppresses duplicate security notifications in process memory.
 /// </summary>
 public sealed class InMemorySecurityNotificationSuppressionStore : ISecurityNotificationSuppressionStore
 {
@@ -13,12 +13,12 @@ public sealed class InMemorySecurityNotificationSuppressionStore : ISecurityNoti
     private int _attemptsSinceCleanup;
 
     /// <summary>
-    /// Performs the should send operation and returns the result.
+    /// Records a send attempt and determines whether the notification may be delivered.
     /// </summary>
-    /// <param name="notification">The notification value.</param>
-    /// <param name="cooldown">The cooldown value.</param>
-    /// <param name="now">The now value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="notification">Notification whose recipient and type define the suppression key.</param>
+    /// <param name="cooldown">Minimum time between duplicate notifications.</param>
+    /// <param name="now">Current UTC time used for suppression expiry.</param>
+    /// <returns><see langword="true" /> when the notification should be sent; otherwise, <see langword="false" />.</returns>
     public bool ShouldSend(SecurityNotification notification, TimeSpan cooldown, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(notification);

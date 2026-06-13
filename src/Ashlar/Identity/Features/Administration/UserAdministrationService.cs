@@ -3,8 +3,8 @@ namespace Ashlar.Identity.Features.Administration;
 /// <summary>
 /// Implements read-only administrator user search and detail operations.
 /// </summary>
-/// <param name="repository">The repository value.</param>
-/// <param name="accountSecurityService">The account security service value.</param>
+/// <param name="repository">Repository used for safe administrator user lookup.</param>
+/// <param name="accountSecurityService">Service used to attach account security posture details.</param>
 /// <remarks>
 /// These operations are intended for administrative diagnostics and operations tooling and do not authorize the caller.
 /// Host applications must protect usage of this service with appropriate admin authorization and step-up policy.

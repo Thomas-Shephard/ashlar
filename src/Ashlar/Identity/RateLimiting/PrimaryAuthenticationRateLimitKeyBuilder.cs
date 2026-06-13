@@ -12,10 +12,10 @@ public static class PrimaryAuthenticationRateLimitKeyBuilder
     /// <summary>
     /// Builds the layered rate-limit attempts for a primary authentication operation.
     /// </summary>
-    /// <param name="context">The authentication context.</param>
-    /// <param name="assertion">The assertion being authenticated.</param>
-    /// <param name="providerKey">The provider identity.</param>
-    /// <returns>The layered attempts to evaluate.</returns>
+    /// <param name="context">Authentication request context used to derive source and identity buckets.</param>
+    /// <param name="assertion">Provider assertion used to derive a credential-key bucket when email and user ID are unavailable.</param>
+    /// <param name="providerKey">Provider identity included in provider-scoped buckets.</param>
+    /// <returns>Layered source and identity attempts to evaluate for primary authentication.</returns>
     public static IReadOnlyList<RateLimitAttempt> BuildAttempts(
         AuthenticationContext context,
         IAuthenticationAssertion assertion,

@@ -7,13 +7,13 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.Identity.Notifications;
 
 /// <summary>
-/// Provides security notification service behavior.
+/// Renders and sends user-facing security notifications.
 /// </summary>
-/// <param name="emailSender">The email sender value.</param>
-/// <param name="options">The options value.</param>
-/// <param name="suppressionStore">The suppression store value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-/// <param name="logger">The logger value.</param>
+/// <param name="emailSender">Email sender used for notification delivery.</param>
+/// <param name="options">Security notification templates, redaction, and cooldown settings.</param>
+/// <param name="suppressionStore">Optional cooldown store used to suppress duplicate notifications.</param>
+/// <param name="timeProvider">Clock used to evaluate notification cooldowns.</param>
+/// <param name="logger">Logger for delivery and template failures.</param>
 public sealed partial class SecurityNotificationService(
     IEmailSender emailSender,
     IOptions<SecurityNotificationOptions> options,

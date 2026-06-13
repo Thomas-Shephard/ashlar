@@ -1,20 +1,20 @@
 namespace Ashlar.Security.Hashing;
 
 /// <summary>
-/// Defines the available password verification result values.
+/// Lists password hash verification outcomes.
 /// </summary>
 public enum PasswordVerificationResult
 {
     /// <summary>
-    /// Represents the failed value.
+    /// The password did not match the stored hash.
     /// </summary>
     Failed = 0,
     /// <summary>
-    /// Represents the success value.
+    /// The password matched and the stored hash uses the current format.
     /// </summary>
     Success = 1,
     /// <summary>
-    /// Represents the success with credential update value.
+    /// The password matched, but the credential should be rehashed with the current format.
     /// </summary>
     SuccessWithCredentialUpdate = 2
 }

@@ -6,11 +6,11 @@ namespace Ashlar.Identity.Abstractions.Tenancy;
 public interface IHasAuditMetadata
 {
     /// <summary>
-    /// Gets the created at value.
+    /// Gets the UTC time when the entity was created.
     /// </summary>
     DateTimeOffset CreatedAt { get; }
     /// <summary>
-    /// Gets the updated at value.
+    /// UTC time when the entity was last updated, when tracked.
     /// </summary>
     DateTimeOffset? UpdatedAt { get; set; }
 }

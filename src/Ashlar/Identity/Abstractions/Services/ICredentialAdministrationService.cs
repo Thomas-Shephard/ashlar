@@ -12,16 +12,16 @@ public interface ICredentialAdministrationService
     /// <summary>
     /// Searches credentials using provider-neutral display fields.
     /// </summary>
-    /// <param name="request">The search request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">Tenant scope, filters, and paging options for the search.</param>
+    /// <param name="cancellationToken">A token that can cancel the search.</param>
+    /// <returns>Provider-neutral credential summaries. Credential secrets are never returned.</returns>
     Task<Result<CredentialSearchResult>> SearchCredentialsAsync(SearchCredentialsRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets safe credential detail by credential id.
     /// </summary>
-    /// <param name="request">The detail request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">Tenant scope and credential identifier for the lookup.</param>
+    /// <param name="cancellationToken">A token that can cancel the lookup.</param>
+    /// <returns>Safe credential detail without credential secret values.</returns>
     Task<Result<CredentialAdministrationDetail>> GetCredentialAsync(CredentialAdministrationDetailRequest request, CancellationToken cancellationToken = default);
 }

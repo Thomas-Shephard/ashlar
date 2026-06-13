@@ -1,7 +1,7 @@
 namespace Ashlar.Operational;
 
 /// <summary>
-/// Provides ashlar cleanup options behavior.
+/// Configures cleanup batch size, schedule, and retention windows.
 /// </summary>
 public sealed class AshlarCleanupOptions
 {
@@ -136,10 +136,10 @@ public sealed class AshlarCleanupOptions
     public TimeSpan? RemoveDiscardedSecurityEventWebhooksAfter { get; set; } = TimeSpan.FromDays(30);
 
     /// <summary>
-    /// Performs the validate operation and returns the result.
+    /// Validates cleanup options before registration or execution.
     /// </summary>
-    /// <param name="options">The options value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="options">Cleanup options to validate.</param>
+    /// <returns><see langword="true" /> when all cleanup settings are usable.</returns>
     public static bool Validate(AshlarCleanupOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);

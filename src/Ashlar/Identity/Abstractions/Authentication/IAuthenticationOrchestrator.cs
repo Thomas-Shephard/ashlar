@@ -1,18 +1,18 @@
 namespace Ashlar.Identity.Abstractions.Authentication;
 
 /// <summary>
-/// Defines the contract for authentication orchestrator operations.
+/// Coordinates primary authentication, MFA requirements, and step-up factor verification.
 /// </summary>
 public interface IAuthenticationOrchestrator
 {
     /// <summary>
-    /// Performs the authenticate <see langword="async" /> operation and returns the result.
+    /// Authenticates a primary credential and determines whether MFA is required before a session is issued.
     /// </summary>
-    /// <param name="context">The context value.</param>
-    /// <param name="primaryAssertion">The primary assertion value.</param>
-    /// <param name="options">The options value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="context">Request, tenant, client, and audit context supplied by the host application.</param>
+    /// <param name="primaryAssertion">Primary credential assertion to verify. Treat as sensitive unless the provider documents otherwise.</param>
+    /// <param name="options">Optional MFA orchestration settings for this authentication attempt.</param>
+    /// <param name="cancellationToken">A token that can cancel the authentication attempt.</param>
+    /// <returns>An MFA-aware result. The host should issue an application session only when the result succeeds.</returns>
     Task<MfaAuthenticationResult> AuthenticateAsync(
         AuthenticationContext context,
         IAuthenticationAssertion primaryAssertion,
@@ -20,14 +20,14 @@ public interface IAuthenticationOrchestrator
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Performs the verify factor <see langword="async" /> operation and returns the result.
+    /// Verifies a secondary factor for an existing MFA or step-up handshake.
     /// </summary>
-    /// <param name="handshakeToken">The handshake token value.</param>
-    /// <param name="factorType">The factor type value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="assertion">The assertion value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="handshakeToken">The raw handshake token presented by the client. Do not log or persist this value.</param>
+    /// <param name="factorType">The required factor family to satisfy.</param>
+    /// <param name="context">Request, tenant, client, and audit context supplied by the host application.</param>
+    /// <param name="assertion">Secondary factor assertion to verify. Treat as sensitive unless the provider documents otherwise.</param>
+    /// <param name="cancellationToken">A token that can cancel factor verification.</param>
+    /// <returns>An MFA-aware result describing whether the handshake is complete, incomplete, failed, or rate limited.</returns>
     Task<MfaAuthenticationResult> VerifyFactorAsync(
         string? handshakeToken,
         string factorType,

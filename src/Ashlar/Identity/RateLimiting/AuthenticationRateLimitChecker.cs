@@ -18,7 +18,7 @@ public sealed class AuthenticationRateLimitChecker(IAuthenticationRateLimiter ra
     /// Checks a single authentication rate-limit bucket.
     /// </summary>
     /// <param name="check">The bucket check.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="cancellationToken">A token that can cancel the rate-limit check.</param>
     /// <returns>The rate-limit decision.</returns>
     public Task<RateLimitDecision> CheckAsync(
         AuthenticationRateLimitCheck check,

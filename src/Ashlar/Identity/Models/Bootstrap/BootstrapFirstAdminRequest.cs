@@ -8,23 +8,23 @@ namespace Ashlar.Identity.Models.Bootstrap;
 public sealed class BootstrapFirstAdminRequest
 {
     /// <summary>
-    /// Gets or sets the administrator email address.
+    /// Email address for the first administrator account.
     /// </summary>
     public required string Email { get; init; }
     /// <summary>
-    /// Gets or sets the optional display name for the administrator.
+    /// Optional display name for the first administrator account.
     /// </summary>
     public string? UserName { get; init; }
     /// <summary>
-    /// Gets or sets the tenant boundary for tenant-scoped bootstrap.
+    /// Tenant boundary for tenant-scoped bootstrap.
     /// </summary>
     public Guid? TenantId { get; init; }
     /// <summary>
-    /// Gets or sets audit metadata for the request.
+    /// Audit metadata recorded with the bootstrap request.
     /// </summary>
     public AuditContext? Audit { get; init; }
     /// <summary>
-    /// Gets or sets the operator-controlled setup secret used to authorize bootstrap.
+    /// Operator-controlled setup secret required to authorize first-admin bootstrap. Do not log this value.
     /// </summary>
     public string? SetupSecret { get; init; }
 }

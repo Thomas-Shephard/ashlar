@@ -3,14 +3,14 @@ namespace Ashlar.Identity.Features.Services;
 internal static class IdentityUrlHelper
 {
     /// <summary>
-    /// Performs the construct callback url operation and returns the result.
+    /// Builds a callback URL containing token and user identifiers.
     /// </summary>
-    /// <param name="baseUri">The base uri value.</param>
-    /// <param name="tokenParam">The token param value.</param>
-    /// <param name="token">The token value.</param>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="userIdParam">The user id param value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="baseUri">Base callback URI validated by the caller.</param>
+    /// <param name="tokenParam">Query parameter name used for the raw token.</param>
+    /// <param name="token">Raw token to include in the callback URL. Do not log or persist this value.</param>
+    /// <param name="userId">User identifier to include in the callback URL.</param>
+    /// <param name="userIdParam">Query parameter name used for the user identifier.</param>
+    /// <returns>The callback URL to send to the user.</returns>
     public static string? ConstructCallbackUrl(Uri? baseUri, string tokenParam, string token, Guid? userId = null, string? userIdParam = null)
     {
         if (baseUri == null) return null;
@@ -33,13 +33,13 @@ internal static class IdentityUrlHelper
     }
 
     /// <summary>
-    /// Performs the format email body operation and returns the result.
+    /// Formats an email body with a callback link.
     /// </summary>
-    /// <param name="template">The template value.</param>
-    /// <param name="callbackUrl">The callback url value.</param>
-    /// <param name="fallbackLabel">The fallback label value.</param>
-    /// <param name="token">The token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="template">Body template that may contain callback placeholders.</param>
+    /// <param name="callbackUrl">Callback URL to insert into the body.</param>
+    /// <param name="fallbackLabel">Fallback link label when the template is empty.</param>
+    /// <param name="token">Raw token used only for legacy token placeholders. Do not log or persist this value.</param>
+    /// <returns>The formatted email body.</returns>
     public static string FormatEmailBody(string? template, string? callbackUrl, string? fallbackLabel = null, string? token = null)
     {
         if (template == null) return string.Empty;

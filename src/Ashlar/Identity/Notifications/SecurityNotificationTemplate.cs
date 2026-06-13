@@ -1,16 +1,16 @@
 namespace Ashlar.Identity.Notifications;
 
 /// <summary>
-/// Represents the security notification template data model.
+/// Defines subject and body text for a security notification.
 /// </summary>
 public sealed record SecurityNotificationTemplate
 {
     /// <summary>
-    /// Gets or sets the subject value.
+    /// Email subject template. Do not include secrets or credential values.
     /// </summary>
     public required string Subject { get; init; }
     /// <summary>
-    /// Gets or sets the body value.
+    /// Email body template. Do not include secrets or credential values in rendered output.
     /// </summary>
     public required string Body { get; init; }
 }

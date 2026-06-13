@@ -6,22 +6,22 @@ namespace Ashlar.Security.Tokens;
 public interface ISecureTokenGenerator
 {
     /// <summary>
-    /// Defines the default byte length value.
+    /// The default number of random bytes used for generated tokens.
     /// </summary>
     public const int DefaultByteLength = 32;
     /// <summary>
-    /// Defines the minimum byte length value.
+    /// The minimum supported random byte length.
     /// </summary>
     public const int MinimumByteLength = 32;
     /// <summary>
-    /// Defines the maximum byte length value.
+    /// The maximum supported random byte length.
     /// </summary>
     public const int MaximumByteLength = 192;
 
     /// <summary>
-    /// Generates a URL-safe token from the requested number of random bytes.
+    /// Generates a URL-safe raw token from the requested number of random bytes.
     /// </summary>
-    /// <param name="byteLength">The byte length value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="byteLength">The amount of random entropy to include before URL-safe encoding.</param>
+    /// <returns>A bearer token value. Display it only to the intended recipient and store only a hash when possible.</returns>
     string GenerateToken(int byteLength = DefaultByteLength);
 }

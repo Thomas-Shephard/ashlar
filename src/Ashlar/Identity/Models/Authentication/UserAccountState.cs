@@ -34,7 +34,7 @@ public static class UserAccountStates
     /// <summary>
     /// Gets whether the account state permits sign-in.
     /// </summary>
-    /// <param name="state">The account state value.</param>
+    /// <param name="state">Account state to evaluate.</param>
     /// <returns><see langword="true" /> when sign-in can proceed.</returns>
     public static bool CanSignIn(this UserAccountState state)
     {
@@ -44,7 +44,7 @@ public static class UserAccountStates
     /// <summary>
     /// Gets whether the user can sign in based on account state.
     /// </summary>
-    /// <param name="user">The user value.</param>
+    /// <param name="user">User whose account state should be evaluated.</param>
     /// <returns><see langword="true" /> when sign-in can proceed.</returns>
     public static bool CanSignIn(this IUser user)
     {
@@ -53,10 +53,10 @@ public static class UserAccountStates
     }
 
     /// <summary>
-    /// Gets the stable provider storage value.
+    /// Gets the stable storage string for a provider.
     /// </summary>
-    /// <param name="state">The account state value.</param>
-    /// <returns>The stable storage value.</returns>
+    /// <param name="state">Account state to serialize.</param>
+    /// <returns>Stable provider storage string.</returns>
     public static string ToStorageValue(this UserAccountState state)
     {
         return state switch
@@ -72,7 +72,7 @@ public static class UserAccountStates
     /// <summary>
     /// Parses a stable provider storage value.
     /// </summary>
-    /// <param name="value">The storage value.</param>
+    /// <param name="value">Stable provider storage string.</param>
     /// <returns>The account state.</returns>
     public static UserAccountState FromStorageValue(string value)
     {
@@ -89,8 +89,8 @@ public static class UserAccountStates
     /// <summary>
     /// Gets the safe security-event failure reason for an account state.
     /// </summary>
-    /// <param name="state">The account state value.</param>
-    /// <returns>The safe failure reason value.</returns>
+    /// <param name="state">Account state to map.</param>
+    /// <returns>Safe security-event failure reason.</returns>
     public static string ToSecurityFailureReason(this UserAccountState state)
     {
         return state switch

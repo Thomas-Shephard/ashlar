@@ -12,16 +12,16 @@ public interface ISecurityEventAdministrationService
     /// <summary>
     /// Searches recorded security events.
     /// </summary>
-    /// <param name="request">The search request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">Search filters and tenant scope supplied by an authorized administrator flow.</param>
+    /// <param name="cancellationToken">A token that can cancel the search.</param>
+    /// <returns>A result containing safe security event summaries, or a failure status.</returns>
     Task<Result<SecurityEventSearchResult>> SearchSecurityEventsAsync(SearchSecurityEventsRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets a recorded security event by id.
     /// </summary>
-    /// <param name="request">The detail request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">Security event identifier and tenant scope supplied by an authorized administrator flow.</param>
+    /// <param name="cancellationToken">A token that can cancel lookup.</param>
+    /// <returns>A result containing the safe event summary, or a failure status.</returns>
     Task<Result<SecurityEventSummary>> GetSecurityEventAsync(SecurityEventAdministrationDetailRequest request, CancellationToken cancellationToken = default);
 }

@@ -6,19 +6,19 @@ namespace Ashlar.Identity.Models.Sessions;
 public enum AuthenticationSessionValidationStatus
 {
     /// <summary>
-    /// Represents the failed value.
+    /// The token was missing, malformed, or did not match an active session. Avoid exposing the precise reason to untrusted clients.
     /// </summary>
     Failed = 0,
     /// <summary>
-    /// Represents the succeeded value.
+    /// The token matched an active, unexpired, unrevoked session.
     /// </summary>
     Succeeded = 1,
     /// <summary>
-    /// Represents the expired value.
+    /// The token matched a session whose lifetime has elapsed.
     /// </summary>
     Expired = 2,
     /// <summary>
-    /// Represents the revoked value.
+    /// The token matched a session that was explicitly revoked.
     /// </summary>
     Revoked = 3
 }

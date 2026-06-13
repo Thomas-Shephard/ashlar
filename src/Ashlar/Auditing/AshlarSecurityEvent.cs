@@ -11,67 +11,67 @@ public sealed record AshlarSecurityEvent
     public required Guid Id { get; init; }
 
     /// <summary>
-    /// Gets or sets the event type value.
+    /// Stable event type identifier, such as a value from <see cref="AshlarSecurityEventTypes" />.
     /// </summary>
     public required string EventType { get; init; }
 
     /// <summary>
-    /// Gets or sets the occurred at value.
+    /// Time the event occurred.
     /// </summary>
     public required DateTimeOffset OccurredAt { get; init; }
 
     /// <summary>
-    /// Gets or sets the user id value.
+    /// User affected by the security event, when known.
     /// </summary>
     public Guid? UserId { get; init; }
 
     /// <summary>
-    /// Gets or sets the tenant id value.
+    /// Tenant associated with the event, or <see langword="null" /> for global events.
     /// </summary>
     public Guid? TenantId { get; init; }
 
     /// <summary>
-    /// Gets or sets the actor user id value.
+    /// User that initiated the operation, when different from or more specific than <see cref="UserId" />.
     /// </summary>
     public Guid? ActorUserId { get; init; }
 
     /// <summary>
-    /// Gets or sets the session id value.
+    /// Session involved in the event, when known.
     /// </summary>
     public Guid? SessionId { get; init; }
 
     /// <summary>
-    /// Gets or sets the provider value.
+    /// Authentication provider involved in the event, when known.
     /// </summary>
     public AuthenticationProviderKey? Provider { get; init; }
 
     /// <summary>
-    /// Gets or sets the ip address value.
+    /// Client IP address captured for audit. Treat as personal data.
     /// </summary>
     public string? IpAddress { get; init; }
 
     /// <summary>
-    /// Gets or sets the user agent value.
+    /// Client user-agent captured for audit. Treat as user-supplied data.
     /// </summary>
     public string? UserAgent { get; init; }
 
     /// <summary>
-    /// Gets or sets the correlation id value.
+    /// Request or trace correlation identifier safe for operational logs.
     /// </summary>
     public string? CorrelationId { get; init; }
 
     /// <summary>
-    /// Gets or sets the outcome value.
+    /// Provider-neutral outcome, such as success or failure.
     /// </summary>
     public string? Outcome { get; init; }
 
     /// <summary>
-    /// Gets or sets the failure reason value.
+    /// Provider-neutral failure reason. Keep values generic enough for logs and administrative display.
     /// </summary>
     public string? FailureReason { get; init; }
 
     /// <summary>
-    /// Gets or sets the properties value.
+    /// Additional provider-neutral properties. Do not include secrets, raw tokens, hashes, credentials, or protected payloads.
     /// </summary>
     public IReadOnlyDictionary<string, string>? Properties { get; init; }
 }

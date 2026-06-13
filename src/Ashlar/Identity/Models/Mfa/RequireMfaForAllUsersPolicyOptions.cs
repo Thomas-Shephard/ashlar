@@ -6,15 +6,15 @@ namespace Ashlar.Identity.Models.Mfa;
 public sealed class RequireMfaForAllUsersPolicyOptions
 {
     /// <summary>
-    /// Gets or sets the required factors value.
+    /// Factor families required for every active user.
     /// </summary>
     public IList<string> RequiredFactors { get; } = [];
 
     /// <summary>
-    /// Performs the validate operation and returns the result.
+    /// Validates global MFA policy options.
     /// </summary>
-    /// <param name="options">The options value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="options">The options instance to validate.</param>
+    /// <returns><see langword="true" /> when at least one non-empty factor is configured.</returns>
     public static bool Validate(RequireMfaForAllUsersPolicyOptions? options)
     {
         return options is not null

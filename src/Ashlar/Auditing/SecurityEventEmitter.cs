@@ -86,55 +86,55 @@ internal sealed class SecurityEventEmitter(ISecurityEventSink? sink, TimeProvide
 internal sealed record SecurityEventDescriptor
 {
     /// <summary>
-    /// Gets or sets the event type value.
+    /// Security event type to record.
     /// </summary>
     public required string EventType { get; init; }
     /// <summary>
-    /// Gets or sets the outcome value.
+    /// Outcome to record for the event.
     /// </summary>
     public required string Outcome { get; init; }
     /// <summary>
-    /// Gets or sets the user id value.
+    /// Affected user identifier, when the event is user-scoped.
     /// </summary>
     public Guid? UserId { get; init; }
     /// <summary>
-    /// Gets or sets the tenant id value.
+    /// Tenant scope for the event, when available.
     /// </summary>
     public Guid? TenantId { get; init; }
     /// <summary>
-    /// Gets or sets the audit metadata value.
+    /// Host-supplied audit metadata to merge into the event.
     /// </summary>
     public AuditContext? Audit { get; init; }
     /// <summary>
-    /// Gets or sets the session id value.
+    /// Affected application session identifier, when available.
     /// </summary>
     public Guid? SessionId { get; init; }
     /// <summary>
-    /// Gets or sets the provider value.
+    /// Authentication provider associated with the event, when available.
     /// </summary>
     public AuthenticationProviderKey? Provider { get; init; }
     /// <summary>
-    /// Gets or sets the context value.
+    /// Authentication context used to fill missing tenant, actor, and request metadata.
     /// </summary>
     public AuthenticationContext? Context { get; init; }
     /// <summary>
-    /// Gets or sets the ip address value.
+    /// Fallback client IP address to use when audit and authentication context metadata omit it.
     /// </summary>
     public string? IpAddress { get; init; }
     /// <summary>
-    /// Gets or sets the user agent value.
+    /// Fallback client user-agent text to use when audit and authentication context metadata omit it.
     /// </summary>
     public string? UserAgent { get; init; }
     /// <summary>
-    /// Gets or sets the correlation id value.
+    /// Fallback correlation identifier to use when audit and authentication context metadata omit it.
     /// </summary>
     public string? CorrelationId { get; init; }
     /// <summary>
-    /// Gets or sets the failure reason value.
+    /// Provider-neutral failure reason for unsuccessful events.
     /// </summary>
     public string? FailureReason { get; init; }
     /// <summary>
-    /// Gets or sets the properties value.
+    /// Additional non-secret event properties. Do not include credentials, tokens, hashes, or protected payloads.
     /// </summary>
     public IReadOnlyDictionary<string, string>? Properties { get; init; }
 }

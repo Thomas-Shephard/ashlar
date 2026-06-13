@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Models.Mfa;
 
 /// <summary>
-/// Represents the mfa requirement data model.
+/// Lists secondary factor types required for the current authentication flow.
 /// </summary>
-/// <param name="RequiredFactors">The required factors value.</param>
+/// <param name="RequiredFactors">Provider-neutral factor type identifiers that must be verified.</param>
 public sealed record MfaRequirement(IEnumerable<string> RequiredFactors);

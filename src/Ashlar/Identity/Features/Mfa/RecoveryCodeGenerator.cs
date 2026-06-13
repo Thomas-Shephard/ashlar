@@ -14,9 +14,9 @@ internal static class RecoveryCodeGenerator
     /// <summary>
     /// Generates a human-readable recovery code.
     /// </summary>
-    /// <param name="length">The length value.</param>
-    /// <param name="groupSize">The group size value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="length">Number of random characters to include before separators.</param>
+    /// <param name="groupSize">Number of characters per displayed group.</param>
+    /// <returns>A recovery code formatted for user display.</returns>
     public static string GenerateCode(int length, int groupSize)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(length);

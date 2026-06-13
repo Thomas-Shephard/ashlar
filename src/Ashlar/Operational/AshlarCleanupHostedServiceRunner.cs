@@ -27,12 +27,12 @@ public sealed class AshlarCleanupHostedServiceRunner
     private readonly ILogger _logger;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="AshlarCleanupHostedServiceRunner" /> class.
+    /// Creates a hosted-service cleanup runner.
     /// </summary>
-    /// <param name="scopeFactory">The scope factory used to resolve cleanup services.</param>
-    /// <param name="timeProvider">The time provider used by the periodic timer.</param>
-    /// <param name="options">The cleanup options.</param>
-    /// <param name="logger">The logger used for cleanup run outcomes.</param>
+    /// <param name="scopeFactory">Scope factory used to resolve cleanup services for each run.</param>
+    /// <param name="timeProvider">Clock used by the periodic timer.</param>
+    /// <param name="options">Configured cleanup cadence, retention windows, and batch sizes.</param>
+    /// <param name="logger">Logger used for cleanup run outcomes.</param>
     public AshlarCleanupHostedServiceRunner(
         IServiceScopeFactory scopeFactory,
         TimeProvider timeProvider,

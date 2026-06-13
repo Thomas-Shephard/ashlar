@@ -8,7 +8,7 @@ public interface IAshlarCleanupDiagnostics
     /// <summary>
     /// Checks the Ashlar cleanup configuration.
     /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The diagnostic result.</returns>
+    /// <param name="cancellationToken">Token for aborting diagnostics work.</param>
+    /// <returns>Provider-neutral cleanup diagnostic result.</returns>
     Task<AshlarCleanupDiagnosticResult> CheckAsync(CancellationToken cancellationToken = default);
 }

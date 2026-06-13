@@ -10,10 +10,10 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.Identity.Features.Invitations;
 
 /// <summary>
-/// Provides invitation service behavior.
+/// Issues, accepts, and revokes invitations for tenant-aware account onboarding.
 /// </summary>
-/// <param name="dependencies">The dependencies value.</param>
-/// <param name="options">The options value.</param>
+/// <param name="dependencies">Storage, token, messaging, audit, and rate-limit dependencies.</param>
+/// <param name="options">Invitation lifetime, delivery, and throttling options.</param>
 internal sealed class InvitationService(
     InvitationDependencies dependencies,
     IOptions<InvitationOptions>? options = null) : IInvitationService
@@ -27,13 +27,13 @@ internal sealed class InvitationService(
     private readonly AuthenticationRateLimitChecker _rateLimitChecker = new(dependencies.RateLimiter);
 
     /// <summary>
-    /// Performs the create invitation <see langword="async" /> operation and returns the result.
+    /// Creates an invitation and sends the acceptance message.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="callbackBaseUri">The callback base uri value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">Invitation recipient, tenant, and role metadata.</param>
+    /// <param name="callbackBaseUri">Validated base URI used to build the acceptance callback.</param>
+    /// <param name="context">Authentication context used for audit and rate limiting.</param>
+    /// <param name="cancellationToken">A token that can cancel invitation creation.</param>
+    /// <returns>A result indicating whether the invitation was created and queued for delivery.</returns>
     public async Task<Result> CreateInvitationAsync(CreateInvitationRequest request, Uri callbackBaseUri, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -131,12 +131,12 @@ internal sealed class InvitationService(
     }
 
     /// <summary>
-    /// Performs the accept invitation <see langword="async" /> operation and returns the result.
+    /// Accepts an invitation by raw token and creates or attaches the user.
     /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="context">The context value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">Raw invitation token and acceptance details. Do not log or persist the token.</param>
+    /// <param name="context">Authentication context used for audit and rate limiting.</param>
+    /// <param name="cancellationToken">A token that can cancel invitation acceptance.</param>
+    /// <returns>The accepted or created user identifier, or a failure status.</returns>
     public async Task<Result<Guid>> AcceptInvitationAsync(AcceptInvitationRequest request, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -341,13 +341,13 @@ internal sealed class InvitationService(
     }
 
     /// <summary>
-    /// Performs the revoke invitations <see langword="async" /> operation and returns the result.
+    /// Revokes outstanding invitations for an email address.
     /// </summary>
-    /// <param name="email">The email value.</param>
-    /// <param name="tenantId">The tenant id value.</param>
-    /// <param name="audit">The audit metadata value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="email">Recipient email address whose invitations should be revoked.</param>
+    /// <param name="tenantId">Tenant scope to revoke within; omit only when intentionally revoking invitations across all tenant scopes for the email address.</param>
+    /// <param name="audit">Actor and request metadata to include in security events.</param>
+    /// <param name="cancellationToken">A token that can cancel revocation.</param>
+    /// <returns>A result indicating whether revocation completed.</returns>
     public async Task<Result> RevokeInvitationsAsync(string email, Guid? tenantId = null, AuditContext? audit = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);

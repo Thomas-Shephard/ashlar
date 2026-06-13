@@ -8,13 +8,13 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.Identity.Features.Authentication;
 
 /// <summary>
-/// Provides authentication orchestrator behavior.
+/// Coordinates provider authentication, MFA policy evaluation, and handshake issuance.
 /// </summary>
-/// <param name="pipeline">The pipeline value.</param>
-/// <param name="factorPipeline">The factor pipeline value.</param>
-/// <param name="handshakeService">The handshake service value.</param>
-/// <param name="policyEvaluator">The policy evaluator value.</param>
-/// <param name="providerRegistry">The provider registry value.</param>
+/// <param name="pipeline">Primary authentication pipeline.</param>
+/// <param name="factorPipeline">Secondary factor verification pipeline.</param>
+/// <param name="handshakeService">Handshake service used when MFA must continue outside the primary request.</param>
+/// <param name="policyEvaluator">Policy evaluator that decides whether MFA is required before session issuance.</param>
+/// <param name="providerRegistry">Registry used to inspect provider capabilities.</param>
 /// <param name="dependencies">Optional operational dependencies.</param>
 public sealed class AuthenticationOrchestrator(
     IAuthenticationPipeline pipeline,
@@ -426,7 +426,7 @@ public sealed class AuthenticationOrchestrator(
 /// </summary>
 /// <param name="GlobalOptions">The global orchestration options.</param>
 /// <param name="ServiceProvider">The service provider used for opt-in remembered MFA device support.</param>
-/// <param name="Logger">The logger.</param>
+/// <param name="Logger">Optional logger for authentication orchestration diagnostics.</param>
 public sealed record AuthenticationOrchestratorDependencies(
     IOptions<MfaOrchestrationOptions>? GlobalOptions = null,
     IServiceProvider? ServiceProvider = null,

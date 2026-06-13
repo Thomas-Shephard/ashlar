@@ -6,12 +6,12 @@ namespace Ashlar.Identity.RateLimiting.Models;
 public sealed class PrimaryAuthenticationRateLimitOptions
 {
     /// <summary>
-    /// Gets or sets a value indicating whether primary authentication rate limiting is enabled.
+    /// Whether primary authentication rate limiting is enabled.
     /// </summary>
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets the default rule applied to primary authentication attempts.
+    /// Default rule applied to primary authentication attempts.
     /// </summary>
     public RateLimitRule DefaultRule { get; set; } = new()
     {
@@ -34,8 +34,8 @@ public sealed class PrimaryAuthenticationRateLimitOptions
     /// <summary>
     /// Validates primary authentication rate-limit options.
     /// </summary>
-    /// <param name="options">The options value.</param>
-    /// <returns><see langword="true" /> when the options are valid.</returns>
+    /// <param name="options">Primary authentication rate-limit settings to validate.</param>
+    /// <returns><see langword="true" /> when primary authentication attempts can use the supplied settings.</returns>
     public static bool Validate(PrimaryAuthenticationRateLimitOptions? options)
     {
         if (options == null)

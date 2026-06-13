@@ -13,8 +13,8 @@ public interface IAccountRecoveryAdministrationExecutor
     /// <summary>
     /// Revokes TOTP credentials, recovery-code credentials, and remembered MFA devices for a user.
     /// </summary>
-    /// <param name="request">The destructive MFA reset request.</param>
-    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <param name="request">Target user, explicit scope, required audit metadata, and display-safe reason for the destructive MFA reset.</param>
+    /// <param name="cancellationToken">A token that can cancel destructive MFA reset work.</param>
     /// <returns>The operation counts and stable failure information.</returns>
     Task<Result<AccountSecurityOperationResult>> ResetMfaAsync(
         AccountRecoveryResetMfaRequest request,
@@ -23,8 +23,8 @@ public interface IAccountRecoveryAdministrationExecutor
     /// <summary>
     /// Revokes all active authentication sessions for a user.
     /// </summary>
-    /// <param name="request">The destructive session revocation request.</param>
-    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <param name="request">Target user, explicit scope, required audit metadata, and display-safe reason for destructive session revocation.</param>
+    /// <param name="cancellationToken">A token that can cancel destructive session revocation.</param>
     /// <returns>The operation counts and stable failure information.</returns>
     Task<Result<AccountSecurityOperationResult>> RevokeSessionsAsync(
         AccountRecoveryRevokeSessionsRequest request,
@@ -33,8 +33,8 @@ public interface IAccountRecoveryAdministrationExecutor
     /// <summary>
     /// Revokes all active credentials for a user matching the requested provider key.
     /// </summary>
-    /// <param name="request">The destructive provider credential revocation request.</param>
-    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <param name="request">Target user, provider key, explicit scope, required audit metadata, and display-safe reason for destructive credential revocation.</param>
+    /// <param name="cancellationToken">A token that can cancel destructive credential revocation.</param>
     /// <returns>The operation counts and stable failure information.</returns>
     Task<Result<AccountSecurityOperationResult>> RevokeProviderCredentialsAsync(
         AccountRecoveryRevokeProviderCredentialsRequest request,

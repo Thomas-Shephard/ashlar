@@ -9,7 +9,7 @@ public sealed class NullEmailSender : IEmailSender
     /// Validates the message and completes without delivering it.
     /// </summary>
     /// <param name="message">The message to validate.</param>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <param name="cancellationToken">A token that can cancel validation before completion.</param>
     public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(message);

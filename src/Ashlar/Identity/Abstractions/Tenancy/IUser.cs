@@ -1,28 +1,28 @@
 namespace Ashlar.Identity.Abstractions.Tenancy;
 
 /// <summary>
-/// Defines the contract for iuser operations.
+/// Describes the account fields Ashlar needs from a host user record.
 /// </summary>
 public interface IUser
 {
     /// <summary>
-    /// Gets the id value.
+    /// Stable user identifier.
     /// </summary>
     Guid Id { get; }
     /// <summary>
-    /// Gets the email value.
+    /// Normalized email address used for account lookup and notifications.
     /// </summary>
     string Email { get; }
     /// <summary>
-    /// Gets the name value.
+    /// Optional display name supplied by the host application.
     /// </summary>
     string? Name { get; }
     /// <summary>
-    /// Gets the account state value.
+    /// Account state that controls whether authentication can continue.
     /// </summary>
     UserAccountState AccountState { get; }
     /// <summary>
-    /// Gets the email verified at value.
+    /// UTC time when the email address was verified, when known.
     /// </summary>
     DateTimeOffset? EmailVerifiedAt { get; }
 }

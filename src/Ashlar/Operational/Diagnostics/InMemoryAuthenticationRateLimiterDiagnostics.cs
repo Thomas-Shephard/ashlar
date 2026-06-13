@@ -5,8 +5,8 @@ namespace Ashlar.Operational.Diagnostics;
 /// <summary>
 /// Provides diagnostics for Ashlar's in-memory authentication rate limiter.
 /// </summary>
-/// <param name="rateLimiter">The rate limiter value.</param>
-/// <param name="timeProvider">The time provider value.</param>
+/// <param name="rateLimiter">In-memory limiter whose aggregate state should be reported.</param>
+/// <param name="timeProvider">Clock used to stamp diagnostic results.</param>
 public sealed class InMemoryAuthenticationRateLimiterDiagnostics(
     InMemoryAuthenticationRateLimiter rateLimiter,
     TimeProvider timeProvider) : IAuthenticationRateLimiterDiagnostics

@@ -6,10 +6,10 @@ namespace Ashlar.Identity.Providers.RecoveryCode;
 public sealed record RecoveryCodeAssertion : IAuthenticationAssertion
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="RecoveryCodeAssertion"/> class.
+    /// Creates an assertion for a submitted recovery code.
     /// </summary>
-    /// <param name="code">The code value.</param>
-    /// <param name="providerIdentity">The provider identity value.</param>
+    /// <param name="code">User-submitted recovery code. Do not log this value.</param>
+    /// <param name="providerIdentity">Recovery-code provider key to authenticate against, or <see langword="null" /> to use the default recovery-code provider.</param>
     public RecoveryCodeAssertion(string code, AuthenticationProviderKey? providerIdentity = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
@@ -18,7 +18,7 @@ public sealed record RecoveryCodeAssertion : IAuthenticationAssertion
     }
 
     /// <summary>
-    /// Gets the recovery code.
+    /// User-submitted recovery code. Do not log this value.
     /// </summary>
     public string Code { get; }
 

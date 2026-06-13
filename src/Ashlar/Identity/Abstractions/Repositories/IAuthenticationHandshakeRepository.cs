@@ -1,34 +1,34 @@
 namespace Ashlar.Identity.Abstractions.Repositories;
 
 /// <summary>
-/// Defines the contract for authentication handshake repository operations.
+/// Persists short-lived authentication handshakes used for MFA and step-up flows.
 /// </summary>
 public interface IAuthenticationHandshakeRepository
 {
     /// <summary>
-    /// Performs the create <see langword="async" /> operation and returns the result.
+    /// Stores a newly issued handshake.
     /// </summary>
-    /// <param name="handshake">The handshake value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="handshake">Handshake record to persist. It contains only a token hash, not the raw token.</param>
+    /// <param name="cancellationToken">A token that can cancel persistence.</param>
+    /// <returns>A task that completes when the handshake has been stored.</returns>
     Task CreateAsync(AuthenticationHandshake handshake, CancellationToken cancellationToken = default);
     /// <summary>
-    /// Performs the find by token hash <see langword="async" /> operation and returns the result.
+    /// Finds a handshake by its storage-safe token hash.
     /// </summary>
-    /// <param name="tokenHash">The token hash value.</param>
+    /// <param name="tokenHash">Storage-safe hash of the raw handshake token presented by a caller.</param>
     /// <param name="forUpdate">When <see langword="true" />, requests an exclusive read suitable for a subsequent state change.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="cancellationToken">A token that can cancel lookup.</param>
+    /// <returns>The matching handshake, or <see langword="null" /> when none exists.</returns>
     /// <remarks>
     /// This is a provider-neutral lock intent. Relational providers may implement it with row-level locking,
     /// optimistic version checks, or an equivalent single-writer strategy appropriate to the backing store.
     /// </remarks>
     Task<AuthenticationHandshake?> FindByTokenHashAsync(string tokenHash, bool forUpdate = false, CancellationToken cancellationToken = default);
     /// <summary>
-    /// Performs the update <see langword="async" /> operation and returns the result.
+    /// Updates handshake state after verification, completion, or revocation.
     /// </summary>
-    /// <param name="handshake">The handshake value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <param name="handshake">Updated handshake record to persist.</param>
+    /// <param name="cancellationToken">A token that can cancel the update.</param>
     /// <returns><see langword="true" /> when the handshake was updated; otherwise, <see langword="false" />.</returns>
     Task<bool> UpdateAsync(AuthenticationHandshake handshake, CancellationToken cancellationToken = default);
 }

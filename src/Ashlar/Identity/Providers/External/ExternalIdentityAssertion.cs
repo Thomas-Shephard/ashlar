@@ -6,12 +6,12 @@ namespace Ashlar.Identity.Providers.External;
 public sealed record ExternalIdentityAssertion : ICredentialKeyAuthenticationAssertion
 {
     /// <summary>
-    /// Initializes a new instance of the external identity assertion class.
+    /// Creates an assertion for an identity already validated by an external provider.
     /// </summary>
-    /// <param name="type">The type value.</param>
-    /// <param name="providerName">The provider name value.</param>
-    /// <param name="providerKey">The provider key value.</param>
-    /// <param name="claims">The multi-value claims value.</param>
+    /// <param name="type">External provider family, such as OIDC, OAuth, or SAML2.</param>
+    /// <param name="providerName">Configured external provider name.</param>
+    /// <param name="providerKey">Stable subject identifier from the external provider.</param>
+    /// <param name="claims">Claims from the already-validated external identity.</param>
     public ExternalIdentityAssertion(ProviderType type, string providerName, string providerKey, IReadOnlyDictionary<string, IReadOnlyList<string>> claims)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerKey);
@@ -23,19 +23,19 @@ public sealed record ExternalIdentityAssertion : ICredentialKeyAuthenticationAss
     }
 
     /// <summary>
-    /// Initializes a new instance of the external identity assertion class from single-value claims.
+    /// Creates an assertion from single-value external identity claims.
     /// </summary>
-    /// <param name="type">The type value.</param>
-    /// <param name="providerName">The provider name value.</param>
-    /// <param name="providerKey">The provider key value.</param>
-    /// <param name="claims">The single-value claims value.</param>
+    /// <param name="type">External provider family, such as OIDC, OAuth, or SAML2.</param>
+    /// <param name="providerName">Configured external provider name.</param>
+    /// <param name="providerKey">Stable subject identifier from the external provider.</param>
+    /// <param name="claims">Claims from the already-validated external identity.</param>
     public ExternalIdentityAssertion(ProviderType type, string providerName, string providerKey, IDictionary<string, string> claims)
         : this(type, providerName, providerKey, AuthenticationClaims.FromSingleValues(claims))
     {
     }
 
     /// <summary>
-    /// Gets or sets the provider key value.
+    /// Stable external subject identifier used to resolve the stored credential.
     /// </summary>
     public string ProviderKey { get; }
 
@@ -43,12 +43,12 @@ public sealed record ExternalIdentityAssertion : ICredentialKeyAuthenticationAss
     public string CredentialKey => ProviderKey;
 
     /// <summary>
-    /// Gets or sets the claims value.
+    /// Claims supplied by the already-validated external identity.
     /// </summary>
     public IReadOnlyDictionary<string, IReadOnlyList<string>> Claims { get; }
 
     /// <summary>
-    /// Gets or sets the provider identity value.
+    /// Configured external provider identity that issued the assertion.
     /// </summary>
     public AuthenticationProviderKey ProviderIdentity { get; }
 }

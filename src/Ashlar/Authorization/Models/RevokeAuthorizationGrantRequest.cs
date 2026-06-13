@@ -3,9 +3,9 @@ using Ashlar.Auditing;
 namespace Ashlar.Authorization.Models;
 
 /// <summary>
-/// Represents the revoke authorization grant request data model.
+/// Request to revoke an authorization grant.
 /// </summary>
-/// <param name="GrantId">The grant id value.</param>
-/// <param name="TenantId">The tenant id value of the grant to revoke. A <see langword="null" /> value matches only global grants.</param>
-/// <param name="Audit">The audit metadata value.</param>
+/// <param name="GrantId">Stable authorization grant identifier to revoke.</param>
+/// <param name="TenantId">Tenant boundary that must match the grant. A <see langword="null" /> value matches only global grants.</param>
+/// <param name="Audit">Actor and request context to include in emitted security events.</param>
 public sealed record RevokeAuthorizationGrantRequest(Guid GrantId, Guid? TenantId = null, AuditContext? Audit = null);

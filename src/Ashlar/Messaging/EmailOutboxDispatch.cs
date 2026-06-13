@@ -9,83 +9,83 @@ namespace Ashlar.Messaging;
 public sealed class EmailOutboxEntry
 {
     /// <summary>
-    /// Gets or sets the id value.
+    /// Unique identifier for the outbox entry.
     /// </summary>
     public Guid Id { get; init; }
 
     /// <summary>
-    /// Gets or sets the to address value.
+    /// Recipient address. Treat as personal data.
     /// </summary>
     public required string ToAddress { get; init; }
 
     /// <summary>
-    /// Gets or sets the from address value.
+    /// Optional sender address.
     /// </summary>
     public string? FromAddress { get; init; }
 
     /// <summary>
-    /// Gets or sets the reply to address value.
+    /// Optional reply-to address.
     /// </summary>
     public string? ReplyToAddress { get; init; }
 
     /// <summary>
-    /// Gets or sets the CC address value.
+    /// Optional comma-separated CC addresses. Treat as personal data.
     /// </summary>
     public string? CcAddress { get; init; }
 
     /// <summary>
-    /// Gets or sets the BCC address value.
+    /// Optional comma-separated BCC addresses. Treat as personal data.
     /// </summary>
     public string? BccAddress { get; init; }
 
     /// <summary>
-    /// Gets or sets the subject value.
+    /// Message subject persisted in the outbox.
     /// </summary>
     public required string Subject { get; init; }
 
     /// <summary>
-    /// Gets or sets the text body value.
+    /// Plain-text body, protected according to <see cref="BodyProtection" />.
     /// </summary>
     public string? TextBody { get; init; }
 
     /// <summary>
-    /// Gets or sets the html body value.
+    /// HTML body, protected according to <see cref="BodyProtection" />.
     /// </summary>
     public string? HtmlBody { get; init; }
 
     /// <summary>
-    /// Gets or sets the serialized headers value.
+    /// Serialized message headers. Do not store credentials or bearer tokens in headers.
     /// </summary>
     public string? Headers { get; init; }
 
     /// <summary>
-    /// Gets or sets the serialized metadata value.
+    /// Serialized provider-neutral metadata for diagnostics and dispatch. Do not store secrets.
     /// </summary>
     public string? Metadata { get; init; }
 
     /// <summary>
-    /// Gets or sets the message sensitivity value.
+    /// Sensitivity classification used to decide whether error details and bodies require protection.
     /// </summary>
     public EmailMessageSensitivity Sensitivity { get; init; } = EmailMessageSensitivity.Normal;
 
     /// <summary>
-    /// Gets or sets the body protection value.
+    /// Protection applied to persisted body columns.
     /// </summary>
     public EmailOutboxBodyProtection BodyProtection { get; init; } = EmailOutboxBodyProtection.None;
 
     /// <summary>
-    /// Gets or sets the attempt count value.
+    /// Number of delivery attempts already made for this entry.
     /// </summary>
     public int AttemptCount { get; init; }
 }
 
 /// <summary>
-/// Represents a computed outbox delivery failure update.
+/// Provider-neutral values to persist after an email delivery failure.
 /// </summary>
-/// <param name="AttemptCount">The new attempt count.</param>
-/// <param name="FailedAt">The final failure timestamp, if attempts are exhausted.</param>
-/// <param name="AvailableAt">The next availability timestamp.</param>
-/// <param name="LastError">The truncated error text.</param>
+/// <param name="AttemptCount">Delivery attempt count after recording this failure.</param>
+/// <param name="FailedAt">UTC time recorded for final failure, if attempts are exhausted.</param>
+/// <param name="AvailableAt">UTC time when the outbox row may be retried.</param>
+/// <param name="LastError">Truncated diagnostic error text. Sensitive messages use a generic value.</param>
 public sealed record EmailOutboxFailureUpdate(
     int AttemptCount,
     DateTimeOffset? FailedAt,
@@ -93,25 +93,25 @@ public sealed record EmailOutboxFailureUpdate(
     string LastError);
 
 /// <summary>
-/// Represents protected body values ready to persist in an email outbox.
+/// Body column values prepared for email outbox persistence.
 /// </summary>
-/// <param name="TextBody">The persisted text body.</param>
-/// <param name="HtmlBody">The persisted HTML body.</param>
-/// <param name="BodyProtection">The body protection marker.</param>
+/// <param name="TextBody">Text body value after any required protection.</param>
+/// <param name="HtmlBody">HTML body value after any required protection.</param>
+/// <param name="BodyProtection">Marker describing how persisted body values are protected.</param>
 public sealed record EmailOutboxStoredBodies(
     string? TextBody,
     string? HtmlBody,
     EmailOutboxBodyProtection BodyProtection);
 
 /// <summary>
-/// Provides callbacks and services for dispatching a durable email outbox entry.
+/// Provider callbacks and <paramref name="Transport" /> dependency used to dispatch one durable outbox entry.
 /// </summary>
 /// <param name="Transport">The email transport.</param>
 /// <param name="MaxAttempts">The maximum configured delivery attempts.</param>
-/// <param name="MarkAsSentAsync">The callback that persists successful delivery state.</param>
-/// <param name="MarkAsFailedAsync">The callback that persists failed delivery state.</param>
-/// <param name="LogDeliveryFailed">The callback that logs failed delivery attempts.</param>
-/// <param name="SecretProtector">The optional secret protector used to unprotect protected bodies.</param>
+/// <param name="MarkAsSentAsync">Callback that persists successful delivery state.</param>
+/// <param name="MarkAsFailedAsync">Callback that persists failed delivery state.</param>
+/// <param name="LogDeliveryFailed">Callback that logs failed delivery attempts.</param>
+/// <param name="SecretProtector">Optional secret protector used to unprotect protected bodies.</param>
 public sealed record EmailOutboxDispatchContext(
     IEmailTransport Transport,
     int MaxAttempts,
@@ -153,10 +153,10 @@ public static class EmailOutboxDispatch
     /// <summary>
     /// Sends a durable outbox entry and applies the provided success or failure persistence callbacks.
     /// </summary>
-    /// <param name="entry">The outbox entry.</param>
-    /// <param name="context">The dispatch context.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>A task that represents the asynchronous dispatch operation.</returns>
+    /// <param name="entry">The outbox entry to send and mutate through callbacks.</param>
+    /// <param name="context">Transport and persistence callbacks supplied by the provider.</param>
+    /// <param name="cancellationToken">A token that can cancel delivery before provider callbacks are invoked.</param>
+    /// <returns>A task that completes after delivery succeeds or the failure callbacks have persisted the failure state.</returns>
     public static async Task DispatchAsync(
         EmailOutboxEntry entry,
         EmailOutboxDispatchContext context,
@@ -188,13 +188,13 @@ public static class EmailOutboxDispatch
     /// <summary>
     /// Computes the provider-specific values used to mark a failed delivery attempt.
     /// </summary>
-    /// <param name="attemptCount">The current attempt count.</param>
-    /// <param name="maxAttempts">The configured max attempts.</param>
-    /// <param name="initialRetryDelay">The initial retry delay.</param>
-    /// <param name="now">The current UTC time.</param>
-    /// <param name="exception">The delivery exception.</param>
-    /// <param name="suppressErrorDetails">A value indicating whether exception details should be suppressed.</param>
-    /// <returns>The computed failure update.</returns>
+    /// <param name="attemptCount">Delivery attempt count before recording this failure.</param>
+    /// <param name="maxAttempts">Configured delivery attempt limit.</param>
+    /// <param name="initialRetryDelay">Base delay used to calculate exponential retry backoff.</param>
+    /// <param name="now">UTC time used to decide the next retry or final failure timestamp.</param>
+    /// <param name="exception">Delivery exception from the transport.</param>
+    /// <param name="suppressErrorDetails">Whether exception details should be suppressed because the message may contain secrets.</param>
+    /// <returns>Failure update to persist for the outbox row.</returns>
     public static EmailOutboxFailureUpdate CreateFailureUpdate(
         int attemptCount,
         int maxAttempts,
@@ -227,7 +227,7 @@ public static class EmailOutboxDispatch
     /// <summary>
     /// Determines whether failure details should be suppressed for a persisted email outbox entry.
     /// </summary>
-    /// <param name="entry">The outbox entry.</param>
+    /// <param name="entry">Persisted outbox entry whose sensitivity and body protection are inspected.</param>
     /// <returns><see langword="true"/> when failure details may contain sensitive content.</returns>
     public static bool ShouldSuppressFailureDetails(EmailOutboxEntry entry)
     {
@@ -240,9 +240,9 @@ public static class EmailOutboxDispatch
     /// <summary>
     /// Maps a persisted outbox entry to an email message.
     /// </summary>
-    /// <param name="entry">The outbox entry.</param>
-    /// <param name="secretProtector">The optional secret protector used to unprotect protected bodies.</param>
-    /// <returns>The email message.</returns>
+    /// <param name="entry">Persisted outbox entry to map for delivery.</param>
+    /// <param name="secretProtector">Optional secret protector used to unprotect protected bodies.</param>
+    /// <returns>Email message ready for transport delivery.</returns>
     public static EmailMessage MapToEmailMessage(EmailOutboxEntry entry, ISecretProtector? secretProtector = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -273,7 +273,7 @@ public static class EmailOutboxDispatch
     /// <summary>
     /// Parses a persisted sensitivity value into a safe message sensitivity.
     /// </summary>
-    /// <param name="value">The persisted sensitivity value.</param>
+    /// <param name="value">Persisted sensitivity marker from the outbox row.</param>
     /// <returns>The parsed sensitivity, or <see cref="EmailMessageSensitivity.Normal"/> for unknown values.</returns>
     public static EmailMessageSensitivity ParseSensitivity(string? value)
     {
@@ -288,9 +288,9 @@ public static class EmailOutboxDispatch
     /// <summary>
     /// Protects body values before an email outbox row is persisted.
     /// </summary>
-    /// <param name="message">The email message.</param>
-    /// <param name="secretProtector">The optional secret protector.</param>
-    /// <returns>The persisted body values and protection marker.</returns>
+    /// <param name="message">Email message whose bodies will be persisted.</param>
+    /// <param name="secretProtector">Optional secret protector required for messages containing live secrets.</param>
+    /// <returns>Body values and protection marker to store in the outbox row.</returns>
     public static EmailOutboxStoredBodies ProtectBodiesForStorage(EmailMessage message, ISecretProtector? secretProtector = null)
     {
         ArgumentNullException.ThrowIfNull(message);
@@ -312,10 +312,10 @@ public static class EmailOutboxDispatch
     }
 
     /// <summary>
-    /// Parses a persisted body protection value.
+    /// Parses a persisted body protection marker.
     /// </summary>
-    /// <param name="value">The persisted body protection value.</param>
-    /// <returns>The parsed body protection value.</returns>
+    /// <param name="value">Persisted body protection marker from the outbox row.</param>
+    /// <returns>Parsed body protection marker.</returns>
     public static EmailOutboxBodyProtection ParseBodyProtection(string? value)
     {
         if (value != null && value.Equals(nameof(EmailOutboxBodyProtection.None), StringComparison.OrdinalIgnoreCase))

@@ -16,9 +16,9 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's framework-neutral authorization grant services.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">Service collection to add authorization services to.</param>
+    /// <param name="configure">Optional authorization grant configuration callback.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     /// <remarks>
     /// This method intentionally does not register <see cref="IAuthorizationGrantRepository"/>.
     /// Applications should provide that dependency explicitly, such as by using Ashlar.Postgres.

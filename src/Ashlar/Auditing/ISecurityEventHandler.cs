@@ -15,8 +15,8 @@ public interface ISecurityEventHandler
     /// <summary>
     /// Handles a security event.
     /// </summary>
-    /// <param name="securityEvent">The security event value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>A task that represents the asynchronous handle operation.</returns>
+    /// <param name="securityEvent">The provider-neutral security event to observe.</param>
+    /// <param name="cancellationToken">A token that can cancel event handling.</param>
+    /// <returns>A task that completes after the handler has observed the event.</returns>
     Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default);
 }

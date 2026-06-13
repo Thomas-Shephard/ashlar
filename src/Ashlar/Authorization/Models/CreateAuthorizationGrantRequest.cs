@@ -3,17 +3,18 @@ using Ashlar.Auditing;
 namespace Ashlar.Authorization.Models;
 
 /// <summary>
-/// Represents the create authorization grant request data model.
+/// Request to create an authorization grant for a user.
 /// </summary>
-/// <param name="UserId">The user id value.</param>
-/// <param name="TenantId">The tenant id value.</param>
-/// <param name="ScopeType">The scope type value.</param>
-/// <param name="ScopeId">The scope id value.</param>
-/// <param name="Role">The role value.</param>
-/// <param name="Permission">The permission value.</param>
-/// <param name="ExpiresAt">The expires at value.</param>
-/// <param name="Metadata">The metadata value.</param>
-/// <param name="Audit">The audit context value.</param>
+/// <param name="UserId">The user that will receive the grant.</param>
+/// <param name="TenantId">Tenant boundary that bounds the grant, or <see langword="null" /> for a global grant.</param>
+/// <param name="ScopeType">Optional resource type that further constrains the grant.</param>
+/// <param name="ScopeId">Optional resource identifier within <paramref name="ScopeType" />.</param>
+/// <param name="Role">Role to grant. Callers should supply either <paramref name="Role" /> or <paramref name="Permission" />.</param>
+/// <param name="Permission">Permission to grant. Callers should supply either <paramref name="Permission" /> or <paramref name="Role" />.</param>
+/// <param name="ExpiresAt">Optional time after which the grant should stop applying.</param>
+/// <param name="Metadata">Provider-neutral administrative <paramref name="Metadata" />. Do not include secrets or credentials.</param>
+/// <param name="Audit">Actor and request context to include in emitted security events.</param>
+/// <remarks>Callers must authorize the actor before creating grants; this request object does not perform that check.</remarks>
 public sealed record CreateAuthorizationGrantRequest(
     Guid UserId,
     Guid? TenantId = null,

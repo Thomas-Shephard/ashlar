@@ -11,9 +11,9 @@ public record AccountSecurityOperationRequest
     /// Initializes account-security operation metadata and validates that its <paramref name="Tenant" /> scope is explicit.
     /// </summary>
     /// <param name="Audit">Audit metadata recorded with the account-security operation.</param>
-    /// <param name="Tenant">The <paramref name="Tenant" /> scope for the target user. Use <see cref="TenantContext.Global" /> for global users.</param>
-    /// <param name="Reason">Optional safe reason recorded with revocation and security events.</param>
-    /// <param name="IncludeAllTenants">Whether to run the operation across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+    /// <param name="Tenant">Scope for the target user. Use <see cref="TenantContext.Global" /> for global users.</param>
+    /// <param name="Reason">Optional provider-neutral, display-safe reason recorded with revocation and security events. Do not include secrets, tokens, or credentials.</param>
+    /// <param name="IncludeAllTenants">Whether to remove scope filtering for the specified user. Cannot be combined with <paramref name="Tenant" />.</param>
     public AccountSecurityOperationRequest(
         AuditContext Audit,
         TenantContext? Tenant = null,
@@ -27,16 +27,16 @@ public record AccountSecurityOperationRequest
         ThrowIfInvalidScope();
     }
 
-    /// <summary>Gets audit metadata recorded with the account-security operation.</summary>
+    /// <summary>Audit metadata recorded with the account-security operation.</summary>
     public AuditContext Audit { get; }
 
-    /// <summary>Gets the tenant scope for the target user, or <see langword="null" /> when <see cref="IncludeAllTenants" /> is enabled.</summary>
+    /// <summary>Tenant scope for the target user, or <see langword="null" /> when <see cref="IncludeAllTenants" /> is enabled.</summary>
     public TenantContext? Tenant { get; }
 
-    /// <summary>Gets the optional safe reason recorded with revocation and security events.</summary>
+    /// <summary>Optional provider-neutral, display-safe reason recorded with revocation and security events. Do not include secrets, tokens, or credentials.</summary>
     public string? Reason { get; }
 
-    /// <summary>Gets whether the operation runs without tenant filtering.</summary>
+    /// <summary>Whether scope filtering is removed for the specified user.</summary>
     public bool IncludeAllTenants { get; }
 
     /// <summary>
@@ -56,12 +56,12 @@ public sealed record SetUserAccountStateRequest : AccountSecurityOperationReques
     /// <summary>
     /// Initializes account-state change metadata and validates that its <paramref name="Tenant" /> scope is explicit.
     /// </summary>
-    /// <param name="AccountState">The target account state.</param>
+    /// <param name="AccountState">State to apply to the target account.</param>
     /// <param name="Audit">Audit metadata recorded with the account-state operation.</param>
-    /// <param name="Tenant">The <paramref name="Tenant" /> scope for the target user. Use <see cref="TenantContext.Global" /> for global users.</param>
-    /// <param name="Reason">Optional safe reason recorded with revocation and security events.</param>
+    /// <param name="Tenant">Scope for the target user. Use <see cref="TenantContext.Global" /> for global users.</param>
+    /// <param name="Reason">Optional provider-neutral, display-safe reason recorded with revocation and security events. Do not include secrets, tokens, or credentials.</param>
     /// <param name="RevokeSessionsAndRememberedMfaDevices">Whether transitions to non-active states revoke active sessions and remembered MFA devices.</param>
-    /// <param name="IncludeAllTenants">Whether to run the operation across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+    /// <param name="IncludeAllTenants">Whether to remove scope filtering for the specified user. Cannot be combined with <paramref name="Tenant" />.</param>
     public SetUserAccountStateRequest(
         UserAccountState AccountState,
         AuditContext Audit,
@@ -75,17 +75,17 @@ public sealed record SetUserAccountStateRequest : AccountSecurityOperationReques
         this.RevokeSessionsAndRememberedMfaDevices = RevokeSessionsAndRememberedMfaDevices;
     }
 
-    /// <summary>Gets the requested account state.</summary>
+    /// <summary>Account state to apply to the target account.</summary>
     public UserAccountState AccountState { get; }
 
-    /// <summary>Gets whether transitions to non-active states revoke active sessions and remembered MFA devices.</summary>
+    /// <summary>Whether transitions to non-active states revoke active sessions and remembered MFA devices.</summary>
     public bool RevokeSessionsAndRememberedMfaDevices { get; }
 }
 
 /// <summary>
 /// Result counts from an administrator account security operation.
 /// </summary>
-/// <param name="UserId">The affected user id.</param>
+/// <param name="UserId">Affected user identifier.</param>
 /// <param name="UserChanged">Whether the user row was updated.</param>
 /// <param name="SessionsRevoked">The number of active sessions revoked.</param>
 /// <param name="CredentialsRevoked">The number of credentials revoked.</param>
@@ -104,7 +104,7 @@ public sealed record AccountSecurityOperationResult(
 /// <summary>
 /// Request metadata for an account-security posture lookup.
 /// </summary>
-/// <param name="Tenant">Optional tenant scope for the account being inspected.</param>
+/// <param name="Tenant">Tenant scope that must match the inspected user. Use <see cref="TenantContext.Global" /> for global users; this request does not use <see langword="null" /> as an all-scope lookup.</param>
 /// <param name="RecentSecurityEventWindow">Optional window used to count recent security events.</param>
 public record AccountSecurityPostureRequest(
     TenantContext? Tenant = null,
@@ -134,20 +134,20 @@ public enum CredentialPosturePurpose
 /// <summary>
 /// Safe account credential inventory item.
 /// </summary>
-/// <param name="CredentialId">The credential id value.</param>
-/// <param name="Provider">The provider key value.</param>
-/// <param name="DisplayName">The display name value.</param>
-/// <param name="Purpose">The posture purpose value.</param>
-/// <param name="FactorType">The additional verification factor type value.</param>
+/// <param name="CredentialId">Stable credential identifier.</param>
+/// <param name="Provider">Provider key for the credential.</param>
+/// <param name="DisplayName">Display-safe credential label.</param>
+/// <param name="Purpose">How the credential participates in sign-in or additional verification.</param>
+/// <param name="FactorType">Additional verification factor family satisfied by the credential, when applicable.</param>
 /// <param name="IsPrimaryCredential">Whether this is a primary credential.</param>
 /// <param name="IsAdditionalVerificationFactor">Whether this can satisfy additional verification.</param>
 /// <param name="IsAvailable">Whether this credential is active and unexpired.</param>
 /// <param name="IsRevocable">Whether this credential can be revoked.</param>
 /// <param name="IsResettable">Whether this credential can be reset by MFA reset operations.</param>
-/// <param name="CreatedAt">The credential creation time.</param>
-/// <param name="LastUsedAt">The last successful use time.</param>
-/// <param name="ExpiresAt">The expiration time value.</param>
-/// <param name="Status">The lifecycle status value.</param>
+/// <param name="CreatedAt">UTC time when the credential was created.</param>
+/// <param name="LastUsedAt">UTC time when the credential last authenticated successfully, when known.</param>
+/// <param name="ExpiresAt">Credential expiration time, when one is set.</param>
+/// <param name="Status">Current credential lifecycle status.</param>
 public sealed record CredentialPostureItem(
     Guid CredentialId,
     AuthenticationProviderKey Provider,
@@ -167,11 +167,11 @@ public sealed record CredentialPostureItem(
 /// <summary>
 /// Describes a configured additional verification factor family.
 /// </summary>
-/// <param name="FactorType">The factor type value.</param>
-/// <param name="DisplayName">The display name value.</param>
+/// <param name="FactorType">Additional verification factor family.</param>
+/// <param name="DisplayName">Display-safe factor label.</param>
 /// <param name="IsConfigured">Whether this factor is configured.</param>
 /// <param name="IsUsable">Whether this factor has at least one usable credential.</param>
-/// <param name="Providers">The provider keys backing this factor.</param>
+/// <param name="Providers">Authentication provider keys backing this factor.</param>
 public sealed record AdditionalVerificationFactorPosture(
     string FactorType,
     string DisplayName,
@@ -183,11 +183,11 @@ public sealed record AdditionalVerificationFactorPosture(
 /// Describes the MFA and step-up policy posture for an account.
 /// </summary>
 /// <param name="IsAdditionalVerificationRequired">Whether policy requires additional verification.</param>
-/// <param name="RequiredFactorTypes">The required factor type values.</param>
-/// <param name="AllowedFactorTypes">The allowed factor type values.</param>
+/// <param name="RequiredFactorTypes">Factor families that policy requires.</param>
+/// <param name="AllowedFactorTypes">Factor families that may satisfy policy.</param>
 /// <param name="HasUsableAdditionalVerificationFactor">Whether any usable additional verification factor exists.</param>
 /// <param name="IsReadyForAdditionalVerification">Whether the user can satisfy the current policy.</param>
-/// <param name="MissingRequiredFactorTypes">The missing required factor type values.</param>
+/// <param name="MissingRequiredFactorTypes">Required factor families the account cannot currently satisfy.</param>
 /// <param name="MissingRequiredFactorDisplayNames">Display-safe names for missing required factors.</param>
 /// <param name="IsLockedOutByPolicy">Whether policy currently prevents sign-in completion.</param>
 public sealed record AccountSecurityPolicyPosture(
@@ -203,16 +203,16 @@ public sealed record AccountSecurityPolicyPosture(
 /// <summary>
 /// Non-secret account-security posture details for a user account.
 /// </summary>
-/// <param name="UserId">The user id value.</param>
-/// <param name="AccountState">The account state value.</param>
+/// <param name="UserId">User whose posture is described.</param>
+/// <param name="AccountState">Current account state that controls sign-in eligibility.</param>
 /// <param name="IsEmailVerified">Whether the email address is verified.</param>
 /// <param name="CanSignIn">Whether the account can sign in under current credential and <paramref name="Policy" /> state.</param>
-/// <param name="PrimaryCredentials">The configured primary credentials.</param>
-/// <param name="AdditionalVerificationFactors">The configured additional verification factors.</param>
+/// <param name="PrimaryCredentials">Display-safe primary credentials configured for the account.</param>
+/// <param name="AdditionalVerificationFactors">Display-safe additional verification factors configured for the account.</param>
 /// <param name="Policy">The current policy posture.</param>
 /// <param name="CredentialInventory">The display-safe credential inventory, excluding secrets and provider raw identifiers.</param>
-/// <param name="ActiveSessionCount">The active session count.</param>
-/// <param name="RecentSecurityEventCount">The recent security event count.</param>
+/// <param name="ActiveSessionCount">Number of currently active application sessions.</param>
+/// <param name="RecentSecurityEventCount">Number of security events in the requested recent-event window, when available.</param>
 public record AccountSecurityPosture(
     Guid UserId,
     UserAccountState AccountState,
@@ -253,9 +253,9 @@ public interface IUserSecurityEventSummaryRepository
     /// <summary>
     /// Counts recent security events for a user.
     /// </summary>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="since">The since value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <param name="userId">User whose security events should be counted.</param>
+    /// <param name="since">Inclusive lower timestamp bound for recent events.</param>
+    /// <param name="cancellationToken">Token for aborting the count query.</param>
     /// <returns>The number of matching security events.</returns>
     Task<int> CountSecurityEventsForUserAsync(Guid userId, DateTimeOffset since, CancellationToken cancellationToken = default);
 }

@@ -6,9 +6,9 @@ namespace Ashlar.Security.Tokens;
 public interface ISecureTokenHasher
 {
     /// <summary>
-    /// Hashes a raw token.
+    /// Hashes a raw token for deterministic lookup without storing the bearer value.
     /// </summary>
-    /// <param name="token">The token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="token">The raw token presented by a caller. Do not log or persist this value.</param>
+    /// <returns>A storage-safe hash for equality lookup. The hash is not a substitute for the raw token.</returns>
     string HashToken(string token);
 }

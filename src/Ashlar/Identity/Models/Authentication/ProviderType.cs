@@ -6,17 +6,17 @@ namespace Ashlar.Identity.Models.Authentication;
 public readonly record struct ProviderType
 {
     /// <summary>
-    /// Gets the provider type value used when a provider type was not initialized.
+    /// Gets the sentinel used when a provider type was not initialized.
     /// </summary>
     public const string UnknownValue = "UNKNOWN";
 
     /// <summary>
-    /// Gets the normalized provider type value.
+    /// Gets the normalized provider type string.
     /// </summary>
     public string Value => field ?? throw new InvalidOperationException("ProviderType must be initialized with a non-empty value.");
 
     /// <summary>
-    /// Gets the provider type value, or a stable sentinel when this instance was not initialized.
+    /// Gets the normalized provider type string, or a stable sentinel when this instance was not initialized.
     /// </summary>
     public string ValueOrUnknown => this == default ? UnknownValue : Value;
 
@@ -68,21 +68,21 @@ public readonly record struct ProviderType
     public static readonly ProviderType Saml2 = new(nameof(Saml2));
 
     /// <summary>
-    /// Returns the normalized provider type value.
+    /// Returns the normalized provider type string.
     /// </summary>
-    /// <returns>The normalized provider type value.</returns>
+    /// <returns>Normalized provider type string.</returns>
     public override string ToString() => Value;
 
     /// <summary>
     /// Converts a provider type to its normalized string value.
     /// </summary>
     /// <param name="type">The provider type to convert.</param>
-    /// <returns>The normalized provider type value.</returns>
+    /// <returns>Normalized provider type string.</returns>
     public static implicit operator string(ProviderType type) => type.Value;
     /// <summary>
     /// Creates a provider type from a non-empty string.
     /// </summary>
-    /// <param name="value">The provider type value.</param>
+    /// <param name="value">Non-empty provider type string.</param>
     /// <returns>The provider type.</returns>
     public static implicit operator ProviderType(string value) => new(value);
 }

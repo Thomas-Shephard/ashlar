@@ -1,16 +1,16 @@
 namespace Ashlar.Auditing;
 
 /// <summary>
-/// Provides security event outcomes behavior.
+/// Defines provider-neutral outcome values for security events.
 /// </summary>
 public static class SecurityEventOutcomes
 {
     /// <summary>
-    /// Defines the success value.
+    /// The security-sensitive operation succeeded.
     /// </summary>
     public const string Success = "success";
     /// <summary>
-    /// Defines the failure value.
+    /// The security-sensitive operation failed.
     /// </summary>
     public const string Failure = "failure";
 }

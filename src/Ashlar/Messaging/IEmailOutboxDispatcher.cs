@@ -8,7 +8,7 @@ public interface IEmailOutboxDispatcher
     /// <summary>
     /// Processes a single batch of pending email messages.
     /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="cancellationToken">A token that can cancel dispatch before a message is sent.</param>
+    /// <returns>The number of outbox messages processed.</returns>
     Task<int> ProcessBatchAsync(CancellationToken cancellationToken = default);
 }

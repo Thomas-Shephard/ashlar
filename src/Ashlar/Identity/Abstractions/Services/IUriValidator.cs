@@ -9,13 +9,13 @@ public interface IUriValidator
     /// Validates the specified <paramref name="uri" /> against the configured allowlist.
     /// Throws an InvalidOperationException if the <paramref name="uri" /> is not valid.
     /// </summary>
-    /// <param name="uri">The uri value.</param>
+    /// <param name="uri">The URI to validate before using it in a callback or redirect flow.</param>
     void ValidateOrThrow(Uri? uri);
 
     /// <summary>
     /// Validates the specified <paramref name="uri" /> against the configured allowlist.
     /// </summary>
-    /// <param name="uri">The uri value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="uri">The URI to validate before using it in a callback or redirect flow.</param>
+    /// <returns><see langword="true" /> when the supplied value is allowed by configuration.</returns>
     bool IsValid(Uri? uri);
 }

@@ -6,20 +6,20 @@ namespace Ashlar.Identity.Models.Mfa;
 public sealed class CredentialBackedMfaPolicyOptions
 {
     /// <summary>
-    /// Gets or sets the credential provider keys value.
+    /// Credential providers that cause this policy to require MFA when present.
     /// </summary>
     public IList<AuthenticationProviderKey> CredentialProviderKeys { get; } = [];
 
     /// <summary>
-    /// Gets or sets the required factors value.
+    /// Factor families required when a qualifying credential exists.
     /// </summary>
     public IList<string> RequiredFactors { get; } = [];
 
     /// <summary>
-    /// Performs the validate operation and returns the result.
+    /// Validates credential-backed MFA policy options.
     /// </summary>
-    /// <param name="options">The options value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="options">The options instance to validate.</param>
+    /// <returns><see langword="true" /> when at least one provider key and factor are configured.</returns>
     public static bool Validate(CredentialBackedMfaPolicyOptions? options)
     {
         return options is not null

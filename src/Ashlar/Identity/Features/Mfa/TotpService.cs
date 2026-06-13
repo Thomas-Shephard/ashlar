@@ -28,10 +28,10 @@ public sealed class TotpService : ITotpService
     /// </summary>
     /// <param name="userRepository">Stores and retrieves users.</param>
     /// <param name="credentialRepository">Stores and retrieves credentials.</param>
-    /// <param name="credentialService">The credential service value.</param>
-    /// <param name="transactionProvider">The transaction provider value.</param>
-    /// <param name="providers">The providers value.</param>
-    /// <param name="dependencies">The dependencies value.</param>
+    /// <param name="credentialService">Credential lifecycle service used to persist TOTP credentials.</param>
+    /// <param name="transactionProvider">Transaction provider used for enrollment and disable mutations.</param>
+    /// <param name="providers">Authentication providers used to locate the configured TOTP provider.</param>
+    /// <param name="dependencies">TOTP options, audit, clock, and notification dependencies.</param>
     public TotpService(
         IUserRepository userRepository,
         ICredentialRepository credentialRepository,
@@ -285,12 +285,12 @@ public sealed class TotpService : ITotpService
 }
 
 /// <summary>
-/// Provides totp service dependencies behavior.
+/// Groups optional dependencies used by the TOTP service.
 /// </summary>
-/// <param name="options">The options value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-/// <param name="securityEventSink">The security event sink value.</param>
-/// <param name="notificationService">The notification service value.</param>
+/// <param name="options">TOTP configuration options.</param>
+/// <param name="timeProvider">Clock used for timestamps and TOTP verification windows.</param>
+/// <param name="securityEventSink">Optional sink used to record TOTP security events.</param>
+/// <param name="notificationService">Optional service used to send account security notifications.</param>
 public sealed class TotpServiceDependencies(
     IOptions<TotpOptions> options,
     TimeProvider? timeProvider = null,
@@ -298,19 +298,19 @@ public sealed class TotpServiceDependencies(
     ISecurityNotificationService? notificationService = null)
 {
     /// <summary>
-    /// Gets the configured dependency value.
+    /// Gets TOTP configuration options.
     /// </summary>
     public IOptions<TotpOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
     /// <summary>
-    /// Gets or sets the time provider value.
+    /// Gets the clock used for timestamps and TOTP verification windows.
     /// </summary>
     public TimeProvider TimeProvider { get; } = timeProvider ?? TimeProvider.System;
     /// <summary>
-    /// Gets or sets the security event sink value.
+    /// Gets the optional sink used to record TOTP security events.
     /// </summary>
     public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
     /// <summary>
-    /// Gets or sets the notification service value.
+    /// Gets the optional service used to send account security notifications.
     /// </summary>
     public ISecurityNotificationService? NotificationService { get; } = notificationService;
 }

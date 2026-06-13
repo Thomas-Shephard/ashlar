@@ -9,10 +9,10 @@ namespace Ashlar.Identity.Features.Invitations;
 /// <summary>
 /// Groups invitation service dependencies to simplify service construction.
 /// </summary>
-/// <param name="storeContext">The store context value.</param>
-/// <param name="tokenContext">The token context value.</param>
-/// <param name="infrastructure">The infrastructure value.</param>
-/// <param name="audit">The audit value.</param>
+/// <param name="storeContext">Invitation storage and transaction dependencies.</param>
+/// <param name="tokenContext">Token generator and hasher dependencies.</param>
+/// <param name="infrastructure">Messaging, rate limiting, and URI validation dependencies.</param>
+/// <param name="audit">Audit and notification dependencies.</param>
 internal sealed class InvitationDependencies(
     InvitationStoreContext storeContext,
     SecureTokenContext tokenContext,
@@ -25,47 +25,47 @@ internal sealed class InvitationDependencies(
     private readonly IdentityAuditContext _audit = audit ?? throw new ArgumentNullException(nameof(audit));
 
     /// <summary>
-    /// Gets or sets the invitation repository value.
+    /// Gets invitation storage.
     /// </summary>
     public IInvitationRepository InvitationRepository => _storeContext.InvitationRepository;
     /// <summary>
-    /// Gets or sets the user repository value.
+    /// Gets user storage used when accepting invitations.
     /// </summary>
     public IUserRepository UserRepository => _storeContext.UserRepository;
     /// <summary>
-    /// Gets or sets the transaction provider value.
+    /// Gets the transaction provider used for invitation mutations.
     /// </summary>
     public IAshlarTransactionProvider TransactionProvider => _storeContext.TransactionProvider;
     /// <summary>
-    /// Gets or sets the token generator value.
+    /// Gets the generator used for raw invitation tokens.
     /// </summary>
     public ISecureTokenGenerator TokenGenerator => _tokenContext.Generator;
     /// <summary>
-    /// Gets or sets the token hasher value.
+    /// Gets the hasher used before persisting invitation tokens.
     /// </summary>
     public ISecureTokenHasher TokenHasher => _tokenContext.Hasher;
     /// <summary>
-    /// Gets or sets the email sender value.
+    /// Gets the email sender used for invitation messages.
     /// </summary>
     public IEmailSender EmailSender => _infrastructure.EmailSender;
     /// <summary>
-    /// Gets or sets the rate limiter value.
+    /// Gets the rate limiter used for invitation flows.
     /// </summary>
     public IAuthenticationRateLimiter RateLimiter => _infrastructure.RateLimiter;
     /// <summary>
-    /// Gets or sets the uri validator value.
+    /// Gets the URI validator used for invitation callback URLs.
     /// </summary>
     public IUriValidator UriValidator => _infrastructure.UriValidator;
     /// <summary>
-    /// Gets or sets the time provider value.
+    /// Gets the clock used for timestamps.
     /// </summary>
     public TimeProvider TimeProvider => _audit.TimeProvider;
     /// <summary>
-    /// Gets or sets the security event sink value.
+    /// Gets the optional sink used to record invitation security events.
     /// </summary>
     public ISecurityEventSink? SecurityEventSink => _audit.SecurityEventSink;
     /// <summary>
-    /// Gets or sets the notification service value.
+    /// Gets the optional security notification service.
     /// </summary>
     public ISecurityNotificationService? NotificationService => _audit.NotificationService;
 }

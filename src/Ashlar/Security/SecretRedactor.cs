@@ -13,9 +13,9 @@ public static class SecretRedactor
     /// <summary>
     /// Checks if a secret is present in the provided exception's message or stack trace.
     /// </summary>
-    /// <param name="exception">The exception value.</param>
-    /// <param name="secret">The secret value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="exception">The exception to inspect.</param>
+    /// <param name="secret">The secret value that must not appear in diagnostics.</param>
+    /// <returns><see langword="true" /> when the exception text contains the secret.</returns>
     public static bool ContainsSecret(Exception? exception, string? secret)
     {
         if (exception == null || string.IsNullOrEmpty(secret))
@@ -29,9 +29,9 @@ public static class SecretRedactor
     /// <summary>
     /// Redacts secrets from the string representation of an exception.
     /// </summary>
-    /// <param name="exception">The exception value.</param>
-    /// <param name="secrets">The secrets value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="exception">The exception whose text should be redacted.</param>
+    /// <param name="secrets">Secret values to replace with <see cref="RedactedPlaceholder" />.</param>
+    /// <returns>The exception text with all supplied secrets redacted.</returns>
     public static string Redact(Exception exception, params string?[] secrets)
     {
         ArgumentNullException.ThrowIfNull(exception);
@@ -41,9 +41,9 @@ public static class SecretRedactor
     /// <summary>
     /// Redacts secrets from a string.
     /// </summary>
-    /// <param name="value">The contained result value.</param>
-    /// <param name="secrets">The secrets value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="value">The text that may contain secrets.</param>
+    /// <param name="secrets">Secret values to replace with <see cref="RedactedPlaceholder" />.</param>
+    /// <returns>The text with all supplied secrets redacted.</returns>
     public static string Redact(string? value, params string?[] secrets)
     {
         if (string.IsNullOrEmpty(value) || secrets.Length == 0)

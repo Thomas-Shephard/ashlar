@@ -9,6 +9,6 @@ public interface IEmailTransport
     /// Delivers the specified email message.
     /// </summary>
     /// <param name="message">The message to deliver.</param>
-    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <param name="cancellationToken">A token that can cancel delivery before the transport accepts the message.</param>
     Task DeliverAsync(EmailMessage message, CancellationToken cancellationToken = default);
 }

@@ -11,9 +11,9 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's URI validation services.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">Service collection to add URI validation services to.</param>
+    /// <param name="configure">Optional URI validation configuration callback.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarUriValidation(
         this IServiceCollection services,
         Action<UriValidationOptions>? configure = null)
@@ -34,8 +34,8 @@ public static partial class AshlarServiceCollectionExtensions
     /// <summary>
     /// Registers Ashlar's framework-neutral messaging services.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <returns>The service collection.</returns>
+    /// <param name="services">Service collection to add messaging services to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarMessaging(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
