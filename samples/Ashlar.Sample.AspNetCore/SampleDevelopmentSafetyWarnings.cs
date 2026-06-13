@@ -24,7 +24,7 @@ internal static class SampleDevelopmentSafetyWarnings
     {
         foreach (var warning in Analyze(options))
         {
-            DevelopmentOnlySetting(logger, warning.Setting, warning.Scheme, warning.HostClassification, null);
+            DevelopmentOnlySetting(logger, warning.Setting, warning.Scheme, warning.HostClassificationValue, null);
         }
     }
 
@@ -79,5 +79,5 @@ internal static class SampleDevelopmentSafetyWarnings
         public const string Public = "public";
     }
 
-    private sealed record DevelopmentSafetyWarning(string Setting, string Scheme, string HostClassification);
+    private sealed record DevelopmentSafetyWarning(string Setting, string Scheme, string HostClassificationValue);
 }
