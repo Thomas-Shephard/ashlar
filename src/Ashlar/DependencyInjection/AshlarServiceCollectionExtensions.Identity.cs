@@ -177,6 +177,7 @@ public static partial class AshlarServiceCollectionExtensions
 
             return new NotSupportedAuthenticationRateLimiterDiagnostics(rateLimiter.GetType().Name, timeProvider);
         });
+        services.TryAddScoped<IAshlarOperationsSummaryService, AshlarOperationsSummaryService>();
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<IdentityServiceOptions>>().Value);
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<AuthenticationSessionOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);

@@ -43,7 +43,8 @@ internal sealed class AshlarCompositionTests
             typeof(ICredentialService),
             typeof(IdentityInfrastructureContext),
             typeof(IAshlarTransactionProvider),
-            typeof(IAuthenticationRateLimiterDiagnostics));
+            typeof(IAuthenticationRateLimiterDiagnostics),
+            typeof(IAshlarOperationsSummaryService));
         using var scope = provider.CreateScope();
 
         using (Assert.EnterMultipleScope())
@@ -53,6 +54,7 @@ internal sealed class AshlarCompositionTests
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiter>(), Is.SameAs(rateLimiter));
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<NullTransactionProvider>());
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarOperationsSummaryService>(), Is.TypeOf<AshlarOperationsSummaryService>());
             Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
         }
     }

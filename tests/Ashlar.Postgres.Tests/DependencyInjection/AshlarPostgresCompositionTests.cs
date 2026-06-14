@@ -182,7 +182,8 @@ internal sealed class AshlarPostgresCompositionTests
             typeof(IEmailOutboxDispatcher),
             typeof(IAshlarSecurityEventWebhookOutboxOperations),
             typeof(IAuthenticationRateLimiter),
-            typeof(IAshlarSchemaDiagnostics));
+            typeof(IAshlarSchemaDiagnostics),
+            typeof(IAshlarOperationsSummaryService));
         await using var scope = provider.CreateAsyncScope();
 
         using (Assert.EnterMultipleScope())
@@ -193,6 +194,7 @@ internal sealed class AshlarPostgresCompositionTests
             Assert.That(scope.ServiceProvider.GetRequiredService<ISecurityEventSink>(), Is.TypeOf<SecurityEventFanOutSink>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IPersistentSecurityEventSink>(), Is.TypeOf<PostgresSecurityEventSink>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAccountSecurityGuard>(), Is.TypeOf<TestAccountSecurityGuard>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarOperationsSummaryService>(), Is.TypeOf<AshlarOperationsSummaryService>());
             Assert.That(provider.GetServices<IHostedService>().OfType<PostgresEmailOutboxHostedService>(), Has.Exactly(1).Items);
             Assert.That(provider.GetServices<IHostedService>().OfType<PostgresAshlarCleanupHostedService>(), Has.Exactly(1).Items);
             Assert.That(provider.GetServices<IHostedService>().OfType<PostgresSecurityEventWebhookOutboxHostedService>(), Has.Exactly(1).Items);
@@ -215,7 +217,8 @@ internal sealed class AshlarPostgresCompositionTests
             services,
             typeof(IAshlarCleanupService),
             typeof(IEmailOutboxDispatcher),
-            typeof(PostgresSecurityEventWebhookOutboxDispatcher));
+            typeof(PostgresSecurityEventWebhookOutboxDispatcher),
+            typeof(IAshlarOperationsSummaryService));
 
         Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
     }

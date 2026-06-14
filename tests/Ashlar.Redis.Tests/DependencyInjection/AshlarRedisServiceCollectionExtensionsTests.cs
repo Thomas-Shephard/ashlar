@@ -98,12 +98,15 @@ internal sealed class AshlarRedisServiceCollectionExtensionsTests
         using var redisProvider = ServiceProviderValidation.BuildValidatedServiceProvider(
             services,
             typeof(IAuthenticationRateLimiter),
-            typeof(IAuthenticationRateLimiterDiagnostics));
+            typeof(IAuthenticationRateLimiterDiagnostics),
+            typeof(IAshlarOperationsSummaryService));
+        using var redisScope = redisProvider.CreateScope();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(redisProvider.GetRequiredService<IAuthenticationRateLimiter>(), Is.TypeOf<RedisAuthenticationRateLimiter>());
             Assert.That(redisProvider.GetRequiredService<IAuthenticationRateLimiterDiagnostics>(), Is.TypeOf<RedisAuthenticationRateLimiterDiagnostics>());
+            Assert.That(redisScope.ServiceProvider.GetRequiredService<IAshlarOperationsSummaryService>(), Is.TypeOf<AshlarOperationsSummaryService>());
         }
     }
 

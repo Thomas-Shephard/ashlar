@@ -132,6 +132,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationRateLimiterDiagnostics>(), Is.Not.TypeOf<SqliteAuthenticationRateLimiterDiagnostics>());
             Assert.That(scope.ServiceProvider.GetService<IAshlarCleanupService>(), Is.Null);
             Assert.That(scope.ServiceProvider.GetService<IAshlarCleanupDiagnostics>(), Is.Null);
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarOperationsSummaryService>(), Is.TypeOf<AshlarOperationsSummaryService>());
             Assert.That(provider.GetRequiredService<ISecurityEventSink>(), Is.Not.TypeOf<SqliteSecurityEventSink>());
             Assert.That(provider.GetService<IUserSecurityEventSummaryRepository>(), Is.Null);
             Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
