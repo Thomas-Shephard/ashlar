@@ -102,6 +102,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
             Assert.Throws<ArgumentNullException>(() => new AshlarOidcInvitationRegistrationService(invitations, credentials, transactions, oauth, null!));
             Assert.Throws<ArgumentException>(() => new MicrosoftOidcInvitationEmailMatchPolicy(" ", new StandardOidcVerifiedEmailMatchPolicy()));
             Assert.Throws<ArgumentNullException>(() => new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", null!));
+            Assert.Throws<ArgumentException>(() => new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), [" "]));
         }
     }
 
@@ -437,11 +438,8 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
     }
 
-    [TestCase("email")]
-    [TestCase("preferred_username")]
-    [TestCase("upn")]
-    [TestCase("unique_name")]
-    public async Task RegisterShouldUseMicrosoftEmailPolicyForMicrosoftPresetProviders(string claimType)
+    [Test]
+    public async Task RegisterShouldUseVerifiedEmailForMicrosoftPresetProviders()
     {
         var userId = Guid.NewGuid();
         var invitations = CreateInvitations(acceptance: Result.Success(userId));
@@ -460,9 +458,151 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Microsoft",
+            CreatePrincipal("subject", "invitee@example.com", "true"));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
+    }
+
+    [TestCase("preferred_username")]
+    [TestCase("upn")]
+    [TestCase("unique_name")]
+    public async Task RegisterShouldRejectMicrosoftEmailLikeClaimMatchesByDefault(string claimType)
+    {
+        var options = CreateOptions();
+        options.AddMicrosoft("contoso.onmicrosoft.com");
+        var service = new AshlarOidcInvitationRegistrationService(
+            CreateInvitations().Object,
+            Mock.Of<ICredentialService>(),
+            CreateTransactionProvider().Object,
+            new TestOptionsMonitor(options),
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy()));
+
+        var result = await service.RegisterOidcInvitationAsync(
+            "token",
+            "Microsoft",
+            CreatePrincipalWithClaim("subject", claimType, "invitee@example.com"));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.EmailNotVerified));
+    }
+
+    [TestCase(null)]
+    [TestCase("false")]
+    [TestCase("0")]
+    public async Task RegisterShouldRejectMicrosoftUnverifiedEmailByDefault(string? verified)
+    {
+        var options = CreateOptions();
+        options.AddMicrosoft("contoso.onmicrosoft.com");
+        var service = new AshlarOidcInvitationRegistrationService(
+            CreateInvitations().Object,
+            Mock.Of<ICredentialService>(),
+            CreateTransactionProvider().Object,
+            new TestOptionsMonitor(options),
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy()));
+
+        var result = await service.RegisterOidcInvitationAsync(
+            "token",
+            "Microsoft",
+            CreatePrincipal("subject", "invitee@example.com", verified));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.EmailNotVerified));
+    }
+
+    [TestCase("preferred_username")]
+    [TestCase("upn")]
+    [TestCase("unique_name")]
+    public async Task RegisterShouldAllowExplicitMicrosoftEmailLikeClaimMatches(string claimType)
+    {
+        var userId = Guid.NewGuid();
+        var invitations = CreateInvitations(acceptance: Result.Success(userId));
+        var credentials = new Mock<ICredentialService>();
+        credentials.Setup(s => s.LinkCredentialAsync(userId, It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        var options = CreateOptions();
+        options.AddMicrosoft(
+            "contoso.onmicrosoft.com",
+            configureInvitationEmailMatch: match => match.AllowedEmailLikeClaimTypes.Add(claimType));
+        var service = new AshlarOidcInvitationRegistrationService(
+            invitations.Object,
+            credentials.Object,
+            CreateTransactionProvider().Object,
+            new TestOptionsMonitor(options),
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), [claimType]));
+
+        var result = await service.RegisterOidcInvitationAsync(
+            "token",
+            "Microsoft",
             CreatePrincipalWithClaim("subject", claimType, "invitee@example.com"));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
+    }
+
+    [Test]
+    public async Task RegisterShouldOnlyAllowExplicitMicrosoftEmailLikeClaimTypes()
+    {
+        var options = CreateOptions();
+        options.AddMicrosoft(
+            "contoso.onmicrosoft.com",
+            configureInvitationEmailMatch: match => match.AllowedEmailLikeClaimTypes.Add("upn"));
+        var service = new AshlarOidcInvitationRegistrationService(
+            CreateInvitations().Object,
+            Mock.Of<ICredentialService>(),
+            CreateTransactionProvider().Object,
+            new TestOptionsMonitor(options),
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["upn"]));
+
+        var result = await service.RegisterOidcInvitationAsync(
+            "token",
+            "Microsoft",
+            CreatePrincipalWithClaim("subject", "preferred_username", "invitee@example.com"));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.EmailNotVerified));
+    }
+
+    [Test]
+    public async Task RegisterShouldRejectMicrosoftEmailMismatchEvenWhenAllowedEmailLikeClaimMatches()
+    {
+        var options = CreateOptions();
+        options.AddMicrosoft(
+            "contoso.onmicrosoft.com",
+            configureInvitationEmailMatch: match => match.AllowedEmailLikeClaimTypes.Add("upn"));
+        var service = new AshlarOidcInvitationRegistrationService(
+            CreateInvitations().Object,
+            Mock.Of<ICredentialService>(),
+            CreateTransactionProvider().Object,
+            new TestOptionsMonitor(options),
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["upn"]));
+        var principal = CreatePrincipal("subject", "other@example.com", "true");
+        ((ClaimsIdentity)principal.Identity!).AddClaim(new Claim("upn", "invitee@example.com"));
+
+        var result = await service.RegisterOidcInvitationAsync("token", "Microsoft", principal);
+
+        Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.EmailMismatch));
+    }
+
+    [Test]
+    public async Task RegisterShouldKeepExplicitMicrosoftEmailLikeClaimMatchingTenantScoped()
+    {
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var invitations = CreateInvitations(preview: Result.Success(new InvitationAcceptancePreview("invitee@example.com", tenantId)));
+        var options = CreateOptions();
+        options.AddMicrosoft(
+            "contoso.onmicrosoft.com",
+            configureInvitationEmailMatch: match => match.AllowedEmailLikeClaimTypes.Add("upn"));
+        var service = new AshlarOidcInvitationRegistrationService(
+            invitations.Object,
+            Mock.Of<ICredentialService>(),
+            CreateTransactionProvider().Object,
+            new TestOptionsMonitor(options),
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["upn"]));
+
+        var result = await service.RegisterOidcInvitationAsync(
+            "token",
+            "Microsoft",
+            CreatePrincipalWithClaim("subject", "upn", "invitee@example.com"),
+            context: new AuthenticationContext(TenantId: otherTenantId));
+
+        Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidInvitation));
     }
 
     [Test]
@@ -479,7 +619,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
             credentials.Object,
             CreateTransactionProvider().Object,
             new TestOptionsMonitor(options),
-            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy()));
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["preferred_username"]));
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -506,13 +646,15 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     public async Task RegisterShouldReturnEmailMismatchForMicrosoftPresetWhenCandidateEmailDiffers()
     {
         var options = CreateOptions();
-        options.AddMicrosoft("contoso.onmicrosoft.com");
+        options.AddMicrosoft(
+            "contoso.onmicrosoft.com",
+            configureInvitationEmailMatch: match => match.AllowedEmailLikeClaimTypes.Add("preferred_username"));
         var service = new AshlarOidcInvitationRegistrationService(
             CreateInvitations().Object,
             Mock.Of<ICredentialService>(),
             CreateTransactionProvider().Object,
             new TestOptionsMonitor(options),
-            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy()));
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["preferred_username"]));
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",
@@ -532,7 +674,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
             Mock.Of<ICredentialService>(),
             CreateTransactionProvider().Object,
             new TestOptionsMonitor(options),
-            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy()));
+            new MicrosoftOidcInvitationEmailMatchPolicy("Microsoft", new StandardOidcVerifiedEmailMatchPolicy(), ["preferred_username"]));
 
         var result = await service.RegisterOidcInvitationAsync(
             "token",

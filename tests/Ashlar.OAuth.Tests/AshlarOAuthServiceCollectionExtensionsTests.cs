@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Repositories;
+using Ashlar.Identity.Models.Invitations;
 using Ashlar.Security.Encryption;
 using Ashlar.Testing.DependencyInjection;
 using Ashlar.OAuth.Providers.Apple;
@@ -1091,6 +1092,30 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<IOidcInvitationEmailMatchPolicy>(), Is.TypeOf<MicrosoftOidcInvitationEmailMatchPolicy>());
+    }
+
+    [Test]
+    public void AddMicrosoftShouldApplyExplicitInvitationEmailLikeClaimAllowList()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarOAuth(options => options.AddMicrosoft(
+            "contoso.onmicrosoft.com",
+            configureInvitationEmailMatch: match => match.AllowedEmailLikeClaimTypes.Add("upn")));
+
+        using var provider = services.BuildServiceProvider();
+        var policy = provider.GetRequiredService<IOidcInvitationEmailMatchPolicy>();
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim("sub", "subject"),
+            new Claim("upn", "invitee@example.com")
+        ], "oidc"));
+
+        var result = policy.Validate(new OidcInvitationEmailMatchContext(
+            "Microsoft",
+            principal,
+            new InvitationAcceptancePreview("invitee@example.com", null)));
+
+        Assert.That(result.Succeeded, Is.True);
     }
 
     [Test]
