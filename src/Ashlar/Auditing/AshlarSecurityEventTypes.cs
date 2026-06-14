@@ -18,6 +18,10 @@ public static class AshlarSecurityEventTypes
     /// </summary>
     public const string AuthenticationRateLimited = "ashlar.authentication.rate_limited";
     /// <summary>
+    /// Emitted when an operator resets an authentication rate-limit bucket.
+    /// </summary>
+    public const string AuthenticationRateLimitBucketReset = "ashlar.authentication.rate_limit_bucket.reset";
+    /// <summary>
     /// Emitted when automatic account lockout is activated for a user and provider.
     /// </summary>
     public const string AccountLockoutActivated = "ashlar.account_lockout.activated";

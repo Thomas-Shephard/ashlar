@@ -1,3 +1,5 @@
+using Ashlar.Auditing;
+using Ashlar.Identity.Features.Administration;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Operational.Diagnostics;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -14,12 +16,12 @@ namespace Microsoft.Extensions.DependencyInjection;
 public static class AshlarRedisServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the Ashlar Redis-backed authentication rate limiter.
+    /// Registers the Ashlar Redis-backed authentication rate limiter, diagnostics, and safe administration operations.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configuration">The Redis connection configuration.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="configuration">Redis connection configuration used to create a managed multiplexer.</param>
+    /// <param name="configure">Optional rate limiter configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarRedisRateLimiting(
         this IServiceCollection services,
         string configuration,
@@ -38,12 +40,12 @@ public static class AshlarRedisServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers the Ashlar Redis-backed authentication rate limiter.
+    /// Registers the Ashlar Redis-backed authentication rate limiter, diagnostics, and safe administration operations.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="connection">The Redis connection multiplexer.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <param name="connection">Redis connection multiplexer owned by the host application.</param>
+    /// <param name="configure">Optional rate limiter configuration.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarRedisRateLimiting(
         this IServiceCollection services,
         IConnectionMultiplexer connection,
@@ -79,6 +81,17 @@ public static class AshlarRedisServiceCollectionExtensions
                 provider.GetRequiredService<TimeProvider>())));
         services.Replace(ServiceDescriptor.Singleton<IAuthenticationRateLimiterDiagnostics>(provider =>
             ActivatorUtilities.CreateInstance<RedisAuthenticationRateLimiterDiagnostics>(provider)));
+        services.Replace(ServiceDescriptor.Singleton<IAuthenticationRateLimitAdministrationRepository>(provider =>
+            new RedisAuthenticationRateLimitAdministrationRepository(
+                provider.GetRequiredService<RedisAuthenticationRateLimiterConnection>(),
+                provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<RedisAuthenticationRateLimiterOptions>>())));
+        services.TryAddScoped(provider => new AuthenticationRateLimitAdministrationServiceDependencies(
+            provider.GetService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>()));
+        services.TryAddScoped<IAuthenticationRateLimitAdministrationService>(provider =>
+            new AuthenticationRateLimitAdministrationService(
+                provider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>(),
+                provider.GetService<AuthenticationRateLimitAdministrationServiceDependencies>()));
 
         return services;
     }

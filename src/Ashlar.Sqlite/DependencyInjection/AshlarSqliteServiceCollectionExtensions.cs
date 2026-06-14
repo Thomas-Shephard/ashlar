@@ -1,4 +1,5 @@
 using Ashlar.Authorization.Abstractions;
+using Ashlar.Identity.Features.Administration;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
 using Ashlar.Operational;
@@ -77,7 +78,7 @@ public static class AshlarSqliteServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers the Ashlar SQLite-backed authentication rate limiter.
+    /// Registers the Ashlar SQLite-backed authentication rate limiter, diagnostics, and safe administration operations.
     /// </summary>
     /// <param name="services">The service collection to add registrations to.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
@@ -87,6 +88,14 @@ public static class AshlarSqliteServiceCollectionExtensions
 
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiter, SqliteAuthenticationRateLimiter>());
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiterDiagnostics, SqliteAuthenticationRateLimiterDiagnostics>());
+        services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimitAdministrationRepository, SqliteAuthenticationRateLimitAdministrationRepository>());
+        services.TryAddScoped(provider => new AuthenticationRateLimitAdministrationServiceDependencies(
+            provider.GetService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>()));
+        services.TryAddScoped<IAuthenticationRateLimitAdministrationService>(provider =>
+            new AuthenticationRateLimitAdministrationService(
+                provider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>(),
+                provider.GetService<AuthenticationRateLimitAdministrationServiceDependencies>()));
 
         return services;
     }
