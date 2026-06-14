@@ -101,6 +101,7 @@ internal sealed class AuthenticationFactorRateLimiterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(AuthenticationFactorRateLimitOptions.Validate(new AuthenticationFactorRateLimitOptions()), Is.True);
+            Assert.That(new AuthenticationFactorRateLimitOptions().FailOpenOnBackendFailure, Is.False);
             Assert.That(AuthenticationFactorRateLimitOptions.Validate(null), Is.False);
             Assert.That(AuthenticationFactorRateLimitOptions.Validate(new AuthenticationFactorRateLimitOptions { DefaultRule = new RateLimitRule { PermitLimit = 0, Window = TimeSpan.FromMinutes(1) } }), Is.False);
         }

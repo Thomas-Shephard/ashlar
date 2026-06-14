@@ -124,6 +124,28 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarIdentitySurfacesAuthenticationProtectionFailOpenOptions()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarIdentity();
+        services.Configure<PrimaryAuthenticationRateLimitOptions>(options => options.FailOpenOnBackendFailure = true);
+        services.Configure<AuthenticationFactorRateLimitOptions>(options => options.FailOpenOnBackendFailure = true);
+        services.Configure<AccountLockoutOptions>(options => options.FailOpenOnBackendFailure = true);
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var dependencies = scope.ServiceProvider.GetRequiredService<AuthenticationPipelineDependencies>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dependencies.PrimaryRateLimitOptions?.FailOpenOnBackendFailure, Is.True);
+            Assert.That(dependencies.FactorRateLimitOptions?.FailOpenOnBackendFailure, Is.True);
+            Assert.That(dependencies.AccountLockoutOptions?.FailOpenOnBackendFailure, Is.True);
+        }
+    }
+
+    [Test]
     public void AddAshlarIdentityValidatesRateLimitAndLockoutOptionsOnStart()
     {
         AssertStartupValidationFails<PrimaryAuthenticationRateLimitOptions>(

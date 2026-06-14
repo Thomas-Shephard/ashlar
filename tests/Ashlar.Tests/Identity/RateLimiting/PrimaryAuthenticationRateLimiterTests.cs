@@ -147,6 +147,7 @@ internal sealed class PrimaryAuthenticationRateLimiterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(PrimaryAuthenticationRateLimitOptions.Validate(valid), Is.True);
+            Assert.That(new PrimaryAuthenticationRateLimitOptions().FailOpenOnBackendFailure, Is.False);
             Assert.That(PrimaryAuthenticationRateLimitOptions.Validate(null), Is.False);
             Assert.That(PrimaryAuthenticationRateLimitOptions.Validate(new PrimaryAuthenticationRateLimitOptions
             {

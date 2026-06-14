@@ -40,17 +40,17 @@ public sealed class AuthenticationPipeline(
             new EventId(1001, nameof(CriticalCredentialLifecycleUpdateFailed)),
             "Critical credential lifecycle update failed during authentication. UserId={UserId} CredentialId={CredentialId} ProviderType={ProviderType} ProviderName={ProviderName}");
 
-    private static readonly Action<ILogger, string, string, Exception?> RateLimiterCheckFailed =
-        LoggerMessage.Define<string, string>(
+    private static readonly Action<ILogger, string, string, bool, Exception?> RateLimiterCheckFailed =
+        LoggerMessage.Define<string, string, bool>(
             LogLevel.Error,
             new EventId(1002, nameof(RateLimiterCheckFailed)),
-            "Authentication rate limiter check failed. Scope={Scope} Provider={Provider}");
+            "Authentication rate limiter backend failed. Scope={Scope} Provider={Provider} FailOpen={FailOpen}");
 
-    private static readonly Action<ILogger, string, Guid, string, Exception?> AccountLockoutOperationFailed =
-        LoggerMessage.Define<string, Guid, string>(
-            LogLevel.Warning,
+    private static readonly Action<ILogger, string, Guid, string, bool, Exception?> AccountLockoutOperationFailed =
+        LoggerMessage.Define<string, Guid, string, bool>(
+            LogLevel.Error,
             new EventId(1003, nameof(AccountLockoutOperationFailed)),
-            "Account lockout operation failed open during local password authentication. Operation={Operation} UserId={UserId} Provider={Provider}");
+            "Account lockout backend failed during local password authentication. Operation={Operation} UserId={UserId} Provider={Provider} FailOpen={FailOpen}");
 
     private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
     private readonly ICredentialService _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
@@ -58,6 +58,9 @@ public sealed class AuthenticationPipeline(
     private readonly IPrimaryAuthenticationRateLimiter _primaryRateLimiter = primaryRateLimiter ?? throw new ArgumentNullException(nameof(primaryRateLimiter));
     private readonly IAuthenticationFactorRateLimiter _factorRateLimiter = factorRateLimiter ?? throw new ArgumentNullException(nameof(factorRateLimiter));
     private readonly IAccountLockoutService? _accountLockoutService = dependencies?.AccountLockoutService;
+    private readonly bool _primaryRateLimiterFailOpen = dependencies?.PrimaryRateLimitOptions?.FailOpenOnBackendFailure ?? false;
+    private readonly bool _factorRateLimiterFailOpen = dependencies?.FactorRateLimitOptions?.FailOpenOnBackendFailure ?? false;
+    private readonly bool _accountLockoutFailOpen = dependencies?.AccountLockoutOptions?.FailOpenOnBackendFailure ?? false;
     private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider ?? TimeProvider.System, dependencies?.LoggerFactory);
     private readonly ILogger<AuthenticationPipeline> _logger = dependencies?.Logger ?? NullLogger<AuthenticationPipeline>.Instance;
 
@@ -177,9 +180,18 @@ public sealed class AuthenticationPipeline(
         }
 
         var shouldApplyAccountLockout = ShouldApplyAccountLockout(provider, user);
-        if (shouldApplyAccountLockout && await IsAccountLockedOutAsync(user!, provider.Key, context, cancellationToken))
+        if (shouldApplyAccountLockout)
         {
-            return await RecordFailureAsync(context, provider.Key, user!.Id, SecurityEventFailureReasons.AutomaticAccountLockout, cancellationToken);
+            var lockoutStatus = await CheckAccountLockoutAsync(user!, provider.Key, context, cancellationToken);
+            if (lockoutStatus == AccountLockoutAuthenticationStatus.BackendFailure)
+            {
+                return await RecordRateLimitedAsync(context, provider.Key, cancellationToken);
+            }
+
+            if (lockoutStatus == AccountLockoutAuthenticationStatus.LockedOut)
+            {
+                return await RecordFailureAsync(context, provider.Key, user!.Id, SecurityEventFailureReasons.AutomaticAccountLockout, cancellationToken);
+            }
         }
 
         var result = await provider.AuthenticateAsync(assertion, credential, cancellationToken);
@@ -228,8 +240,8 @@ public sealed class AuthenticationPipeline(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            RateLimiterCheckFailed(_logger, "primary", providerKey.ToString(), ex);
-            return true;
+            RateLimiterCheckFailed(_logger, "primary", providerKey.ToString(), _primaryRateLimiterFailOpen, ex);
+            return _primaryRateLimiterFailOpen;
         }
     }
 
@@ -245,8 +257,8 @@ public sealed class AuthenticationPipeline(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            RateLimiterCheckFailed(_logger, "factor", providerKey.ToString(), ex);
-            return true;
+            RateLimiterCheckFailed(_logger, "factor", providerKey.ToString(), _factorRateLimiterFailOpen, ex);
+            return _factorRateLimiterFailOpen;
         }
     }
 
@@ -255,7 +267,7 @@ public sealed class AuthenticationPipeline(
         return provider.Key == AuthenticationProviderKey.Local && user?.CanSignIn() == true;
     }
 
-    private async Task<bool> IsAccountLockedOutAsync(
+    private async Task<AccountLockoutAuthenticationStatus> CheckAccountLockoutAsync(
         IUser user,
         AuthenticationProviderKey providerKey,
         AuthenticationContext context,
@@ -263,18 +275,22 @@ public sealed class AuthenticationPipeline(
     {
         if (_accountLockoutService == null)
         {
-            return false;
+            return AccountLockoutAuthenticationStatus.Allowed;
         }
 
         try
         {
             var status = await _accountLockoutService.GetStatusAsync(user, providerKey, CreateAccountLockoutContext(context), cancellationToken);
-            return status.IsLockedOut;
+            return status.IsLockedOut
+                ? AccountLockoutAuthenticationStatus.LockedOut
+                : AccountLockoutAuthenticationStatus.Allowed;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            AccountLockoutOperationFailed(_logger, "get_status", user.Id, providerKey.ToString(), ex);
-            return false;
+            AccountLockoutOperationFailed(_logger, "get_status", user.Id, providerKey.ToString(), _accountLockoutFailOpen, ex);
+            return _accountLockoutFailOpen
+                ? AccountLockoutAuthenticationStatus.Allowed
+                : AccountLockoutAuthenticationStatus.BackendFailure;
         }
     }
 
@@ -296,7 +312,7 @@ public sealed class AuthenticationPipeline(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            AccountLockoutOperationFailed(_logger, "record_failure", user.Id, providerKey.ToString(), ex);
+            AccountLockoutOperationFailed(_logger, "record_failure", user.Id, providerKey.ToString(), _accountLockoutFailOpen, ex);
             return false;
         }
     }
@@ -318,7 +334,7 @@ public sealed class AuthenticationPipeline(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            AccountLockoutOperationFailed(_logger, "reset", user.Id, providerKey.ToString(), ex);
+            AccountLockoutOperationFailed(_logger, "reset", user.Id, providerKey.ToString(), true, ex);
         }
     }
 
@@ -477,6 +493,13 @@ public sealed class AuthenticationPipeline(
         IAuthenticationProvider Provider,
         AuthenticationContext Context,
         AuthenticationStatus Status);
+
+    private enum AccountLockoutAuthenticationStatus
+    {
+        Allowed,
+        LockedOut,
+        BackendFailure
+    }
 }
 
 /// <summary>
@@ -487,9 +510,15 @@ public sealed class AuthenticationPipeline(
 /// <param name="Logger">Optional <paramref name="Logger" /> for authentication pipeline operational failures.</param>
 /// <param name="LoggerFactory">Optional <paramref name="LoggerFactory" /> used by security-event emission.</param>
 /// <param name="AccountLockoutService">Optional automatic account lockout service used for local password authentication.</param>
+/// <param name="PrimaryRateLimitOptions">Primary authentication rate-limit policy, including the explicit fail-open backend outage escape hatch.</param>
+/// <param name="FactorRateLimitOptions">Secondary factor rate-limit policy, including the explicit fail-open backend outage escape hatch.</param>
+/// <param name="AccountLockoutOptions">Account lockout policy, including the explicit fail-open backend outage escape hatch.</param>
 public sealed record AuthenticationPipelineDependencies(
     ISecurityEventSink? SecurityEventSink = null,
     TimeProvider? TimeProvider = null,
     ILogger<AuthenticationPipeline>? Logger = null,
     ILoggerFactory? LoggerFactory = null,
-    IAccountLockoutService? AccountLockoutService = null);
+    IAccountLockoutService? AccountLockoutService = null,
+    PrimaryAuthenticationRateLimitOptions? PrimaryRateLimitOptions = null,
+    AuthenticationFactorRateLimitOptions? FactorRateLimitOptions = null,
+    AccountLockoutOptions? AccountLockoutOptions = null);
