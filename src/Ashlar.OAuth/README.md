@@ -113,7 +113,18 @@ using Ashlar.OAuth.Providers.Microsoft;
 options.AddMicrosoft("contoso.onmicrosoft.com", ...);
 ```
 
-Builds authority `https://login.microsoftonline.com/{tenant}/v2.0`. The tenant segment is explicit and should match the application's intended sign-in audience.
+Builds authority `https://login.microsoftonline.com/{tenant}/v2.0`. The tenant segment is explicit and should match the application's intended sign-in audience. Invitation registration uses the standard verified `email` policy by default, which means Microsoft principals usually need an application-provided or token-provided standard `email_verified` signal to pass. Microsoft email-like claims such as `preferred_username`, `upn`, and `unique_name` are not trusted for invitation matching unless explicitly allowed for the tenant.
+
+```csharp
+options.AddMicrosoft(
+    "contoso.onmicrosoft.com",
+    configureInvitationEmailMatch: match =>
+    {
+        match.AllowedEmailLikeClaimTypes.Add("upn");
+    });
+```
+
+Only allow Microsoft email-like claims when tenant policy makes the selected claim authoritative for the invited mailbox. Microsoft documents these claims as mutable, display-oriented, or affected by alternate-login and guest-user behavior; this opt-in does not prove general mailbox control.
 
 For personal Microsoft accounts, use a sign-in/linking preset:
 
@@ -209,7 +220,20 @@ Profile values are display hints only. They are not identity assertions, provide
 
 `AshlarOidcInvitationRegistrationService` accepts an existing Ashlar invitation token with a validated OIDC identity and then links the OIDC credential to the accepted Ashlar user. It does not sign the user in automatically. Overloads that accept a raw `ClaimsPrincipal` assume the caller has already validated that principal with the same configured OIDC provider; do not pass principals built from request data or unvalidated JWTs. Use the ASP.NET Core authentication-result overloads when completing normal external-auth callbacks.
 
-By default, `StandardOidcVerifiedEmailMatchPolicy` requires generic OIDC providers to match a standard `email` claim with `email_verified=true` before the invitation is consumed. Microsoft tenant providers registered with `AddMicrosoft` automatically use the provider-specific policy from `Providers.Microsoft`, matching the invitation email against Microsoft sign-in/email identity claims such as `email`, `preferred_username`, `upn`, or `unique_name`, because Microsoft identity platform ID tokens do not consistently emit standard OIDC `email_verified`. This Microsoft policy relies on the configured tenant/provider trust and identity claim validation; it is not a general standards-level verified-email proof. `AddMicrosoft` requires a tenant-specific authority and rejects `common`, `organizations`, and `consumers`; use separate provider names for separate tenants. `AddMicrosoftPersonalAccounts` and `AddMicrosoftAnyAccount` are sign-in/linking presets and do not opt into the Microsoft invitation email policy. Applications with stricter Microsoft requirements can replace `IOidcInvitationEmailMatchPolicy`. Missing email, unverified email, mismatched email, invalid tokens, provider mismatch, and link failures are returned as explicit statuses for application branching. Public UI should still use generic failure messages.
+By default, `StandardOidcVerifiedEmailMatchPolicy` requires generic OIDC providers to match a standard `email` claim with `email_verified=true` before the invitation is consumed. Microsoft tenant providers registered with `AddMicrosoft` use the same verified `email` requirement by default. Microsoft's ID-token claim reference does not document a standard `email_verified` claim, and its `email`, `preferred_username`, `upn`, and `unique_name` claims can be mutable, display-oriented, aliases, guest-user identifiers, or tenant-specific usernames rather than mailbox-control proof.
+
+Deployments that understand their Microsoft tenant claim semantics can explicitly allow selected email-like claim types:
+
+```csharp
+options.AddMicrosoft(
+    "contoso.onmicrosoft.com",
+    configureInvitationEmailMatch: match =>
+    {
+        match.AllowedEmailLikeClaimTypes.Add("upn");
+    });
+```
+
+This opt-in is tenant-policy-specific and is not general mailbox verification. `AddMicrosoft` requires a tenant-specific authority and rejects `common`, `organizations`, and `consumers`; use separate provider names for separate tenants. `AddMicrosoftPersonalAccounts` and `AddMicrosoftAnyAccount` are sign-in/linking presets and do not opt into Microsoft invitation email-like claim matching. Applications with stricter requirements can replace `IOidcInvitationEmailMatchPolicy`. Missing email, unverified email, mismatched email, invalid tokens, provider mismatch, and link failures are returned as explicit statuses for application branching. Public UI should still use generic failure messages.
 
 GitHub invitation registration is not supported by `AshlarOidcInvitationRegistrationService`. GitHub's basic `/user` endpoint does not provide a reliable verified-email policy, and this package does not call GitHub's email API in this slice. Applications that need GitHub invitation registration should first define and implement an explicit verified-email policy.
 
