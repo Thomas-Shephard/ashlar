@@ -79,7 +79,10 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<TimeProvider>(),
             provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationPipeline>>(),
             provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>(),
-            provider.GetService<IAccountLockoutService>()));
+            provider.GetService<IAccountLockoutService>(),
+            provider.GetRequiredService<IOptions<PrimaryAuthenticationRateLimitOptions>>().Value,
+            provider.GetRequiredService<IOptions<AuthenticationFactorRateLimitOptions>>().Value,
+            provider.GetRequiredService<IOptions<AccountLockoutOptions>>().Value));
         services.TryAddScoped(provider => new AuthenticationPipeline(
             provider.GetRequiredService<IAuthenticationProviderRegistry>(),
             provider.GetRequiredService<ICredentialService>(),

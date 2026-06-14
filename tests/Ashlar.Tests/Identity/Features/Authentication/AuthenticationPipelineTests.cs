@@ -130,13 +130,12 @@ internal sealed class AuthenticationPipelineTests
     }
 
     [Test]
-    public async Task LoginAsyncWithPrimaryRateLimiterFailureShouldFailOpenAndCallProvider()
+    public async Task LoginAsyncWithPrimaryRateLimiterFailureShouldFailClosedAndSkipProvider()
     {
         var context = new AuthenticationContext("test@example.com", IpAddress: "203.0.113.10");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
-        var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
-        var credential = CreateCredential(user.Id);
+        ConfigureProviderResolution(assertion);
+        var logger = new Ashlar.Testing.RecordingLogger<AuthenticationPipeline>();
         var primaryRateLimiter = new Mock<IPrimaryAuthenticationRateLimiter>();
         primaryRateLimiter.Setup(l => l.CheckAsync(context, assertion, AuthenticationProviderKey.Local, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("limiter unavailable"));
@@ -145,7 +144,46 @@ internal sealed class AuthenticationPipelineTests
             _credentialServiceMock.Object,
             new NullTransactionProvider(),
             primaryRateLimiter.Object,
-            _factorRateLimiterMock.Object);
+            _factorRateLimiterMock.Object,
+            new AuthenticationPipelineDependencies(Logger: logger));
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.RateLimited));
+            Assert.That(response.User, Is.Null);
+            Assert.That(logger.Entries.Single().Level, Is.EqualTo(Microsoft.Extensions.Logging.LogLevel.Error));
+            Assert.That(logger.Entries.Single().Message, Does.Contain("FailOpen=False"));
+            Assert.That(logger.Entries.Single().Message, Does.Not.Contain("limiter unavailable"));
+            _credentialServiceMock.Verify(
+                s => s.ResolveAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            _providerMock.Verify(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task LoginAsyncWithPrimaryRateLimiterFailureShouldFailOpenWhenConfigured()
+    {
+        var context = new AuthenticationContext("test@example.com", IpAddress: "203.0.113.10");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var credential = CreateCredential(user.Id);
+        var logger = new Ashlar.Testing.RecordingLogger<AuthenticationPipeline>();
+        var primaryRateLimiter = new Mock<IPrimaryAuthenticationRateLimiter>();
+        primaryRateLimiter.Setup(l => l.CheckAsync(context, assertion, AuthenticationProviderKey.Local, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("limiter unavailable"));
+        _pipeline = new AuthenticationPipeline(
+            _providerRegistryMock.Object,
+            _credentialServiceMock.Object,
+            new NullTransactionProvider(),
+            primaryRateLimiter.Object,
+            _factorRateLimiterMock.Object,
+            new AuthenticationPipelineDependencies(
+                Logger: logger,
+                PrimaryRateLimitOptions: new PrimaryAuthenticationRateLimitOptions { FailOpenOnBackendFailure = true }));
 
         _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
             .ReturnsAsync((user, credential, credential, false));
@@ -157,6 +195,7 @@ internal sealed class AuthenticationPipelineTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+            Assert.That(logger.Entries.Single().Message, Does.Contain("FailOpen=True"));
             _providerMock.Verify(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()), Times.Once);
         }
     }
@@ -308,7 +347,46 @@ internal sealed class AuthenticationPipelineTests
     }
 
     [Test]
-    public async Task VerifyFactorAsyncWithFactorRateLimiterFailureShouldFailOpenAndCallProvider()
+    public async Task VerifyFactorAsyncWithFactorRateLimiterFailureShouldFailClosedAndSkipProvider()
+    {
+        var userId = Guid.NewGuid();
+        var context = new AuthenticationContext("test@example.com", UserId: userId);
+        var assertion = new TestAssertion(new AuthenticationProviderKey(ProviderType.Mfa, "totp"));
+        var providerMock = new Mock<ISecondaryAuthenticationFactorProvider>();
+        providerMock.SetupGet(p => p.Key).Returns(assertion.ProviderIdentity);
+        IAuthenticationProvider? provider = providerMock.Object;
+        _providerRegistryMock.Setup(r => r.TryGetProvider(assertion, out provider))
+            .Returns(true);
+        var logger = new Ashlar.Testing.RecordingLogger<AuthenticationPipeline>();
+        var factorRateLimiter = new Mock<IAuthenticationFactorRateLimiter>();
+        factorRateLimiter.Setup(l => l.CheckAsync(context, assertion.ProviderIdentity, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("limiter unavailable"));
+        _pipeline = new AuthenticationPipeline(
+            _providerRegistryMock.Object,
+            _credentialServiceMock.Object,
+            new NullTransactionProvider(),
+            _primaryRateLimiterMock.Object,
+            factorRateLimiter.Object,
+            new AuthenticationPipelineDependencies(Logger: logger));
+
+        var response = await _pipeline.VerifyFactorAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.RateLimited));
+            Assert.That(logger.Entries.Single().Level, Is.EqualTo(Microsoft.Extensions.Logging.LogLevel.Error));
+            Assert.That(logger.Entries.Single().Message, Does.Contain("Scope=factor"));
+            Assert.That(logger.Entries.Single().Message, Does.Contain("FailOpen=False"));
+            Assert.That(logger.Entries.Single().Message, Does.Not.Contain("limiter unavailable"));
+            _credentialServiceMock.Verify(
+                s => s.ResolveAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            providerMock.Verify(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task VerifyFactorAsyncWithFactorRateLimiterFailureShouldFailOpenWhenConfigured()
     {
         var userId = Guid.NewGuid();
         var context = new AuthenticationContext("test@example.com", UserId: userId);
@@ -328,7 +406,9 @@ internal sealed class AuthenticationPipelineTests
             _credentialServiceMock.Object,
             new NullTransactionProvider(),
             _primaryRateLimiterMock.Object,
-            factorRateLimiter.Object);
+            factorRateLimiter.Object,
+            new AuthenticationPipelineDependencies(
+                FactorRateLimitOptions: new AuthenticationFactorRateLimitOptions { FailOpenOnBackendFailure = true }));
 
         _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
             .ReturnsAsync((user, credential, credential, false));
@@ -935,14 +1015,44 @@ internal sealed class AuthenticationPipelineTests
     }
 
     [Test]
-    public async Task LoginAsyncWithAccountLockoutStatusFailureShouldFailOpenAndVerifyPassword()
+    public async Task LoginAsyncWithAccountLockoutStatusFailureShouldFailClosedAndSkipPasswordVerification()
     {
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
         var credential = CreateCredential(user.Id);
-        UseAccountLockoutService();
+        var logger = new Ashlar.Testing.RecordingLogger<AuthenticationPipeline>();
+        UseAccountLockoutService(logger);
+        _accountLockoutServiceMock.Setup(s => s.GetStatusAsync(user, AuthenticationProviderKey.Local, It.IsAny<AccountLockoutContext>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("lockout unavailable"));
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.RateLimited));
+            Assert.That(logger.Entries.Single().Level, Is.EqualTo(Microsoft.Extensions.Logging.LogLevel.Error));
+            Assert.That(logger.Entries.Single().Message, Does.Contain("Operation=get_status"));
+            Assert.That(logger.Entries.Single().Message, Does.Contain("FailOpen=False"));
+            Assert.That(logger.Entries.Single().Message, Does.Not.Contain("lockout unavailable"));
+            _providerMock.Verify(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential?>(), It.IsAny<CancellationToken>()), Times.Never);
+            _accountLockoutServiceMock.Verify(s => s.RecordFailureAsync(user, AuthenticationProviderKey.Local, It.IsAny<AccountLockoutContext>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task LoginAsyncWithAccountLockoutStatusFailureShouldFailOpenWhenConfigured()
+    {
+        var context = new AuthenticationContext("test@example.com");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var credential = CreateCredential(user.Id);
+        UseAccountLockoutService(new AccountLockoutOptions { FailOpenOnBackendFailure = true });
         _accountLockoutServiceMock.Setup(s => s.GetStatusAsync(user, AuthenticationProviderKey.Local, It.IsAny<AccountLockoutContext>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("lockout unavailable"));
 
@@ -964,14 +1074,15 @@ internal sealed class AuthenticationPipelineTests
     }
 
     [Test]
-    public async Task LoginAsyncWithAccountLockoutFailureRecordingFailureShouldFailOpen()
+    public async Task LoginAsyncWithAccountLockoutFailureRecordingFailureShouldStillFailAuthentication()
     {
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
         var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
         var credential = CreateCredential(user.Id);
-        UseAccountLockoutService();
+        var logger = new Ashlar.Testing.RecordingLogger<AuthenticationPipeline>();
+        UseAccountLockoutService(logger);
         _accountLockoutServiceMock.Setup(s => s.GetStatusAsync(user, AuthenticationProviderKey.Local, It.IsAny<AccountLockoutContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(AccountLockoutStatus.None(user.Id, user.TenantId, AuthenticationProviderKey.Local));
         _accountLockoutServiceMock.Setup(s => s.RecordFailureAsync(user, AuthenticationProviderKey.Local, It.IsAny<AccountLockoutContext>(), It.IsAny<CancellationToken>()))
@@ -984,7 +1095,50 @@ internal sealed class AuthenticationPipelineTests
 
         var response = await _pipeline.LoginAsync(context, assertion);
 
-        Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+            Assert.That(response.User, Is.Null);
+            Assert.That(logger.Entries.Single().Level, Is.EqualTo(Microsoft.Extensions.Logging.LogLevel.Error));
+            Assert.That(logger.Entries.Single().Message, Does.Contain("Operation=record_failure"));
+            Assert.That(logger.Entries.Single().Message, Does.Contain("FailOpen=False"));
+            Assert.That(logger.Entries.Single().Message, Does.Not.Contain("lockout unavailable"));
+        }
+    }
+
+    [Test]
+    public async Task LoginAsyncWithAccountLockoutFailureRecordingFailureShouldStillFailWhenFailOpenConfigured()
+    {
+        var context = new AuthenticationContext("test@example.com");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
+        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var credential = CreateCredential(user.Id);
+        var logger = new Ashlar.Testing.RecordingLogger<AuthenticationPipeline>();
+        UseAccountLockoutService(
+            securityEventSink: null,
+            accountLockoutOptions: new AccountLockoutOptions { FailOpenOnBackendFailure = true },
+            logger);
+        _accountLockoutServiceMock.Setup(s => s.GetStatusAsync(user, AuthenticationProviderKey.Local, It.IsAny<AccountLockoutContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AccountLockoutStatus.None(user.Id, user.TenantId, AuthenticationProviderKey.Local));
+        _accountLockoutServiceMock.Setup(s => s.RecordFailureAsync(user, AuthenticationProviderKey.Local, It.IsAny<AccountLockoutContext>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("lockout unavailable"));
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Failed));
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+            Assert.That(response.User, Is.Null);
+            Assert.That(logger.Entries.Single().Message, Does.Contain("Operation=record_failure"));
+            Assert.That(logger.Entries.Single().Message, Does.Contain("FailOpen=True"));
+            Assert.That(logger.Entries.Single().Message, Does.Not.Contain("lockout unavailable"));
+        }
     }
 
     [Test]
@@ -1290,13 +1444,40 @@ internal sealed class AuthenticationPipelineTests
 
     private void UseAccountLockoutService(ISecurityEventSink? securityEventSink = null)
     {
+        UseAccountLockoutService(securityEventSink, accountLockoutOptions: null);
+    }
+
+    private void UseAccountLockoutService(AccountLockoutOptions accountLockoutOptions)
+    {
+        UseAccountLockoutService(securityEventSink: null, accountLockoutOptions);
+    }
+
+    private void UseAccountLockoutService(Ashlar.Testing.RecordingLogger<AuthenticationPipeline> logger)
+    {
+        UseAccountLockoutService(securityEventSink: null, accountLockoutOptions: null, logger);
+    }
+
+    private void UseAccountLockoutService(ISecurityEventSink? securityEventSink, AccountLockoutOptions? accountLockoutOptions)
+    {
+        UseAccountLockoutService(securityEventSink, accountLockoutOptions, logger: null);
+    }
+
+    private void UseAccountLockoutService(
+        ISecurityEventSink? securityEventSink,
+        AccountLockoutOptions? accountLockoutOptions,
+        Ashlar.Testing.RecordingLogger<AuthenticationPipeline>? logger)
+    {
         _pipeline = new AuthenticationPipeline(
             _providerRegistryMock.Object,
             _credentialServiceMock.Object,
             new NullTransactionProvider(),
             _primaryRateLimiterMock.Object,
             _factorRateLimiterMock.Object,
-            new AuthenticationPipelineDependencies(SecurityEventSink: securityEventSink, AccountLockoutService: _accountLockoutServiceMock.Object));
+            new AuthenticationPipelineDependencies(
+                SecurityEventSink: securityEventSink,
+                Logger: logger,
+                AccountLockoutService: _accountLockoutServiceMock.Object,
+                AccountLockoutOptions: accountLockoutOptions));
     }
 
     private static UserCredential CreateCredential(Guid userId)

@@ -18,6 +18,13 @@ public sealed class AccountLockoutOptions
     public TimeSpan LockoutDuration { get; set; } = TimeSpan.FromMinutes(15);
 
     /// <summary>
+    /// Allows local-password authentication to continue past durable lockout status lookup failures.
+    /// Failed-password recording failures still fail authentication; this option only preserves the generic invalid-credential result after logging that the failed attempt was not recorded.
+    /// Keep this disabled unless the deployment knowingly prefers sign-in availability over brute-force protection during lockout backend outages.
+    /// </summary>
+    public bool FailOpenOnBackendFailure { get; set; }
+
+    /// <summary>
     /// Validates account lockout options.
     /// </summary>
     /// <param name="options">The options to validate.</param>

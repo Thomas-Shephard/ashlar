@@ -110,6 +110,7 @@ internal sealed class RateLimitedOptionsValidationTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(AccountLockoutOptions.Validate(new AccountLockoutOptions()), Is.True);
+            Assert.That(new AccountLockoutOptions().FailOpenOnBackendFailure, Is.False);
             Assert.That(AccountLockoutOptions.Validate(null), Is.False);
             Assert.That(AccountLockoutOptions.Validate(new AccountLockoutOptions { FailureThreshold = 0 }), Is.False);
             Assert.That(AccountLockoutOptions.Validate(new AccountLockoutOptions { LockoutDuration = TimeSpan.Zero }), Is.False);
