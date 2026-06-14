@@ -63,10 +63,10 @@ public sealed class RedisAuthenticationRateLimiter : IAuthenticationRateLimiter
         end
 
         if blockedUntil == nil then
-            redis.call('HSET', @key, 'count', count, 'windowStart', windowStart)
+            redis.call('HSET', @key, 'count', count, 'windowStart', windowStart, 'purpose', @purpose, 'expiresAt', resetAt)
             redis.call('HDEL', @key, 'blockedUntil')
         else
-            redis.call('HSET', @key, 'count', count, 'windowStart', windowStart, 'blockedUntil', blockedUntil)
+            redis.call('HSET', @key, 'count', count, 'windowStart', windowStart, 'blockedUntil', blockedUntil, 'purpose', @purpose, 'expiresAt', resetAt)
         end
 
         local ttlMs = resetAt - now + skewMs
@@ -149,6 +149,7 @@ public sealed class RedisAuthenticationRateLimiter : IAuthenticationRateLimiter
         var scriptResult = await Script.EvaluateAsync(database, new
         {
             key = (RedisKey)redisKey,
+            purpose = attempt.Purpose ?? string.Empty,
             now = now.ToUnixTimeMilliseconds(),
             permitLimit = rule.PermitLimit,
             windowMs = ToPositiveMilliseconds(rule.Window, nameof(rule)),

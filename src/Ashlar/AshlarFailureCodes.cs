@@ -19,6 +19,8 @@ public static class AshlarFailureCodes
     public const string RateLimitedValue = "rate_limited";
     /// <summary>The rate limit was exceeded.</summary>
     public const string RateLimitExceededValue = "rate_limit_exceeded";
+    /// <summary>The authentication rate-limit bucket was not found.</summary>
+    public const string RateLimitBucketNotFoundValue = "rate_limit_bucket_not_found";
     /// <summary>The supplied callback URI is not allowed.</summary>
     public const string InvalidCallbackUriValue = "invalid_callback_uri";
     /// <summary>The user could not be found.</summary>
@@ -135,6 +137,8 @@ public static class AshlarFailureCodes
     public static readonly AshlarFailureCode RateLimited = new(RateLimitedValue);
     /// <summary>The rate limit was exceeded.</summary>
     public static readonly AshlarFailureCode RateLimitExceeded = new(RateLimitExceededValue);
+    /// <summary>The authentication rate-limit bucket was not found.</summary>
+    public static readonly AshlarFailureCode RateLimitBucketNotFound = new(RateLimitBucketNotFoundValue);
     /// <summary>The supplied callback URI is not allowed.</summary>
     public static readonly AshlarFailureCode InvalidCallbackUri = new(InvalidCallbackUriValue);
     /// <summary>The user could not be found.</summary>

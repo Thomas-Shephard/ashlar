@@ -21,6 +21,11 @@ internal static class RedisRateLimitKeyBuilder
 #else
         var hex = Convert.ToHexString(hash).ToLowerInvariant();
 #endif
-        return $"{prefix.TrimEnd(':')}:auth:{hex}";
+        return $"{NormalizePrefix(prefix)}:auth:{hex}";
+    }
+
+    internal static string NormalizePrefix(string prefix)
+    {
+        return prefix.TrimEnd(':');
     }
 }

@@ -1,4 +1,5 @@
 using Ashlar.Authorization.Abstractions;
+using Ashlar.Identity.Features.Administration;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
 using Ashlar.Operational;
@@ -199,7 +200,7 @@ public static class AshlarPostgresServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers the Ashlar PostgreSQL-backed authentication rate limiter.
+    /// Registers the Ashlar PostgreSQL-backed authentication rate limiter, diagnostics, and safe administration operations.
     /// </summary>
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="configure">Optional rate limiter configuration.</param>
@@ -221,6 +222,14 @@ public static class AshlarPostgresServiceCollectionExtensions
 
         services.Replace(ServiceDescriptor.Singleton<IAuthenticationRateLimiter, PostgresAuthenticationRateLimiter>());
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiterDiagnostics, PostgresAuthenticationRateLimiterDiagnostics>());
+        services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimitAdministrationRepository, PostgresAuthenticationRateLimitAdministrationRepository>());
+        services.TryAddScoped(provider => new AuthenticationRateLimitAdministrationServiceDependencies(
+            provider.GetService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>()));
+        services.TryAddScoped<IAuthenticationRateLimitAdministrationService>(provider =>
+            new AuthenticationRateLimitAdministrationService(
+                provider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>(),
+                provider.GetService<AuthenticationRateLimitAdministrationServiceDependencies>()));
 
         return services;
     }
