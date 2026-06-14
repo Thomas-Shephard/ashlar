@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Text;
 using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Repositories;
+using Ashlar.Operational.Diagnostics;
 using Ashlar.Security.Encryption;
 using Ashlar.Testing.DependencyInjection;
 using Ashlar.Webhooks.SecurityEvents;
@@ -232,7 +233,8 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
             typeof(ISecurityEventSink),
             typeof(IAshlarSecurityEventWebhookSender),
             typeof(IAshlarSecurityEventWebhookEndpointTester),
-            typeof(AshlarSecurityEventWebhookDeliveryFactory));
+            typeof(AshlarSecurityEventWebhookDeliveryFactory),
+            typeof(IAshlarOperationsSummaryService));
 
         using var scope = provider.CreateScope();
 
@@ -240,6 +242,7 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         {
             Assert.That(scope.ServiceProvider.GetServices<ISecurityEventHandler>(), Has.Some.TypeOf<AshlarSecurityEventWebhookHandler>());
             Assert.That(scope.ServiceProvider.GetServices<ISecurityEventHandler>(), Has.Some.TypeOf<AshlarSecurityEventWebhookOutboxHandler>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarOperationsSummaryService>(), Is.TypeOf<AshlarOperationsSummaryService>());
             Assert.That(provider.GetServices<IHostedService>(), Is.Empty);
         }
     }
