@@ -3,6 +3,7 @@
 namespace Microsoft.Extensions.DependencyInjection;
 #pragma warning restore IDE0130
 
+using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
@@ -39,6 +40,12 @@ public static partial class AshlarServiceCollectionExtensions
         }
 
         services.TryAddScoped<IInvitationService, InvitationService>();
+        services.TryAddScoped(provider => new InvitationAdministrationServiceDependencies(
+            provider.GetService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>()));
+        services.TryAddScoped<IInvitationAdministrationService>(provider => new InvitationAdministrationService(
+            provider.GetRequiredService<IInvitationRepository>(),
+            provider.GetService<InvitationAdministrationServiceDependencies>()));
         services.TryAddScoped<InvitationStoreContext>();
         services.TryAddScoped<InvitationDependencies>();
 

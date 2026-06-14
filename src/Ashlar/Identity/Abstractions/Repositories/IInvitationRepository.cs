@@ -31,8 +31,35 @@ public interface IInvitationRepository
     /// Revokes outstanding invitations for an email address.
     /// </summary>
     /// <param name="email">Normalized email address whose invitations should be revoked.</param>
-    /// <param name="tenantId">Tenant scope to revoke within, or <see langword="null" /> for unrestricted revocation across all tenant scopes.</param>
+    /// <param name="tenantId">Tenant scope to revoke within, or <see langword="null" /> for global invitations.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>
     /// <returns>The number of invitations newly revoked.</returns>
     Task<int> RevokeInvitationsByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Searches invitations using provider-neutral administrator filters.
+    /// </summary>
+    /// <param name="request">Explicit tenant scope, filters, and paging options. Repository implementations must not return token hashes.</param>
+    /// <param name="now">UTC time used to classify pending and expired invitations.</param>
+    /// <param name="cancellationToken">A token that can cancel the search.</param>
+    /// <returns>Display-safe invitation summaries for administrator tooling.</returns>
+    Task<IReadOnlyList<InvitationAdministrationSummary>> SearchInvitationsAsync(SearchInvitationsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets display-safe invitation detail by identifier.
+    /// </summary>
+    /// <param name="request">Explicit tenant scope and invitation identifier. Repository implementations must not return token hashes.</param>
+    /// <param name="now">UTC time used to classify pending and expired invitations.</param>
+    /// <param name="cancellationToken">A token that can cancel the lookup.</param>
+    /// <returns>The matching invitation detail, or <see langword="null" /> when no invitation exists in scope.</returns>
+    Task<InvitationAdministrationDetail?> GetInvitationAsync(InvitationAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Revokes a pending invitation by identifier.
+    /// </summary>
+    /// <param name="request">Explicit tenant scope and invitation identifier for the mutating operation.</param>
+    /// <param name="now">UTC time to record as the revocation timestamp.</param>
+    /// <param name="cancellationToken">A token that can cancel revocation.</param>
+    /// <returns>The invitation state after revocation, or <see langword="null" /> when no invitation exists in scope.</returns>
+    Task<RevokeInvitationAdministrationResult?> RevokeInvitationAsync(RevokeInvitationAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
 }

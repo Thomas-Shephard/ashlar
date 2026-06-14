@@ -179,6 +179,160 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         Assert.That(await verificationRepository.GetInvitationByTokenHashAsync(invitation.TokenHash), Is.Null);
     }
 
+    [Test]
+    public async Task AdministrationSearchFiltersByTenantGlobalAndAllTenants()
+    {
+        await using var scope = CreateAsyncScope();
+        var repository = GetInvitationRepository(scope.ServiceProvider);
+        var tenantId = Guid.NewGuid();
+        var tenantInvitation = CreateInvitation("admin-scope@example.com", "admin-scope-tenant", tenantId);
+        var globalInvitation = CreateInvitation("admin-scope@example.com", "admin-scope-global");
+        await repository.CreateInvitationAsync(tenantInvitation);
+        await repository.CreateInvitationAsync(globalInvitation);
+
+        var tenant = await repository.SearchInvitationsAsync(new SearchInvitationsRequest { Tenant = new TenantContext(tenantId), Email = "ADMIN-SCOPE@example.com", Limit = 10 }, RepositoryNow);
+        var global = await repository.SearchInvitationsAsync(new SearchInvitationsRequest { Tenant = TenantContext.Global, Email = "admin-scope@example.com", Limit = 10 }, RepositoryNow);
+        var all = await repository.SearchInvitationsAsync(new SearchInvitationsRequest { IncludeAllTenants = true, Email = "admin-scope@example.com", Limit = 10 }, RepositoryNow);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tenant.Select(invitation => invitation.Id), Is.EqualTo(new[] { tenantInvitation.Id }));
+            Assert.That(global.Select(invitation => invitation.Id), Is.EqualTo(new[] { globalInvitation.Id }));
+            Assert.That(all.Select(invitation => invitation.Id), Is.EquivalentTo(new[] { tenantInvitation.Id, globalInvitation.Id }));
+        }
+    }
+
+    [Test]
+    public async Task AdministrationSearchFiltersByEmailStatusAndTimeRanges()
+    {
+        await using var scope = CreateAsyncScope();
+        var repository = GetInvitationRepository(scope.ServiceProvider);
+        var pending = CreateInvitation("filter-pending@example.com", "filter-pending", createdAt: CreatedAt, expiresAt: RepositoryNow.AddDays(1));
+        var accepted = CreateInvitation("filter-accepted@example.com", "filter-accepted", createdAt: CreatedAt.AddHours(1), expiresAt: RepositoryNow.AddDays(1));
+        var revoked = CreateInvitation("filter-revoked@example.com", "filter-revoked", createdAt: CreatedAt.AddHours(2), expiresAt: RepositoryNow.AddDays(1));
+        var expired = CreateInvitation("filter-expired@example.com", "filter-expired", createdAt: RepositoryNow.AddDays(-3), expiresAt: RepositoryNow.AddDays(-1));
+        await repository.CreateInvitationAsync(pending);
+        await repository.CreateInvitationAsync(accepted);
+        await repository.CreateInvitationAsync(revoked);
+        await repository.CreateInvitationAsync(expired);
+        accepted.AcceptedAt = RepositoryNow.AddMinutes(-30);
+        var acceptedUpdated = await repository.UpdateInvitationAsync(accepted, accepted.Version);
+        var revokedCount = await repository.RevokeInvitationsByEmailAsync(revoked.Email);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(acceptedUpdated, Is.True);
+            Assert.That(revokedCount, Is.EqualTo(1));
+        }
+
+        var emailQuery = await repository.SearchInvitationsAsync(new SearchInvitationsRequest { IncludeAllTenants = true, EmailQuery = "FILTER-PENDING", Limit = 10 }, RepositoryNow);
+        var pendingStatus = await repository.SearchInvitationsAsync(new SearchInvitationsRequest { IncludeAllTenants = true, EmailQuery = "filter-", Status = InvitationAdministrationStatus.Pending, Limit = 10 }, RepositoryNow);
+        var acceptedRange = await repository.SearchInvitationsAsync(new SearchInvitationsRequest { IncludeAllTenants = true, AcceptedFrom = RepositoryNow.AddHours(-1), AcceptedTo = RepositoryNow, Limit = 10 }, RepositoryNow);
+        var revokedRange = await repository.SearchInvitationsAsync(new SearchInvitationsRequest { IncludeAllTenants = true, RevokedFrom = RepositoryNow.AddMinutes(-1), RevokedTo = RepositoryNow.AddMinutes(1), Limit = 10 }, RepositoryNow);
+        var expiredRange = await repository.SearchInvitationsAsync(new SearchInvitationsRequest { IncludeAllTenants = true, Status = InvitationAdministrationStatus.Expired, ExpiresTo = RepositoryNow, Limit = 10 }, RepositoryNow);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(emailQuery.Select(invitation => invitation.Id), Is.EqualTo(new[] { pending.Id }));
+            Assert.That(pendingStatus.Select(invitation => invitation.Id), Is.EqualTo(new[] { pending.Id }));
+            Assert.That(acceptedRange.Select(invitation => invitation.Id), Does.Contain(accepted.Id));
+            Assert.That(revokedRange.Select(invitation => invitation.Id), Does.Contain(revoked.Id));
+            Assert.That(expiredRange.Select(invitation => invitation.Id), Does.Contain(expired.Id));
+        }
+    }
+
+    [Test]
+    public async Task AdministrationSearchSupportsPaging()
+    {
+        await using var scope = CreateAsyncScope();
+        var repository = GetInvitationRepository(scope.ServiceProvider);
+        List<UserInvitation> invitations = [];
+        for (var i = 0; i < 4; i++)
+        {
+            var invitation = CreateInvitation($"admin-page-{i}@example.com", $"admin-page-{i}", createdAt: CreatedAt.AddMinutes(i));
+            invitations.Add(invitation);
+            await repository.CreateInvitationAsync(invitation);
+        }
+
+        var result = await repository.SearchInvitationsAsync(new SearchInvitationsRequest { IncludeAllTenants = true, EmailQuery = "admin-page-", Limit = 2, Offset = 1 }, RepositoryNow);
+        var expected = invitations.OrderByDescending(invitation => invitation.CreatedAt).ThenByDescending(invitation => invitation.Id).Skip(1).Take(2).Select(invitation => invitation.Id);
+
+        Assert.That(result.Select(invitation => invitation.Id), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task AdministrationDetailAppliesTenantIsolationAndDoesNotExposeSecrets()
+    {
+        await using var scope = CreateAsyncScope();
+        var repository = GetInvitationRepository(scope.ServiceProvider);
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var invitation = CreateInvitation("admin-detail@example.com", "admin-detail-token", tenantId);
+        invitation.Metadata = """{"safe":true}""";
+        await repository.CreateInvitationAsync(invitation);
+
+        var inScope = await repository.GetInvitationAsync(new InvitationAdministrationDetailRequest(invitation.Id, new TenantContext(tenantId)), RepositoryNow);
+        var outOfScope = await repository.GetInvitationAsync(new InvitationAdministrationDetailRequest(invitation.Id, new TenantContext(otherTenantId)), RepositoryNow);
+        var globalScope = await repository.GetInvitationAsync(new InvitationAdministrationDetailRequest(invitation.Id, TenantContext.Global), RepositoryNow);
+        var allTenants = await repository.GetInvitationAsync(new InvitationAdministrationDetailRequest(invitation.Id, IncludeAllTenants: true), RepositoryNow);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inScope?.Id, Is.EqualTo(invitation.Id));
+            Assert.That(outOfScope, Is.Null);
+            Assert.That(globalScope, Is.Null);
+            Assert.That(allTenants?.Id, Is.EqualTo(invitation.Id));
+            Assert.That(typeof(InvitationAdministrationDetail).GetProperties().Select(static property => property.Name), Does.Not.Contain("TokenHash"));
+            Assert.That(typeof(InvitationAdministrationDetail).GetProperties().Select(static property => property.Name), Does.Not.Contain("Metadata"));
+        }
+    }
+
+    [Test]
+    public async Task AdministrationRevokeByIdIsTenantScopedAndReportsTerminalStates()
+    {
+        await using var scope = CreateAsyncScope();
+        var repository = GetInvitationRepository(scope.ServiceProvider);
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var invitation = CreateInvitation("admin-revoke@example.com", "admin-revoke-token", tenantId);
+        var accepted = CreateInvitation("admin-revoke-accepted@example.com", "admin-revoke-accepted", tenantId);
+        await repository.CreateInvitationAsync(invitation);
+        await repository.CreateInvitationAsync(accepted);
+        accepted.AcceptedAt = RepositoryNow.AddMinutes(-10);
+        Assert.That(await repository.UpdateInvitationAsync(accepted, accepted.Version), Is.True);
+
+        var outOfScope = await repository.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitation.Id, new TenantContext(otherTenantId), Audit: CreateAudit()), RepositoryNow);
+        var revoked = await repository.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitation.Id, new TenantContext(tenantId), Audit: CreateAudit()), RepositoryNow);
+        var second = await repository.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitation.Id, new TenantContext(tenantId), Audit: CreateAudit()), RepositoryNow);
+        var terminal = await repository.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(accepted.Id, new TenantContext(tenantId), Audit: CreateAudit()), RepositoryNow);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfScope, Is.Null);
+            Assert.That(revoked?.Revoked, Is.True);
+            Assert.That(revoked?.TenantId, Is.EqualTo(tenantId));
+            Assert.That(revoked?.Status, Is.EqualTo(InvitationAdministrationStatus.Revoked));
+            Assert.That(second?.Revoked, Is.False);
+            Assert.That(second?.TenantId, Is.EqualTo(tenantId));
+            Assert.That(second?.Status, Is.EqualTo(InvitationAdministrationStatus.Revoked));
+            Assert.That(terminal?.Revoked, Is.False);
+            Assert.That(terminal?.TenantId, Is.EqualTo(tenantId));
+            Assert.That(terminal?.Status, Is.EqualTo(InvitationAdministrationStatus.Accepted));
+        }
+    }
+
+    [Test]
+    public async Task AdministrationSearchRejectsInvalidPaging()
+    {
+        await using var scope = CreateAsyncScope();
+        var repository = GetInvitationRepository(scope.ServiceProvider);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => repository.SearchInvitationsAsync(new SearchInvitationsRequest { IncludeAllTenants = true, Limit = 0 }, RepositoryNow));
+            Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => repository.SearchInvitationsAsync(new SearchInvitationsRequest { IncludeAllTenants = true, Offset = -1 }, RepositoryNow));
+        }
+    }
+
     private static UserInvitation CreateInvitation(
         string email,
         string tokenHash,
@@ -197,6 +351,11 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
             ExpiresAt = expiresAt ?? created.AddDays(7),
             Version = Guid.NewGuid().ToString("N")
         };
+    }
+
+    private static AuditContext CreateAudit()
+    {
+        return new AuditContext(Guid.NewGuid(), "127.0.0.1");
     }
 
     private static bool JsonEquals(string? left, string? right)

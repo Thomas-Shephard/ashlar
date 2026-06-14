@@ -1279,5 +1279,20 @@ internal sealed class InvitationServiceTests
             }
             return Task.FromResult(toRevoke.Count);
         }
+
+        public Task<IReadOnlyList<InvitationAdministrationSummary>> SearchInvitationsAsync(SearchInvitationsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("Invitation administration is covered by dedicated tests.");
+        }
+
+        public Task<InvitationAdministrationDetail?> GetInvitationAsync(InvitationAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("Invitation administration is covered by dedicated tests.");
+        }
+
+        public Task<RevokeInvitationAdministrationResult?> RevokeInvitationAsync(RevokeInvitationAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("Invitation administration is covered by dedicated tests.");
+        }
     }
 }

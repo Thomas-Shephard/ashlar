@@ -130,7 +130,8 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             "Invitation persistence is not configured.",
             "Register an IInvitationRepository implementation before using Ashlar invitations.",
             "Invitation persistence",
-            typeof(IInvitationService));
+            typeof(IInvitationService),
+            typeof(IInvitationAdministrationService));
 
         AddMissingServiceIssue<IBootstrapStateRepository>(
             serviceProvider,

@@ -110,6 +110,7 @@ internal sealed class AshlarConfigurationValidatorTests
             AssertIssue(result, AshlarConfigurationIssueCodes.NullSecurityEventSink, AshlarConfigurationIssueSeverity.Warning);
             AssertIssue(result, AshlarConfigurationIssueCodes.InMemoryAuthenticationRateLimiter, AshlarConfigurationIssueSeverity.Warning);
             AssertIssue(result, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Information);
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.InvitationRepositoryMissing));
             Assert.That(result.HasErrors, Is.True);
             Assert.That(result.IsValid, Is.False);
         }
@@ -804,6 +805,7 @@ internal sealed class AshlarConfigurationValidatorTests
         services.AddSingleton(Mock.Of<ICredentialAdministrationRepository>());
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionAdministrationRepository>());
+        services.AddSingleton(Mock.Of<IInvitationRepository>());
         services.AddSingleton<IEmailSender, CustomEmailSender>();
         services.AddSingleton<IPersistentSecurityEventSink, CustomPersistentSecurityEventSink>();
         services.AddSingleton<IAuthenticationRateLimiter, CustomAuthenticationRateLimiter>();
