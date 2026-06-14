@@ -94,12 +94,22 @@ internal sealed class InvitationAdministrationService(
     {
         var requestedTenantId = request.Tenant?.TenantId;
         var invitationTenantId = result.TenantId;
+        var tenantScope = "global";
+        if (request.IncludeAllTenants)
+        {
+            tenantScope = "all";
+        }
+        else if (requestedTenantId.HasValue)
+        {
+            tenantScope = "tenant";
+        }
+
         var properties = new Dictionary<string, string>
         {
             ["invitation_id"] = result.InvitationId.ToString(),
             ["revoked"] = "true",
             ["status"] = result.Status.ToString(),
-            ["tenant_scope"] = request.IncludeAllTenants ? "all" : requestedTenantId.HasValue ? "tenant" : "global"
+            ["tenant_scope"] = tenantScope
         };
 
         if (invitationTenantId.HasValue)

@@ -403,25 +403,33 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         }
     }
 
-    private class InvitationAdministrationSummaryRow
+    private record InvitationAdministrationSummaryRow(
+        Guid Id,
+        string Email,
+        Guid? TenantId,
+        int Status,
+        DateTimeOffset CreatedAt,
+        DateTimeOffset? UpdatedAt,
+        DateTimeOffset ExpiresAt,
+        DateTimeOffset? AcceptedAt,
+        DateTimeOffset? RevokedAt)
     {
-        public Guid Id { get; init; }
-        public string Email { get; init; } = string.Empty;
-        public Guid? TenantId { get; init; }
-        public int Status { get; init; }
-        public DateTimeOffset CreatedAt { get; init; }
-        public DateTimeOffset? UpdatedAt { get; init; }
-        public DateTimeOffset ExpiresAt { get; init; }
-        public DateTimeOffset? AcceptedAt { get; init; }
-        public DateTimeOffset? RevokedAt { get; init; }
-
         public InvitationAdministrationSummary ToSummary()
         {
             return new InvitationAdministrationSummary(Id, Email, TenantId, (InvitationAdministrationStatus)Status, CreatedAt, UpdatedAt, ExpiresAt, AcceptedAt, RevokedAt);
         }
     }
 
-    private sealed class InvitationAdministrationDetailRow : InvitationAdministrationSummaryRow
+    private sealed record InvitationAdministrationDetailRow(
+        Guid Id,
+        string Email,
+        Guid? TenantId,
+        int Status,
+        DateTimeOffset CreatedAt,
+        DateTimeOffset? UpdatedAt,
+        DateTimeOffset ExpiresAt,
+        DateTimeOffset? AcceptedAt,
+        DateTimeOffset? RevokedAt) : InvitationAdministrationSummaryRow(Id, Email, TenantId, Status, CreatedAt, UpdatedAt, ExpiresAt, AcceptedAt, RevokedAt)
     {
         public InvitationAdministrationDetail ToDetail()
         {
@@ -429,14 +437,13 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         }
     }
 
-    private sealed class RevokeInvitationAdministrationResultRow
+    private sealed record RevokeInvitationAdministrationResultRow(
+        Guid InvitationId,
+        Guid? TenantId,
+        bool Revoked,
+        int Status,
+        DateTimeOffset? RevokedAt)
     {
-        public Guid InvitationId { get; init; }
-        public Guid? TenantId { get; init; }
-        public bool Revoked { get; init; }
-        public int Status { get; init; }
-        public DateTimeOffset? RevokedAt { get; init; }
-
         public RevokeInvitationAdministrationResult ToResult()
         {
             return new RevokeInvitationAdministrationResult(InvitationId, TenantId, Revoked, (InvitationAdministrationStatus)Status, RevokedAt);

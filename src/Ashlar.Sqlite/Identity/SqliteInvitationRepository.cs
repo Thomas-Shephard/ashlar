@@ -11,6 +11,12 @@ namespace Ashlar.Sqlite.Identity;
 /// <param name="timeProvider">The time provider value.</param>
 public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IInvitationRepository
 {
+    private const string TenantIdColumn = "tenant_id";
+    private const string CreatedAtColumn = "created_at";
+    private const string ExpiresAtColumn = "expires_at";
+    private const string AcceptedAtColumn = "accepted_at";
+    private const string RevokedAtColumn = "revoked_at";
+
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
@@ -259,13 +265,13 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
         {
             Id = reader.GetGuidFromText("id"),
             Email = reader.GetString(reader.GetOrdinal("email")),
-            TenantId = reader.GetNullableGuidFromText("tenant_id"),
+            TenantId = reader.GetNullableGuidFromText(TenantIdColumn),
             TokenHash = reader.GetString(reader.GetOrdinal("token_hash")),
-            CreatedAt = reader.GetDateTimeOffsetFromText("created_at"),
+            CreatedAt = reader.GetDateTimeOffsetFromText(CreatedAtColumn),
             UpdatedAt = reader.GetNullableDateTimeOffsetFromText("updated_at"),
-            ExpiresAt = reader.GetDateTimeOffsetFromText("expires_at"),
-            AcceptedAt = reader.GetNullableDateTimeOffsetFromText("accepted_at"),
-            RevokedAt = reader.GetNullableDateTimeOffsetFromText("revoked_at"),
+            ExpiresAt = reader.GetDateTimeOffsetFromText(ExpiresAtColumn),
+            AcceptedAt = reader.GetNullableDateTimeOffsetFromText(AcceptedAtColumn),
+            RevokedAt = reader.GetNullableDateTimeOffsetFromText(RevokedAtColumn),
             Metadata = reader.GetNullableString("metadata"),
             Version = reader.GetString(reader.GetOrdinal("version"))
         };
@@ -331,10 +337,10 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
             command.AddParameter("$status", (int)request.Status.Value);
         }
 
-        command.AddDateRange(request.CreatedFrom, request.CreatedTo, "created_at", "$createdFrom", "$createdTo", ref sql);
-        command.AddDateRange(request.AcceptedFrom, request.AcceptedTo, "accepted_at", "$acceptedFrom", "$acceptedTo", ref sql);
-        command.AddDateRange(request.RevokedFrom, request.RevokedTo, "revoked_at", "$revokedFrom", "$revokedTo", ref sql);
-        command.AddDateRange(request.ExpiresFrom, request.ExpiresTo, "expires_at", "$expiresFrom", "$expiresTo", ref sql);
+        command.AddDateRange(request.CreatedFrom, request.CreatedTo, CreatedAtColumn, "$createdFrom", "$createdTo", ref sql);
+        command.AddDateRange(request.AcceptedFrom, request.AcceptedTo, AcceptedAtColumn, "$acceptedFrom", "$acceptedTo", ref sql);
+        command.AddDateRange(request.RevokedFrom, request.RevokedTo, RevokedAtColumn, "$revokedFrom", "$revokedTo", ref sql);
+        command.AddDateRange(request.ExpiresFrom, request.ExpiresTo, ExpiresAtColumn, "$expiresFrom", "$expiresTo", ref sql);
     }
 
     private static void AddScopeFilter(SqliteCommand command, TenantContext? tenant, bool includeAllTenants, ref string sql)
@@ -346,11 +352,11 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
 
         if (tenant!.TenantId == null)
         {
-            sql += " AND tenant_id IS NULL";
+            sql += $" AND {TenantIdColumn} IS NULL";
             return;
         }
 
-        sql += " AND tenant_id = $tenantId";
+        sql += $" AND {TenantIdColumn} = $tenantId";
         command.AddNullableGuidParameter("$tenantId", tenant.TenantId);
     }
 
@@ -359,13 +365,13 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
         return new InvitationAdministrationSummary(
             reader.GetGuidFromText("id"),
             reader.GetString(reader.GetOrdinal("email")),
-            reader.GetNullableGuidFromText("tenant_id"),
+            reader.GetNullableGuidFromText(TenantIdColumn),
             (InvitationAdministrationStatus)reader.GetInt32ByName("status"),
-            reader.GetDateTimeOffsetFromText("created_at"),
+            reader.GetDateTimeOffsetFromText(CreatedAtColumn),
             reader.GetNullableDateTimeOffsetFromText("updated_at"),
-            reader.GetDateTimeOffsetFromText("expires_at"),
-            reader.GetNullableDateTimeOffsetFromText("accepted_at"),
-            reader.GetNullableDateTimeOffsetFromText("revoked_at"));
+            reader.GetDateTimeOffsetFromText(ExpiresAtColumn),
+            reader.GetNullableDateTimeOffsetFromText(AcceptedAtColumn),
+            reader.GetNullableDateTimeOffsetFromText(RevokedAtColumn));
     }
 
     private static InvitationAdministrationDetail ReadAdministrationDetail(SqliteDataReader reader)
@@ -373,26 +379,26 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
         return new InvitationAdministrationDetail(
             reader.GetGuidFromText("id"),
             reader.GetString(reader.GetOrdinal("email")),
-            reader.GetNullableGuidFromText("tenant_id"),
+            reader.GetNullableGuidFromText(TenantIdColumn),
             (InvitationAdministrationStatus)reader.GetInt32ByName("status"),
-            reader.GetDateTimeOffsetFromText("created_at"),
+            reader.GetDateTimeOffsetFromText(CreatedAtColumn),
             reader.GetNullableDateTimeOffsetFromText("updated_at"),
-            reader.GetDateTimeOffsetFromText("expires_at"),
-            reader.GetNullableDateTimeOffsetFromText("accepted_at"),
-            reader.GetNullableDateTimeOffsetFromText("revoked_at"));
+            reader.GetDateTimeOffsetFromText(ExpiresAtColumn),
+            reader.GetNullableDateTimeOffsetFromText(AcceptedAtColumn),
+            reader.GetNullableDateTimeOffsetFromText(RevokedAtColumn));
     }
 
     private static RevokeInvitationAdministrationResult ReadRevokeResult(SqliteDataReader reader)
     {
         var invitationId = reader.GetGuidFromText("invitation_id");
-        var tenantId = reader.GetNullableGuidFromText("tenant_id");
+        var tenantId = reader.GetNullableGuidFromText(TenantIdColumn);
         var status = (InvitationAdministrationStatus)reader.GetInt32ByName("status");
         return new RevokeInvitationAdministrationResult(
             invitationId,
             tenantId,
             Revoked: false,
             status,
-            reader.GetNullableDateTimeOffsetFromText("revoked_at"));
+            reader.GetNullableDateTimeOffsetFromText(RevokedAtColumn));
     }
 
     private static void ValidateMetadata(string? metadata)
