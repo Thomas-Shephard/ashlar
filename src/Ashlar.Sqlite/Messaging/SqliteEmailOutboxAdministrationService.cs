@@ -201,6 +201,7 @@ public sealed class SqliteEmailOutboxAdministrationService(
         }
         catch
         {
+            // The outbox mutation has already committed; audit delivery is best-effort and must not change the operator-visible result.
         }
     }
 
@@ -320,7 +321,17 @@ public sealed class SqliteEmailOutboxAdministrationService(
     {
         public EmailOutboxOperationState ToState()
         {
-            var status = DiscardedAt.HasValue ? EmailOutboxStatus.Discarded : SentAt.HasValue ? EmailOutboxStatus.Sent : EmailOutboxStatus.Pending;
+            var status = EmailOutboxStatus.Pending;
+            if (SentAt.HasValue)
+            {
+                status = EmailOutboxStatus.Sent;
+            }
+
+            if (DiscardedAt.HasValue)
+            {
+                status = EmailOutboxStatus.Discarded;
+            }
+
             var suppressPublicFields = EmailOutboxDispatch.ParseSensitivity(Sensitivity) == EmailMessageSensitivity.ContainsLiveSecret ||
                 EmailOutboxDispatch.ParseBodyProtection(BodyProtection) != EmailOutboxBodyProtection.None;
             return new EmailOutboxOperationState(Id, ToAddress, Subject, status, suppressPublicFields);

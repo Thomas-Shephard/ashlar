@@ -32,7 +32,7 @@ public sealed class PostgresEmailOutboxAdministrationService(
         parameters.Add("Limit", request.Limit + 1);
         parameters.Add("Offset", request.Offset);
 
-        var sql = CreateSearchSql(request, """
+        var sql = CreateSearchSql("""
             SELECT id AS Id, to_address AS ToAddress, subject AS Subject, sensitivity AS Sensitivity,
                    body_protection AS BodyProtection, status AS Status, attempt_count AS AttemptCount,
                    created_at AS CreatedAt, available_at AS AvailableAt, sent_at AS SentAt,
@@ -205,10 +205,11 @@ public sealed class PostgresEmailOutboxAdministrationService(
         }
         catch
         {
+            // The outbox mutation has already committed; audit delivery is best-effort and must not change the operator-visible result.
         }
     }
 
-    private static string CreateSearchSql(EmailOutboxSearchRequest request, string select)
+    private static string CreateSearchSql(string select)
     {
         return $"""
             WITH browseable AS (
@@ -299,7 +300,17 @@ public sealed class PostgresEmailOutboxAdministrationService(
     {
         public EmailOutboxOperationState ToState()
         {
-            var status = DiscardedAt.HasValue ? EmailOutboxStatus.Discarded : SentAt.HasValue ? EmailOutboxStatus.Sent : EmailOutboxStatus.Pending;
+            var status = EmailOutboxStatus.Pending;
+            if (SentAt.HasValue)
+            {
+                status = EmailOutboxStatus.Sent;
+            }
+
+            if (DiscardedAt.HasValue)
+            {
+                status = EmailOutboxStatus.Discarded;
+            }
+
             var suppressPublicFields = EmailOutboxDispatch.ParseSensitivity(Sensitivity) == EmailMessageSensitivity.ContainsLiveSecret ||
                 EmailOutboxDispatch.ParseBodyProtection(BodyProtection) != EmailOutboxBodyProtection.None;
             return new EmailOutboxOperationState(Id, ToAddress, Subject, status, suppressPublicFields);
