@@ -344,7 +344,7 @@ internal sealed class InvitationService(
     /// Revokes outstanding invitations for an email address.
     /// </summary>
     /// <param name="email">Recipient email address whose invitations should be revoked.</param>
-    /// <param name="tenantId">Tenant scope to revoke within; omit only when intentionally revoking invitations across all tenant scopes for the email address.</param>
+    /// <param name="tenantId">Tenant scope to revoke within, or <see langword="null" /> for global invitations.</param>
     /// <param name="audit">Actor and request metadata to include in security events.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>
     /// <returns>A result indicating whether revocation completed.</returns>

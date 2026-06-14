@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Ashlar.Identity.Models.Tenants;
 using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Identity;
@@ -125,6 +126,117 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
         return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<InvitationAdministrationSummary>> SearchInvitationsAsync(SearchInvitationsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    {
+        SearchInvitationsRequest.ThrowIfInvalid(request);
+
+        var sql = $"""
+            SELECT id,
+                   email,
+                   tenant_id,
+                   {StatusSql("$now")} AS status,
+                   created_at,
+                   updated_at,
+                   expires_at,
+                   accepted_at,
+                   revoked_at
+            FROM ashlar_invitations
+            WHERE 1 = 1
+            """;
+
+        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using var command = handle.Connection.CreateCommand();
+        command.Transaction = handle.Transaction;
+        command.AddDateTimeOffsetParameter("$now", now);
+        AddAdministrationFilters(command, request, ref sql);
+        sql += " ORDER BY created_at DESC, id DESC LIMIT $limit OFFSET $offset;";
+        command.AddParameter("$limit", request.Limit);
+        command.AddParameter("$offset", request.Offset);
+        command.CommandText = sql;
+
+        var invitations = new List<InvitationAdministrationSummary>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            invitations.Add(ReadAdministrationSummary(reader));
+        }
+
+        return invitations;
+    }
+
+    public async Task<InvitationAdministrationDetail?> GetInvitationAsync(InvitationAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    {
+        InvitationAdministrationDetailRequest.ThrowIfInvalid(request);
+
+        var sql = $"""
+            SELECT id,
+                   email,
+                   tenant_id,
+                   {StatusSql("$now")} AS status,
+                   created_at,
+                   updated_at,
+                   expires_at,
+                   accepted_at,
+                   revoked_at
+            FROM ashlar_invitations
+            WHERE id = $invitationId
+            """;
+
+        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using var command = handle.Connection.CreateCommand();
+        command.Transaction = handle.Transaction;
+        command.AddGuidParameter("$invitationId", request.InvitationId);
+        command.AddDateTimeOffsetParameter("$now", now);
+        AddScopeFilter(command, request.Tenant, request.IncludeAllTenants, ref sql);
+        command.CommandText = sql;
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadAdministrationDetail(reader) : null;
+    }
+
+    public async Task<RevokeInvitationAdministrationResult?> RevokeInvitationAsync(RevokeInvitationAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    {
+        RevokeInvitationAdministrationRequest.ThrowIfInvalid(request);
+
+        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+
+        var before = await GetRevokeCandidateAsync(handle, request, now, cancellationToken);
+        if (before == null)
+        {
+            return null;
+        }
+
+        if (before.Status != InvitationAdministrationStatus.Pending)
+        {
+            return before;
+        }
+
+        const string updateSql = """
+            UPDATE ashlar_invitations
+            SET revoked_at = $now,
+                version = $newVersion,
+                updated_at = $now
+            WHERE id = $invitationId
+              AND accepted_at IS NULL
+              AND revoked_at IS NULL
+              AND expires_at > $now;
+            """;
+
+        int rowsAffected;
+        await using (var update = handle.Connection.CreateCommand())
+        {
+            update.Transaction = handle.Transaction;
+            update.CommandText = updateSql;
+            update.AddGuidParameter("$invitationId", request.InvitationId);
+            update.AddDateTimeOffsetParameter("$now", now);
+            update.AddParameter("$newVersion", Guid.NewGuid().ToString());
+            rowsAffected = await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        var after = await GetRevokeCandidateAsync(handle, request, now, cancellationToken);
+        return after! with { Revoked = rowsAffected > 0 };
+    }
+
     private static void AddParameters(SqliteCommand command, UserInvitation invitation)
     {
         command.AddGuidParameter("$id", invitation.Id);
@@ -157,6 +269,130 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
             Metadata = reader.GetNullableString("metadata"),
             Version = reader.GetString(reader.GetOrdinal("version"))
         };
+    }
+
+    private static async Task<RevokeInvitationAdministrationResult?> GetRevokeCandidateAsync(
+        SqliteConnectionHandle handle,
+        RevokeInvitationAdministrationRequest request,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var sql = $"""
+            SELECT id AS invitation_id,
+                   tenant_id,
+                   {StatusSql("$now")} AS status,
+                   revoked_at
+            FROM ashlar_invitations
+            WHERE id = $invitationId
+            """;
+
+        await using var command = handle.Connection.CreateCommand();
+        command.Transaction = handle.Transaction;
+        command.AddGuidParameter("$invitationId", request.InvitationId);
+        command.AddDateTimeOffsetParameter("$now", now);
+        AddScopeFilter(command, request.Tenant, request.IncludeAllTenants, ref sql);
+        command.CommandText = sql;
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadRevokeResult(reader) : null;
+    }
+
+    private static string StatusSql(string nowParameter)
+    {
+        return $"""
+            CASE
+               WHEN accepted_at IS NOT NULL THEN 1
+               WHEN revoked_at IS NOT NULL THEN 2
+               WHEN expires_at <= {nowParameter} THEN 3
+               ELSE 0
+            END
+            """;
+    }
+
+    private static void AddAdministrationFilters(SqliteCommand command, SearchInvitationsRequest request, ref string sql)
+    {
+        AddScopeFilter(command, request.Tenant, request.IncludeAllTenants, ref sql);
+
+        if (!string.IsNullOrWhiteSpace(request.EmailQuery))
+        {
+            sql += " AND normalized_email LIKE $emailQuery";
+            command.AddParameter("$emailQuery", $"%{IdentityNormalization.NormalizeEmail(request.EmailQuery)}%");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Email))
+        {
+            sql += " AND normalized_email = $email";
+            command.AddParameter("$email", IdentityNormalization.NormalizeEmail(request.Email));
+        }
+
+        if (request.Status != null)
+        {
+            sql += $" AND {StatusSql("$now")} = $status";
+            command.AddParameter("$status", (int)request.Status.Value);
+        }
+
+        command.AddDateRange(request.CreatedFrom, request.CreatedTo, "created_at", "$createdFrom", "$createdTo", ref sql);
+        command.AddDateRange(request.AcceptedFrom, request.AcceptedTo, "accepted_at", "$acceptedFrom", "$acceptedTo", ref sql);
+        command.AddDateRange(request.RevokedFrom, request.RevokedTo, "revoked_at", "$revokedFrom", "$revokedTo", ref sql);
+        command.AddDateRange(request.ExpiresFrom, request.ExpiresTo, "expires_at", "$expiresFrom", "$expiresTo", ref sql);
+    }
+
+    private static void AddScopeFilter(SqliteCommand command, TenantContext? tenant, bool includeAllTenants, ref string sql)
+    {
+        if (includeAllTenants)
+        {
+            return;
+        }
+
+        if (tenant!.TenantId == null)
+        {
+            sql += " AND tenant_id IS NULL";
+            return;
+        }
+
+        sql += " AND tenant_id = $tenantId";
+        command.AddNullableGuidParameter("$tenantId", tenant.TenantId);
+    }
+
+    private static InvitationAdministrationSummary ReadAdministrationSummary(SqliteDataReader reader)
+    {
+        return new InvitationAdministrationSummary(
+            reader.GetGuidFromText("id"),
+            reader.GetString(reader.GetOrdinal("email")),
+            reader.GetNullableGuidFromText("tenant_id"),
+            (InvitationAdministrationStatus)reader.GetInt32ByName("status"),
+            reader.GetDateTimeOffsetFromText("created_at"),
+            reader.GetNullableDateTimeOffsetFromText("updated_at"),
+            reader.GetDateTimeOffsetFromText("expires_at"),
+            reader.GetNullableDateTimeOffsetFromText("accepted_at"),
+            reader.GetNullableDateTimeOffsetFromText("revoked_at"));
+    }
+
+    private static InvitationAdministrationDetail ReadAdministrationDetail(SqliteDataReader reader)
+    {
+        return new InvitationAdministrationDetail(
+            reader.GetGuidFromText("id"),
+            reader.GetString(reader.GetOrdinal("email")),
+            reader.GetNullableGuidFromText("tenant_id"),
+            (InvitationAdministrationStatus)reader.GetInt32ByName("status"),
+            reader.GetDateTimeOffsetFromText("created_at"),
+            reader.GetNullableDateTimeOffsetFromText("updated_at"),
+            reader.GetDateTimeOffsetFromText("expires_at"),
+            reader.GetNullableDateTimeOffsetFromText("accepted_at"),
+            reader.GetNullableDateTimeOffsetFromText("revoked_at"));
+    }
+
+    private static RevokeInvitationAdministrationResult ReadRevokeResult(SqliteDataReader reader)
+    {
+        var invitationId = reader.GetGuidFromText("invitation_id");
+        var tenantId = reader.GetNullableGuidFromText("tenant_id");
+        var status = (InvitationAdministrationStatus)reader.GetInt32ByName("status");
+        return new RevokeInvitationAdministrationResult(
+            invitationId,
+            tenantId,
+            Revoked: false,
+            status,
+            reader.GetNullableDateTimeOffsetFromText("revoked_at"));
     }
 
     private static void ValidateMetadata(string? metadata)

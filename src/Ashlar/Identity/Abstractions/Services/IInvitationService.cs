@@ -39,7 +39,7 @@ public interface IInvitationService
     /// Revokes pending invitations for an email address and optional tenant.
     /// </summary>
     /// <param name="email">The invited email address.</param>
-    /// <param name="tenantId">Tenant scope to revoke within; omit only when intentionally revoking invitations across all tenant scopes for the email address.</param>
+    /// <param name="tenantId">Tenant scope to revoke within, or <see langword="null" /> for global invitations.</param>
     /// <param name="audit">Optional audit metadata describing who requested revocation.</param>
     /// <param name="cancellationToken">A token that can cancel invitation revocation.</param>
     /// <returns>A result describing whether pending invitations were revoked.</returns>

@@ -333,6 +333,21 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarInvitationsRegistersInvitationAdministrationServices()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarInvitations();
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertDescriptor<IInvitationService, InvitationService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IInvitationAdministrationService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<InvitationAdministrationServiceDependencies>(services, ServiceLifetime.Scoped);
+        }
+    }
+
+    [Test]
     public void AddAshlarBootstrapValidatesOptionsOnStart()
     {
         AssertStartupValidationFails<BootstrapOptions>(

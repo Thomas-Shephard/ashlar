@@ -69,6 +69,8 @@ public static class AshlarFailureCodes
     public const string SameEmailValue = "same_email";
     /// <summary>The invitation is invalid.</summary>
     public const string InvalidInvitationValue = "invalid_invitation";
+    /// <summary>The invitation was not found.</summary>
+    public const string InvitationNotFoundValue = "invitation_not_found";
     /// <summary>The operation has already been initialized.</summary>
     public const string AlreadyInitializedValue = "already_initialized";
     /// <summary>The operation failed because of a concurrency conflict.</summary>
@@ -181,6 +183,8 @@ public static class AshlarFailureCodes
     public static readonly AshlarFailureCode SameEmail = new(SameEmailValue);
     /// <summary>The invitation is invalid.</summary>
     public static readonly AshlarFailureCode InvalidInvitation = new(InvalidInvitationValue);
+    /// <summary>The invitation was not found.</summary>
+    public static readonly AshlarFailureCode InvitationNotFound = new(InvitationNotFoundValue);
     /// <summary>The operation has already been initialized.</summary>
     public static readonly AshlarFailureCode AlreadyInitialized = new(AlreadyInitializedValue);
     /// <summary>The operation failed because of a concurrency conflict.</summary>
