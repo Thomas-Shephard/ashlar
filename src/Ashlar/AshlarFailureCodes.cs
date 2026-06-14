@@ -79,6 +79,8 @@ public static class AshlarFailureCodes
     public const string TenantMismatchValue = "tenant_mismatch";
     /// <summary>The grant creation failed.</summary>
     public const string GrantCreationFailedValue = "grant_creation_failed";
+    /// <summary>The authorization grant was not found.</summary>
+    public const string AuthorizationGrantNotFoundValue = "authorization_grant_not_found";
     /// <summary>The authorization grant shape is invalid.</summary>
     public const string InvalidGrantShapeValue = "invalid_grant_shape";
     /// <summary>The authorization scope shape is invalid.</summary>
@@ -193,6 +195,8 @@ public static class AshlarFailureCodes
     public static readonly AshlarFailureCode TenantMismatch = new(TenantMismatchValue);
     /// <summary>The grant creation failed.</summary>
     public static readonly AshlarFailureCode GrantCreationFailed = new(GrantCreationFailedValue);
+    /// <summary>The authorization grant was not found.</summary>
+    public static readonly AshlarFailureCode AuthorizationGrantNotFound = new(AuthorizationGrantNotFoundValue);
     /// <summary>The authorization grant shape is invalid.</summary>
     public static readonly AshlarFailureCode InvalidGrantShape = new(InvalidGrantShapeValue);
     /// <summary>The authorization scope shape is invalid.</summary>

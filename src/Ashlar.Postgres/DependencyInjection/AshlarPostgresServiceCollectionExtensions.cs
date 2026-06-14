@@ -73,6 +73,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.TryAddScoped<IRememberedMfaDeviceRepository, PostgresRememberedMfaDeviceRepository>();
         services.TryAddScoped<IPasskeyChallengeRepository, PostgresPasskeyChallengeRepository>();
         services.TryAddScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
+        services.TryAddScoped<IAuthorizationGrantAdministrationRepository, PostgresAuthorizationGrantAdministrationRepository>();
         services.TryAddScoped<IBootstrapStateRepository, PostgresBootstrapStateRepository>();
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarSchemaDiagnostics, PostgresSchemaDiagnostics>();
@@ -177,6 +178,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
         services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
         services.TryAddScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
+        services.TryAddScoped<IAuthorizationGrantAdministrationRepository, PostgresAuthorizationGrantAdministrationRepository>();
 
         return services;
     }

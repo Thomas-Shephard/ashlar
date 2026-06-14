@@ -34,6 +34,7 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
             Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IInvitationRepository>(), Is.TypeOf<PostgresInvitationRepository>());
             Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IAuthenticationSessionRepository>(), Is.TypeOf<PostgresAuthenticationSessionRepository>());
             Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IAuthenticationHandshakeRepository>(), Is.TypeOf<PostgresAuthenticationHandshakeRepository>());
+            Assert.That(provider.GetService<IAuthorizationGrantAdministrationRepository>(), Is.TypeOf<PostgresAuthorizationGrantAdministrationRepository>());
             Assert.That(provider.GetService<SchemaManager>(), Is.Not.Null);
         }
     }
@@ -67,6 +68,7 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
         {
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<PostgresTransactionManager>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantRepository>(), Is.TypeOf<PostgresAuthorizationGrantRepository>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantAdministrationRepository>(), Is.TypeOf<PostgresAuthorizationGrantAdministrationRepository>());
         }
     }
 
@@ -99,6 +101,7 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
             Assert.Throws<ArgumentNullException>(() => AshlarPostgresServiceCollectionExtensions.AddAshlarPostgres(null!, dataSource));
             // ReSharper disable once NullableWarningSuppressionIsUsed
             Assert.Throws<ArgumentNullException>(() => services.AddAshlarPostgres((NpgsqlDataSource)null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new PostgresAuthorizationGrantAdministrationRepository(null!));
         }
     }
 

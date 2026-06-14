@@ -107,6 +107,11 @@ internal abstract class ProviderContractFixture
         return serviceProvider.GetRequiredService<IAuthorizationGrantRepository>();
     }
 
+    protected static IAuthorizationGrantAdministrationRepository GetAuthorizationGrantAdministrationRepository(IServiceProvider serviceProvider)
+    {
+        return serviceProvider.GetRequiredService<IAuthorizationGrantAdministrationRepository>();
+    }
+
     protected static ISecurityEventSink GetSecurityEventSink(IServiceProvider serviceProvider)
     {
         return serviceProvider.GetRequiredService<ISecurityEventSink>();
