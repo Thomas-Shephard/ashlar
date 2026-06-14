@@ -9,6 +9,8 @@ namespace Ashlar.Sqlite.RateLimiting;
 /// </summary>
 public sealed class SqliteAuthenticationRateLimitAdministrationRepository : IAuthenticationRateLimitAdministrationRepository
 {
+    private const string PurposeParameterName = "$purpose";
+
     private readonly ISqliteConnectionProvider _connectionProvider;
 
     /// <summary>
@@ -89,7 +91,7 @@ public sealed class SqliteAuthenticationRateLimitAdministrationRepository : IAut
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
         command.CommandText = sql;
-        command.AddParameter("$purpose", request.Purpose);
+        command.AddParameter(PurposeParameterName, request.Purpose);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -129,7 +131,7 @@ public sealed class SqliteAuthenticationRateLimitAdministrationRepository : IAut
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
         command.CommandText = sql;
-        command.AddParameter("$purpose", request.Purpose);
+        command.AddParameter(PurposeParameterName, request.Purpose);
         command.AddParameter("$bucketId", storedKey);
 
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
@@ -147,7 +149,7 @@ public sealed class SqliteAuthenticationRateLimitAdministrationRepository : IAut
         await using var command = handle.Connection.CreateCommand();
         command.Transaction = handle.Transaction;
         command.CommandText = sql;
-        command.AddParameter("$purpose", purpose);
+        command.AddParameter(PurposeParameterName, purpose);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -167,7 +169,7 @@ public sealed class SqliteAuthenticationRateLimitAdministrationRepository : IAut
         if (request.Purpose != null)
         {
             sql += " AND purpose = $purpose";
-            command.AddParameter("$purpose", request.Purpose);
+            command.AddParameter(PurposeParameterName, request.Purpose);
         }
 
         command.AddDateRange(request.WindowStartFrom, request.WindowStartTo, "window_start", "$windowStartFrom", "$windowStartTo", ref sql);
