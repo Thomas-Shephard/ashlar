@@ -12,11 +12,9 @@ namespace Ashlar.Postgres.Messaging;
 public sealed class PostgresEmailOutboxAdministrationService(
     IPostgresConnectionProvider connectionProvider,
     TimeProvider timeProvider,
-    ISecurityEventSink? securityEventSink = null) : IEmailOutboxAdministrationService
+    ISecurityEventSink? securityEventSink = null) : EmailOutboxAdministrationServiceBase(timeProvider, securityEventSink)
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
-    private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-    private readonly ISecurityEventSink _securityEventSink = securityEventSink ?? new NullSecurityEventSink();
 
     /// <summary>
     /// Searches durable email outbox rows and returns safe summaries without body, header, metadata, or lock-owner values.
@@ -24,11 +22,11 @@ public sealed class PostgresEmailOutboxAdministrationService(
     /// <param name="request">Paging and status criteria for the read-only search.</param>
     /// <param name="cancellationToken">Token used to cancel the query.</param>
     /// <returns>Matching safe outbox summaries.</returns>
-    public async Task<EmailOutboxSearchResult> SearchAsync(EmailOutboxSearchRequest request, CancellationToken cancellationToken = default)
+    public override async Task<EmailOutboxSearchResult> SearchAsync(EmailOutboxSearchRequest request, CancellationToken cancellationToken = default)
     {
         EmailOutboxAdministration.ValidateSearchRequest(request);
         var parameters = CreateSearchParameters(request);
-        parameters.Add("Now", _timeProvider.GetUtcNow());
+        parameters.Add("Now", TimeProvider.GetUtcNow());
         parameters.Add("Limit", request.Limit + 1);
         parameters.Add("Offset", request.Offset);
 
@@ -55,7 +53,7 @@ public sealed class PostgresEmailOutboxAdministrationService(
     /// <param name="id">The outbox row id to inspect.</param>
     /// <param name="cancellationToken">Token used to cancel the query.</param>
     /// <returns>The safe detail, or <see langword="null" /> when no row exists.</returns>
-    public async Task<EmailOutboxDetail?> GetAsync(Guid id, CancellationToken cancellationToken = default)
+    public override async Task<EmailOutboxDetail?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
         if (id == Guid.Empty)
         {
@@ -93,31 +91,9 @@ public sealed class PostgresEmailOutboxAdministrationService(
         var row = await PostgresAdminQuery.QuerySingleAsync<DetailRow>(
             _connectionProvider,
             sql,
-            new { Id = id, Now = _timeProvider.GetUtcNow() },
+            new { Id = id, Now = TimeProvider.GetUtcNow() },
             cancellationToken).ConfigureAwait(false);
         return row is null ? null : EmailOutboxAdministration.CreateDetail(row.ToRecord());
-    }
-
-    /// <summary>
-    /// Restores a terminal failed email row to dispatcher eligibility without sending it.
-    /// </summary>
-    /// <param name="request">Retry request with required audit context.</param>
-    /// <param name="cancellationToken">Token used to cancel the mutation.</param>
-    /// <returns>A stable retry operation result.</returns>
-    public async Task<EmailOutboxOperationResult> RetryAsync(EmailOutboxOperationRequest request, CancellationToken cancellationToken = default)
-    {
-        return await ExecuteAsync(request, EmailOutboxOperationStatus.Retried, AshlarSecurityEventTypes.EmailOutboxDeliveryRetried, RetrySql, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Marks a terminal failed email row as discarded so dispatchers ignore it.
-    /// </summary>
-    /// <param name="request">Discard request with required audit context.</param>
-    /// <param name="cancellationToken">Token used to cancel the mutation.</param>
-    /// <returns>A stable discard operation result.</returns>
-    public async Task<EmailOutboxOperationResult> DiscardAsync(EmailOutboxOperationRequest request, CancellationToken cancellationToken = default)
-    {
-        return await ExecuteAsync(request, EmailOutboxOperationStatus.Discarded, AshlarSecurityEventTypes.EmailOutboxDeliveryDiscarded, DiscardSql, cancellationToken).ConfigureAwait(false);
     }
 
     private const string RetrySql = """
@@ -155,58 +131,43 @@ public sealed class PostgresEmailOutboxAdministrationService(
         WHERE id = @Id
         """;
 
-    private async Task<EmailOutboxOperationResult> ExecuteAsync(
-        EmailOutboxOperationRequest request,
-        EmailOutboxOperationStatus successStatus,
-        string eventType,
-        string sql,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Applies the PostgreSQL conditional retry state change.
+    /// </summary>
+    /// <param name="id">The durable email outbox entry id.</param>
+    /// <param name="cancellationToken">Token used to cancel the mutation.</param>
+    /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
+    protected override async Task<EmailOutboxOperationState?> RetryFailedAsync(Guid id, CancellationToken cancellationToken)
     {
-        EmailOutboxAdministration.ValidateOperationRequest(request);
-        var state = await QueryOperationStateAsync(sql, new { request.Id, Now = _timeProvider.GetUtcNow() }, cancellationToken).ConfigureAwait(false);
-        if (state is null)
-        {
-            return await ClassifyNoOpAsync(request.Id, cancellationToken).ConfigureAwait(false);
-        }
-
-        var result = EmailOutboxAdministration.CreateOperationResult(successStatus, state.Id, state.ToAddress, state.Subject, state.Status, state.SuppressPublicFields);
-        await RecordAuditAsync(eventType, request, result, cancellationToken).ConfigureAwait(false);
-        return result;
+        return await QueryOperationStateAsync(RetrySql, new { Id = id, Now = TimeProvider.GetUtcNow() }, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<EmailOutboxOperationResult> ClassifyNoOpAsync(Guid id, CancellationToken cancellationToken)
+    /// <summary>
+    /// Applies the PostgreSQL conditional discard state change.
+    /// </summary>
+    /// <param name="id">The durable email outbox entry id.</param>
+    /// <param name="cancellationToken">Token used to cancel the mutation.</param>
+    /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
+    protected override async Task<EmailOutboxOperationState?> DiscardFailedAsync(Guid id, CancellationToken cancellationToken)
     {
-        var state = await QueryOperationStateAsync(LoadSql, new { Id = id }, cancellationToken).ConfigureAwait(false);
-        return EmailOutboxAdministration.CreateNoOpResult(id, state);
+        return await QueryOperationStateAsync(DiscardSql, new { Id = id, Now = TimeProvider.GetUtcNow() }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Loads PostgreSQL safe state for no-op classification.
+    /// </summary>
+    /// <param name="id">The durable email outbox entry id.</param>
+    /// <param name="cancellationToken">Token used to cancel the lookup.</param>
+    /// <returns>The stored safe state, or <see langword="null" /> when no entry exists.</returns>
+    protected override async Task<EmailOutboxOperationState?> LoadOperationStateAsync(Guid id, CancellationToken cancellationToken)
+    {
+        return await QueryOperationStateAsync(LoadSql, new { Id = id }, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<EmailOutboxOperationState?> QueryOperationStateAsync(string sql, object parameters, CancellationToken cancellationToken)
     {
         var row = await PostgresAdminQuery.QuerySingleAsync<OperationRow>(_connectionProvider, sql, parameters, cancellationToken).ConfigureAwait(false);
         return row?.ToState();
-    }
-
-    private async Task RecordAuditAsync(string eventType, EmailOutboxOperationRequest request, EmailOutboxOperationResult result, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await _securityEventSink.RecordAsync(new AshlarSecurityEvent
-            {
-                Id = Guid.NewGuid(),
-                EventType = eventType,
-                OccurredAt = _timeProvider.GetUtcNow(),
-                ActorUserId = request.Audit.ActorUserId,
-                IpAddress = request.Audit.IpAddress,
-                UserAgent = request.Audit.UserAgent,
-                CorrelationId = request.Audit.CorrelationId,
-                Outcome = SecurityEventOutcomes.Success,
-                Properties = new Dictionary<string, string> { ["email_outbox_id"] = result.Id.ToString("D") }
-            }, cancellationToken).ConfigureAwait(false);
-        }
-        catch
-        {
-            // The outbox mutation has already committed; audit delivery is best-effort and must not change the operator-visible result.
-        }
     }
 
     private static string CreateSearchSql(string select)

@@ -53,6 +53,125 @@ public interface IEmailOutboxAdministrationService
 }
 
 /// <summary>
+/// Shared implementation for provider-specific email outbox administration operations.
+/// </summary>
+/// <param name="timeProvider">Clock used for operation timestamps and audit events.</param>
+/// <param name="securityEventSink">Optional audit sink for successful mutating operations.</param>
+/// <remarks>
+/// Providers supply read projections and conditional storage mutations; this base class centralizes audit requirements, stable no-op classification, and the rule that administration
+/// mutations never send emails directly.
+/// </remarks>
+public abstract class EmailOutboxAdministrationServiceBase(
+    TimeProvider timeProvider,
+    ISecurityEventSink? securityEventSink = null) : IEmailOutboxAdministrationService
+{
+    private readonly ISecurityEventSink _securityEventSink = securityEventSink ?? new NullSecurityEventSink();
+
+    /// <summary>
+    /// Gets the clock used by provider queries and mutations.
+    /// </summary>
+    protected TimeProvider TimeProvider { get; } = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+
+    /// <inheritdoc />
+    public abstract Task<EmailOutboxSearchResult> SearchAsync(
+        EmailOutboxSearchRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <inheritdoc />
+    public abstract Task<EmailOutboxDetail?> GetAsync(
+        Guid id,
+        CancellationToken cancellationToken = default);
+
+    /// <inheritdoc />
+    public async Task<EmailOutboxOperationResult> RetryAsync(
+        EmailOutboxOperationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return await ExecuteAsync(
+            request,
+            EmailOutboxOperationStatus.Retried,
+            AshlarSecurityEventTypes.EmailOutboxDeliveryRetried,
+            RetryFailedAsync,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<EmailOutboxOperationResult> DiscardAsync(
+        EmailOutboxOperationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return await ExecuteAsync(
+            request,
+            EmailOutboxOperationStatus.Discarded,
+            AshlarSecurityEventTypes.EmailOutboxDeliveryDiscarded,
+            DiscardFailedAsync,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Applies the provider-specific conditional retry state change without exposing or changing stored message content.
+    /// </summary>
+    /// <param name="id">The durable email outbox entry id.</param>
+    /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
+    /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
+    protected abstract Task<EmailOutboxOperationState?> RetryFailedAsync(
+        Guid id,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Applies the provider-specific conditional discard state change without exposing or changing stored message content.
+    /// </summary>
+    /// <param name="id">The durable email outbox entry id.</param>
+    /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
+    /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
+    protected abstract Task<EmailOutboxOperationState?> DiscardFailedAsync(
+        Guid id,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Loads provider-specific safe state for no-op classification after a conditional mutation changed no rows.
+    /// </summary>
+    /// <param name="id">The durable email outbox entry id.</param>
+    /// <param name="cancellationToken">A token that can cancel the lookup before a result is returned.</param>
+    /// <returns>The stored safe state, or <see langword="null" /> when no entry exists.</returns>
+    protected abstract Task<EmailOutboxOperationState?> LoadOperationStateAsync(
+        Guid id,
+        CancellationToken cancellationToken);
+
+    private async Task<EmailOutboxOperationResult> ExecuteAsync(
+        EmailOutboxOperationRequest request,
+        EmailOutboxOperationStatus successStatus,
+        string eventType,
+        Func<Guid, CancellationToken, Task<EmailOutboxOperationState?>> applyAsync,
+        CancellationToken cancellationToken)
+    {
+        EmailOutboxAdministration.ValidateOperationRequest(request);
+
+        var state = await applyAsync(request.Id, cancellationToken).ConfigureAwait(false);
+        if (state is null)
+        {
+            return await ClassifyNoOpAsync(request.Id, cancellationToken).ConfigureAwait(false);
+        }
+
+        var result = EmailOutboxAdministration.CreateOperationResult(successStatus, state);
+        await EmailOutboxAdministration.RecordSuccessfulOperationAsync(
+            _securityEventSink,
+            TimeProvider,
+            eventType,
+            request,
+            result,
+            cancellationToken).ConfigureAwait(false);
+        return result;
+    }
+
+    private async Task<EmailOutboxOperationResult> ClassifyNoOpAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var state = await LoadOperationStateAsync(id, cancellationToken).ConfigureAwait(false);
+        return EmailOutboxAdministration.CreateNoOpResult(id, state);
+    }
+}
+
+/// <summary>
 /// Paging and status filters for safe email outbox browsing.
 /// </summary>
 public sealed record EmailOutboxSearchRequest
@@ -532,6 +651,20 @@ public static class EmailOutboxAdministration
     }
 
     /// <summary>
+    /// Creates a safe operation result from stored outbox metadata and the supplied <paramref name="status" />.
+    /// </summary>
+    /// <param name="status">The operation status.</param>
+    /// <param name="state">Stored safe state for the outbox entry.</param>
+    /// <returns>A mutation result that omits recipient and subject metadata when the row may contain live secrets or protected content.</returns>
+    public static EmailOutboxOperationResult CreateOperationResult(
+        EmailOutboxOperationStatus status,
+        EmailOutboxOperationState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return CreateOperationResult(status, state.Id, state.ToAddress, state.Subject, state.Status, state.SuppressPublicFields);
+    }
+
+    /// <summary>
     /// Classifies a provider no-op after a conditional operation updated no rows.
     /// </summary>
     /// <param name="id">The requested outbox entry id.</param>
@@ -548,6 +681,55 @@ public static class EmailOutboxAdministration
             ? EmailOutboxOperationStatus.AlreadyDiscarded
             : EmailOutboxOperationStatus.NotFailed;
         return CreateOperationResult(status, state.Id, state.ToAddress, state.Subject, state.Status, state.SuppressPublicFields);
+    }
+
+    /// <summary>
+    /// Emits a fail-open audit event for a successful manual email outbox mutation.
+    /// </summary>
+    /// <param name="sink">Audit sink that receives the security event.</param>
+    /// <param name="timeProvider">Clock used for the audit timestamp.</param>
+    /// <param name="eventType">Security event type describing the mutation.</param>
+    /// <param name="request">Operation request containing the required audit context.</param>
+    /// <param name="result">Safe operation result used to identify the mutated outbox entry.</param>
+    /// <param name="cancellationToken">A token that can cancel audit emission.</param>
+    /// <returns>A task representing audit emission.</returns>
+    public static async Task RecordSuccessfulOperationAsync(
+        ISecurityEventSink sink,
+        TimeProvider timeProvider,
+        string eventType,
+        EmailOutboxOperationRequest request,
+        EmailOutboxOperationResult result,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(sink);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentException.ThrowIfNullOrWhiteSpace(eventType);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(result);
+
+        try
+        {
+            await sink.RecordAsync(new AshlarSecurityEvent
+            {
+                Id = Guid.NewGuid(),
+                EventType = eventType,
+                OccurredAt = timeProvider.GetUtcNow(),
+                ActorUserId = request.Audit.ActorUserId,
+                IpAddress = request.Audit.IpAddress,
+                UserAgent = request.Audit.UserAgent,
+                CorrelationId = request.Audit.CorrelationId,
+                Outcome = SecurityEventOutcomes.Success,
+                Properties = new Dictionary<string, string> { ["email_outbox_id"] = result.Id.ToString("D") }
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Email outbox administration audit emission is fail-open after the outbox mutation commits.
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Email outbox administration audit emission is fail-open after the outbox mutation commits.
+        }
     }
 
     private static bool IsSensitive(EmailOutboxAdministrationRecord record)

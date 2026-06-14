@@ -12,11 +12,9 @@ namespace Ashlar.Sqlite.Messaging;
 public sealed class SqliteEmailOutboxAdministrationService(
     ISqliteConnectionProvider connectionProvider,
     TimeProvider timeProvider,
-    ISecurityEventSink? securityEventSink = null) : IEmailOutboxAdministrationService
+    ISecurityEventSink? securityEventSink = null) : EmailOutboxAdministrationServiceBase(timeProvider, securityEventSink)
 {
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
-    private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-    private readonly ISecurityEventSink _securityEventSink = securityEventSink ?? new NullSecurityEventSink();
 
     /// <summary>
     /// Searches durable email outbox rows and returns safe summaries without body, header, metadata, or lock-owner values.
@@ -24,7 +22,7 @@ public sealed class SqliteEmailOutboxAdministrationService(
     /// <param name="request">Paging and status criteria for the read-only search.</param>
     /// <param name="cancellationToken">Token used to cancel the query.</param>
     /// <returns>Matching safe outbox summaries.</returns>
-    public async Task<EmailOutboxSearchResult> SearchAsync(EmailOutboxSearchRequest request, CancellationToken cancellationToken = default)
+    public override async Task<EmailOutboxSearchResult> SearchAsync(EmailOutboxSearchRequest request, CancellationToken cancellationToken = default)
     {
         EmailOutboxAdministration.ValidateSearchRequest(request);
         var rows = await SqliteQuery.QueryAsync(
@@ -42,7 +40,7 @@ public sealed class SqliteEmailOutboxAdministrationService(
     /// <param name="id">The outbox row id to inspect.</param>
     /// <param name="cancellationToken">Token used to cancel the query.</param>
     /// <returns>The safe detail, or <see langword="null" /> when no row exists.</returns>
-    public async Task<EmailOutboxDetail?> GetAsync(Guid id, CancellationToken cancellationToken = default)
+    public override async Task<EmailOutboxDetail?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
         if (id == Guid.Empty)
         {
@@ -78,35 +76,13 @@ public sealed class SqliteEmailOutboxAdministrationService(
             command =>
             {
                 command.AddGuidParameter("$id", id);
-                command.AddDateTimeOffsetParameter("$now", _timeProvider.GetUtcNow());
+                command.AddDateTimeOffsetParameter("$now", TimeProvider.GetUtcNow());
                 return sql;
             },
             ReadDetailRow,
             cancellationToken).ConfigureAwait(false);
         var row = rows.SingleOrDefault();
         return row is null ? null : EmailOutboxAdministration.CreateDetail(row.ToRecord());
-    }
-
-    /// <summary>
-    /// Restores a terminal failed email row to dispatcher eligibility without sending it.
-    /// </summary>
-    /// <param name="request">Retry request with required audit context.</param>
-    /// <param name="cancellationToken">Token used to cancel the mutation.</param>
-    /// <returns>A stable retry operation result.</returns>
-    public async Task<EmailOutboxOperationResult> RetryAsync(EmailOutboxOperationRequest request, CancellationToken cancellationToken = default)
-    {
-        return await ExecuteAsync(request, EmailOutboxOperationStatus.Retried, AshlarSecurityEventTypes.EmailOutboxDeliveryRetried, RetrySql, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Marks a terminal failed email row as discarded so dispatchers ignore it.
-    /// </summary>
-    /// <param name="request">Discard request with required audit context.</param>
-    /// <param name="cancellationToken">Token used to cancel the mutation.</param>
-    /// <returns>A stable discard operation result.</returns>
-    public async Task<EmailOutboxOperationResult> DiscardAsync(EmailOutboxOperationRequest request, CancellationToken cancellationToken = default)
-    {
-        return await ExecuteAsync(request, EmailOutboxOperationStatus.Discarded, AshlarSecurityEventTypes.EmailOutboxDeliveryDiscarded, DiscardSql, cancellationToken).ConfigureAwait(false);
     }
 
     private const string RetrySql = """
@@ -141,39 +117,51 @@ public sealed class SqliteEmailOutboxAdministrationService(
         WHERE id = $id;
         """;
 
-    private async Task<EmailOutboxOperationResult> ExecuteAsync(
-        EmailOutboxOperationRequest request,
-        EmailOutboxOperationStatus successStatus,
-        string eventType,
-        string sql,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Applies the SQLite conditional retry state change.
+    /// </summary>
+    /// <param name="id">The durable email outbox entry id.</param>
+    /// <param name="cancellationToken">Token used to cancel the mutation.</param>
+    /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
+    protected override async Task<EmailOutboxOperationState?> RetryFailedAsync(Guid id, CancellationToken cancellationToken)
     {
-        EmailOutboxAdministration.ValidateOperationRequest(request);
-        var state = await QueryOperationStateAsync(command =>
+        return await QueryOperationStateAsync(command =>
         {
-            command.AddGuidParameter("$id", request.Id);
-            command.AddDateTimeOffsetParameter("$now", _timeProvider.GetUtcNow());
-            return sql;
+            command.AddGuidParameter("$id", id);
+            command.AddDateTimeOffsetParameter("$now", TimeProvider.GetUtcNow());
+            return RetrySql;
         }, cancellationToken).ConfigureAwait(false);
-
-        if (state is null)
-        {
-            return await ClassifyNoOpAsync(request.Id, cancellationToken).ConfigureAwait(false);
-        }
-
-        var result = EmailOutboxAdministration.CreateOperationResult(successStatus, state.Id, state.ToAddress, state.Subject, state.Status, state.SuppressPublicFields);
-        await RecordAuditAsync(eventType, request, result, cancellationToken).ConfigureAwait(false);
-        return result;
     }
 
-    private async Task<EmailOutboxOperationResult> ClassifyNoOpAsync(Guid id, CancellationToken cancellationToken)
+    /// <summary>
+    /// Applies the SQLite conditional discard state change.
+    /// </summary>
+    /// <param name="id">The durable email outbox entry id.</param>
+    /// <param name="cancellationToken">Token used to cancel the mutation.</param>
+    /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
+    protected override async Task<EmailOutboxOperationState?> DiscardFailedAsync(Guid id, CancellationToken cancellationToken)
     {
-        var state = await QueryOperationStateAsync(command =>
+        return await QueryOperationStateAsync(command =>
+        {
+            command.AddGuidParameter("$id", id);
+            command.AddDateTimeOffsetParameter("$now", TimeProvider.GetUtcNow());
+            return DiscardSql;
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Loads SQLite safe state for no-op classification.
+    /// </summary>
+    /// <param name="id">The durable email outbox entry id.</param>
+    /// <param name="cancellationToken">Token used to cancel the lookup.</param>
+    /// <returns>The stored safe state, or <see langword="null" /> when no entry exists.</returns>
+    protected override async Task<EmailOutboxOperationState?> LoadOperationStateAsync(Guid id, CancellationToken cancellationToken)
+    {
+        return await QueryOperationStateAsync(command =>
         {
             command.AddGuidParameter("$id", id);
             return LoadSql;
         }, cancellationToken).ConfigureAwait(false);
-        return EmailOutboxAdministration.CreateNoOpResult(id, state);
     }
 
     private async Task<EmailOutboxOperationState?> QueryOperationStateAsync(Func<SqliteCommand, string> buildCommand, CancellationToken cancellationToken)
@@ -182,32 +170,9 @@ public sealed class SqliteEmailOutboxAdministrationService(
         return rows.SingleOrDefault()?.ToState();
     }
 
-    private async Task RecordAuditAsync(string eventType, EmailOutboxOperationRequest request, EmailOutboxOperationResult result, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await _securityEventSink.RecordAsync(new AshlarSecurityEvent
-            {
-                Id = Guid.NewGuid(),
-                EventType = eventType,
-                OccurredAt = _timeProvider.GetUtcNow(),
-                ActorUserId = request.Audit.ActorUserId,
-                IpAddress = request.Audit.IpAddress,
-                UserAgent = request.Audit.UserAgent,
-                CorrelationId = request.Audit.CorrelationId,
-                Outcome = SecurityEventOutcomes.Success,
-                Properties = new Dictionary<string, string> { ["email_outbox_id"] = result.Id.ToString("D") }
-            }, cancellationToken).ConfigureAwait(false);
-        }
-        catch
-        {
-            // The outbox mutation has already committed; audit delivery is best-effort and must not change the operator-visible result.
-        }
-    }
-
     private string BuildSearchSql(SqliteCommand command, EmailOutboxSearchRequest request)
     {
-        command.AddDateTimeOffsetParameter("$now", _timeProvider.GetUtcNow());
+        command.AddDateTimeOffsetParameter("$now", TimeProvider.GetUtcNow());
         command.AddParameter("$limit", request.Limit + 1);
         command.AddParameter("$offset", request.Offset);
         var statuses = AddEnumParameters(command, "$status", EmailOutboxAdministration.GetStatuses(request).Select(static status => status.ToString()).ToArray());

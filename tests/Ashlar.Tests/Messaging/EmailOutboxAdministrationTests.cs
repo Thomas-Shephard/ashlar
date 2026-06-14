@@ -149,6 +149,7 @@ internal sealed class EmailOutboxAdministrationTests
     [Test]
     public void CreateOperationResultSanitizesPublicFields()
     {
+        var state = new EmailOutboxOperationState(Guid.NewGuid(), "state@example.com", "State subject", EmailOutboxStatus.Pending);
         var safe = EmailOutboxAdministration.CreateOperationResult(
             EmailOutboxOperationStatus.Retried,
             Guid.NewGuid(),
@@ -168,6 +169,7 @@ internal sealed class EmailOutboxAdministrationTests
             "Token",
             EmailOutboxStatus.Pending,
             suppressPublicFields: true);
+        var fromState = EmailOutboxAdministration.CreateOperationResult(EmailOutboxOperationStatus.Retried, state);
 
         using (Assert.EnterMultipleScope())
         {
@@ -178,6 +180,8 @@ internal sealed class EmailOutboxAdministrationTests
             Assert.That(unsafeResult.Subject, Is.Null);
             Assert.That(suppressed.ToAddress, Is.Null);
             Assert.That(suppressed.Subject, Is.Null);
+            Assert.That(fromState.ToAddress, Is.EqualTo("state@example.com"));
+            Assert.That(Assert.Throws<ArgumentNullException>(() => EmailOutboxAdministration.CreateOperationResult(EmailOutboxOperationStatus.Retried, null!))?.ParamName, Is.EqualTo("state"));
         }
     }
 
@@ -199,6 +203,44 @@ internal sealed class EmailOutboxAdministrationTests
             Assert.That(pendingResult.OutboxStatus, Is.EqualTo(EmailOutboxStatus.Pending));
             Assert.That(discardedResult.Status, Is.EqualTo(EmailOutboxOperationStatus.AlreadyDiscarded));
             Assert.That(discardedResult.OutboxStatus, Is.EqualTo(EmailOutboxStatus.Discarded));
+        }
+    }
+
+    [Test]
+    public async Task RecordSuccessfulOperationAsyncRecordsAuditAndValidatesInputs()
+    {
+        var sink = new CapturingSecurityEventSink();
+        var id = Guid.NewGuid();
+        var actorUserId = Guid.NewGuid();
+        var request = new EmailOutboxOperationRequest(id, new AuditContext
+        {
+            ActorUserId = actorUserId,
+            IpAddress = "127.0.0.1",
+            UserAgent = "tests",
+            CorrelationId = "correlation"
+        });
+        var result = EmailOutboxAdministration.CreateOperationResult(EmailOutboxOperationStatus.Retried, id);
+
+        await EmailOutboxAdministration.RecordSuccessfulOperationAsync(
+            sink,
+            TimeProvider.System,
+            AshlarSecurityEventTypes.EmailOutboxDeliveryRetried,
+            request,
+            result,
+            CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sink.Events, Has.Count.EqualTo(1));
+            Assert.That(sink.Events[0].EventType, Is.EqualTo(AshlarSecurityEventTypes.EmailOutboxDeliveryRetried));
+            Assert.That(sink.Events[0].ActorUserId, Is.EqualTo(actorUserId));
+            Assert.That(sink.Events[0].Properties, Contains.Key("email_outbox_id"));
+            Assert.That(sink.Events[0].Properties?["email_outbox_id"], Is.EqualTo(id.ToString("D")));
+            Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxAdministration.RecordSuccessfulOperationAsync(null!, TimeProvider.System, "event", request, result, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxAdministration.RecordSuccessfulOperationAsync(sink, null!, "event", request, result, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentException>(() => EmailOutboxAdministration.RecordSuccessfulOperationAsync(sink, TimeProvider.System, "", request, result, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxAdministration.RecordSuccessfulOperationAsync(sink, TimeProvider.System, "event", null!, result, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxAdministration.RecordSuccessfulOperationAsync(sink, TimeProvider.System, "event", request, null!, CancellationToken.None));
         }
     }
 
@@ -232,5 +274,16 @@ internal sealed class EmailOutboxAdministrationTests
             "worker",
             Now.AddMinutes(1),
             lastError);
+    }
+
+    private sealed class CapturingSecurityEventSink : ISecurityEventSink
+    {
+        public List<AshlarSecurityEvent> Events { get; } = [];
+
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            Events.Add(securityEvent);
+            return Task.CompletedTask;
+        }
     }
 }
