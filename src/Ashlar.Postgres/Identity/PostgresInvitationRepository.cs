@@ -403,20 +403,29 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         }
     }
 
-    private record InvitationAdministrationSummaryRow(
+    private sealed record InvitationAdministrationSummaryRow(
         Guid Id,
         string Email,
         Guid? TenantId,
         int Status,
-        DateTimeOffset CreatedAt,
-        DateTimeOffset? UpdatedAt,
-        DateTimeOffset ExpiresAt,
-        DateTimeOffset? AcceptedAt,
-        DateTimeOffset? RevokedAt)
+        DateTime CreatedAt,
+        DateTime? UpdatedAt,
+        DateTime ExpiresAt,
+        DateTime? AcceptedAt,
+        DateTime? RevokedAt)
     {
         public InvitationAdministrationSummary ToSummary()
         {
-            return new InvitationAdministrationSummary(Id, Email, TenantId, (InvitationAdministrationStatus)Status, CreatedAt, UpdatedAt, ExpiresAt, AcceptedAt, RevokedAt);
+            return new InvitationAdministrationSummary(
+                Id,
+                Email,
+                TenantId,
+                (InvitationAdministrationStatus)Status,
+                PostgresAdminQuery.ToDateTimeOffset(CreatedAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(UpdatedAt),
+                PostgresAdminQuery.ToDateTimeOffset(ExpiresAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(AcceptedAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(RevokedAt));
         }
     }
 
@@ -425,15 +434,24 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         string Email,
         Guid? TenantId,
         int Status,
-        DateTimeOffset CreatedAt,
-        DateTimeOffset? UpdatedAt,
-        DateTimeOffset ExpiresAt,
-        DateTimeOffset? AcceptedAt,
-        DateTimeOffset? RevokedAt) : InvitationAdministrationSummaryRow(Id, Email, TenantId, Status, CreatedAt, UpdatedAt, ExpiresAt, AcceptedAt, RevokedAt)
+        DateTime CreatedAt,
+        DateTime? UpdatedAt,
+        DateTime ExpiresAt,
+        DateTime? AcceptedAt,
+        DateTime? RevokedAt)
     {
         public InvitationAdministrationDetail ToDetail()
         {
-            return new InvitationAdministrationDetail(Id, Email, TenantId, (InvitationAdministrationStatus)Status, CreatedAt, UpdatedAt, ExpiresAt, AcceptedAt, RevokedAt);
+            return new InvitationAdministrationDetail(
+                Id,
+                Email,
+                TenantId,
+                (InvitationAdministrationStatus)Status,
+                PostgresAdminQuery.ToDateTimeOffset(CreatedAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(UpdatedAt),
+                PostgresAdminQuery.ToDateTimeOffset(ExpiresAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(AcceptedAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(RevokedAt));
         }
     }
 
@@ -442,11 +460,16 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         Guid? TenantId,
         bool Revoked,
         int Status,
-        DateTimeOffset? RevokedAt)
+        DateTime? RevokedAt)
     {
         public RevokeInvitationAdministrationResult ToResult()
         {
-            return new RevokeInvitationAdministrationResult(InvitationId, TenantId, Revoked, (InvitationAdministrationStatus)Status, RevokedAt);
+            return new RevokeInvitationAdministrationResult(
+                InvitationId,
+                TenantId,
+                Revoked,
+                (InvitationAdministrationStatus)Status,
+                PostgresAdminQuery.ToNullableDateTimeOffset(RevokedAt));
         }
     }
 }
