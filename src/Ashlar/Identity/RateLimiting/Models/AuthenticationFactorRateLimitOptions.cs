@@ -11,8 +11,8 @@ public sealed class AuthenticationFactorRateLimitOptions
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Allows secondary factor verification to continue when the configured rate-limit backend throws.
-    /// Keep this disabled unless the deployment knowingly prefers sign-in availability over brute-force protection during rate-limit backend outages.
+    /// Allows MFA factor verification to proceed when secondary-factor throttling storage throws.
+    /// Enable this only for deployments that knowingly prefer MFA availability over brute-force protection while the factor-verification rate limiter is unavailable.
     /// </summary>
     public bool FailOpenOnBackendFailure { get; set; }
 

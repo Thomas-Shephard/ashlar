@@ -11,8 +11,8 @@ public sealed class PrimaryAuthenticationRateLimitOptions
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Allows primary authentication to continue when the configured rate-limit backend throws.
-    /// Keep this disabled unless the deployment knowingly prefers sign-in availability over brute-force protection during rate-limit backend outages.
+    /// Allows password, passkey, or external sign-in credential checks to proceed when primary throttling storage throws.
+    /// Enable this only for deployments that knowingly prefer sign-in availability over brute-force protection while the primary-authentication rate limiter is unavailable.
     /// </summary>
     public bool FailOpenOnBackendFailure { get; set; }
 
