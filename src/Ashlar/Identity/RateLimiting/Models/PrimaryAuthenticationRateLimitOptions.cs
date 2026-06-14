@@ -3,39 +3,17 @@ namespace Ashlar.Identity.RateLimiting.Models;
 /// <summary>
 /// Configures provider-neutral primary authentication rate limiting.
 /// </summary>
-public sealed class PrimaryAuthenticationRateLimitOptions
+public sealed class PrimaryAuthenticationRateLimitOptions : AuthenticationRateLimitOptions
 {
-    /// <summary>
-    /// Whether primary authentication rate limiting is enabled.
-    /// </summary>
-    public bool Enabled { get; set; } = true;
-
-    /// <summary>
-    /// Allows password, passkey, or external sign-in credential checks to proceed when primary throttling storage throws.
-    /// Enable this only for deployments that knowingly prefer sign-in availability over brute-force protection while the primary-authentication rate limiter is unavailable.
-    /// </summary>
-    public bool FailOpenOnBackendFailure { get; set; }
-
     /// <summary>
     /// Default rule applied to primary authentication attempts.
     /// </summary>
-    public RateLimitRule DefaultRule { get; set; } = new()
+    public override RateLimitRule DefaultRule { get; set; } = new()
     {
         PermitLimit = 5,
         Window = TimeSpan.FromMinutes(10),
         BlockDuration = TimeSpan.FromMinutes(10)
     };
-
-    /// <summary>
-    /// Gets provider-specific rules keyed as provider type/name, for example <c>local:local</c>.
-    /// </summary>
-    public IDictionary<string, RateLimitRule> ProviderRules { get; } = new Dictionary<string, RateLimitRule>(StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Gets providers deliberately excluded from primary authentication rate limiting.
-    /// Entries are keyed as provider type/name, for example <c>oidc:contoso</c>.
-    /// </summary>
-    public ISet<string> ExcludedProviders { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Validates primary authentication rate-limit options.
@@ -44,18 +22,7 @@ public sealed class PrimaryAuthenticationRateLimitOptions
     /// <returns><see langword="true" /> when primary authentication attempts can use the supplied settings.</returns>
     public static bool Validate(PrimaryAuthenticationRateLimitOptions? options)
     {
-        if (options == null)
-        {
-            return false;
-        }
-
-        if (!AuthenticationRateLimitRuleValidator.IsValid(options.DefaultRule))
-        {
-            return false;
-        }
-
-        return options.ProviderRules.All(rule => IsProviderSelectorValid(rule.Key) && AuthenticationRateLimitRuleValidator.IsValid(rule.Value))
-            && options.ExcludedProviders.All(IsProviderSelectorValid);
+        return ValidateCore(options);
     }
 
     internal static bool IsProviderSelectorValid(string? selector)
