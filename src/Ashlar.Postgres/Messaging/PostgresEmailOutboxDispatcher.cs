@@ -50,6 +50,7 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
                 FROM ashlar_email_outbox
                 WHERE sent_at IS NULL
                   AND failed_at IS NULL
+                  AND discarded_at IS NULL
                   AND available_at <= @Now
                   AND (locked_until IS NULL OR locked_until <= @Now)
                 ORDER BY available_at, id

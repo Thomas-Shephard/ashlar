@@ -131,6 +131,16 @@ public sealed class AshlarCleanupOptions
     public TimeSpan? RemoveFailedSensitiveEmailsAfter { get; set; } = TimeSpan.FromHours(1);
 
     /// <summary>
+    /// Retention period after email messages are discarded by an operator. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes discarded rows on the next cleanup run.
+    /// </summary>
+    public TimeSpan? RemoveDiscardedEmailsAfter { get; set; } = TimeSpan.FromDays(30);
+
+    /// <summary>
+    /// Retention period after sensitive email messages containing live secrets are discarded by an operator. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes discarded rows on the next cleanup run.
+    /// </summary>
+    public TimeSpan? RemoveDiscardedSensitiveEmailsAfter { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>
     /// Retention period after security-event webhook deliveries are sent. <see langword="null" /> disables cleanup; <see cref="TimeSpan.Zero"/> deletes sent rows on the next cleanup run.
     /// </summary>
     public TimeSpan? RemoveSentSecurityEventWebhooksAfter { get; set; } = TimeSpan.FromDays(7);
@@ -181,6 +191,8 @@ public sealed class AshlarCleanupOptions
             && IsValid(options.RemoveFailedEmailsAfter)
             && IsValid(options.RemoveSentSensitiveEmailsAfter)
             && IsValid(options.RemoveFailedSensitiveEmailsAfter)
+            && IsValid(options.RemoveDiscardedEmailsAfter)
+            && IsValid(options.RemoveDiscardedSensitiveEmailsAfter)
             && IsValid(options.RemoveSentSecurityEventWebhooksAfter)
             && IsValid(options.RemoveFailedSecurityEventWebhooksAfter)
             && IsValid(options.RemoveDiscardedSecurityEventWebhooksAfter);

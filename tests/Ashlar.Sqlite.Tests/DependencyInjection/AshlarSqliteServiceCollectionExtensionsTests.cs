@@ -244,7 +244,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.That(result.CleanupInterval, Is.EqualTo(TimeSpan.FromMinutes(30)));
             Assert.That(result.BatchSize, Is.EqualTo(42));
             Assert.That(result.MaxBatchesPerRun, Is.EqualTo(2));
-            Assert.That(result.EnabledCategoryCount, Is.EqualTo(24));
+            Assert.That(result.EnabledCategoryCount, Is.EqualTo(26));
             Assert.That(result.DisabledCategoryCount, Is.EqualTo(1));
         }
     }

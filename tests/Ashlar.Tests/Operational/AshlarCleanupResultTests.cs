@@ -34,13 +34,15 @@ internal sealed class AshlarCleanupResultTests
             ConsumedPasskeyChallenges: 18,
             SentSensitiveEmails: 19,
             FailedSensitiveEmails: 20,
-            SentSecurityEventWebhooks: 21,
-            FailedSecurityEventWebhooks: 22,
-            DiscardedSecurityEventWebhooks: 23,
-            ExpiredRememberedMfaDevices: 24,
-            RevokedRememberedMfaDevices: 25);
+            DiscardedEmails: 21,
+            DiscardedSensitiveEmails: 22,
+            SentSecurityEventWebhooks: 23,
+            FailedSecurityEventWebhooks: 24,
+            DiscardedSecurityEventWebhooks: 25,
+            ExpiredRememberedMfaDevices: 26,
+            RevokedRememberedMfaDevices: 27);
 
-        Assert.That(result.Total, Is.EqualTo(325));
+        Assert.That(result.Total, Is.EqualTo(378));
     }
 
     [Test]

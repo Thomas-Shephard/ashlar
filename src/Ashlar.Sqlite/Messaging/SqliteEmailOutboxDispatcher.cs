@@ -33,6 +33,7 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
             FROM ashlar_email_outbox
             WHERE sent_at IS NULL
               AND failed_at IS NULL
+              AND discarded_at IS NULL
               AND available_at <= $now
               AND (locked_until IS NULL OR locked_until <= $now)
             ORDER BY available_at, id
@@ -106,6 +107,7 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
             WHERE locked_by = $lockedBy
               AND sent_at IS NULL
               AND failed_at IS NULL
+              AND discarded_at IS NULL
             ORDER BY available_at, id
             """;
         command.AddParameter(LockedByParameter, lockId);

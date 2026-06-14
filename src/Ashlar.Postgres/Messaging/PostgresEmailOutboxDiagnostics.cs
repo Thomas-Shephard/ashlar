@@ -62,32 +62,38 @@ internal sealed class PostgresEmailOutboxDiagnostics(
                 COUNT(*) FILTER (
                     WHERE sent_at IS NULL
                       AND failed_at IS NULL
+                      AND discarded_at IS NULL
                       AND available_at <= @Now
                       AND (locked_until IS NULL OR locked_until <= @Now)
                 ) AS PendingCount,
                 COUNT(*) FILTER (
                     WHERE sent_at IS NULL
                       AND failed_at IS NULL
+                      AND discarded_at IS NULL
                       AND available_at > @Now
                 ) AS ScheduledCount,
                 COUNT(*) FILTER (
                     WHERE sent_at IS NULL
                       AND failed_at IS NULL
+                      AND discarded_at IS NULL
                       AND locked_until > @Now
                 ) AS LockedCount,
                 COUNT(*) FILTER (
                     WHERE sent_at IS NULL
                       AND failed_at IS NULL
+                      AND discarded_at IS NULL
                       AND locked_until IS NOT NULL
                       AND locked_until <= @Now
                 ) AS ExpiredLockCount,
                 COUNT(*) FILTER (
                     WHERE failed_at IS NOT NULL
+                      AND discarded_at IS NULL
                 ) AS FailedCount,
                 COUNT(*) FILTER (
                     WHERE sensitivity = 'ContainsLiveSecret'
                       AND sent_at IS NULL
                       AND failed_at IS NULL
+                      AND discarded_at IS NULL
                       AND available_at <= @Now
                       AND (locked_until IS NULL OR locked_until <= @Now)
                 ) AS SensitivePendingCount,
@@ -95,26 +101,31 @@ internal sealed class PostgresEmailOutboxDiagnostics(
                     WHERE sensitivity = 'ContainsLiveSecret'
                       AND sent_at IS NULL
                       AND failed_at IS NULL
+                      AND discarded_at IS NULL
                       AND available_at > @Now
                 ) AS SensitiveScheduledCount,
                 COUNT(*) FILTER (
                     WHERE sensitivity = 'ContainsLiveSecret'
                       AND sent_at IS NULL
                       AND failed_at IS NULL
+                      AND discarded_at IS NULL
                       AND locked_until > @Now
                 ) AS SensitiveLockedCount,
                 COUNT(*) FILTER (
                     WHERE sensitivity = 'ContainsLiveSecret'
                       AND failed_at IS NOT NULL
+                      AND discarded_at IS NULL
                 ) AS SensitiveFailedCount,
                 MIN(available_at) FILTER (
                     WHERE sent_at IS NULL
                       AND failed_at IS NULL
+                      AND discarded_at IS NULL
                       AND available_at <= @Now
                       AND (locked_until IS NULL OR locked_until <= @Now)
                 ) AS OldestPendingAt,
                 MIN(failed_at) FILTER (
                     WHERE failed_at IS NOT NULL
+                      AND discarded_at IS NULL
                 ) AS OldestFailedAt
             FROM ashlar_email_outbox;
         """;

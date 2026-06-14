@@ -152,6 +152,11 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
             (@sensitiveRecentFailed, 'recent-failed@example.com', 'sensitive-recent-failed', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', @recent, @recent, @recent),
             (@normalOldFailed, 'normal-failed@example.com', 'normal-old-failed', 'normal-body', 'Normal', 'None', @old, @old, @old);
 
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at, failed_at, discarded_at) VALUES
+            (@sensitiveOldDiscarded, 'old-discarded@example.com', 'sensitive-old-discarded', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', @old, @old, @old, @old),
+            (@sensitiveRecentDiscarded, 'recent-discarded@example.com', 'sensitive-recent-discarded', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', @recent, @recent, @recent, @recent),
+            (@normalOldDiscarded, 'normal-discarded@example.com', 'normal-old-discarded', 'normal-body', 'Normal', 'None', @old, @old, @old, @old);
+
             INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at) VALUES
             (@pending, 'pending@example.com', 'sensitive-pending', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', @veryOld, @veryOld);
 
@@ -165,6 +170,9 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
             sensitiveOldFailed = Guid.NewGuid(),
             sensitiveRecentFailed = Guid.NewGuid(),
             normalOldFailed = Guid.NewGuid(),
+            sensitiveOldDiscarded = Guid.NewGuid(),
+            sensitiveRecentDiscarded = Guid.NewGuid(),
+            normalOldDiscarded = Guid.NewGuid(),
             pending = Guid.NewGuid(),
             locked = Guid.NewGuid(),
             old = Now.AddHours(-2),
@@ -218,6 +226,25 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
             {
                 RemoveExpiredRememberedMfaDevicesAfter = null,
                 RemoveRevokedRememberedMfaDevicesAfter = null
+            }));
+        return await service.CleanupAsync();
+    }
+
+    protected override async Task<AshlarCleanupResult> RunCleanupWithNullEmailDiscardRetentionAsync()
+    {
+        if (_database == null)
+        {
+            throw new InvalidOperationException("Contract database is not initialized.");
+        }
+
+        await using var dataSource = new NpgsqlDataSourceBuilder(_database.ConnectionString).Build();
+        var service = new PostgresAshlarCleanupService(
+            dataSource,
+            _timeProvider,
+            Options.Create(new AshlarCleanupOptions
+            {
+                RemoveDiscardedEmailsAfter = null,
+                RemoveDiscardedSensitiveEmailsAfter = null
             }));
         return await service.CleanupAsync();
     }

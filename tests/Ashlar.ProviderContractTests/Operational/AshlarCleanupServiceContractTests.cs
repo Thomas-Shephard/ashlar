@@ -22,6 +22,8 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
 
     protected abstract Task<AshlarCleanupResult> RunCleanupWithNullRememberedMfaDeviceRetentionsAsync();
 
+    protected abstract Task<AshlarCleanupResult> RunCleanupWithNullEmailDiscardRetentionAsync();
+
     protected virtual bool SupportsCleanupTransactionRollback => false;
 
     [Test]
@@ -137,16 +139,37 @@ internal abstract class AshlarCleanupServiceContractTests : ProviderContractFixt
         {
             Assert.That(result.SentSensitiveEmails, Is.EqualTo(1));
             Assert.That(result.FailedSensitiveEmails, Is.EqualTo(1));
+            Assert.That(result.DiscardedSensitiveEmails, Is.EqualTo(1));
             Assert.That(result.SentEmails, Is.Zero);
             Assert.That(result.FailedEmails, Is.Zero);
+            Assert.That(result.DiscardedEmails, Is.Zero);
             Assert.That(await CountEmailRowsBySubjectAsync("sensitive-old-sent"), Is.Zero);
             Assert.That(await CountEmailRowsBySubjectAsync("sensitive-old-failed"), Is.Zero);
+            Assert.That(await CountEmailRowsBySubjectAsync("sensitive-old-discarded"), Is.Zero);
             Assert.That(await CountEmailRowsBySubjectAsync("sensitive-recent-sent"), Is.EqualTo(1));
             Assert.That(await CountEmailRowsBySubjectAsync("sensitive-recent-failed"), Is.EqualTo(1));
+            Assert.That(await CountEmailRowsBySubjectAsync("sensitive-recent-discarded"), Is.EqualTo(1));
             Assert.That(await CountEmailRowsBySubjectAsync("normal-old-sent"), Is.EqualTo(1));
             Assert.That(await CountEmailRowsBySubjectAsync("normal-old-failed"), Is.EqualTo(1));
+            Assert.That(await CountEmailRowsBySubjectAsync("normal-old-discarded"), Is.EqualTo(1));
             Assert.That(await CountEmailRowsBySubjectAsync("sensitive-pending"), Is.EqualTo(1));
             Assert.That(await CountEmailRowsBySubjectAsync("sensitive-locked"), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task CleanupAsyncSkipsDiscardedEmailCategoriesWithNullRetention()
+    {
+        await SeedSensitiveEmailCleanupRowsAsync();
+
+        var result = await RunCleanupWithNullEmailDiscardRetentionAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.DiscardedEmails, Is.Zero);
+            Assert.That(result.DiscardedSensitiveEmails, Is.Zero);
+            Assert.That(await CountEmailRowsBySubjectAsync("sensitive-old-discarded"), Is.EqualTo(1));
+            Assert.That(await CountEmailRowsBySubjectAsync("normal-old-discarded"), Is.EqualTo(1));
         }
     }
 
