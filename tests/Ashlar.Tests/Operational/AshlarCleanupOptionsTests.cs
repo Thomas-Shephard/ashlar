@@ -16,8 +16,10 @@ internal sealed class AshlarCleanupOptionsTests
             Assert.That(options.RemoveFailedSensitiveEmailsAfter, Is.EqualTo(TimeSpan.FromHours(1)));
             Assert.That(options.RemoveSentEmailsAfter, Is.EqualTo(TimeSpan.FromDays(7)));
             Assert.That(options.RemoveFailedEmailsAfter, Is.EqualTo(TimeSpan.FromDays(30)));
+            Assert.That(options.RemoveDiscardedEmailsAfter, Is.EqualTo(TimeSpan.FromDays(30)));
             Assert.That(options.RemoveExpiredRememberedMfaDevicesAfter, Is.EqualTo(TimeSpan.FromDays(30)));
             Assert.That(options.RemoveRevokedRememberedMfaDevicesAfter, Is.EqualTo(TimeSpan.FromDays(30)));
+            Assert.That(options.RemoveDiscardedSensitiveEmailsAfter, Is.EqualTo(TimeSpan.FromHours(1)));
             Assert.That(options.RemoveSentSecurityEventWebhooksAfter, Is.EqualTo(TimeSpan.FromDays(7)));
             Assert.That(options.RemoveFailedSecurityEventWebhooksAfter, Is.EqualTo(TimeSpan.FromDays(30)));
             Assert.That(options.RemoveDiscardedSecurityEventWebhooksAfter, Is.EqualTo(TimeSpan.FromDays(30)));
@@ -65,6 +67,8 @@ internal sealed class AshlarCleanupOptionsTests
         {
             Assert.That(AshlarCleanupOptions.Validate(new AshlarCleanupOptions { RemoveSentSensitiveEmailsAfter = TimeSpan.FromTicks(-1) }), Is.False);
             Assert.That(AshlarCleanupOptions.Validate(new AshlarCleanupOptions { RemoveFailedSensitiveEmailsAfter = TimeSpan.FromTicks(-1) }), Is.False);
+            Assert.That(AshlarCleanupOptions.Validate(new AshlarCleanupOptions { RemoveDiscardedSensitiveEmailsAfter = TimeSpan.FromTicks(-1) }), Is.False);
+            Assert.That(AshlarCleanupOptions.Validate(new AshlarCleanupOptions { RemoveDiscardedEmailsAfter = TimeSpan.FromTicks(-1) }), Is.False);
         }
     }
 

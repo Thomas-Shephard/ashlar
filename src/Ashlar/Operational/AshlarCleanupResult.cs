@@ -23,6 +23,8 @@ namespace Ashlar.Operational;
 /// <param name="ConsumedPasskeyChallenges">Consumed passkey challenges removed.</param>
 /// <param name="SentSensitiveEmails">Sent sensitive outbox emails removed.</param>
 /// <param name="FailedSensitiveEmails">Failed sensitive outbox emails removed.</param>
+/// <param name="DiscardedEmails">Discarded non-sensitive outbox emails removed.</param>
+/// <param name="DiscardedSensitiveEmails">Discarded sensitive outbox emails removed.</param>
 /// <param name="SentSecurityEventWebhooks">Sent security-event webhook deliveries removed.</param>
 /// <param name="FailedSecurityEventWebhooks">Failed security-event webhook deliveries removed.</param>
 /// <param name="DiscardedSecurityEventWebhooks">Discarded security-event webhook deliveries removed.</param>
@@ -49,6 +51,8 @@ public sealed record AshlarCleanupResult(
     int ConsumedPasskeyChallenges = 0,
     int SentSensitiveEmails = 0,
     int FailedSensitiveEmails = 0,
+    int DiscardedEmails = 0,
+    int DiscardedSensitiveEmails = 0,
     int SentSecurityEventWebhooks = 0,
     int FailedSecurityEventWebhooks = 0,
     int DiscardedSecurityEventWebhooks = 0,
@@ -79,6 +83,8 @@ public sealed record AshlarCleanupResult(
         ConsumedPasskeyChallenges: 0,
         SentSensitiveEmails: 0,
         FailedSensitiveEmails: 0,
+        DiscardedEmails: 0,
+        DiscardedSensitiveEmails: 0,
         SentSecurityEventWebhooks: 0,
         FailedSecurityEventWebhooks: 0,
         DiscardedSecurityEventWebhooks: 0,
@@ -109,6 +115,8 @@ public sealed record AshlarCleanupResult(
         + FailedEmails
         + SentSensitiveEmails
         + FailedSensitiveEmails
+        + DiscardedEmails
+        + DiscardedSensitiveEmails
         + ExpiredPasskeyChallenges
         + ConsumedPasskeyChallenges
         + SentSecurityEventWebhooks
@@ -145,6 +153,8 @@ public sealed record AshlarCleanupResult(
             ConsumedPasskeyChallenges + other.ConsumedPasskeyChallenges,
             SentSensitiveEmails + other.SentSensitiveEmails,
             FailedSensitiveEmails + other.FailedSensitiveEmails,
+            DiscardedEmails + other.DiscardedEmails,
+            DiscardedSensitiveEmails + other.DiscardedSensitiveEmails,
             SentSecurityEventWebhooks + other.SentSecurityEventWebhooks,
             FailedSecurityEventWebhooks + other.FailedSecurityEventWebhooks,
             DiscardedSecurityEventWebhooks + other.DiscardedSecurityEventWebhooks,

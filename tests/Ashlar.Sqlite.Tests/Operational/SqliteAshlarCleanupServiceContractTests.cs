@@ -157,6 +157,11 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
             ($sensitiveRecentFailed, 'recent-failed@example.com', 'sensitive-recent-failed', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', $recent, $recent, $recent),
             ($normalOldFailed, 'normal-failed@example.com', 'normal-old-failed', 'normal-body', 'Normal', 'None', $old, $old, $old);
 
+            INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at, failed_at, discarded_at) VALUES
+            ($sensitiveOldDiscarded, 'old-discarded@example.com', 'sensitive-old-discarded', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', $old, $old, $old, $old),
+            ($sensitiveRecentDiscarded, 'recent-discarded@example.com', 'sensitive-recent-discarded', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', $recent, $recent, $recent, $recent),
+            ($normalOldDiscarded, 'normal-discarded@example.com', 'normal-old-discarded', 'normal-body', 'Normal', 'None', $old, $old, $old, $old);
+
             INSERT INTO ashlar_email_outbox (id, to_address, subject, text_body, sensitivity, body_protection, created_at, available_at) VALUES
             ($pending, 'pending@example.com', 'sensitive-pending', 'live-token-link', 'ContainsLiveSecret', 'SecretProtector', $veryOld, $veryOld);
 
@@ -170,6 +175,9 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
             command.AddGuidParameter("$sensitiveOldFailed", Guid.NewGuid());
             command.AddGuidParameter("$sensitiveRecentFailed", Guid.NewGuid());
             command.AddGuidParameter("$normalOldFailed", Guid.NewGuid());
+            command.AddGuidParameter("$sensitiveOldDiscarded", Guid.NewGuid());
+            command.AddGuidParameter("$sensitiveRecentDiscarded", Guid.NewGuid());
+            command.AddGuidParameter("$normalOldDiscarded", Guid.NewGuid());
             command.AddGuidParameter("$pending", Guid.NewGuid());
             command.AddGuidParameter("$locked", Guid.NewGuid());
             command.AddDateTimeOffsetParameter("$old", Now.AddHours(-2));
@@ -224,6 +232,25 @@ internal sealed class SqliteAshlarCleanupServiceContractTests : AshlarCleanupSer
         {
             options.RemoveExpiredRememberedMfaDevicesAfter = null;
             options.RemoveRevokedRememberedMfaDevicesAfter = null;
+        });
+        services.AddSingleton<TimeProvider>(_timeProvider);
+        await using var provider = services.BuildServiceProvider();
+        return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+    }
+
+    protected override async Task<AshlarCleanupResult> RunCleanupWithNullEmailDiscardRetentionAsync()
+    {
+        if (_database == null)
+        {
+            throw new InvalidOperationException("Contract database is not initialized.");
+        }
+
+        var services = new ServiceCollection();
+        services.AddAshlarSqlite(_database.ConnectionString);
+        services.AddAshlarSqliteCleanup(options =>
+        {
+            options.RemoveDiscardedEmailsAfter = null;
+            options.RemoveDiscardedSensitiveEmailsAfter = null;
         });
         services.AddSingleton<TimeProvider>(_timeProvider);
         await using var provider = services.BuildServiceProvider();

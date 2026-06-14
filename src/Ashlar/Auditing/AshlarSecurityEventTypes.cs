@@ -314,6 +314,14 @@ public static class AshlarSecurityEventTypes
     /// </summary>
     public const string PasswordResetVerificationRateLimited = "ashlar.password_reset.verification_rate_limited";
     /// <summary>
+    /// Emitted when a failed email outbox row is restored for dispatcher retry.
+    /// </summary>
+    public const string EmailOutboxDeliveryRetried = "ashlar.email_outbox.delivery_retried";
+    /// <summary>
+    /// Emitted when a failed email outbox row is discarded by an operator.
+    /// </summary>
+    public const string EmailOutboxDeliveryDiscarded = "ashlar.email_outbox.delivery_discarded";
+    /// <summary>
     /// Emitted when security-event webhook delivery fails and will be retried.
     /// </summary>
     public const string SecurityEventWebhookOutboxDeliveryRetried = "ashlar.security_event_webhook.outbox.delivery_retried";

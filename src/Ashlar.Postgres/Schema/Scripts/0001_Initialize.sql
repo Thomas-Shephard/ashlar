@@ -354,6 +354,7 @@ CREATE TABLE IF NOT EXISTS ashlar_email_outbox (
     last_attempt_at TIMESTAMPTZ,
     sent_at TIMESTAMPTZ,
     failed_at TIMESTAMPTZ,
+    discarded_at TIMESTAMPTZ,
     last_error TEXT,
     CONSTRAINT ck_ashlar_email_outbox_sensitivity CHECK (sensitivity IN ('Normal', 'ContainsLiveSecret')),
     CONSTRAINT ck_ashlar_email_outbox_body_protection CHECK (body_protection IN ('None', 'SecretProtector')),
@@ -361,19 +362,22 @@ CREATE TABLE IF NOT EXISTS ashlar_email_outbox (
         sensitivity <> 'ContainsLiveSecret' OR body_protection = 'SecretProtector'
     ),
     CONSTRAINT ck_ashlar_email_outbox_attempt_count_non_negative CHECK (attempt_count >= 0),
-    CONSTRAINT ck_ashlar_email_outbox_terminal_state CHECK (sent_at IS NULL OR failed_at IS NULL),
+    CONSTRAINT ck_ashlar_email_outbox_terminal_state CHECK (
+        sent_at IS NULL OR (failed_at IS NULL AND discarded_at IS NULL)
+    ),
     CONSTRAINT ck_ashlar_email_outbox_lock_state CHECK (
         (locked_until IS NULL AND locked_by IS NULL) OR (locked_until IS NOT NULL AND locked_by IS NOT NULL)
     )
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_pending ON ashlar_email_outbox (available_at, id)
-WHERE sent_at IS NULL AND failed_at IS NULL;
+WHERE sent_at IS NULL AND failed_at IS NULL AND discarded_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_created_at ON ashlar_email_outbox (created_at);
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_locked_until ON ashlar_email_outbox (locked_until) WHERE locked_until IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_sent_at ON ashlar_email_outbox (sent_at) WHERE sent_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_failed_at ON ashlar_email_outbox (failed_at) WHERE failed_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_discarded_at ON ashlar_email_outbox (discarded_at) WHERE discarded_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_sensitive_sent_at ON ashlar_email_outbox (sent_at, id)
 WHERE sensitivity = 'ContainsLiveSecret' AND sent_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_email_outbox_sensitive_failed_at ON ashlar_email_outbox (failed_at, id)
