@@ -47,6 +47,10 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<AuthorizationGrantOptions>(),
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>()));
+        services.TryAddScoped<IAuthorizationGrantAdministrationService>(provider => new AuthorizationGrantAdministrationService(
+            provider.GetRequiredService<IAuthorizationGrantAdministrationRepository>(),
+            provider.GetService<AuthorizationGrantOptions>(),
+            provider.GetService<TimeProvider>()));
         services.TryAddScoped<IAuthorizationEvaluator, AuthorizationEvaluator>();
 
         return services;

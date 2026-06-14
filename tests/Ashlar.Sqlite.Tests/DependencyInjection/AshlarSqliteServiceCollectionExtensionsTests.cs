@@ -48,6 +48,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
             Assert.That(scope.ServiceProvider.GetRequiredService<IInvitationRepository>(), Is.TypeOf<SqliteInvitationRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IPasskeyChallengeRepository>(), Is.TypeOf<SqlitePasskeyChallengeRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantRepository>(), Is.TypeOf<SqliteAuthorizationGrantRepository>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantAdministrationRepository>(), Is.TypeOf<SqliteAuthorizationGrantAdministrationRepository>());
             Assert.That(provider.GetRequiredService<TimeProvider>(), Is.EqualTo(TimeProvider.System));
         }
     }
@@ -313,6 +314,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
         Assert.Throws<ArgumentNullException>(() => AshlarSqliteServiceCollectionExtensions.AddAshlarSqliteCleanup(null!));
         Assert.Throws<ArgumentNullException>(() => AshlarSqliteServiceCollectionExtensions.AddAshlarSqliteCleanupHostedService(null!));
         Assert.Throws<ArgumentException>(() => _ = new SqliteConnectionFactory(string.Empty));
+        Assert.Throws<ArgumentNullException>(() => _ = new SqliteAuthorizationGrantAdministrationRepository(null!));
     }
 
     [Test]
