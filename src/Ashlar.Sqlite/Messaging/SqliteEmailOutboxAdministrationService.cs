@@ -215,19 +215,37 @@ public sealed class SqliteEmailOutboxAdministrationService(
     private static SearchRow ReadSearchRow(SqliteDataReader reader)
     {
         return new SearchRow(
+            ReadIdentityFields(reader),
+            ReadDeliveryFields(reader),
+            ReadFailureFields(reader));
+    }
+
+    private static SearchRowIdentity ReadIdentityFields(SqliteDataReader reader)
+    {
+        return new SearchRowIdentity(
             reader.GetGuidFromText("id"),
             reader.GetNullableString("to_address"),
             reader.GetNullableString("subject"),
             reader.GetNullableString("sensitivity"),
             reader.GetNullableString("body_protection"),
-            reader.GetNullableString("status"),
+            reader.GetNullableString("status"));
+    }
+
+    private static SearchRowDelivery ReadDeliveryFields(SqliteDataReader reader)
+    {
+        return new SearchRowDelivery(
             reader.GetInt32ByName("attempt_count"),
             reader.GetDateTimeOffsetFromText("created_at"),
             reader.GetDateTimeOffsetFromText("available_at"),
             reader.GetNullableDateTimeOffsetFromText("sent_at"),
             reader.GetNullableDateTimeOffsetFromText("last_attempt_at"),
+            reader.GetNullableDateTimeOffsetFromText("discarded_at"));
+    }
+
+    private static SearchRowFailure ReadFailureFields(SqliteDataReader reader)
+    {
+        return new SearchRowFailure(
             reader.GetNullableDateTimeOffsetFromText("failed_at"),
-            reader.GetNullableDateTimeOffsetFromText("discarded_at"),
             reader.GetNullableString("last_error"));
     }
 
@@ -257,13 +275,43 @@ public sealed class SqliteEmailOutboxAdministrationService(
             reader.GetNullableDateTimeOffsetFromText("discarded_at"));
     }
 
-    private sealed record SearchRow(Guid Id, string? ToAddress, string? Subject, string? Sensitivity, string? BodyProtection, string? Status, int AttemptCount, DateTimeOffset CreatedAt, DateTimeOffset AvailableAt, DateTimeOffset? SentAt, DateTimeOffset? LastAttemptAt, DateTimeOffset? FailedAt, DateTimeOffset? DiscardedAt, string? LastError)
+    private sealed record SearchRow(SearchRowIdentity Identity, SearchRowDelivery Delivery, SearchRowFailure Failure)
     {
         public EmailOutboxAdministrationRecord ToRecord()
         {
-            return new EmailOutboxAdministrationRecord(Id, ToAddress, null, null, null, null, Subject, null, null, null, null, EmailOutboxDispatch.ParseSensitivity(Sensitivity), EmailOutboxDispatch.ParseBodyProtection(BodyProtection), EmailOutboxAdministration.ParseStatus(Status), AttemptCount, CreatedAt, AvailableAt, LastAttemptAt, FailedAt, SentAt, DiscardedAt, null, null, LastError);
+            return new EmailOutboxAdministrationRecord(
+                Identity.Id,
+                Identity.ToAddress,
+                null,
+                null,
+                null,
+                null,
+                Identity.Subject,
+                null,
+                null,
+                null,
+                null,
+                EmailOutboxDispatch.ParseSensitivity(Identity.Sensitivity),
+                EmailOutboxDispatch.ParseBodyProtection(Identity.BodyProtection),
+                EmailOutboxAdministration.ParseStatus(Identity.Status),
+                Delivery.AttemptCount,
+                Delivery.CreatedAt,
+                Delivery.AvailableAt,
+                Delivery.LastAttemptAt,
+                Failure.FailedAt,
+                Delivery.SentAt,
+                Delivery.DiscardedAt,
+                null,
+                null,
+                Failure.LastError);
         }
     }
+
+    private sealed record SearchRowIdentity(Guid Id, string? ToAddress, string? Subject, string? Sensitivity, string? BodyProtection, string? Status);
+
+    private sealed record SearchRowDelivery(int AttemptCount, DateTimeOffset CreatedAt, DateTimeOffset AvailableAt, DateTimeOffset? SentAt, DateTimeOffset? LastAttemptAt, DateTimeOffset? DiscardedAt);
+
+    private sealed record SearchRowFailure(DateTimeOffset? FailedAt, string? LastError);
 
     private sealed record DetailRow(SearchRow Row, string? FromAddress, string? ReplyToAddress, string? CcAddress, bool HasTextBody, bool HasHtmlBody, bool HasHeaders, bool HasMetadata)
     {

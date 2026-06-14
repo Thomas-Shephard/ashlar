@@ -707,29 +707,13 @@ public static class EmailOutboxAdministration
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(result);
 
-        try
-        {
-            await sink.RecordAsync(new AshlarSecurityEvent
-            {
-                Id = Guid.NewGuid(),
-                EventType = eventType,
-                OccurredAt = timeProvider.GetUtcNow(),
-                ActorUserId = request.Audit.ActorUserId,
-                IpAddress = request.Audit.IpAddress,
-                UserAgent = request.Audit.UserAgent,
-                CorrelationId = request.Audit.CorrelationId,
-                Outcome = SecurityEventOutcomes.Success,
-                Properties = new Dictionary<string, string> { ["email_outbox_id"] = result.Id.ToString("D") }
-            }, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            // Email outbox administration audit emission is fail-open after the outbox mutation commits.
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // Email outbox administration audit emission is fail-open after the outbox mutation commits.
-        }
+        await SecurityEventAuditEmission.RecordCompletedOperationAsync(
+            sink,
+            timeProvider,
+            eventType,
+            request.Audit,
+            new Dictionary<string, string> { ["email_outbox_id"] = result.Id.ToString("D") },
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static bool IsSensitive(EmailOutboxAdministrationRecord record)

@@ -295,29 +295,13 @@ public static class AshlarSecurityEventWebhookOutboxOperations
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(result);
 
-        try
-        {
-            await sink.RecordAsync(new AshlarSecurityEvent
-            {
-                Id = Guid.NewGuid(),
-                EventType = eventType,
-                OccurredAt = timeProvider.GetUtcNow(),
-                ActorUserId = request.Audit.ActorUserId,
-                IpAddress = request.Audit.IpAddress,
-                UserAgent = request.Audit.UserAgent,
-                CorrelationId = request.Audit.CorrelationId,
-                Outcome = SecurityEventOutcomes.Success,
-                Properties = CreateAuditProperties(result)
-            }, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            // Ashlar security event audit emission is fail-open.
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // Ashlar security event audit emission is fail-open.
-        }
+        await SecurityEventAuditEmission.RecordCompletedOperationAsync(
+            sink,
+            timeProvider,
+            eventType,
+            request.Audit,
+            CreateAuditProperties(result),
+            cancellationToken).ConfigureAwait(false);
     }
 
     internal static AshlarSecurityEventWebhookOutboxOperationResult CreateResult(
