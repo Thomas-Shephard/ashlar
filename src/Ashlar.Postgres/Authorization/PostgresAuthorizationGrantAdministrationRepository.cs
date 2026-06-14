@@ -128,28 +128,49 @@ public sealed class PostgresAuthorizationGrantAdministrationRepository(IPostgres
         FROM ashlar_authorization_grants
         """;
 
-    private sealed class AuthorizationGrantAdministrationRow
+    private sealed record AuthorizationGrantAdministrationRow(
+        Guid Id,
+        Guid UserId,
+        Guid? TenantId,
+        string? ScopeType,
+        string? ScopeId,
+        string? Role,
+        string? Permission,
+        DateTime CreatedAt,
+        DateTime? ExpiresAt,
+        DateTime? RevokedAt,
+        AuthorizationGrantAdministrationStatus Status)
     {
-        public Guid Id { get; init; }
-        public Guid UserId { get; init; }
-        public Guid? TenantId { get; init; }
-        public string? ScopeType { get; init; }
-        public string? ScopeId { get; init; }
-        public string? Role { get; init; }
-        public string? Permission { get; init; }
-        public DateTimeOffset CreatedAt { get; init; }
-        public DateTimeOffset? ExpiresAt { get; init; }
-        public DateTimeOffset? RevokedAt { get; init; }
-        public AuthorizationGrantAdministrationStatus Status { get; init; }
-
         public AuthorizationGrantAdministrationSummary ToSummary()
         {
-            return new AuthorizationGrantAdministrationSummary(Id, UserId, TenantId, ScopeType, ScopeId, Role, Permission, CreatedAt, ExpiresAt, RevokedAt, Status);
+            return new AuthorizationGrantAdministrationSummary(
+                Id,
+                UserId,
+                TenantId,
+                ScopeType,
+                ScopeId,
+                Role,
+                Permission,
+                PostgresAdminQuery.ToDateTimeOffset(CreatedAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(ExpiresAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(RevokedAt),
+                Status);
         }
 
         public AuthorizationGrantAdministrationDetail ToDetail()
         {
-            return new AuthorizationGrantAdministrationDetail(Id, UserId, TenantId, ScopeType, ScopeId, Role, Permission, CreatedAt, ExpiresAt, RevokedAt, Status);
+            return new AuthorizationGrantAdministrationDetail(
+                Id,
+                UserId,
+                TenantId,
+                ScopeType,
+                ScopeId,
+                Role,
+                Permission,
+                PostgresAdminQuery.ToDateTimeOffset(CreatedAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(ExpiresAt),
+                PostgresAdminQuery.ToNullableDateTimeOffset(RevokedAt),
+                Status);
         }
     }
 }
