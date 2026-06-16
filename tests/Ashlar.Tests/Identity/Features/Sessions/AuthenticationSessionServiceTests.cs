@@ -204,6 +204,24 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
+    public void CreateSessionAsyncShouldRejectUnconfiguredPrimaryProvider()
+    {
+        var request = new CreateAuthenticationSessionRequest(
+            PrimaryProvider: new AuthenticationProviderKey((ProviderType)ProviderType.StorageFallbackValue, "unknown"));
+
+        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateSessionAsync(Guid.NewGuid(), request));
+    }
+
+    [Test]
+    public void CreateSessionAsyncShouldRejectUnconfiguredAdditionalVerificationProvider()
+    {
+        var request = new CreateAuthenticationSessionRequest(
+            AdditionalVerificationProvider: default(AuthenticationProviderKey));
+
+        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateSessionAsync(Guid.NewGuid(), request));
+    }
+
+    [Test]
     public void CreateSessionAsyncShouldRejectTooLongIpAddress()
     {
         Assert.ThrowsAsync<ArgumentException>(() =>
@@ -980,6 +998,7 @@ internal sealed class AuthenticationSessionServiceTests
         Assert.ThrowsAsync<ArgumentException>(() => _service.MarkStepUpVerifiedAsync(Guid.Empty, new MarkSessionStepUpVerifiedRequest { SessionId = Guid.NewGuid(), VerifiedProvider = provider, VerifiedFactor = "totp" }));
         Assert.ThrowsAsync<ArgumentException>(() => _service.MarkStepUpVerifiedAsync(Guid.NewGuid(), new MarkSessionStepUpVerifiedRequest { SessionId = Guid.Empty, VerifiedProvider = provider, VerifiedFactor = "totp" }));
         Assert.ThrowsAsync<ArgumentException>(() => _service.MarkStepUpVerifiedAsync(Guid.NewGuid(), new MarkSessionStepUpVerifiedRequest { SessionId = Guid.NewGuid(), VerifiedProvider = default, VerifiedFactor = "totp" }));
+        Assert.ThrowsAsync<ArgumentException>(() => _service.MarkStepUpVerifiedAsync(Guid.NewGuid(), new MarkSessionStepUpVerifiedRequest { SessionId = Guid.NewGuid(), VerifiedProvider = new AuthenticationProviderKey((ProviderType)ProviderType.StorageFallbackValue, "unknown"), VerifiedFactor = "totp" }));
         Assert.ThrowsAsync<ArgumentException>(() => _service.MarkStepUpVerifiedAsync(Guid.NewGuid(), new MarkSessionStepUpVerifiedRequest { SessionId = Guid.NewGuid(), VerifiedProvider = provider, VerifiedFactor = " " }));
         Assert.ThrowsAsync<ArgumentException>(() => _service.MarkStepUpVerifiedAsync(Guid.NewGuid(), new MarkSessionStepUpVerifiedRequest { SessionId = Guid.NewGuid(), VerifiedProvider = provider, VerifiedFactor = new string('x', 129) }));
     }

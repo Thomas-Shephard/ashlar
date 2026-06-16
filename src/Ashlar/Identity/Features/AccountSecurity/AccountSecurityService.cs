@@ -283,11 +283,9 @@ public sealed class AccountSecurityService : IAccountSecurityService
 
     private static void ValidateProvider(AuthenticationProviderKey provider)
     {
-        if (provider.Type == default
-            || provider.Type.Value == ProviderType.UnknownValue
-            || string.IsNullOrWhiteSpace(provider.Name))
+        if (!provider.IsConfigured)
         {
-            throw new ArgumentException("Provider key must be fully initialized.", nameof(provider));
+            throw new ArgumentException("Provider key must be fully initialized with a configured provider type and name.", nameof(provider));
         }
 
         if (provider.Type == ProviderType.Internal)

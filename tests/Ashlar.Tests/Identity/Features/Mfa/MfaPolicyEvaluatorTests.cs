@@ -202,6 +202,7 @@ internal sealed class MfaPolicyEvaluatorTests
             Assert.Throws<OptionsValidationException>(() => _ = new RequireMfaWhenCredentialExistsPolicyEvaluator(repository, Options.Create(new CredentialBackedMfaPolicyOptions())));
             Assert.That(CredentialBackedMfaPolicyOptions.Validate(null), Is.False);
             Assert.That(CredentialBackedMfaPolicyOptions.Validate(new CredentialBackedMfaPolicyOptions { CredentialProviderKeys = { default }, RequiredFactors = { "totp" } }), Is.False);
+            Assert.That(CredentialBackedMfaPolicyOptions.Validate(new CredentialBackedMfaPolicyOptions { CredentialProviderKeys = { new AuthenticationProviderKey((ProviderType)ProviderType.StorageFallbackValue, "unknown") }, RequiredFactors = { "totp" } }), Is.False);
             Assert.That(CredentialBackedMfaPolicyOptions.Validate(new CredentialBackedMfaPolicyOptions { CredentialProviderKeys = { new AuthenticationProviderKey(ProviderType.Mfa, "totp") }, RequiredFactors = { " " } }), Is.False);
         }
     }

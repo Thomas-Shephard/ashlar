@@ -33,7 +33,7 @@ internal sealed class AccountRecoveryAdministrationExecutorTests
             Assert.Throws<ArgumentException>(() => new AccountRecoveryRevokeSessionsRequest(Guid.NewGuid(), CreateAudit(), TenantContext.Global, IncludeAllTenants: true));
             Assert.Throws<ArgumentNullException>(() => new AccountRecoveryResetMfaRequest(Guid.NewGuid(), null!, TenantContext.Global));
             Assert.Throws<ArgumentException>(() => new AccountRecoveryRevokeProviderCredentialsRequest(Guid.NewGuid(), default, CreateAudit(), TenantContext.Global));
-            Assert.Throws<ArgumentException>(() => new AccountRecoveryRevokeProviderCredentialsRequest(Guid.NewGuid(), new AuthenticationProviderKey(ProviderType.UnknownValue, "unknown"), CreateAudit(), TenantContext.Global));
+            Assert.Throws<ArgumentException>(() => new AccountRecoveryRevokeProviderCredentialsRequest(Guid.NewGuid(), new AuthenticationProviderKey(ProviderType.StorageFallbackValue, "unknown"), CreateAudit(), TenantContext.Global));
             Assert.Throws<ArgumentException>(() => new AccountRecoveryRevokeProviderCredentialsRequest(Guid.NewGuid(), new AuthenticationProviderKey(ProviderType.Internal, "password-reset"), CreateAudit(), TenantContext.Global));
         }
     }

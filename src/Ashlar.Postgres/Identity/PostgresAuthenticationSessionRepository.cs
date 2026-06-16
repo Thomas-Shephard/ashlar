@@ -184,7 +184,7 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
                 Id = sessionId,
                 UserId = userId,
                 VerifiedAt = verifiedAt,
-                VerifiedProviderType = AuthenticationProviderKey.GetTypeValueOrDefault(verifiedProvider),
+                VerifiedProviderType = AuthenticationProviderKey.GetStorageTypeValue(verifiedProvider),
                 VerifiedProviderName = verifiedProvider.Name,
                 VerifiedFactor = verifiedFactor
             }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
@@ -378,10 +378,10 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
             session.TokenHash,
             session.CreatedAt,
             session.AuthenticatedAt,
-            PrimaryProviderType = AuthenticationProviderKey.GetTypeValueOrDefault(session.PrimaryProvider),
+            PrimaryProviderType = AuthenticationProviderKey.GetStorageTypeValue(session.PrimaryProvider),
             PrimaryProviderName = session.PrimaryProvider?.Name,
             session.AdditionalVerificationAt,
-            AdditionalVerificationProviderType = AuthenticationProviderKey.GetTypeValueOrDefault(session.AdditionalVerificationProvider),
+            AdditionalVerificationProviderType = AuthenticationProviderKey.GetStorageTypeValue(session.AdditionalVerificationProvider),
             AdditionalVerificationProviderName = session.AdditionalVerificationProvider?.Name,
             session.AdditionalVerificationFactor,
             session.ExpiresAt,
@@ -453,12 +453,6 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
 
     private static AuthenticationProviderKey? CreateProvider(string? type, string? name)
     {
-        if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(name))
-        {
-            return null;
-        }
-
-        ProviderType providerType = type;
-        return new AuthenticationProviderKey(providerType, name);
+        return new PersistedAuthenticationProviderKey(type, name).ToProviderKey();
     }
 }

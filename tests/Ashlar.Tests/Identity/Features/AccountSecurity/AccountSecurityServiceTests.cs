@@ -605,7 +605,7 @@ internal sealed class AccountSecurityServiceTests
     [Test]
     public void RevokeCredentialsAsyncShouldRejectUnknownProviderTypeBeforeMutation()
     {
-        var provider = new AuthenticationProviderKey((ProviderType)ProviderType.UnknownValue, "unknown");
+        var provider = new AuthenticationProviderKey((ProviderType)ProviderType.StorageFallbackValue, "unknown");
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
         _userRepository.Credentials.Add(CreateCredential(_userId, provider));
 

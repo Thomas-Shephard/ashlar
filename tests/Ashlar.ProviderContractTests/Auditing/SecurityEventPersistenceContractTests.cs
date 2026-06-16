@@ -96,7 +96,7 @@ internal abstract class SecurityEventPersistenceContractTests : ProviderContract
         var row = (await ReadSecurityEventStorageRecordsAsync()).Single(record => record.Id == securityEvent.Id);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(row.ProviderType, Is.EqualTo("UNKNOWN"));
+            Assert.That(row.ProviderType, Is.EqualTo(ProviderType.StorageFallbackValue));
             Assert.That(row.ProviderName, Is.EqualTo(string.Empty));
         }
     }

@@ -202,10 +202,9 @@ public sealed record SearchAccountLockoutsRequest
 
         if (request.Provider is { } provider)
         {
-            AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(request));
-            if (provider.Type.Value == ProviderType.UnknownValue)
+            if (!provider.IsConfigured)
             {
-                throw new ArgumentException("Provider key must be fully initialized.", nameof(request));
+                throw new ArgumentException("Provider key must be fully initialized with a configured provider type and name.", nameof(request));
             }
         }
     }

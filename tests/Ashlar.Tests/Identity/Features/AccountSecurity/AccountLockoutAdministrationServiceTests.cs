@@ -194,7 +194,7 @@ internal sealed class AccountLockoutAdministrationServiceTests
     [Test]
     public async Task OperationsShouldValidateInputs()
     {
-        var unknownProvider = new AuthenticationProviderKey((ProviderType)ProviderType.UnknownValue, "unknown");
+        var unknownProvider = new AuthenticationProviderKey((ProviderType)ProviderType.StorageFallbackValue, "unknown");
         var invalidSearches = new[]
         {
             new SearchAccountLockoutsRequest { Tenant = TenantContext.Global, Limit = 0 },

@@ -110,7 +110,7 @@ public sealed class AshlarSecurityEventMetricsHandler : ISecurityEventHandler, I
         {
             { "ashlar.event_type", GetTagValue(securityEvent.EventType) },
             { "ashlar.outcome", GetTagValue(securityEvent.Outcome) },
-            { "ashlar.provider_type", GetTagValue(AuthenticationProviderKey.GetTypeValueOrDefault(securityEvent.Provider)) }
+            { "ashlar.provider_type", GetTagValue(AuthenticationProviderKey.GetStorageTypeValue(securityEvent.Provider)) }
         };
 
         if (_options.IncludeProviderName)

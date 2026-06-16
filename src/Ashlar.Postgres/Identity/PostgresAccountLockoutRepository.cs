@@ -43,7 +43,7 @@ public sealed class PostgresAccountLockoutRepository(IPostgresConnectionProvider
         {
             conditions.Add("provider_type = @ProviderType");
             conditions.Add("provider_name = @ProviderName");
-            parameters.Add("ProviderType", provider.TypeValueOrDefault);
+            parameters.Add("ProviderType", provider.StorageTypeValue);
             parameters.Add("ProviderName", provider.Name);
         }
 
@@ -85,7 +85,7 @@ public sealed class PostgresAccountLockoutRepository(IPostgresConnectionProvider
     public async Task<AccountLockoutRecord?> GetAsync(Guid userId, Guid? tenantId, AuthenticationProviderKey provider, CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
-        AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(provider));
+        AuthenticationProviderKey.ThrowIfNotConfigured(provider, nameof(provider));
 
         const string sql = SelectSql + """
 
@@ -125,7 +125,7 @@ public sealed class PostgresAccountLockoutRepository(IPostgresConnectionProvider
         CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
-        AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(provider));
+        AuthenticationProviderKey.ThrowIfNotConfigured(provider, nameof(provider));
         AccountLockoutOptions.ThrowIfInvalidPolicy(failureThreshold, lockoutDuration);
 
         const string sql = """
@@ -199,7 +199,7 @@ public sealed class PostgresAccountLockoutRepository(IPostgresConnectionProvider
     public async Task<bool> ResetAsync(Guid userId, Guid? tenantId, AuthenticationProviderKey provider, CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
-        AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(provider));
+        AuthenticationProviderKey.ThrowIfNotConfigured(provider, nameof(provider));
 
         const string sql = """
             DELETE FROM ashlar_account_lockouts
@@ -229,7 +229,7 @@ public sealed class PostgresAccountLockoutRepository(IPostgresConnectionProvider
         var parameters = new DynamicParameters();
         parameters.Add("UserId", userId);
         parameters.Add(TenantIdName, tenantId);
-        parameters.Add("ProviderType", provider.TypeValueOrDefault);
+        parameters.Add("ProviderType", provider.StorageTypeValue);
         parameters.Add("ProviderName", provider.Name);
         return parameters;
     }

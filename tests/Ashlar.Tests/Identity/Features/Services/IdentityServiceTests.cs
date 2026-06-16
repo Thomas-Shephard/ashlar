@@ -753,7 +753,11 @@ internal sealed class IdentityServiceTests
     [Test]
     public void FindByProviderKeyAsyncWithUninitializedProviderShouldThrow()
     {
-        Assert.ThrowsAsync<ArgumentException>(() => _identityService.FindByProviderKeyAsync(default, "key"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<ArgumentException>(() => _identityService.FindByProviderKeyAsync(default, "key"));
+            Assert.ThrowsAsync<ArgumentException>(() => _identityService.FindByProviderKeyAsync(new AuthenticationProviderKey((ProviderType)ProviderType.StorageFallbackValue, "unknown"), "key"));
+        }
     }
 
     [Test]

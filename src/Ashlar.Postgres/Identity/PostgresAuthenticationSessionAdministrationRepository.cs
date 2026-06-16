@@ -160,13 +160,7 @@ public sealed class PostgresAuthenticationSessionAdministrationRepository(IPostg
 
         private static AuthenticationProviderKey? CreateProvider(string? type, string? name)
         {
-            if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(name))
-            {
-                return null;
-            }
-
-            ProviderType providerType = type;
-            return new AuthenticationProviderKey(providerType, name);
+            return new PersistedAuthenticationProviderKey(type, name).ToProviderKey();
         }
     }
 }

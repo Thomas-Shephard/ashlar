@@ -45,6 +45,7 @@ public sealed record SecurityEventStorageRecord(
     public static SecurityEventStorageRecord From(AshlarSecurityEvent securityEvent)
     {
         ArgumentNullException.ThrowIfNull(securityEvent);
+        var provider = PersistedAuthenticationProviderKey.FromProvider(securityEvent.Provider);
         return new SecurityEventStorageRecord(
             securityEvent.Id,
             securityEvent.EventType,
@@ -53,8 +54,8 @@ public sealed record SecurityEventStorageRecord(
             securityEvent.TenantId,
             securityEvent.ActorUserId,
             securityEvent.SessionId,
-            AuthenticationProviderKey.GetTypeValueOrDefault(securityEvent.Provider),
-            securityEvent.Provider?.Name,
+            provider.ProviderTypeValue,
+            provider.ProviderName,
             securityEvent.IpAddress,
             securityEvent.UserAgent,
             securityEvent.CorrelationId,
@@ -88,9 +89,7 @@ public sealed record SecurityEventStorageRecord(
 
     private static AuthenticationProviderKey? ToProvider(string? providerType, string? providerName)
     {
-        return string.IsNullOrWhiteSpace(providerType) || string.IsNullOrWhiteSpace(providerName)
-            ? null
-            : new AuthenticationProviderKey((ProviderType)providerType, providerName);
+        return new PersistedAuthenticationProviderKey(providerType, providerName).ToProviderKey();
     }
 
     private static Dictionary<string, string>? ParseProperties(string? propertiesJson)

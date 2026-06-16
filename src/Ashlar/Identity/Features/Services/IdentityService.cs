@@ -54,11 +54,7 @@ public sealed class IdentityService(
     /// <returns>The linked user, or <see langword="null" /> when no active credential matches.</returns>
     public async Task<IUser?> FindByProviderKeyAsync(AuthenticationProviderKey provider, string providerKey, CancellationToken cancellationToken = default)
     {
-        if (provider.Type == default || string.IsNullOrWhiteSpace(provider.Name))
-        {
-            throw new ArgumentException("Provider key must be fully initialized with a type and name.", nameof(provider));
-        }
-
+        AuthenticationProviderKey.ThrowIfNotConfigured(provider, nameof(provider));
         ArgumentException.ThrowIfNullOrWhiteSpace(providerKey);
 
         return await _repository.GetUserByProviderKeyAsync(provider.Type, provider.Name, providerKey, cancellationToken);

@@ -92,7 +92,7 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
     public async Task<AccountLockoutRecord?> GetAsync(Guid userId, Guid? tenantId, AuthenticationProviderKey provider, CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
-        AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(provider));
+        AuthenticationProviderKey.ThrowIfNotConfigured(provider, nameof(provider));
 
         var sql = SelectSql + """
 
@@ -133,7 +133,7 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
         CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
-        AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(provider));
+        AuthenticationProviderKey.ThrowIfNotConfigured(provider, nameof(provider));
         AccountLockoutOptions.ThrowIfInvalidPolicy(failureThreshold, lockoutDuration);
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -163,7 +163,7 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
     public async Task<bool> ResetAsync(Guid userId, Guid? tenantId, AuthenticationProviderKey provider, CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
-        AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(provider));
+        AuthenticationProviderKey.ThrowIfNotConfigured(provider, nameof(provider));
 
         var sql = """
             DELETE FROM ashlar_account_lockouts
@@ -274,7 +274,7 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
     {
         command.AddGuidParameter(UserIdParameter, userId);
         command.AddNullableGuidParameter(TenantIdParameter, tenantId);
-        command.AddParameter(ProviderTypeParameter, provider.TypeValueOrDefault);
+        command.AddParameter(ProviderTypeParameter, provider.StorageTypeValue);
         command.AddParameter(ProviderNameParameter, provider.Name);
     }
 
@@ -299,7 +299,7 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
 
         if (request.Provider is { } provider)
         {
-            command.AddParameter(ProviderTypeParameter, provider.TypeValueOrDefault);
+            command.AddParameter(ProviderTypeParameter, provider.StorageTypeValue);
             command.AddParameter(ProviderNameParameter, provider.Name);
         }
     }

@@ -62,21 +62,101 @@ internal sealed class AuthenticationProviderKeyTests
     }
 
     [Test]
-    public void DefaultKeyShouldHaveUnknownProviderTypeValue()
+    public void DefaultKeyShouldUseStorageFallbackTypeValue()
     {
         var key = default(AuthenticationProviderKey);
 
-        Assert.That(key.TypeValueOrDefault, Is.EqualTo(ProviderType.UnknownValue));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(key.StorageTypeValue, Is.EqualTo(ProviderType.StorageFallbackValue));
+            Assert.That(key.Type.IsStorageFallback, Is.True);
+            Assert.That(key.IsInitialized, Is.False);
+            Assert.That(key.IsConfigured, Is.False);
+            Assert.That(key.ToString(), Is.EqualTo("<uninitialized provider>"));
+        }
     }
 
     [Test]
-    public void GetTypeValueOrDefaultShouldHandleMissingDefaultAndInitializedProviders()
+    public void StorageFallbackProviderShouldBeAddressableInFormattingAndStorageShapes()
+    {
+        var key = new AuthenticationProviderKey((ProviderType)ProviderType.StorageFallbackValue, "Missing");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(key.Type.IsStorageFallback, Is.True);
+            Assert.That(key.IsInitialized, Is.True);
+            Assert.That(key.IsConfigured, Is.False);
+            Assert.That(key.StorageTypeValue, Is.EqualTo(ProviderType.StorageFallbackValue));
+            Assert.That(key.ToString(), Is.EqualTo($"{ProviderType.StorageFallbackValue}:Missing"));
+            Assert.That(AuthenticationProviderKey.GetStorageTypeValue(key), Is.EqualTo(ProviderType.StorageFallbackValue));
+        }
+    }
+
+    [Test]
+    public void ConfiguredProviderShouldBeInitializedAndConfigured()
+    {
+        var key = new AuthenticationProviderKey(ProviderType.Oidc, "Google");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(key.Type.IsStorageFallback, Is.False);
+            Assert.That(key.IsInitialized, Is.True);
+            Assert.That(key.IsConfigured, Is.True);
+            Assert.That(key.StorageTypeValue, Is.EqualTo("OIDC"));
+        }
+    }
+
+    [Test]
+    public void GetStorageTypeValueShouldHandleMissingDefaultAndInitializedProviders()
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(AuthenticationProviderKey.GetTypeValueOrDefault(null), Is.Null);
-            Assert.That(AuthenticationProviderKey.GetTypeValueOrDefault(default(AuthenticationProviderKey)), Is.EqualTo(ProviderType.UnknownValue));
-            Assert.That(AuthenticationProviderKey.GetTypeValueOrDefault(new AuthenticationProviderKey(ProviderType.Oidc, "Google")), Is.EqualTo("OIDC"));
+            Assert.That(AuthenticationProviderKey.GetStorageTypeValue(null), Is.Null);
+            Assert.That(AuthenticationProviderKey.GetStorageTypeValue(default(AuthenticationProviderKey)), Is.EqualTo(ProviderType.StorageFallbackValue));
+            Assert.That(AuthenticationProviderKey.GetStorageTypeValue(new AuthenticationProviderKey(ProviderType.Oidc, "Google")), Is.EqualTo("OIDC"));
+        }
+    }
+
+    [Test]
+    public void PersistedProviderKeyShouldRoundTripMissingFallbackAndConfiguredProviders()
+    {
+        var missing = PersistedAuthenticationProviderKey.FromProvider(null);
+        var fallback = PersistedAuthenticationProviderKey.FromProvider(default(AuthenticationProviderKey));
+        var configuredProvider = new AuthenticationProviderKey(ProviderType.Oidc, "Google");
+        var configured = PersistedAuthenticationProviderKey.FromProvider(configuredProvider);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missing.Kind, Is.EqualTo(PersistedAuthenticationProviderKind.None));
+            Assert.That(missing.ToProviderKey(), Is.Null);
+            Assert.That(fallback.Kind, Is.EqualTo(PersistedAuthenticationProviderKind.StorageFallback));
+            Assert.That(fallback.ProviderTypeValue, Is.EqualTo(ProviderType.StorageFallbackValue));
+            Assert.That(fallback.ProviderName, Is.EqualTo(string.Empty));
+            Assert.That(fallback.ToProviderKey(), Is.EqualTo(default(AuthenticationProviderKey)));
+            Assert.That(configured.Kind, Is.EqualTo(PersistedAuthenticationProviderKind.Configured));
+            Assert.That(configured.ProviderTypeValue, Is.EqualTo("OIDC"));
+            Assert.That(configured.ProviderName, Is.EqualTo("Google"));
+            Assert.That(configured.ToProviderKey(), Is.EqualTo(configuredProvider));
+        }
+    }
+
+    [Test]
+    public void PersistedProviderKeyShouldMarkIncompleteNonFallbackValues()
+    {
+        var nullName = new PersistedAuthenticationProviderKey("LOCAL", null);
+        var emptyName = new PersistedAuthenticationProviderKey("LOCAL", string.Empty);
+        var fallbackWithName = new PersistedAuthenticationProviderKey(ProviderType.StorageFallbackValue, "missing");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nullName.Kind, Is.EqualTo(PersistedAuthenticationProviderKind.Incomplete));
+            Assert.That(nullName.ToProviderKey(), Is.Null);
+            Assert.That(emptyName.Kind, Is.EqualTo(PersistedAuthenticationProviderKind.Incomplete));
+            Assert.That(emptyName.ToProviderKey(), Is.Null);
+            Assert.That(new PersistedAuthenticationProviderKey(ProviderType.StorageFallbackValue, null).ToProviderKey(), Is.EqualTo(default(AuthenticationProviderKey)));
+            Assert.That(new PersistedAuthenticationProviderKey(ProviderType.StorageFallbackValue, " ").ToProviderKey(), Is.EqualTo(default(AuthenticationProviderKey)));
+            Assert.That(fallbackWithName.Kind, Is.EqualTo(PersistedAuthenticationProviderKind.StorageFallback));
+            Assert.That(fallbackWithName.ToProviderKey(), Is.EqualTo(default(AuthenticationProviderKey)));
         }
     }
 

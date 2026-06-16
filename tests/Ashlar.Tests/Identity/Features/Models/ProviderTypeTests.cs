@@ -10,7 +10,8 @@ internal sealed class ProviderTypeTests
         {
             Assert.Throws<InvalidOperationException>(() => _ = type.Value);
             Assert.Throws<InvalidOperationException>(() => _ = type.ToString());
-            Assert.That(type.ValueOrUnknown, Is.EqualTo(ProviderType.UnknownValue));
+            Assert.That(type.StorageValue, Is.EqualTo(ProviderType.StorageFallbackValue));
+            Assert.That(type.IsStorageFallback, Is.True);
         }
     }
 
@@ -49,8 +50,18 @@ internal sealed class ProviderTypeTests
     }
 
     [Test]
-    public void ValueOrUnknownShouldReturnInitializedValue()
+    public void StorageValueShouldReturnInitializedValue()
     {
-        Assert.That(ProviderType.Oidc.ValueOrUnknown, Is.EqualTo("OIDC"));
+        Assert.That(ProviderType.Oidc.StorageValue, Is.EqualTo("OIDC"));
+    }
+
+    [Test]
+    public void ConfiguredProviderTypeShouldNotBeStorageFallback()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ProviderType.Oidc.IsStorageFallback, Is.False);
+            Assert.That(default(ProviderType).IsStorageFallback, Is.True);
+        }
     }
 }

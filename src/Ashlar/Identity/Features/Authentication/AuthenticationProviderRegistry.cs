@@ -63,11 +63,7 @@ public sealed class AuthenticationProviderRegistry : IAuthenticationProviderRegi
 
     private static AuthenticationProviderKey ValidateProviderKey(AuthenticationProviderKey key, string parameterName)
     {
-        if (key.Type == default || string.IsNullOrWhiteSpace(key.Name))
-        {
-            throw new ArgumentException("Provider key must be fully initialized with a type and name.", parameterName);
-        }
-
+        AuthenticationProviderKey.ThrowIfNotConfigured(key, parameterName);
         return key;
     }
 

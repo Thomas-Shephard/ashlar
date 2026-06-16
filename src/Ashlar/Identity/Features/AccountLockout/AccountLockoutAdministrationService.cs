@@ -48,9 +48,9 @@ public sealed class AccountLockoutAdministrationService(
             return Result.Failure<AccountLockoutSearchResult>(AshlarFailureCodes.ValidationError, "User ID cannot be empty.");
         }
 
-        if (request.Provider is { } provider && IsInvalidProvider(provider))
+        if (request.Provider is { IsConfigured: false })
         {
-            return Result.Failure<AccountLockoutSearchResult>(AshlarFailureCodes.ValidationError, "Provider key must be fully initialized.");
+            return Result.Failure<AccountLockoutSearchResult>(AshlarFailureCodes.ValidationError, "Provider key must be fully initialized with a configured provider type and name.");
         }
 
         var limit = Math.Min(request.Limit, MaximumLimit);
@@ -142,13 +142,6 @@ public sealed class AccountLockoutAdministrationService(
         return record.LockedUntil is { } lockedUntil && lockedUntil > now;
     }
 
-    private static bool IsInvalidProvider(AuthenticationProviderKey provider)
-    {
-        return provider.Type == default
-            || provider.Type.Value == ProviderType.UnknownValue
-            || string.IsNullOrWhiteSpace(provider.Name);
-    }
-
     private static AshlarFailure? ValidateScopedOperation(
         Guid userId,
         AuthenticationProviderKey provider,
@@ -182,9 +175,9 @@ public sealed class AccountLockoutAdministrationService(
             return new AshlarFailure(AshlarFailureCodes.ValidationError, "User ID cannot be empty.");
         }
 
-        if (IsInvalidProvider(provider))
+        if (!provider.IsConfigured)
         {
-            return new AshlarFailure(AshlarFailureCodes.ValidationError, "Provider key must be fully initialized.");
+            return new AshlarFailure(AshlarFailureCodes.ValidationError, "Provider key must be fully initialized with a configured provider type and name.");
         }
 
         if (tenant == null)
