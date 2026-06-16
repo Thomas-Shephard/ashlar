@@ -184,7 +184,7 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
                 Id = sessionId,
                 UserId = userId,
                 VerifiedAt = verifiedAt,
-                VerifiedProviderType = AuthenticationProviderKey.GetTypeValueOrDefault(verifiedProvider),
+                VerifiedProviderType = AuthenticationProviderKey.GetStorageTypeValue(verifiedProvider),
                 VerifiedProviderName = verifiedProvider.Name,
                 VerifiedFactor = verifiedFactor
             }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
@@ -378,10 +378,10 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
             session.TokenHash,
             session.CreatedAt,
             session.AuthenticatedAt,
-            PrimaryProviderType = AuthenticationProviderKey.GetTypeValueOrDefault(session.PrimaryProvider),
+            PrimaryProviderType = AuthenticationProviderKey.GetStorageTypeValue(session.PrimaryProvider),
             PrimaryProviderName = session.PrimaryProvider?.Name,
             session.AdditionalVerificationAt,
-            AdditionalVerificationProviderType = AuthenticationProviderKey.GetTypeValueOrDefault(session.AdditionalVerificationProvider),
+            AdditionalVerificationProviderType = AuthenticationProviderKey.GetStorageTypeValue(session.AdditionalVerificationProvider),
             AdditionalVerificationProviderName = session.AdditionalVerificationProvider?.Name,
             session.AdditionalVerificationFactor,
             session.ExpiresAt,
@@ -410,9 +410,9 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
             TokenHash = (string)values["TokenHash"]!,
             CreatedAt = ToDateTimeOffset(values["CreatedAt"]!),
             AuthenticatedAt = ToNullableDateTimeOffset(values["AuthenticatedAt"]),
-            PrimaryProvider = CreateProvider(primaryProviderType, primaryProviderName),
+            PrimaryProvider = PersistedAuthenticationProviderKey.ToProviderKey(primaryProviderType, primaryProviderName),
             AdditionalVerificationAt = ToNullableDateTimeOffset(values["AdditionalVerificationAt"]),
-            AdditionalVerificationProvider = CreateProvider(additionalVerificationProviderType, additionalVerificationProviderName),
+            AdditionalVerificationProvider = PersistedAuthenticationProviderKey.ToProviderKey(additionalVerificationProviderType, additionalVerificationProviderName),
             AdditionalVerificationFactor = ToNullableString(values["AdditionalVerificationFactor"]),
             ExpiresAt = ToDateTimeOffset(values["ExpiresAt"]!),
             LastSeenAt = ToNullableDateTimeOffset(values["LastSeenAt"]),
@@ -449,16 +449,5 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
     private static string? ToNullableString(object? value)
     {
         return value as string;
-    }
-
-    private static AuthenticationProviderKey? CreateProvider(string? type, string? name)
-    {
-        if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(name))
-        {
-            return null;
-        }
-
-        ProviderType providerType = type;
-        return new AuthenticationProviderKey(providerType, name);
     }
 }

@@ -413,7 +413,7 @@ public sealed class AuthenticationPipeline(
                     _logger,
                     lifecycle.User.Id,
                     lifecycle.Credential.Id,
-                    lifecycle.Provider.Key.Type.ValueOrUnknown,
+                    lifecycle.Provider.Key.Type.StorageValue,
                     lifecycle.Provider.Key.Name,
                     ex);
                 return await RecordFailureAsync(lifecycle.Context, lifecycle.Provider.Key, lifecycle.User.Id, SecurityEventFailureReasons.CredentialUpdateFailed, cancellationToken);
@@ -424,7 +424,7 @@ public sealed class AuthenticationPipeline(
                 _logger,
                 lifecycle.User.Id,
                 lifecycle.Credential.Id,
-                lifecycle.Provider.Key.Type.ValueOrUnknown,
+                lifecycle.Provider.Key.Type.StorageValue,
                 lifecycle.Provider.Key.Name,
                 ex);
         }

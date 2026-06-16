@@ -68,6 +68,8 @@ public sealed class AuthenticationSessionService(
         }
 
         var additionalVerificationFactor = ValidateOptionalLength(request.AdditionalVerificationFactor, MaxStepUpFactorLength, $"{nameof(request)}.{nameof(request.AdditionalVerificationFactor)}");
+        ValidateOptionalProvider(request.PrimaryProvider, $"{nameof(request)}.{nameof(request.PrimaryProvider)}");
+        ValidateOptionalProvider(request.AdditionalVerificationProvider, $"{nameof(request)}.{nameof(request.AdditionalVerificationProvider)}");
 
         var ipAddress = _options.StoreIpAddress
             ? ValidateOptionalLength(request.IpAddress, _options.MaxIpAddressLength, $"{nameof(request)}.{nameof(request.IpAddress)}")
@@ -722,12 +724,17 @@ public sealed class AuthenticationSessionService(
         return trimmed;
     }
 
+    private static void ValidateOptionalProvider(AuthenticationProviderKey? provider, string parameterName)
+    {
+        if (provider is { } value)
+        {
+            AuthenticationProviderKey.ThrowIfNotConfigured(value, parameterName);
+        }
+    }
+
     private static void ValidateStepUpProvider(AuthenticationProviderKey provider, string parameterName)
     {
-        if (provider.Type == default || string.IsNullOrWhiteSpace(provider.Name))
-        {
-            throw new ArgumentException("Verified provider cannot be empty.", parameterName);
-        }
+        AuthenticationProviderKey.ThrowIfNotConfigured(provider, parameterName);
     }
 
     private static void ValidateRevocationReason(string? reason, string parameterName)

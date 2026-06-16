@@ -254,6 +254,7 @@ internal sealed class AccountLockoutServiceTests
             Assert.ThrowsAsync<ArgumentNullException>(() => _service.RecordFailureAsync(null!, AuthenticationProviderKey.Local));
             Assert.ThrowsAsync<ArgumentException>(() => _service.RecordFailureAsync(CreateUser(id: Guid.Empty), AuthenticationProviderKey.Local));
             Assert.ThrowsAsync<ArgumentException>(() => _service.RecordFailureAsync(tenantUser, default));
+            Assert.ThrowsAsync<ArgumentException>(() => _service.RecordFailureAsync(tenantUser, new AuthenticationProviderKey((ProviderType)ProviderType.StorageFallbackValue, "unknown")));
             Assert.ThrowsAsync<InvalidOperationException>(() => _service.RecordFailureAsync(tenantUser, AuthenticationProviderKey.Local, new AccountLockoutContext(Tenant: new TenantContext(Guid.NewGuid()))));
             Assert.ThrowsAsync<InvalidOperationException>(() => _service.RecordFailureAsync(tenantUser, AuthenticationProviderKey.Local, new AccountLockoutContext(Tenant: TenantContext.Global)));
             Assert.That(await _service.GetStatusAsync(tenantUser, AuthenticationProviderKey.Local, new AccountLockoutContext(Tenant: new TenantContext(tenantUser.TenantId))), Is.Not.Null);

@@ -1031,7 +1031,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
 
         if (session.PrimaryProvider.HasValue)
         {
-            claims.Add(new Claim(AshlarClaimTypes.PrimaryProviderType, session.PrimaryProvider.Value.TypeValueOrDefault));
+            claims.Add(new Claim(AshlarClaimTypes.PrimaryProviderType, session.PrimaryProvider.Value.StorageTypeValue));
             claims.Add(new Claim(AshlarClaimTypes.PrimaryProviderName, session.PrimaryProvider.Value.Name));
         }
 
@@ -1044,7 +1044,7 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
 
         if (session.AdditionalVerificationProvider.HasValue)
         {
-            claims.Add(new Claim(AshlarClaimTypes.AdditionalVerificationProviderType, session.AdditionalVerificationProvider.Value.TypeValueOrDefault));
+            claims.Add(new Claim(AshlarClaimTypes.AdditionalVerificationProviderType, session.AdditionalVerificationProvider.Value.StorageTypeValue));
             claims.Add(new Claim(AshlarClaimTypes.AdditionalVerificationProviderName, session.AdditionalVerificationProvider.Value.Name));
         }
 

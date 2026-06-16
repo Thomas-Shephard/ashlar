@@ -101,9 +101,9 @@ public sealed class AccountLockoutService(
 
     private static void ValidateProvider(AuthenticationProviderKey provider)
     {
-        if (provider.Type == default || string.IsNullOrWhiteSpace(provider.Name))
+        if (!provider.IsConfigured)
         {
-            throw new ArgumentException("Provider key must be fully initialized.", nameof(provider));
+            throw new ArgumentException("Provider key must be fully initialized with a configured provider type and name.", nameof(provider));
         }
     }
 

@@ -26,6 +26,6 @@ public sealed class CredentialBackedMfaPolicyOptions
             && options.RequiredFactors.Count > 0
             && options.RequiredFactors.All(factor => !string.IsNullOrWhiteSpace(factor))
             && options.CredentialProviderKeys.Count > 0
-            && options.CredentialProviderKeys.All(key => key.Type != default && !string.IsNullOrWhiteSpace(key.Name));
+            && options.CredentialProviderKeys.All(key => key.IsConfigured);
     }
 }

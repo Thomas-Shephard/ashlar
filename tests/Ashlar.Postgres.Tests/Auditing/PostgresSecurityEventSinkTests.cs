@@ -148,7 +148,7 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
         var row = await connection.QuerySingleAsync<dynamic>("SELECT provider_type, provider_name FROM ashlar_security_events");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((string)row.provider_type, Is.EqualTo("UNKNOWN"));
+            Assert.That((string)row.provider_type, Is.EqualTo(ProviderType.StorageFallbackValue));
             Assert.That((string)row.provider_name, Is.EqualTo(string.Empty));
         }
     }

@@ -93,7 +93,33 @@ public sealed record AuthenticationSessionAdministrationSummary(
     string? RevocationReason,
     string? IpAddress,
     string? UserAgent,
-    bool IsActive);
+    bool IsActive)
+{
+    /// <summary>
+    /// Creates the administrator detail view for this session summary.
+    /// </summary>
+    /// <returns>A detail model with the same display-safe session fields.</returns>
+    public AuthenticationSessionAdministrationDetail ToDetail()
+    {
+        return new AuthenticationSessionAdministrationDetail(
+            Id,
+            UserId,
+            TenantId,
+            CreatedAt,
+            AuthenticatedAt,
+            PrimaryProvider,
+            AdditionalVerificationAt,
+            AdditionalVerificationProvider,
+            AdditionalVerificationFactor,
+            ExpiresAt,
+            LastSeenAt,
+            RevokedAt,
+            RevocationReason,
+            IpAddress,
+            UserAgent,
+            IsActive);
+    }
+}
 
 /// <summary>
 /// Safe authentication session detail for administrator display.

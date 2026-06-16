@@ -137,6 +137,16 @@ internal sealed class AuthenticationProviderRegistryTests
     }
 
     [Test]
+    public void ConstructorWithProviderHavingStorageFallbackKeyShouldThrow()
+    {
+        var provider = new Mock<IAuthenticationProvider>();
+        provider.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey((ProviderType)ProviderType.StorageFallbackValue, "unknown"));
+
+        var ex = Assert.Throws<ArgumentException>(() => _ = new AuthenticationProviderRegistry([provider.Object]));
+        Assert.That(ex.Message, Does.Contain("fully initialized"));
+    }
+
+    [Test]
     public void ConstructorWithSecondaryProviderHavingBlankFactorTypeShouldThrow()
     {
         var provider = new Mock<ISecondaryAuthenticationFactorProvider>();

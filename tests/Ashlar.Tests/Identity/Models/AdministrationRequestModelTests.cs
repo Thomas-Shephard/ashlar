@@ -1,4 +1,5 @@
 using Ashlar.Auditing;
+using Ashlar.Identity.Models.AccountLockout;
 
 namespace Ashlar.Tests.Identity.Models;
 
@@ -13,6 +14,18 @@ internal sealed class AdministrationRequestModelTests
             Assert.Throws<ArgumentNullException>(() => SearchCredentialsRequest.ThrowIfInvalid(null));
             Assert.Throws<ArgumentNullException>(() => SearchAuthenticationSessionsRequest.ThrowIfInvalid(null));
             Assert.Throws<ArgumentNullException>(() => SearchSecurityEventsRequest.ThrowIfInvalid(null));
+        }
+    }
+
+    [Test]
+    public void SearchRequestValidationRejectsInvalidProviders()
+    {
+        var unknownProvider = new AuthenticationProviderKey((ProviderType)ProviderType.StorageFallbackValue, "unknown");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentException>(() => SearchAccountLockoutsRequest.ThrowIfInvalid(new SearchAccountLockoutsRequest { Tenant = TenantContext.Global, Provider = new AuthenticationProviderKey() }));
+            Assert.Throws<ArgumentException>(() => SearchAccountLockoutsRequest.ThrowIfInvalid(new SearchAccountLockoutsRequest { Tenant = TenantContext.Global, Provider = unknownProvider }));
         }
     }
 

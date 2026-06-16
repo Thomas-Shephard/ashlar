@@ -87,6 +87,20 @@ internal sealed class SecurityEventStorageRecordTests
         Assert.That(summary.Provider, Is.Null);
     }
 
+    [Test]
+    public void ToSummaryPreservesStorageFallbackProviderShape()
+    {
+        var summary = CreateRecord(
+            providerType: ProviderType.StorageFallbackValue,
+            providerName: string.Empty).ToSummary();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(summary.Provider, Is.EqualTo(default(AuthenticationProviderKey)));
+            Assert.That(summary.Provider?.StorageTypeValue, Is.EqualTo(ProviderType.StorageFallbackValue));
+        }
+    }
+
     private static SecurityEventStorageRecord CreateRecord(
         string? providerType = null,
         string? providerName = null,

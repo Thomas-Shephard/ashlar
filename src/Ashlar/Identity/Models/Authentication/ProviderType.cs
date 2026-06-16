@@ -5,25 +5,32 @@ namespace Ashlar.Identity.Models.Authentication;
 /// </summary>
 public readonly record struct ProviderType
 {
+    private readonly string? _value;
+
     /// <summary>
-    /// Gets the sentinel used when a provider type was not initialized.
+    /// Storage fallback value used when a provider type is unavailable for persisted records.
     /// </summary>
-    public const string UnknownValue = "UNKNOWN";
+    public const string StorageFallbackValue = "UNKNOWN";
+
+    /// <summary>
+    /// Gets whether this provider type is the storage fallback, as opposed to a configured provider type.
+    /// </summary>
+    public bool IsStorageFallback => _value is null || string.Equals(_value, StorageFallbackValue, StringComparison.Ordinal);
 
     /// <summary>
     /// Gets the normalized provider type string.
     /// </summary>
-    public string Value => field ?? throw new InvalidOperationException("ProviderType must be initialized with a non-empty value.");
+    public string Value => _value ?? throw new InvalidOperationException("ProviderType must be initialized with a non-empty value.");
 
     /// <summary>
-    /// Gets the normalized provider type string, or a stable sentinel when this instance was not initialized.
+    /// Gets the storage-safe provider type string for persisted diagnostics.
     /// </summary>
-    public string ValueOrUnknown => this == default ? UnknownValue : Value;
+    public string StorageValue => IsStorageFallback ? StorageFallbackValue : Value;
 
     private ProviderType(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
-        Value = value.ToUpperInvariant();
+        _value = value.ToUpperInvariant();
     }
 
     /// <summary>

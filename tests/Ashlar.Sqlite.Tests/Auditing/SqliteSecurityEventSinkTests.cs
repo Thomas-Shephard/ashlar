@@ -92,7 +92,7 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
         {
             Assert.That(row.UserId, Is.Null);
             Assert.That(row.TenantId, Is.Null);
-            Assert.That(row.ProviderType, Is.EqualTo("UNKNOWN"));
+            Assert.That(row.ProviderType, Is.EqualTo(ProviderType.StorageFallbackValue));
             Assert.That(row.ProviderName, Is.EqualTo(string.Empty));
             Assert.That(row.Outcome, Is.Null);
             Assert.That(row.Properties, Is.Null);

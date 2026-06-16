@@ -15,36 +15,41 @@ public readonly record struct AuthenticationProviderKey
     public string Name => field ?? string.Empty;
 
     /// <summary>
-    /// Serialized provider type, or a stable sentinel when this key was not initialized.
+    /// Serialized provider type used for storage, including the storage fallback value for uninitialized or fallback provider keys.
     /// </summary>
-    public string TypeValueOrDefault => Type.ValueOrUnknown;
+    public string StorageTypeValue => Type.StorageValue;
 
     /// <summary>
-    /// Whether this provider key has both a provider type and provider name.
+    /// Whether this provider key has a provider type and provider name persisted in storage.
     /// </summary>
     public bool IsInitialized => Type != default && !string.IsNullOrWhiteSpace(Name);
+
+    /// <summary>
+    /// Gets whether this provider key is safe for user-facing validation and authorization logic.
+    /// </summary>
+    public bool IsConfigured => IsInitialized && !Type.IsStorageFallback;
 
     /// <summary>
     /// Gets the serialized provider type for an optional provider key, or <see langword="null" /> when no provider key was supplied.
     /// </summary>
     /// <param name="provider">Optional provider key to inspect.</param>
-    /// <returns>The serialized provider type, the unknown sentinel, or <see langword="null" />.</returns>
-    public static string? GetTypeValueOrDefault(AuthenticationProviderKey? provider)
+    /// <returns>The serialized provider type, the storage fallback value, or <see langword="null" />.</returns>
+    public static string? GetStorageTypeValue(AuthenticationProviderKey? provider)
     {
-        return provider.HasValue ? provider.Value.TypeValueOrDefault : null;
+        return PersistedAuthenticationProviderKey.FromProvider(provider).ProviderTypeValue;
     }
 
     /// <summary>
-    /// Throws when an authentication provider key has not been fully initialized.
+    /// Throws when an authentication provider key is not safe for configured-provider operations.
     /// </summary>
     /// <param name="provider">Provider key to validate.</param>
     /// <param name="parameterName">The parameter name to include in the exception.</param>
-    /// <exception cref="ArgumentException">Thrown when the provider key is uninitialized.</exception>
-    public static void ThrowIfUninitialized(AuthenticationProviderKey provider, string parameterName)
+    /// <exception cref="ArgumentException">Thrown when the provider key is uninitialized or uses the storage fallback provider type.</exception>
+    public static void ThrowIfNotConfigured(AuthenticationProviderKey provider, string parameterName)
     {
-        if (!provider.IsInitialized)
+        if (!provider.IsConfigured)
         {
-            throw new ArgumentException("Provider key must be fully initialized with a type and name.", parameterName);
+            throw new ArgumentException("Provider key must be fully initialized with a configured provider type and name.", parameterName);
         }
     }
 

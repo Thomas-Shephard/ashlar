@@ -42,7 +42,7 @@ internal sealed class DisabledAccountLockoutService : IAccountLockoutService
     private static AccountLockoutStatus CreateStatus(IUser user, AuthenticationProviderKey provider)
     {
         ArgumentNullException.ThrowIfNull(user);
-        AuthenticationProviderKey.ThrowIfUninitialized(provider, nameof(provider));
+        AuthenticationProviderKey.ThrowIfNotConfigured(provider, nameof(provider));
 
         var tenantId = (user as ITenantUser)?.TenantId;
         return AccountLockoutStatus.None(user.Id, tenantId, provider);

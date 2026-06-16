@@ -11,6 +11,7 @@ namespace Ashlar.OAuth;
 /// </summary>
 public sealed class AshlarExternalCredentialAuthenticationService
 {
+    private const string UnsupportedProviderNameFallback = "unsupported";
     private readonly IPrimaryAuthenticationRateLimiter _primaryRateLimiter;
     private readonly ISecurityEventSink? _securityEventSink;
     private readonly IOptionsMonitor<AshlarOAuthOptions> _options;
@@ -160,7 +161,7 @@ public sealed class AshlarExternalCredentialAuthenticationService
 
     private static AuthenticationProviderKey CreateUnsupportedProviderKey(string providerName)
     {
-        var normalizedProviderName = string.IsNullOrWhiteSpace(providerName) ? ProviderType.UnknownValue : providerName.Trim();
+        var normalizedProviderName = string.IsNullOrWhiteSpace(providerName) ? UnsupportedProviderNameFallback : providerName.Trim();
         return new AuthenticationProviderKey((ProviderType)"EXTERNAL_UNSUPPORTED", normalizedProviderName);
     }
 

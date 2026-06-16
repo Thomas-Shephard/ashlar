@@ -309,7 +309,7 @@ internal abstract class AccountLockoutRepositoryContractTests : ProviderContract
     {
         await using var scope = CreateAsyncScope();
         var lockouts = GetAccountLockoutRepository(scope.ServiceProvider);
-        var unknownProvider = new AuthenticationProviderKey((ProviderType)ProviderType.UnknownValue, "unknown");
+        var unknownProvider = new AuthenticationProviderKey((ProviderType)ProviderType.StorageFallbackValue, "unknown");
 
         using (Assert.EnterMultipleScope())
         {

@@ -60,7 +60,7 @@ internal static class PostgresAdminQuery
         }
 
         sql += $" AND {typeColumn} = @{typeParameterName} AND {nameColumn} = @{nameParameterName}";
-        parameters.Add(typeParameterName, provider.Value.TypeValueOrDefault);
+        parameters.Add(typeParameterName, provider.Value.StorageTypeValue);
         parameters.Add(nameParameterName, provider.Value.Name);
     }
 

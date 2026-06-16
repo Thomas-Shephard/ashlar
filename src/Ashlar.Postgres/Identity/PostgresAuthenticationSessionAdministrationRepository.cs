@@ -123,9 +123,9 @@ public sealed class PostgresAuthenticationSessionAdministrationRepository(IPostg
                 TenantId,
                 PostgresAdminQuery.ToDateTimeOffset(CreatedAt),
                 PostgresAdminQuery.ToNullableDateTimeOffset(AuthenticatedAt),
-                CreateProvider(PrimaryProviderType, PrimaryProviderName),
+                PersistedAuthenticationProviderKey.ToProviderKey(PrimaryProviderType, PrimaryProviderName),
                 PostgresAdminQuery.ToNullableDateTimeOffset(AdditionalVerificationAt),
-                CreateProvider(AdditionalVerificationProviderType, AdditionalVerificationProviderName),
+                PersistedAuthenticationProviderKey.ToProviderKey(AdditionalVerificationProviderType, AdditionalVerificationProviderName),
                 AdditionalVerificationFactor,
                 PostgresAdminQuery.ToDateTimeOffset(ExpiresAt),
                 PostgresAdminQuery.ToNullableDateTimeOffset(LastSeenAt),
@@ -138,35 +138,7 @@ public sealed class PostgresAuthenticationSessionAdministrationRepository(IPostg
 
         public AuthenticationSessionAdministrationDetail ToDetail()
         {
-            var summary = ToSummary();
-            return new AuthenticationSessionAdministrationDetail(
-                summary.Id,
-                summary.UserId,
-                summary.TenantId,
-                summary.CreatedAt,
-                summary.AuthenticatedAt,
-                summary.PrimaryProvider,
-                summary.AdditionalVerificationAt,
-                summary.AdditionalVerificationProvider,
-                summary.AdditionalVerificationFactor,
-                summary.ExpiresAt,
-                summary.LastSeenAt,
-                summary.RevokedAt,
-                summary.RevocationReason,
-                summary.IpAddress,
-                summary.UserAgent,
-                summary.IsActive);
-        }
-
-        private static AuthenticationProviderKey? CreateProvider(string? type, string? name)
-        {
-            if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(name))
-            {
-                return null;
-            }
-
-            ProviderType providerType = type;
-            return new AuthenticationProviderKey(providerType, name);
+            return ToSummary().ToDetail();
         }
     }
 }
