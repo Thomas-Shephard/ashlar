@@ -101,9 +101,9 @@ public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteC
             reader.GetNullableGuidFromText("tenant_id"),
             reader.GetDateTimeOffsetFromText("created_at"),
             reader.GetNullableDateTimeOffsetFromText("authenticated_at"),
-            CreateProvider(reader.GetNullableString("primary_provider_type"), reader.GetNullableString("primary_provider_name")),
+            PersistedAuthenticationProviderKey.ToProviderKey(reader.GetNullableString("primary_provider_type"), reader.GetNullableString("primary_provider_name")),
             reader.GetNullableDateTimeOffsetFromText("additional_verification_at"),
-            CreateProvider(reader.GetNullableString("additional_verification_provider_type"), reader.GetNullableString("additional_verification_provider_name")),
+            PersistedAuthenticationProviderKey.ToProviderKey(reader.GetNullableString("additional_verification_provider_type"), reader.GetNullableString("additional_verification_provider_name")),
             reader.GetNullableString("additional_verification_factor"),
             reader.GetDateTimeOffsetFromText("expires_at"),
             reader.GetNullableDateTimeOffsetFromText("last_seen_at"),
@@ -116,28 +116,6 @@ public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteC
 
     private static AuthenticationSessionAdministrationDetail ReadDetail(SqliteDataReader reader)
     {
-        var summary = ReadSummary(reader);
-        return new AuthenticationSessionAdministrationDetail(
-            summary.Id,
-            summary.UserId,
-            summary.TenantId,
-            summary.CreatedAt,
-            summary.AuthenticatedAt,
-            summary.PrimaryProvider,
-            summary.AdditionalVerificationAt,
-            summary.AdditionalVerificationProvider,
-            summary.AdditionalVerificationFactor,
-            summary.ExpiresAt,
-            summary.LastSeenAt,
-            summary.RevokedAt,
-            summary.RevocationReason,
-            summary.IpAddress,
-            summary.UserAgent,
-            summary.IsActive);
-    }
-
-    private static AuthenticationProviderKey? CreateProvider(string? type, string? name)
-    {
-        return new PersistedAuthenticationProviderKey(type, name).ToProviderKey();
+        return ReadSummary(reader).ToDetail();
     }
 }

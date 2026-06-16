@@ -47,6 +47,17 @@ public readonly record struct PersistedAuthenticationProviderKey
     /// <summary>
     /// Converts persisted provider values back to an optional provider key.
     /// </summary>
+    /// <param name="providerTypeValue">Provider type storage value, or <see langword="null" /> when no provider was persisted.</param>
+    /// <param name="providerName">Provider name storage value, or <see langword="null" /> when no provider was persisted.</param>
+    /// <returns>The provider key, the default fallback key, or <see langword="null" /> when no usable provider was persisted.</returns>
+    public static AuthenticationProviderKey? ToProviderKey(string? providerTypeValue, string? providerName)
+    {
+        return new PersistedAuthenticationProviderKey(providerTypeValue, providerName).ToProviderKey();
+    }
+
+    /// <summary>
+    /// Converts persisted provider values back to an optional provider key.
+    /// </summary>
     /// <returns>The provider key, the default fallback key, or <see langword="null" /> when no usable provider was persisted.</returns>
     public AuthenticationProviderKey? ToProviderKey()
     {

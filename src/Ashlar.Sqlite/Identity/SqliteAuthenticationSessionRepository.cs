@@ -348,9 +348,9 @@ public sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionProvi
             TokenHash = reader.GetString(reader.GetOrdinal("token_hash")),
             CreatedAt = reader.GetDateTimeOffsetFromText("created_at"),
             AuthenticatedAt = reader.GetNullableDateTimeOffsetFromText("authenticated_at"),
-            PrimaryProvider = CreateProvider(primaryType, primaryName),
+            PrimaryProvider = PersistedAuthenticationProviderKey.ToProviderKey(primaryType, primaryName),
             AdditionalVerificationAt = reader.GetNullableDateTimeOffsetFromText("additional_verification_at"),
-            AdditionalVerificationProvider = CreateProvider(additionalType, additionalName),
+            AdditionalVerificationProvider = PersistedAuthenticationProviderKey.ToProviderKey(additionalType, additionalName),
             AdditionalVerificationFactor = reader.GetNullableString("additional_verification_factor"),
             ExpiresAt = reader.GetDateTimeOffsetFromText("expires_at"),
             LastSeenAt = reader.GetNullableDateTimeOffsetFromText("last_seen_at"),
@@ -360,11 +360,6 @@ public sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionProvi
             UserAgent = reader.GetNullableString("user_agent"),
             Metadata = reader.GetNullableString("metadata")
         };
-    }
-
-    private static AuthenticationProviderKey? CreateProvider(string? type, string? name)
-    {
-        return new PersistedAuthenticationProviderKey(type, name).ToProviderKey();
     }
 
     private static void ValidateMetadata(string? metadata)

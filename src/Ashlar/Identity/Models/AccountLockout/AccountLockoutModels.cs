@@ -200,12 +200,9 @@ public sealed record SearchAccountLockoutsRequest
             throw new ArgumentException("User ID cannot be empty.", nameof(request));
         }
 
-        if (request.Provider is { } provider)
+        if (request.Provider is { IsConfigured: false })
         {
-            if (!provider.IsConfigured)
-            {
-                throw new ArgumentException("Provider key must be fully initialized with a configured provider type and name.", nameof(request));
-            }
+            throw new ArgumentException("Provider key must be fully initialized with a configured provider type and name.", nameof(request));
         }
     }
 }
