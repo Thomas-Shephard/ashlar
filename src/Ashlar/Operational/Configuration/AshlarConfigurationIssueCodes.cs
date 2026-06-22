@@ -116,6 +116,11 @@ public static class AshlarConfigurationIssueCodes
     public const string NullSecurityEventSink = "ASHLAR-CONFIG-NULL-SECURITY-EVENT-SINK";
 
     /// <summary>
+    /// Account security operations are configured with Ashlar's permissive guard.
+    /// </summary>
+    public const string PermissiveAccountSecurityGuard = "ASHLAR-CONFIG-PERMISSIVE-ACCOUNT-SECURITY-GUARD";
+
+    /// <summary>
     /// Authentication rate limiting is configured with the in-memory implementation.
     /// </summary>
     public const string InMemoryAuthenticationRateLimiter = "ASHLAR-CONFIG-IN-MEMORY-RATE-LIMITER";

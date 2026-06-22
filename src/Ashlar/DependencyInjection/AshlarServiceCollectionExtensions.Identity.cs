@@ -30,6 +30,9 @@ public static partial class AshlarServiceCollectionExtensions
     /// <remarks>
     /// This method intentionally does not register <see cref="IUserRepository"/> or <see cref="ICredentialRepository"/> or
     /// <see cref="ISecretProtector"/>. Applications should provide those dependencies explicitly.
+    /// The default <see cref="IAccountSecurityGuard"/> is <see cref="AllowAccountSecurityGuard"/>, which permits every
+    /// account-state change; hosts that need business approval, risk review, or separation-of-duties checks should
+    /// register an application-specific guard before calling this method or by replacing the service registration.
     /// </remarks>
     public static IServiceCollection AddAshlarIdentity(
         this IServiceCollection services,

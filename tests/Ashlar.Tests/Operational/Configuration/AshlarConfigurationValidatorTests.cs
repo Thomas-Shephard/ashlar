@@ -108,12 +108,51 @@ internal sealed class AshlarConfigurationValidatorTests
             AssertIssue(result, AshlarConfigurationIssueCodes.SecurityEventAdministrationRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
             AssertIssue(result, AshlarConfigurationIssueCodes.AuthenticationSessionAdministrationRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
             AssertIssue(result, AshlarConfigurationIssueCodes.NullSecurityEventSink, AshlarConfigurationIssueSeverity.Warning);
+            AssertIssue(result, AshlarConfigurationIssueCodes.PermissiveAccountSecurityGuard, AshlarConfigurationIssueSeverity.Warning);
             AssertIssue(result, AshlarConfigurationIssueCodes.InMemoryAuthenticationRateLimiter, AshlarConfigurationIssueSeverity.Warning);
             AssertIssue(result, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Information);
             Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.InvitationRepositoryMissing));
             Assert.That(result.HasErrors, Is.True);
             Assert.That(result.IsValid, Is.False);
         }
+    }
+
+    [Test]
+    public async Task CoreCheckReportsWarningForPermissiveAccountSecurityGuard()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarIdentity();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        var issue = AssertIssue(result, AshlarConfigurationIssueCodes.PermissiveAccountSecurityGuard, AshlarConfigurationIssueSeverity.Warning);
+        var text = $"{issue.Message} {issue.Recommendation}";
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(text, Does.Contain(nameof(AllowAccountSecurityGuard)));
+            Assert.That(text, Does.Contain("high-risk account-state transitions are allowed by default"));
+            Assert.That(text, Does.Contain(nameof(IAccountSecurityGuard)));
+            Assert.That(text, Does.Contain("business approval"));
+            Assert.That(text, Does.Contain("risk review"));
+            Assert.That(text, Does.Contain("separation-of-duties"));
+        }
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotReportPermissiveAccountSecurityGuardWhenCustomGuardIsRegistered()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<IAccountSecurityGuard, CustomAccountSecurityGuard>();
+        services.AddAshlarIdentity();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.PermissiveAccountSecurityGuard));
     }
 
     [Test]
@@ -810,6 +849,7 @@ internal sealed class AshlarConfigurationValidatorTests
         services.AddSingleton<IPersistentSecurityEventSink, CustomPersistentSecurityEventSink>();
         services.AddSingleton<IAuthenticationRateLimiter, CustomAuthenticationRateLimiter>();
         services.AddSingleton<IAshlarTransactionProvider, CustomTransactionProvider>();
+        services.AddScoped<IAccountSecurityGuard, CustomAccountSecurityGuard>();
         services.AddAshlarIdentity();
 
         using var provider = services.BuildServiceProvider();
@@ -1109,6 +1149,14 @@ internal sealed class AshlarConfigurationValidatorTests
                 Remaining = 1,
                 WindowResetAt = DateTimeOffset.MaxValue,
             });
+        }
+    }
+
+    private sealed class CustomAccountSecurityGuard : IAccountSecurityGuard
+    {
+        public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(Result.Success());
         }
     }
 
