@@ -1074,7 +1074,7 @@ internal sealed class AuthenticationPipelineTests
     }
 
     [Test]
-    public async Task LoginAsyncWithAccountLockoutFailureRecordingFailureShouldStillFailAuthentication()
+    public async Task LoginAsyncWithAccountLockoutFailureRecordingFailureShouldFailClosed()
     {
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
@@ -1097,7 +1097,7 @@ internal sealed class AuthenticationPipelineTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Failed));
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.RateLimited));
             Assert.That(response.User, Is.Null);
             Assert.That(logger.Entries.Single().Level, Is.EqualTo(Microsoft.Extensions.Logging.LogLevel.Error));
             Assert.That(logger.Entries.Single().Message, Does.Contain("Operation=record_failure"));
@@ -1107,7 +1107,7 @@ internal sealed class AuthenticationPipelineTests
     }
 
     [Test]
-    public async Task LoginAsyncWithAccountLockoutFailureRecordingFailureShouldStillFailWhenFailOpenConfigured()
+    public async Task LoginAsyncWithAccountLockoutFailureRecordingFailureShouldReturnGenericFailedWhenFailOpenConfigured()
     {
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
