@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -10,8 +11,10 @@ using Ashlar.Identity.Providers.External;
 using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
 using Dapper;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -213,6 +216,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             var invitationHtml = await invitationPage.Content.ReadAsStringAsync();
             var invitationStart = await client.GetAsync("/invitations/accept/google?t=sample-token&userName=Member");
             var invitationCallback = await client.GetAsync("/invitations/accept/google/callback");
+            var invitationCallbackHtml = await invitationCallback.Content.ReadAsStringAsync();
 
             using (Assert.EnterMultipleScope())
             {
@@ -222,7 +226,10 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
                 Assert.That(invitationHtml, Does.Contain("Sign up with Google"));
                 Assert.That(invitationStart.StatusCode, Is.EqualTo(HttpStatusCode.Redirect));
                 Assert.That(invitationStart.Headers.Location?.Host, Does.Contain("google"));
-                Assert.That(await invitationCallback.Content.ReadAsStringAsync(), Does.Contain("Invitation Could Not Be Accepted"));
+                Assert.That(invitationCallbackHtml, Does.Contain("Invitation Could Not Be Accepted"));
+                Assert.That(invitationCallback.Headers.GetValues("Set-Cookie"), Has.Some.Contains("Ashlar.OAuth.External").And.Contains("expires="));
+                Assert.That(invitationCallbackHtml, Does.Not.Contain("external-subject"));
+                Assert.That(invitationCallbackHtml, Does.Not.Contain("external-token"));
             }
         }
         finally
@@ -270,6 +277,38 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         }
 
         await AssertGitHubCallbackUsesOrchestrationBeforeSessionAsync();
+    }
+
+    [Test]
+    public async Task SampleGoogleInvitationCallbackClearsMalformedExternalTicket()
+    {
+        Environment.SetEnvironmentVariable("Authentication__Google__ClientId", "sample-client-id");
+        Environment.SetEnvironmentVariable("Authentication__Google__ClientSecret", "sample-client-secret");
+        Environment.SetEnvironmentVariable("Authentication__Google__HostedDomains__0", "example.com");
+        try
+        {
+            await using var googleFactory = new SampleApplicationFactory(GetConnectionString(), maskGoogleConfiguration: false);
+            using var client = googleFactory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+            var seed = await client.GetAsync("/__test/external-google-ticket");
+            var callback = await client.GetAsync("/invitations/accept/google/callback");
+            var html = await callback.Content.ReadAsStringAsync();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(seed.StatusCode, Is.EqualTo(HttpStatusCode.NoContent));
+                Assert.That(html, Does.Contain("Invitation Could Not Be Accepted"));
+                Assert.That(callback.Headers.GetValues("Set-Cookie"), Has.Some.Contains("Ashlar.OAuth.External").And.Contains("expires="));
+                Assert.That(html, Does.Not.Contain("external-subject"));
+                Assert.That(html, Does.Not.Contain("external-token"));
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("Authentication__Google__ClientId", string.Empty);
+            Environment.SetEnvironmentVariable("Authentication__Google__ClientSecret", string.Empty);
+            Environment.SetEnvironmentVariable("Authentication__Google__HostedDomains__0", string.Empty);
+        }
     }
 
     [Test]
@@ -1000,6 +1039,29 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
                 app.Use(async (context, nextMiddleware) =>
                 {
                     context.Connection.RemoteIpAddress ??= IPAddress.Loopback;
+                    if (context.Request.Path == "/__test/external-google-ticket")
+                    {
+                        var identity = new ClaimsIdentity(
+                            [
+                                new Claim("sub", "external-subject"),
+                                new Claim("email", "invitee@example.com"),
+                                new Claim("email_verified", "true"),
+                                new Claim("access_token", "external-token")
+                            ],
+                            "oidc");
+                        var properties = new AuthenticationProperties();
+                        properties.Items[".ashlar.oauth.providerName"] = "Google";
+                        properties.Items[".ashlar.oauth.schemeName"] = "Google";
+                        properties.Items[".ashlar.oauth.providerType"] = ProviderType.Oidc;
+
+                        await context.SignInAsync(
+                            "Ashlar.OAuth.External",
+                            new ClaimsPrincipal(identity),
+                            properties);
+                        context.Response.StatusCode = StatusCodes.Status204NoContent;
+                        return;
+                    }
+
                     await nextMiddleware();
                 });
 
