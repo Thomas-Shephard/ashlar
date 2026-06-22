@@ -348,6 +348,35 @@ public static class AshlarSecurityEventWebhookSignature
             return new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.InvalidSignature);
         }
 
+        return VerifyReplay(request, signatureTimestamp, tolerance);
+    }
+
+    /// <summary>
+    /// Creates the canonical destination component used for signing.
+    /// </summary>
+    /// <param name="uri">The absolute webhook URI.</param>
+    /// <returns>The path and query component.</returns>
+    public static string CreateCanonicalDestination(Uri uri)
+    {
+        ArgumentNullException.ThrowIfNull(uri);
+        return uri.PathAndQuery;
+    }
+
+    /// <summary>
+    /// Creates the Unix timestamp value used by the signature timestamp header.
+    /// </summary>
+    /// <param name="signatureTimestamp">The signature timestamp.</param>
+    /// <returns>The header value.</returns>
+    public static string FormatTimestamp(DateTimeOffset signatureTimestamp)
+    {
+        return signatureTimestamp.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static AshlarSecurityEventWebhookVerificationResult VerifyReplay(
+        AshlarSecurityEventWebhookVerificationRequest request,
+        DateTimeOffset signatureTimestamp,
+        TimeSpan tolerance)
+    {
         var replayStore = request.Options?.ReplayStore;
         if (replayStore is null)
         {
@@ -371,27 +400,6 @@ public static class AshlarSecurityEventWebhookSignature
         {
             return new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.ReplayStoreUnavailable);
         }
-    }
-
-    /// <summary>
-    /// Creates the canonical destination component used for signing.
-    /// </summary>
-    /// <param name="uri">The absolute webhook URI.</param>
-    /// <returns>The path and query component.</returns>
-    public static string CreateCanonicalDestination(Uri uri)
-    {
-        ArgumentNullException.ThrowIfNull(uri);
-        return uri.PathAndQuery;
-    }
-
-    /// <summary>
-    /// Creates the Unix timestamp value used by the signature timestamp header.
-    /// </summary>
-    /// <param name="signatureTimestamp">The signature timestamp.</param>
-    /// <returns>The header value.</returns>
-    public static string FormatTimestamp(DateTimeOffset signatureTimestamp)
-    {
-        return signatureTimestamp.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
     }
 
     private static void ValidateSigningInputs(string endpointName, string destinationPathAndQuery)
