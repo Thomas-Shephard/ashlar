@@ -301,7 +301,7 @@ internal sealed class AshlarOperationsSummaryServiceTests
     {
         return new AshlarSchemaDiagnosticResult(
             status,
-            "Sqlite",
+            "SQLite",
             reason,
             CheckedAt,
             status == AshlarDiagnosticStatus.Healthy ? AshlarSchemaStatus.Current : AshlarSchemaStatus.Unknown,
@@ -318,7 +318,7 @@ internal sealed class AshlarOperationsSummaryServiceTests
     {
         return new AshlarCleanupDiagnosticResult(
             status,
-            "Sqlite",
+            "SQLite",
             status == AshlarDiagnosticStatus.Healthy ? null : "Cleanup needs attention.",
             CheckedAt,
             true,
@@ -334,7 +334,7 @@ internal sealed class AshlarOperationsSummaryServiceTests
     {
         return new AuthenticationRateLimiterDiagnosticResult(
             status,
-            "InMemory",
+            "In-memory",
             status == AshlarDiagnosticStatus.Healthy ? null : "Rate limiter needs attention.",
             CheckedAt,
             true,
@@ -352,7 +352,7 @@ internal sealed class AshlarOperationsSummaryServiceTests
     {
         return new EmailOutboxDiagnosticResult(
             status,
-            "Sqlite",
+            "SQLite",
             status == AshlarDiagnosticStatus.Healthy ? null : "Email outbox needs attention.",
             CheckedAt,
             7,
@@ -375,7 +375,7 @@ internal sealed class AshlarOperationsSummaryServiceTests
     {
         return new SecurityEventWebhookOutboxDiagnosticResult(
             status,
-            "Sqlite",
+            "SQLite",
             status == AshlarDiagnosticStatus.Healthy ? null : "Webhook outbox needs attention.",
             CheckedAt,
             7,

@@ -7,7 +7,7 @@ namespace Ashlar.Messaging;
 /// </summary>
 /// <remarks>
 /// Hosts are responsible for authorizing access, applying any step-up authentication required for operators, and auditing calls at the application boundary. Implementations never unprotect
-/// stored bodies and never return text bodies, HTML bodies, protected body payloads, raw headers, raw metadata, dispatcher lock owners, or unsafe failure details.
+/// stored bodies and never return text bodies, HTML bodies, protected body payloads, raw headers, raw metadata, or dispatcher lock owners.
 /// </remarks>
 public interface IEmailOutboxAdministrationService
 {
@@ -256,7 +256,7 @@ public enum EmailOutboxStatus
 /// <param name="AvailableAt">The next availability timestamp.</param>
 /// <param name="LastAttemptAt">The last attempt timestamp.</param>
 /// <param name="FailedAt">The terminal failure timestamp.</param>
-/// <param name="LastErrorSummary">The safe failure summary.</param>
+/// <param name="LastErrorSummary">Single-line truncated failure summary, suppressed for protected or live-secret messages.</param>
 public sealed record EmailOutboxSummary(
     Guid Id,
     string? ToAddress,
@@ -291,7 +291,7 @@ public sealed record EmailOutboxSummary(
 /// <param name="FailedAt">The terminal failure timestamp.</param>
 /// <param name="SentAt">The sent timestamp.</param>
 /// <param name="DiscardedAt">The discarded timestamp.</param>
-/// <param name="LastErrorSummary">The safe failure summary.</param>
+/// <param name="LastErrorSummary">Single-line truncated failure summary, suppressed for protected or live-secret messages.</param>
 public sealed record EmailOutboxDetail(
     Guid Id,
     string? ToAddress,
@@ -465,7 +465,7 @@ public static class EmailOutboxAdministrationProvider
     public const int MaxLastErrorSummaryLength = 256;
 
     /// <summary>
-    /// Generic failure summary used when a message may contain sensitive content.
+    /// Generic failure summary used when message content may contain live secrets or protected payloads.
     /// </summary>
     public const string SensitiveFailureSummary = "Email outbox delivery failed. Error details were suppressed because the message may contain sensitive content.";
 
@@ -588,7 +588,7 @@ public static class EmailOutboxAdministrationProvider
     /// Creates a conservative error summary from stored failure details.
     /// </summary>
     /// <param name="record">Stored provider-neutral outbox row.</param>
-    /// <returns>The safe error summary.</returns>
+    /// <returns>A single-line truncated failure summary, or a generic summary when message content may be sensitive.</returns>
     public static string? CreateLastErrorSummary(EmailOutboxAdministrationProjection record)
     {
         ArgumentNullException.ThrowIfNull(record);
@@ -684,7 +684,7 @@ public static class EmailOutboxAdministrationProvider
     }
 
     /// <summary>
-    /// Emits a fail-open audit event for a successful manual email outbox mutation.
+    /// Records a best-effort audit event for a successful manual email outbox mutation.
     /// </summary>
     /// <param name="sink">Audit sink that receives the security event.</param>
     /// <param name="timeProvider">Clock used for the audit timestamp.</param>

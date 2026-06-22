@@ -11,7 +11,7 @@ public sealed class InMemoryAuthenticationRateLimiterDiagnostics(
     InMemoryAuthenticationRateLimiter rateLimiter,
     TimeProvider timeProvider) : IAuthenticationRateLimiterDiagnostics
 {
-    private const string ProviderName = "InMemory";
+    private const string ProviderName = "In-memory";
     private static readonly AuthenticationRateLimiterDiagnosticsRunner DiagnosticsRunner = new(ProviderName);
     private static readonly AuthenticationRateLimiterDiagnosticOptions Options = new(
         true,

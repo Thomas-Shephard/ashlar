@@ -3,7 +3,7 @@ namespace Ashlar.Webhooks.SecurityEvents;
 /// <summary>
 /// Contains safe, provider-neutral telemetry for a completed security event webhook delivery attempt.
 /// </summary>
-/// <param name="DeliveryMode">The delivery mode value.</param>
+/// <param name="DeliveryMode">Stable delivery mode tag value.</param>
 /// <param name="EventType">The security event type.</param>
 /// <param name="EndpointName">The configured endpoint name, if available.</param>
 /// <param name="Outcome">The delivery outcome.</param>

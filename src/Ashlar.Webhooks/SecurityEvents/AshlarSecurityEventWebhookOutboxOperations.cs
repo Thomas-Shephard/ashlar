@@ -10,9 +10,9 @@ public interface IAshlarSecurityEventWebhookOutboxOperations
     /// <summary>
     /// Makes a terminal failed delivery dispatchable immediately.
     /// </summary>
-    /// <param name="request">The retry request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">Delivery id and audit context required for the retry mutation.</param>
+    /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
+    /// <returns>The stable retry outcome with only header-safe event metadata.</returns>
     Task<AshlarSecurityEventWebhookOutboxOperationResult> RetryAsync(
         AshlarSecurityEventWebhookOutboxOperationRequest request,
         CancellationToken cancellationToken = default);
@@ -20,9 +20,9 @@ public interface IAshlarSecurityEventWebhookOutboxOperations
     /// <summary>
     /// Marks a terminal failed delivery as discarded.
     /// </summary>
-    /// <param name="request">The discard request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">Delivery id and audit context required for the discard mutation.</param>
+    /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
+    /// <returns>The stable discard outcome with only header-safe event metadata.</returns>
     Task<AshlarSecurityEventWebhookOutboxOperationResult> DiscardAsync(
         AshlarSecurityEventWebhookOutboxOperationRequest request,
         CancellationToken cancellationToken = default);
@@ -76,12 +76,12 @@ public enum AshlarSecurityEventWebhookOutboxOperationStatus
 /// <summary>
 /// Safe result for a manual durable security event webhook outbox operation.
 /// </summary>
-/// <param name="Status">The operation status.</param>
-/// <param name="DeliveryId">The delivery id value.</param>
-/// <param name="EndpointName">The safe endpoint name value.</param>
-/// <param name="EventId">The security event id value.</param>
-/// <param name="EventType">The safe security event type value.</param>
-/// <param name="Outcome">The safe security event outcome value.</param>
+/// <param name="Status">Stable mutation result.</param>
+/// <param name="DeliveryId">The durable outbox delivery id.</param>
+/// <param name="EndpointName">The endpoint name, omitted when unavailable or malformed.</param>
+/// <param name="EventId">The security event id, when available.</param>
+/// <param name="EventType">The security event type, omitted when unavailable or malformed.</param>
+/// <param name="Outcome">Header-safe result value, omitted when unavailable or malformed.</param>
 public sealed record AshlarSecurityEventWebhookOutboxOperationResult(
     AshlarSecurityEventWebhookOutboxOperationStatus Status,
     Guid DeliveryId,
@@ -93,11 +93,11 @@ public sealed record AshlarSecurityEventWebhookOutboxOperationResult(
 /// <summary>
 /// Safe stored metadata used to classify and report manual durable outbox operations.
 /// </summary>
-/// <param name="DeliveryId">The delivery id value.</param>
-/// <param name="EndpointName">The safe endpoint name value.</param>
-/// <param name="EventId">The security event id value.</param>
-/// <param name="EventType">The safe security event type value.</param>
-/// <param name="Outcome">The safe security event outcome value.</param>
+/// <param name="DeliveryId">The durable outbox delivery id.</param>
+/// <param name="EndpointName">Stored endpoint name used only after header-safety validation.</param>
+/// <param name="EventId">The security event id.</param>
+/// <param name="EventType">Stored event type used only after header-safety validation.</param>
+/// <param name="Outcome">Stored event outcome used only after header-safety validation.</param>
 /// <param name="IsDiscarded">A value indicating whether the delivery is already discarded.</param>
 public sealed record AshlarSecurityEventWebhookOutboxOperationState(
     Guid DeliveryId,
@@ -110,8 +110,8 @@ public sealed record AshlarSecurityEventWebhookOutboxOperationState(
 /// <summary>
 /// Shared implementation for provider-specific manual durable outbox operations.
 /// </summary>
-/// <param name="timeProvider">The time provider value.</param>
-/// <param name="securityEventSink">The security event sink value.</param>
+/// <param name="timeProvider">Clock used for operation audit timestamps.</param>
+/// <param name="securityEventSink">Optional audit sink for successful mutating operations.</param>
 public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
     TimeProvider timeProvider,
     ISecurityEventSink? securityEventSink = null) : IAshlarSecurityEventWebhookOutboxOperations
@@ -153,7 +153,7 @@ public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
     /// Applies the provider-specific conditional retry state change.
     /// </summary>
     /// <param name="deliveryId">The delivery id.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <param name="cancellationToken">A token that can cancel the provider mutation.</param>
     /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
     protected abstract Task<AshlarSecurityEventWebhookOutboxOperationState?> RetryFailedAsync(
         Guid deliveryId,
@@ -163,7 +163,7 @@ public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
     /// Applies the provider-specific conditional discard state change.
     /// </summary>
     /// <param name="deliveryId">The delivery id.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <param name="cancellationToken">A token that can cancel the provider mutation.</param>
     /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
     protected abstract Task<AshlarSecurityEventWebhookOutboxOperationState?> DiscardFailedAsync(
         Guid deliveryId,
@@ -173,7 +173,7 @@ public abstract class AshlarSecurityEventWebhookOutboxOperationsBase(
     /// Loads provider-specific safe state for no-op classification.
     /// </summary>
     /// <param name="deliveryId">The delivery id.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <param name="cancellationToken">A token that can cancel the provider lookup.</param>
     /// <returns>The stored safe state, or <see langword="null" /> when the delivery does not exist.</returns>
     protected abstract Task<AshlarSecurityEventWebhookOutboxOperationState?> LoadAsync(
         Guid deliveryId,
@@ -232,7 +232,7 @@ public static class AshlarSecurityEventWebhookOutboxOperations
     /// <summary>
     /// Validates a manual operation request.
     /// </summary>
-    /// <param name="request">The request value.</param>
+    /// <param name="request">Manual operation request to validate.</param>
     public static void ValidateRequest(AshlarSecurityEventWebhookOutboxOperationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -272,14 +272,14 @@ public static class AshlarSecurityEventWebhookOutboxOperations
     }
 
     /// <summary>
-    /// Emits a fail-open audit event for a successful manual outbox operation.
+    /// Records a best-effort audit event for a successful manual outbox operation.
     /// </summary>
     /// <param name="sink">The security event sink.</param>
     /// <param name="timeProvider">The time provider.</param>
     /// <param name="eventType">The audit event type.</param>
     /// <param name="request">The operation request.</param>
     /// <param name="result">The safe operation result.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <param name="cancellationToken">A token that can cancel audit emission.</param>
     /// <returns>A task representing audit emission.</returns>
     public static async Task RecordSuccessfulOperationAsync(
         ISecurityEventSink sink,

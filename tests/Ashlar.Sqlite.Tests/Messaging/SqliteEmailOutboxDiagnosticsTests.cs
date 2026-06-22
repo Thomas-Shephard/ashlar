@@ -145,7 +145,7 @@ internal sealed class SqliteEmailOutboxDiagnosticsTests : SqliteTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.NotSupported));
-            Assert.That(result.ProviderName, Is.EqualTo("Sqlite"));
+            Assert.That(result.ProviderName, Is.EqualTo("SQLite"));
             Assert.That(result.Reason, Is.EqualTo("Email outbox table has not been initialized."));
             Assert.That(result.CheckedAt, Is.EqualTo(CheckedAt));
             Assert.That(result.PendingCount, Is.Null);
@@ -214,7 +214,7 @@ internal sealed class SqliteEmailOutboxDiagnosticsTests : SqliteTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Healthy));
-            Assert.That(result.ProviderName, Is.EqualTo("Sqlite"));
+            Assert.That(result.ProviderName, Is.EqualTo("SQLite"));
             Assert.That(result.Reason, Is.Null);
             Assert.That(result.CheckedAt, Is.EqualTo(CheckedAt));
         }

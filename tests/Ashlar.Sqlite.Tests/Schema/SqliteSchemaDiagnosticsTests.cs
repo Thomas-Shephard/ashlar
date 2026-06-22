@@ -32,7 +32,7 @@ internal sealed class SqliteSchemaDiagnosticsTests : SqliteTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Unhealthy));
-            Assert.That(result.ProviderName, Is.EqualTo("Sqlite"));
+            Assert.That(result.ProviderName, Is.EqualTo("SQLite"));
             Assert.That(result.Reason, Is.EqualTo("Schema has not been initialized."));
             Assert.That(result.CheckedAt, Is.EqualTo(CheckedAt));
             Assert.That(result.SchemaStatus, Is.EqualTo(AshlarSchemaStatus.NotInitialized));

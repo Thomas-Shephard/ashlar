@@ -12,7 +12,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxDiagnostics(
     TimeProvider timeProvider,
     ILogger<SqliteSecurityEventWebhookOutboxDiagnostics>? logger = null) : ISecurityEventWebhookOutboxDiagnostics
 {
-    private const string ProviderName = "Sqlite";
+    private const string ProviderName = "SQLite";
     private static readonly SecurityEventWebhookOutboxDiagnosticsRunner DiagnosticsRunner = new(ProviderName);
 
     private static readonly Action<ILogger, Exception?> WebhookOutboxDiagnosticsFailed =

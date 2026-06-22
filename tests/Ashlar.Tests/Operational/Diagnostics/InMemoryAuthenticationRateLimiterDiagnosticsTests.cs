@@ -23,7 +23,7 @@ internal sealed class InMemoryAuthenticationRateLimiterDiagnosticsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Healthy));
-            Assert.That(result.ProviderName, Is.EqualTo("InMemory"));
+            Assert.That(result.ProviderName, Is.EqualTo("In-memory"));
             Assert.That(result.Reason, Is.Null);
             Assert.That(result.CheckedAt, Is.EqualTo(CheckedAt));
             Assert.That(result.Configured, Is.True);
@@ -68,7 +68,7 @@ internal sealed class InMemoryAuthenticationRateLimiterDiagnosticsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(diagnostics, Is.TypeOf<InMemoryAuthenticationRateLimiterDiagnostics>());
-            Assert.That(result.ProviderName, Is.EqualTo("InMemory"));
+            Assert.That(result.ProviderName, Is.EqualTo("In-memory"));
             Assert.That(result.CheckedAt, Is.EqualTo(CheckedAt));
         }
     }
