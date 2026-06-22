@@ -12,7 +12,7 @@ internal sealed class SqliteEmailOutboxDiagnostics(
     TimeProvider timeProvider,
     ILogger<SqliteEmailOutboxDiagnostics>? logger = null) : IEmailOutboxDiagnostics
 {
-    private const string ProviderName = "Sqlite";
+    private const string ProviderName = "SQLite";
     private static readonly AshlarEmailOutboxDiagnosticsRunner DiagnosticsRunner = new(ProviderName);
 
     private static readonly Action<ILogger, Exception?> EmailOutboxDiagnosticsFailed =

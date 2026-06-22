@@ -53,8 +53,8 @@ public sealed class AshlarSecurityEventMetricsHandler : ISecurityEventHandler, I
     /// <summary>
     /// Emits metrics for a security event.
     /// </summary>
-    /// <param name="securityEvent">The security event value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <param name="securityEvent">Security event to count.</param>
+    /// <param name="cancellationToken">A token that can cancel metric emission before counters are updated.</param>
     /// <returns>A completed task after metrics are emitted.</returns>
     public Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
     {

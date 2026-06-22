@@ -6,7 +6,7 @@ namespace Ashlar.Observability.SecurityEvents;
 public sealed class AshlarSecurityEventMetricsOptions
 {
     /// <summary>
-    /// Gets or sets the default meter name for Ashlar security event metrics.
+    /// Defines the default meter name for Ashlar security event metrics.
     /// </summary>
     public const string DefaultMeterName = "Ashlar.SecurityEvents";
 

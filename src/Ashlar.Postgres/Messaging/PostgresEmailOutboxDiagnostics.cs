@@ -12,7 +12,7 @@ internal sealed class PostgresEmailOutboxDiagnostics(
     TimeProvider timeProvider,
     ILogger<PostgresEmailOutboxDiagnostics>? logger = null) : IEmailOutboxDiagnostics
 {
-    private const string ProviderName = "Postgres";
+    private const string ProviderName = "PostgreSQL";
     private static readonly AshlarEmailOutboxDiagnosticsRunner DiagnosticsRunner = new(ProviderName);
 
     private static readonly Action<ILogger, Exception?> EmailOutboxDiagnosticsFailed =

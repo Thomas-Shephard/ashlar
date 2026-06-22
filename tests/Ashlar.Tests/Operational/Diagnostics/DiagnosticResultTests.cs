@@ -11,7 +11,7 @@ internal sealed class DiagnosticResultTests
 
         var result = new AshlarSchemaDiagnosticResult(
             AshlarDiagnosticStatus.Healthy,
-            "Postgres",
+            "PostgreSQL",
             "schema is current",
             checkedAt,
             AshlarSchemaStatus.Current,
@@ -26,7 +26,7 @@ internal sealed class DiagnosticResultTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Healthy));
-            Assert.That(result.ProviderName, Is.EqualTo("Postgres"));
+            Assert.That(result.ProviderName, Is.EqualTo("PostgreSQL"));
             Assert.That(result.Reason, Is.EqualTo("schema is current"));
             Assert.That(result.CheckedAt, Is.EqualTo(checkedAt));
             Assert.That(result.SchemaStatus, Is.EqualTo(AshlarSchemaStatus.Current));
@@ -49,7 +49,7 @@ internal sealed class DiagnosticResultTests
 
         var result = new EmailOutboxDiagnosticResult(
             Status: AshlarDiagnosticStatus.Degraded,
-            ProviderName: "Sqlite",
+            ProviderName: "SQLite",
             Reason: "old failed mail exists",
             CheckedAt: checkedAt,
             PendingCount: 10,
@@ -70,7 +70,7 @@ internal sealed class DiagnosticResultTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Degraded));
-            Assert.That(result.ProviderName, Is.EqualTo("Sqlite"));
+            Assert.That(result.ProviderName, Is.EqualTo("SQLite"));
             Assert.That(result.Reason, Is.EqualTo("old failed mail exists"));
             Assert.That(result.CheckedAt, Is.EqualTo(checkedAt));
             Assert.That(result.PendingCount, Is.EqualTo(10));
@@ -149,7 +149,7 @@ internal sealed class DiagnosticResultTests
 
         var result = new SecurityEventWebhookOutboxDiagnosticResult(
             AshlarDiagnosticStatus.Degraded,
-            "Postgres",
+            "PostgreSQL",
             "old failed delivery exists",
             checkedAt,
             10,
@@ -166,7 +166,7 @@ internal sealed class DiagnosticResultTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Degraded));
-            Assert.That(result.ProviderName, Is.EqualTo("Postgres"));
+            Assert.That(result.ProviderName, Is.EqualTo("PostgreSQL"));
             Assert.That(result.Reason, Is.EqualTo("old failed delivery exists"));
             Assert.That(result.CheckedAt, Is.EqualTo(checkedAt));
             Assert.That(result.PendingCount, Is.EqualTo(10));
@@ -231,7 +231,7 @@ internal sealed class DiagnosticResultTests
 
         var result = new AshlarCleanupDiagnosticResult(
             AshlarDiagnosticStatus.Healthy,
-            "Postgres",
+            "PostgreSQL",
             null,
             checkedAt,
             true,
@@ -245,7 +245,7 @@ internal sealed class DiagnosticResultTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Healthy));
-            Assert.That(result.ProviderName, Is.EqualTo("Postgres"));
+            Assert.That(result.ProviderName, Is.EqualTo("PostgreSQL"));
             Assert.That(result.Reason, Is.Null);
             Assert.That(result.CheckedAt, Is.EqualTo(checkedAt));
             Assert.That(result.Configured, Is.True);
@@ -265,7 +265,7 @@ internal sealed class DiagnosticResultTests
 
         var result = new AuthenticationRateLimiterDiagnosticResult(
             AshlarDiagnosticStatus.Unhealthy,
-            "Postgres",
+            "PostgreSQL",
             "cleanup is disabled",
             checkedAt,
             true,
@@ -281,7 +281,7 @@ internal sealed class DiagnosticResultTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Unhealthy));
-            Assert.That(result.ProviderName, Is.EqualTo("Postgres"));
+            Assert.That(result.ProviderName, Is.EqualTo("PostgreSQL"));
             Assert.That(result.Reason, Is.EqualTo("cleanup is disabled"));
             Assert.That(result.CheckedAt, Is.EqualTo(checkedAt));
             Assert.That(result.Configured, Is.True);

@@ -70,11 +70,11 @@ public sealed class AshlarSecurityEventWebhookOutboxEntry
 /// Groups common dependencies used by security event webhook outbox dispatchers.
 /// </summary>
 /// <typeparam name="TOptions">The provider-specific options type.</typeparam>
-/// <param name="serviceProvider">The service provider value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-/// <param name="options">The provider-specific options value.</param>
+/// <param name="serviceProvider">Service provider used by provider-specific dispatch loops.</param>
+/// <param name="timeProvider">Clock used for retry timestamps and dispatch-time signing.</param>
+/// <param name="options">Provider-specific outbox dispatch options.</param>
 /// <param name="webhookOptions">The current webhook endpoint configuration.</param>
-/// <param name="httpClientFactory">The HTTP client factory value.</param>
+/// <param name="httpClientFactory">Factory used to create the configured webhook HTTP client.</param>
 /// <param name="destinationValidator">The webhook destination safety validator.</param>
 public sealed class AshlarSecurityEventWebhookOutboxDispatcherDependencies<TOptions>(
     IServiceProvider serviceProvider,
@@ -86,17 +86,17 @@ public sealed class AshlarSecurityEventWebhookOutboxDispatcherDependencies<TOpti
     where TOptions : class
 {
     /// <summary>
-    /// Gets the service provider value.
+    /// Gets the service provider used by provider-specific dispatch loops.
     /// </summary>
     public IServiceProvider ServiceProvider { get; } = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
 
     /// <summary>
-    /// Gets the time provider value.
+    /// Gets the clock used for retry timestamps and dispatch-time signing.
     /// </summary>
     public TimeProvider TimeProvider { get; } = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
     /// <summary>
-    /// Gets the provider-specific options value.
+    /// Gets the provider-specific outbox dispatch options.
     /// </summary>
     public TOptions Options { get; } = (options ?? throw new ArgumentNullException(nameof(options))).Value;
 
@@ -106,7 +106,7 @@ public sealed class AshlarSecurityEventWebhookOutboxDispatcherDependencies<TOpti
     public AshlarSecurityEventWebhookOptions WebhookOptions { get; } = (webhookOptions ?? throw new ArgumentNullException(nameof(webhookOptions))).Value;
 
     /// <summary>
-    /// Gets the HTTP client factory value.
+    /// Gets the factory used to create the configured webhook HTTP client.
     /// </summary>
     public IHttpClientFactory HttpClientFactory { get; } = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
 
@@ -185,7 +185,7 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
     /// </summary>
     /// <param name="entry">The durable outbox entry.</param>
     /// <param name="context">The dispatch context.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
+    /// <param name="cancellationToken">A token that can cancel the current send attempt.</param>
     /// <returns>A task that represents the asynchronous dispatch operation.</returns>
     public static async Task DispatchAsync(
         AshlarSecurityEventWebhookOutboxEntry entry,

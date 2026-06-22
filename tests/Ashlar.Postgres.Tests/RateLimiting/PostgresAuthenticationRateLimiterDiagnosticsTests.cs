@@ -63,7 +63,7 @@ internal sealed class PostgresAuthenticationRateLimiterDiagnosticsTests : Postgr
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Healthy));
-            Assert.That(result.ProviderName, Is.EqualTo("Postgres"));
+            Assert.That(result.ProviderName, Is.EqualTo("PostgreSQL"));
             Assert.That(result.Reason, Is.Null);
             Assert.That(result.CheckedAt, Is.EqualTo(CheckedAt));
             Assert.That(result.Configured, Is.True);

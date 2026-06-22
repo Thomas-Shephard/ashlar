@@ -165,7 +165,7 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Healthy));
-            Assert.That(result.ProviderName, Is.EqualTo("Postgres"));
+            Assert.That(result.ProviderName, Is.EqualTo("PostgreSQL"));
             Assert.That(result.Configured, Is.True);
             Assert.That(result.OptionsValid, Is.True);
             Assert.That(result.CleanupInterval, Is.EqualTo(TimeSpan.FromMinutes(30)));

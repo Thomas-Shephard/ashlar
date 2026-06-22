@@ -11,7 +11,7 @@ internal sealed class PostgresSchemaDiagnostics(
     TimeProvider timeProvider,
     ILogger<PostgresSchemaDiagnostics>? logger = null) : IAshlarSchemaDiagnostics
 {
-    private const string ProviderName = "Postgres";
+    private const string ProviderName = "PostgreSQL";
     private const string MinimumProviderVersion = "150000";
     private static readonly AshlarSchemaDiagnosticsRunner DiagnosticsRunner = new(
         ProviderName,

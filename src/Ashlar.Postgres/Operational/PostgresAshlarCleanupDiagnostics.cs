@@ -6,4 +6,4 @@ namespace Ashlar.Postgres.Operational;
 
 internal sealed class PostgresAshlarCleanupDiagnostics(
     IOptions<AshlarCleanupOptions> options,
-    TimeProvider timeProvider) : AshlarCleanupDiagnostics("Postgres", options, timeProvider);
+    TimeProvider timeProvider) : AshlarCleanupDiagnostics("PostgreSQL", options, timeProvider);

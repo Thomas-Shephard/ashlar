@@ -12,7 +12,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxDiagnostics(
     TimeProvider timeProvider,
     ILogger<PostgresSecurityEventWebhookOutboxDiagnostics>? logger = null) : ISecurityEventWebhookOutboxDiagnostics
 {
-    private const string ProviderName = "Postgres";
+    private const string ProviderName = "PostgreSQL";
     private static readonly SecurityEventWebhookOutboxDiagnosticsRunner DiagnosticsRunner = new(ProviderName);
 
     private static readonly Action<ILogger, Exception?> WebhookOutboxDiagnosticsFailed =

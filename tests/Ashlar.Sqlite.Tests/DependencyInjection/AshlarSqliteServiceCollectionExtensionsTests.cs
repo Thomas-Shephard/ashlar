@@ -240,7 +240,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
         {
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarCleanupService>(), Is.TypeOf<SqliteAshlarCleanupService>());
             Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Healthy));
-            Assert.That(result.ProviderName, Is.EqualTo("Sqlite"));
+            Assert.That(result.ProviderName, Is.EqualTo("SQLite"));
             Assert.That(result.Configured, Is.True);
             Assert.That(result.OptionsValid, Is.True);
             Assert.That(result.CleanupInterval, Is.EqualTo(TimeSpan.FromMinutes(30)));

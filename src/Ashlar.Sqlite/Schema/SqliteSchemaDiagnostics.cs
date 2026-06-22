@@ -11,7 +11,7 @@ internal sealed class SqliteSchemaDiagnostics(
     TimeProvider timeProvider,
     ILogger<SqliteSchemaDiagnostics>? logger = null) : IAshlarSchemaDiagnostics
 {
-    private const string ProviderName = "Sqlite";
+    private const string ProviderName = "SQLite";
     private static readonly AshlarSchemaDiagnosticsRunner DiagnosticsRunner = new(
         ProviderName,
         AshlarSchemaDiagnosticsRunner.GetExpectedMigrationNames(typeof(SqliteSchemaDiagnostics).Assembly),

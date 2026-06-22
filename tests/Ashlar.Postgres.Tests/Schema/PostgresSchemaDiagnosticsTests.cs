@@ -39,7 +39,7 @@ internal sealed class PostgresSchemaDiagnosticsTests : PostgresTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Unhealthy));
-            Assert.That(result.ProviderName, Is.EqualTo("Postgres"));
+            Assert.That(result.ProviderName, Is.EqualTo("PostgreSQL"));
             Assert.That(result.Reason, Is.EqualTo("Schema has not been initialized."));
             Assert.That(result.CheckedAt, Is.EqualTo(CheckedAt));
             Assert.That(result.SchemaStatus, Is.EqualTo(AshlarSchemaStatus.NotInitialized));

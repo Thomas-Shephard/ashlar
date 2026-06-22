@@ -6,4 +6,4 @@ namespace Ashlar.Sqlite.Operational;
 
 internal sealed class SqliteAshlarCleanupDiagnostics(
     IOptions<AshlarCleanupOptions> options,
-    TimeProvider timeProvider) : AshlarCleanupDiagnostics("Sqlite", options, timeProvider);
+    TimeProvider timeProvider) : AshlarCleanupDiagnostics("SQLite", options, timeProvider);

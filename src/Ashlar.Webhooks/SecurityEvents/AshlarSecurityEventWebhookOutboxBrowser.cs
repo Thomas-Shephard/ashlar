@@ -8,9 +8,9 @@ public interface IAshlarSecurityEventWebhookOutboxBrowser
     /// <summary>
     /// Lists safe security event webhook outbox delivery summaries.
     /// </summary>
-    /// <param name="request">The browse request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The matching outbox delivery summaries.</returns>
+    /// <param name="request">Paging and status filters for the read-only browse operation.</param>
+    /// <param name="cancellationToken">A token that can cancel the browse operation before results are returned.</param>
+    /// <returns>Matching outbox delivery summaries with destination URI, body, headers, and lock-owner values omitted.</returns>
     Task<AshlarSecurityEventWebhookOutboxBrowseResult> ListAsync(
         AshlarSecurityEventWebhookOutboxBrowseRequest request,
         CancellationToken cancellationToken = default);
@@ -81,18 +81,18 @@ public enum AshlarSecurityEventWebhookOutboxStatus
 /// <summary>
 /// Safe summary of a durable security event webhook outbox delivery.
 /// </summary>
-/// <param name="DeliveryId">The delivery id value.</param>
-/// <param name="EndpointName">The endpoint name value.</param>
-/// <param name="EventId">The event id value.</param>
-/// <param name="EventType">The event type value.</param>
-/// <param name="Outcome">The outcome value.</param>
+/// <param name="DeliveryId">The durable outbox delivery id.</param>
+/// <param name="EndpointName">The endpoint name, omitted when unavailable or malformed.</param>
+/// <param name="EventId">The security event id.</param>
+/// <param name="EventType">The security event type, omitted when unavailable or malformed.</param>
+/// <param name="Outcome">The security event outcome, omitted when unavailable or malformed.</param>
 /// <param name="Status">The derived delivery status.</param>
 /// <param name="AttemptCount">The attempted delivery count.</param>
 /// <param name="CreatedAt">The creation timestamp.</param>
 /// <param name="AvailableAt">The next availability timestamp.</param>
 /// <param name="LastAttemptAt">The last attempt timestamp.</param>
 /// <param name="FailedAt">The terminal failure timestamp.</param>
-/// <param name="LastErrorSummary">The truncated safe error summary.</param>
+/// <param name="LastErrorSummary">Single-line truncated failure summary from stored delivery state.</param>
 public sealed record AshlarSecurityEventWebhookOutboxDeliverySummary(
     Guid DeliveryId,
     string? EndpointName,
@@ -110,9 +110,9 @@ public sealed record AshlarSecurityEventWebhookOutboxDeliverySummary(
 /// <summary>
 /// Paged security event webhook outbox browsing result.
 /// </summary>
-/// <param name="Deliveries">The deliveries value.</param>
-/// <param name="Limit">The limit value.</param>
-/// <param name="Offset">The offset value.</param>
+/// <param name="Deliveries">Safe delivery summaries returned for this page.</param>
+/// <param name="Limit">Maximum number of <paramref name="Deliveries" /> requested.</param>
+/// <param name="Offset">Number of <paramref name="Deliveries" /> skipped before this page.</param>
 /// <param name="HasMore">Whether another page may exist.</param>
 public sealed record AshlarSecurityEventWebhookOutboxBrowseResult(
     IReadOnlyList<AshlarSecurityEventWebhookOutboxDeliverySummary> Deliveries,
@@ -139,7 +139,7 @@ public static class AshlarSecurityEventWebhookOutboxBrowser
     /// <summary>
     /// Validates a browser request.
     /// </summary>
-    /// <param name="request">The request value.</param>
+    /// <param name="request">Browse request to validate.</param>
     public static void ValidateRequest(AshlarSecurityEventWebhookOutboxBrowseRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -168,7 +168,7 @@ public static class AshlarSecurityEventWebhookOutboxBrowser
     /// <summary>
     /// Gets the status filter for a request.
     /// </summary>
-    /// <param name="request">The request value.</param>
+    /// <param name="request">Browse request whose explicit or default status set is needed.</param>
     /// <returns>The effective status set.</returns>
     public static IReadOnlySet<AshlarSecurityEventWebhookOutboxStatus> GetStatuses(AshlarSecurityEventWebhookOutboxBrowseRequest request)
     {
@@ -179,7 +179,7 @@ public static class AshlarSecurityEventWebhookOutboxBrowser
     /// <summary>
     /// Sanitizes a stored header-safe text value for display.
     /// </summary>
-    /// <param name="value">The stored value.</param>
+    /// <param name="value">Stored endpoint or event metadata.</param>
     /// <returns>The safe display value, or <see langword="null" /> when malformed.</returns>
     public static string? SanitizeSafeText(string? value)
     {
@@ -189,7 +189,7 @@ public static class AshlarSecurityEventWebhookOutboxBrowser
     /// <summary>
     /// Creates a conservative error summary from stored last_error.
     /// </summary>
-    /// <param name="lastError">The stored last_error value.</param>
+    /// <param name="lastError">Stored failure detail from the dispatcher.</param>
     /// <returns>The safe error summary.</returns>
     public static string? CreateLastErrorSummary(string? lastError)
     {
@@ -211,7 +211,7 @@ public static class AshlarSecurityEventWebhookOutboxBrowser
     /// Parses a provider-derived status name defensively.
     /// </summary>
     /// <param name="status">The provider-derived status name.</param>
-    /// <returns>The status value.</returns>
+    /// <returns>The parsed status, or <see cref="AshlarSecurityEventWebhookOutboxStatus.Pending" /> for unknown values.</returns>
     public static AshlarSecurityEventWebhookOutboxStatus ParseStatus(string? status)
     {
         return Enum.TryParse<AshlarSecurityEventWebhookOutboxStatus>(status, ignoreCase: false, out var parsed)

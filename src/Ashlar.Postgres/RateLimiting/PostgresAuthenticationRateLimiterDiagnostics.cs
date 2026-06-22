@@ -13,7 +13,7 @@ internal sealed class PostgresAuthenticationRateLimiterDiagnostics(
     ILogger<PostgresAuthenticationRateLimiterDiagnostics>? logger = null)
     : AuthenticationRateLimiterDiagnostics<PostgresConnectionHandle>(ProviderName, timeProvider)
 {
-    private const string ProviderName = "Postgres";
+    private const string ProviderName = "PostgreSQL";
 
     private static readonly Action<ILogger, Exception?> RateLimiterDiagnosticsFailed =
         LoggerMessage.Define(

@@ -11,7 +11,7 @@ internal sealed class SqliteAuthenticationRateLimiterDiagnostics(
     ILogger<SqliteAuthenticationRateLimiterDiagnostics>? logger = null)
     : AuthenticationRateLimiterDiagnostics<SqliteConnectionHandle>(ProviderName, timeProvider)
 {
-    private const string ProviderName = "Sqlite";
+    private const string ProviderName = "SQLite";
     private static readonly AuthenticationRateLimiterDiagnosticOptions Options = new(
         true,
         false,

@@ -48,7 +48,7 @@ internal sealed class SqliteAuthenticationRateLimiterDiagnosticsTests : SqliteTe
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarDiagnosticStatus.Healthy));
-            Assert.That(result.ProviderName, Is.EqualTo("Sqlite"));
+            Assert.That(result.ProviderName, Is.EqualTo("SQLite"));
             Assert.That(result.Reason, Is.Null);
             Assert.That(result.CheckedAt, Is.EqualTo(CheckedAt));
             Assert.That(result.Configured, Is.True);
