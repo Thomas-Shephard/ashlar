@@ -178,6 +178,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
     {
         AddEmailSenderIssue(serviceProvider, issues);
         AddNullSecurityEventSinkIssue(serviceProvider, issues);
+        AddPermissiveAccountSecurityGuardIssue(serviceProvider, issues);
         AddInMemoryRateLimiterIssue(serviceProvider, issues);
         AddInMemorySecurityNotificationSuppressionStoreIssue(serviceProvider, issues);
         AddNullTransactionProviderIssue(serviceProvider, issues);
@@ -401,6 +402,19 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
                 "Security audit events do not have a persistent sink configured, so Ashlar audit events will not be persisted.",
                 "Register a production IPersistentSecurityEventSink, usually from an Ashlar persistence provider.",
                 "Security auditing"));
+        }
+    }
+
+    private static void AddPermissiveAccountSecurityGuardIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
+    {
+        if (serviceProvider.GetService<IAccountSecurityGuard>() is AllowAccountSecurityGuard)
+        {
+            issues.Add(new AshlarConfigurationIssue(
+                AshlarConfigurationIssueCodes.PermissiveAccountSecurityGuard,
+                AshlarConfigurationIssueSeverity.Warning,
+                "Account security operations use the permissive AllowAccountSecurityGuard, so high-risk account-state transitions are allowed by default.",
+                "Register an application-specific IAccountSecurityGuard before relying on account-state changes for business approval, risk review, or separation-of-duties controls.",
+                "Account security guard"));
         }
     }
 
