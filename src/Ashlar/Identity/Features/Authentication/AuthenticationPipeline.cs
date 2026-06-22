@@ -180,39 +180,16 @@ public sealed class AuthenticationPipeline(
         }
 
         var shouldApplyAccountLockout = ShouldApplyAccountLockout(provider, user);
-        if (shouldApplyAccountLockout)
+        var lockoutResponse = await BlockIfAccountLockoutAppliesAsync(shouldApplyAccountLockout, user, provider.Key, context, cancellationToken);
+        if (lockoutResponse != null)
         {
-            var lockoutStatus = await CheckAccountLockoutAsync(user!, provider.Key, context, cancellationToken);
-            if (lockoutStatus == AccountLockoutAuthenticationStatus.BackendFailure)
-            {
-                return await RecordRateLimitedAsync(context, provider.Key, cancellationToken);
-            }
-
-            if (lockoutStatus == AccountLockoutAuthenticationStatus.LockedOut)
-            {
-                return await RecordFailureAsync(context, provider.Key, user!.Id, SecurityEventFailureReasons.AutomaticAccountLockout, cancellationToken);
-            }
+            return lockoutResponse;
         }
 
         var result = await provider.AuthenticateAsync(assertion, credential, cancellationToken);
         if (result.Status is not (AuthenticationResultStatus.Succeeded or AuthenticationResultStatus.SucceededWithCredentialUpdate or AuthenticationResultStatus.MfaRequired) || user == null)
         {
-            var reason = SecurityEventFailureReasons.InvalidCredentials;
-            if (shouldApplyAccountLockout)
-            {
-                var lockoutFailureStatus = await RecordAccountLockoutFailureAsync(user!, provider.Key, context, cancellationToken);
-                if (lockoutFailureStatus == AccountLockoutAuthenticationStatus.BackendFailure)
-                {
-                    return await RecordRateLimitedAsync(context, provider.Key, cancellationToken);
-                }
-
-                if (lockoutFailureStatus == AccountLockoutAuthenticationStatus.LockedOut)
-                {
-                    reason = SecurityEventFailureReasons.AutomaticAccountLockout;
-                }
-            }
-
-            return await RecordFailureAsync(context, provider.Key, user?.Id, reason, cancellationToken);
+            return await RecordProviderFailureAsync(shouldApplyAccountLockout, user, provider.Key, context, cancellationToken);
         }
 
         if (!user.CanSignIn())
@@ -234,6 +211,52 @@ public sealed class AuthenticationPipeline(
         return await ProcessCredentialLifecycleAsync(
             new CredentialLifecycleContext(user, credential, originalCredential, result, provider, context, status),
             cancellationToken);
+    }
+
+    private async Task<AuthenticationResponse?> BlockIfAccountLockoutAppliesAsync(
+        bool shouldApplyAccountLockout,
+        IUser? user,
+        AuthenticationProviderKey providerKey,
+        AuthenticationContext context,
+        CancellationToken cancellationToken)
+    {
+        if (!shouldApplyAccountLockout)
+        {
+            return null;
+        }
+
+        var lockoutStatus = await CheckAccountLockoutAsync(user!, providerKey, context, cancellationToken);
+        return lockoutStatus switch
+        {
+            AccountLockoutAuthenticationStatus.BackendFailure => await RecordRateLimitedAsync(context, providerKey, cancellationToken),
+            AccountLockoutAuthenticationStatus.LockedOut => await RecordFailureAsync(context, providerKey, user!.Id, SecurityEventFailureReasons.AutomaticAccountLockout, cancellationToken),
+            _ => null
+        };
+    }
+
+    private async Task<AuthenticationResponse> RecordProviderFailureAsync(
+        bool shouldApplyAccountLockout,
+        IUser? user,
+        AuthenticationProviderKey providerKey,
+        AuthenticationContext context,
+        CancellationToken cancellationToken)
+    {
+        var reason = SecurityEventFailureReasons.InvalidCredentials;
+        if (shouldApplyAccountLockout)
+        {
+            var lockoutFailureStatus = await RecordAccountLockoutFailureAsync(user!, providerKey, context, cancellationToken);
+            if (lockoutFailureStatus == AccountLockoutAuthenticationStatus.BackendFailure)
+            {
+                return await RecordRateLimitedAsync(context, providerKey, cancellationToken);
+            }
+
+            if (lockoutFailureStatus == AccountLockoutAuthenticationStatus.LockedOut)
+            {
+                reason = SecurityEventFailureReasons.AutomaticAccountLockout;
+            }
+        }
+
+        return await RecordFailureAsync(context, providerKey, user?.Id, reason, cancellationToken);
     }
 
     private async Task<bool> CheckPrimaryRateLimitAsync(
