@@ -198,9 +198,18 @@ public sealed class AuthenticationPipeline(
         if (result.Status is not (AuthenticationResultStatus.Succeeded or AuthenticationResultStatus.SucceededWithCredentialUpdate or AuthenticationResultStatus.MfaRequired) || user == null)
         {
             var reason = SecurityEventFailureReasons.InvalidCredentials;
-            if (shouldApplyAccountLockout && await RecordAccountLockoutFailureAsync(user!, provider.Key, context, cancellationToken))
+            if (shouldApplyAccountLockout)
             {
-                reason = SecurityEventFailureReasons.AutomaticAccountLockout;
+                var lockoutFailureStatus = await RecordAccountLockoutFailureAsync(user!, provider.Key, context, cancellationToken);
+                if (lockoutFailureStatus == AccountLockoutAuthenticationStatus.BackendFailure)
+                {
+                    return await RecordRateLimitedAsync(context, provider.Key, cancellationToken);
+                }
+
+                if (lockoutFailureStatus == AccountLockoutAuthenticationStatus.LockedOut)
+                {
+                    reason = SecurityEventFailureReasons.AutomaticAccountLockout;
+                }
             }
 
             return await RecordFailureAsync(context, provider.Key, user?.Id, reason, cancellationToken);
@@ -294,7 +303,7 @@ public sealed class AuthenticationPipeline(
         }
     }
 
-    private async Task<bool> RecordAccountLockoutFailureAsync(
+    private async Task<AccountLockoutAuthenticationStatus> RecordAccountLockoutFailureAsync(
         IUser user,
         AuthenticationProviderKey providerKey,
         AuthenticationContext context,
@@ -302,18 +311,22 @@ public sealed class AuthenticationPipeline(
     {
         if (_accountLockoutService == null)
         {
-            return false;
+            return AccountLockoutAuthenticationStatus.Allowed;
         }
 
         try
         {
             var result = await _accountLockoutService.RecordFailureAsync(user, providerKey, CreateAccountLockoutContext(context), cancellationToken);
-            return result.ThresholdReached || result.Status.IsLockedOut;
+            return result.ThresholdReached || result.Status.IsLockedOut
+                ? AccountLockoutAuthenticationStatus.LockedOut
+                : AccountLockoutAuthenticationStatus.Allowed;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             AccountLockoutOperationFailed(_logger, "record_failure", user.Id, providerKey.ToString(), _accountLockoutFailOpen, ex);
-            return false;
+            return _accountLockoutFailOpen
+                ? AccountLockoutAuthenticationStatus.Allowed
+                : AccountLockoutAuthenticationStatus.BackendFailure;
         }
     }
 
