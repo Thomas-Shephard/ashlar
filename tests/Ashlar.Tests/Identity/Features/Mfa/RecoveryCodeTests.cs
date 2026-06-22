@@ -794,8 +794,14 @@ internal sealed class RecoveryCodeTests
             Assert.That(provider.TypicalCredentialLength, Is.EqualTo(128));
             Assert.That(provider.ProtectsCredentials, Is.False);
             Assert.That(provider.FactorType, Is.EqualTo(AuthenticationFactorTypes.RecoveryCode));
-            Assert.That(provider.CanSatisfyFactor(AuthenticationFactorTypes.Totp), Is.True);
+            Assert.That(provider.CanSatisfyFactor(AuthenticationFactorTypes.RecoveryCode), Is.True);
+            Assert.That(provider.CanSatisfyFactor(AuthenticationFactorTypes.Totp), Is.False);
+            Assert.That(provider.CanSatisfyBackupFactor(AuthenticationFactorTypes.Totp), Is.True);
+            Assert.That(provider, Is.Not.AssignableTo<IPrimaryAuthenticationProvider>());
+            Assert.That(provider, Is.AssignableTo<ISecondaryAuthenticationFactorProvider>());
+            Assert.That(provider, Is.AssignableTo<IBackupAuthenticationFactorProvider>());
             Assert.That(provider.CanSatisfyFactor(" "), Is.False);
+            Assert.That(provider.CanSatisfyBackupFactor(" "), Is.False);
         }
     }
 

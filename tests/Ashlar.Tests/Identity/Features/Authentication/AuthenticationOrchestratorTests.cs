@@ -1,5 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
+using Ashlar.Identity.Providers.RecoveryCode;
 using Ashlar.Testing;
+using Ashlar.Security.Hashing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -42,8 +44,8 @@ internal sealed class AuthenticationOrchestratorTests
         _userMock.Setup(u => u.Id).Returns(Guid.NewGuid());
         _userMock.Setup(u => u.AccountState).Returns(UserAccountState.Active);
         _handshakeServiceMock
-            .Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((VerifyAuthenticationHandshakeRequest request, CancellationToken _) => Result.Success(new AuthenticationHandshake(
+            .Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => Result.Success(new AuthenticationHandshake(
                 Guid.NewGuid(),
                 _userMock.Object.Id,
                 "hash",
@@ -51,7 +53,7 @@ internal sealed class AuthenticationOrchestratorTests
                 DateTimeOffset.UtcNow.AddMinutes(5),
                 false,
                 false,
-                new HashSet<string> { request.FactorType },
+                new HashSet<string> { AuthenticationFactorTypes.Totp },
                 new HashSet<string>())));
     }
 
@@ -118,8 +120,8 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task VerifyFactorAsyncReturnsGenericHandshakeFailureForMissingToken(string? token)
     {
         _handshakeServiceMock
-            .Setup(h => h.BeginFactorVerificationAsync(
-                It.Is<VerifyAuthenticationHandshakeRequest>(request => request.HandshakeToken == token),
+            .Setup(h => h.BeginVerificationAsync(
+                It.Is<BeginAuthenticationHandshakeVerificationRequest>(request => request.HandshakeToken == token),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.EmptyToken));
 
@@ -687,7 +689,7 @@ internal sealed class AuthenticationOrchestratorTests
         var remainingFactors = new[] { "sms" };
         var handshake = new AuthenticationHandshake(handshakeId, userId, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, requiredFactors, new HashSet<string>());
 
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -720,7 +722,7 @@ internal sealed class AuthenticationOrchestratorTests
         var updatedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "totp" } };
 
         handshakeService
-            .Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
         factorPipeline
             .Setup(p => p.VerifyFactorAsync(
@@ -751,7 +753,7 @@ internal sealed class AuthenticationOrchestratorTests
         var remainingFactors = new[] { "sms" };
         var handshake = new AuthenticationHandshake(handshakeId, userId, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, requiredFactors, new HashSet<string>());
 
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -778,7 +780,7 @@ internal sealed class AuthenticationOrchestratorTests
         var metadata = new Dictionary<string, string> { ["claim:role"] = "[\"admin\"]" };
         var handshake = new AuthenticationHandshake(handshakeId, userId, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>(), metadata);
 
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -805,7 +807,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var logger = new RecordingLogger<AuthenticationOrchestrator>();
         var orchestrator = CreateOrchestrator(logger);
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeNotFound));
 
         var result = await orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
@@ -826,7 +828,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var logger = new RecordingLogger<AuthenticationOrchestrator>();
         var orchestrator = CreateOrchestrator(logger);
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success<AuthenticationHandshake>(null!));
 
         var result = await orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
@@ -847,7 +849,7 @@ internal sealed class AuthenticationOrchestratorTests
         var logger = new RecordingLogger<AuthenticationOrchestrator>();
         var orchestrator = CreateOrchestrator(logger);
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -872,7 +874,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var logger = new RecordingLogger<AuthenticationOrchestrator>();
         var orchestrator = CreateOrchestrator(logger);
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.RateLimitExceeded));
 
         var result = await orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
@@ -895,7 +897,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task VerifyFactorAsyncFailsWhenAssertionReturnsNoUser()
     {
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -914,7 +916,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task VerifyFactorAsyncMapsDisabledUserConsistently()
     {
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -933,7 +935,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task VerifyFactorAsyncMapsFactorRateLimitConsistently()
     {
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -956,7 +958,7 @@ internal sealed class AuthenticationOrchestratorTests
         var passwordAssertion = new Mock<IAuthenticationAssertion>();
         passwordAssertion.Setup(a => a.ProviderIdentity).Returns(AuthenticationProviderKey.Local);
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         var result = await orchestrator.VerifyFactorAsync("token", "totp", _context, passwordAssertion.Object);
@@ -964,11 +966,11 @@ internal sealed class AuthenticationOrchestratorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
-            Assert.That(result.ErrorMessage, Is.EqualTo("Factor verification failed."));
+            Assert.That(result.ErrorMessage, Is.EqualTo("Invalid factor type."));
             Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
                 entry.Level == LogLevel.Debug
                 && entry.Message.Contains("MFA factor verification rejected for handshake", StringComparison.Ordinal)
-                && entry.Message.Contains("Reason=assertion_not_authorized_for_factor", StringComparison.Ordinal)
+                && entry.Message.Contains("Reason=invalid_factor_type", StringComparison.Ordinal)
                 && entry.Message.Contains($"UserId={handshake.UserId}", StringComparison.Ordinal)));
         }
 
@@ -1000,7 +1002,7 @@ internal sealed class AuthenticationOrchestratorTests
             new HashSet<string> { "passkey" },
             new HashSet<string>(),
             metadata);
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         var result = await orchestrator.VerifyFactorAsync("token", "passkey", _context, assertion);
@@ -1054,7 +1056,7 @@ internal sealed class AuthenticationOrchestratorTests
             var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "passkey" }, new HashSet<string>(), metadata);
             _handshakeServiceMock.Reset();
             _pipelineMock.Reset();
-            _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Result.Success(handshake));
             _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), assertion, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
@@ -1072,7 +1074,7 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var logger = new RecordingLogger<AuthenticationOrchestrator>();
         var orchestrator = CreateOrchestrator(logger);
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.InvalidFactorType));
 
         var result = await orchestrator.VerifyFactorAsync("token", "totp", _context, _assertionMock.Object);
@@ -1094,7 +1096,7 @@ internal sealed class AuthenticationOrchestratorTests
     [Test]
     public async Task VerifyFactorAsyncRejectsWhitespaceOnlyRequiredFactor()
     {
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.InvalidFactorType));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "_", _context, _assertionMock.Object);
@@ -1114,7 +1116,7 @@ internal sealed class AuthenticationOrchestratorTests
         var assertion = new Mock<IAuthenticationAssertion>();
         assertion.Setup(a => a.ProviderIdentity).Returns(new AuthenticationProviderKey("totp", "totp"));
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "TOTP" }, new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), assertion.Object, It.IsAny<CancellationToken>()))
@@ -1138,7 +1140,7 @@ internal sealed class AuthenticationOrchestratorTests
         var assertion = new Mock<IAuthenticationAssertion>();
         assertion.Setup(a => a.ProviderIdentity).Returns(new AuthenticationProviderKey("totp", "totp"));
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string>(), new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, assertion.Object);
@@ -1167,7 +1169,7 @@ internal sealed class AuthenticationOrchestratorTests
             _policyEvaluatorMock.Object,
             providerRegistry);
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "custom_step_up" }, new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), assertion.Object, It.IsAny<CancellationToken>()))
@@ -1191,10 +1193,10 @@ internal sealed class AuthenticationOrchestratorTests
         var providerKey = new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode");
         var assertion = new Mock<IAuthenticationAssertion>();
         assertion.Setup(a => a.ProviderIdentity).Returns(providerKey);
-        var recoveryProvider = new Mock<ISecondaryAuthenticationFactorProvider>();
-        recoveryProvider.SetupGet(item => item.Key).Returns(providerKey);
-        recoveryProvider.SetupGet(item => item.FactorType).Returns(AuthenticationFactorTypes.RecoveryCode);
-        recoveryProvider.Setup(item => item.CanSatisfyFactor(It.IsAny<string>())).Returns<string>(factorType => !string.IsNullOrWhiteSpace(factorType));
+        var recoveryProvider = CreateBackupProvider(
+            providerKey,
+            AuthenticationFactorTypes.RecoveryCode,
+            factorType => !string.IsNullOrWhiteSpace(factorType));
         var providerRegistry = CreateProviderRegistry(recoveryProvider.Object);
         var orchestrator = new AuthenticationOrchestrator(
             _pipelineMock.Object,
@@ -1203,7 +1205,7 @@ internal sealed class AuthenticationOrchestratorTests
             _policyEvaluatorMock.Object,
             providerRegistry);
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp", "passkey" }, new HashSet<string> { "totp" });
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), assertion.Object, It.IsAny<CancellationToken>()))
@@ -1216,8 +1218,8 @@ internal sealed class AuthenticationOrchestratorTests
         var result = await orchestrator.VerifyFactorAsync("token", AuthenticationFactorTypes.RecoveryCode, _context, assertion.Object);
 
         Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
-        _handshakeServiceMock.Verify(h => h.BeginFactorVerificationAsync(
-            It.Is<VerifyAuthenticationHandshakeRequest>(r => r.FactorType == AuthenticationFactorTypes.RecoveryCode),
+        _handshakeServiceMock.Verify(h => h.BeginVerificationAsync(
+            It.Is<BeginAuthenticationHandshakeVerificationRequest>(r => r.HandshakeToken == "token"),
             It.IsAny<CancellationToken>()));
         _handshakeServiceMock.Verify(h => h.CompleteFactorVerificationAsync(
             It.Is<VerifyAuthenticationHandshakeRequest>(r => r.FactorType == "passkey"),
@@ -1225,11 +1227,156 @@ internal sealed class AuthenticationOrchestratorTests
     }
 
     [Test]
+    public async Task VerifyFactorAsyncAllowsCustomBackupProviderToSatisfyPendingFactor()
+    {
+        var providerKey = new AuthenticationProviderKey("Custom", "BackupFactor");
+        var assertion = new Mock<IAuthenticationAssertion>();
+        assertion.Setup(a => a.ProviderIdentity).Returns(providerKey);
+        var backupProvider = CreateBackupProvider(
+            providerKey,
+            "custom_backup",
+            factorType => AuthenticationFactorTypes.Matches(AuthenticationFactorTypes.Totp, factorType));
+        var providerRegistry = CreateProviderRegistry(backupProvider.Object);
+        var orchestrator = new AuthenticationOrchestrator(
+            _pipelineMock.Object,
+            _factorPipelineMock.Object,
+            _handshakeServiceMock.Object,
+            _policyEvaluatorMock.Object,
+            providerRegistry);
+        var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { AuthenticationFactorTypes.Totp }, new HashSet<string>());
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(handshake));
+        _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), assertion.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+        var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { AuthenticationFactorTypes.Totp }, IsCompleted = true };
+        _handshakeServiceMock.Setup(h => h.CompleteFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(completedHandshake));
+
+        var result = await orchestrator.VerifyFactorAsync("token", "custom_backup", _context, assertion.Object);
+
+        Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
+        _handshakeServiceMock.Verify(h => h.CompleteFactorVerificationAsync(
+            It.Is<VerifyAuthenticationHandshakeRequest>(r => r.FactorType == AuthenticationFactorTypes.Totp),
+            It.IsAny<CancellationToken>()));
+    }
+
+    [Test]
+    public async Task VerifyFactorAsyncAllowsRecoveryCodeAssertionToSatisfyTotpRequiredHandshake()
+    {
+        var assertion = new RecoveryCodeAssertion("ABCD-EFGH-IJKL");
+        var recoveryProvider = new RecoveryCodeAuthenticationProvider(
+            new PasswordHasherSelector([new PasswordHasherV1()]),
+            Options.Create(new RecoveryCodeOptions()));
+        var providerRegistry = CreateProviderRegistry(recoveryProvider);
+        var orchestrator = new AuthenticationOrchestrator(
+            _pipelineMock.Object,
+            _factorPipelineMock.Object,
+            _handshakeServiceMock.Object,
+            _policyEvaluatorMock.Object,
+            providerRegistry);
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            _userMock.Object.Id,
+            "hash",
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow.AddMinutes(5),
+            false,
+            false,
+            new HashSet<string> { AuthenticationFactorTypes.Totp },
+            new HashSet<string>());
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(handshake));
+        _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.Is<AuthenticationContext>(c => c.UserId == _userMock.Object.Id), assertion, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+        var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { AuthenticationFactorTypes.Totp }, IsCompleted = true };
+        _handshakeServiceMock.Setup(h => h.CompleteFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(completedHandshake));
+
+        var result = await orchestrator.VerifyFactorAsync("token", AuthenticationFactorTypes.RecoveryCode, _context, assertion);
+
+        Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
+        _pipelineMock.Verify(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
+        _handshakeServiceMock.Verify(h => h.BeginVerificationAsync(
+            It.Is<BeginAuthenticationHandshakeVerificationRequest>(r => r.HandshakeToken == "token"),
+            It.IsAny<CancellationToken>()));
+        _handshakeServiceMock.Verify(h => h.CompleteFactorVerificationAsync(
+            It.Is<VerifyAuthenticationHandshakeRequest>(r => r.FactorType == AuthenticationFactorTypes.Totp),
+            It.IsAny<CancellationToken>()));
+    }
+
+    [Test]
+    public async Task VerifyFactorAsyncRequiresBackupProviderFactorNameForBackupSubstitution()
+    {
+        var assertion = new RecoveryCodeAssertion("ABCD-EFGH-IJKL");
+        var recoveryProvider = new RecoveryCodeAuthenticationProvider(
+            new PasswordHasherSelector([new PasswordHasherV1()]),
+            Options.Create(new RecoveryCodeOptions()));
+        var providerRegistry = CreateProviderRegistry(recoveryProvider);
+        var orchestrator = new AuthenticationOrchestrator(
+            _pipelineMock.Object,
+            _factorPipelineMock.Object,
+            _handshakeServiceMock.Object,
+            _policyEvaluatorMock.Object,
+            providerRegistry);
+        var handshake = new AuthenticationHandshake(
+            Guid.NewGuid(),
+            _userMock.Object.Id,
+            "hash",
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow.AddMinutes(5),
+            false,
+            false,
+            new HashSet<string> { AuthenticationFactorTypes.Totp },
+            new HashSet<string>());
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(handshake));
+
+        var result = await orchestrator.VerifyFactorAsync("token", AuthenticationFactorTypes.Totp, _context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
+            Assert.That(result.ErrorMessage, Is.EqualTo("Invalid factor type."));
+        }
+        _factorPipelineMock.Verify(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
+        _handshakeServiceMock.Verify(h => h.CompleteFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task VerifyFactorAsyncDoesNotLetRecoveryCodeBypassHandshakeChecks()
+    {
+        var assertion = new RecoveryCodeAssertion("ABCD-EFGH-IJKL");
+        var recoveryProvider = new RecoveryCodeAuthenticationProvider(
+            new PasswordHasherSelector([new PasswordHasherV1()]),
+            Options.Create(new RecoveryCodeOptions()));
+        var providerRegistry = CreateProviderRegistry(recoveryProvider);
+        var orchestrator = new AuthenticationOrchestrator(
+            _pipelineMock.Object,
+            _factorPipelineMock.Object,
+            _handshakeServiceMock.Object,
+            _policyEvaluatorMock.Object,
+            providerRegistry);
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeNotFound));
+
+        var result = await orchestrator.VerifyFactorAsync("missing-token", AuthenticationFactorTypes.RecoveryCode, _context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
+            Assert.That(result.ErrorMessage, Is.EqualTo("Handshake not found."));
+        }
+        _pipelineMock.Verify(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
+        _factorPipelineMock.Verify(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
+        _handshakeServiceMock.Verify(h => h.CompleteFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public async Task VerifyFactorAsyncFailsBeforeAuthenticationWhenFactorAlreadyVerified()
     {
         var logger = new RecordingLogger<AuthenticationOrchestrator>();
         var orchestrator = CreateOrchestrator(logger);
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.FactorAlreadyVerified));
 
         var result = await orchestrator.VerifyFactorAsync("token", "TOTP", _context, _assertionMock.Object);
@@ -1254,7 +1401,7 @@ internal sealed class AuthenticationOrchestratorTests
         var assertion = new Mock<IAuthenticationAssertion>();
         assertion.Setup(a => a.ProviderIdentity).Returns(default(AuthenticationProviderKey));
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         var result = await _orchestrator.VerifyFactorAsync("token", "totp", _context, assertion.Object);
@@ -1262,7 +1409,7 @@ internal sealed class AuthenticationOrchestratorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
-            Assert.That(result.ErrorMessage, Is.EqualTo("Factor verification failed."));
+            Assert.That(result.ErrorMessage, Is.EqualTo("Invalid factor type."));
         }
 
         _factorPipelineMock.Verify(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -1282,7 +1429,7 @@ internal sealed class AuthenticationOrchestratorTests
             _policyEvaluatorMock.Object,
             providerRegistry);
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "_" }, new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         var result = await orchestrator.VerifyFactorAsync("token", "_", _context, assertion.Object);
@@ -1290,7 +1437,7 @@ internal sealed class AuthenticationOrchestratorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
-            Assert.That(result.ErrorMessage, Is.EqualTo("Factor verification failed."));
+            Assert.That(result.ErrorMessage, Is.EqualTo("Invalid factor type."));
         }
 
         _factorPipelineMock.Verify(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -1300,7 +1447,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task VerifyFactorAsyncFailsWhenUserIdMismatch()
     {
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), Guid.NewGuid(), "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -1321,7 +1468,7 @@ internal sealed class AuthenticationOrchestratorTests
         var logger = new RecordingLogger<AuthenticationOrchestrator>();
         var orchestrator = CreateOrchestrator(logger);
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -1355,7 +1502,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task VerifyFactorAsyncMapsHandshakeFailureReasonsToPublicMessages(string failureReason, string expectedMessage)
     {
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -1373,7 +1520,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task VerifyFactorAsyncUsesDefaultErrorWhenHandshakeServiceFailsWithUnknownReason()
     {
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -1395,7 +1542,7 @@ internal sealed class AuthenticationOrchestratorTests
     public async Task VerifyFactorAsyncUsesDefaultErrorWhenHandshakeServiceFailsWithoutDetails()
     {
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -1537,7 +1684,7 @@ internal sealed class AuthenticationOrchestratorTests
         var userId = _userMock.Object.Id;
         var handshake = new AuthenticationHandshake(handshakeId, userId, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
 
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -1565,7 +1712,7 @@ internal sealed class AuthenticationOrchestratorTests
         var metadata = new Dictionary<string, string> { ["other"] = "value" };
         var handshake = new AuthenticationHandshake(handshakeId, userId, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>(), metadata);
 
-        _handshakeServiceMock.Setup(h => h.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        _handshakeServiceMock.Setup(h => h.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
@@ -1651,6 +1798,21 @@ internal sealed class AuthenticationOrchestratorTests
         provider.Setup(item => item.CanSatisfyFactor(It.IsAny<string>()))
             .Returns<string>(requiredFactor => AuthenticationFactorTypes.Matches(factorType, requiredFactor));
         return provider.Object;
+    }
+
+    private static Mock<IBackupAuthenticationFactorProvider> CreateBackupProvider(
+        AuthenticationProviderKey providerKey,
+        string factorType,
+        Predicate<string> backupPolicy)
+    {
+        var provider = new Mock<IBackupAuthenticationFactorProvider>();
+        provider.SetupGet(item => item.Key).Returns(providerKey);
+        provider.SetupGet(item => item.FactorType).Returns(factorType);
+        provider.Setup(item => item.CanSatisfyFactor(It.IsAny<string>()))
+            .Returns<string>(requiredFactor => AuthenticationFactorTypes.Matches(factorType, requiredFactor));
+        provider.Setup(item => item.CanSatisfyBackupFactor(It.IsAny<string>()))
+            .Returns<string>(requiredFactor => backupPolicy(requiredFactor));
+        return provider;
     }
 
     private static IAuthenticationProvider CreatePasskeyProvider()

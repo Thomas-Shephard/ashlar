@@ -14,7 +14,6 @@ internal sealed class AuthenticationHandshakeServiceTests
     private static readonly string[] ExpectedRequiredFactors = ["totp", "email"];
     private static readonly string[] ExpectedCompletionTransactionOperations = ["begin", "read", "update", "commit"];
     private static readonly string[] ExpectedStaleUpdateTransactionOperations = ["begin", "read", "update", "dispose"];
-    private static readonly string[] ExpectedRecoveryCodeVerifiedFactors = ["totp", "passkey"];
 
     private Mock<IAuthenticationHandshakeRepository> _repositoryMock;
     private Mock<ISecureTokenHasher> _tokenHasherMock;
@@ -230,7 +229,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task BeginFactorVerificationAsyncShouldAllowRecoveryCodeForNextPendingFactor()
+    public async Task BeginVerificationAsyncShouldAllowOrchestrationToResolveBackupFactor()
     {
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -246,13 +245,13 @@ internal sealed class AuthenticationHandshakeServiceTests
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(handshake);
 
-        var result = await _service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", AuthenticationFactorTypes.RecoveryCode));
+        var result = await _service.BeginVerificationAsync(new BeginAuthenticationHandshakeVerificationRequest("raw-token"));
 
         Assert.That(result.Succeeded, Is.True);
     }
 
     [Test]
-    public async Task BeginFactorVerificationAsyncShouldRejectRecoveryCodeWhenNoFactorsRemain()
+    public async Task BeginFactorVerificationAsyncShouldRejectUnrequiredFactor()
     {
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -262,13 +261,13 @@ internal sealed class AuthenticationHandshakeServiceTests
             _timeProvider.GetUtcNow().AddMinutes(15),
             false,
             false,
-            new HashSet<string> { "totp" },
+            new HashSet<string> { "totp", "passkey" },
             new HashSet<string> { "totp" });
 
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(handshake);
 
-        var result = await _service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", AuthenticationFactorTypes.RecoveryCode));
+        var result = await _service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "backup"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -278,7 +277,7 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
-    public async Task CompleteFactorVerificationAsyncShouldMarkNextPendingFactorForRecoveryCode()
+    public async Task CompleteFactorVerificationAsyncShouldRejectUnrequiredFactor()
     {
         var handshake = new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -294,20 +293,15 @@ internal sealed class AuthenticationHandshakeServiceTests
         _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(handshake);
 
-        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", AuthenticationFactorTypes.RecoveryCode));
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "backup"));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value?.VerifiedFactors, Is.EquivalentTo(ExpectedRecoveryCodeVerifiedFactors));
-            Assert.That(result.Value?.IsCompleted, Is.True);
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidFactorType));
         }
 
-        _repositoryMock.Verify(r => r.UpdateAsync(
-            It.Is<AuthenticationHandshake>(h =>
-                h.VerifiedFactors.Contains("passkey") &&
-                !h.VerifiedFactors.Contains(AuthenticationFactorTypes.RecoveryCode)),
-            It.IsAny<CancellationToken>()), Times.Once);
+        _repositoryMock.Verify(r => r.UpdateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]

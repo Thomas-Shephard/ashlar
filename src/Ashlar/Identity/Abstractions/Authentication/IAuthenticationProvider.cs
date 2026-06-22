@@ -95,8 +95,21 @@ public interface ISecondaryAuthenticationFactorProvider : IAuthenticationProvide
     /// Determines whether this provider can satisfy a pending authentication factor.
     /// </summary>
     /// <param name="factorType">Additional-verification factor family required by the pending challenge.</param>
-    /// <returns><see langword="true" /> when this provider can satisfy the required factor.</returns>
+    /// <returns><see langword="true" /> when this provider can directly satisfy the required factor.</returns>
     bool CanSatisfyFactor(string factorType);
+}
+
+/// <summary>
+/// Marks a secondary factor provider that may stand in for other pending MFA or step-up factors.
+/// </summary>
+public interface IBackupAuthenticationFactorProvider : ISecondaryAuthenticationFactorProvider
+{
+    /// <summary>
+    /// Determines whether this backup provider may satisfy the required factor.
+    /// </summary>
+    /// <param name="requiredFactorType">Additional-verification factor family currently required by the pending challenge.</param>
+    /// <returns><see langword="true" /> when this provider may be used as a backup for the required factor.</returns>
+    bool CanSatisfyBackupFactor(string requiredFactorType);
 }
 
 /// <summary>
