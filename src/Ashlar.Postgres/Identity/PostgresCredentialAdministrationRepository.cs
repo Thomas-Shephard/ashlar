@@ -36,15 +36,15 @@ public sealed class PostgresCredentialAdministrationRepository(IPostgresConnecti
     }
 
     /// <summary>
-    /// Gets safe credential detail by credential id.
+    /// Gets a safe credential projection by credential id.
     /// </summary>
-    /// <param name="request">The detail request value.</param>
+    /// <param name="request">The lookup request value.</param>
     /// <param name="now">The timestamp used for availability projection.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The credential, or <see langword="null" /> when it does not exist.</returns>
-    public async Task<CredentialAdministrationDetail?> GetCredentialAsync(CredentialAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    public async Task<CredentialAdministrationSummary?> GetCredentialAsync(CredentialAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        CredentialAdministrationDetailRequest.ThrowIfInvalid(request);
+        CredentialAdministrationLookupRequest.ThrowIfInvalid(request);
 
         var sql = SelectSql + " WHERE c.id = @CredentialId";
         var parameters = new DynamicParameters();
@@ -53,7 +53,7 @@ public sealed class PostgresCredentialAdministrationRepository(IPostgresConnecti
         PostgresAdminQuery.AddTenantFilter(request.Tenant, "u.tenant_id", "TenantId", ref sql, parameters);
 
         var row = await PostgresAdminQuery.QuerySingleAsync<CredentialAdministrationRow>(_connectionProvider, sql, parameters, cancellationToken);
-        return row?.ToDetail();
+        return row?.ToSummary();
     }
 
     private const string SelectSql = """
@@ -138,24 +138,6 @@ public sealed class PostgresCredentialAdministrationRepository(IPostgresConnecti
                 PostgresAdminQuery.ToNullableDateTimeOffset(LastUsedAt),
                 PostgresAdminQuery.ToNullableDateTimeOffset(ExpiresAt),
                 PostgresAdminQuery.ToNullableDateTimeOffset(RevokedAt));
-        }
-
-        public CredentialAdministrationDetail ToDetail()
-        {
-            var summary = ToSummary();
-            return new CredentialAdministrationDetail(
-                summary.CredentialId,
-                summary.UserId,
-                summary.TenantId,
-                summary.Provider,
-                summary.Purpose,
-                summary.Status,
-                summary.IsAvailable,
-                summary.CreatedAt,
-                summary.UpdatedAt,
-                summary.LastUsedAt,
-                summary.ExpiresAt,
-                summary.RevokedAt);
         }
 
         private AuthenticationProviderKey CreateProvider()

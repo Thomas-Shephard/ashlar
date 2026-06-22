@@ -208,15 +208,15 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
     }
 
     /// <summary>
-    /// Gets display-safe invitation detail by identifier.
+    /// Gets a display-safe invitation projection by identifier.
     /// </summary>
     /// <param name="request">Explicit tenant scope and invitation identifier.</param>
     /// <param name="now">UTC time used to classify invitation status.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
-    /// <returns>The matching invitation detail, or <see langword="null" /> when no invitation exists in scope.</returns>
-    public async Task<InvitationAdministrationDetail?> GetInvitationAsync(InvitationAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    /// <returns>The matching invitation summary, or <see langword="null" /> when no invitation exists in scope.</returns>
+    public async Task<InvitationAdministrationSummary?> GetInvitationAsync(InvitationAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        InvitationAdministrationDetailRequest.ThrowIfInvalid(request);
+        InvitationAdministrationLookupRequest.ThrowIfInvalid(request);
 
         var sql = $"""
             SELECT id,
@@ -241,8 +241,8 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         await using (connectionHandle)
         {
             var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync<InvitationAdministrationDetailRow>(command);
-            return row?.ToDetail();
+            var row = await connectionHandle.Connection.QueryFirstOrDefaultAsync<InvitationAdministrationSummaryRow>(command);
+            return row?.ToSummary();
         }
     }
 
@@ -277,11 +277,11 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
                   AND accepted_at IS NULL
                   AND revoked_at IS NULL
                   AND expires_at > @Now
-                RETURNING id, tenant_id, accepted_at, revoked_at, expires_at, TRUE AS revoked
+                RETURNING id, tenant_id, accepted_at, revoked_at, expires_at, 0 AS revocation_status
             )
             SELECT id AS InvitationId,
                    tenant_id AS TenantId,
-                   revoked AS Revoked,
+                   revocation_status AS RevocationStatus,
                    CASE
                        WHEN accepted_at IS NOT NULL THEN 1
                        WHEN revoked_at IS NOT NULL THEN 2
@@ -293,7 +293,12 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
             UNION ALL
             SELECT id AS InvitationId,
                    tenant_id AS TenantId,
-                   FALSE AS Revoked,
+                   CASE
+                       WHEN accepted_at IS NOT NULL THEN 1
+                       WHEN revoked_at IS NOT NULL THEN 2
+                       WHEN expires_at <= @Now THEN 3
+                       ELSE 4
+                   END AS RevocationStatus,
                    CASE
                        WHEN accepted_at IS NOT NULL THEN 1
                        WHEN revoked_at IS NOT NULL THEN 2
@@ -429,36 +434,10 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         }
     }
 
-    private sealed record InvitationAdministrationDetailRow(
-        Guid Id,
-        string Email,
-        Guid? TenantId,
-        int Status,
-        DateTime CreatedAt,
-        DateTime? UpdatedAt,
-        DateTime ExpiresAt,
-        DateTime? AcceptedAt,
-        DateTime? RevokedAt)
-    {
-        public InvitationAdministrationDetail ToDetail()
-        {
-            return new InvitationAdministrationDetail(
-                Id,
-                Email,
-                TenantId,
-                (InvitationAdministrationStatus)Status,
-                PostgresAdminQuery.ToDateTimeOffset(CreatedAt),
-                PostgresAdminQuery.ToNullableDateTimeOffset(UpdatedAt),
-                PostgresAdminQuery.ToDateTimeOffset(ExpiresAt),
-                PostgresAdminQuery.ToNullableDateTimeOffset(AcceptedAt),
-                PostgresAdminQuery.ToNullableDateTimeOffset(RevokedAt));
-        }
-    }
-
     private sealed record RevokeInvitationAdministrationResultRow(
         Guid InvitationId,
         Guid? TenantId,
-        bool Revoked,
+        int RevocationStatus,
         int Status,
         DateTime? RevokedAt)
     {
@@ -467,7 +446,7 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
             return new RevokeInvitationAdministrationResult(
                 InvitationId,
                 TenantId,
-                Revoked,
+                (InvitationAdministrationRevocationStatus)RevocationStatus,
                 (InvitationAdministrationStatus)Status,
                 PostgresAdminQuery.ToNullableDateTimeOffset(RevokedAt));
         }

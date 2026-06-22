@@ -26,5 +26,5 @@ public interface IAuthorizationGrantAdministrationRepository
     /// <param name="now">The timestamp used for status projection.</param>
     /// <param name="cancellationToken">A token that can cancel lookup.</param>
     /// <returns>The authorization grant, or <see langword="null" /> when it does not exist.</returns>
-    Task<AuthorizationGrantAdministrationDetail?> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
+    Task<AuthorizationGrantAdministrationSummary?> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
 }

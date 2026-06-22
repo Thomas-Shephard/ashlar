@@ -95,18 +95,18 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
             new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) });
         var bucket = (await administration.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "detail" })).Value!.Items.Single();
 
-        var wrongPurposeDetail = await administration.GetBucketAsync(new AuthenticationRateLimitBucketDetailRequest(bucket.BucketId, "other"));
+        var wrongPurposeLookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "other"));
         var wrongPurposeReset = await administration.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "other", new AuditContext(Guid.NewGuid())));
-        var detail = await administration.GetBucketAsync(new AuthenticationRateLimitBucketDetailRequest(bucket.BucketId, "detail"));
+        var lookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "detail"));
         var reset = await administration.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "detail", new AuditContext(Guid.NewGuid())));
         var missing = await administration.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "detail", new AuditContext(Guid.NewGuid())));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(wrongPurposeDetail.Succeeded, Is.False);
+            Assert.That(wrongPurposeLookup.Succeeded, Is.False);
             Assert.That(wrongPurposeReset.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.NotFound));
-            Assert.That(detail.Value!.BucketId, Is.EqualTo(bucket.BucketId));
-            Assert.That(detail.Value.BucketId, Does.Not.Contain(rawKey));
+            Assert.That(lookup.Value!.BucketId, Is.EqualTo(bucket.BucketId));
+            Assert.That(lookup.Value.BucketId, Does.Not.Contain(rawKey));
             Assert.That(reset.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Reset));
             Assert.That(missing.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.NotFound));
         }
@@ -133,7 +133,7 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
 
         var malformed = await repository.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "malformed" }, Start);
         var expired = await repository.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "expired", Status = AuthenticationRateLimitBucketStatus.Expired }, Start);
-        var missing = await repository.GetBucketAsync(new AuthenticationRateLimitBucketDetailRequest("missing", "expired"), Start);
+        var missing = await repository.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest("missing", "expired"), Start);
 
         using (Assert.EnterMultipleScope())
         {

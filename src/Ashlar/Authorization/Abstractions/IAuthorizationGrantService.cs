@@ -20,12 +20,12 @@ public interface IAuthorizationGrantService
     Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Revokes a grant and returns whether a matching active grant was found.
+    /// Revokes a grant and returns a stable outcome for the requested grant and tenant boundary.
     /// </summary>
     /// <param name="request">Grant identifier, tenant scope, and audit context for revocation.</param>
     /// <param name="cancellationToken">A token that can cancel grant revocation.</param>
-    /// <returns><see langword="true" /> when an active grant was revoked; otherwise, <see langword="false" />.</returns>
-    Task<bool> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default);
+    /// <returns>Revocation result with the grant id, requested tenant boundary, and outcome.</returns>
+    Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Lists grants matching the supplied filter.

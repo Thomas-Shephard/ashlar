@@ -91,12 +91,12 @@ public sealed record SecurityEventSummary(
 /// <summary>
 /// Paged security event search result.
 /// </summary>
-/// <param name="Events">Security summaries in the current page.</param>
+/// <param name="Items">Security summaries in the current page.</param>
 /// <param name="Limit">Maximum number of summaries requested for the page.</param>
 /// <param name="Offset">Number of records skipped before this page.</param>
 /// <param name="HasMore">Whether another page may exist.</param>
 public sealed record SecurityEventSearchResult(
-    IReadOnlyList<SecurityEventSummary> Events,
+    IReadOnlyList<SecurityEventSummary> Items,
     int Limit,
     int Offset,
     bool HasMore);
@@ -106,14 +106,14 @@ public sealed record SecurityEventSearchResult(
 /// </summary>
 /// <param name="EventId">Identifier of the event to retrieve.</param>
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global events; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
-/// <param name="IncludeAllTenants">Whether to allow lookup across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+/// <param name="IncludeAllTenants">Whether to allow lookup across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
 public sealed record SecurityEventAdministrationDetailRequest(
     Guid EventId,
     TenantContext? Tenant = null,
     bool IncludeAllTenants = false)
 {
     /// <summary>
-    /// Throws when the security event detail request is not safe to execute.
+    /// Throws when the security event lookup request is not safe to execute.
     /// </summary>
     /// <param name="request">Request to validate before repository access.</param>
     public static void ThrowIfInvalid(SecurityEventAdministrationDetailRequest? request)

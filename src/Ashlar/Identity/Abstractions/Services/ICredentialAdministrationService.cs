@@ -18,10 +18,10 @@ public interface ICredentialAdministrationService
     Task<Result<CredentialSearchResult>> SearchCredentialsAsync(SearchCredentialsRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets safe credential detail by credential id.
+    /// Gets a safe credential projection by credential id.
     /// </summary>
     /// <param name="request">Tenant scope and credential identifier for the lookup.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
-    /// <returns>Safe credential detail without credential secret values.</returns>
-    Task<Result<CredentialAdministrationDetail>> GetCredentialAsync(CredentialAdministrationDetailRequest request, CancellationToken cancellationToken = default);
+    /// <returns>The same provider-neutral credential projection used by search when found, without credential secret values.</returns>
+    Task<Result<CredentialAdministrationSummary>> GetCredentialAsync(CredentialAdministrationLookupRequest request, CancellationToken cancellationToken = default);
 }

@@ -93,69 +93,6 @@ public sealed record AuthenticationSessionAdministrationSummary(
     string? RevocationReason,
     string? IpAddress,
     string? UserAgent,
-    bool IsActive)
-{
-    /// <summary>
-    /// Creates the administrator detail view for this session summary.
-    /// </summary>
-    /// <returns>A detail model with the same display-safe session fields.</returns>
-    public AuthenticationSessionAdministrationDetail ToDetail()
-    {
-        return new AuthenticationSessionAdministrationDetail(
-            Id,
-            UserId,
-            TenantId,
-            CreatedAt,
-            AuthenticatedAt,
-            PrimaryProvider,
-            AdditionalVerificationAt,
-            AdditionalVerificationProvider,
-            AdditionalVerificationFactor,
-            ExpiresAt,
-            LastSeenAt,
-            RevokedAt,
-            RevocationReason,
-            IpAddress,
-            UserAgent,
-            IsActive);
-    }
-}
-
-/// <summary>
-/// Safe authentication session detail for administrator display.
-/// </summary>
-/// <param name="Id">Stable session identifier.</param>
-/// <param name="UserId">User that owns the session.</param>
-/// <param name="TenantId">Tenant scope for the session owner, or <see langword="null" /> for a global user.</param>
-/// <param name="CreatedAt">UTC time when the session was issued.</param>
-/// <param name="AuthenticatedAt">UTC time when primary authentication completed for the session.</param>
-/// <param name="PrimaryProvider">Provider that authenticated the primary credential, when captured.</param>
-/// <param name="AdditionalVerificationAt">UTC time when MFA or step-up verification completed for the session, when captured.</param>
-/// <param name="AdditionalVerificationProvider">Provider that completed additional verification, when captured.</param>
-/// <param name="AdditionalVerificationFactor">Provider-neutral factor family that satisfied MFA or step-up verification.</param>
-/// <param name="ExpiresAt">UTC time after which the session is no longer valid.</param>
-/// <param name="LastSeenAt">UTC time when validation last observed the session, when captured.</param>
-/// <param name="RevokedAt">UTC time when the session was revoked, when applicable.</param>
-/// <param name="RevocationReason">Provider-neutral, display-safe reason recorded when the session was revoked.</param>
-/// <param name="IpAddress">Client IP address associated with the session, when captured.</param>
-/// <param name="UserAgent">Client user-agent text associated with the session, when captured.</param>
-/// <param name="IsActive">Whether the session is currently active.</param>
-public sealed record AuthenticationSessionAdministrationDetail(
-    Guid Id,
-    Guid UserId,
-    Guid? TenantId,
-    DateTimeOffset CreatedAt,
-    DateTimeOffset? AuthenticatedAt,
-    AuthenticationProviderKey? PrimaryProvider,
-    DateTimeOffset? AdditionalVerificationAt,
-    AuthenticationProviderKey? AdditionalVerificationProvider,
-    string? AdditionalVerificationFactor,
-    DateTimeOffset ExpiresAt,
-    DateTimeOffset? LastSeenAt,
-    DateTimeOffset? RevokedAt,
-    string? RevocationReason,
-    string? IpAddress,
-    string? UserAgent,
     bool IsActive);
 
 /// <summary>
@@ -172,21 +109,21 @@ public sealed record AuthenticationSessionSearchResult(
     bool HasMore);
 
 /// <summary>
-/// Request for administrator authentication session detail.
+/// Request for an administrator authentication session single-item lookup.
 /// </summary>
 /// <param name="SessionId">Session to load.</param>
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
-/// <param name="IncludeAllTenants">Whether to allow lookup across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
-public sealed record AuthenticationSessionAdministrationDetailRequest(
+/// <param name="IncludeAllTenants">Whether to allow lookup across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
+public sealed record AuthenticationSessionAdministrationLookupRequest(
     Guid SessionId,
     TenantContext? Tenant = null,
     bool IncludeAllTenants = false)
 {
     /// <summary>
-    /// Throws when the authentication session detail request is not safe to execute.
+    /// Throws when the authentication session lookup request is not safe to execute.
     /// </summary>
-    /// <param name="request">Detail request to validate before loading administrator data.</param>
-    public static void ThrowIfInvalid(AuthenticationSessionAdministrationDetailRequest? request)
+    /// <param name="request">Lookup request to validate before loading administrator data.</param>
+    public static void ThrowIfInvalid(AuthenticationSessionAdministrationLookupRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
         AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);

@@ -100,35 +100,6 @@ public sealed record CredentialAdministrationSummary(
     DateTimeOffset? RevokedAt);
 
 /// <summary>
-/// Safe credential detail for administrator display.
-/// </summary>
-/// <param name="CredentialId">Stable credential identifier.</param>
-/// <param name="UserId">User that owns the credential.</param>
-/// <param name="TenantId">Tenant scope for the credential owner, or <see langword="null" /> for a global user.</param>
-/// <param name="Provider">Authentication mechanism that owns the credential.</param>
-/// <param name="Purpose">Credential purpose, when one is assigned.</param>
-/// <param name="Status">Current credential lifecycle status.</param>
-/// <param name="IsAvailable">Whether this credential is currently active, unrevoked, and unexpired.</param>
-/// <param name="CreatedAt">UTC time when the credential was created.</param>
-/// <param name="UpdatedAt">UTC time when credential metadata or lifecycle state last changed, when known.</param>
-/// <param name="LastUsedAt">UTC time when the credential last authenticated successfully, when known.</param>
-/// <param name="ExpiresAt">UTC time after which the credential is unavailable, when one is set.</param>
-/// <param name="RevokedAt">UTC time when the credential was revoked, when applicable.</param>
-public sealed record CredentialAdministrationDetail(
-    Guid CredentialId,
-    Guid UserId,
-    Guid? TenantId,
-    AuthenticationProviderKey Provider,
-    string? Purpose,
-    CredentialStatus Status,
-    bool IsAvailable,
-    DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt,
-    DateTimeOffset? LastUsedAt,
-    DateTimeOffset? ExpiresAt,
-    DateTimeOffset? RevokedAt);
-
-/// <summary>
 /// Paged credential search result.
 /// </summary>
 /// <param name="Items">Page of display-safe credential summaries.</param>
@@ -142,21 +113,21 @@ public sealed record CredentialSearchResult(
     bool HasMore);
 
 /// <summary>
-/// Request for administrator credential detail.
+/// Request for an administrator credential single-item lookup.
 /// </summary>
 /// <param name="CredentialId">Credential to load.</param>
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
-/// <param name="IncludeAllTenants">Whether to allow lookup across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
-public sealed record CredentialAdministrationDetailRequest(
+/// <param name="IncludeAllTenants">Whether to allow lookup across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
+public sealed record CredentialAdministrationLookupRequest(
     Guid CredentialId,
     TenantContext? Tenant = null,
     bool IncludeAllTenants = false)
 {
     /// <summary>
-    /// Throws when the credential detail request is not safe to execute.
+    /// Throws when the credential lookup request is not safe to execute.
     /// </summary>
-    /// <param name="request">Detail request to validate before loading administrator data.</param>
-    public static void ThrowIfInvalid(CredentialAdministrationDetailRequest? request)
+    /// <param name="request">Lookup request to validate before loading administrator data.</param>
+    public static void ThrowIfInvalid(CredentialAdministrationLookupRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
         AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);

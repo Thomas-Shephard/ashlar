@@ -38,13 +38,13 @@ public sealed class PostgresAuthenticationSessionAdministrationRepository(IPostg
     /// <summary>
     /// Gets an authentication session by id.
     /// </summary>
-    /// <param name="request">The detail request value.</param>
+    /// <param name="request">The lookup request value.</param>
     /// <param name="now">The timestamp used for active-state projection.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The authentication session, or <see langword="null" /> when it does not exist.</returns>
-    public async Task<AuthenticationSessionAdministrationDetail?> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    public async Task<AuthenticationSessionAdministrationSummary?> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        AuthenticationSessionAdministrationDetailRequest.ThrowIfInvalid(request);
+        AuthenticationSessionAdministrationLookupRequest.ThrowIfInvalid(request);
 
         var sql = SelectSql + " WHERE id = @Id";
         var parameters = new DynamicParameters();
@@ -53,7 +53,7 @@ public sealed class PostgresAuthenticationSessionAdministrationRepository(IPostg
         PostgresAdminQuery.AddTenantFilter(request.Tenant, "tenant_id", "TenantId", ref sql, parameters);
 
         var row = await PostgresAdminQuery.QuerySingleAsync<AuthenticationSessionAdministrationRow>(_connectionProvider, sql, parameters, cancellationToken);
-        return row?.ToDetail();
+        return row?.ToSummary();
     }
 
     private const string SelectSql = """
@@ -134,11 +134,6 @@ public sealed class PostgresAuthenticationSessionAdministrationRepository(IPostg
                 IpAddress,
                 UserAgent,
                 IsActive);
-        }
-
-        public AuthenticationSessionAdministrationDetail ToDetail()
-        {
-            return ToSummary().ToDetail();
         }
     }
 }

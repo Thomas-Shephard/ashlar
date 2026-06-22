@@ -4,7 +4,7 @@ using Ashlar.Identity.RateLimiting.Abstractions;
 namespace Ashlar.Identity.Features.Administration;
 
 /// <summary>
-/// Implements safe administrator authentication rate-limit bucket search, detail, and reset operations.
+/// Implements safe administrator authentication rate-limit bucket search, lookup, and reset operations.
 /// </summary>
 /// <param name="repository">Repository used for provider-backed bucket administration.</param>
 /// <param name="dependencies">Optional dependencies used for time and audit emission.</param>
@@ -53,18 +53,18 @@ public sealed class AuthenticationRateLimitAdministrationService(
     }
 
     /// <inheritdoc />
-    public async Task<Result<AuthenticationRateLimitBucketDetail>> GetBucketAsync(AuthenticationRateLimitBucketDetailRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<AuthenticationRateLimitBucketSummary>> GetBucketAsync(AuthenticationRateLimitBucketLookupRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!TryValidateDetailRequest(request, out var validationFailure))
+        if (!TryValidateLookupRequest(request, out var validationFailure))
         {
             return validationFailure;
         }
 
         var bucket = await _repository.GetBucketAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
         return bucket == null
-            ? Result.Failure<AuthenticationRateLimitBucketDetail>(AshlarFailureCodes.RateLimitBucketNotFound, "Rate-limit bucket was not found.")
+            ? Result.Failure<AuthenticationRateLimitBucketSummary>(AshlarFailureCodes.RateLimitBucketNotFound, "Rate-limit bucket was not found.")
             : Result.Success(bucket);
     }
 
@@ -125,17 +125,17 @@ public sealed class AuthenticationRateLimitAdministrationService(
         }
     }
 
-    private static bool TryValidateDetailRequest(AuthenticationRateLimitBucketDetailRequest request, out Result<AuthenticationRateLimitBucketDetail> failure)
+    private static bool TryValidateLookupRequest(AuthenticationRateLimitBucketLookupRequest request, out Result<AuthenticationRateLimitBucketSummary> failure)
     {
         try
         {
-            AuthenticationRateLimitBucketDetailRequest.ThrowIfInvalid(request);
+            AuthenticationRateLimitBucketLookupRequest.ThrowIfInvalid(request);
             failure = null!;
             return true;
         }
         catch (ArgumentException exception)
         {
-            failure = Result.Failure<AuthenticationRateLimitBucketDetail>(AshlarFailureCodes.ValidationError, exception.Message);
+            failure = Result.Failure<AuthenticationRateLimitBucketSummary>(AshlarFailureCodes.ValidationError, exception.Message);
             return false;
         }
     }

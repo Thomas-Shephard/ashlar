@@ -3,7 +3,7 @@ using Ashlar.Messaging;
 
 namespace Ashlar.Tests.Messaging;
 
-internal sealed class EmailOutboxAdministrationTests
+internal sealed class EmailOutboxAdministrationProviderTests
 {
     private static readonly DateTimeOffset Now = new(2026, 6, 14, 12, 0, 0, TimeSpan.Zero);
 
@@ -16,7 +16,7 @@ internal sealed class EmailOutboxAdministrationTests
         {
             Assert.That(request.Limit, Is.EqualTo(EmailOutboxSearchRequest.DefaultLimit));
             Assert.That(EmailOutboxSearchRequest.MaximumLimit, Is.EqualTo(100));
-            Assert.That(EmailOutboxAdministration.GetStatuses(request), Is.EquivalentTo(Enum.GetValues<EmailOutboxStatus>()));
+            Assert.That(EmailOutboxAdministrationProvider.GetStatuses(request), Is.EquivalentTo(Enum.GetValues<EmailOutboxStatus>()));
         }
     }
 
@@ -25,15 +25,15 @@ internal sealed class EmailOutboxAdministrationTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => EmailOutboxAdministration.ValidateSearchRequest(null!));
-            Assert.Throws<ArgumentOutOfRangeException>(() => EmailOutboxAdministration.ValidateSearchRequest(new EmailOutboxSearchRequest { Limit = 0 }));
-            Assert.Throws<ArgumentOutOfRangeException>(() => EmailOutboxAdministration.ValidateSearchRequest(new EmailOutboxSearchRequest { Limit = 101 }));
-            Assert.Throws<ArgumentOutOfRangeException>(() => EmailOutboxAdministration.ValidateSearchRequest(new EmailOutboxSearchRequest { Offset = -1 }));
-            Assert.Throws<ArgumentOutOfRangeException>(() => EmailOutboxAdministration.ValidateSearchRequest(new EmailOutboxSearchRequest
+            Assert.Throws<ArgumentNullException>(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(null!));
+            Assert.Throws<ArgumentOutOfRangeException>(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(new EmailOutboxSearchRequest { Limit = 0 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(new EmailOutboxSearchRequest { Limit = 101 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(new EmailOutboxSearchRequest { Offset = -1 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(new EmailOutboxSearchRequest
             {
                 Statuses = new HashSet<EmailOutboxStatus> { (EmailOutboxStatus)99 }
             }));
-            Assert.DoesNotThrow(() => EmailOutboxAdministration.ValidateSearchRequest(new EmailOutboxSearchRequest()));
+            Assert.DoesNotThrow(() => EmailOutboxAdministrationProvider.ValidateSearchRequest(new EmailOutboxSearchRequest()));
         }
     }
 
@@ -41,7 +41,7 @@ internal sealed class EmailOutboxAdministrationTests
     public void GetStatusesUsesExplicitFilterWhenPresent()
     {
         var statuses = new HashSet<EmailOutboxStatus> { EmailOutboxStatus.Failed };
-        var result = EmailOutboxAdministration.GetStatuses(new EmailOutboxSearchRequest { Statuses = statuses });
+        var result = EmailOutboxAdministrationProvider.GetStatuses(new EmailOutboxSearchRequest { Statuses = statuses });
 
         Assert.That(result, Is.SameAs(statuses));
     }
@@ -49,12 +49,12 @@ internal sealed class EmailOutboxAdministrationTests
     [Test]
     public void GetStatusesUsesDefaultWhenExplicitFilterIsEmpty()
     {
-        var result = EmailOutboxAdministration.GetStatuses(new EmailOutboxSearchRequest
+        var result = EmailOutboxAdministrationProvider.GetStatuses(new EmailOutboxSearchRequest
         {
             Statuses = new HashSet<EmailOutboxStatus>()
         });
 
-        Assert.That(result, Is.SameAs(EmailOutboxAdministration.DefaultStatuses));
+        Assert.That(result, Is.SameAs(EmailOutboxAdministrationProvider.DefaultStatuses));
     }
 
     [Test]
@@ -62,9 +62,9 @@ internal sealed class EmailOutboxAdministrationTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => EmailOutboxAdministration.ValidateOperationRequest(null!));
-            Assert.Throws<ArgumentException>(() => EmailOutboxAdministration.ValidateOperationRequest(new EmailOutboxOperationRequest(Guid.Empty, new AuditContext())));
-            Assert.Throws<ArgumentNullException>(() => EmailOutboxAdministration.ValidateOperationRequest(new EmailOutboxOperationRequest(Guid.NewGuid(), null!)));
+            Assert.Throws<ArgumentNullException>(() => EmailOutboxAdministrationProvider.ValidateOperationRequest(null!));
+            Assert.Throws<ArgumentException>(() => EmailOutboxAdministrationProvider.ValidateOperationRequest(new EmailOutboxOperationRequest(Guid.Empty, new AuditContext())));
+            Assert.Throws<ArgumentNullException>(() => EmailOutboxAdministrationProvider.ValidateOperationRequest(new EmailOutboxOperationRequest(Guid.NewGuid(), null!)));
         }
     }
 
@@ -76,14 +76,14 @@ internal sealed class EmailOutboxAdministrationTests
             bodyProtection: EmailOutboxBodyProtection.SecretProtector,
             lastError: "SMTP failure leaked live-token");
 
-        var summary = EmailOutboxAdministration.CreateSummary(record);
-        var detail = EmailOutboxAdministration.CreateDetail(record);
+        var summary = EmailOutboxAdministrationProvider.CreateSummary(record);
+        var detail = EmailOutboxAdministrationProvider.CreateDetail(record);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(summary.ToAddress, Is.Null);
             Assert.That(summary.Subject, Is.Null);
-            Assert.That(summary.LastErrorSummary, Is.EqualTo(EmailOutboxAdministration.SensitiveFailureSummary));
+            Assert.That(summary.LastErrorSummary, Is.EqualTo(EmailOutboxAdministrationProvider.SensitiveFailureSummary));
             Assert.That(detail.ToAddress, Is.Null);
             Assert.That(detail.FromAddress, Is.Null);
             Assert.That(detail.ReplyToAddress, Is.Null);
@@ -121,14 +121,14 @@ internal sealed class EmailOutboxAdministrationTests
     [Test]
     public void LastErrorSummaryIsNullSafeSingleLineAndTruncated()
     {
-        var longError = "prefix\r\n" + new string('x', EmailOutboxAdministration.MaxLastErrorSummaryLength + 10);
-        var summary = EmailOutboxAdministration.CreateLastErrorSummary(CreateRecord(lastError: longError));
+        var longError = "prefix\r\n" + new string('x', EmailOutboxAdministrationProvider.MaxLastErrorSummaryLength + 10);
+        var summary = EmailOutboxAdministrationProvider.CreateLastErrorSummary(CreateRecord(lastError: longError));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(EmailOutboxAdministration.CreateLastErrorSummary(CreateRecord(lastError: "short failure")), Is.EqualTo("short failure"));
-            Assert.That(EmailOutboxAdministration.CreateLastErrorSummary(CreateRecord(lastError: null)), Is.Null);
-            Assert.That(summary, Has.Length.EqualTo(EmailOutboxAdministration.MaxLastErrorSummaryLength));
+            Assert.That(EmailOutboxAdministrationProvider.CreateLastErrorSummary(CreateRecord(lastError: "short failure")), Is.EqualTo("short failure"));
+            Assert.That(EmailOutboxAdministrationProvider.CreateLastErrorSummary(CreateRecord(lastError: null)), Is.Null);
+            Assert.That(summary, Has.Length.EqualTo(EmailOutboxAdministrationProvider.MaxLastErrorSummaryLength));
             Assert.That(summary, Does.Not.Contain("\r"));
             Assert.That(summary, Does.Not.Contain("\n"));
         }
@@ -139,37 +139,37 @@ internal sealed class EmailOutboxAdministrationTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(EmailOutboxAdministration.ParseStatus(nameof(EmailOutboxStatus.Failed)), Is.EqualTo(EmailOutboxStatus.Failed));
-            Assert.That(EmailOutboxAdministration.ParseStatus(null), Is.EqualTo(EmailOutboxStatus.Pending));
-            Assert.That(EmailOutboxAdministration.ParseStatus("unknown"), Is.EqualTo(EmailOutboxStatus.Pending));
-            Assert.That(EmailOutboxAdministration.ParseStatus("99"), Is.EqualTo(EmailOutboxStatus.Pending));
+            Assert.That(EmailOutboxAdministrationProvider.ParseStatus(nameof(EmailOutboxStatus.Failed)), Is.EqualTo(EmailOutboxStatus.Failed));
+            Assert.That(EmailOutboxAdministrationProvider.ParseStatus(null), Is.EqualTo(EmailOutboxStatus.Pending));
+            Assert.That(EmailOutboxAdministrationProvider.ParseStatus("unknown"), Is.EqualTo(EmailOutboxStatus.Pending));
+            Assert.That(EmailOutboxAdministrationProvider.ParseStatus("99"), Is.EqualTo(EmailOutboxStatus.Pending));
         }
     }
 
     [Test]
     public void CreateOperationResultSanitizesPublicFields()
     {
-        var state = new EmailOutboxOperationState(Guid.NewGuid(), "state@example.com", "State subject", EmailOutboxStatus.Pending);
-        var safe = EmailOutboxAdministration.CreateOperationResult(
+        var state = new EmailOutboxAdministrationOperationState(Guid.NewGuid(), "state@example.com", "State subject", EmailOutboxStatus.Pending);
+        var safe = EmailOutboxAdministrationProvider.CreateOperationResult(
             EmailOutboxOperationStatus.Retried,
             Guid.NewGuid(),
             "user@example.com",
             "Subject",
             EmailOutboxStatus.Pending);
-        var unsafeResult = EmailOutboxAdministration.CreateOperationResult(
+        var unsafeResult = EmailOutboxAdministrationProvider.CreateOperationResult(
             EmailOutboxOperationStatus.Discarded,
             Guid.NewGuid(),
             "bad\nrecipient@example.com",
             "bad\rsubject",
             EmailOutboxStatus.Discarded);
-        var suppressed = EmailOutboxAdministration.CreateOperationResult(
+        var suppressed = EmailOutboxAdministrationProvider.CreateOperationResult(
             EmailOutboxOperationStatus.Retried,
             Guid.NewGuid(),
             "secret@example.com",
             "Token",
             EmailOutboxStatus.Pending,
             suppressPublicFields: true);
-        var fromState = EmailOutboxAdministration.CreateOperationResult(EmailOutboxOperationStatus.Retried, state);
+        var fromState = EmailOutboxAdministrationProvider.CreateOperationResult(EmailOutboxOperationStatus.Retried, state);
 
         using (Assert.EnterMultipleScope())
         {
@@ -181,7 +181,7 @@ internal sealed class EmailOutboxAdministrationTests
             Assert.That(suppressed.ToAddress, Is.Null);
             Assert.That(suppressed.Subject, Is.Null);
             Assert.That(fromState.ToAddress, Is.EqualTo("state@example.com"));
-            Assert.That(Assert.Throws<ArgumentNullException>(() => EmailOutboxAdministration.CreateOperationResult(EmailOutboxOperationStatus.Retried, null!))?.ParamName, Is.EqualTo("state"));
+            Assert.That(Assert.Throws<ArgumentNullException>(() => EmailOutboxAdministrationProvider.CreateOperationResult(EmailOutboxOperationStatus.Retried, null!))?.ParamName, Is.EqualTo("state"));
         }
     }
 
@@ -189,12 +189,12 @@ internal sealed class EmailOutboxAdministrationTests
     public void CreateNoOpResultReturnsStableStatuses()
     {
         var id = Guid.NewGuid();
-        var pending = new EmailOutboxOperationState(id, "user@example.com", "Subject", EmailOutboxStatus.Pending);
-        var discarded = new EmailOutboxOperationState(id, "user@example.com", "Subject", EmailOutboxStatus.Discarded);
+        var pending = new EmailOutboxAdministrationOperationState(id, "user@example.com", "Subject", EmailOutboxStatus.Pending);
+        var discarded = new EmailOutboxAdministrationOperationState(id, "user@example.com", "Subject", EmailOutboxStatus.Discarded);
 
-        var missingResult = EmailOutboxAdministration.CreateNoOpResult(id, null);
-        var pendingResult = EmailOutboxAdministration.CreateNoOpResult(id, pending);
-        var discardedResult = EmailOutboxAdministration.CreateNoOpResult(id, discarded);
+        var missingResult = EmailOutboxAdministrationProvider.CreateNoOpResult(id, null);
+        var pendingResult = EmailOutboxAdministrationProvider.CreateNoOpResult(id, pending);
+        var discardedResult = EmailOutboxAdministrationProvider.CreateNoOpResult(id, discarded);
 
         using (Assert.EnterMultipleScope())
         {
@@ -219,9 +219,9 @@ internal sealed class EmailOutboxAdministrationTests
             UserAgent = "tests",
             CorrelationId = "correlation"
         });
-        var result = EmailOutboxAdministration.CreateOperationResult(EmailOutboxOperationStatus.Retried, id);
+        var result = EmailOutboxAdministrationProvider.CreateOperationResult(EmailOutboxOperationStatus.Retried, id);
 
-        await EmailOutboxAdministration.RecordSuccessfulOperationAsync(
+        await EmailOutboxAdministrationProvider.RecordSuccessfulOperationAsync(
             sink,
             TimeProvider.System,
             AshlarSecurityEventTypes.EmailOutboxDeliveryRetried,
@@ -236,20 +236,20 @@ internal sealed class EmailOutboxAdministrationTests
             Assert.That(sink.Events[0].ActorUserId, Is.EqualTo(actorUserId));
             Assert.That(sink.Events[0].Properties, Contains.Key("email_outbox_id"));
             Assert.That(sink.Events[0].Properties?["email_outbox_id"], Is.EqualTo(id.ToString("D")));
-            Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxAdministration.RecordSuccessfulOperationAsync(null!, TimeProvider.System, "event", request, result, CancellationToken.None));
-            Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxAdministration.RecordSuccessfulOperationAsync(sink, null!, "event", request, result, CancellationToken.None));
-            Assert.ThrowsAsync<ArgumentException>(() => EmailOutboxAdministration.RecordSuccessfulOperationAsync(sink, TimeProvider.System, "", request, result, CancellationToken.None));
-            Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxAdministration.RecordSuccessfulOperationAsync(sink, TimeProvider.System, "event", null!, result, CancellationToken.None));
-            Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxAdministration.RecordSuccessfulOperationAsync(sink, TimeProvider.System, "event", request, null!, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxAdministrationProvider.RecordSuccessfulOperationAsync(null!, TimeProvider.System, "event", request, result, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxAdministrationProvider.RecordSuccessfulOperationAsync(sink, null!, "event", request, result, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentException>(() => EmailOutboxAdministrationProvider.RecordSuccessfulOperationAsync(sink, TimeProvider.System, "", request, result, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxAdministrationProvider.RecordSuccessfulOperationAsync(sink, TimeProvider.System, "event", null!, result, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(() => EmailOutboxAdministrationProvider.RecordSuccessfulOperationAsync(sink, TimeProvider.System, "event", request, null!, CancellationToken.None));
         }
     }
 
-    private static EmailOutboxAdministrationRecord CreateRecord(
+    private static EmailOutboxAdministrationProjection CreateRecord(
         EmailMessageSensitivity sensitivity = EmailMessageSensitivity.Normal,
         EmailOutboxBodyProtection bodyProtection = EmailOutboxBodyProtection.None,
         string? lastError = "failure")
     {
-        return new EmailOutboxAdministrationRecord(
+        return new EmailOutboxAdministrationProjection(
             Guid.NewGuid(),
             "to@example.com",
             "from@example.com",

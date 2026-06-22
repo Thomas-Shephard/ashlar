@@ -24,14 +24,14 @@ internal abstract class EmailOutboxAdministrationContractTests : ProviderContrac
             Statuses = new HashSet<EmailOutboxStatus> { EmailOutboxStatus.Failed },
             Limit = 10
         });
-        var failedSummary = failed.Entries.Single();
+        var failedSummary = failed.Items.Single();
         var failedDetail = await admin.GetAsync(failedSummary.Id);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(page.Entries, Has.Count.EqualTo(2));
+            Assert.That(page.Items, Has.Count.EqualTo(2));
             Assert.That(page.HasMore, Is.True);
-            Assert.That(page.Entries.Select(entry => entry.Status), Is.EqualTo(new[] { EmailOutboxStatus.Scheduled, EmailOutboxStatus.Locked }));
+            Assert.That(page.Items.Select(entry => entry.Status), Is.EqualTo(new[] { EmailOutboxStatus.Scheduled, EmailOutboxStatus.Locked }));
             Assert.That(failedSummary.LastErrorSummary, Is.EqualTo("delivery failure"));
             Assert.That(failedDetail, Is.Not.Null);
             Assert.That(failedDetail!.FromAddress, Is.EqualTo("sender@example.com"));
@@ -67,8 +67,8 @@ internal abstract class EmailOutboxAdministrationContractTests : ProviderContrac
             Assert.That(detail, Is.Not.Null);
             Assert.That(detail!.ToAddress, Is.Null);
             Assert.That(detail.Subject, Is.Null);
-            Assert.That(detail.LastErrorSummary, Is.EqualTo(EmailOutboxAdministration.SensitiveFailureSummary));
-            Assert.That(failed.Entries.Single().LastErrorSummary, Does.Not.Contain("live-token"));
+            Assert.That(detail.LastErrorSummary, Is.EqualTo(EmailOutboxAdministrationProvider.SensitiveFailureSummary));
+            Assert.That(failed.Items.Single().LastErrorSummary, Does.Not.Contain("live-token"));
         }
     }
 

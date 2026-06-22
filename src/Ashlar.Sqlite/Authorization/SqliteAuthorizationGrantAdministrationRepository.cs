@@ -57,14 +57,14 @@ public sealed class SqliteAuthorizationGrantAdministrationRepository(ISqliteConn
     /// <param name="now">The timestamp used for status projection.</param>
     /// <param name="cancellationToken">A token that can cancel lookup.</param>
     /// <returns>The authorization grant, or <see langword="null" /> when it does not exist.</returns>
-    public Task<AuthorizationGrantAdministrationDetail?> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    public Task<AuthorizationGrantAdministrationSummary?> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         return SqliteQuery.QuerySingleAsync(
             _connectionProvider,
-            command => BuildDetailSql(command, request, now),
-            reader => ReadDetail(reader, now),
+            command => BuildLookupSql(command, request, now),
+            reader => ReadSummary(reader, now),
             cancellationToken);
     }
 
@@ -77,13 +77,13 @@ public sealed class SqliteAuthorizationGrantAdministrationRepository(ISqliteConn
         command.AddParameter(OffsetParameter, request.Offset);
 
         return sql + """
-            
+
             ORDER BY created_at DESC, id
             LIMIT $limit OFFSET $offset;
             """;
     }
 
-    private static string BuildDetailSql(SqliteCommand command, AuthorizationGrantAdministrationDetailRequest request, DateTimeOffset now)
+    private static string BuildLookupSql(SqliteCommand command, AuthorizationGrantAdministrationLookupRequest request, DateTimeOffset now)
     {
         var sql = SelectSql + " WHERE id = $id";
         command.AddGuidParameter(IdParameter, request.GrantId);
@@ -162,22 +162,5 @@ public sealed class SqliteAuthorizationGrantAdministrationRepository(ISqliteConn
             expiresAt,
             revokedAt,
             AuthorizationGrantAdministrationService.DeriveStatus(expiresAt, revokedAt, now));
-    }
-
-    private static AuthorizationGrantAdministrationDetail ReadDetail(SqliteDataReader reader, DateTimeOffset now)
-    {
-        var summary = ReadSummary(reader, now);
-        return new AuthorizationGrantAdministrationDetail(
-            summary.Id,
-            summary.UserId,
-            summary.TenantId,
-            summary.ScopeType,
-            summary.ScopeId,
-            summary.Role,
-            summary.Permission,
-            summary.CreatedAt,
-            summary.ExpiresAt,
-            summary.RevokedAt,
-            summary.Status);
     }
 }

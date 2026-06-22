@@ -46,13 +46,13 @@ public interface IInvitationRepository
     Task<IReadOnlyList<InvitationAdministrationSummary>> SearchInvitationsAsync(SearchInvitationsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets display-safe invitation detail by identifier.
+    /// Gets a display-safe invitation projection by identifier.
     /// </summary>
     /// <param name="request">Explicit tenant scope and invitation identifier. Repository implementations must not return token hashes.</param>
     /// <param name="now">UTC time used to classify pending and expired invitations.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
-    /// <returns>The matching invitation detail, or <see langword="null" /> when no invitation exists in scope.</returns>
-    Task<InvitationAdministrationDetail?> GetInvitationAsync(InvitationAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
+    /// <returns>The matching invitation projection, or <see langword="null" /> when no invitation exists in scope.</returns>
+    Task<InvitationAdministrationSummary?> GetInvitationAsync(InvitationAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Revokes a pending invitation by identifier.

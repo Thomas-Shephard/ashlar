@@ -867,7 +867,7 @@ var detail = await userAdministration.GetUserDetailAsync(
     new UserAdministrationDetailRequest(userId, new TenantContext(tenantId)));
 ```
 
-Search and detail requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. User admin detail includes the safe user summary and account security posture only; credential secrets and provider raw identifiers are never returned.
+Search, lookup, and detail requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. User admin detail includes the safe user summary and account security posture only; credential secrets and provider raw identifiers are never returned.
 
 #### Admin Session Browsing
 Use `IAuthenticationSessionAdministrationService` for read-only admin and operations tooling that needs to browse sessions across users and tenants without querying provider tables directly:
@@ -890,11 +890,11 @@ if (result.Succeeded)
     }
 }
 
-var detail = await sessionAdministration.GetAuthenticationSessionAsync(
-    new AuthenticationSessionAdministrationDetailRequest(sessionId, new TenantContext(tenantId)));
+var session = await sessionAdministration.GetAuthenticationSessionAsync(
+    new AuthenticationSessionAdministrationLookupRequest(sessionId, new TenantContext(tenantId)));
 ```
 
-Search and detail requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. Raw session tokens and token hashes are never returned, and session metadata is not included in the admin read model.
+Search and single-session requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. The single-session lookup returns the same safe projection shape as search. Raw session tokens and token hashes are never returned, and session metadata is not included in the admin read model.
 
 #### Admin Credential Inventory
 Use `ICredentialAdministrationService` for read-only admin and operations tooling that needs to browse credential inventory across users or tenants without querying provider tables directly:
@@ -919,7 +919,7 @@ if (result.Succeeded)
 }
 ```
 
-Call `GetCredentialAsync(new CredentialAdministrationDetailRequest(credentialId, new TenantContext(tenantId)))` for the same safe fields for a single credential. Detail requests also require `TenantContext.Global` or `IncludeAllTenants = true` when appropriate. These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. Raw credential values, provider keys, metadata, password hashes, token hashes, passkey payloads, recovery codes, OAuth/OIDC subject identifiers, provider-specific raw identifiers, and other secrets are never returned.
+Call `GetCredentialAsync(new CredentialAdministrationLookupRequest(credentialId, new TenantContext(tenantId)))` for the same safe projection shape for a single credential. Single-credential requests also require `TenantContext.Global` or `IncludeAllTenants = true` when appropriate. These APIs do not authorize callers. Host applications must enforce admin authorization, audit policy, and step-up requirements before exposing them. Raw credential values, provider keys, metadata, password hashes, token hashes, passkey payloads, recovery codes, OAuth/OIDC subject identifiers, provider-specific raw identifiers, and other secrets are never returned.
 
 #### Admin Account Recovery Options
 Use `IAccountRecoveryAdministrationService` when admin tooling needs a display-safe preview of account recovery actions before presenting destructive controls:
@@ -1025,7 +1025,7 @@ var search = await lockoutAdministration.SearchLockoutsAsync(new SearchAccountLo
 var status = await lockoutAdministration.GetLockoutStatusAsync(
     userId,
     AuthenticationProviderKey.Local,
-    new AccountLockoutAdministrationRequest(tenant));
+    new AccountLockoutStatusRequest(tenant));
 
 await lockoutAdministration.ResetLockoutAsync(
     userId,
@@ -1342,7 +1342,7 @@ var detail = await securityEventAdministration.GetSecurityEventAsync(
 
 Use `ISecurityEventAdministrationService` from application code and implement or register `ISecurityEventAdministrationRepository` for the backing store. `Ashlar.Postgres` and `Ashlar.Sqlite` provide repository implementations that query `ashlar_security_events` without exposing provider-specific row ids or JSON storage details.
 
-Search and detail requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. These APIs do not authorize callers by themselves. Host applications must protect any endpoint or job that uses them with admin authorization and an appropriate step-up policy. Event properties are intended only for operational diagnostics and must never contain secrets.
+Search, lookup, and detail requests require an explicit tenant scope, `TenantContext.Global`, or `IncludeAllTenants = true`. These APIs do not authorize callers by themselves. Host applications must protect any endpoint or job that uses them with admin authorization and an appropriate step-up policy. Event properties are intended only for operational diagnostics and must never contain secrets.
 
 ## Security Notifications
 Ashlar includes generic opt-in security notifications to notify users about important account and security events, such as new sign-ins, session revocations, and MFA changes.

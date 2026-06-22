@@ -22,6 +22,6 @@ public interface IAuthenticationSessionAdministrationService
     /// </summary>
     /// <param name="request">Tenant scope and session identifier for the lookup.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
-    /// <returns>The session detail when found. Raw bearer tokens are never returned.</returns>
-    Task<Result<AuthenticationSessionAdministrationDetail>> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationDetailRequest request, CancellationToken cancellationToken = default);
+    /// <returns>The same provider-neutral session projection used by search when found. Raw bearer tokens are never returned.</returns>
+    Task<Result<AuthenticationSessionAdministrationSummary>> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationLookupRequest request, CancellationToken cancellationToken = default);
 }

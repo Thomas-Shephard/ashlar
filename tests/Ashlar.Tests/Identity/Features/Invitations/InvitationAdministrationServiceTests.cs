@@ -96,9 +96,9 @@ internal sealed class InvitationAdministrationServiceTests
     {
         var service = CreateService();
 
-        var missingScope = await service.GetInvitationAsync(new InvitationAdministrationDetailRequest(Guid.NewGuid()));
-        var conflictingScope = await service.GetInvitationAsync(new InvitationAdministrationDetailRequest(Guid.NewGuid(), TenantContext.Global, IncludeAllTenants: true));
-        var emptyId = await service.GetInvitationAsync(new InvitationAdministrationDetailRequest(Guid.Empty, TenantContext.Global));
+        var missingScope = await service.GetInvitationAsync(new InvitationAdministrationLookupRequest(Guid.NewGuid()));
+        var conflictingScope = await service.GetInvitationAsync(new InvitationAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global, IncludeAllTenants: true));
+        var emptyId = await service.GetInvitationAsync(new InvitationAdministrationLookupRequest(Guid.Empty, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -112,18 +112,18 @@ internal sealed class InvitationAdministrationServiceTests
     public async Task GetInvitationAsyncReturnsSafeNotFoundForMissingOrCrossTenantRows()
     {
         var tenantId = Guid.NewGuid();
-        var repository = new RecordingInvitationRepository { DetailResult = CreateDetail() with { TenantId = tenantId } };
+        var repository = new RecordingInvitationRepository { SingleResult = CreateSingleResult() with { TenantId = tenantId } };
         var service = CreateService(repository);
 
-        var missing = await CreateService().GetInvitationAsync(new InvitationAdministrationDetailRequest(Guid.NewGuid(), TenantContext.Global));
-        var crossTenant = await service.GetInvitationAsync(new InvitationAdministrationDetailRequest(repository.DetailResult.Id, TenantContext.Global));
-        var allTenants = await service.GetInvitationAsync(new InvitationAdministrationDetailRequest(repository.DetailResult.Id, IncludeAllTenants: true));
+        var missing = await CreateService().GetInvitationAsync(new InvitationAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
+        var crossTenant = await service.GetInvitationAsync(new InvitationAdministrationLookupRequest(repository.SingleResult.Id, TenantContext.Global));
+        var allTenants = await service.GetInvitationAsync(new InvitationAdministrationLookupRequest(repository.SingleResult.Id, IncludeAllTenants: true));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(missing.FailureCode, Is.EqualTo(AshlarFailureCodes.InvitationNotFound));
             Assert.That(crossTenant.FailureCode, Is.EqualTo(AshlarFailureCodes.InvitationNotFound));
-            Assert.That(allTenants.Value, Is.EqualTo(repository.DetailResult));
+            Assert.That(allTenants.Value, Is.EqualTo(repository.SingleResult));
         }
     }
 
@@ -150,7 +150,7 @@ internal sealed class InvitationAdministrationServiceTests
         var invitationId = Guid.NewGuid();
         var repository = new RecordingInvitationRepository
         {
-            RevokeResult = new RevokeInvitationAdministrationResult(invitationId, null, Revoked: false, InvitationAdministrationStatus.Accepted, null)
+            RevokeResult = new RevokeInvitationAdministrationResult(invitationId, null, InvitationAdministrationRevocationStatus.AlreadyAccepted, InvitationAdministrationStatus.Accepted, null)
         };
 
         var events = new RecordingSecurityEventSink();
@@ -159,7 +159,7 @@ internal sealed class InvitationAdministrationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value?.Revoked, Is.False);
+            Assert.That(result.Value?.RevocationStatus, Is.EqualTo(InvitationAdministrationRevocationStatus.AlreadyAccepted));
             Assert.That(result.Value?.Status, Is.EqualTo(InvitationAdministrationStatus.Accepted));
             Assert.That(repository.LastRevokeRequest?.InvitationId, Is.EqualTo(invitationId));
             Assert.That(repository.LastRevokeNow, Is.EqualTo(Now));
@@ -183,7 +183,7 @@ internal sealed class InvitationAdministrationServiceTests
         var events = new RecordingSecurityEventSink();
         var repository = new RecordingInvitationRepository
         {
-            RevokeResult = new RevokeInvitationAdministrationResult(invitationId, tenantId, Revoked: true, InvitationAdministrationStatus.Revoked, Now)
+            RevokeResult = new RevokeInvitationAdministrationResult(invitationId, tenantId, InvitationAdministrationRevocationStatus.Revoked, InvitationAdministrationStatus.Revoked, Now)
         };
 
         await CreateService(repository, events).RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitationId, new TenantContext(tenantId), Audit: CreateAudit()));
@@ -205,7 +205,7 @@ internal sealed class InvitationAdministrationServiceTests
         var events = new RecordingSecurityEventSink();
         var repository = new RecordingInvitationRepository
         {
-            RevokeResult = new RevokeInvitationAdministrationResult(invitationId, null, Revoked: true, InvitationAdministrationStatus.Revoked, Now)
+            RevokeResult = new RevokeInvitationAdministrationResult(invitationId, null, InvitationAdministrationRevocationStatus.Revoked, InvitationAdministrationStatus.Revoked, Now)
         };
 
         await CreateService(repository, events).RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitationId, TenantContext.Global, Audit: CreateAudit(), Reason: "cleanup"));
@@ -228,7 +228,7 @@ internal sealed class InvitationAdministrationServiceTests
         var events = new RecordingSecurityEventSink();
         var repository = new RecordingInvitationRepository
         {
-            RevokeResult = new RevokeInvitationAdministrationResult(invitationId, tenantId, Revoked: true, InvitationAdministrationStatus.Revoked, Now)
+            RevokeResult = new RevokeInvitationAdministrationResult(invitationId, tenantId, InvitationAdministrationRevocationStatus.Revoked, InvitationAdministrationStatus.Revoked, Now)
         };
 
         await CreateService(repository, events).RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitationId, IncludeAllTenants: true, Audit: CreateAudit()));
@@ -249,10 +249,8 @@ internal sealed class InvitationAdministrationServiceTests
         {
             Assert.That(typeof(InvitationAdministrationSummary).GetProperties().Select(static property => property.Name), Does.Not.Contain("TokenHash"));
             Assert.That(typeof(InvitationAdministrationSummary).GetProperties().Select(static property => property.Name), Does.Not.Contain("Token"));
-            Assert.That(typeof(InvitationAdministrationDetail).GetProperties().Select(static property => property.Name), Does.Not.Contain("TokenHash"));
-            Assert.That(typeof(InvitationAdministrationDetail).GetProperties().Select(static property => property.Name), Does.Not.Contain("Token"));
-            Assert.That(typeof(InvitationAdministrationDetail).GetProperties().Select(static property => property.Name), Does.Not.Contain("Version"));
-            Assert.That(typeof(InvitationAdministrationDetail).GetProperties().Select(static property => property.Name), Does.Not.Contain("Metadata"));
+            Assert.That(typeof(InvitationAdministrationSummary).GetProperties().Select(static property => property.Name), Does.Not.Contain("Version"));
+            Assert.That(typeof(InvitationAdministrationSummary).GetProperties().Select(static property => property.Name), Does.Not.Contain("Metadata"));
         }
     }
 
@@ -268,10 +266,10 @@ internal sealed class InvitationAdministrationServiceTests
         return new InvitationAdministrationSummary(Guid.NewGuid(), "invite@example.com", null, InvitationAdministrationStatus.Pending, Now, Now, Now.AddDays(1), null, null);
     }
 
-    private static InvitationAdministrationDetail CreateDetail()
+    private static InvitationAdministrationSummary CreateSingleResult()
     {
         var summary = CreateSummary();
-        return new InvitationAdministrationDetail(summary.Id, summary.Email, summary.TenantId, summary.Status, summary.CreatedAt, summary.UpdatedAt, summary.ExpiresAt, summary.AcceptedAt, summary.RevokedAt);
+        return new InvitationAdministrationSummary(summary.Id, summary.Email, summary.TenantId, summary.Status, summary.CreatedAt, summary.UpdatedAt, summary.ExpiresAt, summary.AcceptedAt, summary.RevokedAt);
     }
 
     private static AuditContext CreateAudit()
@@ -284,7 +282,7 @@ internal sealed class InvitationAdministrationServiceTests
         public List<InvitationAdministrationSummary> SearchResults { get; } = [];
         public SearchInvitationsRequest? LastSearchRequest { get; private set; }
         public DateTimeOffset? LastSearchNow { get; private set; }
-        public InvitationAdministrationDetail? DetailResult { get; init; }
+        public InvitationAdministrationSummary? SingleResult { get; init; }
         public RevokeInvitationAdministrationRequest? LastRevokeRequest { get; private set; }
         public DateTimeOffset? LastRevokeNow { get; private set; }
         public RevokeInvitationAdministrationResult? RevokeResult { get; init; }
@@ -301,9 +299,9 @@ internal sealed class InvitationAdministrationServiceTests
             return Task.FromResult<IReadOnlyList<InvitationAdministrationSummary>>(SearchResults.AsReadOnly());
         }
 
-        public Task<InvitationAdministrationDetail?> GetInvitationAsync(InvitationAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+        public Task<InvitationAdministrationSummary?> GetInvitationAsync(InvitationAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(DetailResult);
+            return Task.FromResult(SingleResult);
         }
 
         public Task<RevokeInvitationAdministrationResult?> RevokeInvitationAsync(RevokeInvitationAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)

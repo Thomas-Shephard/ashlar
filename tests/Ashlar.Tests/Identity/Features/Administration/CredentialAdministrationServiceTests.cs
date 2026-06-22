@@ -193,7 +193,7 @@ internal sealed class CredentialAdministrationServiceTests
     [Test]
     public async Task GetCredentialAsyncRejectsEmptyCredentialId()
     {
-        var result = await CreateService().GetCredentialAsync(new CredentialAdministrationDetailRequest(Guid.Empty, TenantContext.Global));
+        var result = await CreateService().GetCredentialAsync(new CredentialAdministrationLookupRequest(Guid.Empty, TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -205,7 +205,7 @@ internal sealed class CredentialAdministrationServiceTests
     [Test]
     public async Task GetCredentialAsyncMapsMissingCredentialSafely()
     {
-        var result = await CreateService().GetCredentialAsync(new CredentialAdministrationDetailRequest(Guid.NewGuid(), TenantContext.Global));
+        var result = await CreateService().GetCredentialAsync(new CredentialAdministrationLookupRequest(Guid.NewGuid(), TenantContext.Global));
 
         using (Assert.EnterMultipleScope())
         {
@@ -217,10 +217,10 @@ internal sealed class CredentialAdministrationServiceTests
     [Test]
     public async Task GetCredentialAsyncReturnsRepositoryResult()
     {
-        var expected = CreateDetail();
+        var expected = CreateSingleResult();
         var repository = new RecordingCredentialAdministrationRepository { GetResult = expected };
 
-        var request = new CredentialAdministrationDetailRequest(expected.CredentialId, TenantContext.Global);
+        var request = new CredentialAdministrationLookupRequest(expected.CredentialId, TenantContext.Global);
         var result = await CreateService(repository).GetCredentialAsync(request);
 
         using (Assert.EnterMultipleScope())
@@ -236,21 +236,21 @@ internal sealed class CredentialAdministrationServiceTests
     public async Task GetCredentialAsyncMapsOutOfScopeCredentialSafely()
     {
         var tenantId = Guid.NewGuid();
-        var expected = CreateDetail() with { TenantId = tenantId };
+        var expected = CreateSingleResult() with { TenantId = tenantId };
         var repository = new RecordingCredentialAdministrationRepository { GetResult = expected };
 
-        var result = await CreateService(repository).GetCredentialAsync(new CredentialAdministrationDetailRequest(expected.CredentialId, TenantContext.Global));
+        var result = await CreateService(repository).GetCredentialAsync(new CredentialAdministrationLookupRequest(expected.CredentialId, TenantContext.Global));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.CredentialNotFound));
     }
 
     [Test]
-    public async Task GetCredentialAsyncAllowsExplicitAllTenantDetail()
+    public async Task GetCredentialAsyncAllowsExplicitAllTenantLookup()
     {
-        var expected = CreateDetail() with { TenantId = Guid.NewGuid() };
+        var expected = CreateSingleResult() with { TenantId = Guid.NewGuid() };
         var repository = new RecordingCredentialAdministrationRepository { GetResult = expected };
 
-        var result = await CreateService(repository).GetCredentialAsync(new CredentialAdministrationDetailRequest(expected.CredentialId, IncludeAllTenants: true));
+        var result = await CreateService(repository).GetCredentialAsync(new CredentialAdministrationLookupRequest(expected.CredentialId, IncludeAllTenants: true));
 
         Assert.That(result.Value, Is.EqualTo(expected));
     }
@@ -261,8 +261,8 @@ internal sealed class CredentialAdministrationServiceTests
         var service = CreateService();
         var credentialId = Guid.NewGuid();
 
-        var missing = await service.GetCredentialAsync(new CredentialAdministrationDetailRequest(credentialId));
-        var conflicting = await service.GetCredentialAsync(new CredentialAdministrationDetailRequest(credentialId, TenantContext.Global, IncludeAllTenants: true));
+        var missing = await service.GetCredentialAsync(new CredentialAdministrationLookupRequest(credentialId));
+        var conflicting = await service.GetCredentialAsync(new CredentialAdministrationLookupRequest(credentialId, TenantContext.Global, IncludeAllTenants: true));
 
         using (Assert.EnterMultipleScope())
         {
@@ -276,7 +276,7 @@ internal sealed class CredentialAdministrationServiceTests
     {
         var forbidden = new[] { "CredentialValue", "ProviderKey", "Metadata", "Version", "PasswordHash", "TokenHash", "PasskeyPayload", "RecoveryCode" };
         var summaryProperties = typeof(CredentialAdministrationSummary).GetProperties().Select(static property => property.Name);
-        var detailProperties = typeof(CredentialAdministrationDetail).GetProperties().Select(static property => property.Name);
+        var detailProperties = typeof(CredentialAdministrationSummary).GetProperties().Select(static property => property.Name);
 
         foreach (var property in forbidden)
         {
@@ -310,10 +310,10 @@ internal sealed class CredentialAdministrationServiceTests
             null);
     }
 
-    private static CredentialAdministrationDetail CreateDetail()
+    private static CredentialAdministrationSummary CreateSingleResult()
     {
         var summary = CreateSummary();
-        return new CredentialAdministrationDetail(
+        return new CredentialAdministrationSummary(
             summary.CredentialId,
             summary.UserId,
             summary.TenantId,
@@ -334,9 +334,9 @@ internal sealed class CredentialAdministrationServiceTests
         public Func<DateTimeOffset, IReadOnlyList<CredentialAdministrationSummary>>? SearchFactory { get; init; }
         public SearchCredentialsRequest? LastSearchRequest { get; private set; }
         public DateTimeOffset? LastSearchNow { get; private set; }
-        public CredentialAdministrationDetailRequest? LastGetRequest { get; private set; }
+        public CredentialAdministrationLookupRequest? LastGetRequest { get; private set; }
         public DateTimeOffset? LastGetNow { get; private set; }
-        public CredentialAdministrationDetail? GetResult { get; init; }
+        public CredentialAdministrationSummary? GetResult { get; init; }
 
         public Task<IReadOnlyList<CredentialAdministrationSummary>> SearchCredentialsAsync(SearchCredentialsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
@@ -345,7 +345,7 @@ internal sealed class CredentialAdministrationServiceTests
             return Task.FromResult(SearchFactory?.Invoke(now) ?? SearchResults.AsReadOnly());
         }
 
-        public Task<CredentialAdministrationDetail?> GetCredentialAsync(CredentialAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+        public Task<CredentialAdministrationSummary?> GetCredentialAsync(CredentialAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
             LastGetRequest = request;
             LastGetNow = now;

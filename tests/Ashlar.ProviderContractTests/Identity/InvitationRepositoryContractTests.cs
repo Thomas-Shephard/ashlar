@@ -260,20 +260,20 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
     }
 
     [Test]
-    public async Task AdministrationDetailAppliesTenantIsolationAndDoesNotExposeSecrets()
+    public async Task AdministrationLookupAppliesTenantIsolationAndDoesNotExposeSecrets()
     {
         await using var scope = CreateAsyncScope();
         var repository = GetInvitationRepository(scope.ServiceProvider);
         var tenantId = Guid.NewGuid();
         var otherTenantId = Guid.NewGuid();
-        var invitation = CreateInvitation("admin-detail@example.com", "admin-detail-token", tenantId);
+        var invitation = CreateInvitation("admin-lookup@example.com", "admin-lookup-token", tenantId);
         invitation.Metadata = """{"safe":true}""";
         await repository.CreateInvitationAsync(invitation);
 
-        var inScope = await repository.GetInvitationAsync(new InvitationAdministrationDetailRequest(invitation.Id, new TenantContext(tenantId)), RepositoryNow);
-        var outOfScope = await repository.GetInvitationAsync(new InvitationAdministrationDetailRequest(invitation.Id, new TenantContext(otherTenantId)), RepositoryNow);
-        var globalScope = await repository.GetInvitationAsync(new InvitationAdministrationDetailRequest(invitation.Id, TenantContext.Global), RepositoryNow);
-        var allTenants = await repository.GetInvitationAsync(new InvitationAdministrationDetailRequest(invitation.Id, IncludeAllTenants: true), RepositoryNow);
+        var inScope = await repository.GetInvitationAsync(new InvitationAdministrationLookupRequest(invitation.Id, new TenantContext(tenantId)), RepositoryNow);
+        var outOfScope = await repository.GetInvitationAsync(new InvitationAdministrationLookupRequest(invitation.Id, new TenantContext(otherTenantId)), RepositoryNow);
+        var globalScope = await repository.GetInvitationAsync(new InvitationAdministrationLookupRequest(invitation.Id, TenantContext.Global), RepositoryNow);
+        var allTenants = await repository.GetInvitationAsync(new InvitationAdministrationLookupRequest(invitation.Id, IncludeAllTenants: true), RepositoryNow);
 
         using (Assert.EnterMultipleScope())
         {
@@ -281,8 +281,8 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
             Assert.That(outOfScope, Is.Null);
             Assert.That(globalScope, Is.Null);
             Assert.That(allTenants?.Id, Is.EqualTo(invitation.Id));
-            Assert.That(typeof(InvitationAdministrationDetail).GetProperties().Select(static property => property.Name), Does.Not.Contain("TokenHash"));
-            Assert.That(typeof(InvitationAdministrationDetail).GetProperties().Select(static property => property.Name), Does.Not.Contain("Metadata"));
+            Assert.That(typeof(InvitationAdministrationSummary).GetProperties().Select(static property => property.Name), Does.Not.Contain("TokenHash"));
+            Assert.That(typeof(InvitationAdministrationSummary).GetProperties().Select(static property => property.Name), Does.Not.Contain("Metadata"));
         }
     }
 
@@ -295,8 +295,10 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         var otherTenantId = Guid.NewGuid();
         var invitation = CreateInvitation("admin-revoke@example.com", "admin-revoke-token", tenantId);
         var accepted = CreateInvitation("admin-revoke-accepted@example.com", "admin-revoke-accepted", tenantId);
+        var expired = CreateInvitation("admin-revoke-expired@example.com", "admin-revoke-expired", tenantId, expiresAt: RepositoryNow.AddMinutes(-1));
         await repository.CreateInvitationAsync(invitation);
         await repository.CreateInvitationAsync(accepted);
+        await repository.CreateInvitationAsync(expired);
         accepted.AcceptedAt = RepositoryNow.AddMinutes(-10);
         Assert.That(await repository.UpdateInvitationAsync(accepted, accepted.Version), Is.True);
 
@@ -304,19 +306,23 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         var revoked = await repository.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitation.Id, new TenantContext(tenantId), Audit: CreateAudit()), RepositoryNow);
         var second = await repository.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(invitation.Id, new TenantContext(tenantId), Audit: CreateAudit()), RepositoryNow);
         var terminal = await repository.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(accepted.Id, new TenantContext(tenantId), Audit: CreateAudit()), RepositoryNow);
+        var expiredTerminal = await repository.RevokeInvitationAsync(new RevokeInvitationAdministrationRequest(expired.Id, new TenantContext(tenantId), Audit: CreateAudit()), RepositoryNow);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(outOfScope, Is.Null);
-            Assert.That(revoked?.Revoked, Is.True);
+            Assert.That(revoked?.RevocationStatus, Is.EqualTo(InvitationAdministrationRevocationStatus.Revoked));
             Assert.That(revoked?.TenantId, Is.EqualTo(tenantId));
             Assert.That(revoked?.Status, Is.EqualTo(InvitationAdministrationStatus.Revoked));
-            Assert.That(second?.Revoked, Is.False);
+            Assert.That(second?.RevocationStatus, Is.EqualTo(InvitationAdministrationRevocationStatus.AlreadyRevoked));
             Assert.That(second?.TenantId, Is.EqualTo(tenantId));
             Assert.That(second?.Status, Is.EqualTo(InvitationAdministrationStatus.Revoked));
-            Assert.That(terminal?.Revoked, Is.False);
+            Assert.That(terminal?.RevocationStatus, Is.EqualTo(InvitationAdministrationRevocationStatus.AlreadyAccepted));
             Assert.That(terminal?.TenantId, Is.EqualTo(tenantId));
             Assert.That(terminal?.Status, Is.EqualTo(InvitationAdministrationStatus.Accepted));
+            Assert.That(expiredTerminal?.RevocationStatus, Is.EqualTo(InvitationAdministrationRevocationStatus.Expired));
+            Assert.That(expiredTerminal?.TenantId, Is.EqualTo(tenantId));
+            Assert.That(expiredTerminal?.Status, Is.EqualTo(InvitationAdministrationStatus.Expired));
         }
     }
 

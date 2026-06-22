@@ -124,7 +124,7 @@ internal abstract class AuthorizationGrantAdministrationRepositoryContractTests 
     }
 
     [Test]
-    public async Task GetAuthorizationGrantAsyncReturnsSafeDetailAndHonorsTenantScope()
+    public async Task GetAuthorizationGrantAsyncReturnsSafeProjectionAndHonorsTenantScope()
     {
         await using var scope = CreateAsyncScope();
         var tenantId = Guid.NewGuid();
@@ -134,18 +134,18 @@ internal abstract class AuthorizationGrantAdministrationRepositoryContractTests 
         var grant = CreateGrant(user.Id, tenantId, "project", "alpha", permission: "projects.manage", metadata: """{"secret":"do-not-project"}""");
         await repository.CreateGrantAsync(grant);
 
-        var detail = await adminRepository.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationDetailRequest(grant.Id, new TenantContext(tenantId)), Now);
-        var allTenantDetail = await adminRepository.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationDetailRequest(grant.Id, IncludeAllTenants: true), Now);
-        var mismatch = await adminRepository.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationDetailRequest(grant.Id, new TenantContext(Guid.NewGuid())), Now);
-        var missing = await adminRepository.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationDetailRequest(Guid.NewGuid(), new TenantContext(tenantId)), Now);
+        var lookup = await adminRepository.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationLookupRequest(grant.Id, new TenantContext(tenantId)), Now);
+        var allTenantLookup = await adminRepository.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationLookupRequest(grant.Id, IncludeAllTenants: true), Now);
+        var mismatch = await adminRepository.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationLookupRequest(grant.Id, new TenantContext(Guid.NewGuid())), Now);
+        var missing = await adminRepository.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationLookupRequest(Guid.NewGuid(), new TenantContext(tenantId)), Now);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(detail, Is.Not.Null);
-            Assert.That(detail!.Id, Is.EqualTo(grant.Id));
-            Assert.That(detail.Permission, Is.EqualTo("projects.manage"));
-            Assert.That(detail.TenantId, Is.EqualTo(tenantId));
-            Assert.That(allTenantDetail, Is.Not.Null);
+            Assert.That(lookup, Is.Not.Null);
+            Assert.That(lookup!.Id, Is.EqualTo(grant.Id));
+            Assert.That(lookup.Permission, Is.EqualTo("projects.manage"));
+            Assert.That(lookup.TenantId, Is.EqualTo(tenantId));
+            Assert.That(allTenantLookup, Is.Not.Null);
             Assert.That(mismatch, Is.Null);
             Assert.That(missing, Is.Null);
         }

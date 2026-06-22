@@ -148,7 +148,7 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value!.Items.Single().Permission, Is.EqualTo("read"));
             Assert.That(typeof(AuthorizationGrantAdministrationSummary).GetProperty("Metadata"), Is.Null);
-            Assert.That(typeof(AuthorizationGrantAdministrationDetail).GetProperty("Metadata"), Is.Null);
+            Assert.That(typeof(AuthorizationGrantAdministrationSummary).GetProperty("Metadata"), Is.Null);
         }
     }
 
@@ -156,13 +156,13 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
     public async Task GetAuthorizationGrantAsyncValidatesAndHidesTenantMismatches()
     {
         var tenantId = Guid.NewGuid();
-        var repository = new FakeRepository { Detail = CreateDetail(Guid.NewGuid(), tenantId) };
+        var repository = new FakeRepository { SingleResult = CreateSingleResult(Guid.NewGuid(), tenantId) };
         var service = new AuthorizationGrantAdministrationService(repository, timeProvider: new FakeTimeProvider(Now));
 
-        var invalidGrant = await service.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationDetailRequest(Guid.Empty, TenantContext.Global));
-        var missingScope = await service.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationDetailRequest(Guid.NewGuid()));
-        var mismatch = await service.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationDetailRequest(repository.Detail.Id, new TenantContext(Guid.NewGuid())));
-        var match = await service.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationDetailRequest(repository.Detail.Id, new TenantContext(tenantId)));
+        var invalidGrant = await service.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationLookupRequest(Guid.Empty, TenantContext.Global));
+        var missingScope = await service.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationLookupRequest(Guid.NewGuid()));
+        var mismatch = await service.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationLookupRequest(repository.SingleResult.Id, new TenantContext(Guid.NewGuid())));
+        var match = await service.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationLookupRequest(repository.SingleResult.Id, new TenantContext(tenantId)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -210,15 +210,15 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
         return new AuthorizationGrantAdministrationSummary(id, Guid.NewGuid(), null, null, null, null, "read", Now, null, null, AuthorizationGrantAdministrationStatus.Active);
     }
 
-    private static AuthorizationGrantAdministrationDetail CreateDetail(Guid id, Guid? tenantId)
+    private static AuthorizationGrantAdministrationSummary CreateSingleResult(Guid id, Guid? tenantId)
     {
-        return new AuthorizationGrantAdministrationDetail(id, Guid.NewGuid(), tenantId, null, null, null, "read", Now, null, null, AuthorizationGrantAdministrationStatus.Active);
+        return new AuthorizationGrantAdministrationSummary(id, Guid.NewGuid(), tenantId, null, null, null, "read", Now, null, null, AuthorizationGrantAdministrationStatus.Active);
     }
 
     private sealed class FakeRepository : IAuthorizationGrantAdministrationRepository
     {
         public IReadOnlyList<AuthorizationGrantAdministrationSummary> SearchResults { get; init; } = [];
-        public AuthorizationGrantAdministrationDetail? Detail { get; init; }
+        public AuthorizationGrantAdministrationSummary? SingleResult { get; init; }
         public SearchAuthorizationGrantsRequest? LastSearchRequest { get; private set; }
 
         public Task<IReadOnlyList<AuthorizationGrantAdministrationSummary>> SearchAuthorizationGrantsAsync(SearchAuthorizationGrantsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
@@ -227,9 +227,9 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
             return Task.FromResult(SearchResults);
         }
 
-        public Task<AuthorizationGrantAdministrationDetail?> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+        public Task<AuthorizationGrantAdministrationSummary?> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(Detail);
+            return Task.FromResult(SingleResult);
         }
     }
 }

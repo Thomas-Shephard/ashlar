@@ -23,7 +23,7 @@ public sealed record SearchAuthorizationGrantsRequest
     /// <summary>Tenant scope to search. Use <see cref="TenantContext.Global" /> for global grants; leave <see langword="null" /> only when <see cref="IncludeAllTenants" /> is enabled.</summary>
     public TenantContext? Tenant { get; init; }
 
-    /// <summary>Whether to search across every tenant scope. Cannot be combined with <see cref="Tenant" />.</summary>
+    /// <summary>Whether to search across all tenant scopes. Cannot be combined with <see cref="Tenant" />.</summary>
     public bool IncludeAllTenants { get; init; }
 
     /// <summary>Optional user filter.</summary>
@@ -112,33 +112,6 @@ public sealed record AuthorizationGrantAdministrationSummary(
     AuthorizationGrantAdministrationStatus Status);
 
 /// <summary>
-/// Safe authorization grant detail for administrator display.
-/// </summary>
-/// <param name="Id">Stable grant identifier.</param>
-/// <param name="UserId">User that receives the <paramref name="Role" /> or <paramref name="Permission" /> value.</param>
-/// <param name="TenantId">Tenant scope for the grant, or <see langword="null" /> for a global grant.</param>
-/// <param name="ScopeType">Resource type that constrains the grant, when present.</param>
-/// <param name="ScopeId">Resource identifier that constrains the grant, when present.</param>
-/// <param name="Role">Assigned role value, when present.</param>
-/// <param name="Permission">Assigned permission value, when present.</param>
-/// <param name="CreatedAt">UTC time when the grant was created.</param>
-/// <param name="ExpiresAt">UTC time after which the grant no longer applies, when configured.</param>
-/// <param name="RevokedAt">UTC time when the grant was revoked, when applicable.</param>
-/// <param name="Status">Lifecycle state derived from revocation and expiry timestamps.</param>
-public sealed record AuthorizationGrantAdministrationDetail(
-    Guid Id,
-    Guid UserId,
-    Guid? TenantId,
-    string? ScopeType,
-    string? ScopeId,
-    string? Role,
-    string? Permission,
-    DateTimeOffset CreatedAt,
-    DateTimeOffset? ExpiresAt,
-    DateTimeOffset? RevokedAt,
-    AuthorizationGrantAdministrationStatus Status);
-
-/// <summary>
 /// Paged authorization grant search result.
 /// </summary>
 /// <param name="Items">Page of display-safe grant summaries.</param>
@@ -152,21 +125,21 @@ public sealed record AuthorizationGrantSearchResult(
     bool HasMore);
 
 /// <summary>
-/// Request for administrator authorization grant detail.
+/// Request for an administrator authorization grant single-item lookup.
 /// </summary>
 /// <param name="GrantId">Grant to load.</param>
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global grants; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
-/// <param name="IncludeAllTenants">Whether to allow lookup across every <paramref name="Tenant" /> scope. Cannot be combined with <paramref name="Tenant" />.</param>
-public sealed record AuthorizationGrantAdministrationDetailRequest(
+/// <param name="IncludeAllTenants">Whether to allow lookup across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
+public sealed record AuthorizationGrantAdministrationLookupRequest(
     Guid GrantId,
     TenantContext? Tenant = null,
     bool IncludeAllTenants = false)
 {
     /// <summary>
-    /// Throws when the authorization grant detail request is not safe to execute.
+    /// Throws when the authorization grant lookup request is not safe to execute.
     /// </summary>
-    /// <param name="request">Detail request to validate before loading administrator data.</param>
-    public static void ThrowIfInvalid(AuthorizationGrantAdministrationDetailRequest? request)
+    /// <param name="request">Lookup request to validate before loading administrator data.</param>
+    public static void ThrowIfInvalid(AuthorizationGrantAdministrationLookupRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
         AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);

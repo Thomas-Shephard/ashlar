@@ -25,6 +25,6 @@ public interface IAuthorizationGrantAdministrationService
     /// </summary>
     /// <param name="request">Tenant scope and grant identifier for the lookup.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
-    /// <returns>The grant detail when found, without raw metadata.</returns>
-    Task<Result<AuthorizationGrantAdministrationDetail>> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationDetailRequest request, CancellationToken cancellationToken = default);
+    /// <returns>The same provider-neutral grant projection used by search when found, without raw metadata.</returns>
+    Task<Result<AuthorizationGrantAdministrationSummary>> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationLookupRequest request, CancellationToken cancellationToken = default);
 }

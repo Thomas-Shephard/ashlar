@@ -222,8 +222,8 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
     /// </summary>
     /// <param name="request">Grant identifier, tenant scope, and audit context for the revocation.</param>
     /// <param name="cancellationToken">A token that can cancel the revoke operation.</param>
-    /// <returns><see langword="true" /> when the grant was revoked; otherwise, <see langword="false" />.</returns>
-    public async Task<bool> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
+    /// <returns>Revocation result with the grant id, requested tenant boundary, and outcome.</returns>
+    public async Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.GrantId == Guid.Empty)
@@ -235,13 +235,13 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
         if (grant == null)
         {
             await RecordRevokeFailureAsync(request, "grant_not_found", cancellationToken);
-            return false;
+            return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.NotFound, request.GrantId, request.TenantId);
         }
 
         if (grant.TenantId != request.TenantId)
         {
             await RecordRevokeFailureAsync(request, "tenant_mismatch", cancellationToken);
-            return false;
+            return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.TenantMismatch, request.GrantId, request.TenantId, grant.UserId);
         }
 
         var revoked = await _repository.RevokeGrantAsync(request.GrantId, request.TenantId, _timeProvider.GetUtcNow(), cancellationToken);
@@ -256,7 +256,8 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
             Properties = CreateAuditProperties(grant)
         }, cancellationToken);
 
-        return revoked;
+        var status = revoked ? AuthorizationGrantRevocationStatus.Revoked : AuthorizationGrantRevocationStatus.NotRevoked;
+        return new RevokeAuthorizationGrantResult(status, request.GrantId, request.TenantId, grant.UserId);
     }
 
     /// <summary>

@@ -72,7 +72,7 @@ internal sealed class SecurityEventAdministrationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value?.Events, Has.Count.EqualTo(100));
+            Assert.That(result.Value?.Items, Has.Count.EqualTo(100));
             Assert.That(result.Value?.Limit, Is.EqualTo(100));
             Assert.That(result.Value?.Offset, Is.EqualTo(7));
             Assert.That(result.Value?.HasMore, Is.True);
@@ -112,7 +112,7 @@ internal sealed class SecurityEventAdministrationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value?.Events.Single(), Is.EqualTo(expected));
+            Assert.That(result.Value?.Items.Single(), Is.EqualTo(expected));
             Assert.That(repository.LastSearchRequest?.Tenant, Is.SameAs(tenant));
             Assert.That(repository.LastSearchRequest?.UserId, Is.EqualTo(request.UserId));
             Assert.That(repository.LastSearchRequest?.ActorUserId, Is.EqualTo(request.ActorUserId));

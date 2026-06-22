@@ -70,7 +70,7 @@ public sealed record ListRememberedMfaDevicesRequest
 {
     /// <summary>Tenant scope. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <see cref="IncludeAllTenants" /> is enabled.</summary>
     public TenantContext? Tenant { get; init; }
-    /// <summary>Whether the list should include every tenant scope. Cannot be combined with <see cref="Tenant" />.</summary>
+    /// <summary>Whether the list should include all tenant scopes. Cannot be combined with <see cref="Tenant" />.</summary>
     public bool IncludeAllTenants { get; init; }
     /// <summary>Whether only active devices should be returned.</summary>
     public bool ActiveOnly { get; init; } = true;
@@ -97,7 +97,7 @@ public sealed record RevokeAllRememberedMfaDevicesRequest
 {
     /// <summary>Tenant scope. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <see cref="IncludeAllTenants" /> is enabled.</summary>
     public TenantContext? Tenant { get; init; }
-    /// <summary>Whether revocation should apply across every tenant scope. Cannot be combined with <see cref="Tenant" />.</summary>
+    /// <summary>Whether revocation should apply across all tenant scopes. Cannot be combined with <see cref="Tenant" />.</summary>
     public bool IncludeAllTenants { get; init; }
     /// <summary>Optional provider-neutral, display-safe reason recorded with audit events. Do not include secrets, tokens, or credentials.</summary>
     public string? Reason { get; init; }

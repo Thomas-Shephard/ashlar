@@ -114,7 +114,7 @@ public abstract class EmailOutboxAdministrationServiceBase(
     /// <param name="id">The durable email outbox entry id.</param>
     /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
     /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
-    protected abstract Task<EmailOutboxOperationState?> RetryFailedAsync(
+    protected abstract Task<EmailOutboxAdministrationOperationState?> RetryFailedAsync(
         Guid id,
         CancellationToken cancellationToken);
 
@@ -124,7 +124,7 @@ public abstract class EmailOutboxAdministrationServiceBase(
     /// <param name="id">The durable email outbox entry id.</param>
     /// <param name="cancellationToken">A token that can cancel the mutation before it is committed.</param>
     /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
-    protected abstract Task<EmailOutboxOperationState?> DiscardFailedAsync(
+    protected abstract Task<EmailOutboxAdministrationOperationState?> DiscardFailedAsync(
         Guid id,
         CancellationToken cancellationToken);
 
@@ -134,7 +134,7 @@ public abstract class EmailOutboxAdministrationServiceBase(
     /// <param name="id">The durable email outbox entry id.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup before a result is returned.</param>
     /// <returns>The stored safe state, or <see langword="null" /> when no entry exists.</returns>
-    protected abstract Task<EmailOutboxOperationState?> LoadOperationStateAsync(
+    protected abstract Task<EmailOutboxAdministrationOperationState?> LoadOperationStateAsync(
         Guid id,
         CancellationToken cancellationToken);
 
@@ -142,10 +142,10 @@ public abstract class EmailOutboxAdministrationServiceBase(
         EmailOutboxOperationRequest request,
         EmailOutboxOperationStatus successStatus,
         string eventType,
-        Func<Guid, CancellationToken, Task<EmailOutboxOperationState?>> applyAsync,
+        Func<Guid, CancellationToken, Task<EmailOutboxAdministrationOperationState?>> applyAsync,
         CancellationToken cancellationToken)
     {
-        EmailOutboxAdministration.ValidateOperationRequest(request);
+        EmailOutboxAdministrationProvider.ValidateOperationRequest(request);
 
         var state = await applyAsync(request.Id, cancellationToken).ConfigureAwait(false);
         if (state is null)
@@ -153,8 +153,8 @@ public abstract class EmailOutboxAdministrationServiceBase(
             return await ClassifyNoOpAsync(request.Id, cancellationToken).ConfigureAwait(false);
         }
 
-        var result = EmailOutboxAdministration.CreateOperationResult(successStatus, state);
-        await EmailOutboxAdministration.RecordSuccessfulOperationAsync(
+        var result = EmailOutboxAdministrationProvider.CreateOperationResult(successStatus, state);
+        await EmailOutboxAdministrationProvider.RecordSuccessfulOperationAsync(
             _securityEventSink,
             TimeProvider,
             eventType,
@@ -167,7 +167,7 @@ public abstract class EmailOutboxAdministrationServiceBase(
     private async Task<EmailOutboxOperationResult> ClassifyNoOpAsync(Guid id, CancellationToken cancellationToken)
     {
         var state = await LoadOperationStateAsync(id, cancellationToken).ConfigureAwait(false);
-        return EmailOutboxAdministration.CreateNoOpResult(id, state);
+        return EmailOutboxAdministrationProvider.CreateNoOpResult(id, state);
     }
 }
 
@@ -316,12 +316,12 @@ public sealed record EmailOutboxDetail(
 /// <summary>
 /// Paged email outbox search result.
 /// </summary>
-/// <param name="Entries">Safe summaries returned for this page.</param>
-/// <param name="Limit">Maximum number of <paramref name="Entries" /> requested.</param>
-/// <param name="Offset">Number of <paramref name="Entries" /> skipped before this page.</param>
+/// <param name="Items">Safe summaries returned for this page.</param>
+/// <param name="Limit">Maximum number of <paramref name="Items" /> requested.</param>
+/// <param name="Offset">Number of <paramref name="Items" /> skipped before this page.</param>
 /// <param name="HasMore">Whether another page may exist.</param>
 public sealed record EmailOutboxSearchResult(
-    IReadOnlyList<EmailOutboxSummary> Entries,
+    IReadOnlyList<EmailOutboxSummary> Items,
     int Limit,
     int Offset,
     bool HasMore);
@@ -394,7 +394,7 @@ public sealed record EmailOutboxOperationResult(
 /// <param name="Subject">Stored message subject used only when public fields are not suppressed.</param>
 /// <param name="Status">The stored outbox status.</param>
 /// <param name="SuppressPublicFields">Whether recipient and <paramref name="Subject" /> metadata must be omitted because the row can contain live secrets or protected content.</param>
-public sealed record EmailOutboxOperationState(
+public sealed record EmailOutboxAdministrationOperationState(
     Guid Id,
     string? ToAddress,
     string? Subject,
@@ -402,7 +402,7 @@ public sealed record EmailOutboxOperationState(
     bool SuppressPublicFields = false);
 
 /// <summary>
-/// Provider-neutral stored email outbox data used by safe projection helpers.
+/// Provider-facing email outbox projection used by safe administration mapping helpers.
 /// </summary>
 /// <param name="Id">The durable email outbox entry id.</param>
 /// <param name="ToAddress">The stored recipient address.</param>
@@ -428,7 +428,7 @@ public sealed record EmailOutboxOperationState(
 /// <param name="LockedBy">The dispatcher lock owner.</param>
 /// <param name="LockedUntil">The dispatcher lock expiration timestamp.</param>
 /// <param name="LastError">The stored failure detail.</param>
-public sealed record EmailOutboxAdministrationRecord(
+public sealed record EmailOutboxAdministrationProjection(
     Guid Id,
     string? ToAddress,
     string? FromAddress,
@@ -455,9 +455,9 @@ public sealed record EmailOutboxAdministrationRecord(
     string? LastError);
 
 /// <summary>
-/// Shared validation and safe projection helpers for email outbox administration.
+/// Provider-facing validation, projection, and audit helpers for email outbox administration implementations.
 /// </summary>
-public static class EmailOutboxAdministration
+public static class EmailOutboxAdministrationProvider
 {
     /// <summary>
     /// Maximum number of characters exposed from stored failure details.
@@ -535,7 +535,7 @@ public static class EmailOutboxAdministration
     /// </summary>
     /// <param name="record">Stored provider-neutral outbox row.</param>
     /// <returns>A summary that omits message bodies, protected payloads, headers, metadata, lock owners, and sensitive fields.</returns>
-    public static EmailOutboxSummary CreateSummary(EmailOutboxAdministrationRecord record)
+    public static EmailOutboxSummary CreateSummary(EmailOutboxAdministrationProjection record)
     {
         ArgumentNullException.ThrowIfNull(record);
 
@@ -558,7 +558,7 @@ public static class EmailOutboxAdministration
     /// </summary>
     /// <param name="record">Stored provider-neutral outbox row.</param>
     /// <returns>A detail projection that reports body presence without returning body, protected payload, header, metadata, or lock-owner values.</returns>
-    public static EmailOutboxDetail CreateDetail(EmailOutboxAdministrationRecord record)
+    public static EmailOutboxDetail CreateDetail(EmailOutboxAdministrationProjection record)
     {
         ArgumentNullException.ThrowIfNull(record);
 
@@ -589,7 +589,7 @@ public static class EmailOutboxAdministration
     /// </summary>
     /// <param name="record">Stored provider-neutral outbox row.</param>
     /// <returns>The safe error summary.</returns>
-    public static string? CreateLastErrorSummary(EmailOutboxAdministrationRecord record)
+    public static string? CreateLastErrorSummary(EmailOutboxAdministrationProjection record)
     {
         ArgumentNullException.ThrowIfNull(record);
         if (record.LastError is null)
@@ -658,7 +658,7 @@ public static class EmailOutboxAdministration
     /// <returns>A mutation result that omits recipient and subject metadata when the row may contain live secrets or protected content.</returns>
     public static EmailOutboxOperationResult CreateOperationResult(
         EmailOutboxOperationStatus status,
-        EmailOutboxOperationState state)
+        EmailOutboxAdministrationOperationState state)
     {
         ArgumentNullException.ThrowIfNull(state);
         return CreateOperationResult(status, state.Id, state.ToAddress, state.Subject, state.Status, state.SuppressPublicFields);
@@ -670,7 +670,7 @@ public static class EmailOutboxAdministration
     /// <param name="id">The requested outbox entry id.</param>
     /// <param name="state">The loaded safe state, or <see langword="null" /> when missing.</param>
     /// <returns>A stable not-found, already-discarded, or not-failed outcome.</returns>
-    public static EmailOutboxOperationResult CreateNoOpResult(Guid id, EmailOutboxOperationState? state)
+    public static EmailOutboxOperationResult CreateNoOpResult(Guid id, EmailOutboxAdministrationOperationState? state)
     {
         if (state is null)
         {
@@ -716,13 +716,13 @@ public static class EmailOutboxAdministration
             cancellationToken).ConfigureAwait(false);
     }
 
-    private static bool IsSensitive(EmailOutboxAdministrationRecord record)
+    private static bool IsSensitive(EmailOutboxAdministrationProjection record)
     {
         return record.Sensitivity == EmailMessageSensitivity.ContainsLiveSecret ||
             record.BodyProtection != EmailOutboxBodyProtection.None;
     }
 
-    private static string? SuppressWhenSensitive(string? value, EmailOutboxAdministrationRecord record)
+    private static string? SuppressWhenSensitive(string? value, EmailOutboxAdministrationProjection record)
     {
         return IsSensitive(record) ? null : NullIfUnsafeMultiline(value);
     }

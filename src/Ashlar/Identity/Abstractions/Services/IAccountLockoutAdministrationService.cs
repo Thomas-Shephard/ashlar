@@ -29,7 +29,7 @@ public interface IAccountLockoutAdministrationService
     Task<Result<AccountLockoutStatus>> GetLockoutStatusAsync(
         Guid userId,
         AuthenticationProviderKey provider,
-        AccountLockoutAdministrationRequest request,
+        AccountLockoutStatusRequest request,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -39,8 +39,8 @@ public interface IAccountLockoutAdministrationService
     /// <param name="provider">The authentication provider key.</param>
     /// <param name="request">Explicit tenant scope and required audit metadata for the reset.</param>
     /// <param name="cancellationToken">A token that can cancel lockout reset.</param>
-    /// <returns><see langword="true" /> when stored automatic lockout state was cleared.</returns>
-    Task<Result<bool>> ResetLockoutAsync(
+    /// <returns>Stable reset outcome and the target scope.</returns>
+    Task<Result<ResetAccountLockoutResult>> ResetLockoutAsync(
         Guid userId,
         AuthenticationProviderKey provider,
         ResetAccountLockoutRequest request,

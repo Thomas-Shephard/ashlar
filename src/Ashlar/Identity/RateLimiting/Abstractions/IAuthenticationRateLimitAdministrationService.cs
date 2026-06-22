@@ -23,10 +23,10 @@ public interface IAuthenticationRateLimitAdministrationService
     /// <summary>
     /// Loads a single authentication rate-limit bucket by opaque bucket identifier and purpose.
     /// </summary>
-    /// <param name="request">Detail request containing the bucket identifier and purpose.</param>
+    /// <param name="request">Lookup request containing the bucket identifier and purpose.</param>
     /// <param name="cancellationToken">Token for aborting administration storage work.</param>
-    /// <returns>A result containing safe bucket detail, or a not-found failure.</returns>
-    Task<Result<AuthenticationRateLimitBucketDetail>> GetBucketAsync(AuthenticationRateLimitBucketDetailRequest request, CancellationToken cancellationToken = default);
+    /// <returns>A result containing a safe bucket summary, or a not-found failure.</returns>
+    Task<Result<AuthenticationRateLimitBucketSummary>> GetBucketAsync(AuthenticationRateLimitBucketLookupRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Resets a selected authentication rate-limit bucket.

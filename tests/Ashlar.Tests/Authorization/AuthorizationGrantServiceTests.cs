@@ -281,7 +281,10 @@ internal sealed class AuthorizationGrantServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(revoked, Is.True);
+            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.Revoked));
+            Assert.That(revoked.GrantId, Is.EqualTo(grant.Id));
+            Assert.That(revoked.TenantId, Is.EqualTo(tenantId));
+            Assert.That(revoked.UserId, Is.EqualTo(userId));
             Assert.That(grant.RevokedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
             Assert.That(_repository.LastRevokedTenantId, Is.EqualTo(tenantId));
         }
@@ -298,7 +301,10 @@ internal sealed class AuthorizationGrantServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(revoked, Is.True);
+            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.Revoked));
+            Assert.That(revoked.GrantId, Is.EqualTo(grant.Id));
+            Assert.That(revoked.TenantId, Is.Null);
+            Assert.That(revoked.UserId, Is.EqualTo(userId));
             Assert.That(grant.RevokedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
             Assert.That(_repository.LastRevokedTenantId, Is.Null);
         }
@@ -317,7 +323,10 @@ internal sealed class AuthorizationGrantServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(revoked, Is.False);
+            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.TenantMismatch));
+            Assert.That(revoked.GrantId, Is.EqualTo(grant.Id));
+            Assert.That(revoked.TenantId, Is.Null);
+            Assert.That(revoked.UserId, Is.EqualTo(userId));
             Assert.That(grant.RevokedAt, Is.Null);
             Assert.That(_repository.RevokeCalls, Is.Zero);
         }
@@ -334,7 +343,10 @@ internal sealed class AuthorizationGrantServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(revoked, Is.False);
+            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.TenantMismatch));
+            Assert.That(revoked.GrantId, Is.EqualTo(grant.Id));
+            Assert.That(revoked.TenantId, Is.Not.Null);
+            Assert.That(revoked.UserId, Is.EqualTo(userId));
             Assert.That(grant.RevokedAt, Is.Null);
             Assert.That(_repository.RevokeCalls, Is.Zero);
         }
@@ -353,7 +365,10 @@ internal sealed class AuthorizationGrantServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(revoked, Is.False);
+            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.TenantMismatch));
+            Assert.That(revoked.GrantId, Is.EqualTo(grant.Id));
+            Assert.That(revoked.TenantId, Is.Not.EqualTo(tenantId));
+            Assert.That(revoked.UserId, Is.EqualTo(userId));
             Assert.That(grant.RevokedAt, Is.Null);
             Assert.That(_repository.RevokeCalls, Is.Zero);
         }
@@ -373,8 +388,9 @@ internal sealed class AuthorizationGrantServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(first, Is.True);
-            Assert.That(second, Is.False);
+            Assert.That(first.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.Revoked));
+            Assert.That(second.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.NotRevoked));
+            Assert.That(second.UserId, Is.EqualTo(userId));
             Assert.That(grant.RevokedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
         }
     }
@@ -398,7 +414,8 @@ internal sealed class AuthorizationGrantServiceTests
             .Single(securityEvent => securityEvent.Outcome == SecurityEventOutcomes.Failure);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(revokedAgain, Is.False);
+            Assert.That(revokedAgain.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.NotRevoked));
+            Assert.That(revokedAgain.UserId, Is.EqualTo(userId));
             Assert.That(failedRevokedEvent.UserId, Is.EqualTo(grant.UserId));
             Assert.That(failedRevokedEvent.TenantId, Is.EqualTo(tenantId));
             Assert.That(failedRevokedEvent.Properties?["grant_id"], Is.EqualTo(grant.Id.ToString("D")));
@@ -447,7 +464,7 @@ internal sealed class AuthorizationGrantServiceTests
     }
 
     [Test]
-    public async Task RevokeGrantAsyncShouldReturnFalseAndAuditWhenGrantContextIsUnavailable()
+    public async Task RevokeGrantAsyncShouldReturnNotFoundAndAuditWhenGrantContextIsUnavailable()
     {
         var auditSink = new RecordingSecurityEventSink();
         var service = new AuthorizationGrantService(new RevokesMissingGrantRepository(), _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
@@ -459,7 +476,10 @@ internal sealed class AuthorizationGrantServiceTests
         var revokedEvent = auditSink.Events.Single();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(revoked, Is.False);
+            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.NotFound));
+            Assert.That(revoked.GrantId, Is.EqualTo(grantId));
+            Assert.That(revoked.TenantId, Is.EqualTo(tenantId));
+            Assert.That(revoked.UserId, Is.Null);
             Assert.That(revokedEvent.UserId, Is.Null);
             Assert.That(revokedEvent.TenantId, Is.EqualTo(tenantId));
             Assert.That(revokedEvent.Properties?["grant_id"], Is.EqualTo(grantId.ToString("D")));
@@ -483,7 +503,10 @@ internal sealed class AuthorizationGrantServiceTests
         var revokedEvent = auditSink.Events.Single(securityEvent => securityEvent.EventType == AshlarSecurityEventTypes.AuthorizationGrantRevoked);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(revoked, Is.False);
+            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.TenantMismatch));
+            Assert.That(revoked.GrantId, Is.EqualTo(grant.Id));
+            Assert.That(revoked.TenantId, Is.EqualTo(requestedTenantId));
+            Assert.That(revoked.UserId, Is.EqualTo(userId));
             Assert.That(revokedEvent.UserId, Is.Null);
             Assert.That(revokedEvent.TenantId, Is.EqualTo(requestedTenantId));
             Assert.That(revokedEvent.FailureReason, Is.EqualTo("tenant_mismatch"));

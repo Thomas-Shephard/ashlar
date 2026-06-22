@@ -129,48 +129,25 @@ public sealed record InvitationSearchResult(
     bool HasMore);
 
 /// <summary>
-/// Display-safe administrator detail for an invitation.
-/// </summary>
-/// <param name="Id">Stable invitation identifier.</param>
-/// <param name="Email">Invited email address safe for administrator display.</param>
-/// <param name="TenantId">Tenant scope for the invitation, or <see langword="null" /> for a global invitation.</param>
-/// <param name="Status">Current invitation lifecycle state.</param>
-/// <param name="CreatedAt">UTC time when the invitation was created.</param>
-/// <param name="UpdatedAt">UTC time when the invitation was last updated, when known.</param>
-/// <param name="ExpiresAt">UTC time after which the invitation cannot be accepted.</param>
-/// <param name="AcceptedAt">UTC time when the invitation was accepted, when applicable.</param>
-/// <param name="RevokedAt">UTC time when the invitation was revoked, when applicable.</param>
-public sealed record InvitationAdministrationDetail(
-    Guid Id,
-    string Email,
-    Guid? TenantId,
-    InvitationAdministrationStatus Status,
-    DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt,
-    DateTimeOffset ExpiresAt,
-    DateTimeOffset? AcceptedAt,
-    DateTimeOffset? RevokedAt);
-
-/// <summary>
-/// Request for administrator invitation detail.
+/// Request for an administrator invitation single-item lookup.
 /// </summary>
 /// <param name="InvitationId">Invitation to load.</param>
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global invitations; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
-/// <param name="IncludeAllTenants">Whether to allow lookup across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+/// <param name="IncludeAllTenants">Whether to allow lookup across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
 /// <remarks>
 /// Host applications must authorize callers and apply any required step-up policy before executing this read-only operation.
 /// Raw invitation tokens and token hashes are never returned.
 /// </remarks>
-public sealed record InvitationAdministrationDetailRequest(
+public sealed record InvitationAdministrationLookupRequest(
     Guid InvitationId,
     TenantContext? Tenant = null,
     bool IncludeAllTenants = false)
 {
     /// <summary>
-    /// Throws when the invitation detail request is not safe to execute.
+    /// Throws when the invitation lookup request is not safe to execute.
     /// </summary>
-    /// <param name="request">Detail request to validate before loading administrator data.</param>
-    public static void ThrowIfInvalid(InvitationAdministrationDetailRequest? request)
+    /// <param name="request">Lookup request to validate before loading administrator data.</param>
+    public static void ThrowIfInvalid(InvitationAdministrationLookupRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
         AdministrationScopeValidation.ThrowIfInvalidScope(request.Tenant, request.IncludeAllTenants);
@@ -186,7 +163,7 @@ public sealed record InvitationAdministrationDetailRequest(
 /// </summary>
 /// <param name="InvitationId">Invitation to revoke.</param>
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global invitations; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
-/// <param name="IncludeAllTenants">Whether to allow revocation across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+/// <param name="IncludeAllTenants">Whether to allow revocation across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
 /// <param name="Audit">Actor and request metadata required for the emitted <paramref name="Audit" /> event context.</param>
 /// <param name="Reason">Optional display-safe reason to include in security event properties.</param>
 /// <remarks>
@@ -221,16 +198,47 @@ public sealed record RevokeInvitationAdministrationRequest(
 }
 
 /// <summary>
+/// Stable outcome for an administrator invitation revocation request.
+/// </summary>
+public enum InvitationAdministrationRevocationStatus
+{
+    /// <summary>
+    /// The pending invitation was revoked by this operation.
+    /// </summary>
+    Revoked = 0,
+
+    /// <summary>
+    /// The invitation had already been accepted and was not revoked.
+    /// </summary>
+    AlreadyAccepted = 1,
+
+    /// <summary>
+    /// The invitation had already been revoked.
+    /// </summary>
+    AlreadyRevoked = 2,
+
+    /// <summary>
+    /// The invitation had already expired and was not revoked.
+    /// </summary>
+    Expired = 3,
+
+    /// <summary>
+    /// The invitation existed in scope, but the repository did not change it.
+    /// </summary>
+    NotRevoked = 4
+}
+
+/// <summary>
 /// Result of administrator invitation revocation by identifier.
 /// </summary>
 /// <param name="InvitationId">Invitation requested for revocation.</param>
 /// <param name="TenantId">Tenant scope for the invitation, or <see langword="null" /> for a global invitation.</param>
-/// <param name="Revoked">Whether this operation changed a pending invitation to revoked.</param>
+/// <param name="RevocationStatus">Stable revocation outcome.</param>
 /// <param name="Status">Invitation lifecycle state after the operation.</param>
 /// <param name="RevokedAt">UTC time when the invitation entered its terminal revocation state, when applicable.</param>
 public sealed record RevokeInvitationAdministrationResult(
     Guid InvitationId,
     Guid? TenantId,
-    bool Revoked,
+    InvitationAdministrationRevocationStatus RevocationStatus,
     InvitationAdministrationStatus Status,
     DateTimeOffset? RevokedAt);

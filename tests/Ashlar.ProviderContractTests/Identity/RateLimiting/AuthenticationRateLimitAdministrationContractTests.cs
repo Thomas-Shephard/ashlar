@@ -135,7 +135,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
     }
 
     [Test]
-    public async Task GetBucketAsyncReturnsSafeDetail()
+    public async Task GetBucketAsyncReturnsSafeLookup()
     {
         await using var scope = CreateAsyncScope();
         var limiter = GetAuthenticationRateLimiter(scope.ServiceProvider);
@@ -148,15 +148,15 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
 
         var search = await administration.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "detail" });
         var summary = search.Value!.Items.Single();
-        var detail = await administration.GetBucketAsync(new AuthenticationRateLimitBucketDetailRequest(summary.BucketId, "detail"));
-        var mismatch = await administration.GetBucketAsync(new AuthenticationRateLimitBucketDetailRequest("not-the-bucket", "detail"));
+        var lookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(summary.BucketId, "detail"));
+        var mismatch = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest("not-the-bucket", "detail"));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(detail.Succeeded, Is.True);
-            Assert.That(detail.Value!.BucketId, Is.EqualTo(summary.BucketId));
-            Assert.That(detail.Value.BucketId, Does.Not.Contain(rawKey));
-            Assert.That(detail.Value.Purpose, Is.EqualTo("detail"));
+            Assert.That(lookup.Succeeded, Is.True);
+            Assert.That(lookup.Value!.BucketId, Is.EqualTo(summary.BucketId));
+            Assert.That(lookup.Value.BucketId, Does.Not.Contain(rawKey));
+            Assert.That(lookup.Value.Purpose, Is.EqualTo("detail"));
             Assert.That(mismatch.Succeeded, Is.False);
         }
     }
@@ -176,7 +176,7 @@ internal abstract class AuthenticationRateLimitAdministrationContractTests : Pro
 
         var reset = await administration.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset", new AuditContext(Guid.NewGuid())));
         var missing = await administration.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucket.BucketId, "reset", new AuditContext(Guid.NewGuid())));
-        var afterReset = await administration.GetBucketAsync(new AuthenticationRateLimitBucketDetailRequest(bucket.BucketId, "reset"));
+        var afterReset = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucket.BucketId, "reset"));
 
         using (Assert.EnterMultipleScope())
         {
