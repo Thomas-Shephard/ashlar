@@ -141,6 +141,168 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         }
     }
 
+    [Test]
+    public void VerifyRejectsSameSignedRequestAsReplayWhenReplayStoreIsConfigured()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var headers = CreateSignedHeaders(now: now);
+        var replayStore = new RecordingReplayStore();
+        var options = new AshlarSecurityEventWebhookVerificationOptions { ReplayStore = replayStore };
+
+        var first = VerifySignature(
+            "body"u8,
+            headers,
+            "secret",
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now),
+            options);
+        var second = VerifySignature(
+            "body"u8,
+            headers,
+            "secret",
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now),
+            options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.Valid));
+            Assert.That(second.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.ReplayDetected));
+            Assert.That(second.IsValid, Is.False);
+            Assert.That(second.FailureReason, Is.EqualTo("Replay detected."));
+            Assert.That(replayStore.Keys, Has.Count.EqualTo(2));
+            Assert.That(replayStore.Keys[0], Is.EqualTo(new AshlarSecurityEventWebhookReplayKey(
+                "audit",
+                new Guid("11111111-1111-1111-1111-111111111111"),
+                now,
+                AshlarSecurityEventWebhookSignature.SignatureVersion,
+                "/security-events?tenant=contoso")));
+            Assert.That(replayStore.ExpiresAt, Has.All.EqualTo(now.AddMinutes(5)));
+        }
+    }
+
+    [Test]
+    public void VerifyAcceptsDifferentEventIdWithReplayStore()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var firstEventId = new Guid("11111111-1111-1111-1111-111111111111");
+        var secondEventId = new Guid("22222222-2222-2222-2222-222222222222");
+        var replayStore = new RecordingReplayStore();
+        var options = new AshlarSecurityEventWebhookVerificationOptions { ReplayStore = replayStore };
+
+        var first = VerifySignature(
+            "body"u8,
+            CreateSignedHeaders(now: now, eventId: firstEventId),
+            "secret",
+            firstEventId,
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now),
+            options);
+        var second = VerifySignature(
+            "body"u8,
+            CreateSignedHeaders(now: now, eventId: secondEventId),
+            "secret",
+            secondEventId,
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now),
+            options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.Valid));
+            Assert.That(second.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.Valid));
+            Assert.That(replayStore.Keys.Select(key => key.EventId), Is.EquivalentTo(new[] { firstEventId, secondEventId }));
+        }
+    }
+
+    [Test]
+    public void VerifyReportsStaleTimestampBeforeReplay()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var headers = CreateSignedHeaders(now: now.AddMinutes(-10));
+        var replayStore = new RejectingReplayStore();
+
+        var result = VerifySignature(
+            "body"u8,
+            headers,
+            "secret",
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now),
+            new AshlarSecurityEventWebhookVerificationOptions
+            {
+                TimestampTolerance = TimeSpan.FromMinutes(5),
+                ReplayStore = replayStore
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.TimestampOutsideTolerance));
+            Assert.That(replayStore.CallCount, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void VerifyReportsReplayStoreUnavailableWhenReplayStoreFails()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+
+        var result = VerifySignature(
+            "body"u8,
+            CreateSignedHeaders(now: now),
+            "secret",
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now),
+            new AshlarSecurityEventWebhookVerificationOptions { ReplayStore = new ThrowingReplayStore() });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.ReplayStoreUnavailable));
+            Assert.That(result.FailureReason, Is.EqualTo("Replay store unavailable."));
+        }
+    }
+
+    [Test]
+    public void VerifyPassesOnlySignedReplayMetadataToReplayStore()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var replayStore = new RecordingReplayStore();
+        var headers = CreateSignedHeaders(now: now);
+        headers["Authorization"] = "Bearer captured-header";
+
+        var result = VerifySignature(
+            "body"u8,
+            headers,
+            "secret",
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now),
+            new AshlarSecurityEventWebhookVerificationOptions { ReplayStore = replayStore });
+
+        var key = replayStore.Keys.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.Valid));
+            Assert.That(key, Is.EqualTo(new AshlarSecurityEventWebhookReplayKey(
+                "audit",
+                new Guid("11111111-1111-1111-1111-111111111111"),
+                now,
+                AshlarSecurityEventWebhookSignature.SignatureVersion,
+                "/security-events?tenant=contoso")));
+            Assert.That(replayStore.ExpiresAt.Single(), Is.EqualTo(now.AddMinutes(5)));
+        }
+    }
+
     [TestCase(AshlarSecurityEventWebhookSignature.SignatureHeaderName, AshlarSecurityEventWebhookVerificationStatus.MissingSignature)]
     [TestCase(AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName, AshlarSecurityEventWebhookVerificationStatus.MissingTimestamp)]
     [TestCase(AshlarSecurityEventWebhookSignature.EventTimestampHeaderName, AshlarSecurityEventWebhookVerificationStatus.MissingEventTimestamp)]
@@ -1026,6 +1188,11 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
 
     private static Dictionary<string, string> CreateSignedHeaders(DateTimeOffset now)
     {
+        return CreateSignedHeaders(now, new Guid("11111111-1111-1111-1111-111111111111"));
+    }
+
+    private static Dictionary<string, string> CreateSignedHeaders(DateTimeOffset now, Guid eventId)
+    {
         return new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [AshlarSecurityEventWebhookSignature.SignatureTimestampHeaderName] =
@@ -1038,7 +1205,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
                     "body"u8,
                     now,
                     DateTimeOffset.FromUnixTimeSeconds(1_700_000_000),
-                    new Guid("11111111-1111-1111-1111-111111111111"),
+                    eventId,
                     "audit",
                     "/security-events?tenant=contoso")
         };
@@ -1990,6 +2157,41 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         {
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             return new HttpResponseMessage(HttpStatusCode.Accepted);
+        }
+    }
+
+    private sealed class RecordingReplayStore : IAshlarSecurityEventWebhookReplayStore
+    {
+        private readonly HashSet<AshlarSecurityEventWebhookReplayKey> _accepted = [];
+
+        public List<AshlarSecurityEventWebhookReplayKey> Keys { get; } = [];
+
+        public List<DateTimeOffset> ExpiresAt { get; } = [];
+
+        public bool TryAccept(AshlarSecurityEventWebhookReplayKey key, DateTimeOffset expiresAt)
+        {
+            Keys.Add(key);
+            ExpiresAt.Add(expiresAt);
+            return _accepted.Add(key);
+        }
+    }
+
+    private sealed class RejectingReplayStore : IAshlarSecurityEventWebhookReplayStore
+    {
+        public int CallCount { get; private set; }
+
+        public bool TryAccept(AshlarSecurityEventWebhookReplayKey key, DateTimeOffset expiresAt)
+        {
+            CallCount++;
+            return false;
+        }
+    }
+
+    private sealed class ThrowingReplayStore : IAshlarSecurityEventWebhookReplayStore
+    {
+        public bool TryAccept(AshlarSecurityEventWebhookReplayKey key, DateTimeOffset expiresAt)
+        {
+            throw new InvalidOperationException("Store failure.");
         }
     }
 
