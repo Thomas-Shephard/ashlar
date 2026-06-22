@@ -42,12 +42,14 @@ public sealed class AshlarExternalCredentialAuthenticationService
     /// <param name="httpContext">The current HTTP context.</param>
     /// <param name="providerName">The configured Ashlar provider name.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The external assertion completion result.</returns>
+    /// <returns>The mapped external assertion result, or a failure status when the ticket is absent, invalid, mismatched, or rate limited.</returns>
     /// <remarks>
-    /// Use this method when the host application must pass the mapped assertion through its own authentication
-    /// orchestration before issuing a session, such as when MFA policy is applied by <see cref="IAuthenticationOrchestrator"/>.
-    /// A successful result means the external credential was validated and mapped; it does not mean an application
-    /// session may be issued.
+    /// The ASP.NET Core external authentication middleware must have already validated the remote provider response
+    /// and written the temporary external ticket. This method authenticates that ticket, verifies that it was issued
+    /// for the configured Ashlar provider, clears it, and maps only stable provider subject data. A successful result
+    /// means the external credential was validated and mapped; it does not mean an application session may be issued.
+    /// Pass the assertion through the host application's authentication orchestration, including MFA policy, before
+    /// issuing a session.
     /// </remarks>
     public async Task<AshlarExternalAssertionResult> CompleteExternalAssertionAsync(
         HttpContext httpContext,

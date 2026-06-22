@@ -49,7 +49,12 @@ public sealed class AshlarExternalAccountLinkService
     /// <param name="tenant">The tenant scope, when the application is tenant-aware.</param>
     /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The external account link result.</returns>
+    /// <returns>The account-link result, including provider mismatch or invalid-principal statuses when the temporary ticket cannot be trusted for the configured provider.</returns>
+    /// <remarks>
+    /// The ASP.NET Core external authentication middleware must have already validated the remote provider response
+    /// and written the temporary external ticket. This method verifies that ticket against the configured Ashlar
+    /// provider, clears it, and then links the stable provider subject to the current user.
+    /// </remarks>
     public async Task<AshlarExternalAccountLinkResult> CompleteExternalLinkAsync(
         HttpContext httpContext,
         Guid currentUserId,
@@ -91,7 +96,12 @@ public sealed class AshlarExternalAccountLinkService
     /// <param name="tenant">The tenant scope, when the application is tenant-aware.</param>
     /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The external account link result.</returns>
+    /// <returns>The account-link result, including provider mismatch or invalid-principal statuses when the ticket cannot be trusted for the configured provider.</returns>
+    /// <remarks>
+    /// The completed authentication result must come from ASP.NET Core external authentication middleware. The
+    /// provider metadata embedded in the ticket must match the configured Ashlar provider before any account link is
+    /// created.
+    /// </remarks>
     public async Task<AshlarExternalAccountLinkResult> LinkExternalAccountAsync(
         Guid currentUserId,
         string providerName,
@@ -130,7 +140,11 @@ public sealed class AshlarExternalAccountLinkService
     /// <param name="tenant">The tenant scope, when the application is tenant-aware.</param>
     /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The external account link result.</returns>
+    /// <returns>The account-link result, including conflict statuses when the stable external subject is already linked.</returns>
+    /// <remarks>
+    /// The principal must come from a trusted authentication handler. Ashlar maps the configured stable provider key
+    /// claim; do not configure email, display name, username, or other mutable profile claims as provider keys.
+    /// </remarks>
     public async Task<AshlarExternalAccountLinkResult> LinkExternalAccountAsync(
         Guid currentUserId,
         string providerName,
