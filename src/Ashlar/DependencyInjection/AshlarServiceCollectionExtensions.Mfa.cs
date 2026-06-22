@@ -111,7 +111,10 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<IAuthenticationRateLimiter>(),
             provider.GetService<IUserRepository>(),
             provider.GetService<ISecurityNotificationService>()));
-        services.TryAddScoped<IAuthenticationHandshakeService, AuthenticationHandshakeService>();
+        services.TryAddScoped<AuthenticationHandshakeService>();
+        services.TryAddScoped<IAuthenticationHandshakeService>(provider => provider.GetRequiredService<AuthenticationHandshakeService>());
+        services.TryAddScoped<IAuthenticationHandshakeCompletionService>(provider =>
+            provider.GetRequiredService<AuthenticationHandshakeService>());
 
         return services;
     }
@@ -174,7 +177,14 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<IOptions<MfaOrchestrationOptions>>(),
             provider,
             provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationOrchestrator>>()));
-        services.TryAddScoped<IAuthenticationOrchestrator, AuthenticationOrchestrator>();
+        services.TryAddScoped<IAuthenticationOrchestrator>(provider => new AuthenticationOrchestrator(
+            provider.GetRequiredService<IAuthenticationPipeline>(),
+            provider.GetRequiredService<IAuthenticationFactorPipeline>(),
+            provider.GetRequiredService<IAuthenticationHandshakeService>(),
+            provider.GetRequiredService<IAuthenticationHandshakeCompletionService>(),
+            provider.GetRequiredService<IMfaPolicyEvaluator>(),
+            provider.GetRequiredService<IAuthenticationProviderRegistry>(),
+            provider.GetRequiredService<AuthenticationOrchestratorDependencies>()));
 
         return services;
     }

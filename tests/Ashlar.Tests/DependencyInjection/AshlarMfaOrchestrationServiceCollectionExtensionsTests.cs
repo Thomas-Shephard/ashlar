@@ -18,8 +18,9 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             AssertDescriptor<IMfaPolicyEvaluator, MfaPolicyEvaluator>(services, ServiceLifetime.Scoped);
-            AssertDescriptor<IAuthenticationOrchestrator, AuthenticationOrchestrator>(services, ServiceLifetime.Scoped);
-            AssertDescriptor<IAuthenticationHandshakeService, AuthenticationHandshakeService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IAuthenticationOrchestrator>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<AuthenticationHandshakeService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IAuthenticationHandshakeService>(services, ServiceLifetime.Scoped);
         }
     }
 
@@ -39,6 +40,42 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
         var orchestrator = scope.ServiceProvider.GetRequiredService<IAuthenticationOrchestrator>();
 
         Assert.That(orchestrator, Is.TypeOf<AuthenticationOrchestrator>());
+    }
+
+    [Test]
+    public async Task AddAshlarMfaOrchestrationUsesRegisteredHandshakeServiceForSafeHandshakeOperations()
+    {
+        var services = new ServiceCollection();
+        var handshakeService = new Mock<IAuthenticationHandshakeService>();
+        handshakeService
+            .Setup(service => service.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.EmptyToken));
+        services.AddSingleton(handshakeService.Object);
+        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
+        services.AddSingleton(Mock.Of<ISecretProtector>());
+        services.AddAshlarMfaOrchestration();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var orchestrator = scope.ServiceProvider.GetRequiredService<IAuthenticationOrchestrator>();
+
+        var result = await orchestrator.VerifyFactorAsync(
+            null,
+            AuthenticationFactorTypes.Totp,
+            new AuthenticationContext(),
+            Mock.Of<IAuthenticationAssertion>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
+            Assert.That(result.ErrorMessage, Is.EqualTo("Handshake token is required."));
+        }
+
+        handshakeService.Verify(service => service.BeginVerificationAsync(
+            It.Is<BeginAuthenticationHandshakeVerificationRequest>(request => request.HandshakeToken == null),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -157,6 +194,13 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
         Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
             descriptor.ServiceType == typeof(TService)
             && descriptor.ImplementationType == typeof(TImplementation)
+            && descriptor.Lifetime == lifetime));
+    }
+
+    private static void AssertDescriptor<TService>(IServiceCollection services, ServiceLifetime lifetime)
+    {
+        Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
+            descriptor.ServiceType == typeof(TService)
             && descriptor.Lifetime == lifetime));
     }
 

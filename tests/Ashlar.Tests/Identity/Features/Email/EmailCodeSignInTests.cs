@@ -493,7 +493,7 @@ internal sealed class EmailCodeSignInTests
                 });
         }
 
-        return new AuthenticationOrchestrator(pipeline, Mock.Of<IAuthenticationFactorPipeline>(), handshakes.Object, policy, Mock.Of<IAuthenticationProviderRegistry>());
+        return new AuthenticationOrchestrator(pipeline, Mock.Of<IAuthenticationFactorPipeline>(), handshakes.Object, new TestAuthenticationHandshakeCompletionService(), policy, Mock.Of<IAuthenticationProviderRegistry>());
     }
 
     private static EmailCodeAuthenticationProvider CreateProvider()
