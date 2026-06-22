@@ -10,20 +10,7 @@ namespace Ashlar.Identity.Features.Authentication;
 /// <summary>
 /// Coordinates provider authentication, MFA policy evaluation, and handshake issuance.
 /// </summary>
-/// <param name="pipeline">Primary authentication pipeline.</param>
-/// <param name="factorPipeline">Secondary factor verification pipeline.</param>
-/// <param name="handshakeService">Handshake service used when MFA must continue outside the primary request.</param>
-/// <param name="policyEvaluator">Policy evaluator that decides whether MFA is required before session issuance.</param>
-/// <param name="providerRegistry">Registry used to inspect provider capabilities.</param>
-/// <param name="dependencies">Optional operational dependencies.</param>
-public sealed class AuthenticationOrchestrator(
-    IAuthenticationPipeline pipeline,
-    IAuthenticationFactorPipeline factorPipeline,
-    IAuthenticationHandshakeService handshakeService,
-    IMfaPolicyEvaluator policyEvaluator,
-    IAuthenticationProviderRegistry providerRegistry,
-    AuthenticationOrchestratorDependencies? dependencies = null)
-    : IAuthenticationOrchestrator
+internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
 {
     private const string PrimaryProviderTypeMetadataKey = "primary_provider_type";
     private const string PrimaryProviderNameMetadataKey = "primary_provider_name";
@@ -55,14 +42,37 @@ public sealed class AuthenticationOrchestrator(
             new EventId(1002, nameof(MfaHandshakeOperationFailed)),
             "MFA handshake operation failed. UserId={UserId} FailureReason={FailureReason}");
 
-    private readonly IAuthenticationPipeline _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
-    private readonly IAuthenticationFactorPipeline _factorPipeline = factorPipeline ?? throw new ArgumentNullException(nameof(factorPipeline));
-    private readonly IAuthenticationHandshakeService _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
-    private readonly IMfaPolicyEvaluator _policyEvaluator = policyEvaluator ?? throw new ArgumentNullException(nameof(policyEvaluator));
-    private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
-    private readonly MfaOrchestrationOptions _globalOptions = ValidateDependencies(dependencies).GlobalOptions?.Value ?? new MfaOrchestrationOptions();
-    private readonly IServiceProvider? _serviceProvider = ValidateDependencies(dependencies).ServiceProvider;
-    private readonly ILogger<AuthenticationOrchestrator> _logger = ValidateDependencies(dependencies).Logger ?? NullLogger<AuthenticationOrchestrator>.Instance;
+    private readonly IAuthenticationPipeline _pipeline;
+    private readonly IAuthenticationFactorPipeline _factorPipeline;
+    private readonly IAuthenticationHandshakeService _handshakeService;
+    private readonly IAuthenticationHandshakeCompletionService _handshakeCompletionService;
+    private readonly IMfaPolicyEvaluator _policyEvaluator;
+    private readonly IAuthenticationProviderRegistry _providerRegistry;
+    private readonly MfaOrchestrationOptions _globalOptions;
+    private readonly IServiceProvider? _serviceProvider;
+    private readonly ILogger<AuthenticationOrchestrator> _logger;
+
+    internal AuthenticationOrchestrator(
+        IAuthenticationPipeline pipeline,
+        IAuthenticationFactorPipeline factorPipeline,
+        IAuthenticationHandshakeService handshakeService,
+        IAuthenticationHandshakeCompletionService handshakeCompletionService,
+        IMfaPolicyEvaluator policyEvaluator,
+        IAuthenticationProviderRegistry providerRegistry,
+        AuthenticationOrchestratorDependencies? dependencies = null)
+    {
+        _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
+        _factorPipeline = factorPipeline ?? throw new ArgumentNullException(nameof(factorPipeline));
+        _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
+        _handshakeCompletionService = handshakeCompletionService ?? throw new ArgumentNullException(nameof(handshakeCompletionService));
+        _policyEvaluator = policyEvaluator ?? throw new ArgumentNullException(nameof(policyEvaluator));
+        _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
+
+        var validatedDependencies = ValidateDependencies(dependencies);
+        _globalOptions = validatedDependencies.GlobalOptions?.Value ?? new MfaOrchestrationOptions();
+        _serviceProvider = validatedDependencies.ServiceProvider;
+        _logger = validatedDependencies.Logger ?? NullLogger<AuthenticationOrchestrator>.Instance;
+    }
 
     public async Task<MfaAuthenticationResult> AuthenticateAsync(
         AuthenticationContext context,
@@ -147,7 +157,7 @@ public sealed class AuthenticationOrchestrator(
         }
 
         var metadata = CreateFactorVerificationMetadata(response);
-        var result = await _handshakeService.CompleteFactorVerificationAsync(verificationRequest with { Metadata = metadata }, cancellationToken);
+        var result = await _handshakeCompletionService.CompleteFactorVerificationAsync(verificationRequest with { Metadata = metadata }, cancellationToken);
 
         if (!result.Succeeded || result.Value == null)
         {
@@ -452,7 +462,7 @@ public sealed class AuthenticationOrchestrator(
 /// <param name="GlobalOptions">The global orchestration options.</param>
 /// <param name="ServiceProvider">The service provider used for opt-in remembered MFA device support.</param>
 /// <param name="Logger">Optional logger for authentication orchestration diagnostics.</param>
-public sealed record AuthenticationOrchestratorDependencies(
+internal sealed record AuthenticationOrchestratorDependencies(
     IOptions<MfaOrchestrationOptions>? GlobalOptions = null,
     IServiceProvider? ServiceProvider = null,
     ILogger<AuthenticationOrchestrator>? Logger = null);

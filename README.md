@@ -735,41 +735,31 @@ if (!createResult.Succeeded || createResult.Value == null)
 // Return createResult.Value.Token to the client. It will be needed to verify factors.
 ```
 
-Verify a factor to continue or complete the handshake. Most applications should use `IAuthenticationOrchestrator.VerifyFactorAsync`; direct handshake-service integrations should begin the verification attempt, verify the factor credential with their provider, then complete the resolved factor:
+Verify a factor to continue or complete the handshake through `IAuthenticationOrchestrator.VerifyFactorAsync`. The orchestrator validates the pending handshake, verifies the submitted factor proof through the provider pipeline, then completes the satisfied factor internally:
 
 ```csharp
-var beginResult = await handshakeService.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(
+var orchestrator = httpContext.RequestServices.GetRequiredService<IAuthenticationOrchestrator>();
+
+var verifyResult = await orchestrator.VerifyFactorAsync(
     tokenFromClient,
-    "totp"));
+    AuthenticationFactorTypes.Totp,
+    authenticationContext,
+    new TotpAssertion(codeFromClient));
 
-if (beginResult.Succeeded)
+if (verifyResult.Status == MfaAuthenticationStatus.Succeeded)
 {
-    // Verify the submitted factor credential, then mark the factor complete.
-    var completeResult = await handshakeService.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(
-        tokenFromClient,
-        "totp"));
-
-    if (completeResult.Succeeded && completeResult.Value is { IsCompleted: true } handshake)
-    {
-        // All required factors verified! Create the final session.
-        await signInManager.SignInAsync(httpContext, handshake.UserId);
-    }
+    await signInManager.SignInAsync(httpContext, verifyResult.User!.Id);
 }
 ```
 
-For backup-factor providers that may satisfy a different pending factor, use `BeginVerificationAsync` before resolving the factor with provider capabilities, then call `CompleteFactorVerificationAsync` with the pending factor that was actually satisfied.
+For backup-factor providers that may satisfy a different pending factor, `VerifyFactorAsync` first calls `BeginVerificationAsync`, resolves provider capabilities, and completes the pending factor that was actually satisfied.
 
 ```csharp
-var beginResult = await handshakeService.BeginVerificationAsync(new BeginAuthenticationHandshakeVerificationRequest(tokenFromClient));
-
-if (beginResult.Succeeded)
-{
-    // Resolve and verify the backup provider, then complete the pending factor it satisfied.
-    var resolvedPendingFactor = "totp";
-    var completeResult = await handshakeService.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(
-        tokenFromClient,
-        resolvedPendingFactor));
-}
+var verifyResult = await orchestrator.VerifyFactorAsync(
+    tokenFromClient,
+    AuthenticationFactorTypes.RecoveryCode,
+    authenticationContext,
+    new RecoveryCodeAssertion(recoveryCodeFromClient));
 ```
 
 Handshakes are time-limited, single-use, and stored as hashed continuation tokens. They track generic "factor types" allowing applications to implement any MFA method (TOTP, Email Code, Passkeys, etc.) and integrate them into a unified handshake flow.

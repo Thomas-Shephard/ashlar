@@ -1130,6 +1130,7 @@ internal sealed class TotpTests
         var pipeline = new Mock<IAuthenticationPipeline>();
         var factorPipeline = new Mock<IAuthenticationFactorPipeline>();
         var handshakeService = new Mock<IAuthenticationHandshakeService>();
+        var handshakeCompletionService = new TestAuthenticationHandshakeCompletionService();
         var policyEvaluator = new Mock<IMfaPolicyEvaluator>();
         var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
         var provider = new Mock<ISecondaryAuthenticationFactorProvider>();
@@ -1138,7 +1139,7 @@ internal sealed class TotpTests
             .Returns<string>(factorType => AuthenticationFactorTypes.Matches(AuthenticationFactorTypes.Totp, factorType));
         IAuthenticationProvider? providerObject = provider.Object;
         providerRegistry.Setup(item => item.TryGetProvider(It.IsAny<IAuthenticationAssertion>(), out providerObject)).Returns(true);
-        var orchestrator = new AuthenticationOrchestrator(pipeline.Object, factorPipeline.Object, handshakeService.Object, policyEvaluator.Object, providerRegistry.Object);
+        var orchestrator = new AuthenticationOrchestrator(pipeline.Object, factorPipeline.Object, handshakeService.Object, handshakeCompletionService, policyEvaluator.Object, providerRegistry.Object);
 
         var userId = Guid.NewGuid();
         var handshakeToken = "handshake-token";
@@ -1166,8 +1167,7 @@ internal sealed class TotpTests
 
         handshakeService.Setup(x => x.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
-        handshakeService.Setup(x => x.CompleteFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(handshake));
+        handshakeCompletionService.CompletionResult = Result.Success(handshake);
 
         var result = await orchestrator.VerifyFactorAsync(handshakeToken, "totp", context, assertion);
 
@@ -1178,4 +1178,3 @@ internal sealed class TotpTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 }
-

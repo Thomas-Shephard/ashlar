@@ -11,7 +11,7 @@ namespace Ashlar.Identity.Features.Handshakes;
 /// <summary>
 /// Creates and verifies short-lived authentication handshakes for MFA and step-up flows.
 /// </summary>
-public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeService
+internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeService, IAuthenticationHandshakeCompletionService
 {
     private const string HandshakeIdProperty = "handshake_id";
     private const string LookupRateLimitPurpose = "handshake-lookup";
@@ -174,7 +174,6 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
         return result;
     }
 
-    /// <inheritdoc />
     public async Task<Result<AuthenticationHandshake>> CompleteFactorVerificationAsync(
         VerifyAuthenticationHandshakeRequest request,
         CancellationToken cancellationToken = default)

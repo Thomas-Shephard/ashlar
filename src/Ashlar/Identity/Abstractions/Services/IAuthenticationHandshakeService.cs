@@ -38,14 +38,6 @@ public interface IAuthenticationHandshakeService
     Task<Result<AuthenticationHandshake>> BeginFactorVerificationAsync(VerifyAuthenticationHandshakeRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Marks one previously authenticated factor as verified and returns the updated handshake state.
-    /// </summary>
-    /// <param name="request">The factor verification details.</param>
-    /// <param name="cancellationToken">A token that can cancel factor completion updates.</param>
-    /// <returns>The updated handshake when verification succeeds.</returns>
-    Task<Result<AuthenticationHandshake>> CompleteFactorVerificationAsync(VerifyAuthenticationHandshakeRequest request, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Revokes a handshake so it can no longer complete authentication.
     /// </summary>
     /// <param name="handshakeToken">The raw handshake token presented by the client. Do not log or persist this value.</param>

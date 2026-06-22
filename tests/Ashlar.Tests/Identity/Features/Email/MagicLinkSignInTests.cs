@@ -758,7 +758,7 @@ internal sealed class MagicLinkSignInTests
                 });
         }
 
-        return new AuthenticationOrchestrator(pipeline, Mock.Of<IAuthenticationFactorPipeline>(), handshakes.Object, policy, Mock.Of<IAuthenticationProviderRegistry>());
+        return new AuthenticationOrchestrator(pipeline, Mock.Of<IAuthenticationFactorPipeline>(), handshakes.Object, new TestAuthenticationHandshakeCompletionService(), policy, Mock.Of<IAuthenticationProviderRegistry>());
     }
 
     private static string ExtractToken(string? body)
