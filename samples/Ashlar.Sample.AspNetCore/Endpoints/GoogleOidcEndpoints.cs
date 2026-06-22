@@ -146,7 +146,10 @@ internal static class GoogleOidcEndpoints
         }
 
         var options = services.GetRequiredService<IOptionsMonitor<AshlarOAuthOptions>>();
-        var ticket = await httpContext.AuthenticateAsync(options.CurrentValue.ExternalSignInScheme);
+        var ticket = await AshlarExternalTicket.AuthenticateAndClearAsync(
+            httpContext,
+            options.CurrentValue.ExternalSignInScheme,
+            cancellationToken);
         if (!ticket.Succeeded || ticket.Properties == null ||
             !ticket.Properties.Items.TryGetValue(SampleGoogleOidc.InvitationTokenProperty, out var invitationToken) ||
             string.IsNullOrWhiteSpace(invitationToken))
@@ -163,10 +166,10 @@ internal static class GoogleOidcEndpoints
             displayName = AshlarOidcProfileMapper.GetSuggestedDisplayName(ticket.Principal);
         }
 
-        var result = await registration.CompleteOidcInvitationRegistrationAsync(
-            httpContext,
+        var result = await registration.RegisterOidcInvitationAsync(
             invitationToken,
             SampleGoogleOidc.ProviderName,
+            ticket,
             displayName,
             httpContext.ToAuthenticationContext(),
             cancellationToken);
