@@ -1,17 +1,17 @@
 namespace Ashlar.Identity.RateLimiting.Models;
 
 /// <summary>
-/// Represents the result status of a rate limit evaluation.
+/// Identifies whether an authentication rate-limit check permits or blocks the attempted operation.
 /// </summary>
 public enum RateLimitStatus
 {
     /// <summary>
-    /// The attempt is allowed to proceed.
+    /// The attempt may proceed. This can include consumed permits, disabled scopes, or excluded users.
     /// </summary>
     Allowed = 0,
 
     /// <summary>
-    /// The attempt has exceeded the allowed rate limit and is blocked.
+    /// The attempt must not proceed because the applicable rate-limit rule blocked it.
     /// </summary>
     Blocked = 1
 }

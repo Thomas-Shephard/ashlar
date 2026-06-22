@@ -55,7 +55,7 @@ public enum AshlarSecurityEventWebhookVerificationStatus
     MalformedEventTimestamp = 8,
 
     /// <summary>
-    /// The replay store has already accepted the signed request key.
+    /// The replay store has already seen the signed request key.
     /// </summary>
     ReplayDetected = 9,
 
@@ -119,13 +119,13 @@ public sealed record AshlarSecurityEventWebhookReplayKey(
     string DestinationPathAndQuery);
 
 /// <summary>
-/// Represents an Ashlar security event webhook signature verification result.
+/// Reports the receiver-side decision for an Ashlar security event webhook signature check.
 /// </summary>
-/// <param name="Status">The explicit verification status.</param>
+/// <param name="Status">The explicit verification status. Treat every value except <see cref="AshlarSecurityEventWebhookVerificationStatus.Valid"/> as a rejection.</param>
 public sealed record AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus Status)
 {
     /// <summary>
-    /// Gets a value indicating whether the signature is valid.
+    /// Gets a value indicating whether the signature, timestamp, destination binding, and configured replay check all passed.
     /// </summary>
     public bool IsValid => Status == AshlarSecurityEventWebhookVerificationStatus.Valid;
 
@@ -149,7 +149,7 @@ public sealed record AshlarSecurityEventWebhookVerificationResult(AshlarSecurity
     };
 
     /// <summary>
-    /// Gets the valid verification result.
+    /// Gets the reusable successful verification result.
     /// </summary>
     public static AshlarSecurityEventWebhookVerificationResult Valid { get; } = new(AshlarSecurityEventWebhookVerificationStatus.Valid);
 }
@@ -160,37 +160,46 @@ public sealed record AshlarSecurityEventWebhookVerificationResult(AshlarSecurity
 public sealed class AshlarSecurityEventWebhookVerificationRequest
 {
     /// <summary>
-    /// Gets the raw request body bytes.
+    /// Gets the exact request body bytes received by the webhook endpoint.
     /// </summary>
+    /// <remarks>
+    /// Verification hashes these bytes directly. Receivers must not reserialize JSON, normalize line endings, or
+    /// otherwise transform the body before verification.
+    /// </remarks>
     public ReadOnlyMemory<byte> Body { get; init; }
 
     /// <summary>
-    /// Gets the relevant request headers.
+    /// Gets the received Ashlar signature, signature timestamp, and event timestamp headers.
     /// </summary>
     public required IReadOnlyDictionary<string, string> Headers { get; init; }
 
     /// <summary>
-    /// Gets the shared secret.
+    /// Gets the shared secret configured for the receiving webhook endpoint.
     /// </summary>
+    /// <remarks>Do not log, persist in diagnostics, or expose this value to replay-store implementations.</remarks>
     public string? SharedSecret { get; init; }
 
     /// <summary>
-    /// Gets the expected event identifier.
+    /// Gets the expected security event identifier from the parsed payload.
     /// </summary>
     public Guid EventId { get; init; }
 
     /// <summary>
-    /// Gets the endpoint name or identity.
+    /// Gets the endpoint name or identity configured for the receiving webhook endpoint.
     /// </summary>
     public required string EndpointName { get; init; }
 
     /// <summary>
-    /// Gets the canonical destination path and query component.
+    /// Gets the canonical request path and query bound into the signature.
     /// </summary>
+    /// <remarks>
+    /// Use the path and query observed by the receiver after host routing has selected the webhook endpoint. This
+    /// binds the signature to the destination without including scheme, host, fragments, or unrelated proxy metadata.
+    /// </remarks>
     public required string DestinationPathAndQuery { get; init; }
 
     /// <summary>
-    /// Gets the current time provider.
+    /// Gets the clock used to enforce the signature timestamp tolerance.
     /// </summary>
     public required TimeProvider TimeProvider { get; init; }
 
@@ -259,8 +268,12 @@ public static class AshlarSecurityEventWebhookSignature
     /// <summary>
     /// Verifies an Ashlar security event webhook request signature.
     /// </summary>
-    /// <param name="request">The verification request.</param>
-    /// <returns>The verification result.</returns>
+    /// <param name="request">The exact receiver-side request inputs to verify.</param>
+    /// <returns>
+    /// A successful result only when the signature matches, the timestamp is within tolerance, and any configured
+    /// replay store accepts the signed replay key. Replay-store exceptions fail closed with
+    /// <see cref="AshlarSecurityEventWebhookVerificationStatus.ReplayStoreUnavailable"/>.
+    /// </returns>
     public static AshlarSecurityEventWebhookVerificationResult Verify(AshlarSecurityEventWebhookVerificationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);

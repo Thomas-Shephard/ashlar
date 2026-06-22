@@ -20,27 +20,31 @@ public sealed class RateLimitDecision
     }
 
     /// <summary>
-    /// The status of the attempt.
+    /// Gets the decision produced for the attempted authentication operation.
     /// </summary>
+    /// <remarks>
+    /// <see cref="RateLimitStatus.Allowed"/> can represent a consumed permit, a disabled limiter, an excluded scope,
+    /// or another scope that was not subject to enforcement. Only <see cref="RateLimitStatus.Blocked"/> is a hard stop.
+    /// </remarks>
     public required RateLimitStatus Status { get; init; }
 
     /// <summary>
-    /// <see langword="true" /> if the attempt is allowed; otherwise, <see langword="false" />.
+    /// Gets a value indicating whether the caller may continue the authentication operation.
     /// </summary>
     public bool IsAllowed => Status == RateLimitStatus.Allowed;
 
     /// <summary>
-    /// If the attempt is blocked, indicates when the caller may try again.
+    /// Gets the earliest retry instant when the attempt is blocked.
     /// </summary>
     public DateTimeOffset? RetryAfter { get; init; }
 
     /// <summary>
-    /// The number of remaining permits in the current window.
+    /// Gets the number of remaining permits in the current rate-limit window.
     /// </summary>
     public required int Remaining { get; init; }
 
     /// <summary>
-    /// The time when the current rate limit window will reset.
+    /// Gets the instant when the current rate-limit window resets.
     /// </summary>
     public required DateTimeOffset WindowResetAt { get; init; }
 }

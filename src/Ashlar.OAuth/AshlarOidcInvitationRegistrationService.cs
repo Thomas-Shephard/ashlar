@@ -49,7 +49,13 @@ public sealed class AshlarOidcInvitationRegistrationService
     /// <param name="displayName">Optional user display name for invitation acceptance.</param>
     /// <param name="context">Optional Ashlar authentication context.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The invitation registration result.</returns>
+    /// <returns>The invitation registration result, including ticket, provider, invitation, and credential-link failures.</returns>
+    /// <remarks>
+    /// The ASP.NET Core OpenID Connect handler must have already validated the remote provider response and written
+    /// the temporary external ticket. This method verifies that the ticket belongs to the configured Ashlar OIDC
+    /// provider, clears it, enforces invitation email-match policy, and links the stable OIDC subject to the accepted
+    /// user.
+    /// </remarks>
     public async Task<AshlarOidcInvitationRegistrationResult> CompleteOidcInvitationRegistrationAsync(
         HttpContext httpContext,
         string? invitationToken,
@@ -91,7 +97,11 @@ public sealed class AshlarOidcInvitationRegistrationService
     /// <param name="displayName">Optional user display name for invitation acceptance.</param>
     /// <param name="context">Optional Ashlar authentication context.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The invitation registration result.</returns>
+    /// <returns>The invitation registration result, including provider, invitation, and credential-link failures.</returns>
+    /// <remarks>
+    /// The completed authentication result must come from ASP.NET Core OpenID Connect middleware. Provider metadata
+    /// embedded in the ticket must match the configured Ashlar OIDC provider before the invitation is accepted.
+    /// </remarks>
     public Task<AshlarOidcInvitationRegistrationResult> RegisterOidcInvitationAsync(
         string? invitationToken,
         string providerName,
@@ -130,7 +140,12 @@ public sealed class AshlarOidcInvitationRegistrationService
     /// <param name="displayName">Optional user display name for invitation acceptance.</param>
     /// <param name="context">Optional Ashlar authentication context.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The invitation registration result.</returns>
+    /// <returns>The invitation registration result, including invitation acceptance and credential-link failures.</returns>
+    /// <remarks>
+    /// The principal must come from a trusted OpenID Connect handler. Ashlar maps the configured stable OIDC subject
+    /// and applies the configured invitation email-match policy; profile email and name claims are not sufficient by
+    /// themselves to establish the provider key.
+    /// </remarks>
     public async Task<AshlarOidcInvitationRegistrationResult> RegisterOidcInvitationAsync(
         string? invitationToken,
         string providerName,

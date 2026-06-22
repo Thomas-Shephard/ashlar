@@ -36,7 +36,7 @@ public sealed class PostgresAuthenticationRateLimiter : IAuthenticationRateLimit
     /// <param name="dataSource">The PostgreSQL data source.</param>
     /// <param name="timeProvider">The time provider.</param>
     /// <param name="options">The rate limiter options.</param>
-    /// <param name="logger">The logger value.</param>
+    /// <param name="logger">The optional logger used for opportunistic cleanup failures.</param>
     public PostgresAuthenticationRateLimiter(
         NpgsqlDataSource dataSource,
         TimeProvider timeProvider,
@@ -58,12 +58,16 @@ public sealed class PostgresAuthenticationRateLimiter : IAuthenticationRateLimit
     }
 
     /// <summary>
-    /// Performs the check <see langword="async" /> operation and returns the result.
+    /// Atomically evaluates and records an authentication rate-limit attempt in PostgreSQL.
     /// </summary>
-    /// <param name="attempt">The attempt value.</param>
-    /// <param name="rule">The rule value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="attempt">Safe, normalized bucket metadata for the attempted authentication operation.</param>
+    /// <param name="rule">The permit window and optional block duration to enforce for the key.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The resulting permit or block decision, including remaining permits and reset metadata.</returns>
+    /// <remarks>
+    /// Backend failures are surfaced to the caller. Higher-level authentication rate-limit services decide whether
+    /// that failure is handled as fail open or fail closed for the current flow.
+    /// </remarks>
     public async Task<RateLimitDecision> CheckAsync(RateLimitAttempt attempt, RateLimitRule rule, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(attempt);
@@ -217,10 +221,10 @@ public sealed class PostgresAuthenticationRateLimiter : IAuthenticationRateLimit
     }
 
     /// <summary>
-    /// Performs the cleanup expired rows <see langword="async" /> operation and returns the result.
+    /// Removes expired PostgreSQL rate-limit rows.
     /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The number of expired rows deleted.</returns>
     public async Task<int> CleanupExpiredRowsAsync(CancellationToken cancellationToken = default)
     {
         var now = _timeProvider.GetUtcNow();

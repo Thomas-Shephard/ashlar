@@ -127,12 +127,16 @@ public sealed class RedisAuthenticationRateLimiter : IAuthenticationRateLimiter
     }
 
     /// <summary>
-    /// Performs the check <see langword="async" /> operation and returns the result.
+    /// Atomically evaluates and records an authentication rate-limit attempt in Redis.
     /// </summary>
-    /// <param name="attempt">The attempt value.</param>
-    /// <param name="rule">The rule value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="attempt">Safe, normalized bucket metadata for the attempted authentication operation.</param>
+    /// <param name="rule">The permit window and optional block duration to enforce for the key.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The resulting permit or block decision, including remaining permits and reset metadata.</returns>
+    /// <remarks>
+    /// Backend failures are surfaced to the caller. Higher-level authentication rate-limit services decide whether
+    /// that failure is handled as fail open or fail closed for the current flow.
+    /// </remarks>
     public async Task<RateLimitDecision> CheckAsync(RateLimitAttempt attempt, RateLimitRule rule, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(attempt);
