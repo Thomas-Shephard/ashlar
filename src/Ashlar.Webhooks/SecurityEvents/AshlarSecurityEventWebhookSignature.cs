@@ -52,7 +52,17 @@ public enum AshlarSecurityEventWebhookVerificationStatus
     /// <summary>
     /// The event occurrence timestamp header is malformed.
     /// </summary>
-    MalformedEventTimestamp = 8
+    MalformedEventTimestamp = 8,
+
+    /// <summary>
+    /// The replay store has already accepted the signed request key.
+    /// </summary>
+    ReplayDetected = 9,
+
+    /// <summary>
+    /// The replay store could not make a deliberate accept or reject decision.
+    /// </summary>
+    ReplayStoreUnavailable = 10
 }
 
 /// <summary>
@@ -61,10 +71,52 @@ public enum AshlarSecurityEventWebhookVerificationStatus
 public sealed class AshlarSecurityEventWebhookVerificationOptions
 {
     /// <summary>
-    /// Gets or sets the accepted clock skew for webhook signatures.
+    /// Gets or sets the accepted clock skew for webhook signatures. Receivers should keep this window short and
+    /// combine signature verification with idempotent event processing.
     /// </summary>
     public TimeSpan TimestampTolerance { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Gets or sets the receiver-managed replay store used after signature validation succeeds. When this is not set,
+    /// verification remains stateless and receivers must reject duplicate event processing through their own
+    /// idempotency controls.
+    /// </summary>
+    public IAshlarSecurityEventWebhookReplayStore? ReplayStore { get; set; }
 }
+
+/// <summary>
+/// Provides receiver-side replay protection for Ashlar security event webhooks.
+/// </summary>
+/// <remarks>
+/// Implementations must atomically accept a replay key only once until the supplied expiry instant. Store only the
+/// values in <see cref="AshlarSecurityEventWebhookReplayKey"/>; do not store webhook secrets, raw request bodies,
+/// complete URLs, headers, or payloads. Distributed receivers should use a shared store.
+/// </remarks>
+public interface IAshlarSecurityEventWebhookReplayStore
+{
+    /// <summary>
+    /// Atomically records a signed webhook replay key when it has not been seen before.
+    /// </summary>
+    /// <param name="key">The stable signed replay key metadata.</param>
+    /// <param name="expiresAt">The earliest instant when the key may be evicted.</param>
+    /// <returns><see langword="true"/> when the key was accepted, or <see langword="false"/> when it was already seen.</returns>
+    bool TryAccept(AshlarSecurityEventWebhookReplayKey key, DateTimeOffset expiresAt);
+}
+
+/// <summary>
+/// Identifies a signed Ashlar security event webhook request for receiver-side replay protection.
+/// </summary>
+/// <param name="EndpointName">The endpoint name or identity included in the signature.</param>
+/// <param name="EventId">The security event identifier included in the signature.</param>
+/// <param name="SignatureTimestamp">The signature timestamp included in the signature.</param>
+/// <param name="SignatureVersion">The signature version included in the signature header.</param>
+/// <param name="DestinationPathAndQuery">The canonical destination path and query included in the signature.</param>
+public sealed record AshlarSecurityEventWebhookReplayKey(
+    string EndpointName,
+    Guid EventId,
+    DateTimeOffset SignatureTimestamp,
+    string SignatureVersion,
+    string DestinationPathAndQuery);
 
 /// <summary>
 /// Represents an Ashlar security event webhook signature verification result.
@@ -91,6 +143,8 @@ public sealed record AshlarSecurityEventWebhookVerificationResult(AshlarSecurity
         AshlarSecurityEventWebhookVerificationStatus.MissingSecret => "Missing shared secret.",
         AshlarSecurityEventWebhookVerificationStatus.MissingEventTimestamp => "Missing event timestamp.",
         AshlarSecurityEventWebhookVerificationStatus.MalformedEventTimestamp => "Malformed event timestamp.",
+        AshlarSecurityEventWebhookVerificationStatus.ReplayDetected => "Replay detected.",
+        AshlarSecurityEventWebhookVerificationStatus.ReplayStoreUnavailable => "Replay store unavailable.",
         _ => "Invalid signature."
     };
 
@@ -141,7 +195,8 @@ public sealed class AshlarSecurityEventWebhookVerificationRequest
     public required TimeProvider TimeProvider { get; init; }
 
     /// <summary>
-    /// Gets optional verification options.
+    /// Gets optional verification options. Configure a replay store here when the receiver wants verification to reject
+    /// repeated delivery attempts before event processing; otherwise the receiver remains responsible for idempotency.
     /// </summary>
     public AshlarSecurityEventWebhookVerificationOptions? Options { get; init; }
 }
@@ -288,9 +343,34 @@ public static class AshlarSecurityEventWebhookSignature
             request.EventId,
             request.EndpointName,
             request.DestinationPathAndQuery);
-        return CryptographicOperations.FixedTimeEquals(actualSignature, expectedSignature)
-            ? AshlarSecurityEventWebhookVerificationResult.Valid
-            : new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.InvalidSignature);
+        if (!CryptographicOperations.FixedTimeEquals(actualSignature, expectedSignature))
+        {
+            return new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.InvalidSignature);
+        }
+
+        var replayStore = request.Options?.ReplayStore;
+        if (replayStore is null)
+        {
+            return AshlarSecurityEventWebhookVerificationResult.Valid;
+        }
+
+        var replayKey = new AshlarSecurityEventWebhookReplayKey(
+            request.EndpointName,
+            request.EventId,
+            signatureTimestamp,
+            SignatureVersion,
+            request.DestinationPathAndQuery);
+        var replayKeyExpiresAt = signatureTimestamp.Add(tolerance);
+        try
+        {
+            return replayStore.TryAccept(replayKey, replayKeyExpiresAt)
+                ? AshlarSecurityEventWebhookVerificationResult.Valid
+                : new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.ReplayDetected);
+        }
+        catch (Exception)
+        {
+            return new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.ReplayStoreUnavailable);
+        }
     }
 
     /// <summary>
