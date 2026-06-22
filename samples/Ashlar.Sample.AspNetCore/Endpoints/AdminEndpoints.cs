@@ -19,7 +19,12 @@ internal static partial class AdminEndpoints
     public static void MapAdminEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/admin", () => AppViews.RenderAdminManage()).RequireAuthorization(AdminPolicy);
+        MapAdminUserEndpoints(app);
+        MapAdminProjectEndpoints(app);
+    }
 
+    private static void MapAdminUserEndpoints(IEndpointRouteBuilder app)
+    {
         app.MapGet("/api/admin/users", async (
             IAuthorizationEvaluator auth,
             IPostgresConnectionProvider connectionProvider,
@@ -136,7 +141,10 @@ internal static partial class AdminEndpoints
                 ? Results.Forbid()
                 : ToAdminSecurityResult(await accountSecurity.ResetMfaAsync(userId, adminRequest, cancellationToken));
         }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
+    }
 
+    private static void MapAdminProjectEndpoints(IEndpointRouteBuilder app)
+    {
         app.MapGet("/api/admin/projects", async (
             IAuthorizationEvaluator auth,
             IPostgresConnectionProvider connectionProvider,
@@ -303,9 +311,12 @@ internal static partial class AdminEndpoints
         var result = await auth.EvaluateAsync(
             new AuthorizationEvaluationRequest(httpContext.User.GetAshlarUserId(), Role: AdminPolicy, TenantId: tenantId),
             cancellationToken);
-        return result.Succeeded
-            ? tenantId.HasValue ? new TenantContext(tenantId.Value) : TenantContext.Global
-            : null;
+        if (!result.Succeeded)
+        {
+            return null;
+        }
+
+        return tenantId.HasValue ? new TenantContext(tenantId.Value) : TenantContext.Global;
     }
 
     private static async Task<bool> IsAuthorizedGlobalAdminScopeAsync(
