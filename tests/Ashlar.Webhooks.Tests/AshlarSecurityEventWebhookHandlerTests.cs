@@ -245,7 +245,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.TimestampOutsideTolerance));
-            Assert.That(replayStore.CallCount, Is.EqualTo(0));
+            Assert.That(replayStore.CallCount, Is.Zero);
         }
     }
 
