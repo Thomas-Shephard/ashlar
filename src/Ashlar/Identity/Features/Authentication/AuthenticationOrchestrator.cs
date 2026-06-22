@@ -143,29 +143,10 @@ public sealed class AuthenticationOrchestrator(
         var response = await _factorPipeline.VerifyFactorAsync(factorContext, assertion, cancellationToken);
         if (!response.Succeeded || response.User?.Id != handshake.UserId)
         {
-            MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "factor_authentication_failed", null);
-            var errorMessage = response.Status switch
-            {
-                AuthenticationStatus.Disabled => AuthenticationFailedMessage,
-                AuthenticationStatus.RateLimited => RateLimitExceededMessage,
-                _ => FactorVerificationFailedMessage
-            };
-            var status = response.Status == AuthenticationStatus.RateLimited
-                ? MfaAuthenticationStatus.RateLimited
-                : MfaAuthenticationStatus.Failed;
-            return new MfaAuthenticationResult(status, ErrorMessage: errorMessage);
+            return CreateFactorAuthenticationFailureResult(handshake.UserId, response);
         }
 
-        // Capture any new claims from this factor
-        Dictionary<string, string> metadata = [];
-        if (response.Claims != null)
-        {
-            foreach (var claim in response.Claims)
-            {
-                metadata[$"claim:{claim.Key}"] = JsonSerializer.Serialize(claim.Value);
-            }
-        }
-
+        var metadata = CreateFactorVerificationMetadata(response);
         var result = await _handshakeService.CompleteFactorVerificationAsync(verificationRequest with { Metadata = metadata }, cancellationToken);
 
         if (!result.Succeeded || result.Value == null)
@@ -175,6 +156,37 @@ public sealed class AuthenticationOrchestrator(
         }
 
         return CreateResultFromHandshake(result.Value, response.User, handshakeToken);
+    }
+
+    private MfaAuthenticationResult CreateFactorAuthenticationFailureResult(Guid userId, AuthenticationResponse response)
+    {
+        MfaHandshakeFactorVerificationRejected(_logger, userId, "factor_authentication_failed", null);
+        var errorMessage = response.Status switch
+        {
+            AuthenticationStatus.Disabled => AuthenticationFailedMessage,
+            AuthenticationStatus.RateLimited => RateLimitExceededMessage,
+            _ => FactorVerificationFailedMessage
+        };
+        var status = response.Status == AuthenticationStatus.RateLimited
+            ? MfaAuthenticationStatus.RateLimited
+            : MfaAuthenticationStatus.Failed;
+        return new MfaAuthenticationResult(status, ErrorMessage: errorMessage);
+    }
+
+    private static Dictionary<string, string> CreateFactorVerificationMetadata(AuthenticationResponse response)
+    {
+        Dictionary<string, string> metadata = [];
+        if (response.Claims == null)
+        {
+            return metadata;
+        }
+
+        foreach (var claim in response.Claims)
+        {
+            metadata[$"claim:{claim.Key}"] = JsonSerializer.Serialize(claim.Value);
+        }
+
+        return metadata;
     }
 
     private static MfaAuthenticationResult CreateHandshakeFailureResult(AshlarFailureCode? failureCode)
