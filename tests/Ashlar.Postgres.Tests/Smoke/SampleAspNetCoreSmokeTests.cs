@@ -4,6 +4,8 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Ashlar.Authorization.Abstractions;
+using Ashlar.Authorization.Models;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
@@ -94,6 +96,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         await AssertLogoutAntiforgeryProtectionAsync();
         await EnrollTotpAsync(AdminClient);
         await AssertLastAdminCannotBeDisabledAsync(AdminClient, adminUserId);
+        await AssertSampleAdminTenantScopeAsync(adminUserId);
         await AssertSessionListingAndRevocationAsync(AdminClient);
 
         await RequestEmailCodeAsync("admin@example.com");
@@ -130,6 +133,63 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         {
             Assert.That(sharedSecret, Is.Not.Empty);
             Assert.That(adminUserId, Is.Not.EqualTo(Guid.Empty));
+        }
+    }
+
+    private async Task AssertSampleAdminTenantScopeAsync(Guid adminUserId)
+    {
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+
+        var globalUserId = await CreateSampleUserAsync(_factory!.Services, $"global-{Guid.NewGuid():N}@example.com");
+        var tenantAdminEmail = $"tenant-admin-{Guid.NewGuid():N}@example.com";
+        var tenantAdminId = await CreateSampleUserAsync(_factory.Services, tenantAdminEmail, tenantId);
+        var tenantMemberId = await CreateSampleUserAsync(_factory.Services, $"tenant-member-{Guid.NewGuid():N}@example.com", tenantId);
+        await CreateSampleUserAsync(_factory.Services, $"other-tenant-{Guid.NewGuid():N}@example.com", otherTenantId);
+
+        await GrantAdminRoleAsync(_factory.Services, tenantAdminId, tenantId);
+
+        var globalUsers = await GetJsonAsync(AdminClient, "/api/admin/users");
+        using var forbiddenTenantRequest = new HttpRequestMessage(HttpMethod.Get, "/api/admin/users");
+        forbiddenTenantRequest.Headers.Add("X-Tenant-Id", tenantId.ToString("D"));
+        var forbiddenTenantResponse = await AdminClient.SendAsync(forbiddenTenantRequest);
+        using var forbiddenProjectCatalogRequest = new HttpRequestMessage(HttpMethod.Get, "/api/admin/projects");
+        forbiddenProjectCatalogRequest.Headers.Add("X-Tenant-Id", tenantId.ToString("D"));
+        var forbiddenProjectCatalogResponse = await AdminClient.SendAsync(forbiddenProjectCatalogRequest);
+
+        using var tenantAdminClient = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        AddTenantHeader(tenantAdminClient, tenantId);
+        await SignInWithMagicLinkAsync(tenantAdminClient, tenantAdminEmail);
+        await EnrollTotpAsync(tenantAdminClient);
+
+        var tenantUsers = await GetJsonAsync(tenantAdminClient, "/api/admin/users");
+        var tenantSecurity = await tenantAdminClient.GetAsync($"/api/admin/users/{tenantMemberId}/security");
+        var tenantGrant = await PostAsJsonWithCsrfAsync(tenantAdminClient, "/api/projects/alpha/grants", new { userId = tenantMemberId });
+        var projectGrantTenantId = await GetProjectGrantTenantIdAsync(tenantMemberId, "alpha");
+        var disableTenantMember = await PostAsJsonWithCsrfAsync(tenantAdminClient, $"/api/admin/users/{tenantMemberId}/disable", new { reason = "tenant-scope-test" });
+        var reactivateTenantMember = await PostAsJsonWithCsrfAsync(tenantAdminClient, $"/api/admin/users/{tenantMemberId}/account-state", new { accountState = UserAccountState.Active, reason = "tenant-scope-test" });
+        var disableGlobalUser = await PostAsJsonWithCsrfAsync(tenantAdminClient, $"/api/admin/users/{globalUserId}/disable", new { reason = "tenant-scope-test" });
+        var globalUserState = await GetAccountStateAsync(globalUserId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Ids(globalUsers), Does.Contain(adminUserId));
+            Assert.That(Ids(globalUsers), Does.Contain(globalUserId));
+            Assert.That(Ids(globalUsers), Does.Not.Contain(tenantAdminId));
+            Assert.That(Ids(globalUsers), Does.Not.Contain(tenantMemberId));
+            Assert.That(forbiddenTenantResponse.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+            Assert.That(forbiddenProjectCatalogResponse.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+            Assert.That(Ids(tenantUsers), Does.Contain(tenantAdminId));
+            Assert.That(Ids(tenantUsers), Does.Contain(tenantMemberId));
+            Assert.That(Ids(tenantUsers), Does.Not.Contain(adminUserId));
+            Assert.That(Ids(tenantUsers), Does.Not.Contain(globalUserId));
+            Assert.That(tenantSecurity.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(tenantGrant.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(projectGrantTenantId, Is.EqualTo(tenantId));
+            Assert.That(disableTenantMember.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(reactivateTenantMember.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(disableGlobalUser.StatusCode, Is.Not.EqualTo(HttpStatusCode.OK));
+            Assert.That(globalUserState, Is.EqualTo("active"));
         }
     }
 
@@ -616,7 +676,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         }
     }
 
-    private static async Task<Guid> CreateSampleUserAsync(IServiceProvider services, string email)
+    private static async Task<Guid> CreateSampleUserAsync(IServiceProvider services, string email, Guid? tenantId = null)
     {
         await using var scope = services.CreateAsyncScope();
         var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
@@ -626,11 +686,54 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             Email = email,
             Name = "GitHub Smoke",
             AccountState = UserAccountState.Active,
+            TenantId = tenantId,
             EmailVerifiedAt = DateTimeOffset.UtcNow
         };
 
         await users.CreateUserAsync(user);
         return user.Id;
+    }
+
+    private static async Task GrantAdminRoleAsync(IServiceProvider services, Guid userId, Guid? tenantId)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var grants = scope.ServiceProvider.GetRequiredService<IAuthorizationGrantService>();
+        var result = await grants.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, tenantId, Role: "admin"));
+        Assert.That(result.Succeeded, Is.True, result.FailureMessage);
+    }
+
+    private async Task<string> GetAccountStateAsync(Guid userId)
+    {
+        await using var connection = new NpgsqlConnection(GetConnectionString());
+        return await connection.QuerySingleAsync<string>(
+            "SELECT account_state FROM ashlar_users WHERE id = @UserId",
+            new { UserId = userId });
+    }
+
+    private async Task<Guid?> GetProjectGrantTenantIdAsync(Guid userId, string projectId)
+    {
+        await using var connection = new NpgsqlConnection(GetConnectionString());
+        return await connection.QuerySingleAsync<Guid?>("""
+            SELECT tenant_id
+            FROM ashlar_authorization_grants
+            WHERE user_id = @UserId
+              AND scope_type = 'project'
+              AND scope_id = @ProjectId
+              AND permission = 'project.manage'
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """, new { UserId = userId, ProjectId = projectId });
+    }
+
+    private static void AddTenantHeader(HttpClient client, Guid tenantId)
+    {
+        client.DefaultRequestHeaders.Remove("X-Tenant-Id");
+        client.DefaultRequestHeaders.Add("X-Tenant-Id", tenantId.ToString("D"));
+    }
+
+    private static Guid[] Ids(JsonDocument document)
+    {
+        return document.RootElement.EnumerateArray().Select(user => user.GetProperty("id").GetGuid()).ToArray();
     }
 
     private static async Task LinkGitHubCredentialAsync(IServiceProvider services, Guid userId)

@@ -21,53 +21,69 @@ internal static partial class AdminEndpoints
         app.MapGet("/admin", () => AppViews.RenderAdminManage()).RequireAuthorization(AdminPolicy);
 
         app.MapGet("/api/admin/users", async (
+            IAuthorizationEvaluator auth,
             IPostgresConnectionProvider connectionProvider,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
+            var tenant = await ResolveAuthorizedAdminTenantScopeAsync(httpContext, auth, cancellationToken);
+            if (tenant == null)
+            {
+                return Results.Forbid();
+            }
+
             var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
             await using (connection)
             {
-                var tenantId = httpContext.GetAshlarTenantId();
-                var users = await connection.Connection.QueryAsync(new CommandDefinition(
-                    "SELECT id, email, name FROM ashlar_users WHERE (@TenantId IS NULL OR tenant_id = @TenantId) ORDER BY email, id LIMIT 100",
-                    new { TenantId = tenantId },
-                    transaction: connection.Transaction,
-                    cancellationToken: cancellationToken));
+                var command = tenant.TenantId.HasValue
+                    ? new CommandDefinition(
+                        "SELECT id, email, name FROM ashlar_users WHERE tenant_id = @TenantId ORDER BY email, id LIMIT 100",
+                        new { tenant.TenantId },
+                        transaction: connection.Transaction,
+                        cancellationToken: cancellationToken)
+                    : new CommandDefinition(
+                        "SELECT id, email, name FROM ashlar_users WHERE tenant_id IS NULL ORDER BY email, id LIMIT 100",
+                        transaction: connection.Transaction,
+                        cancellationToken: cancellationToken);
+                var users = await connection.Connection.QueryAsync(command);
 
                 return Results.Ok(users);
             }
-        }).RequireAuthorization(AdminPolicy);
+        }).RequireAuthorization();
 
         app.MapGet("/api/admin/users/{userId:guid}/security", async (
             Guid userId,
             IAccountSecurityService accountSecurity,
+            IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var result = await accountSecurity.GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(ToTenantContext(httpContext), TimeSpan.FromDays(30)), cancellationToken);
+            var tenant = await ResolveAuthorizedAdminTenantScopeAsync(httpContext, auth, cancellationToken);
+            if (tenant == null)
+            {
+                return Results.Forbid();
+            }
+
+            var result = await accountSecurity.GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(tenant, TimeSpan.FromDays(30)), cancellationToken);
             return ToAccountSecurityPostureResult(result);
-        }).RequireAuthorization(AdminPolicy);
+        }).RequireAuthorization();
 
         app.MapPost("/api/admin/users/{userId:guid}/disable", async (
             Guid userId,
             AdminUserSecurityRequest? request,
             IAccountSecurityService accountSecurity,
+            IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var adminRequest = ToAdminRequest(request, httpContext);
-            var result = await accountSecurity.SetUserAccountStateAsync(
-                userId,
-                new SetUserAccountStateRequest(UserAccountState.Disabled, adminRequest.Audit, adminRequest.Tenant, adminRequest.Reason, IncludeAllTenants: adminRequest.IncludeAllTenants),
-                cancellationToken);
-            return ToAdminSecurityResult(result);
-        }).RequireAuthorization(AdminPolicy).RequireFreshMfa().RequireSampleAntiforgery();
+            return await SetUserAccountStateAsync(userId, UserAccountState.Disabled, request, accountSecurity, auth, httpContext, cancellationToken);
+        }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/admin/users/{userId:guid}/account-state", async (
             Guid userId,
             AdminSetUserAccountStateRequest request,
             IAccountSecurityService accountSecurity,
+            IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
@@ -76,51 +92,62 @@ internal static partial class AdminEndpoints
                 return Results.BadRequest(new { error = "Invalid account state." });
             }
 
-            var result = await accountSecurity.SetUserAccountStateAsync(userId, ToSetAccountStateRequest(request, httpContext), cancellationToken);
-            return ToAdminSecurityResult(result);
-        }).RequireAuthorization(AdminPolicy).RequireFreshMfa().RequireSampleAntiforgery();
+            var setAccountStateRequest = await ToSetAccountStateRequestAsync(request, httpContext, auth, cancellationToken);
+            return setAccountStateRequest == null
+                ? Results.Forbid()
+                : ToAdminSecurityResult(await accountSecurity.SetUserAccountStateAsync(userId, setAccountStateRequest, cancellationToken));
+        }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/admin/users/{userId:guid}/reactivate", async (
             Guid userId,
             AdminUserSecurityRequest? request,
             IAccountSecurityService accountSecurity,
+            IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var adminRequest = ToAdminRequest(request, httpContext);
-            var result = await accountSecurity.SetUserAccountStateAsync(
-                userId,
-                new SetUserAccountStateRequest(UserAccountState.Active, adminRequest.Audit, adminRequest.Tenant, adminRequest.Reason, IncludeAllTenants: adminRequest.IncludeAllTenants),
-                cancellationToken);
-            return ToAdminSecurityResult(result);
-        }).RequireAuthorization(AdminPolicy).RequireFreshMfa().RequireSampleAntiforgery();
+            return await SetUserAccountStateAsync(userId, UserAccountState.Active, request, accountSecurity, auth, httpContext, cancellationToken);
+        }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/admin/users/{userId:guid}/sessions/revoke", async (
             Guid userId,
             AdminUserSecurityRequest? request,
             IAccountSecurityService accountSecurity,
+            IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var result = await accountSecurity.RevokeSessionsAsync(userId, ToAdminRequest(request, httpContext), cancellationToken);
-            return ToAdminSecurityResult(result);
-        }).RequireAuthorization(AdminPolicy).RequireFreshMfa().RequireSampleAntiforgery();
+            var adminRequest = await ToAdminRequestAsync(request, httpContext, auth, cancellationToken);
+            return adminRequest == null
+                ? Results.Forbid()
+                : ToAdminSecurityResult(await accountSecurity.RevokeSessionsAsync(userId, adminRequest, cancellationToken));
+        }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/admin/users/{userId:guid}/mfa/reset", async (
             Guid userId,
             AdminUserSecurityRequest? request,
             IAccountSecurityService accountSecurity,
+            IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var result = await accountSecurity.ResetMfaAsync(userId, ToAdminRequest(request, httpContext), cancellationToken);
-            return ToAdminSecurityResult(result);
-        }).RequireAuthorization(AdminPolicy).RequireFreshMfa().RequireSampleAntiforgery();
+            var adminRequest = await ToAdminRequestAsync(request, httpContext, auth, cancellationToken);
+            return adminRequest == null
+                ? Results.Forbid()
+                : ToAdminSecurityResult(await accountSecurity.ResetMfaAsync(userId, adminRequest, cancellationToken));
+        }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapGet("/api/admin/projects", async (
+            IAuthorizationEvaluator auth,
             IPostgresConnectionProvider connectionProvider,
+            HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
+            if (!await IsAuthorizedGlobalAdminScopeAsync(httpContext, auth, cancellationToken))
+            {
+                return Results.Forbid();
+            }
+
             var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
             await using (connection)
             {
@@ -131,13 +158,20 @@ internal static partial class AdminEndpoints
 
                 return Results.Ok(projects);
             }
-        }).RequireAuthorization(AdminPolicy);
+        }).RequireAuthorization();
 
         app.MapPost("/api/admin/projects", async (
             CreateProjectRequest request,
+            IAuthorizationEvaluator auth,
             IPostgresConnectionProvider connectionProvider,
+            HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
+            if (!await IsAuthorizedGlobalAdminScopeAsync(httpContext, auth, cancellationToken))
+            {
+                return Results.Forbid();
+            }
+
             if (string.IsNullOrWhiteSpace(request.Id) || string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 100)
             {
                 return Results.BadRequest(new { error = "Invalid project data." });
@@ -166,18 +200,25 @@ internal static partial class AdminEndpoints
                     ? Results.Created($"/projects/{request.Id}", new { id = request.Id })
                     : Results.Conflict(new { error = "Project already exists." });
             }
-        }).RequireAuthorization(AdminPolicy).RequireSampleAntiforgery();
+        }).RequireAuthorization().RequireSampleAntiforgery();
 
         app.MapPost("/api/projects/{projectId}/grants", async (
             string projectId,
             ProjectGrantRequest request,
             IAuthorizationGrantService grants,
+            IAuthorizationEvaluator auth,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
+            var tenant = await ResolveAuthorizedAdminTenantScopeAsync(httpContext, auth, cancellationToken);
+            if (tenant == null)
+            {
+                return Results.Forbid();
+            }
+
             var result = await grants.CreateGrantAsync(new CreateAuthorizationGrantRequest(
                 UserId: request.UserId,
-                TenantId: httpContext.GetAshlarTenantId(),
+                TenantId: tenant.TenantId,
                 ScopeType: "project",
                 ScopeId: projectId,
                 Permission: "project.manage",
@@ -189,15 +230,16 @@ internal static partial class AdminEndpoints
             }
 
             return Results.Ok(new { result.Value.Id });
-        }).RequireAuthorization(AdminPolicy).RequireSampleAntiforgery();
+        }).RequireAuthorization().RequireSampleAntiforgery();
 
         app.MapGet("/projects/{projectId}", async (
             string projectId,
             IAuthorizationEvaluator auth,
             ClaimsPrincipal user,
+            HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var isAdmin = (await auth.EvaluateAsync(new AuthorizationEvaluationRequest(user.GetAshlarUserId(), Role: AdminPolicy), cancellationToken)).Succeeded;
+            var isAdmin = (await auth.EvaluateAsync(new AuthorizationEvaluationRequest(user.GetAshlarUserId(), Role: AdminPolicy, TenantId: httpContext.GetAshlarTenantId()), cancellationToken)).Succeeded;
             return AppViews.RenderProjectManage(projectId, isAdmin);
         }).RequireAuthorization("project.manage");
     }
@@ -205,17 +247,46 @@ internal static partial class AdminEndpoints
     [GeneratedRegex("^[a-z0-9-]+$", RegexOptions.CultureInvariant)]
     private static partial Regex ProjectIdRegex();
 
-    private static AccountSecurityOperationRequest ToAdminRequest(AdminUserSecurityRequest? request, HttpContext httpContext)
+    private static async Task<IResult> SetUserAccountStateAsync(
+        Guid userId,
+        UserAccountState accountState,
+        AdminUserSecurityRequest? request,
+        IAccountSecurityService accountSecurity,
+        IAuthorizationEvaluator auth,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
     {
-        var tenant = ToTenantContext(httpContext);
-        return new AccountSecurityOperationRequest(httpContext.ToAuditContext(), tenant, request?.Reason);
+        var adminRequest = await ToAdminRequestAsync(request, httpContext, auth, cancellationToken);
+        if (adminRequest == null)
+        {
+            return Results.Forbid();
+        }
+
+        return ToAdminSecurityResult(await accountSecurity.SetUserAccountStateAsync(
+            userId,
+            new SetUserAccountStateRequest(accountState, adminRequest.Audit, adminRequest.Tenant, adminRequest.Reason, IncludeAllTenants: adminRequest.IncludeAllTenants),
+            cancellationToken));
     }
 
-    private static SetUserAccountStateRequest ToSetAccountStateRequest(AdminSetUserAccountStateRequest request, HttpContext httpContext)
+    private static async Task<AccountSecurityOperationRequest?> ToAdminRequestAsync(
+        AdminUserSecurityRequest? request,
+        HttpContext httpContext,
+        IAuthorizationEvaluator auth,
+        CancellationToken cancellationToken)
+    {
+        var tenant = await ResolveAuthorizedAdminTenantScopeAsync(httpContext, auth, cancellationToken);
+        return tenant == null ? null : new AccountSecurityOperationRequest(httpContext.ToAuditContext(), tenant, request?.Reason);
+    }
+
+    private static async Task<SetUserAccountStateRequest?> ToSetAccountStateRequestAsync(
+        AdminSetUserAccountStateRequest request,
+        HttpContext httpContext,
+        IAuthorizationEvaluator auth,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var tenant = ToTenantContext(httpContext);
-        return new SetUserAccountStateRequest(
+        var tenant = await ResolveAuthorizedAdminTenantScopeAsync(httpContext, auth, cancellationToken);
+        return tenant == null ? null : new SetUserAccountStateRequest(
             request.AccountState,
             httpContext.ToAuditContext(),
             tenant,
@@ -223,10 +294,34 @@ internal static partial class AdminEndpoints
             request.RevokeSessionsAndRememberedMfaDevices ?? true);
     }
 
-    private static TenantContext ToTenantContext(HttpContext httpContext)
+    private static async Task<TenantContext?> ResolveAuthorizedAdminTenantScopeAsync(
+        HttpContext httpContext,
+        IAuthorizationEvaluator auth,
+        CancellationToken cancellationToken)
     {
         var tenantId = httpContext.GetAshlarTenantId();
-        return tenantId.HasValue ? new TenantContext(tenantId.Value) : TenantContext.Global;
+        var result = await auth.EvaluateAsync(
+            new AuthorizationEvaluationRequest(httpContext.User.GetAshlarUserId(), Role: AdminPolicy, TenantId: tenantId),
+            cancellationToken);
+        return result.Succeeded
+            ? tenantId.HasValue ? new TenantContext(tenantId.Value) : TenantContext.Global
+            : null;
+    }
+
+    private static async Task<bool> IsAuthorizedGlobalAdminScopeAsync(
+        HttpContext httpContext,
+        IAuthorizationEvaluator auth,
+        CancellationToken cancellationToken)
+    {
+        if (httpContext.GetAshlarTenantId().HasValue)
+        {
+            return false;
+        }
+
+        var result = await auth.EvaluateAsync(
+            new AuthorizationEvaluationRequest(httpContext.User.GetAshlarUserId(), Role: AdminPolicy),
+            cancellationToken);
+        return result.Succeeded;
     }
 
     private static IResult ToAdminSecurityResult(Result<AccountSecurityOperationResult> result)
