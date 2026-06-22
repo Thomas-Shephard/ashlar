@@ -145,100 +145,9 @@ internal static partial class AdminEndpoints
 
     private static void MapAdminProjectEndpoints(IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/admin/projects", async (
-            IAuthorizationEvaluator auth,
-            IPostgresConnectionProvider connectionProvider,
-            HttpContext httpContext,
-            CancellationToken cancellationToken) =>
-        {
-            if (!await IsAuthorizedGlobalAdminScopeAsync(httpContext, auth, cancellationToken))
-            {
-                return Results.Forbid();
-            }
-
-            var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
-            await using (connection)
-            {
-                var projects = await connection.Connection.QueryAsync(new CommandDefinition(
-                    "SELECT id, name FROM sample_projects ORDER BY created_at",
-                    transaction: connection.Transaction,
-                    cancellationToken: cancellationToken));
-
-                return Results.Ok(projects);
-            }
-        }).RequireAuthorization();
-
-        app.MapPost("/api/admin/projects", async (
-            CreateProjectRequest request,
-            IAuthorizationEvaluator auth,
-            IPostgresConnectionProvider connectionProvider,
-            HttpContext httpContext,
-            CancellationToken cancellationToken) =>
-        {
-            if (!await IsAuthorizedGlobalAdminScopeAsync(httpContext, auth, cancellationToken))
-            {
-                return Results.Forbid();
-            }
-
-            if (string.IsNullOrWhiteSpace(request.Id) || string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 100)
-            {
-                return Results.BadRequest(new { error = "Invalid project data." });
-            }
-
-            if (!ProjectIdRegex().IsMatch(request.Id))
-            {
-                return Results.BadRequest(new { error = "Project ID must contain only lowercase letters, numbers, and dashes." });
-            }
-
-            var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
-            await using (connection)
-            {
-                var rows = await connection.Connection.ExecuteAsync(new CommandDefinition(
-                    "INSERT INTO sample_projects (id, name) VALUES (@Id, @Name) ON CONFLICT DO NOTHING",
-                    new { request.Id, request.Name },
-                    transaction: connection.Transaction,
-                    cancellationToken: cancellationToken));
-
-                if (connection.Transaction != null)
-                {
-                    await connection.Transaction.CommitAsync(cancellationToken);
-                }
-
-                return rows > 0
-                    ? Results.Created($"/projects/{request.Id}", new { id = request.Id })
-                    : Results.Conflict(new { error = "Project already exists." });
-            }
-        }).RequireAuthorization().RequireSampleAntiforgery();
-
-        app.MapPost("/api/projects/{projectId}/grants", async (
-            string projectId,
-            ProjectGrantRequest request,
-            IAuthorizationGrantService grants,
-            IAuthorizationEvaluator auth,
-            HttpContext httpContext,
-            CancellationToken cancellationToken) =>
-        {
-            var tenant = await ResolveAuthorizedAdminTenantScopeAsync(httpContext, auth, cancellationToken);
-            if (tenant == null)
-            {
-                return Results.Forbid();
-            }
-
-            var result = await grants.CreateGrantAsync(new CreateAuthorizationGrantRequest(
-                UserId: request.UserId,
-                TenantId: tenant.TenantId,
-                ScopeType: "project",
-                ScopeId: projectId,
-                Permission: "project.manage",
-                Audit: httpContext.ToAuditContext()), cancellationToken);
-
-            if (!result.Succeeded || result.Value == null)
-            {
-                return Results.BadRequest(SampleResultErrors.From(result, "Failed to create grant"));
-            }
-
-            return Results.Ok(new { result.Value.Id });
-        }).RequireAuthorization().RequireSampleAntiforgery();
+        app.MapGet("/api/admin/projects", ListProjectsAsync).RequireAuthorization();
+        app.MapPost("/api/admin/projects", CreateProjectAsync).RequireAuthorization().RequireSampleAntiforgery();
+        app.MapPost("/api/projects/{projectId}/grants", CreateProjectGrantAsync).RequireAuthorization().RequireSampleAntiforgery();
 
         app.MapGet("/projects/{projectId}", async (
             string projectId,
@@ -250,6 +159,98 @@ internal static partial class AdminEndpoints
             var isAdmin = (await auth.EvaluateAsync(new AuthorizationEvaluationRequest(user.GetAshlarUserId(), Role: AdminPolicy, TenantId: httpContext.GetAshlarTenantId()), cancellationToken)).Succeeded;
             return AppViews.RenderProjectManage(projectId, isAdmin);
         }).RequireAuthorization("project.manage");
+    }
+
+    private static async Task<IResult> ListProjectsAsync(
+        IAuthorizationEvaluator auth,
+        IPostgresConnectionProvider connectionProvider,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        if (!await IsAuthorizedGlobalAdminScopeAsync(httpContext, auth, cancellationToken))
+        {
+            return Results.Forbid();
+        }
+
+        var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
+        await using (connection)
+        {
+            var projects = await connection.Connection.QueryAsync(new CommandDefinition(
+                "SELECT id, name FROM sample_projects ORDER BY created_at",
+                transaction: connection.Transaction,
+                cancellationToken: cancellationToken));
+
+            return Results.Ok(projects);
+        }
+    }
+
+    private static async Task<IResult> CreateProjectAsync(
+        CreateProjectRequest request,
+        IAuthorizationEvaluator auth,
+        IPostgresConnectionProvider connectionProvider,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        if (!await IsAuthorizedGlobalAdminScopeAsync(httpContext, auth, cancellationToken))
+        {
+            return Results.Forbid();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Id) || string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 100)
+        {
+            return Results.BadRequest(new { error = "Invalid project data." });
+        }
+
+        if (!ProjectIdRegex().IsMatch(request.Id))
+        {
+            return Results.BadRequest(new { error = "Project ID must contain only lowercase letters, numbers, and dashes." });
+        }
+
+        var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
+        await using (connection)
+        {
+            var rows = await connection.Connection.ExecuteAsync(new CommandDefinition(
+                "INSERT INTO sample_projects (id, name) VALUES (@Id, @Name) ON CONFLICT DO NOTHING",
+                new { request.Id, request.Name },
+                transaction: connection.Transaction,
+                cancellationToken: cancellationToken));
+
+            if (connection.Transaction != null)
+            {
+                await connection.Transaction.CommitAsync(cancellationToken);
+            }
+
+            return rows > 0
+                ? Results.Created($"/projects/{request.Id}", new { id = request.Id })
+                : Results.Conflict(new { error = "Project already exists." });
+        }
+    }
+
+    private static async Task<IResult> CreateProjectGrantAsync(
+        string projectId,
+        ProjectGrantRequest request,
+        IAuthorizationGrantService grants,
+        IAuthorizationEvaluator auth,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var tenant = await ResolveAuthorizedAdminTenantScopeAsync(httpContext, auth, cancellationToken);
+        if (tenant == null)
+        {
+            return Results.Forbid();
+        }
+
+        var result = await grants.CreateGrantAsync(new CreateAuthorizationGrantRequest(
+            UserId: request.UserId,
+            TenantId: tenant.TenantId,
+            ScopeType: "project",
+            ScopeId: projectId,
+            Permission: "project.manage",
+            Audit: httpContext.ToAuditContext()), cancellationToken);
+
+        return !result.Succeeded || result.Value == null
+            ? Results.BadRequest(SampleResultErrors.From(result, "Failed to create grant"))
+            : Results.Ok(new { result.Value.Id });
     }
 
     [GeneratedRegex("^[a-z0-9-]+$", RegexOptions.CultureInvariant)]
