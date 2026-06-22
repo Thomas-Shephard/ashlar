@@ -64,15 +64,40 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         await repository.CreateInvitationAsync(expired);
 
         var revoked = await repository.RevokeInvitationsByEmailAsync("TENANT@example.com", tenantId);
+        var alreadyRevoked = await repository.RevokeInvitationAsync(
+            new RevokeInvitationAdministrationRequest(revokeTarget.Id, new TenantContext(tenantId), Audit: new AuditContext(Guid.NewGuid(), "127.0.0.1")),
+            DateTimeOffset.UtcNow);
         expired.AcceptedAt = DateTimeOffset.UtcNow;
         var expiredAccepted = await repository.UpdateInvitationAsync(expired, expired.Version);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(revoked, Is.EqualTo(1));
+            Assert.That(alreadyRevoked?.RevocationStatus, Is.EqualTo(InvitationAdministrationRevocationStatus.AlreadyRevoked));
             Assert.That((await repository.GetInvitationByTokenHashAsync(revokeTarget.TokenHash))!.RevokedAt, Is.Not.Null);
             Assert.That((await repository.GetInvitationByTokenHashAsync(otherTenant.TokenHash))!.RevokedAt, Is.Null);
             Assert.That(expiredAccepted, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task AdministrationRevokeInvitationReloadsWhenGuardedUpdateDoesNotChangeRow()
+    {
+        var repository = GetInvitationRepository();
+        var tenantId = Guid.NewGuid();
+        var invitation = CreateInvitation("admin-race@example.com", "admin-race-token", tenantId: tenantId);
+        await repository.CreateInvitationAsync(invitation);
+        await IgnoreRevokeUpdateAsync(invitation.Id);
+
+        var result = await repository.RevokeInvitationAsync(
+            new RevokeInvitationAdministrationRequest(invitation.Id, new TenantContext(tenantId), Audit: new AuditContext(Guid.NewGuid(), "127.0.0.1")),
+            DateTimeOffset.UtcNow);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result?.RevocationStatus, Is.EqualTo(InvitationAdministrationRevocationStatus.NotRevoked));
+            Assert.That(result?.Status, Is.EqualTo(InvitationAdministrationStatus.Pending));
+            Assert.That(result?.RevokedAt, Is.Null);
         }
     }
 
@@ -441,6 +466,21 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         command.AddParameter("$tokenHash", tokenHash);
         command.AddDateTimeOffsetParameter("$createdAt", DateTimeOffset.UtcNow);
         command.AddDateTimeOffsetParameter("$expiresAt", DateTimeOffset.UtcNow.AddMinutes(5));
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private async Task IgnoreRevokeUpdateAsync(Guid invitationId)
+    {
+        await using var connection = await OpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = $$"""
+            CREATE TRIGGER ignore_revoke_update
+            BEFORE UPDATE OF revoked_at ON ashlar_invitations
+            WHEN OLD.id = '{{invitationId:D}}'
+            BEGIN
+                SELECT RAISE(IGNORE);
+            END;
+            """;
         await command.ExecuteNonQueryAsync();
     }
 }

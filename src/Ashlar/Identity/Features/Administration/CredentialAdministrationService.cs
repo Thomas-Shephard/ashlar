@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Features.Administration;
 
 /// <summary>
-/// Implements read-only administrator credential search and detail operations.
+/// Implements read-only administrator credential search and single-item lookup operations.
 /// </summary>
 /// <param name="repository">Repository used for safe administrator credential lookup.</param>
 /// <param name="timeProvider">Clock used for credential availability projection.</param>
@@ -49,18 +49,18 @@ public sealed class CredentialAdministrationService(
     }
 
     /// <inheritdoc />
-    public async Task<Result<CredentialAdministrationDetail>> GetCredentialAsync(CredentialAdministrationDetailRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<CredentialAdministrationSummary>> GetCredentialAsync(CredentialAdministrationLookupRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!TryValidateDetailRequest(request, out var validationFailure))
+        if (!TryValidateLookupRequest(request, out var validationFailure))
         {
             return validationFailure;
         }
 
         var credential = await _repository.GetCredentialAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
         return credential == null || (!request.IncludeAllTenants && !AdministrationScopeValidation.IncludesTenant(request.Tenant!, credential.TenantId))
-            ? Result.Failure<CredentialAdministrationDetail>(AshlarFailureCodes.CredentialNotFound, "Credential was not found.")
+            ? Result.Failure<CredentialAdministrationSummary>(AshlarFailureCodes.CredentialNotFound, "Credential was not found.")
             : Result.Success(credential);
     }
 
@@ -79,17 +79,17 @@ public sealed class CredentialAdministrationService(
         }
     }
 
-    private static bool TryValidateDetailRequest(CredentialAdministrationDetailRequest request, out Result<CredentialAdministrationDetail> failure)
+    private static bool TryValidateLookupRequest(CredentialAdministrationLookupRequest request, out Result<CredentialAdministrationSummary> failure)
     {
         try
         {
-            CredentialAdministrationDetailRequest.ThrowIfInvalid(request);
+            CredentialAdministrationLookupRequest.ThrowIfInvalid(request);
             failure = null!;
             return true;
         }
         catch (ArgumentException exception)
         {
-            failure = Result.Failure<CredentialAdministrationDetail>(AshlarFailureCodes.ValidationError, exception.Message);
+            failure = Result.Failure<CredentialAdministrationSummary>(AshlarFailureCodes.ValidationError, exception.Message);
             return false;
         }
     }

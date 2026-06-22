@@ -63,12 +63,12 @@ public sealed record UserSummary(
 /// <summary>
 /// Paged user search result.
 /// </summary>
-/// <param name="Users">Page of display-safe account summaries.</param>
+/// <param name="Items">Page of display-safe account summaries.</param>
 /// <param name="Limit">Maximum page size requested.</param>
 /// <param name="Offset">Number of matching records skipped before this page.</param>
 /// <param name="HasMore">Whether another page may exist.</param>
 public sealed record UserSearchResult(
-    IReadOnlyList<UserSummary> Users,
+    IReadOnlyList<UserSummary> Items,
     int Limit,
     int Offset,
     bool HasMore);
@@ -87,7 +87,7 @@ public sealed record UserAdministrationDetail(
 /// </summary>
 /// <param name="UserId">User to load.</param>
 /// <param name="Tenant">Requested scope. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <paramref name="IncludeAllTenants" /> is enabled.</param>
-/// <param name="IncludeAllTenants">Whether to allow lookup across every scope. Cannot be combined with <paramref name="Tenant" />.</param>
+/// <param name="IncludeAllTenants">Whether to allow lookup across all tenancy scopes. Cannot be combined with <paramref name="Tenant" />.</param>
 /// <param name="RecentSecurityEventWindow">Optional recent security event window for the embedded account-security posture.</param>
 public sealed record UserAdministrationDetailRequest(
     Guid UserId,
@@ -96,9 +96,9 @@ public sealed record UserAdministrationDetailRequest(
     TimeSpan? RecentSecurityEventWindow = null)
 {
     /// <summary>
-    /// Throws when the user detail request is not safe to execute.
+    /// Throws when the user lookup request is not safe to execute.
     /// </summary>
-    /// <param name="request">Detail request to validate before loading administrator data.</param>
+    /// <param name="request">Lookup request to validate before loading administrator data.</param>
     public static void ThrowIfInvalid(UserAdministrationDetailRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);

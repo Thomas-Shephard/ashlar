@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Abstractions.Services;
 
 /// <summary>
-/// Provides administrator invitation search, detail, and revocation operations.
+/// Provides administrator invitation search, single-item lookup, and revocation operations.
 /// </summary>
 /// <remarks>
 /// These operations are intended for administrative and operations tooling and do not authorize the caller.
@@ -19,12 +19,12 @@ public interface IInvitationAdministrationService
     Task<Result<InvitationSearchResult>> SearchInvitationsAsync(SearchInvitationsRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets display-safe invitation detail by identifier.
+    /// Gets a display-safe invitation projection by identifier.
     /// </summary>
     /// <param name="request">Explicit tenant scope and invitation identifier for the read-only lookup.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
-    /// <returns>Invitation detail without raw token, token hash, or provider version metadata.</returns>
-    Task<Result<InvitationAdministrationDetail>> GetInvitationAsync(InvitationAdministrationDetailRequest request, CancellationToken cancellationToken = default);
+    /// <returns>The same provider-neutral invitation projection used by search when found, without raw token, token hash, or provider version metadata.</returns>
+    Task<Result<InvitationAdministrationSummary>> GetInvitationAsync(InvitationAdministrationLookupRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Revokes a pending invitation by identifier.

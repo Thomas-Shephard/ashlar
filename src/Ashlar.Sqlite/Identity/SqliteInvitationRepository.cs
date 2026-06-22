@@ -170,9 +170,9 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
         return invitations;
     }
 
-    public async Task<InvitationAdministrationDetail?> GetInvitationAsync(InvitationAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    public async Task<InvitationAdministrationSummary?> GetInvitationAsync(InvitationAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        InvitationAdministrationDetailRequest.ThrowIfInvalid(request);
+        InvitationAdministrationLookupRequest.ThrowIfInvalid(request);
 
         var sql = $"""
             SELECT id,
@@ -197,7 +197,7 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
         command.CommandText = sql;
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? ReadAdministrationDetail(reader) : null;
+        return await reader.ReadAsync(cancellationToken) ? ReadAdministrationSummary(reader) : null;
     }
 
     public async Task<RevokeInvitationAdministrationResult?> RevokeInvitationAsync(RevokeInvitationAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
@@ -239,8 +239,17 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
             rowsAffected = await update.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        var after = await GetRevokeCandidateAsync(handle, request, now, cancellationToken);
-        return after! with { Revoked = rowsAffected > 0 };
+        if (rowsAffected > 0)
+        {
+            return before with
+            {
+                RevocationStatus = InvitationAdministrationRevocationStatus.Revoked,
+                Status = InvitationAdministrationStatus.Revoked,
+                RevokedAt = now
+            };
+        }
+
+        return await GetRevokeCandidateAsync(handle, request, now, cancellationToken);
     }
 
     private static void AddParameters(SqliteCommand command, UserInvitation invitation)
@@ -374,20 +383,6 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
             reader.GetNullableDateTimeOffsetFromText(RevokedAtColumn));
     }
 
-    private static InvitationAdministrationDetail ReadAdministrationDetail(SqliteDataReader reader)
-    {
-        return new InvitationAdministrationDetail(
-            reader.GetGuidFromText("id"),
-            reader.GetString(reader.GetOrdinal("email")),
-            reader.GetNullableGuidFromText(TenantIdColumn),
-            (InvitationAdministrationStatus)reader.GetInt32ByName("status"),
-            reader.GetDateTimeOffsetFromText(CreatedAtColumn),
-            reader.GetNullableDateTimeOffsetFromText("updated_at"),
-            reader.GetDateTimeOffsetFromText(ExpiresAtColumn),
-            reader.GetNullableDateTimeOffsetFromText(AcceptedAtColumn),
-            reader.GetNullableDateTimeOffsetFromText(RevokedAtColumn));
-    }
-
     private static RevokeInvitationAdministrationResult ReadRevokeResult(SqliteDataReader reader)
     {
         var invitationId = reader.GetGuidFromText("invitation_id");
@@ -396,9 +391,20 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
         return new RevokeInvitationAdministrationResult(
             invitationId,
             tenantId,
-            Revoked: false,
+            ToRevocationStatus(status),
             status,
             reader.GetNullableDateTimeOffsetFromText(RevokedAtColumn));
+    }
+
+    private static InvitationAdministrationRevocationStatus ToRevocationStatus(InvitationAdministrationStatus status)
+    {
+        return status switch
+        {
+            InvitationAdministrationStatus.Accepted => InvitationAdministrationRevocationStatus.AlreadyAccepted,
+            InvitationAdministrationStatus.Revoked => InvitationAdministrationRevocationStatus.AlreadyRevoked,
+            InvitationAdministrationStatus.Expired => InvitationAdministrationRevocationStatus.Expired,
+            _ => InvitationAdministrationRevocationStatus.NotRevoked
+        };
     }
 
     private static void ValidateMetadata(string? metadata)

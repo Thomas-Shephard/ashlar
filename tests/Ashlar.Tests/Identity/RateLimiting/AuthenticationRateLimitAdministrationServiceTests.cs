@@ -46,16 +46,16 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     }
 
     [Test]
-    public async Task DetailAndResetValidateRequests()
+    public async Task LookupAndResetValidateRequests()
     {
         var service = new AuthenticationRateLimitAdministrationService(new RecordingRepository());
 
-        var invalidDetail = await service.GetBucketAsync(new AuthenticationRateLimitBucketDetailRequest("", "login"));
+        var invalidLookup = await service.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest("", "login"));
         var invalidReset = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "", new AuditContext(Guid.NewGuid())));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(invalidDetail.FailureDetails?.Code, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(invalidLookup.FailureDetails?.Code, Is.EqualTo(AshlarFailureCodes.ValidationError));
             Assert.That(invalidReset.FailureDetails?.Code, Is.EqualTo(AshlarFailureCodes.ValidationError));
         }
     }
@@ -67,7 +67,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
             new RecordingRepository(),
             new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now)));
 
-        var result = await service.GetBucketAsync(new AuthenticationRateLimitBucketDetailRequest("bucket", "login"));
+        var result = await service.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest("bucket", "login"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -139,7 +139,6 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         var modelTypes = new[]
         {
             typeof(AuthenticationRateLimitBucketSummary),
-            typeof(AuthenticationRateLimitBucketDetail),
             typeof(AuthenticationRateLimitBucketSearchResult),
             typeof(AuthenticationRateLimitBucketResetResult)
         };
@@ -183,9 +182,9 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
             return Task.FromResult(result);
         }
 
-        public Task<AuthenticationRateLimitBucketDetail?> GetBucketAsync(AuthenticationRateLimitBucketDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+        public Task<AuthenticationRateLimitBucketSummary?> GetBucketAsync(AuthenticationRateLimitBucketLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult<AuthenticationRateLimitBucketDetail?>(null);
+            return Task.FromResult<AuthenticationRateLimitBucketSummary?>(null);
         }
 
         public Task<bool> ResetBucketAsync(ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)

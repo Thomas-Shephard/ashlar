@@ -68,7 +68,7 @@ internal sealed class UserAdministrationServiceTests
             Assert.That(result.Value?.Limit, Is.EqualTo(100));
             Assert.That(result.Value?.Offset, Is.EqualTo(2));
             Assert.That(result.Value?.HasMore, Is.True);
-            Assert.That(result.Value?.Users, Has.Count.EqualTo(100));
+            Assert.That(result.Value?.Items, Has.Count.EqualTo(100));
             Assert.That(repository.LastSearchRequest?.Limit, Is.EqualTo(101));
             Assert.That(repository.LastSearchRequest?.Offset, Is.EqualTo(2));
             Assert.That(repository.LastSearchRequest?.Query, Is.EqualTo("user"));
@@ -97,7 +97,7 @@ internal sealed class UserAdministrationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value?.Users.Single(), Is.EqualTo(expected));
+            Assert.That(result.Value?.Items.Single(), Is.EqualTo(expected));
             Assert.That(repository.LastSearchRequest?.Tenant, Is.SameAs(tenant));
             Assert.That(repository.LastSearchRequest?.AccountState, Is.EqualTo(UserAccountState.Active));
             Assert.That(repository.LastSearchRequest?.IsEmailVerified, Is.False);

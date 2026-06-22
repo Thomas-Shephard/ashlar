@@ -96,13 +96,13 @@ public sealed class RedisAuthenticationRateLimitAdministrationRepository : IAuth
     }
 
     /// <summary>
-    /// Loads Redis rate-limit bucket detail by purpose and opaque bucket identifier.
+    /// Loads a Redis rate-limit bucket by purpose and opaque bucket identifier.
     /// </summary>
-    /// <param name="request">Validated detail request.</param>
+    /// <param name="request">Validated lookup request.</param>
     /// <param name="now">Current UTC time used for status projection.</param>
     /// <param name="cancellationToken">Token for aborting Redis work.</param>
-    /// <returns>The safe bucket detail when found; otherwise <see langword="null" />.</returns>
-    public async Task<AuthenticationRateLimitBucketDetail?> GetBucketAsync(AuthenticationRateLimitBucketDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    /// <returns>The safe bucket summary when found; otherwise <see langword="null" />.</returns>
+    public async Task<AuthenticationRateLimitBucketSummary?> GetBucketAsync(AuthenticationRateLimitBucketLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
@@ -116,7 +116,7 @@ public sealed class RedisAuthenticationRateLimitAdministrationRepository : IAuth
             return null;
         }
 
-        return new AuthenticationRateLimitBucketDetail(row.BucketId, row.Purpose, row.Count, row.WindowStart, row.ExpiresAt, row.BlockedUntil, row.Status);
+        return new AuthenticationRateLimitBucketSummary(row.BucketId, row.Purpose, row.Count, row.WindowStart, row.ExpiresAt, row.BlockedUntil, row.Status);
     }
 
     /// <summary>

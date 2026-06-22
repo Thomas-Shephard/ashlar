@@ -24,5 +24,5 @@ public interface IAuthenticationSessionAdministrationRepository
     /// <param name="now">The timestamp used for active-state projection.</param>
     /// <param name="cancellationToken">A token that can cancel lookup.</param>
     /// <returns>The authentication session, or <see langword="null" /> when it does not exist.</returns>
-    Task<AuthenticationSessionAdministrationDetail?> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
+    Task<AuthenticationSessionAdministrationSummary?> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
 }

@@ -70,7 +70,7 @@ public sealed class AccountLockoutAdministrationService(
     public async Task<Result<AccountLockoutStatus>> GetLockoutStatusAsync(
         Guid userId,
         AuthenticationProviderKey provider,
-        AccountLockoutAdministrationRequest request,
+        AccountLockoutStatusRequest request,
         CancellationToken cancellationToken = default)
     {
         if (ValidateScopedOperation(userId, provider, request, out var tenantId) is { } failure)
@@ -83,7 +83,7 @@ public sealed class AccountLockoutAdministrationService(
     }
 
     /// <inheritdoc />
-    public async Task<Result<bool>> ResetLockoutAsync(
+    public async Task<Result<ResetAccountLockoutResult>> ResetLockoutAsync(
         Guid userId,
         AuthenticationProviderKey provider,
         ResetAccountLockoutRequest request,
@@ -91,17 +91,18 @@ public sealed class AccountLockoutAdministrationService(
     {
         if (ValidateScopedOperation(userId, provider, request, out var tenantId) is { } failure)
         {
-            return Result.Failure<bool>(failure);
+            return Result.Failure<ResetAccountLockoutResult>(failure);
         }
 
         if (ValidateReason(request.Reason) is { } reasonFailure)
         {
-            return Result.Failure<bool>(reasonFailure);
+            return Result.Failure<ResetAccountLockoutResult>(reasonFailure);
         }
 
         var reset = await _repository.ResetAsync(userId, tenantId, provider, cancellationToken);
         await RecordResetAsync(userId, tenantId, provider, reset, request, cancellationToken);
-        return Result.Success(reset);
+        var status = reset ? AccountLockoutResetStatus.Reset : AccountLockoutResetStatus.NotFound;
+        return Result.Success(new ResetAccountLockoutResult(status, userId, tenantId, provider));
     }
 
     private static AccountLockoutAdministrationSummary ToSummary(AccountLockoutRecord record, DateTimeOffset now)
@@ -145,7 +146,7 @@ public sealed class AccountLockoutAdministrationService(
     private static AshlarFailure? ValidateScopedOperation(
         Guid userId,
         AuthenticationProviderKey provider,
-        AccountLockoutAdministrationRequest request,
+        AccountLockoutStatusRequest request,
         out Guid? tenantId)
     {
         ArgumentNullException.ThrowIfNull(request);

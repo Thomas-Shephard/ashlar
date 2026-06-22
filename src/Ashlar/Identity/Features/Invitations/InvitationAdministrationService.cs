@@ -3,7 +3,7 @@ using Ashlar.Auditing;
 namespace Ashlar.Identity.Features.Invitations;
 
 /// <summary>
-/// Implements administrator invitation search, detail, and revocation operations.
+/// Implements administrator invitation search, single-item lookup, and revocation operations.
 /// </summary>
 /// <param name="repository">Repository used for safe administrator invitation lookup and mutation.</param>
 /// <param name="dependencies">Optional clock and audit dependencies.</param>
@@ -42,18 +42,18 @@ internal sealed class InvitationAdministrationService(
     }
 
     /// <inheritdoc />
-    public async Task<Result<InvitationAdministrationDetail>> GetInvitationAsync(InvitationAdministrationDetailRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<InvitationAdministrationSummary>> GetInvitationAsync(InvitationAdministrationLookupRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!TryValidateDetailRequest(request, out var validationFailure))
+        if (!TryValidateLookupRequest(request, out var validationFailure))
         {
             return validationFailure;
         }
 
         var invitation = await _repository.GetInvitationAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
         return invitation == null || (!request.IncludeAllTenants && !AdministrationScopeValidation.IncludesTenant(request.Tenant!, invitation.TenantId))
-            ? Result.Failure<InvitationAdministrationDetail>(AshlarFailureCodes.InvitationNotFound, "Invitation was not found.")
+            ? Result.Failure<InvitationAdministrationSummary>(AshlarFailureCodes.InvitationNotFound, "Invitation was not found.")
             : Result.Success(invitation);
     }
 
@@ -79,7 +79,7 @@ internal sealed class InvitationAdministrationService(
             return Result.Failure<RevokeInvitationAdministrationResult>(AshlarFailureCodes.InvitationNotFound, "Invitation was not found.");
         }
 
-        if (result.Revoked)
+        if (result.RevocationStatus == InvitationAdministrationRevocationStatus.Revoked)
         {
             await RecordRevocationAsync(request, result, cancellationToken);
         }
@@ -107,7 +107,7 @@ internal sealed class InvitationAdministrationService(
         var properties = new Dictionary<string, string>
         {
             ["invitation_id"] = result.InvitationId.ToString(),
-            ["revoked"] = "true",
+            ["revocation_status"] = result.RevocationStatus.ToString(),
             ["status"] = result.Status.ToString(),
             ["tenant_scope"] = tenantScope
         };
@@ -147,17 +147,17 @@ internal sealed class InvitationAdministrationService(
         }
     }
 
-    private static bool TryValidateDetailRequest(InvitationAdministrationDetailRequest request, out Result<InvitationAdministrationDetail> failure)
+    private static bool TryValidateLookupRequest(InvitationAdministrationLookupRequest request, out Result<InvitationAdministrationSummary> failure)
     {
         try
         {
-            InvitationAdministrationDetailRequest.ThrowIfInvalid(request);
+            InvitationAdministrationLookupRequest.ThrowIfInvalid(request);
             failure = null!;
             return true;
         }
         catch (ArgumentException exception)
         {
-            failure = Result.Failure<InvitationAdministrationDetail>(AshlarFailureCodes.ValidationError, exception.Message);
+            failure = Result.Failure<InvitationAdministrationSummary>(AshlarFailureCodes.ValidationError, exception.Message);
             return false;
         }
     }

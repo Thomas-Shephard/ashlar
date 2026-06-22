@@ -4,7 +4,7 @@ using Ashlar.Authorization.Models;
 namespace Ashlar.Authorization;
 
 /// <summary>
-/// Implements read-only administrator authorization grant search and detail operations.
+/// Implements read-only administrator authorization grant search and single-item lookup operations.
 /// </summary>
 /// <param name="repository">Repository used for safe administrator grant lookup.</param>
 /// <param name="options">Validation limits for grant fields.</param>
@@ -68,18 +68,18 @@ public sealed class AuthorizationGrantAdministrationService(
     }
 
     /// <inheritdoc />
-    public async Task<Result<AuthorizationGrantAdministrationDetail>> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationDetailRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<AuthorizationGrantAdministrationSummary>> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationLookupRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!TryValidateDetailRequest(request, out var validationFailure))
+        if (!TryValidateLookupRequest(request, out var validationFailure))
         {
             return validationFailure;
         }
 
         var grant = await _repository.GetAuthorizationGrantAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
         return grant == null || (!request.IncludeAllTenants && !AdministrationScopeValidation.IncludesTenant(request.Tenant!, grant.TenantId))
-            ? Result.Failure<AuthorizationGrantAdministrationDetail>(AshlarFailureCodes.AuthorizationGrantNotFound, "Authorization grant was not found.")
+            ? Result.Failure<AuthorizationGrantAdministrationSummary>(AshlarFailureCodes.AuthorizationGrantNotFound, "Authorization grant was not found.")
             : Result.Success(grant);
     }
 
@@ -126,17 +126,17 @@ public sealed class AuthorizationGrantAdministrationService(
         }
     }
 
-    private static bool TryValidateDetailRequest(AuthorizationGrantAdministrationDetailRequest request, out Result<AuthorizationGrantAdministrationDetail> failure)
+    private static bool TryValidateLookupRequest(AuthorizationGrantAdministrationLookupRequest request, out Result<AuthorizationGrantAdministrationSummary> failure)
     {
         try
         {
-            AuthorizationGrantAdministrationDetailRequest.ThrowIfInvalid(request);
+            AuthorizationGrantAdministrationLookupRequest.ThrowIfInvalid(request);
             failure = null!;
             return true;
         }
         catch (ArgumentException exception)
         {
-            failure = Result.Failure<AuthorizationGrantAdministrationDetail>(AshlarFailureCodes.ValidationError, exception.Message);
+            failure = Result.Failure<AuthorizationGrantAdministrationSummary>(AshlarFailureCodes.ValidationError, exception.Message);
             return false;
         }
     }

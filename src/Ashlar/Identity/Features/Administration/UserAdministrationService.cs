@@ -51,7 +51,7 @@ public sealed class UserAdministrationService(IUserAdministrationRepository repo
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!TryValidateDetailRequest(request, out var validationFailure))
+        if (!TryValidateLookupRequest(request, out var validationFailure))
         {
             return validationFailure;
         }
@@ -87,7 +87,7 @@ public sealed class UserAdministrationService(IUserAdministrationRepository repo
         }
     }
 
-    private static bool TryValidateDetailRequest(UserAdministrationDetailRequest request, out Result<UserAdministrationDetail> failure)
+    private static bool TryValidateLookupRequest(UserAdministrationDetailRequest request, out Result<UserAdministrationDetail> failure)
     {
         try
         {

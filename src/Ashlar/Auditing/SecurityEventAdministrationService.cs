@@ -48,7 +48,7 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!TryValidateDetailRequest(request, out var validationFailure))
+        if (!TryValidateLookupRequest(request, out var validationFailure))
         {
             return validationFailure;
         }
@@ -74,7 +74,7 @@ public sealed class SecurityEventAdministrationService(ISecurityEventAdministrat
         }
     }
 
-    private static bool TryValidateDetailRequest(SecurityEventAdministrationDetailRequest request, out Result<SecurityEventSummary> failure)
+    private static bool TryValidateLookupRequest(SecurityEventAdministrationDetailRequest request, out Result<SecurityEventSummary> failure)
     {
         try
         {

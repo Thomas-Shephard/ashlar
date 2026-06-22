@@ -59,13 +59,13 @@ public sealed class PostgresAuthenticationRateLimitAdministrationRepository : IA
     }
 
     /// <summary>
-    /// Loads PostgreSQL rate-limit bucket detail by purpose and opaque bucket identifier.
+    /// Loads a PostgreSQL rate-limit bucket by purpose and opaque bucket identifier.
     /// </summary>
-    /// <param name="request">Validated detail request.</param>
+    /// <param name="request">Validated lookup request.</param>
     /// <param name="now">Current UTC time used for status projection.</param>
     /// <param name="cancellationToken">Token for aborting database work.</param>
-    /// <returns>The safe bucket detail when found; otherwise <see langword="null" />.</returns>
-    public async Task<AuthenticationRateLimitBucketDetail?> GetBucketAsync(AuthenticationRateLimitBucketDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    /// <returns>The safe bucket summary when found; otherwise <see langword="null" />.</returns>
+    public async Task<AuthenticationRateLimitBucketSummary?> GetBucketAsync(AuthenticationRateLimitBucketLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -86,7 +86,7 @@ public sealed class PostgresAuthenticationRateLimitAdministrationRepository : IA
             purpose = request.Purpose
         }, cancellationToken: cancellationToken));
 
-        return rows.Select(row => row.ToDetail(now, request.BucketId)).FirstOrDefault(detail => detail != null);
+        return rows.Select(row => row.ToLookupResult(now, request.BucketId)).FirstOrDefault(bucket => bucket != null);
     }
 
     /// <summary>
@@ -180,11 +180,11 @@ public sealed class PostgresAuthenticationRateLimitAdministrationRepository : IA
             return new AuthenticationRateLimitBucketSummary(ToBucketId(BucketId), Purpose, Count, ToDateTimeOffset(WindowStart), ToDateTimeOffset(ExpiresAt), ToNullableDateTimeOffset(BlockedUntil), DeriveStatus(now));
         }
 
-        public AuthenticationRateLimitBucketDetail? ToDetail(DateTimeOffset now, string requestedBucketId)
+        public AuthenticationRateLimitBucketSummary? ToLookupResult(DateTimeOffset now, string requestedBucketId)
         {
             var bucketId = ToBucketId(BucketId);
             return string.Equals(bucketId, requestedBucketId, StringComparison.Ordinal)
-                ? new AuthenticationRateLimitBucketDetail(bucketId, Purpose, Count, ToDateTimeOffset(WindowStart), ToDateTimeOffset(ExpiresAt), ToNullableDateTimeOffset(BlockedUntil), DeriveStatus(now))
+                ? new AuthenticationRateLimitBucketSummary(bucketId, Purpose, Count, ToDateTimeOffset(WindowStart), ToDateTimeOffset(ExpiresAt), ToNullableDateTimeOffset(BlockedUntil), DeriveStatus(now))
                 : null;
         }
 

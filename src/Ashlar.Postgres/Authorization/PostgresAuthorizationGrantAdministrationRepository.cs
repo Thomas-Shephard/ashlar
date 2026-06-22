@@ -29,7 +29,7 @@ public sealed class PostgresAuthorizationGrantAdministrationRepository(IPostgres
         PostgresAdminQuery.AddTenantFilter(request.Tenant, "tenant_id", "TenantId", ref sql, parameters);
         AddOptionalFilters(request, now, ref sql, parameters);
         sql += """
-            
+
             ORDER BY created_at DESC, id
             LIMIT @Limit OFFSET @Offset
             """;
@@ -46,7 +46,7 @@ public sealed class PostgresAuthorizationGrantAdministrationRepository(IPostgres
     /// <param name="now">The timestamp used for status projection.</param>
     /// <param name="cancellationToken">A token that can cancel lookup.</param>
     /// <returns>The authorization grant, or <see langword="null" /> when it does not exist.</returns>
-    public Task<AuthorizationGrantAdministrationDetail?> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    public Task<AuthorizationGrantAdministrationSummary?> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -65,10 +65,10 @@ public sealed class PostgresAuthorizationGrantAdministrationRepository(IPostgres
         return rows.Select(row => row.ToSummary()).ToList().AsReadOnly();
     }
 
-    private async Task<AuthorizationGrantAdministrationDetail?> GetAsync(string sql, DynamicParameters parameters, CancellationToken cancellationToken)
+    private async Task<AuthorizationGrantAdministrationSummary?> GetAsync(string sql, DynamicParameters parameters, CancellationToken cancellationToken)
     {
         var row = await PostgresAdminQuery.QuerySingleAsync<AuthorizationGrantAdministrationRow>(_connectionProvider, sql, parameters, cancellationToken);
-        return row?.ToDetail();
+        return row?.ToSummary();
     }
 
     private static void AddOptionalFilters(SearchAuthorizationGrantsRequest request, DateTimeOffset now, ref string sql, DynamicParameters parameters)
@@ -157,20 +157,5 @@ public sealed class PostgresAuthorizationGrantAdministrationRepository(IPostgres
                 Status);
         }
 
-        public AuthorizationGrantAdministrationDetail ToDetail()
-        {
-            return new AuthorizationGrantAdministrationDetail(
-                Id,
-                UserId,
-                TenantId,
-                ScopeType,
-                ScopeId,
-                Role,
-                Permission,
-                PostgresAdminQuery.ToDateTimeOffset(CreatedAt),
-                PostgresAdminQuery.ToNullableDateTimeOffset(ExpiresAt),
-                PostgresAdminQuery.ToNullableDateTimeOffset(RevokedAt),
-                Status);
-        }
     }
 }

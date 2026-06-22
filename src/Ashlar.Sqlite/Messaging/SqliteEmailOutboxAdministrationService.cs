@@ -24,14 +24,14 @@ public sealed class SqliteEmailOutboxAdministrationService(
     /// <returns>Matching safe outbox summaries.</returns>
     public override async Task<EmailOutboxSearchResult> SearchAsync(EmailOutboxSearchRequest request, CancellationToken cancellationToken = default)
     {
-        EmailOutboxAdministration.ValidateSearchRequest(request);
+        EmailOutboxAdministrationProvider.ValidateSearchRequest(request);
         var rows = await SqliteQuery.QueryAsync(
             _connectionProvider,
             command => BuildSearchSql(command, request),
             ReadSearchRow,
             cancellationToken).ConfigureAwait(false);
         var hasMore = rows.Count > request.Limit;
-        return new EmailOutboxSearchResult(rows.Take(request.Limit).Select(static row => EmailOutboxAdministration.CreateSummary(row.ToRecord())).ToList().AsReadOnly(), request.Limit, request.Offset, hasMore);
+        return new EmailOutboxSearchResult(rows.Take(request.Limit).Select(static row => EmailOutboxAdministrationProvider.CreateSummary(row.ToRecord())).ToList().AsReadOnly(), request.Limit, request.Offset, hasMore);
     }
 
     /// <summary>
@@ -82,7 +82,7 @@ public sealed class SqliteEmailOutboxAdministrationService(
             ReadDetailRow,
             cancellationToken).ConfigureAwait(false);
         var row = rows.SingleOrDefault();
-        return row is null ? null : EmailOutboxAdministration.CreateDetail(row.ToRecord());
+        return row is null ? null : EmailOutboxAdministrationProvider.CreateDetail(row.ToRecord());
     }
 
     private const string RetrySql = """
@@ -123,7 +123,7 @@ public sealed class SqliteEmailOutboxAdministrationService(
     /// <param name="id">The durable email outbox entry id.</param>
     /// <param name="cancellationToken">Token used to cancel the mutation.</param>
     /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
-    protected override async Task<EmailOutboxOperationState?> RetryFailedAsync(Guid id, CancellationToken cancellationToken)
+    protected override async Task<EmailOutboxAdministrationOperationState?> RetryFailedAsync(Guid id, CancellationToken cancellationToken)
     {
         return await QueryOperationStateAsync(command =>
         {
@@ -139,7 +139,7 @@ public sealed class SqliteEmailOutboxAdministrationService(
     /// <param name="id">The durable email outbox entry id.</param>
     /// <param name="cancellationToken">Token used to cancel the mutation.</param>
     /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
-    protected override async Task<EmailOutboxOperationState?> DiscardFailedAsync(Guid id, CancellationToken cancellationToken)
+    protected override async Task<EmailOutboxAdministrationOperationState?> DiscardFailedAsync(Guid id, CancellationToken cancellationToken)
     {
         return await QueryOperationStateAsync(command =>
         {
@@ -155,7 +155,7 @@ public sealed class SqliteEmailOutboxAdministrationService(
     /// <param name="id">The durable email outbox entry id.</param>
     /// <param name="cancellationToken">Token used to cancel the lookup.</param>
     /// <returns>The stored safe state, or <see langword="null" /> when no entry exists.</returns>
-    protected override async Task<EmailOutboxOperationState?> LoadOperationStateAsync(Guid id, CancellationToken cancellationToken)
+    protected override async Task<EmailOutboxAdministrationOperationState?> LoadOperationStateAsync(Guid id, CancellationToken cancellationToken)
     {
         return await QueryOperationStateAsync(command =>
         {
@@ -164,7 +164,7 @@ public sealed class SqliteEmailOutboxAdministrationService(
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<EmailOutboxOperationState?> QueryOperationStateAsync(Func<SqliteCommand, string> buildCommand, CancellationToken cancellationToken)
+    private async Task<EmailOutboxAdministrationOperationState?> QueryOperationStateAsync(Func<SqliteCommand, string> buildCommand, CancellationToken cancellationToken)
     {
         var rows = await SqliteQuery.QueryAsync(_connectionProvider, buildCommand, ReadOperationRow, cancellationToken).ConfigureAwait(false);
         return rows.SingleOrDefault()?.ToState();
@@ -175,7 +175,7 @@ public sealed class SqliteEmailOutboxAdministrationService(
         command.AddDateTimeOffsetParameter("$now", TimeProvider.GetUtcNow());
         command.AddParameter("$limit", request.Limit + 1);
         command.AddParameter("$offset", request.Offset);
-        var statuses = AddEnumParameters(command, "$status", EmailOutboxAdministration.GetStatuses(request).Select(static status => status.ToString()).ToArray());
+        var statuses = AddEnumParameters(command, "$status", EmailOutboxAdministrationProvider.GetStatuses(request).Select(static status => status.ToString()).ToArray());
         return $"""
             WITH browseable AS (
                 SELECT *,
@@ -277,9 +277,9 @@ public sealed class SqliteEmailOutboxAdministrationService(
 
     private sealed record SearchRow(SearchRowIdentity Identity, SearchRowDelivery Delivery, SearchRowFailure Failure)
     {
-        public EmailOutboxAdministrationRecord ToRecord()
+        public EmailOutboxAdministrationProjection ToRecord()
         {
-            return new EmailOutboxAdministrationRecord(
+            return new EmailOutboxAdministrationProjection(
                 Identity.Id,
                 Identity.ToAddress,
                 null,
@@ -293,7 +293,7 @@ public sealed class SqliteEmailOutboxAdministrationService(
                 null,
                 EmailOutboxDispatch.ParseSensitivity(Identity.Sensitivity),
                 EmailOutboxDispatch.ParseBodyProtection(Identity.BodyProtection),
-                EmailOutboxAdministration.ParseStatus(Identity.Status),
+                EmailOutboxAdministrationProvider.ParseStatus(Identity.Status),
                 Delivery.AttemptCount,
                 Delivery.CreatedAt,
                 Delivery.AvailableAt,
@@ -315,7 +315,7 @@ public sealed class SqliteEmailOutboxAdministrationService(
 
     private sealed record DetailRow(SearchRow Row, string? FromAddress, string? ReplyToAddress, string? CcAddress, bool HasTextBody, bool HasHtmlBody, bool HasHeaders, bool HasMetadata)
     {
-        public EmailOutboxAdministrationRecord ToRecord()
+        public EmailOutboxAdministrationProjection ToRecord()
         {
             return Row.ToRecord() with
             {
@@ -332,7 +332,7 @@ public sealed class SqliteEmailOutboxAdministrationService(
 
     private sealed record OperationRow(Guid Id, string? ToAddress, string? Subject, string? Sensitivity, string? BodyProtection, DateTimeOffset? SentAt, DateTimeOffset? DiscardedAt)
     {
-        public EmailOutboxOperationState ToState()
+        public EmailOutboxAdministrationOperationState ToState()
         {
             var status = EmailOutboxStatus.Pending;
             if (SentAt.HasValue)
@@ -347,7 +347,7 @@ public sealed class SqliteEmailOutboxAdministrationService(
 
             var suppressPublicFields = EmailOutboxDispatch.ParseSensitivity(Sensitivity) == EmailMessageSensitivity.ContainsLiveSecret ||
                 EmailOutboxDispatch.ParseBodyProtection(BodyProtection) != EmailOutboxBodyProtection.None;
-            return new EmailOutboxOperationState(Id, ToAddress, Subject, status, suppressPublicFields);
+            return new EmailOutboxAdministrationOperationState(Id, ToAddress, Subject, status, suppressPublicFields);
         }
     }
 }

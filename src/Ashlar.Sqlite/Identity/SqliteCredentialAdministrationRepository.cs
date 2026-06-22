@@ -35,15 +35,15 @@ public sealed class SqliteCredentialAdministrationRepository(ISqliteConnectionPr
     }
 
     /// <summary>
-    /// Gets safe credential detail by credential id.
+    /// Gets a safe credential projection by credential id.
     /// </summary>
-    /// <param name="request">The detail request value.</param>
+    /// <param name="request">The lookup request value.</param>
     /// <param name="now">The timestamp used for availability projection.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The credential, or <see langword="null" /> when it does not exist.</returns>
-    public async Task<CredentialAdministrationDetail?> GetCredentialAsync(CredentialAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    public async Task<CredentialAdministrationSummary?> GetCredentialAsync(CredentialAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        CredentialAdministrationDetailRequest.ThrowIfInvalid(request);
+        CredentialAdministrationLookupRequest.ThrowIfInvalid(request);
 
         return await SqliteQuery.QuerySingleAsync(_connectionProvider, command =>
         {
@@ -53,7 +53,7 @@ public sealed class SqliteCredentialAdministrationRepository(ISqliteConnectionPr
             command.AddTenantFilter(request.Tenant, "u.tenant_id", "$tenantId", ref sql);
 
             return sql + ";";
-        }, ReadDetail, cancellationToken);
+        }, ReadSummary, cancellationToken);
     }
 
     private const string SelectSql = """
@@ -121,24 +121,6 @@ public sealed class SqliteCredentialAdministrationRepository(ISqliteConnectionPr
             reader.GetNullableDateTimeOffsetFromText("last_used_at"),
             reader.GetNullableDateTimeOffsetFromText("expires_at"),
             reader.GetNullableDateTimeOffsetFromText("revoked_at"));
-    }
-
-    private static CredentialAdministrationDetail ReadDetail(SqliteDataReader reader)
-    {
-        var summary = ReadSummary(reader);
-        return new CredentialAdministrationDetail(
-            summary.CredentialId,
-            summary.UserId,
-            summary.TenantId,
-            summary.Provider,
-            summary.Purpose,
-            summary.Status,
-            summary.IsAvailable,
-            summary.CreatedAt,
-            summary.UpdatedAt,
-            summary.LastUsedAt,
-            summary.ExpiresAt,
-            summary.RevokedAt);
     }
 
     private static AuthenticationProviderKey CreateProvider(string type, string name)

@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Features.Sessions;
 
 /// <summary>
-/// Implements read-only administrator authentication session search and detail operations.
+/// Implements read-only administrator authentication session search and single-item lookup operations.
 /// </summary>
 /// <param name="repository">Repository used for safe administrator session lookup.</param>
 /// <param name="timeProvider">Clock used for active-session projection.</param>
@@ -50,18 +50,18 @@ public sealed class AuthenticationSessionAdministrationService(
     }
 
     /// <inheritdoc />
-    public async Task<Result<AuthenticationSessionAdministrationDetail>> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationDetailRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<AuthenticationSessionAdministrationSummary>> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationLookupRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!TryValidateDetailRequest(request, out var validationFailure))
+        if (!TryValidateLookupRequest(request, out var validationFailure))
         {
             return validationFailure;
         }
 
         var session = await _repository.GetAuthenticationSessionAsync(request, _timeProvider.GetUtcNow(), cancellationToken);
         return session == null || (!request.IncludeAllTenants && !AdministrationScopeValidation.IncludesTenant(request.Tenant!, session.TenantId))
-            ? Result.Failure<AuthenticationSessionAdministrationDetail>(AshlarFailureCodes.SessionNotFound, "Session was not found.")
+            ? Result.Failure<AuthenticationSessionAdministrationSummary>(AshlarFailureCodes.SessionNotFound, "Session was not found.")
             : Result.Success(session);
     }
 
@@ -80,17 +80,17 @@ public sealed class AuthenticationSessionAdministrationService(
         }
     }
 
-    private static bool TryValidateDetailRequest(AuthenticationSessionAdministrationDetailRequest request, out Result<AuthenticationSessionAdministrationDetail> failure)
+    private static bool TryValidateLookupRequest(AuthenticationSessionAdministrationLookupRequest request, out Result<AuthenticationSessionAdministrationSummary> failure)
     {
         try
         {
-            AuthenticationSessionAdministrationDetailRequest.ThrowIfInvalid(request);
+            AuthenticationSessionAdministrationLookupRequest.ThrowIfInvalid(request);
             failure = null!;
             return true;
         }
         catch (ArgumentException exception)
         {
-            failure = Result.Failure<AuthenticationSessionAdministrationDetail>(AshlarFailureCodes.ValidationError, exception.Message);
+            failure = Result.Failure<AuthenticationSessionAdministrationSummary>(AshlarFailureCodes.ValidationError, exception.Message);
             return false;
         }
     }

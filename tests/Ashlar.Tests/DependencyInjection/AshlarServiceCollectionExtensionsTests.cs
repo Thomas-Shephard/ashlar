@@ -477,7 +477,10 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value, Is.True);
+            Assert.That(result.Value?.Status, Is.EqualTo(AccountLockoutResetStatus.Reset));
+            Assert.That(result.Value?.UserId, Is.EqualTo(userId));
+            Assert.That(result.Value?.TenantId, Is.EqualTo(tenantId));
+            Assert.That(result.Value?.Provider, Is.EqualTo(AuthenticationProviderKey.Local));
             Assert.That(scope.ServiceProvider.GetRequiredService<IAccountLockoutAdministrationService>(), Is.TypeOf<AccountLockoutAdministrationService>());
             Assert.That(events.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.AccountLockoutReset));
             Assert.That(events.Events.Single().CorrelationId, Is.EqualTo("di-corr"));
@@ -849,7 +852,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             throw new NotSupportedException();
         }
 
-        public Task<bool> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
+        public Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }

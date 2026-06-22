@@ -24,7 +24,7 @@ public sealed class PostgresEmailOutboxAdministrationService(
     /// <returns>Matching safe outbox summaries.</returns>
     public override async Task<EmailOutboxSearchResult> SearchAsync(EmailOutboxSearchRequest request, CancellationToken cancellationToken = default)
     {
-        EmailOutboxAdministration.ValidateSearchRequest(request);
+        EmailOutboxAdministrationProvider.ValidateSearchRequest(request);
         var parameters = CreateSearchParameters(request);
         parameters.Add("Now", TimeProvider.GetUtcNow());
         parameters.Add("Limit", request.Limit + 1);
@@ -41,7 +41,7 @@ public sealed class PostgresEmailOutboxAdministrationService(
         var rows = await PostgresAdminQuery.QueryAsync<SearchRow>(_connectionProvider, sql, parameters, cancellationToken).ConfigureAwait(false);
         var hasMore = rows.Count > request.Limit;
         return new EmailOutboxSearchResult(
-            rows.Take(request.Limit).Select(static row => EmailOutboxAdministration.CreateSummary(row.ToRecord())).ToList().AsReadOnly(),
+            rows.Take(request.Limit).Select(static row => EmailOutboxAdministrationProvider.CreateSummary(row.ToRecord())).ToList().AsReadOnly(),
             request.Limit,
             request.Offset,
             hasMore);
@@ -93,7 +93,7 @@ public sealed class PostgresEmailOutboxAdministrationService(
             sql,
             new { Id = id, Now = TimeProvider.GetUtcNow() },
             cancellationToken).ConfigureAwait(false);
-        return row is null ? null : EmailOutboxAdministration.CreateDetail(row.ToRecord());
+        return row is null ? null : EmailOutboxAdministrationProvider.CreateDetail(row.ToRecord());
     }
 
     private const string RetrySql = """
@@ -137,7 +137,7 @@ public sealed class PostgresEmailOutboxAdministrationService(
     /// <param name="id">The durable email outbox entry id.</param>
     /// <param name="cancellationToken">Token used to cancel the mutation.</param>
     /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
-    protected override async Task<EmailOutboxOperationState?> RetryFailedAsync(Guid id, CancellationToken cancellationToken)
+    protected override async Task<EmailOutboxAdministrationOperationState?> RetryFailedAsync(Guid id, CancellationToken cancellationToken)
     {
         return await QueryOperationStateAsync(RetrySql, new { Id = id, Now = TimeProvider.GetUtcNow() }, cancellationToken).ConfigureAwait(false);
     }
@@ -148,7 +148,7 @@ public sealed class PostgresEmailOutboxAdministrationService(
     /// <param name="id">The durable email outbox entry id.</param>
     /// <param name="cancellationToken">Token used to cancel the mutation.</param>
     /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
-    protected override async Task<EmailOutboxOperationState?> DiscardFailedAsync(Guid id, CancellationToken cancellationToken)
+    protected override async Task<EmailOutboxAdministrationOperationState?> DiscardFailedAsync(Guid id, CancellationToken cancellationToken)
     {
         return await QueryOperationStateAsync(DiscardSql, new { Id = id, Now = TimeProvider.GetUtcNow() }, cancellationToken).ConfigureAwait(false);
     }
@@ -159,12 +159,12 @@ public sealed class PostgresEmailOutboxAdministrationService(
     /// <param name="id">The durable email outbox entry id.</param>
     /// <param name="cancellationToken">Token used to cancel the lookup.</param>
     /// <returns>The stored safe state, or <see langword="null" /> when no entry exists.</returns>
-    protected override async Task<EmailOutboxOperationState?> LoadOperationStateAsync(Guid id, CancellationToken cancellationToken)
+    protected override async Task<EmailOutboxAdministrationOperationState?> LoadOperationStateAsync(Guid id, CancellationToken cancellationToken)
     {
         return await QueryOperationStateAsync(LoadSql, new { Id = id }, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<EmailOutboxOperationState?> QueryOperationStateAsync(string sql, object parameters, CancellationToken cancellationToken)
+    private async Task<EmailOutboxAdministrationOperationState?> QueryOperationStateAsync(string sql, object parameters, CancellationToken cancellationToken)
     {
         var row = await PostgresAdminQuery.QuerySingleAsync<OperationRow>(_connectionProvider, sql, parameters, cancellationToken).ConfigureAwait(false);
         return row?.ToState();
@@ -197,7 +197,7 @@ public sealed class PostgresEmailOutboxAdministrationService(
     private static DynamicParameters CreateSearchParameters(EmailOutboxSearchRequest request)
     {
         var parameters = new DynamicParameters();
-        parameters.Add("Statuses", EmailOutboxAdministration.GetStatuses(request).Select(static status => status.ToString()).ToArray());
+        parameters.Add("Statuses", EmailOutboxAdministrationProvider.GetStatuses(request).Select(static status => status.ToString()).ToArray());
         return parameters;
     }
 
@@ -206,9 +206,9 @@ public sealed class PostgresEmailOutboxAdministrationService(
         int AttemptCount, DateTime CreatedAt, DateTime AvailableAt, DateTime? SentAt, DateTime? LastAttemptAt,
         DateTime? FailedAt, DateTime? DiscardedAt, string? LastError)
     {
-        public EmailOutboxAdministrationRecord ToRecord()
+        public EmailOutboxAdministrationProjection ToRecord()
         {
-            return new EmailOutboxAdministrationRecord(
+            return new EmailOutboxAdministrationProjection(
                 Id,
                 ToAddress,
                 null,
@@ -222,7 +222,7 @@ public sealed class PostgresEmailOutboxAdministrationService(
                 null,
                 EmailOutboxDispatch.ParseSensitivity(Sensitivity),
                 EmailOutboxDispatch.ParseBodyProtection(BodyProtection),
-                EmailOutboxAdministration.ParseStatus(Status),
+                EmailOutboxAdministrationProvider.ParseStatus(Status),
                 AttemptCount,
                 PostgresAdminQuery.ToDateTimeOffset(CreatedAt),
                 PostgresAdminQuery.ToDateTimeOffset(AvailableAt),
@@ -242,7 +242,7 @@ public sealed class PostgresEmailOutboxAdministrationService(
         DateTime? FailedAt, DateTime? DiscardedAt, string? LastError, bool HasTextBody, bool HasHtmlBody,
         bool HasHeaders, bool HasMetadata) : SearchRow(Id, ToAddress, Subject, Sensitivity, BodyProtection, Status, AttemptCount, CreatedAt, AvailableAt, SentAt, LastAttemptAt, FailedAt, DiscardedAt, LastError)
     {
-        public new EmailOutboxAdministrationRecord ToRecord()
+        public new EmailOutboxAdministrationProjection ToRecord()
         {
             return base.ToRecord() with
             {
@@ -259,7 +259,7 @@ public sealed class PostgresEmailOutboxAdministrationService(
 
     private sealed record OperationRow(Guid Id, string? ToAddress, string? Subject, string? Sensitivity, string? BodyProtection, DateTime? SentAt, DateTime? DiscardedAt)
     {
-        public EmailOutboxOperationState ToState()
+        public EmailOutboxAdministrationOperationState ToState()
         {
             var status = EmailOutboxStatus.Pending;
             if (SentAt.HasValue)
@@ -274,7 +274,7 @@ public sealed class PostgresEmailOutboxAdministrationService(
 
             var suppressPublicFields = EmailOutboxDispatch.ParseSensitivity(Sensitivity) == EmailMessageSensitivity.ContainsLiveSecret ||
                 EmailOutboxDispatch.ParseBodyProtection(BodyProtection) != EmailOutboxBodyProtection.None;
-            return new EmailOutboxOperationState(Id, ToAddress, Subject, status, suppressPublicFields);
+            return new EmailOutboxAdministrationOperationState(Id, ToAddress, Subject, status, suppressPublicFields);
         }
     }
 }

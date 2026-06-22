@@ -245,7 +245,7 @@ public sealed record AccountLockoutSearchResult(
 /// Request for administrator account lockout status.
 /// </summary>
 /// <param name="Tenant">Explicit tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
-public sealed record AccountLockoutAdministrationRequest(TenantContext Tenant);
+public sealed record AccountLockoutStatusRequest(TenantContext Tenant);
 
 /// <summary>
 /// Request for administrator account lockout reset.
@@ -277,3 +277,32 @@ public sealed record ResetAccountLockoutRequest
     /// <summary>Optional provider-neutral, display-safe reason recorded with the reset event. Do not include secrets, tokens, or credentials.</summary>
     public string? Reason { get; init; }
 }
+
+/// <summary>
+/// Outcome for an administrator account lockout reset.
+/// </summary>
+public enum AccountLockoutResetStatus
+{
+    /// <summary>
+    /// Stored automatic lockout state was cleared.
+    /// </summary>
+    Reset = 0,
+
+    /// <summary>
+    /// No stored automatic lockout state existed for the requested user, tenant, and provider.
+    /// </summary>
+    NotFound = 1
+}
+
+/// <summary>
+/// Result of an administrator account lockout reset.
+/// </summary>
+/// <param name="Status">Stable reset outcome.</param>
+/// <param name="UserId">User targeted by the reset.</param>
+/// <param name="TenantId">Tenant scope targeted by the reset, or <see langword="null" /> for a global user.</param>
+/// <param name="Provider">Authentication provider key targeted by the reset.</param>
+public sealed record ResetAccountLockoutResult(
+    AccountLockoutResetStatus Status,
+    Guid UserId,
+    Guid? TenantId,
+    AuthenticationProviderKey Provider);

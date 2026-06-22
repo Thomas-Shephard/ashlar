@@ -47,6 +47,10 @@ public enum AuthenticationRateLimitBucketResetStatus
 /// <summary>
 /// Request for administrator authentication rate-limit bucket search.
 /// </summary>
+/// <remarks>
+/// Host applications must authorize callers and apply any required step-up policy before executing this read-only operation.
+/// Bucket identifiers are opaque operational identifiers derived from stored hashed key material.
+/// </remarks>
 public sealed record SearchAuthenticationRateLimitBucketsRequest
 {
     /// <summary>Optional purpose filter. Purpose values are provider-neutral flow labels, not raw user inputs.</summary>
@@ -115,25 +119,6 @@ public sealed record AuthenticationRateLimitBucketSummary(
     AuthenticationRateLimitBucketStatus Status);
 
 /// <summary>
-/// Safe detail of an authentication rate-limit bucket for administrator display.
-/// </summary>
-/// <param name="BucketId">Opaque operational bucket identifier derived from stored hashed key material.</param>
-/// <param name="Purpose">Provider-neutral purpose recorded for the bucket.</param>
-/// <param name="Count">Number of attempts currently recorded in the bucket.</param>
-/// <param name="WindowStart">UTC time when the current bucket window started.</param>
-/// <param name="ExpiresAt">UTC time after which the bucket no longer affects authentication attempts.</param>
-/// <param name="BlockedUntil">UTC time until which attempts are blocked, when currently blocked or recently blocked.</param>
-/// <param name="Status">Projected bucket status at query time.</param>
-public sealed record AuthenticationRateLimitBucketDetail(
-    string BucketId,
-    string Purpose,
-    int Count,
-    DateTimeOffset WindowStart,
-    DateTimeOffset ExpiresAt,
-    DateTimeOffset? BlockedUntil,
-    AuthenticationRateLimitBucketStatus Status);
-
-/// <summary>
 /// Authentication bucket search page for administrator display.
 /// </summary>
 /// <param name="Items">Page of display-safe bucket summaries.</param>
@@ -147,17 +132,17 @@ public sealed record AuthenticationRateLimitBucketSearchResult(
     bool HasMore);
 
 /// <summary>
-/// Request for administrator authentication rate-limit bucket detail.
+/// Request for administrator authentication rate-limit bucket lookup.
 /// </summary>
 /// <param name="BucketId">Opaque bucket identifier returned by search.</param>
 /// <param name="Purpose">Purpose that scopes the bucket identifier.</param>
-public sealed record AuthenticationRateLimitBucketDetailRequest(string BucketId, string Purpose)
+public sealed record AuthenticationRateLimitBucketLookupRequest(string BucketId, string Purpose)
 {
     /// <summary>
-    /// Throws when the bucket detail request is not safe to execute.
+    /// Throws when the bucket lookup request is not safe to execute.
     /// </summary>
-    /// <param name="request">Detail request to validate before loading administrator data.</param>
-    public static void ThrowIfInvalid(AuthenticationRateLimitBucketDetailRequest? request)
+    /// <param name="request">Lookup request to validate before loading administrator data.</param>
+    public static void ThrowIfInvalid(AuthenticationRateLimitBucketLookupRequest? request)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.BucketId);
@@ -171,6 +156,9 @@ public sealed record AuthenticationRateLimitBucketDetailRequest(string BucketId,
 /// <param name="BucketId">Opaque bucket identifier returned by search.</param>
 /// <param name="Purpose">Purpose that scopes the bucket identifier.</param>
 /// <param name="Audit">Required audit context for the operator or calling workflow.</param>
+/// <remarks>
+/// Host applications must authorize callers and apply any required step-up policy before executing this mutating operation.
+/// </remarks>
 public sealed record ResetAuthenticationRateLimitBucketRequest(string BucketId, string Purpose, AuditContext Audit)
 {
     /// <summary>

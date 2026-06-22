@@ -18,11 +18,11 @@ public interface ICredentialAdministrationRepository
     Task<IReadOnlyList<CredentialAdministrationSummary>> SearchCredentialsAsync(SearchCredentialsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets safe credential detail by credential id.
+    /// Gets a safe credential projection by credential id.
     /// </summary>
     /// <param name="request">Credential identifier and tenant scope supplied by an authorized administrator flow.</param>
     /// <param name="now">The timestamp used for availability projection.</param>
     /// <param name="cancellationToken">A token that can cancel lookup.</param>
-    /// <returns>The credential, or <see langword="null" /> when it does not exist.</returns>
-    Task<CredentialAdministrationDetail?> GetCredentialAsync(CredentialAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
+    /// <returns>The matching credential projection, or <see langword="null" /> when it does not exist.</returns>
+    Task<CredentialAdministrationSummary?> GetCredentialAsync(CredentialAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default);
 }

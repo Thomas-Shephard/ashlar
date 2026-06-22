@@ -1285,7 +1285,7 @@ internal sealed class InvitationServiceTests
             throw new NotSupportedException("Invitation administration is covered by dedicated tests.");
         }
 
-        public Task<InvitationAdministrationDetail?> GetInvitationAsync(InvitationAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+        public Task<InvitationAdministrationSummary?> GetInvitationAsync(InvitationAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException("Invitation administration is covered by dedicated tests.");
         }

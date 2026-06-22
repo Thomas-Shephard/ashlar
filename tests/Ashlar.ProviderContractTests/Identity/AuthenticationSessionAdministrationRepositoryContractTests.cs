@@ -176,7 +176,7 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
     }
 
     [Test]
-    public async Task GetAuthenticationSessionReturnsDetailByIdAndMissingReturnsNull()
+    public async Task GetAuthenticationSessionReturnsLookupByIdAndMissingReturnsNull()
     {
         await using var scope = CreateAsyncScope();
         var userRepository = GetUserRepository(scope.ServiceProvider);
@@ -195,8 +195,8 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         await sessionRepository.CreateSessionAsync(session);
 
         var repository = GetAuthenticationSessionAdministrationRepository(scope.ServiceProvider);
-        var found = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(session.Id, IncludeAllTenants: true), Now);
-        var missing = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(Guid.NewGuid(), IncludeAllTenants: true), Now);
+        var found = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationLookupRequest(session.Id, IncludeAllTenants: true), Now);
+        var missing = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationLookupRequest(Guid.NewGuid(), IncludeAllTenants: true), Now);
 
         using (Assert.EnterMultipleScope())
         {
@@ -229,11 +229,11 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
         await sessionRepository.CreateSessionAsync(globalSession);
 
         var repository = GetAuthenticationSessionAdministrationRepository(scope.ServiceProvider);
-        var inScope = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(session.Id, new TenantContext(tenantId)), Now);
-        var outOfScope = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(session.Id, new TenantContext(otherTenantId)), Now);
-        var globalScope = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(session.Id, TenantContext.Global), Now);
-        var globalInScope = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(globalSession.Id, TenantContext.Global), Now);
-        var allTenants = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(session.Id, IncludeAllTenants: true), Now);
+        var inScope = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationLookupRequest(session.Id, new TenantContext(tenantId)), Now);
+        var outOfScope = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationLookupRequest(session.Id, new TenantContext(otherTenantId)), Now);
+        var globalScope = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationLookupRequest(session.Id, TenantContext.Global), Now);
+        var globalInScope = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationLookupRequest(globalSession.Id, TenantContext.Global), Now);
+        var allTenants = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationLookupRequest(session.Id, IncludeAllTenants: true), Now);
 
         using (Assert.EnterMultipleScope())
         {
@@ -254,8 +254,8 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.ThrowsAsync<ArgumentException>(() => repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(sessionId), Now));
-            Assert.ThrowsAsync<ArgumentException>(() => repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(sessionId, TenantContext.Global, IncludeAllTenants: true), Now));
+            Assert.ThrowsAsync<ArgumentException>(() => repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationLookupRequest(sessionId), Now));
+            Assert.ThrowsAsync<ArgumentException>(() => repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationLookupRequest(sessionId, TenantContext.Global, IncludeAllTenants: true), Now));
         }
     }
 
@@ -271,12 +271,12 @@ internal abstract class AuthenticationSessionAdministrationRepositoryContractTes
 
         var repository = GetAuthenticationSessionAdministrationRepository(scope.ServiceProvider);
         var search = await repository.SearchAuthenticationSessionsAsync(new SearchAuthenticationSessionsRequest { IncludeAllTenants = true, Limit = 10 }, Now);
-        var detail = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationDetailRequest(session.Id, IncludeAllTenants: true), Now);
+        var lookup = await repository.GetAuthenticationSessionAsync(new AuthenticationSessionAdministrationLookupRequest(session.Id, IncludeAllTenants: true), Now);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(search.Single().ToString(), Does.Not.Contain("secret-token-hash"));
-            Assert.That(detail?.ToString(), Does.Not.Contain("secret-token-hash"));
+            Assert.That(lookup?.ToString(), Does.Not.Contain("secret-token-hash"));
         }
     }
 

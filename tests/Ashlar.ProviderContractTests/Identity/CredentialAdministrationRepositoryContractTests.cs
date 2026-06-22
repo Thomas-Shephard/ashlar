@@ -211,7 +211,7 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
     }
 
     [Test]
-    public async Task GetCredentialReturnsDetailByIdAndMissingReturnsNull()
+    public async Task GetCredentialReturnsLookupByIdAndMissingReturnsNull()
     {
         await using var scope = CreateAsyncScope();
         var userRepository = GetUserRepository(scope.ServiceProvider);
@@ -233,8 +233,8 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         await credentialRepository.CreateCredentialAsync(credential);
 
         var repository = GetCredentialAdministrationRepository(scope.ServiceProvider);
-        var found = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credential.Id, IncludeAllTenants: true), Now);
-        var missing = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(Guid.NewGuid(), IncludeAllTenants: true), Now);
+        var found = await repository.GetCredentialAsync(new CredentialAdministrationLookupRequest(credential.Id, IncludeAllTenants: true), Now);
+        var missing = await repository.GetCredentialAsync(new CredentialAdministrationLookupRequest(Guid.NewGuid(), IncludeAllTenants: true), Now);
 
         using (Assert.EnterMultipleScope())
         {
@@ -270,11 +270,11 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
         await credentialRepository.CreateCredentialAsync(globalCredential);
 
         var repository = GetCredentialAdministrationRepository(scope.ServiceProvider);
-        var inScope = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credential.Id, new TenantContext(tenantId)), Now);
-        var outOfScope = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credential.Id, new TenantContext(otherTenantId)), Now);
-        var globalScope = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credential.Id, TenantContext.Global), Now);
-        var globalInScope = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(globalCredential.Id, TenantContext.Global), Now);
-        var allTenants = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credential.Id, IncludeAllTenants: true), Now);
+        var inScope = await repository.GetCredentialAsync(new CredentialAdministrationLookupRequest(credential.Id, new TenantContext(tenantId)), Now);
+        var outOfScope = await repository.GetCredentialAsync(new CredentialAdministrationLookupRequest(credential.Id, new TenantContext(otherTenantId)), Now);
+        var globalScope = await repository.GetCredentialAsync(new CredentialAdministrationLookupRequest(credential.Id, TenantContext.Global), Now);
+        var globalInScope = await repository.GetCredentialAsync(new CredentialAdministrationLookupRequest(globalCredential.Id, TenantContext.Global), Now);
+        var allTenants = await repository.GetCredentialAsync(new CredentialAdministrationLookupRequest(credential.Id, IncludeAllTenants: true), Now);
 
         using (Assert.EnterMultipleScope())
         {
@@ -295,8 +295,8 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.ThrowsAsync<ArgumentException>(() => repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credentialId), Now));
-            Assert.ThrowsAsync<ArgumentException>(() => repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credentialId, TenantContext.Global, IncludeAllTenants: true), Now));
+            Assert.ThrowsAsync<ArgumentException>(() => repository.GetCredentialAsync(new CredentialAdministrationLookupRequest(credentialId), Now));
+            Assert.ThrowsAsync<ArgumentException>(() => repository.GetCredentialAsync(new CredentialAdministrationLookupRequest(credentialId, TenantContext.Global, IncludeAllTenants: true), Now));
         }
     }
 
@@ -315,7 +315,7 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
 
         var repository = GetCredentialAdministrationRepository(scope.ServiceProvider);
         var search = await repository.SearchCredentialsAsync(new SearchCredentialsRequest { IncludeAllTenants = true, Limit = 10 }, Now);
-        var detail = await repository.GetCredentialAsync(new CredentialAdministrationDetailRequest(credential.Id, IncludeAllTenants: true), Now);
+        var lookup = await repository.GetCredentialAsync(new CredentialAdministrationLookupRequest(credential.Id, IncludeAllTenants: true), Now);
 
         using (Assert.EnterMultipleScope())
         {
@@ -323,10 +323,10 @@ internal abstract class CredentialAdministrationRepositoryContractTests : Provid
             Assert.That(search.Single().ToString(), Does.Not.Contain("provider-key-secret"));
             Assert.That(search.Single().ToString(), Does.Not.Contain("metadata-secret"));
             Assert.That(search.Single().ToString(), Does.Not.Contain("version-secret"));
-            Assert.That(detail?.ToString(), Does.Not.Contain("password-hash-secret"));
-            Assert.That(detail?.ToString(), Does.Not.Contain("provider-key-secret"));
-            Assert.That(detail?.ToString(), Does.Not.Contain("metadata-secret"));
-            Assert.That(detail?.ToString(), Does.Not.Contain("version-secret"));
+            Assert.That(lookup?.ToString(), Does.Not.Contain("password-hash-secret"));
+            Assert.That(lookup?.ToString(), Does.Not.Contain("provider-key-secret"));
+            Assert.That(lookup?.ToString(), Does.Not.Contain("metadata-secret"));
+            Assert.That(lookup?.ToString(), Does.Not.Contain("version-secret"));
         }
     }
 

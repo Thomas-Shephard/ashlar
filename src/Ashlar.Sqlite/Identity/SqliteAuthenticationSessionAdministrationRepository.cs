@@ -37,13 +37,13 @@ public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteC
     /// <summary>
     /// Gets an authentication session by id.
     /// </summary>
-    /// <param name="request">The detail request value.</param>
+    /// <param name="request">The lookup request value.</param>
     /// <param name="now">The timestamp used for active-state projection.</param>
     /// <param name="cancellationToken">The cancellation token value.</param>
     /// <returns>The authentication session, or <see langword="null" /> when it does not exist.</returns>
-    public async Task<AuthenticationSessionAdministrationDetail?> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationDetailRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
+    public async Task<AuthenticationSessionAdministrationSummary?> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        AuthenticationSessionAdministrationDetailRequest.ThrowIfInvalid(request);
+        AuthenticationSessionAdministrationLookupRequest.ThrowIfInvalid(request);
 
         return await SqliteQuery.QuerySingleAsync(_connectionProvider, command =>
         {
@@ -53,7 +53,7 @@ public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteC
             command.AddTenantFilter(request.Tenant, "tenant_id", "$tenantId", ref sql);
 
             return sql + ";";
-        }, ReadDetail, cancellationToken);
+        }, ReadSummary, cancellationToken);
     }
 
     private const string SelectSql = """
@@ -112,10 +112,5 @@ public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteC
             reader.GetNullableString("ip_address"),
             reader.GetNullableString("user_agent"),
             reader.GetInt32(reader.GetOrdinal("is_active")) == 1);
-    }
-
-    private static AuthenticationSessionAdministrationDetail ReadDetail(SqliteDataReader reader)
-    {
-        return ReadSummary(reader).ToDetail();
     }
 }
