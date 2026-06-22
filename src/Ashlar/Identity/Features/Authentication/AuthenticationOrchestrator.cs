@@ -115,8 +115,8 @@ public sealed class AuthenticationOrchestrator(
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(assertion);
 
-        var verificationRequest = new VerifyAuthenticationHandshakeRequest(handshakeToken, factorType, Context: context);
-        var beginResult = await _handshakeService.BeginFactorVerificationAsync(verificationRequest, cancellationToken);
+        var beginRequest = new BeginAuthenticationHandshakeVerificationRequest(handshakeToken, context);
+        var beginResult = await _handshakeService.BeginVerificationAsync(beginRequest, cancellationToken);
         if (!beginResult.Succeeded || beginResult.Value == null)
         {
             MfaFactorVerificationRejected(_logger, beginResult.FailureReason ?? "handshake_verification_failed", null);
@@ -124,47 +124,29 @@ public sealed class AuthenticationOrchestrator(
         }
 
         var handshake = beginResult.Value;
-        if (!TryResolveRequiredFactor(handshake, factorType, out var resolvedFactorType))
+        if (!TryGetFactorProvider(assertion, out var factorProvider) ||
+            !TryResolveRequiredFactor(handshake, factorType, factorProvider, out var resolvedFactorType))
         {
             MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "invalid_factor_type", null);
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: "Invalid factor type.");
         }
 
-        var assertionFailure = ValidateFactorAssertion(handshake, resolvedFactorType, assertion);
+        var assertionFailure = ValidateFactorAssertion(handshake, assertion);
         if (assertionFailure != null)
         {
             return assertionFailure;
         }
 
         var factorContext = context with { UserId = handshake.UserId };
-        verificationRequest = verificationRequest with { FactorType = resolvedFactorType, Context = factorContext };
+        var verificationRequest = new VerifyAuthenticationHandshakeRequest(handshakeToken, resolvedFactorType, Context: factorContext);
 
         var response = await _factorPipeline.VerifyFactorAsync(factorContext, assertion, cancellationToken);
         if (!response.Succeeded || response.User?.Id != handshake.UserId)
         {
-            MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "factor_authentication_failed", null);
-            var errorMessage = response.Status switch
-            {
-                AuthenticationStatus.Disabled => AuthenticationFailedMessage,
-                AuthenticationStatus.RateLimited => RateLimitExceededMessage,
-                _ => FactorVerificationFailedMessage
-            };
-            var status = response.Status == AuthenticationStatus.RateLimited
-                ? MfaAuthenticationStatus.RateLimited
-                : MfaAuthenticationStatus.Failed;
-            return new MfaAuthenticationResult(status, ErrorMessage: errorMessage);
+            return CreateFactorAuthenticationFailureResult(handshake.UserId, response);
         }
 
-        // Capture any new claims from this factor
-        Dictionary<string, string> metadata = [];
-        if (response.Claims != null)
-        {
-            foreach (var claim in response.Claims)
-            {
-                metadata[$"claim:{claim.Key}"] = JsonSerializer.Serialize(claim.Value);
-            }
-        }
-
+        var metadata = CreateFactorVerificationMetadata(response);
         var result = await _handshakeService.CompleteFactorVerificationAsync(verificationRequest with { Metadata = metadata }, cancellationToken);
 
         if (!result.Succeeded || result.Value == null)
@@ -174,6 +156,37 @@ public sealed class AuthenticationOrchestrator(
         }
 
         return CreateResultFromHandshake(result.Value, response.User, handshakeToken);
+    }
+
+    private MfaAuthenticationResult CreateFactorAuthenticationFailureResult(Guid userId, AuthenticationResponse response)
+    {
+        MfaHandshakeFactorVerificationRejected(_logger, userId, "factor_authentication_failed", null);
+        var errorMessage = response.Status switch
+        {
+            AuthenticationStatus.Disabled => AuthenticationFailedMessage,
+            AuthenticationStatus.RateLimited => RateLimitExceededMessage,
+            _ => FactorVerificationFailedMessage
+        };
+        var status = response.Status == AuthenticationStatus.RateLimited
+            ? MfaAuthenticationStatus.RateLimited
+            : MfaAuthenticationStatus.Failed;
+        return new MfaAuthenticationResult(status, ErrorMessage: errorMessage);
+    }
+
+    private static Dictionary<string, string> CreateFactorVerificationMetadata(AuthenticationResponse response)
+    {
+        Dictionary<string, string> metadata = [];
+        if (response.Claims == null)
+        {
+            return metadata;
+        }
+
+        foreach (var claim in response.Claims)
+        {
+            metadata[$"claim:{claim.Key}"] = JsonSerializer.Serialize(claim.Value);
+        }
+
+        return metadata;
     }
 
     private static MfaAuthenticationResult CreateHandshakeFailureResult(AshlarFailureCode? failureCode)
@@ -376,28 +389,25 @@ public sealed class AuthenticationOrchestrator(
         };
     }
 
-    private bool IsAssertionAuthorizedForFactor(IAuthenticationAssertion assertion, string factorType)
+    private bool TryGetFactorProvider(
+        IAuthenticationAssertion assertion,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out ISecondaryAuthenticationFactorProvider? factorProvider)
     {
         if (!_providerRegistry.TryGetProvider(assertion, out var provider) ||
-            provider is not ISecondaryAuthenticationFactorProvider factorProvider)
+            provider is not ISecondaryAuthenticationFactorProvider secondaryProvider)
         {
+            factorProvider = null;
             return false;
         }
 
-        return factorProvider.CanSatisfyFactor(factorType);
+        factorProvider = secondaryProvider;
+        return true;
     }
 
     private MfaAuthenticationResult? ValidateFactorAssertion(
         AuthenticationHandshake handshake,
-        string resolvedFactorType,
         IAuthenticationAssertion assertion)
     {
-        if (!IsAssertionAuthorizedForFactor(assertion, resolvedFactorType))
-        {
-            MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "assertion_not_authorized_for_factor", null);
-            return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: FactorVerificationFailedMessage);
-        }
-
         if (IsSameCredentialAsPrimary(handshake, assertion))
         {
             MfaHandshakeFactorVerificationRejected(_logger, handshake.UserId, "factor_reuses_primary_credential", null);
@@ -412,12 +422,24 @@ public sealed class AuthenticationOrchestrator(
         return factors?.Where(factor => !string.IsNullOrWhiteSpace(factor)).Select(factor => factor.Trim()) ?? [];
     }
 
-    private static bool TryResolveRequiredFactor(AuthenticationHandshake handshake, string factorType, out string resolvedFactorType)
+    private static bool TryResolveRequiredFactor(
+        AuthenticationHandshake handshake,
+        string requestedFactorType,
+        ISecondaryAuthenticationFactorProvider factorProvider,
+        out string resolvedFactorType)
     {
-        var requiredFactor = AuthenticationFactorTypes.Matches(factorType, AuthenticationFactorTypes.RecoveryCode)
-            ? handshake.RequiredFactors.FirstOrDefault(requiredFactor =>
-                !handshake.VerifiedFactors.Any(verifiedFactor => AuthenticationFactorTypes.Matches(requiredFactor, verifiedFactor)))
-            : handshake.RequiredFactors.FirstOrDefault(requiredFactor => AuthenticationFactorTypes.Matches(requiredFactor, factorType));
+        var pendingFactors = handshake.RequiredFactors
+            .Where(requiredFactor => !handshake.VerifiedFactors.Any(verifiedFactor => AuthenticationFactorTypes.Matches(requiredFactor, verifiedFactor)))
+            .ToArray();
+
+        var requiredFactor = pendingFactors.FirstOrDefault(requiredFactor =>
+            AuthenticationFactorTypes.Matches(requiredFactor, requestedFactorType) &&
+            factorProvider.CanSatisfyFactor(requiredFactor));
+
+        requiredFactor ??= factorProvider is IBackupAuthenticationFactorProvider backupProvider &&
+            AuthenticationFactorTypes.Matches(factorProvider.FactorType, requestedFactorType)
+            ? pendingFactors.FirstOrDefault(backupProvider.CanSatisfyBackupFactor)
+            : null;
 
         resolvedFactorType = requiredFactor ?? string.Empty;
         return requiredFactor != null;

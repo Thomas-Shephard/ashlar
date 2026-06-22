@@ -166,6 +166,15 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
     }
 
     /// <inheritdoc />
+    public async Task<Result<AuthenticationHandshake>> BeginVerificationAsync(
+        BeginAuthenticationHandshakeVerificationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await LoadHandshakeForVerificationAsync(request, HandshakeRateLimitMode.LookupAndVerification, cancellationToken);
+        return result;
+    }
+
+    /// <inheritdoc />
     public async Task<Result<AuthenticationHandshake>> CompleteFactorVerificationAsync(
         VerifyAuthenticationHandshakeRequest request,
         CancellationToken cancellationToken = default)
@@ -230,6 +239,39 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
 
     private async Task<Result<AuthenticationHandshake>> LoadHandshakeForFactorVerificationAsync(
         VerifyAuthenticationHandshakeRequest request,
+        HandshakeRateLimitMode rateLimitMode,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var result = await LoadHandshakeForVerificationAsync(
+            new BeginAuthenticationHandshakeVerificationRequest(request.HandshakeToken, request.Context),
+            rateLimitMode,
+            cancellationToken);
+        if (!result.Succeeded || result.Value == null)
+        {
+            return result;
+        }
+
+        var handshake = result.Value;
+        var factorType = ResolveRequiredFactor(handshake, request.FactorType);
+        if (factorType.Length == 0)
+        {
+            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.InvalidFactorType, request.Context, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.InvalidFactorType);
+        }
+
+        if (handshake.VerifiedFactors.Any(verifiedFactor => AuthenticationFactorTypes.Matches(verifiedFactor, factorType)))
+        {
+            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.FactorAlreadyVerified, request.Context, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.FactorAlreadyVerified);
+        }
+
+        return Result.Success(handshake);
+    }
+
+    private async Task<Result<AuthenticationHandshake>> LoadHandshakeForVerificationAsync(
+        BeginAuthenticationHandshakeVerificationRequest request,
         HandshakeRateLimitMode rateLimitMode,
         CancellationToken cancellationToken)
     {
@@ -304,18 +346,6 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
             return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeExpired);
         }
 
-        var factorType = ResolveRequiredFactor(handshake, request.FactorType);
-        if (factorType.Length == 0)
-        {
-            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.InvalidFactorType, request.Context, cancellationToken);
-            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.InvalidFactorType);
-        }
-
-        if (handshake.VerifiedFactors.Any(verifiedFactor => AuthenticationFactorTypes.Matches(verifiedFactor, factorType)))
-        {
-            await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.FactorAlreadyVerified, request.Context, cancellationToken);
-            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.FactorAlreadyVerified);
-        }
         return Result.Success(handshake);
     }
 
@@ -558,12 +588,6 @@ public sealed class AuthenticationHandshakeService : IAuthenticationHandshakeSer
 
     private static string ResolveRequiredFactor(AuthenticationHandshake handshake, string factorType)
     {
-        if (AuthenticationFactorTypes.Matches(factorType, AuthenticationFactorTypes.RecoveryCode))
-        {
-            return handshake.RequiredFactors.FirstOrDefault(requiredFactor =>
-                !handshake.VerifiedFactors.Any(verifiedFactor => AuthenticationFactorTypes.Matches(requiredFactor, verifiedFactor))) ?? string.Empty;
-        }
-
         return handshake.RequiredFactors.FirstOrDefault(requiredFactor => AuthenticationFactorTypes.Matches(requiredFactor, factorType)) ?? string.Empty;
     }
 }

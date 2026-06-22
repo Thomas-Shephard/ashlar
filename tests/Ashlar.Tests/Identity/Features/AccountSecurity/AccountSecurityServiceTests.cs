@@ -958,6 +958,76 @@ internal sealed class AccountSecurityServiceTests
     }
 
     [Test]
+    public async Task GetUserSecurityPostureAsyncShouldAllowRecoveryCodesAsBackupForRequiredTotp()
+    {
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode")));
+        var recoveryProvider = CreateBackupProvider(
+            new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode"),
+            AuthenticationFactorTypes.RecoveryCode,
+            factorType => AuthenticationFactorTypes.Matches(AuthenticationFactorTypes.Totp, factorType));
+        var service = CreateService(
+            new StaticMfaPolicyEvaluator(true, [AuthenticationFactorTypes.Totp]),
+            CreateDefaultProviderRegistry(includeRecoveryCodeProvider: false, recoveryProvider.Object));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.Policy.IsAdditionalVerificationRequired, Is.True);
+            Assert.That(result.Value?.Policy.HasUsableAdditionalVerificationFactor, Is.True);
+            Assert.That(result.Value?.Policy.IsReadyForAdditionalVerification, Is.True);
+            Assert.That(result.Value?.Policy.MissingRequiredFactorTypes, Is.Empty);
+            Assert.That(result.Value?.CanSignIn, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldReportMissingTotpWhenRecoveryCodeProviderIsNotRegistered()
+    {
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode")));
+        var service = CreateService(
+            new StaticMfaPolicyEvaluator(true, [AuthenticationFactorTypes.Totp]),
+            includeDefaultProviderRegistry: false);
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.Policy.IsReadyForAdditionalVerification, Is.False);
+            Assert.That(result.Value?.Policy.MissingRequiredFactorTypes, Is.EqualTo(new[] { AuthenticationFactorTypes.Totp }));
+            Assert.That(result.Value?.CanSignIn, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task GetUserSecurityPostureAsyncShouldReportMissingTotpWhenBackupProviderCannotSatisfyIt()
+    {
+        _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode")));
+        var recoveryProvider = CreateBackupProvider(
+            new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode"),
+            AuthenticationFactorTypes.RecoveryCode,
+            factorType => AuthenticationFactorTypes.Matches(AuthenticationFactorTypes.Passkey, factorType));
+        var service = CreateService(
+            new StaticMfaPolicyEvaluator(true, [AuthenticationFactorTypes.Totp]),
+            CreateDefaultProviderRegistry(includeRecoveryCodeProvider: false, recoveryProvider.Object));
+
+        var result = await service.GetUserSecurityPostureAsync(_userId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.Policy.IsReadyForAdditionalVerification, Is.False);
+            Assert.That(result.Value?.Policy.MissingRequiredFactorTypes, Is.EqualTo(new[] { AuthenticationFactorTypes.Totp }));
+            Assert.That(result.Value?.CanSignIn, Is.False);
+        }
+    }
+
+    [Test]
     public async Task GetUserSecurityPostureAsyncShouldAllowPasskeyAsAdditionalVerificationWhenPolicyRequiresIt()
     {
         _userRepository.Users[_userId] = new User { Id = _userId, Email = "user@example.com", AccountState = UserAccountState.Active };
@@ -1464,7 +1534,8 @@ internal sealed class AccountSecurityServiceTests
 
     private AccountSecurityService CreateService(
         IMfaPolicyEvaluator? mfaPolicyEvaluator = null,
-        IAuthenticationProviderRegistry? providerRegistry = null)
+        IAuthenticationProviderRegistry? providerRegistry = null,
+        bool includeDefaultProviderRegistry = true)
     {
         return new AccountSecurityService(
             _userRepository,
@@ -1475,13 +1546,20 @@ internal sealed class AccountSecurityServiceTests
                 It.IsAny<CancellationToken>()) == Task.FromResult<IReadOnlyList<AuthenticationSessionSummary>>(Array.Empty<AuthenticationSessionSummary>())),
             new NullTransactionProvider(),
             new AllowAccountSecurityGuard(),
-            new AccountSecurityServiceDependencies(_timeProvider, _events, _events, MfaPolicyEvaluator: mfaPolicyEvaluator, ProviderRegistry: providerRegistry ?? CreateDefaultProviderRegistry()));
+            new AccountSecurityServiceDependencies(
+                _timeProvider,
+                _events,
+                _events,
+                MfaPolicyEvaluator: mfaPolicyEvaluator,
+                ProviderRegistry: providerRegistry ?? (includeDefaultProviderRegistry ? CreateDefaultProviderRegistry() : null)));
     }
 
-    private static AuthenticationProviderRegistry CreateDefaultProviderRegistry()
+    private static AuthenticationProviderRegistry CreateDefaultProviderRegistry(
+        bool includeRecoveryCodeProvider = true,
+        params IAuthenticationProvider[] additionalProviders)
     {
-        return new AuthenticationProviderRegistry(
-        [
+        var providers = new List<IAuthenticationProvider>
+        {
             CreatePrimaryProvider(AuthenticationProviderKey.Local).Object,
             CreatePrimaryProvider(AuthenticationProviderKey.EmailCode).Object,
             CreatePrimaryProvider(AuthenticationProviderKey.MagicLink).Object,
@@ -1489,9 +1567,17 @@ internal sealed class AccountSecurityServiceTests
             CreatePrimaryProvider(new AuthenticationProviderKey(ProviderType.Oidc, "OIDC")).Object,
             CreatePrimaryProvider(new AuthenticationProviderKey(ProviderType.Saml2, "enterprise-sso")).Object,
             CreateSecondaryProvider(new AuthenticationProviderKey(ProviderType.Mfa, "totp"), AuthenticationFactorTypes.Totp).Object,
-            CreateSecondaryProvider(new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode"), AuthenticationFactorTypes.RecoveryCode).Object,
             CreatePasskeyProvider().Object
-        ]);
+        };
+
+        if (includeRecoveryCodeProvider)
+        {
+            providers.Add(CreateSecondaryProvider(new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode"), AuthenticationFactorTypes.RecoveryCode).Object);
+        }
+
+        providers.AddRange(additionalProviders);
+        return new AuthenticationProviderRegistry(
+            providers);
     }
 
     private static Mock<IPrimaryAuthenticationProvider> CreatePrimaryProvider(AuthenticationProviderKey providerKey)
@@ -1511,6 +1597,9 @@ internal sealed class AccountSecurityServiceTests
         provider.As<ISecondaryAuthenticationFactorProvider>()
             .SetupGet(item => item.FactorType)
             .Returns(AuthenticationFactorTypes.Passkey);
+        provider.As<ISecondaryAuthenticationFactorProvider>()
+            .Setup(item => item.CanSatisfyFactor(It.IsAny<string>()))
+            .Returns<string>(requiredFactor => AuthenticationFactorTypes.Matches(AuthenticationFactorTypes.Passkey, requiredFactor));
         return provider;
     }
 
@@ -1519,6 +1608,23 @@ internal sealed class AccountSecurityServiceTests
         var provider = new Mock<ISecondaryAuthenticationFactorProvider>();
         provider.SetupGet(item => item.Key).Returns(providerKey);
         provider.SetupGet(item => item.FactorType).Returns(factorType);
+        provider.Setup(item => item.CanSatisfyFactor(It.IsAny<string>()))
+            .Returns<string>(requiredFactor => AuthenticationFactorTypes.Matches(factorType, requiredFactor));
+        return provider;
+    }
+
+    private static Mock<IBackupAuthenticationFactorProvider> CreateBackupProvider(
+        AuthenticationProviderKey providerKey,
+        string factorType,
+        Predicate<string> backupPolicy)
+    {
+        var provider = new Mock<IBackupAuthenticationFactorProvider>();
+        provider.SetupGet(item => item.Key).Returns(providerKey);
+        provider.SetupGet(item => item.FactorType).Returns(factorType);
+        provider.Setup(item => item.CanSatisfyFactor(It.IsAny<string>()))
+            .Returns<string>(requiredFactor => AuthenticationFactorTypes.Matches(factorType, requiredFactor));
+        provider.Setup(item => item.CanSatisfyBackupFactor(It.IsAny<string>()))
+            .Returns<string>(requiredFactor => backupPolicy(requiredFactor));
         return provider;
     }
 

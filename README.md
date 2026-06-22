@@ -551,7 +551,7 @@ if (await bootstrap.GetStatusAsync() == BootstrapStatus.Uninitialized)
 Bootstrap is available only while the application is uninitialized. Initialization is determined by a persistent marker in the database. First-admin bootstrap is atomic, single-use, and assigns all configured grants to the new user before marking the system as initialized.
 
 ## Recovery Codes
-Ashlar includes a framework-neutral service for generating and verifying backup recovery codes. These are typically used as a fallback authentication method when a user loses access to their primary multi-factor authentication device.
+Ashlar includes a framework-neutral service for generating and verifying backup recovery codes. These are fallback additional-verification factors: after primary authentication succeeds and an MFA or step-up handshake is pending, a valid recovery code may satisfy any pending required factor such as `totp` or `passkey`. This substitution is provider-driven through Ashlar's backup-factor provider contract; applications that do not register recovery-code services do not get recovery-code behavior. Recovery codes are not primary sign-in credentials, do not issue sessions by themselves, and still require a valid handshake/user/session flow.
 
 Register recovery codes with core identity services:
 
@@ -575,25 +575,27 @@ var recoveryCodes = httpContext.RequestServices.GetRequiredService<IRecoveryCode
 var rawCodes = await recoveryCodes.GenerateRecoveryCodesAsync(userId);
 ```
 
-To verify a recovery code during sign-in, use the standard `AuthenticationPipeline` with a `RecoveryCodeAssertion`:
+To verify a recovery code during sign-in, continue the pending MFA handshake through the MFA orchestrator with a `RecoveryCodeAssertion`:
 
 ```csharp
 using Ashlar.Identity.Providers.RecoveryCode;
 
-var pipeline = httpContext.RequestServices.GetRequiredService<IAuthenticationPipeline>();
+var orchestrator = httpContext.RequestServices.GetRequiredService<IAuthenticationOrchestrator>();
 
 var assertion = new RecoveryCodeAssertion(userInputCode);
 
-var authenticationResponse = await pipeline.LoginAsync(
+var authenticationResult = await orchestrator.VerifyFactorAsync(
+    handshakeTokenFromPrimaryAuthentication,
+    AuthenticationFactorTypes.RecoveryCode,
     new AuthenticationContext(
         Email: userEmail,
         IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
         UserAgent: httpContext.Request.Headers.UserAgent.ToString()),
     assertion);
 
-if (authenticationResponse.Succeeded)
+if (authenticationResult.Status == MfaAuthenticationStatus.Succeeded)
 {
-    // The recovery code was valid and has been automatically consumed
+    // The recovery code was valid, has been automatically consumed, and satisfied the pending MFA factor.
 }
 ```
 
@@ -733,17 +735,40 @@ if (!createResult.Succeeded || createResult.Value == null)
 // Return createResult.Value.Token to the client. It will be needed to verify factors.
 ```
 
-Verify a factor to continue or complete the handshake:
+Verify a factor to continue or complete the handshake. Most applications should use `IAuthenticationOrchestrator.VerifyFactorAsync`; direct handshake-service integrations should begin the verification attempt, verify the factor credential with their provider, then complete the resolved factor:
 
 ```csharp
-var result = await handshakeService.VerifyFactorAsync(new VerifyAuthenticationHandshakeRequest(
+var beginResult = await handshakeService.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(
     tokenFromClient,
     "totp"));
 
-if (result.Succeeded && result.Value is { IsCompleted: true } handshake)
+if (beginResult.Succeeded)
 {
-    // All required factors verified! Create the final session.
-    await signInManager.SignInAsync(httpContext, handshake.UserId);
+    // Verify the submitted factor credential, then mark the factor complete.
+    var completeResult = await handshakeService.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(
+        tokenFromClient,
+        "totp"));
+
+    if (completeResult.Succeeded && completeResult.Value is { IsCompleted: true } handshake)
+    {
+        // All required factors verified! Create the final session.
+        await signInManager.SignInAsync(httpContext, handshake.UserId);
+    }
+}
+```
+
+For backup-factor providers that may satisfy a different pending factor, use `BeginVerificationAsync` before resolving the factor with provider capabilities, then call `CompleteFactorVerificationAsync` with the pending factor that was actually satisfied.
+
+```csharp
+var beginResult = await handshakeService.BeginVerificationAsync(new BeginAuthenticationHandshakeVerificationRequest(tokenFromClient));
+
+if (beginResult.Succeeded)
+{
+    // Resolve and verify the backup provider, then complete the pending factor it satisfied.
+    var resolvedPendingFactor = "totp";
+    var completeResult = await handshakeService.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(
+        tokenFromClient,
+        resolvedPendingFactor));
 }
 ```
 

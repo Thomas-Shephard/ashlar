@@ -22,6 +22,14 @@ public interface IAuthenticationHandshakeService
     Task<Result<AuthenticationHandshake>> BeginFactorChallengeAsync(VerifyAuthenticationHandshakeRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Validates and consumes a handshake verification attempt before orchestration resolves which pending factor will be completed.
+    /// </summary>
+    /// <param name="request">The handshake verification details.</param>
+    /// <param name="cancellationToken">A token that can cancel handshake verification checks.</param>
+    /// <returns>The current handshake when verification may proceed.</returns>
+    Task<Result<AuthenticationHandshake>> BeginVerificationAsync(BeginAuthenticationHandshakeVerificationRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Validates and consumes a factor verification attempt before the factor credential is checked.
     /// </summary>
     /// <param name="request">The factor verification details.</param>

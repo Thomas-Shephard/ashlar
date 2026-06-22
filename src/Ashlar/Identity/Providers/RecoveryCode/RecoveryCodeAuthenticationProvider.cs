@@ -4,9 +4,9 @@ using Microsoft.Extensions.Options;
 namespace Ashlar.Identity.Providers.RecoveryCode;
 
 /// <summary>
-/// Implements an authentication provider that uses recovery codes.
+/// Implements an authentication provider that verifies recovery codes as backup additional-verification factors.
 /// </summary>
-public sealed class RecoveryCodeAuthenticationProvider : ISecondaryAuthenticationFactorProvider
+public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFactorProvider
 {
     private readonly PasswordHasherSelector _hasherSelector;
     private readonly RecoveryCodeOptions _options;
@@ -48,16 +48,23 @@ public sealed class RecoveryCodeAuthenticationProvider : ISecondaryAuthenticatio
     public int TypicalCredentialLength => 128; // Hashed password length
 
     /// <summary>
-    /// Gets the factor family represented by recovery codes.
+    /// Gets the backup factor family represented by recovery codes.
     /// </summary>
     public string FactorType => AuthenticationFactorTypes.RecoveryCode;
 
     /// <summary>
-    /// Determines whether recovery codes can satisfy a pending factor.
+    /// Determines whether recovery codes directly satisfy a pending recovery-code factor.
     /// </summary>
     /// <param name="factorType">Additional-verification factor family required by the pending challenge.</param>
-    /// <returns><see langword="true" /> when the factor value is present.</returns>
-    public bool CanSatisfyFactor(string factorType) => !string.IsNullOrWhiteSpace(factorType);
+    /// <returns><see langword="true" /> when the pending challenge explicitly requires recovery-code verification.</returns>
+    public bool CanSatisfyFactor(string factorType) => AuthenticationFactorTypes.Matches(FactorType, factorType);
+
+    /// <summary>
+    /// Determines whether a recovery code may be used as backup for a pending additional-verification factor.
+    /// </summary>
+    /// <param name="requiredFactorType">Additional-verification factor family required by the pending challenge.</param>
+    /// <returns><see langword="true" /> when the challenge names any factor family; recovery codes intentionally act as universal backup factors.</returns>
+    public bool CanSatisfyBackupFactor(string requiredFactorType) => !string.IsNullOrWhiteSpace(requiredFactorType);
 
     /// <summary>
     /// Returns an empty key because recovery-code lookup derives the stored key from the submitted code.

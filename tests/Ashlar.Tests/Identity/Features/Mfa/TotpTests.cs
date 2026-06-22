@@ -1164,7 +1164,7 @@ internal sealed class TotpTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResponse(true, responseUser.Object, AuthenticationStatus.Success));
 
-        handshakeService.Setup(x => x.BeginFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
+        handshakeService.Setup(x => x.BeginVerificationAsync(It.IsAny<BeginAuthenticationHandshakeVerificationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));
         handshakeService.Setup(x => x.CompleteFactorVerificationAsync(It.IsAny<VerifyAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success(handshake));

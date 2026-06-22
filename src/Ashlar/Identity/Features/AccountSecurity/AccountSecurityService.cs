@@ -365,7 +365,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
             .AsReadOnly();
     }
 
-    private static AccountSecurityPolicyPosture CreatePolicyPosture(
+    private AccountSecurityPolicyPosture CreatePolicyPosture(
         MfaPolicyEvaluation evaluation,
         IReadOnlyList<AdditionalVerificationFactorPosture> configuredFactors)
     {
@@ -375,7 +375,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
             .Select(factor => NormalizeFactorType(factor.FactorType))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var missing = evaluation.IsMfaRequired
-            ? required.Where(factor => !configured.Contains(factor)).ToList()
+            ? required.Where(factor => !configured.Contains(factor) && !CanSatisfyRequiredFactor(factor, configuredFactors)).ToList()
             : [];
         var hasUsableFactor = configured.Count > 0;
         var isReady = !evaluation.IsMfaRequired || (missing.Count == 0 && hasUsableFactor);
@@ -389,6 +389,35 @@ public sealed class AccountSecurityService : IAccountSecurityService
             missing.AsReadOnly(),
             missing.Select(GetFactorDisplayName).ToList().AsReadOnly(),
             evaluation.IsMfaRequired && !isReady);
+    }
+
+    private bool CanSatisfyRequiredFactor(string requiredFactorType, IReadOnlyList<AdditionalVerificationFactorPosture> configuredFactors)
+    {
+        if (_providerRegistry == null)
+        {
+            return false;
+        }
+
+        foreach (var factor in configuredFactors.Where(factor => factor.IsUsable))
+        {
+            foreach (var providerKey in factor.Providers)
+            {
+                if (!_providerRegistry.TryGetProvider(providerKey, out var provider) ||
+                    provider is not ISecondaryAuthenticationFactorProvider secondaryProvider)
+                {
+                    continue;
+                }
+
+                if (secondaryProvider.CanSatisfyFactor(requiredFactorType) ||
+                    secondaryProvider is IBackupAuthenticationFactorProvider backupProvider &&
+                    backupProvider.CanSatisfyBackupFactor(requiredFactorType))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private IAuthenticationProvider? GetRegisteredProvider(AuthenticationProviderKey provider)
