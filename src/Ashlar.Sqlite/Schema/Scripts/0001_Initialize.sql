@@ -458,14 +458,16 @@ CREATE TABLE IF NOT EXISTS ashlar_security_event_webhook_outbox (
     last_attempt_at TEXT,
     attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
     last_error TEXT,
-    CONSTRAINT ck_ashlar_security_event_webhook_outbox_terminal_state CHECK (sent_at IS NULL OR failed_at IS NULL),
+    CONSTRAINT ck_ashlar_security_event_webhook_outbox_terminal_state CHECK (
+        sent_at IS NULL OR (failed_at IS NULL AND discarded_at IS NULL)
+    ),
     CONSTRAINT ck_ashlar_security_event_webhook_outbox_lock_state CHECK (
         (locked_until IS NULL AND locked_by IS NULL) OR (locked_until IS NOT NULL AND locked_by IS NOT NULL)
     )
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_pending ON ashlar_security_event_webhook_outbox (available_at, id)
-WHERE sent_at IS NULL AND failed_at IS NULL;
+WHERE sent_at IS NULL AND failed_at IS NULL AND discarded_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_created_at ON ashlar_security_event_webhook_outbox (created_at);
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_locked_until ON ashlar_security_event_webhook_outbox (locked_until) WHERE locked_until IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_security_event_webhook_outbox_sent_at ON ashlar_security_event_webhook_outbox (sent_at) WHERE sent_at IS NOT NULL;

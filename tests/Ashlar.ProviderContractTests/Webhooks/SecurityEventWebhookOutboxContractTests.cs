@@ -20,6 +20,8 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
 
     protected abstract Task<int> CountWebhookOutboxRowsAsync();
 
+    protected abstract Task AssertSentAndDiscardedTerminalStateIsRejectedAsync();
+
     [Test]
     public async Task BrowserListsProviderNeutralStatusesWithPaging()
     {
@@ -68,6 +70,7 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         var pendingDiscard = await operations.DiscardAsync(CreateOperationRequest(pending));
         var sentRetry = await operations.RetryAsync(CreateOperationRequest(sent));
         var sentDiscard = await operations.DiscardAsync(CreateOperationRequest(sent));
+        var sentState = await ReadWebhookOutboxRowStateAsync(sent);
         var retryableRetry = await operations.RetryAsync(CreateOperationRequest(retryable));
         var retryableDiscard = await operations.DiscardAsync(CreateOperationRequest(retryable));
         var retryableState = await ReadWebhookOutboxRowStateAsync(retryable);
@@ -96,6 +99,8 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
             Assert.That(pendingDiscard.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed));
             Assert.That(sentRetry.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed));
             Assert.That(sentDiscard.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed));
+            Assert.That(sentState.SentAt, Is.EqualTo(Now));
+            Assert.That(sentState.DiscardedAt, Is.Null);
             Assert.That(retryableRetry.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed));
             Assert.That(retryableDiscard.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.NotFailed));
             Assert.That(retryableState.FailedAt, Is.Null);
@@ -110,6 +115,12 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
             Assert.That(discardedState.LockedBy, Is.Null);
             Assert.That(discardedState.LockedUntil, Is.Null);
         }
+    }
+
+    [Test]
+    public async Task SchemaRejectsSentAndDiscardedTerminalState()
+    {
+        await AssertSentAndDiscardedTerminalStateIsRejectedAsync();
     }
 
     [Test]
@@ -266,6 +277,7 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
 
     protected sealed record WebhookOutboxRowState(
         DateTimeOffset AvailableAt,
+        DateTimeOffset? SentAt,
         DateTimeOffset? FailedAt,
         DateTimeOffset? DiscardedAt,
         string? LockedBy,

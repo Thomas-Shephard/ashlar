@@ -64,13 +64,14 @@ internal sealed class PostgresSecurityEventWebhookOutboxContractTests : Security
         await using var connection = new Npgsql.NpgsqlConnection(_database!.ConnectionString);
         await connection.OpenAsync();
         var row = await connection.QuerySingleAsync<OutboxStateRow>("""
-            SELECT available_at AS AvailableAt, failed_at AS FailedAt, discarded_at AS DiscardedAt,
+            SELECT available_at AS AvailableAt, sent_at AS SentAt, failed_at AS FailedAt, discarded_at AS DiscardedAt,
                    locked_by AS LockedBy, locked_until AS LockedUntil, last_error AS LastError
             FROM ashlar_security_event_webhook_outbox
             WHERE id = @id
             """, new { id });
         return new WebhookOutboxRowState(
             PostgresAdminQuery.ToDateTimeOffset(row.AvailableAt),
+            PostgresAdminQuery.ToNullableDateTimeOffset(row.SentAt),
             PostgresAdminQuery.ToNullableDateTimeOffset(row.FailedAt),
             PostgresAdminQuery.ToNullableDateTimeOffset(row.DiscardedAt),
             row.LockedBy,
@@ -85,9 +86,33 @@ internal sealed class PostgresSecurityEventWebhookOutboxContractTests : Security
         return await connection.ExecuteScalarAsync<int>("SELECT count(*) FROM ashlar_security_event_webhook_outbox;");
     }
 
+    protected override async Task AssertSentAndDiscardedTerminalStateIsRejectedAsync()
+    {
+        await using var connection = new Npgsql.NpgsqlConnection(_database!.ConnectionString);
+        await connection.OpenAsync();
+
+        var exception = Assert.ThrowsAsync<Npgsql.PostgresException>(async () => await connection.ExecuteAsync("""
+            INSERT INTO ashlar_security_event_webhook_outbox (
+                id, endpoint_name, uri, event_id, event_type, outcome, occurred_at, timeout_ms, body, headers,
+                created_at, available_at, sent_at, discarded_at)
+            VALUES (
+                @id, 'conflict', 'https://example.test/security-events', @eventId, 'security.test', 'success', @now, 1000, @body, @headers::jsonb,
+                @now, @now, @now, @now);
+            """, new
+        {
+            id = Guid.NewGuid(),
+            eventId = Guid.NewGuid(),
+            now = Now,
+            body = new byte[] { 1, 2, 3 },
+            headers = "{}"
+        }));
+        Assert.That(exception!.ConstraintName, Is.EqualTo("ck_ashlar_security_event_webhook_outbox_terminal_state"));
+    }
+
     private sealed class OutboxStateRow
     {
         public DateTime AvailableAt { get; init; }
+        public DateTime? SentAt { get; init; }
         public DateTime? FailedAt { get; init; }
         public DateTime? DiscardedAt { get; init; }
         public string? LockedBy { get; init; }
