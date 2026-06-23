@@ -63,7 +63,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxContractTests : SecurityEv
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT available_at, failed_at, discarded_at, locked_by, locked_until, last_error
+            SELECT available_at, sent_at, failed_at, discarded_at, locked_by, locked_until, last_error
             FROM ashlar_security_event_webhook_outbox
             WHERE id = $id;
             """;
@@ -72,6 +72,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxContractTests : SecurityEv
         Assert.That(await reader.ReadAsync(), Is.True);
         return new WebhookOutboxRowState(
             reader.GetDateTimeOffsetFromText("available_at"),
+            reader.GetNullableDateTimeOffsetFromText("sent_at"),
             reader.GetNullableDateTimeOffsetFromText("failed_at"),
             reader.GetNullableDateTimeOffsetFromText("discarded_at"),
             reader.GetNullableString("locked_by"),
@@ -86,5 +87,28 @@ internal sealed class SqliteSecurityEventWebhookOutboxContractTests : SecurityEv
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT count(*) FROM ashlar_security_event_webhook_outbox;";
         return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
+    }
+
+    protected override async Task AssertSentAndDiscardedTerminalStateIsRejectedAsync()
+    {
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection(_database!.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO ashlar_security_event_webhook_outbox (
+                id, endpoint_name, uri, event_id, event_type, outcome, occurred_at, timeout_ms, body, headers,
+                created_at, available_at, sent_at, discarded_at)
+            VALUES (
+                $id, 'conflict', 'https://example.test/security-events', $eventId, 'security.test', 'success', $now, 1000, $body, $headers,
+                $now, $now, $now, $now);
+            """;
+        command.AddGuidParameter("$id", Guid.NewGuid());
+        command.AddGuidParameter("$eventId", Guid.NewGuid());
+        command.AddDateTimeOffsetParameter("$now", Now);
+        command.AddParameter("$body", new byte[] { 1, 2, 3 });
+        command.AddParameter("$headers", "{}");
+
+        var exception = Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(async () => await command.ExecuteNonQueryAsync());
+        Assert.That(exception!.SqliteErrorCode, Is.EqualTo(19));
     }
 }
