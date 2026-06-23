@@ -158,6 +158,56 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     }
 
     [Test]
+    public async Task DispatcherDoesNotMarkSentWhenLockOwnerChangesAfterSuccessfulWebhookSend()
+    {
+        await EnqueueAsync(CreateDelivery());
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted)
+        {
+            OnRequestAsync = () => ExecuteAsync(
+                "UPDATE ashlar_security_event_webhook_outbox SET locked_by = $lockedBy",
+                command => command.AddParameter("$lockedBy", "other-dispatcher"))
+        };
+
+        var count = await CreateDispatcher(transport).ProcessBatchAsync();
+        var row = await QuerySingleOutboxRowAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.EqualTo(1));
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+            Assert.That(row.SentAt, Is.Null);
+            Assert.That(row.FailedAt, Is.Null);
+            Assert.That(row.AttemptCount, Is.Zero);
+            Assert.That(row.LastError, Is.Null);
+            Assert.That(row.LockedBy, Is.EqualTo("other-dispatcher"));
+        }
+    }
+
+    [Test]
+    public async Task DispatcherDoesNotMarkSentWhenWebhookRowBecomesTerminalAfterSuccessfulSend()
+    {
+        await EnqueueAsync(CreateDelivery());
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted)
+        {
+            OnRequestAsync = () => ExecuteAsync(
+                "UPDATE ashlar_security_event_webhook_outbox SET failed_at = $failedAt",
+                command => command.AddDateTimeOffsetParameter("$failedAt", _timeProvider.GetUtcNow()))
+        };
+
+        await CreateDispatcher(transport).ProcessBatchAsync();
+        var row = await QuerySingleOutboxRowAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+            Assert.That(row.SentAt, Is.Null);
+            Assert.That(row.FailedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
+            Assert.That(row.AttemptCount, Is.Zero);
+            Assert.That(row.LastError, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task DispatcherRegeneratesSignatureAtSendTime()
     {
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
@@ -620,12 +670,14 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         await EnqueueAsync(CreateDelivery());
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted)
         {
-            OnRequest = () =>
+            OnRequestAsync = () =>
             {
                 if (Interlocked.Increment(ref _hostedRequestCount) >= 1)
                 {
                     _ = _hostedCancellation!.CancelAsync();
                 }
+
+                return Task.CompletedTask;
             }
         };
         await using var provider = CreateHostedServiceProvider(transport, new SqliteSecurityEventWebhookOutboxOptions { PollingInterval = TimeSpan.FromMilliseconds(1) });
@@ -649,12 +701,14 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         await EnqueueAsync(CreateDelivery());
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted)
         {
-            OnRequest = () =>
+            OnRequestAsync = () =>
             {
                 if (Interlocked.Increment(ref _hostedRequestCount) >= 2)
                 {
                     cts.Cancel();
                 }
+
+                return Task.CompletedTask;
             }
         };
         await using var provider = CreateHostedServiceProvider(
@@ -1006,12 +1060,16 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     private sealed class RecordingHttpMessageHandler(HttpStatusCode statusCode) : HttpMessageHandler
     {
         public List<RecordedRequest> Requests { get; } = [];
-        public Action? OnRequest { get; set; }
+        public Func<Task>? OnRequestAsync { get; set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests.Add(await RecordedRequest.CreateAsync(request, cancellationToken));
-            OnRequest?.Invoke();
+            if (OnRequestAsync != null)
+            {
+                await OnRequestAsync();
+            }
+
             return new HttpResponseMessage(statusCode);
         }
     }

@@ -122,7 +122,7 @@ public sealed class AshlarSecurityEventWebhookOutboxDispatcherDependencies<TOpti
 /// <param name="HttpClientFactory">The HTTP client factory.</param>
 /// <param name="HttpClientName">The named HTTP client to use.</param>
 /// <param name="MaxAttempts">The maximum configured delivery attempts.</param>
-/// <param name="MarkAsSentAsync">The callback that persists successful delivery state.</param>
+/// <param name="MarkAsSentAsync">The callback that persists successful delivery state and returns whether the row was updated.</param>
 /// <param name="MarkAsFailedAsync">The callback that persists failed delivery state.</param>
 /// <param name="LogDeliveryFailed">The callback that logs failed delivery attempts.</param>
 /// <param name="DestinationValidator">The webhook destination safety validator.</param>
@@ -133,7 +133,7 @@ public sealed record AshlarSecurityEventWebhookOutboxDispatchContext(
     IHttpClientFactory HttpClientFactory,
     string HttpClientName,
     int MaxAttempts,
-    Func<Guid, CancellationToken, Task> MarkAsSentAsync,
+    Func<Guid, CancellationToken, Task<bool>> MarkAsSentAsync,
     Func<AshlarSecurityEventWebhookOutboxEntry, Exception, CancellationToken, Task> MarkAsFailedAsync,
     Action<Guid, int, bool, Exception> LogDeliveryFailed,
     AshlarSecurityEventWebhookDestinationValidator DestinationValidator,
@@ -230,8 +230,6 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
                 await MarkAsFailedAsync(entry, context, exception).ConfigureAwait(false);
                 return;
             }
-
-            RecordSuccess(context, entry, start);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -251,7 +249,12 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
             return;
         }
 
-        await context.MarkAsSentAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
+        if (!await context.MarkAsSentAsync(entry.Id, CancellationToken.None).ConfigureAwait(false))
+        {
+            return;
+        }
+
+        RecordSuccess(context, entry, start);
     }
 
     private static bool ShouldAddAsContentHeader(HttpRequestMessage request, KeyValuePair<string, string> header)

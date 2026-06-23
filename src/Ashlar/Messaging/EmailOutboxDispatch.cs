@@ -108,14 +108,14 @@ public sealed record EmailOutboxStoredBodies(
 /// </summary>
 /// <param name="Transport">The email transport.</param>
 /// <param name="MaxAttempts">The maximum configured delivery attempts.</param>
-/// <param name="MarkAsSentAsync">Callback that persists successful delivery state.</param>
+/// <param name="MarkAsSentAsync">Callback that persists successful delivery state and returns whether the row was updated.</param>
 /// <param name="MarkAsFailedAsync">Callback that persists failed delivery state.</param>
 /// <param name="LogDeliveryFailed">Callback that logs failed delivery attempts.</param>
 /// <param name="SecretProtector">Optional secret protector used to unprotect protected bodies.</param>
 public sealed record EmailOutboxDispatchContext(
     IEmailTransport Transport,
     int MaxAttempts,
-    Func<Guid, CancellationToken, Task> MarkAsSentAsync,
+    Func<Guid, CancellationToken, Task<bool>> MarkAsSentAsync,
     Func<EmailOutboxEntry, Exception, CancellationToken, Task> MarkAsFailedAsync,
     Action<Guid, int, bool, Exception?> LogDeliveryFailed,
     ISecretProtector? SecretProtector = null);
@@ -173,7 +173,6 @@ public static class EmailOutboxDispatch
         {
             var message = MapToEmailMessage(entry, context.SecretProtector);
             await context.Transport.DeliverAsync(message, cancellationToken).ConfigureAwait(false);
-            await context.MarkAsSentAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -182,7 +181,10 @@ public static class EmailOutboxDispatch
         catch (Exception exception)
         {
             await MarkAsFailedAsync(entry, context, exception).ConfigureAwait(false);
+            return;
         }
+
+        await context.MarkAsSentAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>

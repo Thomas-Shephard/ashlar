@@ -194,6 +194,72 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     }
 
     [Test]
+    public async Task DispatcherDoesNotMarkSentWhenLockOwnerChangesAfterSuccessfulWebhookSend()
+    {
+        await EnqueueAsync(CreateDelivery());
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted)
+        {
+            OnRequestAsync = async () =>
+            {
+                await using var connection = await GetDataSource().OpenConnectionAsync();
+                await connection.ExecuteAsync("UPDATE ashlar_security_event_webhook_outbox SET locked_by = 'other-dispatcher';");
+            }
+        };
+
+        var count = await CreateDispatcher(transport).ProcessBatchAsync();
+
+        await using var verifyConnection = await GetDataSource().OpenConnectionAsync();
+        var row = await verifyConnection.QuerySingleAsync<RawWebhookRow>("""
+            SELECT sent_at AS SentAt, failed_at AS FailedAt, attempt_count AS AttemptCount,
+                   last_error AS LastError, locked_by AS LockedBy
+            FROM ashlar_security_event_webhook_outbox
+            """);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.EqualTo(1));
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+            Assert.That(row.SentAt, Is.Null);
+            Assert.That(row.FailedAt, Is.Null);
+            Assert.That(row.AttemptCount, Is.Zero);
+            Assert.That(row.LastError, Is.Null);
+            Assert.That(row.LockedBy, Is.EqualTo("other-dispatcher"));
+        }
+    }
+
+    [Test]
+    public async Task DispatcherDoesNotMarkSentWhenWebhookRowBecomesTerminalAfterSuccessfulSend()
+    {
+        await EnqueueAsync(CreateDelivery());
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted)
+        {
+            OnRequestAsync = async () =>
+            {
+                await using var connection = await GetDataSource().OpenConnectionAsync();
+                await connection.ExecuteAsync("UPDATE ashlar_security_event_webhook_outbox SET failed_at = @now;", new { now = _timeProvider.GetUtcNow() });
+            }
+        };
+
+        await CreateDispatcher(transport).ProcessBatchAsync();
+
+        await using var verifyConnection = await GetDataSource().OpenConnectionAsync();
+        var row = await verifyConnection.QuerySingleAsync<RawWebhookRow>("""
+            SELECT sent_at AS SentAt, failed_at AS FailedAt, attempt_count AS AttemptCount,
+                   last_error AS LastError
+            FROM ashlar_security_event_webhook_outbox
+            """);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+            Assert.That(row.SentAt, Is.Null);
+            Assert.That(row.FailedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
+            Assert.That(row.AttemptCount, Is.Zero);
+            Assert.That(row.LastError, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task DispatcherRegeneratesSignatureAtSendTime()
     {
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
@@ -930,6 +996,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     private sealed class RecordingHttpMessageHandler(HttpStatusCode statusCode, TimeSpan? delay = null) : HttpMessageHandler
     {
         public List<RecordedRequest> Requests { get; } = [];
+        public Func<Task>? OnRequestAsync { get; set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -939,6 +1006,11 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             }
 
             Requests.Add(await RecordedRequest.CreateAsync(request, cancellationToken));
+            if (OnRequestAsync != null)
+            {
+                await OnRequestAsync();
+            }
+
             return new HttpResponseMessage(statusCode);
         }
     }

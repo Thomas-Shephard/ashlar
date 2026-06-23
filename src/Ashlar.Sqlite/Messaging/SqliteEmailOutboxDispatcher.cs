@@ -47,7 +47,11 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
             locked_by = NULL,
             last_attempt_at = $now,
             attempt_count = attempt_count + 1
-        WHERE id = $id AND locked_by = $lockedBy
+        WHERE id = $id
+          AND locked_by = $lockedBy
+          AND sent_at IS NULL
+          AND failed_at IS NULL
+          AND discarded_at IS NULL
         """;
     private const string MarkAsFailedSql = """
         UPDATE ashlar_email_outbox
@@ -168,9 +172,9 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
             cancellationToken);
     }
 
-    private async Task MarkAsSentAsync(Guid id, IServiceProvider provider, string lockId, CancellationToken cancellationToken)
+    private async Task<bool> MarkAsSentAsync(Guid id, IServiceProvider provider, string lockId, CancellationToken cancellationToken)
     {
-        await SqliteOutboxDispatch.MarkAsSentAsync(
+        return await SqliteOutboxDispatch.MarkAsSentAsync(
             new SqliteOutboxSentUpdateContext(provider, MarkAsSentSql, lockId, _timeProvider.GetUtcNow()),
             id,
             cancellationToken);

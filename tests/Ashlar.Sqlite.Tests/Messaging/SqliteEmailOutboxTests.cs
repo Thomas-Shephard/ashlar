@@ -231,6 +231,57 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     }
 
     [Test]
+    public async Task DispatcherDoesNotMarkSentWhenLockOwnerChangesAfterSuccessfulDelivery()
+    {
+        var transport = new TestTransport
+        {
+            OnDeliver = (_, _) => ExecuteAsync(
+                "UPDATE ashlar_email_outbox SET locked_by = $lockedBy",
+                command => command.AddParameter("$lockedBy", "other-dispatcher"))
+        };
+        var dispatcher = BuildDispatcher(transport);
+        await SeedMessageAsync("lost-lock@example.com");
+
+        var count = await dispatcher.ProcessBatchAsync();
+        var row = await QuerySingleOutboxRowAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.EqualTo(1));
+            Assert.That(transport.DeliveredCount, Is.EqualTo(1));
+            Assert.That(row.SentAt, Is.Null);
+            Assert.That(row.FailedAt, Is.Null);
+            Assert.That(row.AttemptCount, Is.Zero);
+            Assert.That(row.LastError, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task DispatcherDoesNotMarkSentWhenEmailRowBecomesTerminalAfterSuccessfulDelivery()
+    {
+        var transport = new TestTransport
+        {
+            OnDeliver = (_, _) => ExecuteAsync(
+                "UPDATE ashlar_email_outbox SET failed_at = $failedAt",
+                command => command.AddDateTimeOffsetParameter("$failedAt", _timeProvider.GetUtcNow()))
+        };
+        var dispatcher = BuildDispatcher(transport);
+        await SeedMessageAsync("terminal@example.com");
+
+        await dispatcher.ProcessBatchAsync();
+        var row = await QuerySingleOutboxRowAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.DeliveredCount, Is.EqualTo(1));
+            Assert.That(row.SentAt, Is.Null);
+            Assert.That(row.FailedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
+            Assert.That(row.AttemptCount, Is.Zero);
+            Assert.That(row.LastError, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task DispatcherConcurrentCallsOnSameInstanceDoNotDeliverSameMessageTwice()
     {
         var firstDeliveryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

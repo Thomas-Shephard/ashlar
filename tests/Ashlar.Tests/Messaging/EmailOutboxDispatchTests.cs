@@ -225,7 +225,7 @@ internal sealed class EmailOutboxDispatchTests
             markAsSentAsync: (id, _) =>
             {
                 sentId = id;
-                return Task.CompletedTask;
+                return Task.FromResult(true);
             },
             markAsFailedAsync: (_, _, _) =>
             {
@@ -255,9 +255,15 @@ internal sealed class EmailOutboxDispatchTests
         Exception? loggedException = null;
         int? loggedAttemptCount = null;
         bool? loggedFinalFailure = null;
+        var sent = false;
         var context = CreateDispatchContext(
             transport,
             maxAttempts: 2,
+            markAsSentAsync: (_, _) =>
+            {
+                sent = true;
+                return Task.FromResult(true);
+            },
             markAsFailedAsync: (capturedEntry, exception, _) =>
             {
                 failedEntry = capturedEntry;
@@ -280,6 +286,58 @@ internal sealed class EmailOutboxDispatchTests
             Assert.That(loggedException, Is.SameAs(deliveryException));
             Assert.That(loggedAttemptCount, Is.EqualTo(2));
             Assert.That(loggedFinalFailure, Is.True);
+            Assert.That(sent, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task DispatchAsyncDoesNotMarkFailedWhenSentStateIsNotPersisted()
+    {
+        var entry = CreateEntry();
+        var transport = new RecordingEmailTransport();
+        var failed = false;
+        var context = CreateDispatchContext(
+            transport,
+            markAsSentAsync: (_, _) => Task.FromResult(false),
+            markAsFailedAsync: (_, _, _) =>
+            {
+                failed = true;
+                return Task.CompletedTask;
+            });
+
+        await EmailOutboxDispatch.DispatchAsync(entry, context, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Messages, Has.Count.EqualTo(1));
+            Assert.That(failed, Is.False);
+        }
+    }
+
+    [Test]
+    public void DispatchAsyncDoesNotMarkFailedWhenSentStatePersistenceThrows()
+    {
+        var entry = CreateEntry();
+        var transport = new RecordingEmailTransport();
+        var persistenceException = new InvalidOperationException("mark sent failed");
+        var failed = false;
+        var context = CreateDispatchContext(
+            transport,
+            markAsSentAsync: (_, _) => throw persistenceException,
+            markAsFailedAsync: (_, _, _) =>
+            {
+                failed = true;
+                return Task.CompletedTask;
+            });
+
+        var exception = Assert.ThrowsAsync<InvalidOperationException>(() =>
+            EmailOutboxDispatch.DispatchAsync(entry, context, CancellationToken.None));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception, Is.SameAs(persistenceException));
+            Assert.That(transport.Messages, Has.Count.EqualTo(1));
+            Assert.That(failed, Is.False);
         }
     }
 
@@ -416,14 +474,14 @@ internal sealed class EmailOutboxDispatchTests
         IEmailTransport transport,
         ISecretProtector? secretProtector = null,
         int maxAttempts = 3,
-        Func<Guid, CancellationToken, Task>? markAsSentAsync = null,
+        Func<Guid, CancellationToken, Task<bool>>? markAsSentAsync = null,
         Func<EmailOutboxEntry, Exception, CancellationToken, Task>? markAsFailedAsync = null,
         Action<Guid, int, bool, Exception?>? logDeliveryFailed = null)
     {
         return new EmailOutboxDispatchContext(
             transport,
             maxAttempts,
-            markAsSentAsync ?? ((_, _) => Task.CompletedTask),
+            markAsSentAsync ?? ((_, _) => Task.FromResult(true)),
             markAsFailedAsync ?? ((_, _, _) => Task.CompletedTask),
             logDeliveryFailed ?? ((_, _, _, _) => { }),
             secretProtector);

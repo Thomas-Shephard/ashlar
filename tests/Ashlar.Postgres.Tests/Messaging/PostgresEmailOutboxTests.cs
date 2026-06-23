@@ -350,6 +350,89 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
     }
 
     [Test]
+    public async Task DispatcherProcessBatchAsyncDoesNotMarkSentWhenLockOwnerChangesAfterSuccessfulDelivery()
+    {
+        var transport = new TestTransport
+        {
+            OnDeliver = async (_, _) =>
+            {
+                await using var connection = await GetDataSource().OpenConnectionAsync(CancellationToken.None);
+                await connection.ExecuteAsync("UPDATE ashlar_email_outbox SET locked_by = 'other-dispatcher';");
+            }
+        };
+        var services = new ServiceCollection();
+        services.AddSingleton(transport);
+        services.AddSingleton(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>());
+        var dispatcherProvider = services.BuildServiceProvider();
+        await SeedMessageAsync("lost-lock@example.com");
+
+        var dispatcher = new PostgresEmailOutboxDispatcher<TestTransport>(
+            dispatcherProvider,
+            _timeProvider,
+            Options.Create(new PostgresEmailOutboxOptions()));
+
+        var count = await dispatcher.ProcessBatchAsync(CancellationToken.None);
+
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        var row = await connection.QuerySingleAsync<RawOutboxRow>("""
+            SELECT sent_at AS SentAt, failed_at AS FailedAt, attempt_count AS AttemptCount,
+                   last_error AS LastError
+            FROM ashlar_email_outbox
+            """);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.EqualTo(1));
+            Assert.That(transport.DeliveredCount, Is.EqualTo(1));
+            Assert.That(row.SentAt, Is.Null);
+            Assert.That(row.FailedAt, Is.Null);
+            Assert.That(row.AttemptCount, Is.Zero);
+            Assert.That(row.LastError, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task DispatcherProcessBatchAsyncDoesNotMarkSentWhenEmailRowBecomesTerminalAfterSuccessfulDelivery()
+    {
+        var transport = new TestTransport
+        {
+            OnDeliver = async (_, _) =>
+            {
+                await using var connection = await GetDataSource().OpenConnectionAsync(CancellationToken.None);
+                await connection.ExecuteAsync("UPDATE ashlar_email_outbox SET failed_at = @now;", new { now = _timeProvider.GetUtcNow() });
+            }
+        };
+        var services = new ServiceCollection();
+        services.AddSingleton(transport);
+        services.AddSingleton(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>());
+        var dispatcherProvider = services.BuildServiceProvider();
+        await SeedMessageAsync("terminal@example.com");
+
+        var dispatcher = new PostgresEmailOutboxDispatcher<TestTransport>(
+            dispatcherProvider,
+            _timeProvider,
+            Options.Create(new PostgresEmailOutboxOptions()));
+
+        await dispatcher.ProcessBatchAsync(CancellationToken.None);
+
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        var row = await connection.QuerySingleAsync<RawOutboxRow>("""
+            SELECT sent_at AS SentAt, failed_at AS FailedAt, attempt_count AS AttemptCount,
+                   last_error AS LastError
+            FROM ashlar_email_outbox
+            """);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.DeliveredCount, Is.EqualTo(1));
+            Assert.That(row.SentAt, Is.Null);
+            Assert.That(row.FailedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
+            Assert.That(row.AttemptCount, Is.Zero);
+            Assert.That(row.LastError, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task DispatcherProcessBatchAsyncUnprotectsSensitiveBodies()
     {
         var protector = _serviceProvider.GetRequiredService<ISecretProtector>();
