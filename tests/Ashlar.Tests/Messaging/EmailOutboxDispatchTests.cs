@@ -220,6 +220,7 @@ internal sealed class EmailOutboxDispatchTests
         var transport = new RecordingEmailTransport();
         Guid? sentId = null;
         var failed = false;
+        var sentStateConflict = false;
         var context = CreateDispatchContext(
             transport,
             markAsSentAsync: (id, _) =>
@@ -231,7 +232,8 @@ internal sealed class EmailOutboxDispatchTests
             {
                 failed = true;
                 return Task.CompletedTask;
-            });
+            },
+            logSentStateConflict: _ => sentStateConflict = true);
 
         await EmailOutboxDispatch.DispatchAsync(entry, context, CancellationToken.None);
 
@@ -241,6 +243,7 @@ internal sealed class EmailOutboxDispatchTests
             Assert.That(transport.Messages[0].TextBody, Is.EqualTo("Text"));
             Assert.That(sentId, Is.EqualTo(entry.Id));
             Assert.That(failed, Is.False);
+            Assert.That(sentStateConflict, Is.False);
         }
     }
 
@@ -291,11 +294,12 @@ internal sealed class EmailOutboxDispatchTests
     }
 
     [Test]
-    public async Task DispatchAsyncDoesNotMarkFailedWhenSentStateIsNotPersisted()
+    public async Task DispatchAsyncLogsConflictAndDoesNotMarkFailedWhenSentStateIsNotPersisted()
     {
         var entry = CreateEntry();
         var transport = new RecordingEmailTransport();
         var failed = false;
+        Guid? conflictId = null;
         var context = CreateDispatchContext(
             transport,
             markAsSentAsync: (_, _) => Task.FromResult(false),
@@ -303,15 +307,31 @@ internal sealed class EmailOutboxDispatchTests
             {
                 failed = true;
                 return Task.CompletedTask;
-            });
+            },
+            logSentStateConflict: id => conflictId = id);
 
         await EmailOutboxDispatch.DispatchAsync(entry, context, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(transport.Messages, Has.Count.EqualTo(1));
+            Assert.That(conflictId, Is.EqualTo(entry.Id));
             Assert.That(failed, Is.False);
         }
+    }
+
+    [Test]
+    public async Task DispatchAsyncAllowsSentStateConflictWithoutLogger()
+    {
+        var entry = CreateEntry();
+        var transport = new RecordingEmailTransport();
+        var context = CreateDispatchContext(
+            transport,
+            markAsSentAsync: (_, _) => Task.FromResult(false));
+
+        await EmailOutboxDispatch.DispatchAsync(entry, context, CancellationToken.None);
+
+        Assert.That(transport.Messages, Has.Count.EqualTo(1));
     }
 
     [Test]
@@ -476,7 +496,8 @@ internal sealed class EmailOutboxDispatchTests
         int maxAttempts = 3,
         Func<Guid, CancellationToken, Task<bool>>? markAsSentAsync = null,
         Func<EmailOutboxEntry, Exception, CancellationToken, Task>? markAsFailedAsync = null,
-        Action<Guid, int, bool, Exception?>? logDeliveryFailed = null)
+        Action<Guid, int, bool, Exception?>? logDeliveryFailed = null,
+        Action<Guid>? logSentStateConflict = null)
     {
         return new EmailOutboxDispatchContext(
             transport,
@@ -484,7 +505,8 @@ internal sealed class EmailOutboxDispatchTests
             markAsSentAsync ?? ((_, _) => Task.FromResult(true)),
             markAsFailedAsync ?? ((_, _, _) => Task.CompletedTask),
             logDeliveryFailed ?? ((_, _, _, _) => { }),
-            secretProtector);
+            secretProtector,
+            logSentStateConflict);
     }
 
     private sealed class RecordingEmailTransport : IEmailTransport
