@@ -112,13 +112,15 @@ public sealed record EmailOutboxStoredBodies(
 /// <param name="MarkAsFailedAsync">Callback that persists failed delivery state.</param>
 /// <param name="LogDeliveryFailed">Callback that logs failed delivery attempts.</param>
 /// <param name="SecretProtector">Optional secret protector used to unprotect protected bodies.</param>
+/// <param name="LogSentStateConflict">Optional callback that logs when delivery succeeds but sent-state persistence does not update the row.</param>
 public sealed record EmailOutboxDispatchContext(
     IEmailTransport Transport,
     int MaxAttempts,
     Func<Guid, CancellationToken, Task<bool>> MarkAsSentAsync,
     Func<EmailOutboxEntry, Exception, CancellationToken, Task> MarkAsFailedAsync,
     Action<Guid, int, bool, Exception?> LogDeliveryFailed,
-    ISecretProtector? SecretProtector = null);
+    ISecretProtector? SecretProtector = null,
+    Action<Guid>? LogSentStateConflict = null);
 
 /// <summary>
 /// Defines the protection applied to persisted email outbox body columns.
@@ -184,7 +186,10 @@ public static class EmailOutboxDispatch
             return;
         }
 
-        await context.MarkAsSentAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
+        if (!await context.MarkAsSentAsync(entry.Id, CancellationToken.None).ConfigureAwait(false))
+        {
+            context.LogSentStateConflict?.Invoke(entry.Id);
+        }
     }
 
     /// <summary>

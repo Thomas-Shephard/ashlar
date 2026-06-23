@@ -168,7 +168,8 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
                 (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, lockId, token),
                 (id, attemptCount, finalFailure, exception) =>
                     SqliteEmailOutboxDispatcherLog.EmailOutboxDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
-                provider.GetService<ISecretProtector>()),
+                provider.GetService<ISecretProtector>(),
+                id => SqliteEmailOutboxDispatcherLog.EmailOutboxSentStateConflict(_logger, id, null)),
             cancellationToken);
     }
 
@@ -206,4 +207,10 @@ internal static class SqliteEmailOutboxDispatcherLog
             LogLevel.Warning,
             new EventId(1000, nameof(EmailOutboxDeliveryFailed)),
             "SQLite email outbox delivery failed. MessageId={MessageId} AttemptCount={AttemptCount} FinalFailure={FinalFailure}");
+
+    public static readonly Action<ILogger, Guid, Exception?> EmailOutboxSentStateConflict =
+        LoggerMessage.Define<Guid>(
+            LogLevel.Warning,
+            new EventId(1001, nameof(EmailOutboxSentStateConflict)),
+            "SQLite email outbox delivery succeeded but sent state was not persisted. MessageId={MessageId}");
 }

@@ -115,7 +115,8 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
                 (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, token),
                 (id, attemptCount, finalFailure, exception) =>
                     PostgresEmailOutboxDispatcherLog.EmailOutboxDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
-                provider.GetService<ISecretProtector>()),
+                provider.GetService<ISecretProtector>(),
+                id => PostgresEmailOutboxDispatcherLog.EmailOutboxSentStateConflict(_logger, id, null)),
             cancellationToken);
     }
 
@@ -235,4 +236,10 @@ internal static class PostgresEmailOutboxDispatcherLog
             LogLevel.Warning,
             new EventId(1000, nameof(EmailOutboxDeliveryFailed)),
             "Email outbox delivery failed. MessageId={MessageId} AttemptCount={AttemptCount} FinalFailure={FinalFailure}");
+
+    public static readonly Action<ILogger, Guid, Exception?> EmailOutboxSentStateConflict =
+        LoggerMessage.Define<Guid>(
+            LogLevel.Warning,
+            new EventId(1001, nameof(EmailOutboxSentStateConflict)),
+            "Email outbox delivery succeeded but sent state was not persisted. MessageId={MessageId}");
 }
