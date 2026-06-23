@@ -184,10 +184,7 @@ public static class EmailOutboxDispatch
             return;
         }
 
-        if (!await context.MarkAsSentAsync(entry.Id, CancellationToken.None).ConfigureAwait(false))
-        {
-            return;
-        }
+        await context.MarkAsSentAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>
