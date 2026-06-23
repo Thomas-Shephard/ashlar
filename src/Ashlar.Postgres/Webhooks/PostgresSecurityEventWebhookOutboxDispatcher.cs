@@ -131,7 +131,7 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
             cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task MarkAsSentAsync(Guid id, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task<bool> MarkAsSentAsync(Guid id, IServiceProvider provider, CancellationToken cancellationToken)
     {
         const string sql = """
             UPDATE ashlar_security_event_webhook_outbox
@@ -140,7 +140,11 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
                 locked_by = NULL,
                 last_attempt_at = @Now,
                 attempt_count = attempt_count + 1
-            WHERE id = @Id AND locked_by = @LockedBy AND discarded_at IS NULL
+            WHERE id = @Id
+              AND locked_by = @LockedBy
+              AND sent_at IS NULL
+              AND failed_at IS NULL
+              AND discarded_at IS NULL
             """;
 
         var now = _timeProvider.GetUtcNow();
@@ -149,7 +153,7 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
         await using (connectionHandle)
         {
             var command = new CommandDefinition(sql, new { Id = id, LockedBy = _lockId, Now = now }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
-            await connectionHandle.Connection.ExecuteAsync(command).ConfigureAwait(false);
+            return await connectionHandle.Connection.ExecuteAsync(command).ConfigureAwait(false) > 0;
         }
     }
 

@@ -1343,7 +1343,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
             AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
             3,
-            (_, _) => Task.CompletedTask,
+            (_, _) => Task.FromResult(true),
             (_, exception, _) =>
             {
                 failed?.Add(exception);
@@ -1563,7 +1563,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             (id, _) =>
             {
                 sent.Add(id);
-                return Task.CompletedTask;
+                return Task.FromResult(true);
             },
             (entry, _, _) =>
             {
@@ -1606,7 +1606,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             (id, _) =>
             {
                 sent.Add(id);
-                return Task.CompletedTask;
+                return Task.FromResult(true);
             },
             (entry, _, _) =>
             {
@@ -1626,6 +1626,73 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
         {
             Assert.That(sent, Has.Count.EqualTo(1));
             Assert.That(failed, Has.Count.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task SharedOutboxDispatchDoesNotMarkFailedWhenSentStateIsNotPersisted()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var observer = new RecordingDeliveryObserver();
+        var failed = false;
+        var context = new AshlarSecurityEventWebhookOutboxDispatchContext(
+            new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
+            AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
+            3,
+            (_, _) => Task.FromResult(false),
+            (_, _, _) =>
+            {
+                failed = true;
+                return Task.CompletedTask;
+            },
+            (_, _, _, _) => { },
+            CreateDestinationValidator(),
+            CreateOptions(CreateEndpoint()),
+            TimeProvider.System,
+            observer);
+
+        await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+            Assert.That(failed, Is.False);
+            Assert.That(observer.Attempts, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void SharedOutboxDispatchDoesNotMarkFailedWhenSentStatePersistenceThrows()
+    {
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
+        var observer = new RecordingDeliveryObserver();
+        var persistenceException = new InvalidOperationException("mark sent failed");
+        var failed = false;
+        var context = new AshlarSecurityEventWebhookOutboxDispatchContext(
+            new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
+            AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
+            3,
+            (_, _) => throw persistenceException,
+            (_, _, _) =>
+            {
+                failed = true;
+                return Task.CompletedTask;
+            },
+            (_, _, _, _) => { },
+            CreateDestinationValidator(),
+            CreateOptions(CreateEndpoint()),
+            TimeProvider.System,
+            observer);
+
+        var exception = Assert.ThrowsAsync<InvalidOperationException>(() =>
+            AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(CreateOutboxEntry(), context, CancellationToken.None));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception, Is.SameAs(persistenceException));
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+            Assert.That(failed, Is.False);
+            Assert.That(observer.Attempts, Is.Empty);
         }
     }
 
@@ -1656,7 +1723,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
                 _ => throw new InvalidOperationException("transport failed"))),
             AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
             3,
-            (_, _) => Task.CompletedTask,
+            (_, _) => Task.FromResult(true),
             (_, exception, _) =>
             {
                 failed.Add(exception);
@@ -1688,7 +1755,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
             AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
             1,
-            (_, _) => Task.CompletedTask,
+            (_, _) => Task.FromResult(true),
             (_, exception, _) =>
             {
                 failed.Add(exception);
@@ -1864,7 +1931,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             (id, _) =>
             {
                 sent.Add(id);
-                return Task.CompletedTask;
+                return Task.FromResult(true);
             },
             (_, _, _) => Task.CompletedTask,
             (_, _, _, _) => { },
@@ -1982,7 +2049,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
             AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
             3,
-            (_, _) => Task.CompletedTask,
+            (_, _) => Task.FromResult(true),
             (_, exception, _) =>
             {
                 failed.Add(exception);
@@ -2017,7 +2084,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             new NamedHttpClientFactory(AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName, transport),
             AshlarSecurityEventWebhookOutboxDispatchTestsHttpClientName,
             3,
-            (_, _) => Task.CompletedTask,
+            (_, _) => Task.FromResult(true),
             (_, exception, _) =>
             {
                 failed.Add(exception);

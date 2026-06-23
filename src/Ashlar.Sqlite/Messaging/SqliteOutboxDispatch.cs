@@ -72,7 +72,7 @@ internal static class SqliteOutboxDispatch
         return entries.Count;
     }
 
-    public static async Task MarkAsSentAsync(
+    public static async Task<bool> MarkAsSentAsync(
         SqliteOutboxSentUpdateContext context,
         Guid id,
         CancellationToken cancellationToken)
@@ -86,7 +86,7 @@ internal static class SqliteOutboxDispatch
         command.AddGuidParameter("$id", id);
         command.AddParameter(LockedByParameter, context.LockId);
 
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
     public static async Task MarkAsFailedAsync(
