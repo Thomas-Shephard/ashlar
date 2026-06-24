@@ -16,8 +16,8 @@ public static class OidcExternalIdentityAssertionMapper
     /// <param name="providerName">The configured Ashlar provider name.</param>
     /// <param name="principal">The validated external principal.</param>
     /// <param name="providerKeyMode">How Ashlar composes the stable provider key from validated OIDC claims.</param>
-    /// <returns>An Ashlar assertion backed by the principal's stable OIDC subject claim.</returns>
-    public static ExternalIdentityAssertion Map(string providerName, ClaimsPrincipal principal, AshlarOidcProviderKeyMode providerKeyMode = AshlarOidcProviderKeyMode.Subject)
+    /// <returns>An Ashlar assertion backed by the principal's stable OIDC issuer and subject claims by default.</returns>
+    public static ExternalIdentityAssertion Map(string providerName, ClaimsPrincipal principal, AshlarOidcProviderKeyMode providerKeyMode = AshlarOidcProviderKeyMode.IssuerAndSubject)
     {
         var normalizedProviderName = AshlarOAuthOptions.NormalizeProviderName(providerName);
         ArgumentNullException.ThrowIfNull(principal);

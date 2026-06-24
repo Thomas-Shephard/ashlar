@@ -47,7 +47,7 @@ public static class AppleOidcExtensions
             oidcOptions.AddIfMissing("name");
             configure?.Invoke(oidcOptions);
             ConfigureUserNameClaims(oidcOptions);
-        }, GetClaimsFromUserInfoEndpoint: false));
+        }, AshlarOidcProviderKeyMode.Subject, GetClaimsFromUserInfoEndpoint: false));
     }
 
     private static void ConfigureUserNameClaims(OpenIdConnectOptions options)

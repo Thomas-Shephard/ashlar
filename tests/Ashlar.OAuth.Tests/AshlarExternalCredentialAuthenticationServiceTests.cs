@@ -6,6 +6,7 @@ using Ashlar.Identity.Providers.External;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.OAuth.Providers.GitHub;
+using Ashlar.OAuth.Providers.Google;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -385,7 +386,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
     public async Task CompleteExternalAssertionShouldAllowMissingSecurityEventSinkWhenRateLimited()
     {
         var options = new AshlarOAuthOptions();
-        options.AddOidcProvider("Google", _ => { });
+        options.AddGoogle();
         var service = new AshlarExternalCredentialAuthenticationService(
             CreateBlockedLimiter().Object,
             new TestOptionsMonitor(options));
@@ -505,7 +506,7 @@ internal sealed class AshlarExternalCredentialAuthenticationServiceTests
         ISecurityEventSink? securityEventSink)
     {
         var options = new AshlarOAuthOptions();
-        options.AddOidcProvider("Google", _ => { });
+        options.AddGoogle();
         configureOptions?.Invoke(options);
 
         var monitor = new TestOptionsMonitor(options);

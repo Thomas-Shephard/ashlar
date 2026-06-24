@@ -46,7 +46,7 @@ public sealed class AshlarExternalCredentialAuthenticationService
     /// <remarks>
     /// The ASP.NET Core external authentication middleware must have already validated the remote provider response
     /// and written the temporary external ticket. This method authenticates that ticket, verifies that it was issued
-    /// for the configured Ashlar provider, clears it, and maps only stable provider subject data. A successful result
+    /// for the configured Ashlar provider, clears it, and maps only stable provider key data. A successful result
     /// means the external credential was validated and mapped; it does not mean an application session may be issued.
     /// Pass the assertion through the host application's authentication orchestration, including MFA policy, before
     /// issuing a session.

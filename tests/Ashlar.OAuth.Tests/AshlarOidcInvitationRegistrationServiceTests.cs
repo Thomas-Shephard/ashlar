@@ -5,6 +5,7 @@ using System.Text.Json;
 using Ashlar.Identity.Abstractions.Transactions;
 using Ashlar.Identity.Models.Invitations;
 using Ashlar.Identity.Providers.External;
+using Ashlar.OAuth.Providers.Google;
 using Ashlar.OAuth.Providers.Microsoft;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
@@ -948,7 +949,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     private static AshlarOAuthOptions CreateOptions(AshlarOidcProviderOptions? provider = null)
     {
         var options = new AshlarOAuthOptions();
-        options.AddOidcProvider("Google", _ => { });
+        options.AddGoogle();
         if (provider != null)
         {
             var providers = (Dictionary<string, AshlarOidcProviderOptions>)typeof(AshlarOAuthOptions)

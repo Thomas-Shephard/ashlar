@@ -53,7 +53,7 @@ public sealed class AshlarExternalAccountLinkService
     /// <remarks>
     /// The ASP.NET Core external authentication middleware must have already validated the remote provider response
     /// and written the temporary external ticket. This method verifies that ticket against the configured Ashlar
-    /// provider, clears it, and then links the stable provider subject to the current user.
+    /// provider, clears it, and then links the stable external provider key to the current user.
     /// </remarks>
     public async Task<AshlarExternalAccountLinkResult> CompleteExternalLinkAsync(
         HttpContext httpContext,
@@ -140,10 +140,10 @@ public sealed class AshlarExternalAccountLinkService
     /// <param name="tenant">The tenant scope, when the application is tenant-aware.</param>
     /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The account-link result, including conflict statuses when the stable external subject is already linked.</returns>
+    /// <returns>The account-link result, including conflict statuses when the stable external provider key is already linked.</returns>
     /// <remarks>
-    /// The principal must come from a trusted authentication handler. Ashlar maps the configured stable provider key
-    /// claim; do not configure email, display name, username, or other mutable profile claims as provider keys.
+    /// The principal must come from a trusted authentication handler. Ashlar maps the configured stable provider key;
+    /// do not configure email, display name, username, or other mutable profile claims as provider keys.
     /// </remarks>
     public async Task<AshlarExternalAccountLinkResult> LinkExternalAccountAsync(
         Guid currentUserId,
@@ -224,7 +224,7 @@ public sealed class AshlarExternalAccountLinkService
     /// enforce fresh MFA itself. User interfaces should prefer generic failure messages even though the result
     /// status is explicit for application branching. Unlinking revokes active credentials for the configured
     /// external provider family, such as all active Google credentials stored under the configured Google
-    /// provider name, rather than a single provider subject or raw external account key.
+    /// provider name, rather than a single provider key or raw external account key.
     /// </remarks>
     public async Task<AshlarExternalAccountUnlinkResult> UnlinkExternalAccountAsync(
         Guid currentUserId,

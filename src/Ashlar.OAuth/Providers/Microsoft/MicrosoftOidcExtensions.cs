@@ -51,7 +51,7 @@ public static class MicrosoftOidcExtensions
         var allowedEmailLikeClaimTypes = invitationEmailMatchOptions.AllowedEmailLikeClaimTypes.ToArray();
         options.AddInvitationEmailMatchPolicyDecorator(policy => new MicrosoftOidcInvitationEmailMatchPolicy(normalizedProviderName, policy, allowedEmailLikeClaimTypes));
 
-        return options.AddMicrosoftProvider(providerName, authority, configure);
+        return options.AddMicrosoftProvider(providerName, authority, configure, AshlarOidcProviderKeyMode.Subject);
     }
 
     /// <summary>
@@ -99,7 +99,7 @@ public static class MicrosoftOidcExtensions
         string providerName,
         string authority,
         Action<OpenIdConnectOptions>? configure,
-        AshlarOidcProviderKeyMode providerKeyMode = AshlarOidcProviderKeyMode.Subject)
+        AshlarOidcProviderKeyMode providerKeyMode)
     {
         return options.AddMicrosoftProviderCore(providerName, authority, configure, providerKeyMode);
     }

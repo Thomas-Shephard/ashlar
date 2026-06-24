@@ -55,14 +55,14 @@ public sealed class AshlarOAuthOptions
     internal IReadOnlyList<Func<IOidcInvitationEmailMatchPolicy, IOidcInvitationEmailMatchPolicy>> InvitationEmailMatchPolicyDecorators => _invitationEmailMatchPolicyDecorators;
 
     /// <summary>
-    /// Adds a generic OpenID Connect provider.
+    /// Adds a generic OpenID Connect provider using issuer-qualified subject provider keys.
     /// </summary>
     /// <param name="providerName">The Ashlar provider name.</param>
     /// <param name="configure">The OpenID Connect handler configuration callback.</param>
     /// <returns>The options instance.</returns>
     public AshlarOAuthOptions AddOidcProvider(string providerName, Action<OpenIdConnectOptions> configure)
     {
-        return AddOidcProvider(providerName, AshlarOidcProviderKeyMode.Subject, configure);
+        return AddOidcProvider(providerName, AshlarOidcProviderKeyMode.IssuerAndSubject, configure);
     }
 
     /// <summary>
@@ -232,7 +232,7 @@ public sealed record AshlarOidcProviderOptions(
     string ProviderName,
     string SchemeName,
     Action<OpenIdConnectOptions> Configure,
-    AshlarOidcProviderKeyMode ProviderKeyMode = AshlarOidcProviderKeyMode.Subject,
+    AshlarOidcProviderKeyMode ProviderKeyMode = AshlarOidcProviderKeyMode.IssuerAndSubject,
     bool GetClaimsFromUserInfoEndpoint = true);
 
 /// <summary>
