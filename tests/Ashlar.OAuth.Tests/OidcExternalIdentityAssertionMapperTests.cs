@@ -9,10 +9,11 @@ namespace Ashlar.OAuth.Tests;
 internal sealed class OidcExternalIdentityAssertionMapperTests
 {
     [Test]
-    public void MapShouldUseSubjectAsProviderKey()
+    public void MapShouldUseIssuerAndSubjectAsProviderKeyByDefault()
     {
         var principal = CreatePrincipal(
         [
+            new Claim("iss", "https://accounts.example.com"),
             new Claim("sub", "subject-123"),
             new Claim("email", "person@example.com"),
             new Claim("name", "Person")
@@ -23,7 +24,7 @@ internal sealed class OidcExternalIdentityAssertionMapperTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(assertion.ProviderIdentity, Is.EqualTo(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
-            Assert.That(assertion.ProviderKey, Is.EqualTo("subject-123"));
+            Assert.That(assertion.ProviderKey, Is.EqualTo(CreateExpectedIssuerSubjectKey("https://accounts.example.com", "subject-123")));
             Assert.That(assertion.Claims["email"], Is.EqualTo(["person@example.com"]));
             Assert.That(assertion.Claims["name"], Is.EqualTo(["Person"]));
         }
@@ -34,13 +35,14 @@ internal sealed class OidcExternalIdentityAssertionMapperTests
     {
         var principal = CreatePrincipal(
         [
+            new Claim("iss", "https://accounts.example.com"),
             new Claim("sub", "stable-subject"),
             new Claim("email", "person@example.com")
         ]);
 
         var assertion = OidcExternalIdentityAssertionMapper.Map("Google", principal);
 
-        Assert.That(assertion.ProviderKey, Is.EqualTo("stable-subject"));
+        Assert.That(assertion.ProviderKey, Is.EqualTo(CreateExpectedIssuerSubjectKey("https://accounts.example.com", "stable-subject")));
     }
 
     [Test]
@@ -53,7 +55,7 @@ internal sealed class OidcExternalIdentityAssertionMapperTests
             new Claim("email", "person@privaterelay.appleid.com")
         ]);
 
-        var assertion = OidcExternalIdentityAssertionMapper.Map(AppleOidcDefaults.ProviderName, principal);
+        var assertion = OidcExternalIdentityAssertionMapper.Map(AppleOidcDefaults.ProviderName, principal, AshlarOidcProviderKeyMode.Subject);
 
         using (Assert.EnterMultipleScope())
         {
@@ -76,6 +78,27 @@ internal sealed class OidcExternalIdentityAssertionMapperTests
         var assertion = OidcExternalIdentityAssertionMapper.Map("MicrosoftAny", principal, AshlarOidcProviderKeyMode.IssuerAndSubject);
 
         Assert.That(assertion.ProviderKey, Is.EqualTo(CreateExpectedIssuerSubjectKey("https://login.example/tenant", "stable-subject")));
+    }
+
+    [Test]
+    public void MapShouldCreateDifferentIssuerAndSubjectProviderKeysForDifferentIssuers()
+    {
+        var first = OidcExternalIdentityAssertionMapper.Map(
+            "SharedOidc",
+            CreatePrincipal(
+            [
+                new Claim("iss", "https://issuer-one.example"),
+                new Claim("sub", "same-subject")
+            ]));
+        var second = OidcExternalIdentityAssertionMapper.Map(
+            "SharedOidc",
+            CreatePrincipal(
+            [
+                new Claim("iss", "https://issuer-two.example"),
+                new Claim("sub", "same-subject")
+            ]));
+
+        Assert.That(first.ProviderKey, Is.Not.EqualTo(second.ProviderKey));
     }
 
     [Test]
@@ -133,6 +156,45 @@ internal sealed class OidcExternalIdentityAssertionMapperTests
     }
 
     [Test]
+    public void MapShouldRejectDefaultProviderKeyModeWhenIssuerIsMissing()
+    {
+        var principal = CreatePrincipal([new Claim("sub", "stable-subject")]);
+
+        var exception = Assert.Throws<InvalidOperationException>(() => OidcExternalIdentityAssertionMapper.Map("SharedOidc", principal));
+
+        Assert.That(exception?.Message, Does.Contain("issuer claim"));
+    }
+
+    [TestCase("")]
+    [TestCase(" ")]
+    public void MapShouldRejectIssuerAndSubjectProviderKeyModeWhenIssuerIsBlank(string issuer)
+    {
+        var principal = CreatePrincipal(
+        [
+            new Claim("iss", issuer),
+            new Claim("sub", "stable-subject")
+        ]);
+
+        var exception = Assert.Throws<InvalidOperationException>(() => OidcExternalIdentityAssertionMapper.Map("SharedOidc", principal));
+
+        Assert.That(exception?.Message, Does.Contain("issuer claim"));
+    }
+
+    [Test]
+    public void MapShouldUseSubjectOnlyProviderKeyWhenExplicitlyConfigured()
+    {
+        var principal = CreatePrincipal(
+        [
+            new Claim("iss", "https://accounts.example.com"),
+            new Claim("sub", "subject-123")
+        ]);
+
+        var assertion = OidcExternalIdentityAssertionMapper.Map("Google", principal, AshlarOidcProviderKeyMode.Subject);
+
+        Assert.That(assertion.ProviderKey, Is.EqualTo("subject-123"));
+    }
+
+    [Test]
     public void MapShouldRejectUnsupportedProviderKeyMode()
     {
         var principal = CreatePrincipal([new Claim("sub", "stable-subject")]);
@@ -161,6 +223,7 @@ internal sealed class OidcExternalIdentityAssertionMapperTests
     {
         var principal = CreatePrincipal(
         [
+            new Claim("iss", "https://accounts.example.com"),
             new Claim("sub", "subject"),
             new Claim("empty-value", ""),
             new Claim("", "value")
@@ -181,6 +244,7 @@ internal sealed class OidcExternalIdentityAssertionMapperTests
     {
         var principal = CreatePrincipal(
         [
+            new Claim("iss", "https://accounts.example.com"),
             new Claim("sub", "subject"),
             new Claim("access_token", "secret"),
             new Claim("refresh_token", "secret"),
@@ -213,6 +277,7 @@ internal sealed class OidcExternalIdentityAssertionMapperTests
     {
         var principal = CreatePrincipal(
         [
+            new Claim("iss", "https://accounts.example.com"),
             new Claim("sub", "subject"),
             new Claim("role", "admin,editor"),
             new Claim("role", "editor")

@@ -39,6 +39,8 @@ builder.Services.AddAshlarOAuth(options =>
 });
 ```
 
+Generic OIDC providers use issuer-qualified provider keys by default: Ashlar derives the credential key from the validated `iss` and `sub` claims. This avoids collisions when one configured Ashlar provider can admit identities from more than one issuer. Applications with a fixed single-issuer provider can opt into subject-only keys explicitly with `AshlarOidcProviderKeyMode.Subject`.
+
 For a generic non-OIDC OAuth2 provider:
 
 ```csharp
@@ -85,7 +87,7 @@ using Ashlar.OAuth.Providers.Google;
 options.AddGoogle(...);
 ```
 
-Configures provider name `Google`, authority `https://accounts.google.com`, authorization code flow, and `openid profile email` scopes. Ashlar uses Google's stable `sub` claim as the provider key. Email claims are copied when present but are not used as the provider key.
+Configures provider name `Google`, authority `https://accounts.google.com`, authorization code flow, and `openid profile email` scopes. The Google preset explicitly uses Google's stable `sub` claim as the provider key because the preset maps to Google's fixed issuer. Email claims are copied when present but are not used as the provider key.
 
 Passing hosted domains to `AddGoogle` adds Google's `hd` login UI hint and enforces the validated returned `hd` claim against the allowed domains before Ashlar credential authentication continues.
 
@@ -101,7 +103,7 @@ options.AddApple(oidc =>
 });
 ```
 
-Configures provider name `Apple`, authority `https://appleid.apple.com`, authorization code flow, `form_post` response mode, and `openid email name` scopes. Apple does not publish a user-info endpoint, so the preset reads identity claims from the validated ID token and maps first-authorization display name hints from Apple's `user` authorization response parameter when present. Ashlar uses Apple's stable `sub` claim as the provider key. Apple client secrets are normally application-generated JWTs; production apps must configure generation, rotation, and storage themselves through `OpenIdConnectOptions`, for example by setting `ClientSecret` in the configure callback.
+Configures provider name `Apple`, authority `https://appleid.apple.com`, authorization code flow, `form_post` response mode, and `openid email name` scopes. Apple does not publish a user-info endpoint, so the preset reads identity claims from the validated ID token and maps first-authorization display name hints from Apple's `user` authorization response parameter when present. The Apple preset explicitly uses Apple's stable `sub` claim as the provider key because the preset maps to Apple's fixed issuer. Apple client secrets are normally application-generated JWTs; production apps must configure generation, rotation, and storage themselves through `OpenIdConnectOptions`, for example by setting `ClientSecret` in the configure callback.
 
 Apple profile claims are display hints only. The `name` value may only be returned during the first authorization, and `email` may be an Apple private relay address. Invitation email matching uses the generic verified-email policy unless the application replaces `IOidcInvitationEmailMatchPolicy`.
 
@@ -114,6 +116,8 @@ options.AddMicrosoft("contoso.onmicrosoft.com", ...);
 ```
 
 Builds authority `https://login.microsoftonline.com/{tenant}/v2.0`. The tenant segment is explicit and should match the application's intended sign-in audience. Invitation registration uses the standard verified `email` policy by default, which means Microsoft principals usually need an application-provided or token-provided standard `email_verified` signal to pass. Microsoft email-like claims such as `preferred_username`, `upn`, and `unique_name` are not trusted for invitation matching unless explicitly allowed for the tenant.
+
+The explicit-tenant Microsoft preset uses bare `sub` provider keys because a single configured provider name maps to one Microsoft tenant issuer. Use separate provider names for separate tenants.
 
 ```csharp
 options.AddMicrosoft(
@@ -212,7 +216,7 @@ Profile values are display hints only. They are not identity assertions, provide
 
 - ASP.NET Core's OpenID Connect handler performs state, nonce, code exchange, token validation, audience validation, signing key validation, and expiry validation according to the configured authority and token validation parameters.
 - ASP.NET Core's OAuth handler performs OAuth state validation and code exchange for GitHub, including S256 PKCE by default. GitHub identity is then loaded from GitHub's user-info API and mapped to `ProviderType.OAuth`.
-- Ashlar uses OIDC `sub` as the stable provider key, not email. For shared-authority providers that can admit multiple issuers, provider presets can qualify the key with `iss` as well as `sub`.
+- Generic OIDC providers use issuer-qualified provider keys derived from validated `iss` and `sub` claims by default. Fixed single-issuer presets can explicitly use bare `sub`. Ashlar never uses email as an OIDC provider key.
 - Ashlar uses GitHub `/user` `id` as the stable OAuth provider key, not email, username, login, or display name.
 - Google `hd` is an organization/domain signal, not an Ashlar tenant. When domains are passed to `AddGoogle`, Ashlar.OAuth validates the returned `hd` claim before external credential authentication completes.
 

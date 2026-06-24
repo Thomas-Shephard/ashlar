@@ -6,7 +6,7 @@ internal sealed record AshlarExternalProvider(
     ProviderType Type,
     string ProviderName,
     string SchemeName,
-    AshlarOidcProviderKeyMode OidcProviderKeyMode = AshlarOidcProviderKeyMode.Subject,
+    AshlarOidcProviderKeyMode OidcProviderKeyMode = AshlarOidcProviderKeyMode.IssuerAndSubject,
     string OAuth2ProviderKeyClaimType = "id",
     bool AllowUnsafeOAuth2ProviderKeyClaimType = false);
 

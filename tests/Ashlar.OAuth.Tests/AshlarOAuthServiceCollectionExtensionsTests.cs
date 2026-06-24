@@ -49,6 +49,7 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
             Assert.That(oauthOptions.OidcProviders, Does.ContainKey("Google"));
             Assert.That(directOptions.OidcProviders, Does.ContainKey("Google"));
             Assert.That(snapshotOptions.OidcProviders, Does.ContainKey("Google"));
+            Assert.That(oauthOptions.OidcProviders["Google"].ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.IssuerAndSubject));
             Assert.That(authProviders.Select(p => p.Key), Does.Contain(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
             Assert.That(services.Any(d => d.ServiceType == typeof(AshlarExternalCredentialAuthenticationService)), Is.True);
             Assert.That(services.Any(d => d.ServiceType == typeof(AshlarExternalAccountLinkService)), Is.True);
@@ -106,6 +107,7 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.ProviderName, Is.EqualTo("Google"));
+            Assert.That(provider.ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.Subject));
             Assert.That(oidc.Authority, Is.EqualTo(GoogleOidcDefaults.Authority));
             Assert.That(oidc.ResponseType, Is.EqualTo("code"));
             Assert.That(oidc.Scope, Does.Contain("openid"));
@@ -391,7 +393,17 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
     {
         var options = new AshlarOAuthOptions();
 
-        options.AddOidcProvider("SharedIssuer", AshlarOidcProviderKeyMode.IssuerAndSubject, _ => { });
+        options.AddOidcProvider("FixedIssuer", AshlarOidcProviderKeyMode.Subject, _ => { });
+
+        Assert.That(options.OidcProviders["FixedIssuer"].ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.Subject));
+    }
+
+    [Test]
+    public void AddOidcProviderShouldDefaultToIssuerAndSubjectProviderKeyMode()
+    {
+        var options = new AshlarOAuthOptions();
+
+        options.AddOidcProvider("SharedIssuer", _ => { });
 
         Assert.That(options.OidcProviders["SharedIssuer"].ProviderKeyMode, Is.EqualTo(AshlarOidcProviderKeyMode.IssuerAndSubject));
     }

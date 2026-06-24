@@ -7,6 +7,7 @@ using Ashlar.Identity.Models.Credentials;
 using Ashlar.Identity.Models.Tenants;
 using Ashlar.Identity.Providers.External;
 using Ashlar.OAuth.Providers.GitHub;
+using Ashlar.OAuth.Providers.Google;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -1065,7 +1066,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         Action<AshlarOAuthOptions>? configureOptions = null)
     {
         var options = new AshlarOAuthOptions();
-        options.AddOidcProvider("Google", _ => { });
+        options.AddGoogle();
         if (includeGitHub)
         {
             options.AddGitHub();
