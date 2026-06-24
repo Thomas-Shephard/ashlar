@@ -893,8 +893,42 @@ internal sealed class TotpTests
         }
     }
 
-    [Test]
-    public async Task ProviderAuthenticateAsyncFailsOnReplay()
+    [TestCase(null)]
+    [TestCase("")]
+    public async Task ProviderAuthenticateAsyncSucceedsWithMissingMetadata(string? metadata)
+    {
+        var provider = CreateProvider();
+        var secretBytes = new byte[20];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(secretBytes);
+        var secret = Base32.Encode(secretBytes);
+        var code = TotpAuthenticator.GenerateCode(secretBytes, _timeProvider.GetUtcNow().ToUnixTimeSeconds() / 30);
+
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = _options.ProviderKey.Type,
+            ProviderName = _options.ProviderKey.Name,
+            ProviderKey = "test",
+            CredentialValue = secret,
+            Status = CredentialStatus.Active,
+            CreatedAt = DateTimeOffset.UtcNow,
+            Version = "1",
+            Metadata = metadata
+        };
+
+        var result = await provider.AuthenticateAsync(new TotpAssertion(code), credential);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.SucceededWithCredentialUpdate));
+            Assert.That(result.NewMetadata, Does.Contain("LastUsedStep"));
+        }
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    public async Task ProviderAuthenticateAsyncFailsOnReplay(int storedStepOffset)
     {
         var provider = CreateProvider();
         var secretBytes = new byte[20];
@@ -914,7 +948,7 @@ internal sealed class TotpTests
             Status = CredentialStatus.Active,
             CreatedAt = DateTimeOffset.UtcNow,
             Version = "1",
-            Metadata = $"{{\"LastUsedStep\":{step}}}"
+            Metadata = $"{{\"LastUsedStep\":{step + storedStepOffset}}}"
         };
 
         var result = await provider.AuthenticateAsync(new TotpAssertion(code), credential);
@@ -922,9 +956,49 @@ internal sealed class TotpTests
         Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
     }
 
+    [Test]
+    public async Task ProviderAuthenticateAsyncSucceedsWithLaterStepAndUpdatesMetadata()
+    {
+        var provider = CreateProvider();
+        var secretBytes = new byte[20];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(secretBytes);
+        var secret = Base32.Encode(secretBytes);
+        var currentStep = _timeProvider.GetUtcNow().ToUnixTimeSeconds() / 30;
+        var code = TotpAuthenticator.GenerateCode(secretBytes, currentStep);
+
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = _options.ProviderKey.Type,
+            ProviderName = _options.ProviderKey.Name,
+            ProviderKey = "test",
+            CredentialValue = secret,
+            Status = CredentialStatus.Active,
+            CreatedAt = DateTimeOffset.UtcNow,
+            Version = "1",
+            Metadata = $"{{\"LastUsedStep\":{currentStep - 1}}}"
+        };
+
+        var result = await provider.AuthenticateAsync(new TotpAssertion(code), credential);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.SucceededWithCredentialUpdate));
+            Assert.That(result.NewMetadata, Is.EqualTo($"{{\"LastUsedStep\":{currentStep}}}"));
+            Assert.That(result.CredentialUpdateRequirement, Is.EqualTo(CredentialUpdateRequirement.Required));
+        }
+    }
+
     [TestCase("null")]
     [TestCase("{")]
-    public async Task ProviderAuthenticateAsyncSucceedsWithNullOrMalformedMetadata(string metadata)
+    [TestCase(" ")]
+    [TestCase("{}")]
+    [TestCase("{\"lastUsedStep\":1}")]
+    [TestCase("{\"LastUsedStep\":null}")]
+    [TestCase("{\"LastUsedStep\":-1}")]
+    [TestCase("{\"LastUsedStep\":\"1\"}")]
+    public async Task ProviderAuthenticateAsyncFailsWithMalformedMetadata(string metadata)
     {
         var provider = CreateProvider();
         var secretBytes = new byte[20];
@@ -949,7 +1023,12 @@ internal sealed class TotpTests
 
         var result = await provider.AuthenticateAsync(new TotpAssertion(code), credential);
 
-        Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.SucceededWithCredentialUpdate));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
+            Assert.That(result.NewMetadata, Is.Null);
+            Assert.That(result.CredentialUpdateRequirement, Is.EqualTo(CredentialUpdateRequirement.BestEffort));
+        }
     }
 
     [Test]
