@@ -224,7 +224,11 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             EventId = new Guid("11111111-1111-1111-1111-111111111111"),
             EndpointName = "audit",
             DestinationPathAndQuery = "/security-events",
-            TimeProvider = _timeProvider
+            TimeProvider = _timeProvider,
+            Options = new AshlarSecurityEventWebhookVerificationOptions
+            {
+                ReplayStore = new AcceptingReplayStore()
+            }
         });
 
         using (Assert.EnterMultipleScope())
@@ -1184,5 +1188,13 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         public string? LastError { get; init; }
         public string? LockedBy { get; init; }
         public DateTimeOffset? LastAttemptAt { get; init; }
+    }
+
+    private sealed class AcceptingReplayStore : IAshlarSecurityEventWebhookReplayStore
+    {
+        public bool TryAccept(AshlarSecurityEventWebhookReplayKey key, DateTimeOffset expiresAt)
+        {
+            return true;
+        }
     }
 }

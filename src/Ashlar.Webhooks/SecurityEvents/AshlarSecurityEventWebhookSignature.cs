@@ -10,7 +10,7 @@ namespace Ashlar.Webhooks.SecurityEvents;
 public enum AshlarSecurityEventWebhookVerificationStatus
 {
     /// <summary>
-    /// The request signature is valid.
+    /// The webhook request verification succeeded.
     /// </summary>
     Valid = 0,
 
@@ -62,7 +62,12 @@ public enum AshlarSecurityEventWebhookVerificationStatus
     /// <summary>
     /// The replay store could not make a deliberate accept or reject decision.
     /// </summary>
-    ReplayStoreUnavailable = 10
+    ReplayStoreUnavailable = 10,
+
+    /// <summary>
+    /// Replay protection is required, but no replay store was configured.
+    /// </summary>
+    ReplayStoreRequired = 11
 }
 
 /// <summary>
@@ -77,10 +82,12 @@ public sealed class AshlarSecurityEventWebhookVerificationOptions
     public TimeSpan TimestampTolerance { get; set; } = TimeSpan.FromMinutes(5);
 
     /// <summary>
-    /// Gets or sets the receiver-managed replay store used after signature validation succeeds. When this is not set,
-    /// verification remains stateless and receivers must reject duplicate event processing through their own
-    /// idempotency controls.
+    /// Gets or sets the receiver-managed replay store used after signature validation succeeds.
     /// </summary>
+    /// <remarks>
+    /// Without a replay store, verification fails closed with
+    /// <see cref="AshlarSecurityEventWebhookVerificationStatus.ReplayStoreRequired"/>.
+    /// </remarks>
     public IAshlarSecurityEventWebhookReplayStore? ReplayStore { get; set; }
 }
 
@@ -125,7 +132,7 @@ public sealed record AshlarSecurityEventWebhookReplayKey(
 public sealed record AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus Status)
 {
     /// <summary>
-    /// Gets a value indicating whether the signature, timestamp, destination binding, and configured replay check all passed.
+    /// Gets a value indicating whether the signature, timestamp, destination binding, and replay-store check all passed.
     /// </summary>
     public bool IsValid => Status == AshlarSecurityEventWebhookVerificationStatus.Valid;
 
@@ -145,6 +152,7 @@ public sealed record AshlarSecurityEventWebhookVerificationResult(AshlarSecurity
         AshlarSecurityEventWebhookVerificationStatus.MalformedEventTimestamp => "Malformed event timestamp.",
         AshlarSecurityEventWebhookVerificationStatus.ReplayDetected => "Replay detected.",
         AshlarSecurityEventWebhookVerificationStatus.ReplayStoreUnavailable => "Replay store unavailable.",
+        AshlarSecurityEventWebhookVerificationStatus.ReplayStoreRequired => "Replay store required.",
         _ => "Invalid signature."
     };
 
@@ -204,9 +212,12 @@ public sealed class AshlarSecurityEventWebhookVerificationRequest
     public required TimeProvider TimeProvider { get; init; }
 
     /// <summary>
-    /// Gets optional verification options. Configure a replay store here when the receiver wants verification to reject
-    /// repeated delivery attempts before event processing; otherwise the receiver remains responsible for idempotency.
+    /// Gets optional verification settings, including the replay store required for successful verification.
     /// </summary>
+    /// <remarks>
+    /// When this is unset or does not include a replay store, otherwise valid signed requests fail closed with
+    /// <see cref="AshlarSecurityEventWebhookVerificationStatus.ReplayStoreRequired"/>.
+    /// </remarks>
     public AshlarSecurityEventWebhookVerificationOptions? Options { get; init; }
 }
 
@@ -270,8 +281,9 @@ public static class AshlarSecurityEventWebhookSignature
     /// </summary>
     /// <param name="request">The exact receiver-side request inputs to verify.</param>
     /// <returns>
-    /// A successful result only when the signature matches, the timestamp is within tolerance, and any configured
-    /// replay store accepts the signed replay key. Replay-store exceptions fail closed with
+    /// A successful result only when the signature matches, the timestamp is within tolerance, and the configured replay
+    /// store accepts the signed replay key. Missing replay stores and replay-store exceptions fail closed with
+    /// <see cref="AshlarSecurityEventWebhookVerificationStatus.ReplayStoreRequired"/> and
     /// <see cref="AshlarSecurityEventWebhookVerificationStatus.ReplayStoreUnavailable"/>.
     /// </returns>
     public static AshlarSecurityEventWebhookVerificationResult Verify(AshlarSecurityEventWebhookVerificationRequest request)
@@ -393,7 +405,7 @@ public static class AshlarSecurityEventWebhookSignature
         var replayStore = request.Options?.ReplayStore;
         if (replayStore is null)
         {
-            return AshlarSecurityEventWebhookVerificationResult.Valid;
+            return new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.ReplayStoreRequired);
         }
 
         var replayKey = new AshlarSecurityEventWebhookReplayKey(
