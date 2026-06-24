@@ -82,7 +82,7 @@ Use the named policy or endpoint helper on sensitive endpoints:
 app.MapPost("/account/change-email", ChangeEmailAsync)
     .RequireFreshMfa();
 
-app.MapDelete("/api/sessions/{id:guid}", RevokeSessionAsync)
+app.MapDelete("/api/sessions/{id:guid}", RevokeSessionForCurrentUserAsync)
     .RequireFreshMfaIfAvailable();
 
 app.MapDelete("/api/passkeys/{id:guid}", DeletePasskeyAsync)

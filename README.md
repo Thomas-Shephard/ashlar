@@ -785,7 +785,7 @@ services.AddAshlarAspNetCoreAuthorization(options =>
 app.MapPost("/account/change-email", ChangeEmailAsync)
     .RequireFreshMfa();
 
-app.MapDelete("/api/sessions/{id:guid}", RevokeSessionAsync)
+app.MapDelete("/api/sessions/{id:guid}", RevokeSessionForCurrentUserAsync)
     .RequireFreshMfaIfAvailable();
 ```
 
@@ -812,7 +812,12 @@ if (validation.Succeeded)
     var userId = validation.UserId.Value;
 }
 
-await sessionService.RevokeSessionAsync(createResult.Session.Id, "signed-out");
+await sessionService.RevokeSessionForUserAsync(authenticationResult.User.Id, new RevokeAuthenticationSessionRequest
+{
+    SessionId = createResult.Session.Id,
+    Reason = "signed-out",
+    Tenant = createResult.Session.TenantId is null ? TenantContext.Global : new TenantContext(createResult.Session.TenantId)
+});
 ```
 
 ### Session and Device Management
@@ -839,16 +844,20 @@ foreach (var summary in sessions)
 await sessionService.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest
 {
     SessionId = targetSessionId,
-    Reason = "user-initiated"
+    Reason = "user-initiated",
+    Tenant = TenantContext.Global
 });
 
 // 3. Revoke all other sessions for a user
 await sessionService.RevokeOtherSessionsAsync(userId, new RevokeOtherAuthenticationSessionsRequest
 {
     CurrentSessionId = currentSessionId,
-    Reason = "security-sweep"
+    Reason = "security-sweep",
+    Tenant = TenantContext.Global
 });
 ```
+
+Pass the user's tenant context for tenant-scoped users. Omit `Tenant` only when the caller is intentionally applying revocation across all tenant scopes for that user.
 
 #### ASP.NET Core Helpers
 Use `IAshlarSignInManager` for simplified management of the currently authenticated user:

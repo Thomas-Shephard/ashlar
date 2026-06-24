@@ -42,20 +42,6 @@ public interface IAuthenticationSessionService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Revokes a single authentication session.
-    /// </summary>
-    /// <param name="sessionId">The session to revoke.</param>
-    /// <param name="reason">Optional provider-neutral, display-safe reason for audit and administrative display.</param>
-    /// <param name="audit">Actor and request metadata to include in the security event.</param>
-    /// <param name="cancellationToken">A token that can cancel revocation.</param>
-    /// <returns><see langword="true" /> when an existing unrevoked session was revoked.</returns>
-    Task<bool> RevokeSessionAsync(
-        Guid sessionId,
-        string? reason = null,
-        AuditContext? audit = null,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Revokes all currently unrevoked sessions for a user.
     /// </summary>
     /// <param name="userId">The user whose sessions will be revoked.</param>

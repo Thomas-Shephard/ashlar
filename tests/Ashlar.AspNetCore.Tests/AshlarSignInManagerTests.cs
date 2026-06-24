@@ -1,6 +1,5 @@
 using System.Net;
 using System.Security.Claims;
-using Ashlar.Auditing;
 using Ashlar.AspNetCore.Authentication;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Identity.Abstractions.Tenancy;
@@ -123,6 +122,7 @@ internal sealed class AshlarSignInManagerTests
 
         context.User = new ClaimsPrincipal(new ClaimsIdentity(
         [
+            new Claim(ClaimTypes.NameIdentifier, firstSession.UserId.ToString("D")),
             new Claim(AshlarClaimTypes.SessionId, firstSession.Id.ToString("D"))
         ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
 
@@ -137,6 +137,45 @@ internal sealed class AshlarSignInManagerTests
     }
 
     [Test]
+    public async Task SignInAsyncShouldUseValidatedCookieTenantWhenPrincipalHasMalformedTenantClaim()
+    {
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        var existingSession = CreateSession(Guid.NewGuid(), out var userId, out var tenantId);
+        sessionService
+            .Setup(s => s.ValidateSessionAsync("raw-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidateAuthenticationSessionResult(
+                Succeeded: true,
+                Session: existingSession,
+                UserId: userId,
+                Status: AuthenticationSessionValidationStatus.Succeeded));
+        sessionService
+            .Setup(s => s.RevokeSessionForUserAsync(It.IsAny<Guid>(), It.IsAny<RevokeAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        sessionService
+            .Setup(s => s.CreateSessionAsync(It.IsAny<Guid>(), It.IsAny<CreateAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CreateAuthenticationSessionResult("new-token", CreateSession(Guid.NewGuid(), out _, out _)));
+        var manager = new AshlarSignInManager(
+            sessionService.Object,
+            CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var context = new DefaultHttpContext();
+        context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=raw-token";
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString("D")),
+            new Claim(AshlarClaimTypes.SessionId, existingSession.Id.ToString("D")),
+            new Claim(AshlarClaimTypes.TenantId, "not-a-tenant")
+        ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
+
+        await manager.SignInAsync(context, Guid.NewGuid());
+
+        sessionService.Verify(s => s.RevokeSessionForUserAsync(userId, It.Is<RevokeAuthenticationSessionRequest>(r =>
+            r.SessionId == existingSession.Id &&
+            r.Tenant != null &&
+            r.Tenant.TenantId == tenantId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
     public async Task SignOutAsyncShouldRevokeCurrentSessionAndDeleteCookie()
     {
         await using var provider = CreateProvider(out var repository);
@@ -146,6 +185,7 @@ internal sealed class AshlarSignInManagerTests
         context.Response.Headers.Clear();
         context.User = new ClaimsPrincipal(new ClaimsIdentity(
         [
+            new Claim(ClaimTypes.NameIdentifier, session.UserId.ToString("D")),
             new Claim(AshlarClaimTypes.SessionId, session.Id.ToString("D"))
         ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
 
@@ -177,6 +217,97 @@ internal sealed class AshlarSignInManagerTests
     }
 
     [Test]
+    public async Task SignOutAsyncShouldConstrainTenantSessionFromPrincipal()
+    {
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        sessionService
+            .Setup(s => s.RevokeSessionForUserAsync(It.IsAny<Guid>(), It.IsAny<RevokeAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        var manager = new AshlarSignInManager(
+            sessionService.Object,
+            CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString("D")),
+                new Claim(AshlarClaimTypes.SessionId, sessionId.ToString("D")),
+                new Claim(AshlarClaimTypes.TenantId, tenantId.ToString("D"))
+            ], AshlarSessionAuthenticationDefaults.AuthenticationScheme))
+        };
+
+        await manager.SignOutAsync(context);
+
+        sessionService.Verify(s => s.RevokeSessionForUserAsync(userId, It.Is<RevokeAuthenticationSessionRequest>(r =>
+            r.SessionId == sessionId &&
+            r.Tenant != null &&
+            r.Tenant.TenantId == tenantId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task SignOutAsyncShouldUseValidatedCookieTenantWhenPrincipalHasMalformedTenantClaim()
+    {
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        var session = CreateSession(Guid.NewGuid(), out var userId, out var tenantId);
+        sessionService
+            .Setup(s => s.ValidateSessionAsync("raw-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidateAuthenticationSessionResult(
+                Succeeded: true,
+                Session: session,
+                UserId: userId,
+                Status: AuthenticationSessionValidationStatus.Succeeded));
+        sessionService
+            .Setup(s => s.RevokeSessionForUserAsync(It.IsAny<Guid>(), It.IsAny<RevokeAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        var manager = new AshlarSignInManager(
+            sessionService.Object,
+            CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var context = new DefaultHttpContext();
+        context.Request.Headers.Cookie = $"{AshlarSessionAuthenticationDefaults.CookieName}=raw-token";
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString("D")),
+            new Claim(AshlarClaimTypes.SessionId, session.Id.ToString("D")),
+            new Claim(AshlarClaimTypes.TenantId, "not-a-tenant")
+        ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
+
+        await manager.SignOutAsync(context);
+
+        sessionService.Verify(s => s.RevokeSessionForUserAsync(userId, It.Is<RevokeAuthenticationSessionRequest>(r =>
+            r.SessionId == session.Id &&
+            r.Tenant != null &&
+            r.Tenant.TenantId == tenantId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task SignOutAsyncShouldNotRevokeMalformedTenantClaimWithoutValidatedCookie()
+    {
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        var manager = new AshlarSignInManager(
+            sessionService.Object,
+            CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString("D")),
+                new Claim(AshlarClaimTypes.SessionId, Guid.NewGuid().ToString("D")),
+                new Claim(AshlarClaimTypes.TenantId, "not-a-tenant")
+            ], AshlarSessionAuthenticationDefaults.AuthenticationScheme))
+        };
+
+        await manager.SignOutAsync(context);
+
+        sessionService.Verify(s => s.RevokeSessionForUserAsync(It.IsAny<Guid>(), It.IsAny<RevokeAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public async Task SignOutAsyncShouldDeleteCookieWithoutRevocationWhenCookieValidationHasNoSession()
     {
         var sessionService = new Mock<IAuthenticationSessionService>();
@@ -194,7 +325,7 @@ internal sealed class AshlarSignInManagerTests
 
         using (Assert.EnterMultipleScope())
         {
-            sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<AuditContext?>(), It.IsAny<CancellationToken>()), Times.Never);
+            sessionService.Verify(s => s.RevokeSessionForUserAsync(It.IsAny<Guid>(), It.IsAny<RevokeAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
             Assert.That(context.Response.Headers.SetCookie.ToString(), Does.Contain($"{AshlarSessionAuthenticationDefaults.CookieName}="));
         }
     }
@@ -222,7 +353,7 @@ internal sealed class AshlarSignInManagerTests
         using (Assert.EnterMultipleScope())
         {
             sessionService.Verify(s => s.ValidateSessionAsync("raw-token", It.IsAny<CancellationToken>()), Times.Once);
-            sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<AuditContext?>(), It.IsAny<CancellationToken>()), Times.Never);
+            sessionService.Verify(s => s.RevokeSessionForUserAsync(It.IsAny<Guid>(), It.IsAny<RevokeAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
             Assert.That(context.Response.Headers.SetCookie.ToString(), Does.Contain($"{AshlarSessionAuthenticationDefaults.CookieName}="));
         }
     }
@@ -247,7 +378,7 @@ internal sealed class AshlarSignInManagerTests
 
         using (Assert.EnterMultipleScope())
         {
-            sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<AuditContext?>(), It.IsAny<CancellationToken>()), Times.Never);
+            sessionService.Verify(s => s.RevokeSessionForUserAsync(It.IsAny<Guid>(), It.IsAny<RevokeAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
             Assert.That(context.Response.Headers.SetCookie.ToString(), Does.Contain($"{AshlarSessionAuthenticationDefaults.CookieName}="));
         }
     }
@@ -264,6 +395,7 @@ internal sealed class AshlarSignInManagerTests
         context.Response.Headers.Clear();
         context.User = new ClaimsPrincipal(new ClaimsIdentity(
         [
+            new Claim(ClaimTypes.NameIdentifier, session.UserId.ToString("D")),
             new Claim(AshlarClaimTypes.SessionId, session.Id.ToString("D"))
         ], AshlarSessionAuthenticationDefaults.AuthenticationScheme));
 
@@ -430,6 +562,35 @@ internal sealed class AshlarSignInManagerTests
     }
 
     [Test]
+    public async Task RevokeSessionForCurrentUserAsyncShouldConstrainGlobalSessions()
+    {
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        sessionService
+            .Setup(s => s.RevokeSessionForUserAsync(It.IsAny<Guid>(), It.IsAny<RevokeAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        var manager = new AshlarSignInManager(
+            sessionService.Object,
+            CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString("D"))
+            ], AshlarSessionAuthenticationDefaults.AuthenticationScheme))
+        };
+
+        await manager.RevokeSessionForCurrentUserAsync(context, sessionId);
+
+        sessionService.Verify(s => s.RevokeSessionForUserAsync(userId, It.Is<RevokeAuthenticationSessionRequest>(r =>
+            r.SessionId == sessionId &&
+            r.Tenant != null &&
+            r.Tenant.TenantId == null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
     public void RevokeSessionForCurrentUserAsyncShouldPropagateServiceFailure()
     {
         var sessionService = new Mock<IAuthenticationSessionService>();
@@ -445,6 +606,25 @@ internal sealed class AshlarSignInManagerTests
             User = new ClaimsPrincipal(new ClaimsIdentity(
             [
                 new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString("D"))
+            ], AshlarSessionAuthenticationDefaults.AuthenticationScheme))
+        };
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => manager.RevokeSessionForCurrentUserAsync(context, Guid.NewGuid()));
+    }
+
+    [Test]
+    public void RevokeSessionForCurrentUserAsyncShouldRejectMalformedTenantClaim()
+    {
+        var manager = new AshlarSignInManager(
+            Mock.Of<IAuthenticationSessionService>(),
+            CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString("D")),
+                new Claim(AshlarClaimTypes.TenantId, "not-a-tenant")
             ], AshlarSessionAuthenticationDefaults.AuthenticationScheme))
         };
 
@@ -526,6 +706,36 @@ internal sealed class AshlarSignInManagerTests
     }
 
     [Test]
+    public async Task RevokeOtherSessionsForCurrentUserAsyncShouldConstrainGlobalSessions()
+    {
+        var sessionService = new Mock<IAuthenticationSessionService>();
+        sessionService
+            .Setup(s => s.RevokeOtherSessionsAsync(It.IsAny<Guid>(), It.IsAny<RevokeOtherAuthenticationSessionsRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        var manager = new AshlarSignInManager(
+            sessionService.Object,
+            CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var userId = Guid.NewGuid();
+        var currentSessionId = Guid.NewGuid();
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString("D")),
+                new Claim(AshlarClaimTypes.SessionId, currentSessionId.ToString("D"))
+            ], AshlarSessionAuthenticationDefaults.AuthenticationScheme))
+        };
+
+        await manager.RevokeOtherSessionsForCurrentUserAsync(context);
+
+        sessionService.Verify(s => s.RevokeOtherSessionsAsync(userId, It.Is<RevokeOtherAuthenticationSessionsRequest>(r =>
+            r.CurrentSessionId == currentSessionId &&
+            r.Tenant != null &&
+            r.Tenant.TenantId == null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
     public void RevokeOtherSessionsForCurrentUserAsyncShouldPropagateServiceFailure()
     {
         var sessionService = new Mock<IAuthenticationSessionService>();
@@ -542,6 +752,26 @@ internal sealed class AshlarSignInManagerTests
             [
                 new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString("D")),
                 new Claim(AshlarClaimTypes.SessionId, Guid.NewGuid().ToString("D"))
+            ], AshlarSessionAuthenticationDefaults.AuthenticationScheme))
+        };
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => manager.RevokeOtherSessionsForCurrentUserAsync(context));
+    }
+
+    [Test]
+    public void RevokeOtherSessionsForCurrentUserAsyncShouldRejectMalformedTenantClaim()
+    {
+        var manager = new AshlarSignInManager(
+            Mock.Of<IAuthenticationSessionService>(),
+            CreateOptionsMonitor(),
+            new AshlarSessionRegistration { SchemeName = AshlarSessionAuthenticationDefaults.AuthenticationScheme });
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString("D")),
+                new Claim(AshlarClaimTypes.SessionId, Guid.NewGuid().ToString("D")),
+                new Claim(AshlarClaimTypes.TenantId, "not-a-tenant")
             ], AshlarSessionAuthenticationDefaults.AuthenticationScheme))
         };
 
@@ -643,6 +873,21 @@ internal sealed class AshlarSignInManagerTests
             .Setup(m => m.Get(AshlarSessionAuthenticationDefaults.AuthenticationScheme))
             .Returns(options);
         return monitor.Object;
+    }
+
+    private static AuthenticationSession CreateSession(Guid sessionId, out Guid userId, out Guid tenantId)
+    {
+        userId = Guid.NewGuid();
+        tenantId = Guid.NewGuid();
+        return new AuthenticationSession
+        {
+            Id = sessionId,
+            UserId = userId,
+            TenantId = tenantId,
+            TokenHash = "hashed:raw-token",
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-5),
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1)
+        };
     }
 
     private sealed class FixedSessionTokenGenerator(string token) : ISecureTokenGenerator
