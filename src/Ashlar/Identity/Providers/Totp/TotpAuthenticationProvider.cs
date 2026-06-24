@@ -108,14 +108,19 @@ public sealed class TotpAuthenticationProvider : ISecondaryAuthenticationFactorP
             try
             {
                 var metadata = JsonSerializer.Deserialize<TotpMetadata>(credential.Metadata);
-                if (metadata != null && metadata.LastUsedStep >= verifiedStep)
+                if (metadata?.LastUsedStep is not { } lastUsedStep || lastUsedStep < 0)
+                {
+                    return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
+                }
+
+                if (lastUsedStep >= verifiedStep)
                 {
                     return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
                 }
             }
             catch (JsonException)
             {
-                // If metadata is malformed, we allow the login but it will be overwritten.
+                return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
             }
         }
 
@@ -132,6 +137,6 @@ public sealed class TotpAuthenticationProvider : ISecondaryAuthenticationFactorP
         /// <summary>
         /// Gets the last accepted TOTP time step used for replay protection.
         /// </summary>
-        public long LastUsedStep { get; init; }
+        public long? LastUsedStep { get; init; }
     }
 }
