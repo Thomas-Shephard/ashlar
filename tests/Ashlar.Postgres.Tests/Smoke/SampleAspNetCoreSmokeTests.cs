@@ -280,6 +280,12 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     }
 
     [Test]
+    public async Task SampleMfaCompletedSignInUsesVerifiedSessionHelperWithCleanup()
+    {
+        await AssertSampleMfaCompletedSignInUsesVerifiedSessionHelperWithCleanupAsync();
+    }
+
+    [Test]
     public async Task SampleGoogleInvitationCallbackClearsMalformedExternalTicket()
     {
         Environment.SetEnvironmentVariable("Authentication__Google__ClientId", "sample-client-id");
@@ -813,6 +819,49 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             Assert.That(signInIndex, Is.GreaterThan(orchestratorIndex));
             Assert.That(source, Does.Contain("new AuthenticationProviderKey(ProviderType.OAuth, SampleGitHubOAuth.ProviderName)"));
             Assert.That(source, Does.Not.Contain("CompleteExternalCredentialAuthenticationAsync"));
+        }
+    }
+
+    private static async Task AssertSampleMfaCompletedSignInUsesVerifiedSessionHelperWithCleanupAsync()
+    {
+        var root = LocateRepositoryRoot();
+        var authExtensions = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "samples",
+            "Ashlar.Sample.AspNetCore",
+            "Extensions",
+            "AuthExtensions.cs"));
+        var mfaEndpoints = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "samples",
+            "Ashlar.Sample.AspNetCore",
+            "Endpoints",
+            "MfaEndpoints.cs"));
+        var passkeyEndpoints = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "samples",
+            "Ashlar.Sample.AspNetCore",
+            "Endpoints",
+            "PasskeyEndpoints.cs"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(authExtensions, Does.Contain("SignInAndMarkStepUpVerifiedAsync"));
+            Assert.That(authExtensions, Does.Contain("signInManager.SignInAsync"));
+            Assert.That(authExtensions, Does.Contain("sessionService.MarkStepUpVerifiedAsync"));
+            Assert.That(authExtensions, Does.Contain("if (!result.Succeeded)"));
+            Assert.That(authExtensions, Does.Contain("catch"));
+            Assert.That(authExtensions, Does.Contain("CleanupUnverifiedSessionAsync"));
+            Assert.That(authExtensions, Does.Contain("sessionService.RevokeSessionAsync"));
+            Assert.That(authExtensions, Does.Contain("signInManager.SignOutAsync"));
+            Assert.That(authExtensions, Does.Contain("TenantContext.Global"));
+            Assert.That(mfaEndpoints, Does.Contain("httpContext.SignInAndMarkStepUpVerifiedAsync"));
+            Assert.That(mfaEndpoints, Does.Not.Contain("additionalVerificationProvider"));
+            Assert.That(mfaEndpoints, Does.Not.Contain("AdditionalVerificationAt"));
+            Assert.That(passkeyEndpoints, Does.Contain("httpContext.SignInAndMarkStepUpVerifiedAsync"));
+            Assert.That(passkeyEndpoints, Does.Contain("AuthenticationFactorTypes.Passkey"));
+            Assert.That(passkeyEndpoints, Does.Not.Contain("additionalVerificationProvider"));
+            Assert.That(passkeyEndpoints, Does.Not.Contain("AdditionalVerificationAt"));
         }
     }
 

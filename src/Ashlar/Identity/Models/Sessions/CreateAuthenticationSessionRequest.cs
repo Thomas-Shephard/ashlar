@@ -11,9 +11,6 @@ namespace Ashlar.Identity.Models.Sessions;
 /// <param name="TenantId">Tenant scope for the issued session, or <see langword="null" /> for a global session.</param>
 /// <param name="AuthenticatedAt">UTC time when primary authentication completed.</param>
 /// <param name="PrimaryProvider">Provider that authenticated the primary credential.</param>
-/// <param name="AdditionalVerificationAt">UTC time when additional verification completed, when available.</param>
-/// <param name="AdditionalVerificationProvider">Provider that completed additional verification, when available.</param>
-/// <param name="AdditionalVerificationFactor">Provider-neutral factor family that satisfied MFA or step-up verification, when available.</param>
 public sealed record CreateAuthenticationSessionRequest(
     TimeSpan? Lifetime = null,
     string? IpAddress = null,
@@ -22,7 +19,4 @@ public sealed record CreateAuthenticationSessionRequest(
     string? CorrelationId = null,
     Guid? TenantId = null,
     DateTimeOffset? AuthenticatedAt = null,
-    AuthenticationProviderKey? PrimaryProvider = null,
-    DateTimeOffset? AdditionalVerificationAt = null,
-    AuthenticationProviderKey? AdditionalVerificationProvider = null,
-    string? AdditionalVerificationFactor = null);
+    AuthenticationProviderKey? PrimaryProvider = null);

@@ -54,6 +54,24 @@ internal sealed class AshlarSignInManagerTests
     }
 
     [Test]
+    public async Task SignInAsyncShouldCreateOrdinarySessionWithoutFreshMfaMetadata()
+    {
+        await using var provider = CreateProvider(out var repository);
+        var context = CreateContext(provider);
+        var manager = provider.GetRequiredService<IAshlarSignInManager>();
+
+        await manager.SignInAsync(context, Guid.NewGuid(), new CreateAuthenticationSessionRequest(PrimaryProvider: AuthenticationProviderKey.Passkey));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.CreatedSession?.PrimaryProvider, Is.EqualTo(AuthenticationProviderKey.Passkey));
+            Assert.That(repository.CreatedSession?.AdditionalVerificationAt, Is.Null);
+            Assert.That(repository.CreatedSession?.AdditionalVerificationProvider, Is.Null);
+            Assert.That(repository.CreatedSession?.AdditionalVerificationFactor, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task SignInAsyncShouldAllowHttpContextWithoutRemoteIpAddress()
     {
         await using var provider = CreateProvider(out _);

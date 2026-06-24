@@ -67,9 +67,7 @@ public sealed class AuthenticationSessionService(
             throw new ArgumentOutOfRangeException($"{nameof(request)}.{nameof(request.Lifetime)}", request.Lifetime, "Session lifetime must be positive.");
         }
 
-        var additionalVerificationFactor = ValidateOptionalLength(request.AdditionalVerificationFactor, MaxStepUpFactorLength, $"{nameof(request)}.{nameof(request.AdditionalVerificationFactor)}");
         ValidateOptionalProvider(request.PrimaryProvider, $"{nameof(request)}.{nameof(request.PrimaryProvider)}");
-        ValidateOptionalProvider(request.AdditionalVerificationProvider, $"{nameof(request)}.{nameof(request.AdditionalVerificationProvider)}");
 
         var ipAddress = _options.StoreIpAddress
             ? ValidateOptionalLength(request.IpAddress, _options.MaxIpAddressLength, $"{nameof(request)}.{nameof(request.IpAddress)}")
@@ -129,9 +127,9 @@ public sealed class AuthenticationSessionService(
             CreatedAt = now,
             AuthenticatedAt = request.AuthenticatedAt ?? now,
             PrimaryProvider = request.PrimaryProvider,
-            AdditionalVerificationAt = request.AdditionalVerificationAt,
-            AdditionalVerificationProvider = request.AdditionalVerificationProvider,
-            AdditionalVerificationFactor = additionalVerificationFactor,
+            AdditionalVerificationAt = null,
+            AdditionalVerificationProvider = null,
+            AdditionalVerificationFactor = null,
             ExpiresAt = now.Add(lifetime),
             LastSeenAt = null,
             RevokedAt = null,
