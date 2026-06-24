@@ -15,10 +15,10 @@ public sealed class SqliteAuthorizationGrantRepository(ISqliteConnectionProvider
     private const string IdParameter = "$id";
     private const string UserIdParameter = "$userId";
     private const string TenantIdParameter = "$tenantId";
-    private const string TenantFilterParameter = "$tenantFilter";
     private const string ScopeTypeParameter = "$scopeType";
     private const string ScopeIdParameter = "$scopeId";
     private const string ScopeFilterParameter = "$scopeFilter";
+    private const string ScopeExactParameter = "$scopeExact";
     private const string ActiveOnlyParameter = "$activeOnly";
     private const string RoleParameter = "$role";
     private const string PermissionParameter = "$permission";
@@ -53,13 +53,19 @@ public sealed class SqliteAuthorizationGrantRepository(ISqliteConnectionProvider
     public async Task<IReadOnlyList<AuthorizationGrant>> ListGrantsAsync(ListAuthorizationGrantsRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (string.IsNullOrWhiteSpace(request.ScopeType) != string.IsNullOrWhiteSpace(request.ScopeId))
+        {
+            return [];
+        }
 
         const string sql = SelectSql + """
             
             WHERE user_id = $userId
-              AND ($tenantFilter = 0 OR (($tenantId IS NULL AND tenant_id IS NULL) OR tenant_id = $tenantId))
-              AND ($scopeFilter = 0 OR (($scopeType IS NULL AND scope_type IS NULL AND $scopeId IS NULL AND scope_id IS NULL)
-                   OR (scope_type = $scopeType AND scope_id = $scopeId)))
+              AND (($tenantId IS NULL AND tenant_id IS NULL) OR tenant_id = $tenantId)
+              AND ($scopeFilter = 0
+                   OR ($scopeExact = 1 AND (($scopeType IS NULL AND scope_type IS NULL AND $scopeId IS NULL AND scope_id IS NULL)
+                       OR (scope_type = $scopeType AND scope_id = $scopeId)))
+                   OR ($scopeExact = 0 AND (scope_type IS NULL AND scope_id IS NULL OR (scope_type = $scopeType AND scope_id = $scopeId))))
               AND ($activeOnly = 0 OR (revoked_at IS NULL AND (expires_at IS NULL OR expires_at > $now)))
             ORDER BY created_at DESC, id;
             """;
@@ -70,10 +76,10 @@ public sealed class SqliteAuthorizationGrantRepository(ISqliteConnectionProvider
         command.CommandText = sql;
         command.AddGuidParameter(UserIdParameter, request.UserId);
         command.AddNullableGuidParameter(TenantIdParameter, request.TenantId);
-        command.AddParameter(TenantFilterParameter, request.ExactMatch || request.TenantId.HasValue ? 1 : 0);
         command.AddParameter(ScopeTypeParameter, request.ScopeType);
         command.AddParameter(ScopeIdParameter, request.ScopeId);
         command.AddParameter(ScopeFilterParameter, request.ExactMatch || request.ScopeType != null || request.ScopeId != null ? 1 : 0);
+        command.AddParameter(ScopeExactParameter, request.ExactMatch ? 1 : 0);
         command.AddParameter(ActiveOnlyParameter, request.ActiveOnly ? 1 : 0);
         command.AddDateTimeOffsetParameter(NowParameter, _timeProvider.GetUtcNow());
 
@@ -87,11 +93,12 @@ public sealed class SqliteAuthorizationGrantRepository(ISqliteConnectionProvider
         return grants.AsReadOnly();
     }
 
-    public async Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, CancellationToken cancellationToken = default)
+    public async Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, Guid? tenantId, CancellationToken cancellationToken = default)
     {
         const string sql = SelectSql + """
             
-            WHERE id = $id;
+            WHERE id = $id
+              AND (($tenantId IS NULL AND tenant_id IS NULL) OR tenant_id = $tenantId);
             """;
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -99,6 +106,7 @@ public sealed class SqliteAuthorizationGrantRepository(ISqliteConnectionProvider
         command.Transaction = handle.Transaction;
         command.CommandText = sql;
         command.AddGuidParameter(IdParameter, grantId);
+        command.AddNullableGuidParameter(TenantIdParameter, tenantId);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadGrant(reader) : null;

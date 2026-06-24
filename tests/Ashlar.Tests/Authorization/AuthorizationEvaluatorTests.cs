@@ -205,13 +205,13 @@ internal sealed class AuthorizationEvaluatorTests
             LastListRequest = request;
             var results = Grants
                 .Where(grant => grant.UserId == request.UserId)
-                .Where(grant => request is { ExactMatch: false, TenantId: null } || grant.TenantId == request.TenantId)
+                .Where(grant => grant.TenantId == request.TenantId)
                 .Where(grant => request is { ExactMatch: false, ScopeType: null } || grant.ScopeType == request.ScopeType && grant.ScopeId == request.ScopeId)
                 .ToList();
             return Task.FromResult<IReadOnlyList<AuthorizationGrant>>(results);
         }
 
-        public Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, CancellationToken cancellationToken = default) => Task.FromResult<AuthorizationGrant?>(null);
+        public Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, Guid? tenantId, CancellationToken cancellationToken = default) => Task.FromResult<AuthorizationGrant?>(null);
 
         public Task<bool> RevokeGrantAsync(Guid grantId, Guid? tenantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default) => Task.FromResult(false);
     }

@@ -42,7 +42,7 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
 
         await _repository.CreateGrantAsync(grant);
         var listed = await _repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(UserId, ActiveOnly: true));
-        var fetched = await _repository.GetGrantAsync(grant.Id);
+        var fetched = await _repository.GetGrantAsync(grant.Id, grant.TenantId);
         var revoked = await _repository.RevokeGrantAsync(grant.Id, grant.TenantId, _now.AddMinutes(1));
         var revokedAgain = await _repository.RevokeGrantAsync(grant.Id, grant.TenantId, _now.AddMinutes(2));
         var activeAfterRevoke = await _repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(UserId, ActiveOnly: true));
@@ -68,7 +68,7 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
         await _repository.CreateGrantAsync(CreateGrantForUser(tenantUserId, tenantId, permission: "expired", expiresAt: _now.AddSeconds(-1)));
 
         var scoped = await _repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUserId, tenantId, "project", "abc", ActiveOnly: true));
-        var all = await _repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUserId));
+        var all = await _repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUserId, tenantId));
 
         using (Assert.EnterMultipleScope())
         {
@@ -116,7 +116,7 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
         Assert.ThrowsAsync<ArgumentNullException>(() => _repository.CreateGrantAsync(null!));
         Assert.ThrowsAsync<ArgumentNullException>(() => _repository.ListGrantsAsync(null!));
 
-        var missing = await _repository.GetGrantAsync(Guid.NewGuid());
+        var missing = await _repository.GetGrantAsync(Guid.NewGuid(), null);
 
         Assert.That(missing, Is.Null);
     }

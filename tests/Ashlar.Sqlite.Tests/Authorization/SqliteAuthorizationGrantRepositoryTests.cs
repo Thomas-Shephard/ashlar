@@ -35,11 +35,11 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
 
         await repository.CreateGrantAsync(grant);
         var listed = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(_userId, ActiveOnly: true));
-        var fetched = await repository.GetGrantAsync(grant.Id);
+        var fetched = await repository.GetGrantAsync(grant.Id, grant.TenantId);
         var revoked = await repository.RevokeGrantAsync(grant.Id, grant.TenantId, Now.AddMinutes(1));
         var revokedAgain = await repository.RevokeGrantAsync(grant.Id, grant.TenantId, Now.AddMinutes(2));
         var activeAfterRevoke = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(_userId, ActiveOnly: true));
-        var fetchedRevoked = await repository.GetGrantAsync(grant.Id);
+        var fetchedRevoked = await repository.GetGrantAsync(grant.Id, grant.TenantId);
 
         using (Assert.EnterMultipleScope())
         {
@@ -69,8 +69,8 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
 
         var scoped = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUser.Id, tenantId, "project", "abc", ActiveOnly: true));
         var permissionGlobal = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(_userId, ActiveOnly: true, ExactMatch: true));
-        var active = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUser.Id, ActiveOnly: true));
-        var all = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUser.Id));
+        var active = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUser.Id, tenantId, ActiveOnly: true));
+        var all = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUser.Id, tenantId));
 
         using (Assert.EnterMultipleScope())
         {
@@ -121,7 +121,7 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
             await transaction.RollbackAsync();
         }
 
-        Assert.That(await GetRepository().GetGrantAsync(grant.Id), Is.Null);
+        Assert.That(await GetRepository().GetGrantAsync(grant.Id, grant.TenantId), Is.Null);
     }
 
     [Test]
@@ -139,7 +139,7 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(await repository.GetGrantAsync(Guid.NewGuid()), Is.Null);
+            Assert.That(await repository.GetGrantAsync(Guid.NewGuid(), null), Is.Null);
             Assert.That(await systemClockRepository.ListGrantsAsync(new ListAuthorizationGrantsRequest(_userId, ActiveOnly: true)), Has.Count.EqualTo(1));
         }
     }
