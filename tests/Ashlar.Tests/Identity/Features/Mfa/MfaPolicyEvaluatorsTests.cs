@@ -4,26 +4,26 @@ using Moq;
 
 namespace Ashlar.Tests.Identity.Features.Mfa;
 
-internal sealed class MfaPolicyEvaluatorTests
+internal sealed class MfaPolicyEvaluatorsTests
 {
     private static readonly string[] TotpFactor = ["totp"];
     private static readonly string[] CompositeFactors = ["TOTP", "email_code"];
     private readonly AuthenticationContext _context = new(IpAddress: "127.0.0.1");
 
     [Test]
-    public async Task MfaPolicyEvaluatorAlwaysReturnsNoMfaRequired()
+    public async Task NoMfaPolicyEvaluatorAlwaysReturnsNoMfaRequired()
     {
         var user = CreateUser();
-        var result = await new MfaPolicyEvaluator().EvaluateAsync(user.Object, _context);
+        var result = await new NoMfaPolicyEvaluator().EvaluateAsync(user.Object, _context);
 
         Assert.That(result.IsMfaRequired, Is.False);
     }
 
     [Test]
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
-    public void MfaPolicyEvaluatorThrowsWhenArgumentsAreNull()
+    public void NoMfaPolicyEvaluatorThrowsWhenArgumentsAreNull()
     {
-        var evaluator = new MfaPolicyEvaluator();
+        var evaluator = new NoMfaPolicyEvaluator();
         var user = CreateUser();
 
         using (Assert.EnterMultipleScope())

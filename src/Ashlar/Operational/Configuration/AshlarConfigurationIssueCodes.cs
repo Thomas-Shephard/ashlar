@@ -86,6 +86,11 @@ public static class AshlarConfigurationIssueCodes
     public const string PasskeyChallengeRepositoryMissing = "ASHLAR-CONFIG-PASSKEY-CHALLENGE-REPOSITORY-MISSING";
 
     /// <summary>
+    /// MFA orchestration is configured without an MFA policy evaluator.
+    /// </summary>
+    public const string MfaPolicyMissing = "ASHLAR-CONFIG-MFA-POLICY-MISSING";
+
+    /// <summary>
     /// Email delivery is not configured for registered email-based features.
     /// </summary>
     public const string EmailSenderNotConfigured = "ASHLAR-CONFIG-EMAIL-SENDER-NOT-CONFIGURED";
@@ -119,6 +124,11 @@ public static class AshlarConfigurationIssueCodes
     /// Account security operations are configured with Ashlar's permissive guard.
     /// </summary>
     public const string PermissiveAccountSecurityGuard = "ASHLAR-CONFIG-PERMISSIVE-ACCOUNT-SECURITY-GUARD";
+
+    /// <summary>
+    /// MFA orchestration is configured with Ashlar's explicit no-MFA policy.
+    /// </summary>
+    public const string PermissiveMfaPolicy = "ASHLAR-CONFIG-PERMISSIVE-MFA-POLICY";
 
     /// <summary>
     /// Authentication rate limiting is configured with the in-memory implementation.

@@ -60,7 +60,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
         _securityEvents = new SecurityEventEmitter(dependencies.SecurityEventSink, _timeProvider);
         _securityEventSummaryRepository = dependencies.SecurityEventSummaryRepository;
-        _mfaPolicyEvaluator = dependencies.MfaPolicyEvaluator ?? new MfaPolicyEvaluator();
+        _mfaPolicyEvaluator = dependencies.MfaPolicyEvaluator ?? new NoMfaPolicyEvaluator();
         _providerRegistry = dependencies.ProviderRegistry;
         _rememberedMfaDevices = dependencies.RememberedMfaDeviceService;
         _totpProvider = dependencies.TotpOptions?.Value.ProviderKey ?? TotpOptions.DefaultProviderKey;

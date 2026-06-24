@@ -13,11 +13,12 @@ services.AddAshlarPasskeys(options =>
     options.RelyingPartyName = "Example";
     options.Origin = "https://example.com";
 });
+services.AddAshlarNoMfaPolicy();
 ```
 
 Applications may replace the default `IPasskeyCeremonyValidator` adapter backed by `Fido2NetLib`. For .NET 8+, the NuGet package is `Fido2`; Ashlar keeps that dependency in this optional package so core consumers that do not use passkeys do not reference it.
 
-`AddAshlarPasskeys()` also registers Ashlar MFA orchestration because passkeys can be used as MFA factors. Consumers must provide the usual identity and credential repositories plus `IPasskeyChallengeRepository` and `IAuthenticationHandshakeRepository`; `AddAshlarPostgres()` supplies these persistence services.
+`AddAshlarPasskeys()` also registers Ashlar MFA orchestration because passkeys can be used as MFA factors. This makes passkeys available to the factor pipeline, but it does not enforce MFA by itself. Register `AddAshlarNoMfaPolicy()` for deliberate no-MFA composition, `AddAshlarRequireMfaWhenCredentialExists(...)` or `AddAshlarRequireMfaForAllUsers(...)` for built-in enforcement, or a custom `IMfaPolicyEvaluator` for application-specific policy. Consumers must provide the usual identity and credential repositories plus `IPasskeyChallengeRepository` and `IAuthenticationHandshakeRepository`; `AddAshlarPostgres()` supplies these persistence services.
 
 The service supports starting and completing registration, starting and completing authentication, listing passkeys, renaming display names, and revoking credentials. Registered passkeys are stored as normal Ashlar credentials with `ProviderType.Passkey`; public key and signature counter state live in structured credential metadata. Challenges are random, short-lived, purpose-scoped, origin/RP-scoped, and consumed atomically.
 

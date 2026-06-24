@@ -129,7 +129,6 @@ internal sealed class AshlarPostgresCompositionTests
             options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
         });
         services.AddAshlarAuthorization();
-        services.AddAshlarMfaOrchestration();
         services.AddAshlarRequireMfaWhenCredentialExists(options =>
         {
             options.CredentialProviderKeys.Add(TotpOptions.DefaultProviderKey);

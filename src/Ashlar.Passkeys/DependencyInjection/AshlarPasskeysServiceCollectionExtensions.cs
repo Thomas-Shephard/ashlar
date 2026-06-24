@@ -23,7 +23,10 @@ public static class AshlarPasskeysServiceCollectionExtensions
     /// <param name="configure">The passkey options configuration callback.</param>
     /// <returns>The operation result.</returns>
     /// <remarks>
-    /// This registration includes MFA orchestration because passkeys can be used as MFA factors. Applications must provide the
+    /// This registration includes MFA orchestration because passkeys can be used as MFA factors. It makes passkey factors
+    /// available, but applications must register an explicit MFA policy such as <c>AddAshlarNoMfaPolicy</c>,
+    /// <c>AddAshlarRequireMfaForAllUsers</c>, <c>AddAshlarRequireMfaWhenCredentialExists</c>, or a custom
+    /// <c>IMfaPolicyEvaluator</c> before resolving the authentication orchestrator. Applications must also provide the
     /// normal Ashlar identity, credential, passkey challenge, and authentication handshake persistence services, for example via
     /// <c>AddAshlarPostgres</c>.
     /// </remarks>

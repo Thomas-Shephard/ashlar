@@ -179,6 +179,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
         AddEmailSenderIssue(serviceProvider, issues);
         AddNullSecurityEventSinkIssue(serviceProvider, issues);
         AddPermissiveAccountSecurityGuardIssue(serviceProvider, issues);
+        AddMfaPolicyIssues(serviceProvider, issues);
         AddInMemoryRateLimiterIssue(serviceProvider, issues);
         AddInMemorySecurityNotificationSuppressionStoreIssue(serviceProvider, issues);
         AddNullTransactionProviderIssue(serviceProvider, issues);
@@ -415,6 +416,50 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
                 "Account security operations use the permissive AllowAccountSecurityGuard, so high-risk account-state transitions are allowed by default.",
                 "Register an application-specific IAccountSecurityGuard before relying on account-state changes for business approval, risk review, or separation-of-duties controls.",
                 "Account security guard"));
+        }
+    }
+
+    private static void AddMfaPolicyIssues(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
+    {
+        if (!serviceProvider.IsServiceRegistered<IAuthenticationOrchestrator>())
+        {
+            return;
+        }
+
+        if (!serviceProvider.IsServiceRegistered<IMfaPolicyEvaluator>())
+        {
+            issues.Add(new AshlarConfigurationIssue(
+                AshlarConfigurationIssueCodes.MfaPolicyMissing,
+                AshlarConfigurationIssueSeverity.Error,
+                "MFA orchestration is registered without an MFA policy evaluator.",
+                "Register AddAshlarNoMfaPolicy, AddAshlarRequireMfaForAllUsers, AddAshlarRequireMfaWhenCredentialExists, or a custom IMfaPolicyEvaluator before resolving IAuthenticationOrchestrator.",
+                "MFA policy"));
+        }
+
+        if (TryResolveMfaPolicyEvaluator(serviceProvider) is NoMfaPolicyEvaluator)
+        {
+            issues.Add(new AshlarConfigurationIssue(
+                AshlarConfigurationIssueCodes.PermissiveMfaPolicy,
+                AshlarConfigurationIssueSeverity.Warning,
+                "MFA orchestration uses NoMfaPolicyEvaluator, so registered MFA factors are available but not required by policy before session issuance.",
+                "Keep AddAshlarNoMfaPolicy only for applications that deliberately allow primary authentication to complete without policy-required MFA. Register AddAshlarRequireMfaForAllUsers, AddAshlarRequireMfaWhenCredentialExists, or a custom IMfaPolicyEvaluator to enforce MFA.",
+                "MFA policy"));
+        }
+    }
+
+    private static IMfaPolicyEvaluator? TryResolveMfaPolicyEvaluator(IServiceProvider serviceProvider)
+    {
+        try
+        {
+            return serviceProvider.GetService<IMfaPolicyEvaluator>();
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+        catch (OptionsValidationException)
+        {
+            return null;
         }
     }
 

@@ -137,6 +137,7 @@ services.AddAshlarMagicLinkSignIn(options =>
     options.EmailSubject = "Sign in";
     options.EmailTextTemplate = "Click the following link to sign in: {0}";
 });
+services.AddAshlarNoMfaPolicy();
 ```
 
 Request a link for an active user, then verify the raw token from the callback URL. Verification is MFA-aware; issue an application session only after `MfaAuthenticationStatus.Succeeded`:
@@ -184,6 +185,7 @@ One-time email codes are available through `AddAshlarEmailCodeSignIn()` and `IEm
 
 ```csharp
 services.AddAshlarEmailCodeSignIn();
+services.AddAshlarNoMfaPolicy();
 
 await emailCodes.RequestCodeAsync(email, context);
 var authenticationResult = await emailCodes.VerifyCodeAsync(email, code, context);
@@ -600,7 +602,9 @@ if (authenticationResult.Status == MfaAuthenticationStatus.Succeeded)
 ```
 
 ## MFA Policy and Orchestration
-Ashlar provides a high-level orchestration layer that connects primary authentication to MFA policy enforcement and handshake management. This allows applications to define generic MFA requirements and manage the multi-step verification process.
+Ashlar separates MFA factor availability from MFA enforcement. Registering TOTP, passkeys, or recovery codes makes those factors available for enrollment and verification, but it does not require users to complete MFA before a session is issued. A registered factor can be a primary sign-in method, an enrolled second factor, a recovery option, or part of a staged rollout, so factor presence alone is not enough to infer the application's access policy. Registering orchestration connects primary authentication to policy evaluation and handshake management, but an explicit MFA policy still decides whether MFA is required.
+
+For most password-based production applications, prefer `AddAshlarRequireMfaWhenCredentialExists` so users with enrolled MFA are challenged and users without enrolled MFA are not locked out. For high-assurance applications, admin surfaces, or environments with mandatory enrollment, use `AddAshlarRequireMfaForAllUsers`. Use `AddAshlarNoMfaPolicy` only when the application deliberately allows primary authentication to issue sessions without policy-required MFA, such as simple passwordless flows, local development, or factor-management-only composition.
 
 Register the orchestration services:
 
@@ -608,13 +612,13 @@ Register the orchestration services:
 services.AddAshlarMfaOrchestration();
 ```
 
-By default, Ashlar registers a no-MFA policy. Primary authentication can complete without a handshake unless an authentication provider itself returns `AuthenticationStatus.MfaRequired` or an application explicitly registers a policy:
+Orchestration alone does not select a policy evaluator. To deliberately allow primary authentication to complete without policy-required MFA, register the no-MFA policy explicitly:
 
 ```csharp
-services.AddAshlarMfaOrchestration();
-// Equivalent explicit policy:
 services.AddAshlarNoMfaPolicy();
 ```
+
+Configuration diagnostics report a warning when orchestration is active with `NoMfaPolicyEvaluator`, because registered factors are available but not enforced by policy. That warning is expected for applications that intentionally choose no-MFA behavior.
 
 To require TOTP only for users who already have an active TOTP credential, register a credential-backed policy:
 
@@ -638,6 +642,8 @@ services.AddAshlarRequireMfaForAllUsers(options =>
     options.RequiredFactors.Add("totp");
 });
 ```
+
+`AddAshlarRequireMfaForAllUsers`, `AddAshlarRequireMfaWhenCredentialExists`, and custom `IMfaPolicyEvaluator` registrations replace the no-MFA posture and enforce MFA according to the registered policy before session issuance.
 
 Perform a primary authentication that might require MFA:
 
