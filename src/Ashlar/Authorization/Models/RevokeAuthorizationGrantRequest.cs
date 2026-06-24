@@ -21,19 +21,14 @@ public enum AuthorizationGrantRevocationStatus
     Revoked = 0,
 
     /// <summary>
-    /// No grant exists for the requested identifier.
+    /// No grant exists for the requested identifier within the requested tenant boundary.
     /// </summary>
     NotFound = 1,
 
     /// <summary>
-    /// The grant exists but does not belong to the requested tenant boundary.
-    /// </summary>
-    TenantMismatch = 2,
-
-    /// <summary>
     /// The grant existed in the requested tenant boundary, but the repository did not change it.
     /// </summary>
-    NotRevoked = 3
+    NotRevoked = 2
 }
 
 /// <summary>

@@ -38,6 +38,21 @@ internal abstract class AuthorizationGrantAdministrationRepositoryContractTests 
     }
 
     [Test]
+    public async Task SearchAuthorizationGrantsAsyncRequiresExplicitTenantScope()
+    {
+        await using var scope = CreateAsyncScope();
+        var adminRepository = GetAuthorizationGrantAdministrationRepository(scope.ServiceProvider);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<ArgumentException>(() => adminRepository.SearchAuthorizationGrantsAsync(new SearchAuthorizationGrantsRequest(), Now));
+            Assert.ThrowsAsync<ArgumentException>(() => adminRepository.SearchAuthorizationGrantsAsync(
+                new SearchAuthorizationGrantsRequest { Tenant = TenantContext.Global, IncludeAllTenants = true },
+                Now));
+        }
+    }
+
+    [Test]
     public async Task SearchAuthorizationGrantsAsyncAppliesValueFilters()
     {
         await using var scope = CreateAsyncScope();
@@ -148,6 +163,22 @@ internal abstract class AuthorizationGrantAdministrationRepositoryContractTests 
             Assert.That(allTenantLookup, Is.Not.Null);
             Assert.That(mismatch, Is.Null);
             Assert.That(missing, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task GetAuthorizationGrantAsyncRequiresExplicitTenantScope()
+    {
+        await using var scope = CreateAsyncScope();
+        var adminRepository = GetAuthorizationGrantAdministrationRepository(scope.ServiceProvider);
+        var grantId = Guid.NewGuid();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.ThrowsAsync<ArgumentException>(() => adminRepository.GetAuthorizationGrantAsync(new AuthorizationGrantAdministrationLookupRequest(grantId), Now));
+            Assert.ThrowsAsync<ArgumentException>(() => adminRepository.GetAuthorizationGrantAsync(
+                new AuthorizationGrantAdministrationLookupRequest(grantId, TenantContext.Global, IncludeAllTenants: true),
+                Now));
         }
     }
 

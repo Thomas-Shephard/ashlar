@@ -23,6 +23,7 @@ public sealed class PostgresAuthorizationGrantAdministrationRepository(IPostgres
     public Task<IReadOnlyList<AuthorizationGrantAdministrationSummary>> SearchAuthorizationGrantsAsync(SearchAuthorizationGrantsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        SearchAuthorizationGrantsRequest.ThrowIfInvalid(request);
 
         var parameters = new DynamicParameters();
         var sql = SelectSql + " WHERE 1 = 1";
@@ -49,6 +50,7 @@ public sealed class PostgresAuthorizationGrantAdministrationRepository(IPostgres
     public Task<AuthorizationGrantAdministrationSummary?> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        AuthorizationGrantAdministrationLookupRequest.ThrowIfInvalid(request);
 
         var parameters = new DynamicParameters();
         parameters.Add("Id", request.GrantId);

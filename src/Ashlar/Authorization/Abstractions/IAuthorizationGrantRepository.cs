@@ -24,12 +24,13 @@ public interface IAuthorizationGrantRepository
     Task<IReadOnlyList<AuthorizationGrant>> ListGrantsAsync(ListAuthorizationGrantsRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets one grant by identifier.
+    /// Gets one grant by identifier within the requested tenant boundary.
     /// </summary>
     /// <param name="grantId">Identifier of the grant to retrieve.</param>
+    /// <param name="tenantId">Tenant boundary that must match the grant. A <see langword="null" /> value matches only global grants.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
-    /// <returns>Matching grant, or <see langword="null" /> when no grant exists.</returns>
-    Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, CancellationToken cancellationToken = default);
+    /// <returns>Matching grant, or <see langword="null" /> when no grant exists in the requested tenant boundary.</returns>
+    Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, Guid? tenantId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Marks an active grant as revoked.

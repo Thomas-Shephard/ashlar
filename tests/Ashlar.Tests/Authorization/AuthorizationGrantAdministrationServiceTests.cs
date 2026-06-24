@@ -148,7 +148,6 @@ internal sealed class AuthorizationGrantAdministrationServiceTests
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value!.Items.Single().Permission, Is.EqualTo("read"));
             Assert.That(typeof(AuthorizationGrantAdministrationSummary).GetProperty("Metadata"), Is.Null);
-            Assert.That(typeof(AuthorizationGrantAdministrationSummary).GetProperty("Metadata"), Is.Null);
         }
     }
 

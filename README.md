@@ -1097,7 +1097,7 @@ var result = await authorizationEvaluator.EvaluateAsync(new AuthorizationEvaluat
     TenantId: tenantId,
     ScopeType: "project",
     ScopeId: projectId.ToString("D"),
-    Permission: "posts.edit"));
+    Role: "reviewer"));
 
 if (!result.Succeeded)
 {
@@ -1105,9 +1105,9 @@ if (!result.Succeeded)
 }
 ```
 
-Scope matching is explicit. A scoped grant applies only when the evaluation request uses the same tenant, scope type, and scope id. A global grant is represented by omitting tenant and scope values.
+Scope matching is explicit. A global grant omits tenant and scope values, a tenant-wide grant has a `TenantId` and no scope values, and a scoped grant has the same tenant, scope type, and scope id as the evaluation request. Listing grants is tenant-boundary exact: `TenantId = null` lists global grants only, and a tenant id lists only grants for that tenant. Use the administrator search models with `IncludeAllTenants = true` for deliberate all-tenant operations views.
 
-Grant revocation is tenant-scoped. Callers must pass the tenant context they are authorized to administer; a null tenant revokes only global grants and does not match tenant grants.
+Grant revocation is tenant-scoped. Callers must pass the tenant context they are authorized to administer; a null tenant revokes only global grants and does not match tenant grants. Out-of-bound revocation attempts return the same public result shape as a missing grant and do not disclose the grant owner.
 
 ### ASP.NET Core Authorization
 Use **Ashlar.AspNetCore** to integrate Ashlar grants with standard ASP.NET Core authorization policies:

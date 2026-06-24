@@ -231,17 +231,11 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
             throw new ArgumentException("Grant id must not be empty.", nameof(request));
         }
 
-        var grant = await _repository.GetGrantAsync(request.GrantId, cancellationToken);
+        var grant = await _repository.GetGrantAsync(request.GrantId, request.TenantId, cancellationToken);
         if (grant == null)
         {
             await RecordRevokeFailureAsync(request, "grant_not_found", cancellationToken);
             return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.NotFound, request.GrantId, request.TenantId);
-        }
-
-        if (grant.TenantId != request.TenantId)
-        {
-            await RecordRevokeFailureAsync(request, "tenant_mismatch", cancellationToken);
-            return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.TenantMismatch, request.GrantId, request.TenantId, grant.UserId);
         }
 
         var revoked = await _repository.RevokeGrantAsync(request.GrantId, request.TenantId, _timeProvider.GetUtcNow(), cancellationToken);

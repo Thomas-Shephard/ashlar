@@ -42,6 +42,7 @@ public sealed class SqliteAuthorizationGrantAdministrationRepository(ISqliteConn
     public Task<IReadOnlyList<AuthorizationGrantAdministrationSummary>> SearchAuthorizationGrantsAsync(SearchAuthorizationGrantsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        SearchAuthorizationGrantsRequest.ThrowIfInvalid(request);
 
         return SqliteQuery.QueryAsync(
             _connectionProvider,
@@ -60,6 +61,7 @@ public sealed class SqliteAuthorizationGrantAdministrationRepository(ISqliteConn
     public Task<AuthorizationGrantAdministrationSummary?> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        AuthorizationGrantAdministrationLookupRequest.ThrowIfInvalid(request);
 
         return SqliteQuery.QuerySingleAsync(
             _connectionProvider,

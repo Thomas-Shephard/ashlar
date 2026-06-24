@@ -25,7 +25,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
 
         await repository.CreateGrantAsync(grant);
 
-        var fetched = await repository.GetGrantAsync(grant.Id);
+        var fetched = await repository.GetGrantAsync(grant.Id, grant.TenantId);
 
         Assert.That(fetched, Is.Not.Null);
         using (Assert.EnterMultipleScope())
@@ -50,7 +50,37 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         await using var scope = CreateAsyncScope();
         var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
 
-        Assert.That(await repository.GetGrantAsync(Guid.NewGuid()), Is.Null);
+        Assert.That(await repository.GetGrantAsync(Guid.NewGuid(), null), Is.Null);
+    }
+
+    [Test]
+    public async Task TenantBoundedGetGrantMatchesOnlyRequestedTenantBoundary()
+    {
+        await using var scope = CreateAsyncScope();
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var tenantUser = await CreateUserAsync(GetUserRepository(scope.ServiceProvider), tenantId: tenantId);
+        var globalUser = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
+        var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
+        var tenantGrant = CreateGrant(tenantUser.Id, tenantId, permission: "tenant.read");
+        var globalGrant = CreateGrant(globalUser.Id, permission: "global.read");
+        await repository.CreateGrantAsync(tenantGrant);
+        await repository.CreateGrantAsync(globalGrant);
+
+        var matchingTenant = await repository.GetGrantAsync(tenantGrant.Id, tenantId);
+        var tenantAsGlobal = await repository.GetGrantAsync(tenantGrant.Id, null);
+        var tenantAsOtherTenant = await repository.GetGrantAsync(tenantGrant.Id, otherTenantId);
+        var matchingGlobal = await repository.GetGrantAsync(globalGrant.Id, null);
+        var globalAsTenant = await repository.GetGrantAsync(globalGrant.Id, tenantId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(matchingTenant?.Id, Is.EqualTo(tenantGrant.Id));
+            Assert.That(tenantAsGlobal, Is.Null);
+            Assert.That(tenantAsOtherTenant, Is.Null);
+            Assert.That(matchingGlobal?.Id, Is.EqualTo(globalGrant.Id));
+            Assert.That(globalAsTenant, Is.Null);
+        }
     }
 
     [Test]
@@ -89,14 +119,102 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         await repository.CreateGrantAsync(global);
 
         var exactGlobal = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(globalUser.Id, ActiveOnly: true, ExactMatch: true));
-        var broad = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(user.Id, ActiveOnly: true));
+        var globalBoundaryForTenantUser = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(user.Id, ActiveOnly: true));
         var scopedResult = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(user.Id, scoped.TenantId, scoped.ScopeType, scoped.ScopeId, ActiveOnly: true));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exactGlobal.Select(grant => grant.Id), Is.EquivalentTo(new[] { global.Id }));
-            Assert.That(broad.Select(grant => grant.Id), Is.EquivalentTo(new[] { scoped.Id }));
+            Assert.That(globalBoundaryForTenantUser, Is.Empty);
             Assert.That(scopedResult.Select(grant => grant.Id), Is.EquivalentTo(new[] { scoped.Id }));
+        }
+    }
+
+    [Test]
+    public async Task NullTenantListReturnsOnlyGlobalGrants()
+    {
+        await using var scope = CreateAsyncScope();
+        var tenantId = Guid.NewGuid();
+        var tenantUser = await CreateUserAsync(GetUserRepository(scope.ServiceProvider), tenantId: tenantId);
+        var globalUser = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
+        var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
+        var tenantGrant = CreateGrant(tenantUser.Id, tenantId, permission: "tenant.read");
+        var globalGrant = CreateGrant(globalUser.Id, permission: "global.read");
+        await repository.CreateGrantAsync(tenantGrant);
+        await repository.CreateGrantAsync(globalGrant);
+
+        var tenantUserGlobalBoundary = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUser.Id, ActiveOnly: true));
+        var globalUserGlobalBoundary = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(globalUser.Id, ActiveOnly: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tenantUserGlobalBoundary, Is.Empty);
+            Assert.That(globalUserGlobalBoundary.Select(grant => grant.Id), Is.EquivalentTo(new[] { globalGrant.Id }));
+        }
+    }
+
+    [Test]
+    public async Task TenantListReturnsOnlyRequestedTenantGrants()
+    {
+        await using var scope = CreateAsyncScope();
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var tenantUser = await CreateUserAsync(GetUserRepository(scope.ServiceProvider), tenantId: tenantId);
+        var otherTenantUser = await CreateUserAsync(GetUserRepository(scope.ServiceProvider), tenantId: otherTenantId);
+        var globalUser = await CreateUserAsync(GetUserRepository(scope.ServiceProvider));
+        var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
+        var matching = CreateGrant(tenantUser.Id, tenantId, permission: "tenant.read");
+        await repository.CreateGrantAsync(matching);
+        await repository.CreateGrantAsync(CreateGrant(otherTenantUser.Id, otherTenantId, permission: "other.read"));
+        await repository.CreateGrantAsync(CreateGrant(globalUser.Id, permission: "global.read"));
+
+        var grants = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUser.Id, tenantId, ActiveOnly: true));
+
+        Assert.That(grants.Select(grant => grant.Id), Is.EquivalentTo(new[] { matching.Id }));
+    }
+
+    [Test]
+    public async Task BroadScopeMatchingDoesNotBroadenTenantBoundary()
+    {
+        await using var scope = CreateAsyncScope();
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var tenantUser = await CreateUserAsync(GetUserRepository(scope.ServiceProvider), tenantId: tenantId);
+        var otherTenantUser = await CreateUserAsync(GetUserRepository(scope.ServiceProvider), tenantId: otherTenantId);
+        var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
+        var broadTenantGrant = CreateGrant(tenantUser.Id, tenantId, permission: "tenant.broad");
+        var scopedTenantGrant = CreateGrant(tenantUser.Id, tenantId, "project", "alpha", permission: "tenant.scoped");
+        await repository.CreateGrantAsync(broadTenantGrant);
+        await repository.CreateGrantAsync(scopedTenantGrant);
+        await repository.CreateGrantAsync(CreateGrant(otherTenantUser.Id, otherTenantId, permission: "other.broad"));
+
+        var broadScope = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUser.Id, tenantId, "project", "alpha", ActiveOnly: true));
+        var exactScope = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(tenantUser.Id, tenantId, "project", "alpha", ActiveOnly: true, ExactMatch: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(broadScope.Select(grant => grant.Id), Is.EquivalentTo(new[] { broadTenantGrant.Id, scopedTenantGrant.Id }));
+            Assert.That(exactScope.Select(grant => grant.Id), Is.EquivalentTo(new[] { scopedTenantGrant.Id }));
+        }
+    }
+
+    [Test]
+    public async Task MalformedScopeFilterReturnsNoGrants()
+    {
+        await using var scope = CreateAsyncScope();
+        var tenantId = Guid.NewGuid();
+        var user = await CreateUserAsync(GetUserRepository(scope.ServiceProvider), tenantId: tenantId);
+        var repository = GetAuthorizationGrantRepository(scope.ServiceProvider);
+        var tenantWideGrant = CreateGrant(user.Id, tenantId, permission: "tenant.broad");
+        await repository.CreateGrantAsync(tenantWideGrant);
+
+        var missingScopeId = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(user.Id, tenantId, ScopeType: "project", ActiveOnly: true));
+        var missingScopeType = await repository.ListGrantsAsync(new ListAuthorizationGrantsRequest(user.Id, tenantId, ScopeId: "alpha", ActiveOnly: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missingScopeId, Is.Empty);
+            Assert.That(missingScopeType, Is.Empty);
         }
     }
 
@@ -147,8 +265,8 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(await repository.GetGrantAsync(tenantGrant.Id), Is.Not.Null);
-            Assert.That(await repository.GetGrantAsync(globalGrant.Id), Is.Not.Null);
+            Assert.That(await repository.GetGrantAsync(tenantGrant.Id, tenantGrant.TenantId), Is.Not.Null);
+            Assert.That(await repository.GetGrantAsync(globalGrant.Id, globalGrant.TenantId), Is.Not.Null);
         }
     }
 
@@ -212,7 +330,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
 
         var first = await repository.RevokeGrantAsync(grant.Id, grant.TenantId, firstRevokedAt);
         var second = await repository.RevokeGrantAsync(grant.Id, grant.TenantId, secondRevokedAt);
-        var fetched = await repository.GetGrantAsync(grant.Id);
+        var fetched = await repository.GetGrantAsync(grant.Id, grant.TenantId);
 
         using (Assert.EnterMultipleScope())
         {
@@ -235,7 +353,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
 
         var wrongTenant = await repository.RevokeGrantAsync(global.Id, requestedTenantId, Now.AddMinutes(1));
         var nullTenant = await repository.RevokeGrantAsync(global.Id, null, revokedAt);
-        var fetched = await repository.GetGrantAsync(global.Id);
+        var fetched = await repository.GetGrantAsync(global.Id, global.TenantId);
 
         using (Assert.EnterMultipleScope())
         {
@@ -257,7 +375,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
 
         var wrongTenant = await repository.RevokeGrantAsync(grant.Id, Guid.NewGuid(), Now.AddMinutes(1));
         var nullTenant = await repository.RevokeGrantAsync(grant.Id, null, Now.AddMinutes(2));
-        var fetched = await repository.GetGrantAsync(grant.Id);
+        var fetched = await repository.GetGrantAsync(grant.Id, grant.TenantId);
 
         using (Assert.EnterMultipleScope())
         {
@@ -279,7 +397,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
         await repository.CreateGrantAsync(grant);
 
         var revoked = await repository.RevokeGrantAsync(grant.Id, grant.TenantId, revokedAt);
-        var fetched = await repository.GetGrantAsync(grant.Id);
+        var fetched = await repository.GetGrantAsync(grant.Id, grant.TenantId);
 
         using (Assert.EnterMultipleScope())
         {
@@ -321,7 +439,7 @@ internal abstract class AuthorizationGrantRepositoryContractTests : ProviderCont
 
         await using var verificationScope = CreateAsyncScope();
         var verificationRepository = GetAuthorizationGrantRepository(verificationScope.ServiceProvider);
-        Assert.That(await verificationRepository.GetGrantAsync(grantId), Is.Null);
+        Assert.That(await verificationRepository.GetGrantAsync(grantId, null), Is.Null);
     }
 
     private static AuthorizationGrant CreateGrant(

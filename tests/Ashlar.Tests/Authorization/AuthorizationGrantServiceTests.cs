@@ -323,10 +323,10 @@ internal sealed class AuthorizationGrantServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.TenantMismatch));
+            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.NotFound));
             Assert.That(revoked.GrantId, Is.EqualTo(grant.Id));
             Assert.That(revoked.TenantId, Is.Null);
-            Assert.That(revoked.UserId, Is.EqualTo(userId));
+            Assert.That(revoked.UserId, Is.Null);
             Assert.That(grant.RevokedAt, Is.Null);
             Assert.That(_repository.RevokeCalls, Is.Zero);
         }
@@ -343,10 +343,10 @@ internal sealed class AuthorizationGrantServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.TenantMismatch));
+            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.NotFound));
             Assert.That(revoked.GrantId, Is.EqualTo(grant.Id));
             Assert.That(revoked.TenantId, Is.Not.Null);
-            Assert.That(revoked.UserId, Is.EqualTo(userId));
+            Assert.That(revoked.UserId, Is.Null);
             Assert.That(grant.RevokedAt, Is.Null);
             Assert.That(_repository.RevokeCalls, Is.Zero);
         }
@@ -365,10 +365,10 @@ internal sealed class AuthorizationGrantServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.TenantMismatch));
+            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.NotFound));
             Assert.That(revoked.GrantId, Is.EqualTo(grant.Id));
             Assert.That(revoked.TenantId, Is.Not.EqualTo(tenantId));
-            Assert.That(revoked.UserId, Is.EqualTo(userId));
+            Assert.That(revoked.UserId, Is.Null);
             Assert.That(grant.RevokedAt, Is.Null);
             Assert.That(_repository.RevokeCalls, Is.Zero);
         }
@@ -487,7 +487,7 @@ internal sealed class AuthorizationGrantServiceTests
     }
 
     [Test]
-    public async Task RevokeGrantAsyncShouldAuditTenantMismatchWithoutGrantDetails()
+    public async Task RevokeGrantAsyncShouldAuditOutOfScopeRevocationWithoutGrantDetails()
     {
         var auditSink = new RecordingSecurityEventSink();
         var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
@@ -503,13 +503,13 @@ internal sealed class AuthorizationGrantServiceTests
         var revokedEvent = auditSink.Events.Single(securityEvent => securityEvent.EventType == AshlarSecurityEventTypes.AuthorizationGrantRevoked);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.TenantMismatch));
+            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.NotFound));
             Assert.That(revoked.GrantId, Is.EqualTo(grant.Id));
             Assert.That(revoked.TenantId, Is.EqualTo(requestedTenantId));
-            Assert.That(revoked.UserId, Is.EqualTo(userId));
+            Assert.That(revoked.UserId, Is.Null);
             Assert.That(revokedEvent.UserId, Is.Null);
             Assert.That(revokedEvent.TenantId, Is.EqualTo(requestedTenantId));
-            Assert.That(revokedEvent.FailureReason, Is.EqualTo("tenant_mismatch"));
+            Assert.That(revokedEvent.FailureReason, Is.EqualTo("grant_not_found"));
             Assert.That(revokedEvent.Properties?["grant_id"], Is.EqualTo(grant.Id.ToString("D")));
             Assert.That(revokedEvent.Properties?.ContainsKey("grant_type"), Is.False);
             Assert.That(revokedEvent.Properties?.ContainsKey("grant_value"), Is.False);
@@ -553,6 +553,54 @@ internal sealed class AuthorizationGrantServiceTests
             Assert.That(_repository.LastListRequest?.ScopeType, Is.EqualTo("project"));
             Assert.That(_repository.LastListRequest?.ScopeId, Is.EqualTo("abc"));
         }
+    }
+
+    [Test]
+    public async Task ListGrantsAsyncShouldReturnOnlyGlobalGrantsWhenTenantIsNull()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var global = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, Permission = "global", CreatedAt = _timeProvider.GetUtcNow() };
+        var tenant = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, TenantId = tenantId, Permission = "tenant", CreatedAt = _timeProvider.GetUtcNow() };
+        _repository.Grants.Add(global);
+        _repository.Grants.Add(tenant);
+
+        var grants = await _service.ListGrantsAsync(new ListAuthorizationGrantsRequest(userId));
+
+        Assert.That(grants.Select(grant => grant.Id), Is.EquivalentTo(new[] { global.Id }));
+    }
+
+    [Test]
+    public async Task ListGrantsAsyncShouldReturnOnlyRequestedTenantGrants()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var matching = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, TenantId = tenantId, Permission = "tenant", CreatedAt = _timeProvider.GetUtcNow() };
+        var global = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, Permission = "global", CreatedAt = _timeProvider.GetUtcNow() };
+        var otherTenant = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, TenantId = otherTenantId, Permission = "other", CreatedAt = _timeProvider.GetUtcNow() };
+        _repository.Grants.AddRange([matching, global, otherTenant]);
+
+        var grants = await _service.ListGrantsAsync(new ListAuthorizationGrantsRequest(userId, tenantId));
+
+        Assert.That(grants.Select(grant => grant.Id), Is.EquivalentTo(new[] { matching.Id }));
+    }
+
+    [Test]
+    public async Task ListGrantsAsyncShouldAllowBroadScopeWithoutBroadeningTenantBoundary()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var broadTenantGrant = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, TenantId = tenantId, Permission = "tenant", CreatedAt = _timeProvider.GetUtcNow() };
+        var scopedTenantGrant = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, TenantId = tenantId, ScopeType = "project", ScopeId = "alpha", Permission = "scoped", CreatedAt = _timeProvider.GetUtcNow() };
+        var broadOtherTenantGrant = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, TenantId = otherTenantId, Permission = "other", CreatedAt = _timeProvider.GetUtcNow() };
+        var broadGlobalGrant = new AuthorizationGrant { Id = Guid.NewGuid(), UserId = userId, Permission = "global", CreatedAt = _timeProvider.GetUtcNow() };
+        _repository.Grants.AddRange([broadTenantGrant, scopedTenantGrant, broadOtherTenantGrant, broadGlobalGrant]);
+
+        var grants = await _service.ListGrantsAsync(new ListAuthorizationGrantsRequest(userId, tenantId, "project", "alpha"));
+
+        Assert.That(grants.Select(grant => grant.Id), Is.EquivalentTo(new[] { broadTenantGrant.Id, scopedTenantGrant.Id }));
     }
 
     [Test]
@@ -605,12 +653,18 @@ internal sealed class AuthorizationGrantServiceTests
         public Task<IReadOnlyList<AuthorizationGrant>> ListGrantsAsync(ListAuthorizationGrantsRequest request, CancellationToken cancellationToken = default)
         {
             LastListRequest = request;
-            return Task.FromResult<IReadOnlyList<AuthorizationGrant>>(Grants);
+            var results = Grants
+                .Where(grant => grant.UserId == request.UserId)
+                .Where(grant => grant.TenantId == request.TenantId)
+                .Where(grant => MatchesScope(grant, request))
+                .Where(grant => !request.ActiveOnly || grant.RevokedAt == null && (grant.ExpiresAt == null || grant.ExpiresAt > DateTimeOffset.UtcNow))
+                .ToList();
+            return Task.FromResult<IReadOnlyList<AuthorizationGrant>>(results);
         }
 
-        public Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, CancellationToken cancellationToken = default)
+        public Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, Guid? tenantId, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(Grants.FirstOrDefault(grant => grant.Id == grantId));
+            return Task.FromResult(Grants.FirstOrDefault(grant => grant.Id == grantId && grant.TenantId == tenantId));
         }
 
         public Task<bool> RevokeGrantAsync(Guid grantId, Guid? tenantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default)
@@ -625,6 +679,21 @@ internal sealed class AuthorizationGrantServiceTests
 
             grant.RevokedAt = revokedAt;
             return Task.FromResult(true);
+        }
+
+        private static bool MatchesScope(AuthorizationGrant grant, ListAuthorizationGrantsRequest request)
+        {
+            if (request.ExactMatch)
+            {
+                return grant.ScopeType == request.ScopeType && grant.ScopeId == request.ScopeId;
+            }
+
+            if (request.ScopeType == null && request.ScopeId == null)
+            {
+                return true;
+            }
+
+            return grant.ScopeType == null && grant.ScopeId == null || grant.ScopeType == request.ScopeType && grant.ScopeId == request.ScopeId;
         }
     }
 
@@ -687,7 +756,7 @@ internal sealed class AuthorizationGrantServiceTests
             throw new NotSupportedException();
         }
 
-        public Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, CancellationToken cancellationToken = default)
+        public Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, Guid? tenantId, CancellationToken cancellationToken = default)
         {
             return Task.FromResult<AuthorizationGrant?>(null);
         }
