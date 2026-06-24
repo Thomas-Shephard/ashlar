@@ -25,11 +25,18 @@ namespace Ashlar.Postgres.Tests.Smoke;
 
 internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
 {
+    private const string TestRemoteIpHeader = "X-Ashlar-Test-Remote-Ip";
     private SampleApplicationFactory? _factory;
     private HttpClient? _adminClient;
+    private int _nextRemoteIpOctet = 10;
     private readonly Dictionary<string, string?> _previousEnvironmentValues = new(StringComparer.Ordinal);
 
     private HttpClient AdminClient => _adminClient ?? throw new InvalidOperationException("The test client has not been initialized.");
+
+    private string NextTestRemoteIpAddress()
+    {
+        return $"203.0.113.{Interlocked.Increment(ref _nextRemoteIpOctet)}";
+    }
 
     public override async Task OneTimeSetUp()
     {
@@ -521,6 +528,8 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
 
     private async Task SignInWithMagicLinkAsync(HttpClient client, string email)
     {
+        client.DefaultRequestHeaders.Remove(TestRemoteIpHeader);
+        client.DefaultRequestHeaders.Add(TestRemoteIpHeader, NextTestRemoteIpAddress());
         var requested = await client.PostAsJsonAsync("/api/auth/magic-link/request", new { email });
         Assert.That(requested.StatusCode, Is.EqualTo(HttpStatusCode.Accepted));
 
@@ -1087,6 +1096,12 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             {
                 app.Use(async (context, nextMiddleware) =>
                 {
+                    if (context.Request.Headers.TryGetValue(TestRemoteIpHeader, out var remoteIp)
+                        && IPAddress.TryParse(remoteIp.FirstOrDefault(), out var parsedRemoteIp))
+                    {
+                        context.Connection.RemoteIpAddress = parsedRemoteIp;
+                    }
+
                     context.Connection.RemoteIpAddress ??= IPAddress.Loopback;
                     if (context.Request.Path == "/__test/external-google-ticket")
                     {

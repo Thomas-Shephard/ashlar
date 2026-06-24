@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using Ashlar.Auditing;
 using Ashlar.Identity.Providers.Email;
 using Ashlar.Identity.Providers.Local;
+using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Messaging;
@@ -45,6 +46,9 @@ internal sealed class EmailCodeSignInTests
             Assert.That(AllAuditText(fixture), Does.Not.Contain(code));
             Assert.That(AllAuditText(fixture), Does.Not.Contain("USER@EXAMPLE.COM"));
             Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
+            var requestAttempts = fixture.RateLimiter.Attempts.Where(a => a.Purpose == "email-code-request").ToArray();
+            Assert.That(requestAttempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("email-code-request", "source", "source:ip:127.0.0.1")));
+            Assert.That(requestAttempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("email-code-request", "email", "email:USER@EXAMPLE.COM")));
         }
     }
 
@@ -93,16 +97,43 @@ internal sealed class EmailCodeSignInTests
     }
 
     [Test]
-    public async Task RequestRateLimitBlocksSending()
+    public async Task RequestSourceRateLimitBlocksBeforeEmailLimitAndIssuance()
     {
         var fixture = CreateFixture(_user, requestAllowed: false);
 
-        await fixture.Service.RequestCodeAsync(_user.Email);
+        await fixture.Service.RequestCodeAsync(_user.Email, new AuthenticationContext(IpAddress: "203.0.113.10"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fixture.EmailSender.Messages, Is.Empty);
             Assert.That(fixture.Repository.Credentials, Is.Empty);
+            Assert.That(fixture.Repository.GetUserByEmailCalls, Is.Zero);
+            Assert.That(fixture.RateLimiter.Attempts.Select(a => a.Key), Is.EqualTo(new[] { ExpectedRateLimitKey("email-code-request", "source", "source:ip:203.0.113.10") }));
+            var auditEvent = fixture.Audit.Events.Single();
+            Assert.That(auditEvent.EventType, Is.EqualTo(AshlarSecurityEventTypes.EmailCodeRequestRateLimited));
+            Assert.That(auditEvent.FailureReason, Is.EqualTo("rate_limited"));
+            Assert.That(AllAuditText(fixture), Does.Not.Contain(_user.Email));
+        }
+    }
+
+    [Test]
+    public async Task RequestEmailRateLimitBlocksAfterSourcePasses()
+    {
+        var fixture = CreateFixture(_user);
+        fixture.RateLimiter.BlockedKeys.Add(ExpectedRateLimitKey("email-code-request", "email", "email:USER@EXAMPLE.COM"));
+
+        await fixture.Service.RequestCodeAsync(_user.Email, new AuthenticationContext(IpAddress: "203.0.113.10"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.EmailSender.Messages, Is.Empty);
+            Assert.That(fixture.Repository.Credentials, Is.Empty);
+            Assert.That(fixture.Repository.GetUserByEmailCalls, Is.Zero);
+            Assert.That(fixture.RateLimiter.Attempts.Select(a => a.Key), Is.EqualTo(new[]
+            {
+                ExpectedRateLimitKey("email-code-request", "source", "source:ip:203.0.113.10"),
+                ExpectedRateLimitKey("email-code-request", "email", "email:USER@EXAMPLE.COM")
+            }));
             Assert.That(fixture.Audit.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.EmailCodeRequestRateLimited));
         }
     }
@@ -466,7 +497,7 @@ internal sealed class EmailCodeSignInTests
         var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());
         var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, orchestrator, time, audit);
         var service = new EmailCodeSignInService(dependencies, Options.Create(options ?? new EmailCodeSignInOptions()));
-        return new Fixture(service, repository, emailSender, audit, time);
+        return new Fixture(service, repository, emailSender, audit, time, rateLimiter);
     }
 
     private static AuthenticationOrchestrator CreateOrchestrator(IAuthenticationPipeline pipeline, User? user, bool requireMfa)
@@ -534,7 +565,20 @@ internal sealed class EmailCodeSignInTests
         return string.Join("|", fixture.Audit.Events.SelectMany(e => new[] { e.EventType, e.FailureReason }.Concat(e.Properties?.Values ?? [])));
     }
 
-    private sealed record Fixture(EmailCodeSignInService Service, InMemoryUserCredentialStore Repository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time);
+    private sealed record Fixture(EmailCodeSignInService Service, InMemoryUserCredentialStore Repository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, StubRateLimiter RateLimiter);
+
+    private static string ExpectedRateLimitKey(string purpose, string dimensionName, string dimensionValue)
+    {
+        var composed = string.Join('|',
+            EncodeRateLimitKeySegment(purpose),
+            EncodeRateLimitKeySegment(AuthenticationRateLimitKeyBuilder.NormalizeProviderSelector(AuthenticationProviderKey.EmailCode)),
+            EncodeRateLimitKeySegment("global"),
+            EncodeRateLimitKeySegment(dimensionName),
+            EncodeRateLimitKeySegment(dimensionValue));
+        return AuthenticationRateLimitKeyBuilder.HashKey(composed);
+    }
+
+    private static string EncodeRateLimitKeySegment(string value) => $"{value.Length}:{value}";
 
     private sealed class TestPasswordHasher : IPasswordHasher
     {
@@ -553,9 +597,14 @@ internal sealed class EmailCodeSignInTests
 
     private sealed class StubRateLimiter(bool requestAllowed, bool verifyAllowed, TimeProvider timeProvider) : IAuthenticationRateLimiter
     {
+        public List<RateLimitAttempt> Attempts { get; } = [];
+        public HashSet<string> BlockedKeys { get; } = [];
+
         public Task<RateLimitDecision> CheckAsync(RateLimitAttempt attempt, RateLimitRule rule, CancellationToken cancellationToken = default)
         {
-            var allowed = attempt.Purpose == "email-code-request" ? requestAllowed : verifyAllowed;
+            Attempts.Add(attempt);
+            var allowed = (attempt.Purpose == "email-code-request" ? requestAllowed : verifyAllowed)
+                && !BlockedKeys.Contains(attempt.Key);
             return Task.FromResult(new RateLimitDecision
             {
                 Status = allowed ? RateLimitStatus.Allowed : RateLimitStatus.Blocked,
@@ -600,8 +649,13 @@ internal sealed class EmailCodeSignInTests
     {
         private readonly List<User> _users = users.OfType<User>().ToList();
         public List<UserCredential> Credentials { get; } = [];
+        public int GetUserByEmailCalls { get; private set; }
 
-        public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(_users.SingleOrDefault(u => string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase)));
+        public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
+        {
+            GetUserByEmailCalls++;
+            return Task.FromResult<IUser?>(_users.SingleOrDefault(u => string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase)));
+        }
         public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(_users.SingleOrDefault(u => u.Id == userId));
         public Task<UserCredential?> GetCredentialForUserAsync(Guid userId, ProviderType type, string providerName, string? providerKey = null, CancellationToken cancellationToken = default) => Task.FromResult(Credentials.SingleOrDefault(c => c.UserId == userId && c.ProviderType == type && string.Equals(c.ProviderName, providerName, StringComparison.OrdinalIgnoreCase) && (providerKey == null || c.ProviderKey == providerKey))?.Clone());
         public Task<IUser?> GetUserByProviderKeyAsync(ProviderType type, string providerName, string providerKey, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(null);

@@ -176,7 +176,7 @@ if (authenticationResult.Status == MfaAuthenticationStatus.Succeeded && authenti
 return Results.BadRequest();
 ```
 
-`RequestLinkAsync` does not reveal whether an email address belongs to an active user. Generated links are stored as hashed credentials, expire according to `LinkLifetime`, and the default request and verification rate limits can be changed through `MagicLinkSignInOptions`. Successful magic-link and email-code assertions consume their backing credential so the same token or code cannot be replayed. `VerifyLinkAsync` returns `MfaAuthenticationResult`: `Succeeded` means session issuance is safe from an MFA-policy perspective, and `MfaRequired` includes the `HandshakeToken` and required factors to continue verification.
+`RequestLinkAsync` does not reveal whether an email address belongs to an active user. Generated links are stored as hashed credentials, expire according to `LinkLifetime`, and the default request and verification rate limits can be changed through `MagicLinkSignInOptions`. Magic-link and email-code request throttling checks the request source before the target email address so a single source cannot issue live sign-in secrets across many addresses while staying under each per-email limit. Successful magic-link and email-code assertions consume their backing credential so the same token or code cannot be replayed. `VerifyLinkAsync` returns `MfaAuthenticationResult`: `Succeeded` means session issuance is safe from an MFA-policy perspective, and `MfaRequired` includes the `HandshakeToken` and required factors to continue verification.
 
 Magic-link and one-time-code emails are classified as `EmailMessageSensitivity.ContainsLiveSecret`.
 

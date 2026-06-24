@@ -52,6 +52,13 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
         context = (context ?? new AuthenticationContext()) with { Email = normalizedEmail };
 
         var signInOptions = _options.Value;
+        var sourceRateLimit = await CheckRateLimitAsync(AuthenticationRateLimitDimensions.Source(context), RequestPurpose, context, signInOptions.RequestRateLimit, cancellationToken);
+        if (!sourceRateLimit.IsAllowed)
+        {
+            await RecordAsync(AshlarSecurityEventTypes.MagicLinkRequestRateLimited, SecurityEventOutcomes.Failure, context, null, "rate_limited", cancellationToken);
+            return;
+        }
+
         var rateLimit = await CheckRateLimitAsync(AuthenticationRateLimitDimensions.Email(normalizedEmail), RequestPurpose, context, signInOptions.RequestRateLimit, cancellationToken);
         if (!rateLimit.IsAllowed)
         {
