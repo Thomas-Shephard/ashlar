@@ -8,6 +8,7 @@ namespace Ashlar.Tests.Identity.RateLimiting;
 internal sealed class AuthenticationRateLimitAdministrationServiceTests
 {
     private static readonly DateTimeOffset Now = new(2026, 6, 1, 12, 0, 0, TimeSpan.Zero);
+    private static readonly string[] ResetAuditPropertyNames = ["bucket_id", "purpose", "reset_status"];
 
     [Test]
     public async Task SearchBucketsAsyncValidatesRequestAndCapsLimit()
@@ -77,43 +78,132 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     }
 
     [Test]
-    public async Task ResetBucketAsyncAuditsSuccessfulResetOnly()
+    public async Task ResetBucketAsyncAuditsSuccessfulReset()
     {
         var repository = new RecordingRepository { ResetResult = true };
         var sink = new CapturingSecurityEventSink();
         var service = new AuthenticationRateLimitAdministrationService(
             repository,
             new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), sink));
-        var audit = new AuditContext(Guid.NewGuid(), "127.0.0.1", "tests", "correlation");
+        var actorUserId = Guid.NewGuid();
+        var audit = new AuditContext(actorUserId, "127.0.0.1", "tests", "correlation");
 
         var reset = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("opaque-id", "login", audit));
-        repository.ResetResult = false;
-        var missing = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("missing", "login", audit));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reset.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Reset));
-            Assert.That(missing.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.NotFound));
             Assert.That(sink.Events, Has.Count.EqualTo(1));
             var securityEvent = sink.Events[0];
             Assert.That(securityEvent.EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationRateLimitBucketReset));
+            Assert.That(securityEvent.OccurredAt, Is.EqualTo(Now));
+            Assert.That(securityEvent.ActorUserId, Is.EqualTo(actorUserId));
+            Assert.That(securityEvent.IpAddress, Is.EqualTo("127.0.0.1"));
+            Assert.That(securityEvent.UserAgent, Is.EqualTo("tests"));
+            Assert.That(securityEvent.CorrelationId, Is.EqualTo("correlation"));
+            Assert.That(securityEvent.Outcome, Is.EqualTo(SecurityEventOutcomes.Success));
             Assert.That(securityEvent.Properties, Is.Not.Null);
-            Assert.That(securityEvent.Properties!["purpose"], Is.EqualTo("login"));
-            Assert.That(securityEvent.Properties["bucket_id"], Is.EqualTo("opaque-id"));
-            Assert.That(securityEvent.Properties.Values, Has.None.Contains("127.0.0.1"));
-            Assert.That(securityEvent.Properties.Values, Has.None.Contains("correlation"));
+            AssertSafeResetProperties(securityEvent, "opaque-id", "login", AuthenticationRateLimitBucketResetStatus.Reset);
         }
     }
 
     [Test]
-    public async Task ResetBucketAsyncReturnsFailedWhenRepositoryThrows()
+    public async Task ResetBucketAsyncAuditsMissingBucket()
+    {
+        var repository = new RecordingRepository { ResetResult = false };
+        var sink = new CapturingSecurityEventSink();
+        var service = new AuthenticationRateLimitAdministrationService(
+            repository,
+            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), sink));
+        var audit = new AuditContext(Guid.NewGuid(), "127.0.0.1", "tests", "correlation");
+
+        var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("missing", "login", audit));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.NotFound));
+            Assert.That(sink.Events, Has.Count.EqualTo(1));
+            var securityEvent = sink.Events[0];
+            Assert.That(securityEvent.EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationRateLimitBucketReset));
+            Assert.That(securityEvent.Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+            AssertSafeResetProperties(securityEvent, "missing", "login", AuthenticationRateLimitBucketResetStatus.NotFound);
+        }
+    }
+
+    [Test]
+    public async Task ResetBucketAsyncReturnsFailedAndAuditsWhenRepositoryThrows()
     {
         var repository = new RecordingRepository { ThrowOnReset = true };
-        var service = new AuthenticationRateLimitAdministrationService(repository);
+        var sink = new CapturingSecurityEventSink();
+        var service = new AuthenticationRateLimitAdministrationService(
+            repository,
+            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), sink));
 
         var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "login", new AuditContext(Guid.NewGuid())));
 
-        Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Failed));
+            Assert.That(sink.Events, Has.Count.EqualTo(1));
+            var securityEvent = sink.Events[0];
+            Assert.That(securityEvent.EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationRateLimitBucketReset));
+            Assert.That(securityEvent.Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+            AssertSafeResetProperties(securityEvent, "bucket", "login", AuthenticationRateLimitBucketResetStatus.Failed);
+        }
+    }
+
+    [Test]
+    public async Task ResetBucketAsyncDoesNotAuditInvalidRequest()
+    {
+        var sink = new CapturingSecurityEventSink();
+        var service = new AuthenticationRateLimitAdministrationService(
+            new RecordingRepository(),
+            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), sink));
+
+        var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("bucket", "", new AuditContext(Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureDetails?.Code, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(sink.Events, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task ResetBucketAsyncAuditSinkFailureDoesNotChangeResult()
+    {
+        var repository = new RecordingRepository { ResetResult = true };
+        var sink = new ThrowingSecurityEventSink(new InvalidOperationException("sink failed"));
+        var service = new AuthenticationRateLimitAdministrationService(
+            repository,
+            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), sink));
+        var audit = new AuditContext(Guid.NewGuid(), "127.0.0.1", "tests", "correlation");
+
+        var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("opaque-id", "login", audit));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Reset));
+            AssertSafeResetProperties(sink.Events.Single(), "opaque-id", "login", AuthenticationRateLimitBucketResetStatus.Reset);
+        }
+    }
+
+    [Test]
+    public async Task ResetBucketAsyncAuditSinkCancellationDoesNotChangeResultWhenCallerDidNotCancel()
+    {
+        var repository = new RecordingRepository { ResetResult = false };
+        var sink = new ThrowingSecurityEventSink(new OperationCanceledException("sink canceled"));
+        var service = new AuthenticationRateLimitAdministrationService(
+            repository,
+            new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), sink));
+
+        var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("missing", "login", new AuditContext(Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.NotFound));
+            AssertSafeResetProperties(sink.Events.Single(), "missing", "login", AuthenticationRateLimitBucketResetStatus.NotFound);
+        }
     }
 
     [Test]
@@ -206,6 +296,39 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
         {
             Events.Add(securityEvent);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingSecurityEventSink(Exception exception) : ISecurityEventSink
+    {
+        public List<AshlarSecurityEvent> Events { get; } = [];
+
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            Events.Add(securityEvent);
+            throw exception;
+        }
+    }
+
+    private static void AssertSafeResetProperties(
+        AshlarSecurityEvent securityEvent,
+        string bucketId,
+        string purpose,
+        AuthenticationRateLimitBucketResetStatus status)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(securityEvent.Properties, Is.Not.Null);
+            Assert.That(securityEvent.Properties!.Keys, Is.EquivalentTo(ResetAuditPropertyNames));
+            Assert.That(securityEvent.Properties["purpose"], Is.EqualTo(purpose));
+            Assert.That(securityEvent.Properties["bucket_id"], Is.EqualTo(bucketId));
+            Assert.That(securityEvent.Properties["reset_status"], Is.EqualTo(status.ToString()));
+            Assert.That(securityEvent.Properties.Values, Has.None.Contains("127.0.0.1"));
+            Assert.That(securityEvent.Properties.Values, Has.None.Contains("correlation"));
+            Assert.That(securityEvent.Properties.Keys, Has.None.Contains("ip"));
+            Assert.That(securityEvent.Properties.Keys, Has.None.Contains("email"));
+            Assert.That(securityEvent.Properties.Keys, Has.None.Contains("user_id"));
+            Assert.That(securityEvent.Properties.Keys, Has.None.Contains("redis_key"));
         }
     }
 }

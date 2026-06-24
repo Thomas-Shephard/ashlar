@@ -21,7 +21,7 @@ public sealed class AuthenticationRateLimitAdministrationService(
 
     private readonly IAuthenticationRateLimitAdministrationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly TimeProvider _timeProvider = dependencies?.TimeProvider ?? TimeProvider.System;
-    private readonly ISecurityEventSink? _securityEventSink = dependencies?.SecurityEventSink;
+    private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider);
 
     /// <inheritdoc />
     public async Task<Result<AuthenticationRateLimitBucketSearchResult>> SearchBucketsAsync(SearchAuthenticationRateLimitBucketsRequest request, CancellationToken cancellationToken = default)
@@ -84,30 +84,53 @@ public sealed class AuthenticationRateLimitAdministrationService(
             var status = reset ? AuthenticationRateLimitBucketResetStatus.Reset : AuthenticationRateLimitBucketResetStatus.NotFound;
             var result = new AuthenticationRateLimitBucketResetResult(request.BucketId, request.Purpose, status);
 
-            if (reset && _securityEventSink != null)
-            {
-                await SecurityEventAuditEmission.RecordCompletedOperationAsync(
-                    _securityEventSink,
-                    _timeProvider,
-                    AshlarSecurityEventTypes.AuthenticationRateLimitBucketReset,
-                    request.Audit,
-                    new Dictionary<string, string>
-                    {
-                        ["purpose"] = request.Purpose,
-                        ["bucket_id"] = request.BucketId
-                    },
-                    cancellationToken);
-            }
+            await RecordResetAttemptAsync(request, status, cancellationToken);
 
             return Result.Success(result);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            return Result.Success(new AuthenticationRateLimitBucketResetResult(
+            var result = new AuthenticationRateLimitBucketResetResult(
                 request.BucketId,
                 request.Purpose,
-                AuthenticationRateLimitBucketResetStatus.Failed));
+                AuthenticationRateLimitBucketResetStatus.Failed);
+
+            await RecordResetAttemptAsync(request, result.Status, cancellationToken);
+
+            return Result.Success(result);
         }
+    }
+
+    private Task RecordResetAttemptAsync(
+        ResetAuthenticationRateLimitBucketRequest request,
+        AuthenticationRateLimitBucketResetStatus status,
+        CancellationToken cancellationToken)
+    {
+        var outcome = status == AuthenticationRateLimitBucketResetStatus.Reset
+            ? SecurityEventOutcomes.Success
+            : SecurityEventOutcomes.Failure;
+
+        return _securityEvents.RecordAsync(
+            new SecurityEventDescriptor
+            {
+                EventType = AshlarSecurityEventTypes.AuthenticationRateLimitBucketReset,
+                Audit = request.Audit,
+                Outcome = outcome,
+                Properties = CreateResetAttemptProperties(request, status)
+            },
+            cancellationToken);
+    }
+
+    private static Dictionary<string, string> CreateResetAttemptProperties(
+        ResetAuthenticationRateLimitBucketRequest request,
+        AuthenticationRateLimitBucketResetStatus status)
+    {
+        return new Dictionary<string, string>
+        {
+            ["purpose"] = request.Purpose,
+            ["bucket_id"] = request.BucketId,
+            ["reset_status"] = status.ToString()
+        };
     }
 
     private static bool TryValidateSearchRequest(SearchAuthenticationRateLimitBucketsRequest request, out Result<AuthenticationRateLimitBucketSearchResult> failure)
@@ -160,7 +183,7 @@ public sealed class AuthenticationRateLimitAdministrationService(
 /// Optional dependencies for authentication rate-limit administration operations.
 /// </summary>
 /// <param name="TimeProvider">Clock used for status projection and audit timestamps.</param>
-/// <param name="SecurityEventSink">Optional sink used to record successful reset events.</param>
+/// <param name="SecurityEventSink">Optional sink used to record reset attempt events.</param>
 public sealed record AuthenticationRateLimitAdministrationServiceDependencies(
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null);
