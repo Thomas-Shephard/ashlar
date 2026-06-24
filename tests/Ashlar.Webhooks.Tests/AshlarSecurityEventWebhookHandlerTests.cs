@@ -99,7 +99,11 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
                 endpoint.Name,
                 "/security-events",
                 TimeProvider.System,
-                new AshlarSecurityEventWebhookVerificationOptions { TimestampTolerance = TimeSpan.FromMinutes(10) }).IsValid, Is.True);
+                new AshlarSecurityEventWebhookVerificationOptions
+                {
+                    TimestampTolerance = TimeSpan.FromMinutes(10),
+                    ReplayStore = new RecordingReplayStore()
+                }).IsValid, Is.True);
         }
     }
 
@@ -119,7 +123,7 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     }
 
     [Test]
-    public void VerifyAcceptsValidSignature()
+    public void VerifyRequiresReplayStoreByDefault()
     {
         var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
         var headers = CreateSignedHeaders(now: now);
@@ -135,9 +139,59 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.ReplayStoreRequired));
+            Assert.That(result.FailureReason, Is.EqualTo("Replay store required."));
+        }
+    }
+
+    [Test]
+    public void VerifyRequiresReplayStoreWhenOptionsAreConfiguredWithoutStore()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var headers = CreateSignedHeaders(now: now);
+
+        var result = VerifySignature(
+            "body"u8,
+            headers,
+            "secret",
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now),
+            new AshlarSecurityEventWebhookVerificationOptions());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.ReplayStoreRequired));
+            Assert.That(result.FailureReason, Is.EqualTo("Replay store required."));
+        }
+    }
+
+    [Test]
+    public void VerifyAcceptsValidSignatureWithReplayStore()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var headers = CreateSignedHeaders(now: now);
+        var replayStore = new RecordingReplayStore();
+
+        var result = VerifySignature(
+            "body"u8,
+            headers,
+            "secret",
+            new Guid("11111111-1111-1111-1111-111111111111"),
+            "audit",
+            "/security-events?tenant=contoso",
+            new StaticTimeProvider(now),
+            new AshlarSecurityEventWebhookVerificationOptions { ReplayStore = replayStore });
+
+        using (Assert.EnterMultipleScope())
+        {
             Assert.That(result.IsValid, Is.True);
             Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.Valid));
             Assert.That(result.FailureReason, Is.Empty);
+            Assert.That(replayStore.Keys, Has.Count.EqualTo(1));
         }
     }
 
@@ -370,7 +424,10 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             "audit",
             "/security-events?tenant=contoso",
             new StaticTimeProvider(now),
-            new AshlarSecurityEventWebhookVerificationOptions { TimestampTolerance = TimeSpan.FromMinutes(5) });
+            new AshlarSecurityEventWebhookVerificationOptions
+            {
+                TimestampTolerance = TimeSpan.FromMinutes(5)
+            });
 
         Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.TimestampOutsideTolerance));
     }
@@ -388,7 +445,10 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             "audit",
             "/security-events?tenant=contoso",
             new StaticTimeProvider(DateTimeOffset.FromUnixTimeSeconds(1_800_000_000)),
-            new AshlarSecurityEventWebhookVerificationOptions { TimestampTolerance = TimeSpan.FromMinutes(5) });
+            new AshlarSecurityEventWebhookVerificationOptions
+            {
+                TimestampTolerance = TimeSpan.FromMinutes(5)
+            });
 
         Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.TimestampOutsideTolerance));
     }
@@ -431,7 +491,8 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             Guid.Parse(eventId),
             endpointName,
             destinationPathAndQuery,
-            new StaticTimeProvider(now));
+            new StaticTimeProvider(now),
+            new AshlarSecurityEventWebhookVerificationOptions { ReplayStore = new RecordingReplayStore() });
 
         Assert.That(result.IsValid, Is.EqualTo(expectedValid == 1));
         if (expectedValid == 0)
@@ -484,6 +545,9 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
     {
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(AshlarSecurityEventWebhookVerificationResult.Valid.IsValid, Is.True);
+            Assert.That(AshlarSecurityEventWebhookVerificationResult.Valid.Status, Is.EqualTo(AshlarSecurityEventWebhookVerificationStatus.Valid));
+            Assert.That(AshlarSecurityEventWebhookVerificationResult.Valid.FailureReason, Is.Empty);
             Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingSignature).FailureReason, Is.EqualTo("Missing signature."));
             Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MalformedSignature).FailureReason, Is.EqualTo("Malformed signature."));
             Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingTimestamp).FailureReason, Is.EqualTo("Missing signature timestamp."));
@@ -492,6 +556,9 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingSecret).FailureReason, Is.EqualTo("Missing shared secret."));
             Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MissingEventTimestamp).FailureReason, Is.EqualTo("Missing event timestamp."));
             Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.MalformedEventTimestamp).FailureReason, Is.EqualTo("Malformed event timestamp."));
+            Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.ReplayDetected).FailureReason, Is.EqualTo("Replay detected."));
+            Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.ReplayStoreUnavailable).FailureReason, Is.EqualTo("Replay store unavailable."));
+            Assert.That(new AshlarSecurityEventWebhookVerificationResult(AshlarSecurityEventWebhookVerificationStatus.ReplayStoreRequired).FailureReason, Is.EqualTo("Replay store required."));
             Assert.That(new AshlarSecurityEventWebhookVerificationResult((AshlarSecurityEventWebhookVerificationStatus)99).FailureReason, Is.EqualTo("Invalid signature."));
         }
     }
@@ -510,7 +577,8 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
             new Guid("11111111-1111-1111-1111-111111111111"),
             "audit",
             "/security-events?tenant=contoso",
-            new StaticTimeProvider(now));
+            new StaticTimeProvider(now),
+            new AshlarSecurityEventWebhookVerificationOptions { ReplayStore = new RecordingReplayStore() });
 
         Assert.That(result.IsValid, Is.True);
     }
@@ -1968,7 +2036,11 @@ internal sealed class AshlarSecurityEventWebhookHandlerTests
                 entry.EndpointName,
                 "/security-events",
                 TimeProvider.System,
-                new AshlarSecurityEventWebhookVerificationOptions { TimestampTolerance = TimeSpan.FromMinutes(10) }).IsValid, Is.True);
+                new AshlarSecurityEventWebhookVerificationOptions
+                {
+                    TimestampTolerance = TimeSpan.FromMinutes(10),
+                    ReplayStore = new RecordingReplayStore()
+                }).IsValid, Is.True);
         }
     }
 

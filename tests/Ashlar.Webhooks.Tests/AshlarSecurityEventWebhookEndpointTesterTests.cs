@@ -440,7 +440,11 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
             EventId = eventId,
             EndpointName = endpointName,
             DestinationPathAndQuery = destinationPathAndQuery,
-            TimeProvider = new StaticTimeProvider(StaticNow)
+            TimeProvider = new StaticTimeProvider(StaticNow),
+            Options = new AshlarSecurityEventWebhookVerificationOptions
+            {
+                ReplayStore = new AcceptingReplayStore()
+            }
         });
     }
 
@@ -459,6 +463,14 @@ internal sealed class AshlarSecurityEventWebhookEndpointTesterTests
         {
             IReadOnlyList<IPAddress> addresses = [IPAddress.Parse("93.184.216.34")];
             return ValueTask.FromResult(addresses);
+        }
+    }
+
+    private sealed class AcceptingReplayStore : IAshlarSecurityEventWebhookReplayStore
+    {
+        public bool TryAccept(AshlarSecurityEventWebhookReplayKey key, DateTimeOffset expiresAt)
+        {
+            return true;
         }
     }
 
