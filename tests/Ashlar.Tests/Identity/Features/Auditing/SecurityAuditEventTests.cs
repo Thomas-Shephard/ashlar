@@ -408,19 +408,18 @@ internal sealed class SecurityAuditEventTests
     {
         var sink = new RecordingSecurityEventSink();
         var service = CreateSessionService(sink, out var repository, out _);
+        var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
-        var session = CreateSession(DateTimeOffset.UtcNow.AddHours(1));
-        repository.Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(session);
-        repository.Setup(r => r.RevokeSessionAsync(sessionId, It.IsAny<DateTimeOffset>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        repository.Setup(r => r.RevokeSessionByIdAsync(sessionId, userId, It.IsAny<DateTimeOffset>(), It.IsAny<string>(), null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        var revoked = await service.RevokeSessionAsync(sessionId);
+        var revoked = await service.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest { SessionId = sessionId });
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(revoked, Is.False);
             Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.SessionRevoked));
+            Assert.That(sink.Events.Single().UserId, Is.EqualTo(userId));
             Assert.That(sink.Events.Single().SessionId, Is.EqualTo(sessionId));
             Assert.That(sink.Events.Single().Outcome, Is.EqualTo("failure"));
         }

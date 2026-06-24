@@ -351,62 +351,6 @@ public sealed class AuthenticationSessionService(
             : Result.Success(updated);
     }
 
-    public async Task<bool> RevokeSessionAsync(
-        Guid sessionId,
-        string? reason = null,
-        AuditContext? audit = null,
-        CancellationToken cancellationToken = default)
-    {
-        if (sessionId == Guid.Empty) throw new ArgumentException("Session ID cannot be empty.", nameof(sessionId));
-        ValidateRevocationReason(reason, nameof(reason));
-
-        var session = await _repository.GetSessionAsync(sessionId, cancellationToken);
-
-        await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
-
-        var now = _timeProvider.GetUtcNow();
-        var revoked = session != null && await _repository.RevokeSessionAsync(sessionId, now, reason, cancellationToken);
-        transaction.OnCommitted(ct => RecordSessionRevocationCommittedAsync(sessionId, session, revoked, reason, audit, now, ct));
-
-        await transaction.CommitAsync(cancellationToken);
-        return revoked;
-    }
-
-    private async Task RecordSessionRevocationCommittedAsync(
-        Guid sessionId,
-        AuthenticationSession? session,
-        bool revoked,
-        string? reason,
-        AuditContext? audit,
-        DateTimeOffset now,
-        CancellationToken cancellationToken)
-    {
-        var metadata = reason == null ? null : new Dictionary<string, string> { ["reason"] = reason };
-        await _securityEvents.RecordAsync(new SecurityEventDescriptor
-        {
-            EventType = AshlarSecurityEventTypes.SessionRevoked,
-            Outcome = revoked ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
-            UserId = session?.UserId,
-            TenantId = session?.TenantId,
-            SessionId = sessionId,
-            Audit = audit,
-            IpAddress = session?.IpAddress,
-            UserAgent = session?.UserAgent,
-            Properties = metadata
-        }, cancellationToken);
-
-        if (!revoked || session == null)
-        {
-            return;
-        }
-
-        var user = await _userRepository.GetUserByIdAsync(session.UserId, cancellationToken);
-        if (user != null)
-        {
-            await _notifications.NotifyAsync(SecurityNotificationType.SessionRevoked, user, now, sessionId: sessionId, metadata: metadata, cancellationToken: cancellationToken);
-        }
-    }
-
     public async Task<int> RevokeSessionsForUserAsync(
         Guid userId,
         string? reason = null,
@@ -487,12 +431,14 @@ public sealed class AuthenticationSessionService(
     {
         if (userId == Guid.Empty) throw new ArgumentException(UserIdCannotBeEmptyMessage, nameof(userId));
         ArgumentNullException.ThrowIfNull(request);
+        if (request.SessionId == Guid.Empty) throw new ArgumentException("Session ID cannot be empty.", $"{nameof(request)}.{nameof(request.SessionId)}");
         ValidateRevocationReason(request.Reason, nameof(request));
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         var now = _timeProvider.GetUtcNow();
         var revoked = await _repository.RevokeSessionByIdAsync(request.SessionId, userId, now, request.Reason, request.Tenant, cancellationToken);
+        var metadata = request.Reason == null ? null : new Dictionary<string, string> { ["reason"] = request.Reason };
         transaction.OnCommitted(async ct =>
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -503,9 +449,7 @@ public sealed class AuthenticationSessionService(
                 TenantId = request.Tenant?.TenantId,
                 SessionId = request.SessionId,
                 Audit = request.Audit,
-                Properties = request.Reason == null
-                    ? null
-                    : new Dictionary<string, string> { ["reason"] = request.Reason }
+                Properties = metadata
             }, ct);
 
             if (revoked)
@@ -513,7 +457,7 @@ public sealed class AuthenticationSessionService(
                 var user = await _userRepository.GetUserByIdAsync(userId, ct);
                 if (user != null)
                 {
-                    await _notifications.NotifyAsync(SecurityNotificationType.SessionRevoked, user, now, sessionId: request.SessionId, context: ToNotificationContext(request.Audit, request.Tenant), metadata: request.Reason == null ? null : new Dictionary<string, string> { ["reason"] = request.Reason }, cancellationToken: ct);
+                    await _notifications.NotifyAsync(SecurityNotificationType.SessionRevoked, user, now, sessionId: request.SessionId, context: ToNotificationContext(request.Audit, request.Tenant), metadata: metadata, cancellationToken: ct);
                 }
             }
         });

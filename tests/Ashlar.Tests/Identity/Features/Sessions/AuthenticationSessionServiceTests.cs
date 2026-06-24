@@ -156,6 +156,21 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
+    public void AuthenticationSessionServiceInterfaceShouldNotExposeIdOnlyRevocation()
+    {
+        var idOnlyRevocation = typeof(IAuthenticationSessionService)
+            .GetMethods()
+            .Where(method => method.Name == "RevokeSessionAsync")
+            .SingleOrDefault(method =>
+            {
+                var parameters = method.GetParameters();
+                return parameters.Length > 0 && parameters[0].ParameterType == typeof(Guid);
+            });
+
+        Assert.That(idOnlyRevocation, Is.Null);
+    }
+
+    [Test]
     public async Task CreateSessionAsyncShouldOmitOptionalSessionContextWhenDisabled()
     {
         var service = new AuthenticationSessionService(
@@ -1003,112 +1018,6 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
-    public async Task RevokeSessionAsyncShouldPassCurrentTimeAndReason()
-    {
-        var sessionId = Guid.NewGuid();
-        var now = _timeProvider.GetUtcNow();
-        var session = CreateSession(expiresAt: now.AddHours(1));
-        _repositoryMock
-            .Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(session);
-        _repositoryMock
-            .Setup(r => r.RevokeSessionAsync(sessionId, now, "signed-out", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
-
-        var revoked = await _service.RevokeSessionAsync(sessionId, "signed-out");
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(revoked, Is.True);
-            _repositoryMock.Verify(r => r.RevokeSessionAsync(sessionId, now, "signed-out", It.IsAny<CancellationToken>()), Times.Once);
-        }
-    }
-
-    [Test]
-    public async Task RevokeSessionAsyncShouldRecordAuditAndSessionMetadata()
-    {
-        var sessionId = Guid.NewGuid();
-        var actorUserId = Guid.NewGuid();
-        var now = _timeProvider.GetUtcNow();
-        var session = CreateSession(expiresAt: now.AddHours(1));
-        session.IpAddress = "198.51.100.20";
-        session.UserAgent = "stored-agent";
-        var audit = new AuditContext(
-            ActorUserId: actorUserId,
-            IpAddress: "203.0.113.30",
-            UserAgent: "request-agent",
-            CorrelationId: "request-correlation");
-        var securityEvents = new Mock<ISecurityEventSink>();
-        var service = new AuthenticationSessionService(
-            _repositoryMock.Object,
-            _tokenHasherMock.Object,
-            new FixedSessionTokenGenerator("raw-token"),
-            new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: securityEvents.Object, UserRepository: _userRepositoryMock.Object));
-
-        _repositoryMock
-            .Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(session);
-        _repositoryMock
-            .Setup(r => r.RevokeSessionAsync(sessionId, now, "manual", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
-
-        var revoked = await service.RevokeSessionAsync(sessionId, "manual", audit);
-
-        Assert.That(revoked, Is.True);
-        securityEvents.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
-            e.EventType == AshlarSecurityEventTypes.SessionRevoked &&
-            e.Outcome == SecurityEventOutcomes.Success &&
-            e.UserId == session.UserId &&
-            e.SessionId == sessionId &&
-            e.ActorUserId == actorUserId &&
-            e.IpAddress == "203.0.113.30" &&
-            e.UserAgent == "request-agent" &&
-            e.CorrelationId == "request-correlation" &&
-            e.Properties != null &&
-            e.Properties["reason"] == "manual"), It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Test]
-    public async Task RevokeSessionAsyncShouldRecordFailureWhenSessionIsMissing()
-    {
-        var sessionId = Guid.NewGuid();
-        var now = _timeProvider.GetUtcNow();
-        var securityEvents = new Mock<ISecurityEventSink>();
-        var service = new AuthenticationSessionService(
-            _repositoryMock.Object,
-            _tokenHasherMock.Object,
-            new FixedSessionTokenGenerator("raw-token"),
-            new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: securityEvents.Object, UserRepository: _userRepositoryMock.Object));
-
-        _repositoryMock
-            .Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((AuthenticationSession?)null);
-        _repositoryMock
-            .Setup(r => r.RevokeSessionAsync(sessionId, now, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-
-        var revoked = await service.RevokeSessionAsync(sessionId);
-
-        Assert.That(revoked, Is.False);
-        securityEvents.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
-            e.EventType == AshlarSecurityEventTypes.SessionRevoked &&
-            e.Outcome == SecurityEventOutcomes.Failure &&
-            e.UserId == null &&
-            e.SessionId == sessionId &&
-            e.IpAddress == null &&
-            e.UserAgent == null &&
-            e.Properties == null), It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Test]
-    public void RevokeSessionAsyncShouldRejectEmptySessionId()
-    {
-        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionAsync(Guid.Empty));
-    }
-
-    [Test]
     public void ConstructorShouldAcceptRequiredUserRepositoryDependency()
     {
         var service = new AuthenticationSessionService(
@@ -1119,80 +1028,6 @@ internal sealed class AuthenticationSessionServiceTests
             new AuthenticationSessionServiceDependencies(UserRepository: _userRepositoryMock.Object));
 
         Assert.That(service, Is.Not.Null);
-    }
-
-    [Test]
-    public async Task RevokeSessionAsyncShouldNotNotifyWhenUserCannotBeLoaded()
-    {
-        var sessionId = Guid.NewGuid();
-        var now = _timeProvider.GetUtcNow();
-        var session = CreateSession(expiresAt: now.AddHours(1));
-        var userRepository = new Mock<IUserRepository>();
-        var notificationService = new Mock<ISecurityNotificationService>();
-        var service = new AuthenticationSessionService(
-            _repositoryMock.Object,
-            _tokenHasherMock.Object,
-            new FixedSessionTokenGenerator("raw-token"),
-            new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(
-                TimeProvider: _timeProvider,
-                UserRepository: userRepository.Object,
-                NotificationService: notificationService.Object));
-
-        _repositoryMock
-            .Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(session);
-        _repositoryMock
-            .Setup(r => r.RevokeSessionAsync(sessionId, now, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
-        userRepository
-            .Setup(r => r.GetUserByIdAsync(session.UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IUser?)null);
-
-        var revoked = await service.RevokeSessionAsync(sessionId);
-
-        Assert.That(revoked, Is.True);
-        notificationService.Verify(n => n.NotifyAsync(It.IsAny<SecurityNotification>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Test]
-    public async Task RevokeSessionAsyncShouldNotifyWhenUserCanBeLoaded()
-    {
-        var sessionId = Guid.NewGuid();
-        var now = _timeProvider.GetUtcNow();
-        var session = CreateSession(expiresAt: now.AddHours(1));
-        var user = new User { Id = session.UserId, Email = "user@example.com" };
-        var userRepository = new Mock<IUserRepository>();
-        var notificationService = new Mock<ISecurityNotificationService>();
-        var service = new AuthenticationSessionService(
-            _repositoryMock.Object,
-            _tokenHasherMock.Object,
-            new FixedSessionTokenGenerator("raw-token"),
-            new NullTransactionProvider(),
-            new AuthenticationSessionServiceDependencies(
-                TimeProvider: _timeProvider,
-                UserRepository: userRepository.Object,
-                NotificationService: notificationService.Object));
-
-        _repositoryMock
-            .Setup(r => r.GetSessionAsync(sessionId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(session);
-        _repositoryMock
-            .Setup(r => r.RevokeSessionAsync(sessionId, now, "manual", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
-        userRepository
-            .Setup(r => r.GetUserByIdAsync(session.UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(user);
-
-        var revoked = await service.RevokeSessionAsync(sessionId, "manual");
-
-        Assert.That(revoked, Is.True);
-        notificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
-            notification.Type == SecurityNotificationType.SessionRevoked &&
-            notification.RecipientEmail == "user@example.com" &&
-            notification.SessionId == sessionId &&
-            notification.Metadata != null &&
-            notification.Metadata["reason"] == "manual"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -1426,6 +1261,12 @@ internal sealed class AuthenticationSessionServiceTests
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeSessionForUserAsync(Guid.NewGuid(), null!));
+    }
+
+    [Test]
+    public void RevokeSessionForUserAsyncShouldRejectEmptySessionId()
+    {
+        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeSessionForUserAsync(Guid.NewGuid(), new RevokeAuthenticationSessionRequest { SessionId = Guid.Empty }));
     }
 
     [Test]

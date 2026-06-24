@@ -852,7 +852,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             Assert.That(authExtensions, Does.Contain("if (!result.Succeeded)"));
             Assert.That(authExtensions, Does.Contain("catch"));
             Assert.That(authExtensions, Does.Contain("CleanupUnverifiedSessionAsync"));
-            Assert.That(authExtensions, Does.Contain("sessionService.RevokeSessionAsync"));
+            Assert.That(authExtensions, Does.Contain("sessionService.RevokeSessionForUserAsync"));
             Assert.That(authExtensions, Does.Contain("signInManager.SignOutAsync"));
             Assert.That(authExtensions, Does.Contain("TenantContext.Global"));
             Assert.That(mfaEndpoints, Does.Contain("httpContext.SignInAndMarkStepUpVerifiedAsync"));
