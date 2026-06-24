@@ -116,7 +116,7 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
-    public async Task CreateSessionAsyncShouldStoreAuthenticationMetadata()
+    public async Task CreateSessionAsyncShouldStorePrimaryAuthenticationMetadataOnly()
     {
         AuthenticationSession? storedSession = null;
         _repositoryMock
@@ -124,26 +124,34 @@ internal sealed class AuthenticationSessionServiceTests
             .Callback<AuthenticationSession, CancellationToken>((session, _) => storedSession = session)
             .Returns(Task.CompletedTask);
         var authenticatedAt = _timeProvider.GetUtcNow().AddMinutes(-1);
-        var additionalVerificationAt = _timeProvider.GetUtcNow();
         var primaryProvider = AuthenticationProviderKey.EmailCode;
-        var additionalProvider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
 
         await _service.CreateSessionAsync(
             Guid.NewGuid(),
             new CreateAuthenticationSessionRequest(
                 AuthenticatedAt: authenticatedAt,
-                PrimaryProvider: primaryProvider,
-                AdditionalVerificationAt: additionalVerificationAt,
-                AdditionalVerificationProvider: additionalProvider,
-                AdditionalVerificationFactor: "totp"));
+                PrimaryProvider: primaryProvider));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(storedSession?.AuthenticatedAt, Is.EqualTo(authenticatedAt));
             Assert.That(storedSession?.PrimaryProvider, Is.EqualTo(primaryProvider));
-            Assert.That(storedSession?.AdditionalVerificationAt, Is.EqualTo(additionalVerificationAt));
-            Assert.That(storedSession?.AdditionalVerificationProvider, Is.EqualTo(additionalProvider));
-            Assert.That(storedSession?.AdditionalVerificationFactor, Is.EqualTo("totp"));
+            Assert.That(storedSession?.AdditionalVerificationAt, Is.Null);
+            Assert.That(storedSession?.AdditionalVerificationProvider, Is.Null);
+            Assert.That(storedSession?.AdditionalVerificationFactor, Is.Null);
+        }
+    }
+
+    [Test]
+    public void CreateAuthenticationSessionRequestShouldNotExposeAdditionalVerificationInputs()
+    {
+        var properties = typeof(CreateAuthenticationSessionRequest).GetProperties().Select(property => property.Name).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(properties, Does.Not.Contain("AdditionalVerificationAt"));
+            Assert.That(properties, Does.Not.Contain("AdditionalVerificationProvider"));
+            Assert.That(properties, Does.Not.Contain("AdditionalVerificationFactor"));
         }
     }
 
@@ -208,15 +216,6 @@ internal sealed class AuthenticationSessionServiceTests
     {
         var request = new CreateAuthenticationSessionRequest(
             PrimaryProvider: new AuthenticationProviderKey((ProviderType)ProviderType.StorageFallbackValue, "unknown"));
-
-        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateSessionAsync(Guid.NewGuid(), request));
-    }
-
-    [Test]
-    public void CreateSessionAsyncShouldRejectUnconfiguredAdditionalVerificationProvider()
-    {
-        var request = new CreateAuthenticationSessionRequest(
-            AdditionalVerificationProvider: default(AuthenticationProviderKey));
 
         Assert.ThrowsAsync<ArgumentException>(() => _service.CreateSessionAsync(Guid.NewGuid(), request));
     }

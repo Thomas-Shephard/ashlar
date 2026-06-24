@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Ashlar.AspNetCore.Authentication;
+using Ashlar.AspNetCore.Sessions;
 using Ashlar.Auditing;
 
 namespace Ashlar.Sample.AspNetCore.Extensions;
@@ -64,21 +65,77 @@ internal static class HttpContextExtensions
     public static CreateAuthenticationSessionRequest ToSessionRequest(
         this HttpContext httpContext,
         IUser? user = null,
-        AuthenticationProviderKey? primaryProvider = null,
-        AuthenticationProviderKey? additionalVerificationProvider = null,
-        string? additionalVerificationFactor = null)
+        AuthenticationProviderKey? primaryProvider = null)
     {
         return new CreateAuthenticationSessionRequest(
             IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
             UserAgent: httpContext.Request.Headers.UserAgent.ToString(),
             CorrelationId: httpContext.TraceIdentifier,
             TenantId: (user as ITenantUser)?.TenantId,
-            PrimaryProvider: primaryProvider,
-            AdditionalVerificationAt: additionalVerificationProvider.HasValue
-                ? httpContext.RequestServices.GetService<TimeProvider>()?.GetUtcNow() ?? DateTimeOffset.UtcNow
-                : null,
-            AdditionalVerificationProvider: additionalVerificationProvider,
-            AdditionalVerificationFactor: additionalVerificationFactor);
+            PrimaryProvider: primaryProvider);
+    }
+
+    public static async Task<Result<AuthenticationSession>> SignInAndMarkStepUpVerifiedAsync(
+        this HttpContext httpContext,
+        IAshlarSignInManager signInManager,
+        IAuthenticationSessionService sessionService,
+        IUser user,
+        AuthenticationProviderKey verifiedProvider,
+        string verifiedFactor,
+        CancellationToken cancellationToken)
+    {
+        var session = await signInManager.SignInAsync(httpContext, user.Id, httpContext.ToSessionRequest(user), cancellationToken);
+
+        try
+        {
+            var result = await sessionService.MarkStepUpVerifiedAsync(
+                user.Id,
+                new MarkSessionStepUpVerifiedRequest
+                {
+                    SessionId = session.Id,
+                    VerifiedProvider = verifiedProvider,
+                    VerifiedFactor = verifiedFactor,
+                    Tenant = session.TenantId is null ? TenantContext.Global : new TenantContext(session.TenantId),
+                    Audit = httpContext.ToAuditContext()
+                },
+                cancellationToken);
+
+            if (!result.Succeeded)
+            {
+                await CleanupUnverifiedSessionAsync(httpContext, signInManager, sessionService, session.Id, cancellationToken);
+            }
+
+            return result;
+        }
+        catch
+        {
+            await CleanupUnverifiedSessionAsync(httpContext, signInManager, sessionService, session.Id, cancellationToken);
+            throw;
+        }
+    }
+
+    private static async Task CleanupUnverifiedSessionAsync(
+        HttpContext httpContext,
+        IAshlarSignInManager signInManager,
+        IAuthenticationSessionService sessionService,
+        Guid sessionId,
+        CancellationToken cancellationToken)
+    {
+        Exception? revocationException = null;
+        try
+        {
+            await sessionService.RevokeSessionAsync(sessionId, "step-up-verification-mark-failed", httpContext.ToAuditContext(), cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            revocationException = ex;
+        }
+
+        await signInManager.SignOutAsync(httpContext, "step-up-verification-mark-failed", cancellationToken);
+        if (revocationException != null)
+        {
+            throw new InvalidOperationException("The unverified session cookie was cleared, but session revocation failed.", revocationException);
+        }
     }
 
     public static Guid? GetAshlarTenantId(this HttpContext httpContext)

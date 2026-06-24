@@ -92,7 +92,7 @@ internal static class PasskeyEndpoints
         return Results.BadRequest(SampleResultErrors.From(result));
     }
 
-    private static async Task<IResult> CompleteFactorAsync(PasskeyCompleteFactorSampleRequest request, IPasskeyService passkeys, IAshlarSignInManager signIn, HttpContext httpContext, CancellationToken cancellationToken)
+    private static async Task<IResult> CompleteFactorAsync(PasskeyCompleteFactorSampleRequest request, IPasskeyService passkeys, IAshlarSignInManager signIn, IAuthenticationSessionService sessions, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var result = await passkeys.CompleteFactorAsync(new CompletePasskeyFactorRequest(request.ChallengeId, request.AssertionResponse, request.HandshakeToken, request.FactorType ?? "passkey", httpContext.GetAshlarTenantId(), httpContext.ToAuditContext()), cancellationToken);
         if (result.AuthenticationStatus == MfaAuthenticationStatus.HandshakeIncomplete)
@@ -115,11 +115,17 @@ internal static class PasskeyEndpoints
             return Results.BadRequest(new { error = result.FailureCode?.Value ?? "passkey_validation_failed" });
         }
 
-        await signIn.SignInAsync(httpContext, result.User.Id, httpContext.ToSessionRequest(
+        var markResult = await httpContext.SignInAndMarkStepUpVerifiedAsync(
+            signIn,
+            sessions,
             result.User,
-            additionalVerificationProvider: AuthenticationProviderKey.Passkey,
-            additionalVerificationFactor: request.FactorType ?? "passkey"), cancellationToken);
-        return Results.Ok(new { status = "signed_in" });
+            AuthenticationProviderKey.Passkey,
+            request.FactorType ?? AuthenticationFactorTypes.Passkey,
+            cancellationToken);
+
+        return markResult.Succeeded
+            ? Results.Ok(new { status = "signed_in" })
+            : Results.BadRequest(SampleResultErrors.From(markResult));
     }
 
 
