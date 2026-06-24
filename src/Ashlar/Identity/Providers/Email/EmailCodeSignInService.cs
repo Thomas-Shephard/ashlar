@@ -15,6 +15,7 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
 {
     private const string RequestPurpose = "email-code-request";
     private const string VerifyPurpose = "email-code-verify";
+    private const string RateLimitedFailureReason = "rate_limited";
     private static readonly int[] PowersOfTen = [1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000];
     private readonly EmailCodeSignInDependencies _dependencies;
     private readonly IOptions<EmailCodeSignInOptions> _options;
@@ -49,10 +50,17 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
         context = WithEmail(context, normalizedEmail);
 
         var signInOptions = _options.Value;
-        var rateLimit = await CheckRateLimitAsync(normalizedEmail, RequestPurpose, context, signInOptions.RequestRateLimit, cancellationToken);
+        var sourceRateLimit = await CheckRateLimitAsync(AuthenticationRateLimitDimensions.Source(context), RequestPurpose, context, signInOptions.RequestRateLimit, cancellationToken);
+        if (!sourceRateLimit.IsAllowed)
+        {
+            await RecordAsync(AshlarSecurityEventTypes.EmailCodeRequestRateLimited, SecurityEventOutcomes.Failure, context, null, RateLimitedFailureReason, cancellationToken);
+            return;
+        }
+
+        var rateLimit = await CheckRateLimitAsync(AuthenticationRateLimitDimensions.Email(normalizedEmail), RequestPurpose, context, signInOptions.RequestRateLimit, cancellationToken);
         if (!rateLimit.IsAllowed)
         {
-            await RecordAsync(AshlarSecurityEventTypes.EmailCodeRequestRateLimited, SecurityEventOutcomes.Failure, context, null, "rate_limited", cancellationToken);
+            await RecordAsync(AshlarSecurityEventTypes.EmailCodeRequestRateLimited, SecurityEventOutcomes.Failure, context, null, RateLimitedFailureReason, cancellationToken);
             return;
         }
 
@@ -122,24 +130,23 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
 
     private async Task<MfaAuthenticationResult> VerifyCodeCoreAsync(string normalizedEmail, string code, AuthenticationContext context, CancellationToken cancellationToken)
     {
-        var rateLimit = await CheckRateLimitAsync(normalizedEmail, VerifyPurpose, context, _options.Value.VerificationRateLimit, cancellationToken);
+        var rateLimit = await CheckRateLimitAsync(AuthenticationRateLimitDimensions.Email(normalizedEmail), VerifyPurpose, context, _options.Value.VerificationRateLimit, cancellationToken);
         if (!rateLimit.IsAllowed)
         {
-            await RecordAsync(AshlarSecurityEventTypes.EmailCodeVerificationRateLimited, SecurityEventOutcomes.Failure, context, null, "rate_limited", cancellationToken);
+            await RecordAsync(AshlarSecurityEventTypes.EmailCodeVerificationRateLimited, SecurityEventOutcomes.Failure, context, null, RateLimitedFailureReason, cancellationToken);
             return new MfaAuthenticationResult(MfaAuthenticationStatus.RateLimited, ErrorMessage: "Authentication failed.");
         }
 
         return await _dependencies.AuthenticationOrchestrator.AuthenticateAsync(context, new EmailCodeAssertion(code), cancellationToken: cancellationToken);
     }
 
-    private Task<RateLimitDecision> CheckRateLimitAsync(string email, string purpose, AuthenticationContext context, RateLimitRule rule, CancellationToken cancellationToken)
+    private Task<RateLimitDecision> CheckRateLimitAsync(string key, string purpose, AuthenticationContext context, RateLimitRule rule, CancellationToken cancellationToken)
     {
-        var emailBucket = AuthenticationRateLimitDimensions.Email(email);
-        return _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(purpose, AuthenticationRateLimitDimensions.DimensionName(emailBucket), emailBucket, rule)
+        return _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(purpose, AuthenticationRateLimitDimensions.DimensionName(key), key, rule)
         {
             ProviderKey = _dependencies.Provider.Key,
             Context = context,
-            Email = email
+            Email = context.Email
         }, cancellationToken);
     }
 

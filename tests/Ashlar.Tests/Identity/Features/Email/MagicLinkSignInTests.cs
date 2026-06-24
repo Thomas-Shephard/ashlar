@@ -47,7 +47,9 @@ internal sealed class MagicLinkSignInTests
             Assert.That(message.TextBody, Does.Contain($"token={token}"));
             Assert.That(message.TextBody, Does.Not.Contain("USER@EXAMPLE.COM"));
             Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
-            Assert.That(fixture.RateLimiter.Attempts.Single(a => a.Purpose == "magic-link-request").Key, Is.EqualTo(ExpectedRateLimitKey("magic-link-request", "email", "email:USER@EXAMPLE.COM")));
+            var requestAttempts = fixture.RateLimiter.Attempts.Where(a => a.Purpose == "magic-link-request").ToArray();
+            Assert.That(requestAttempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("magic-link-request", "source", "source:ip:127.0.0.1")));
+            Assert.That(requestAttempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("magic-link-request", "email", "email:USER@EXAMPLE.COM")));
         }
     }
 
@@ -131,16 +133,44 @@ internal sealed class MagicLinkSignInTests
     }
 
     [Test]
-    public async Task RequestRateLimitBlocksSending()
+    public async Task RequestSourceRateLimitBlocksBeforeEmailLimitAndIssuance()
     {
         var fixture = CreateFixture(_user, requestAllowed: false);
 
-        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"));
+        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"), new AuthenticationContext(IpAddress: "203.0.113.10"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fixture.EmailSender.Messages, Is.Empty);
             Assert.That(fixture.Repository.Credentials, Is.Empty);
+            Assert.That(fixture.Repository.GetUserByEmailCalls, Is.Zero);
+            Assert.That(fixture.RateLimiter.Attempts.Select(a => a.Key), Is.EqualTo(new[] { ExpectedRateLimitKey("magic-link-request", "source", "source:ip:203.0.113.10") }));
+            var auditEvent = fixture.Audit.Events.Single();
+            Assert.That(auditEvent.EventType, Is.EqualTo(AshlarSecurityEventTypes.MagicLinkRequestRateLimited));
+            Assert.That(auditEvent.FailureReason, Is.EqualTo("rate_limited"));
+            Assert.That(AllAuditText(fixture), Does.Not.Contain(_user.Email));
+            Assert.That(AllAuditText(fixture), Does.Not.Contain("https://myapp.com/verify"));
+        }
+    }
+
+    [Test]
+    public async Task RequestEmailRateLimitBlocksAfterSourcePasses()
+    {
+        var fixture = CreateFixture(_user);
+        fixture.RateLimiter.BlockedKeys.Add(ExpectedRateLimitKey("magic-link-request", "email", "email:USER@EXAMPLE.COM"));
+
+        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"), new AuthenticationContext(IpAddress: "203.0.113.10"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.EmailSender.Messages, Is.Empty);
+            Assert.That(fixture.Repository.Credentials, Is.Empty);
+            Assert.That(fixture.Repository.GetUserByEmailCalls, Is.Zero);
+            Assert.That(fixture.RateLimiter.Attempts.Select(a => a.Key), Is.EqualTo(new[]
+            {
+                ExpectedRateLimitKey("magic-link-request", "source", "source:ip:203.0.113.10"),
+                ExpectedRateLimitKey("magic-link-request", "email", "email:USER@EXAMPLE.COM")
+            }));
             Assert.That(fixture.Audit.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.MagicLinkRequestRateLimited));
         }
     }
@@ -769,6 +799,11 @@ internal sealed class MagicLinkSignInTests
         return query["token"] ?? throw new AssertionException("Token not found in email body.");
     }
 
+    private static string AllAuditText(Fixture fixture)
+    {
+        return string.Join("|", fixture.Audit.Events.SelectMany(e => new[] { e.EventType, e.FailureReason }.Concat(e.Properties?.Values ?? [])));
+    }
+
     private sealed record Fixture(MagicLinkSignInService Service, InMemoryUserCredentialStore Repository, RecordingEmailSender EmailSender, RecordingSecurityEventSink Audit, FakeTimeProvider Time, ISecureTokenHasher TokenHasher, StubRateLimiter RateLimiter, List<string> Events);
 
     private static string ExpectedRateLimitKey(string purpose, string dimensionName, string dimensionValue)
@@ -879,8 +914,13 @@ internal sealed class MagicLinkSignInTests
     {
         private readonly List<User> _users = users.OfType<User>().ToList();
         public List<UserCredential> Credentials { get; } = [];
+        public int GetUserByEmailCalls { get; private set; }
 
-        public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(_users.SingleOrDefault(u => string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase)));
+        public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
+        {
+            GetUserByEmailCalls++;
+            return Task.FromResult<IUser?>(_users.SingleOrDefault(u => string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase)));
+        }
         public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(_users.SingleOrDefault(u => u.Id == userId));
         public Task<UserCredential?> GetCredentialForUserAsync(Guid userId, ProviderType type, string providerName, string? providerKey = null, CancellationToken cancellationToken = default) => Task.FromResult(Credentials.SingleOrDefault(c => c.UserId == userId && c.ProviderType == type && string.Equals(c.ProviderName, providerName, StringComparison.OrdinalIgnoreCase) && (providerKey == null || c.ProviderKey == providerKey))?.Clone());
 
