@@ -92,7 +92,7 @@ public enum AshlarSecurityEventWebhookOutboxStatus
 /// <param name="AvailableAt">The next availability timestamp.</param>
 /// <param name="LastAttemptAt">The last attempt timestamp.</param>
 /// <param name="FailedAt">The terminal failure timestamp.</param>
-/// <param name="LastErrorSummary">Single-line truncated failure summary from stored delivery state.</param>
+/// <param name="LastErrorSummary">Safe stored operational failure summary, not a raw transport exception.</param>
 public sealed record AshlarSecurityEventWebhookOutboxDeliverySummary(
     Guid DeliveryId,
     string? EndpointName,
@@ -125,8 +125,19 @@ public sealed record AshlarSecurityEventWebhookOutboxBrowseResult(
 /// </summary>
 public static class AshlarSecurityEventWebhookOutboxBrowser
 {
+    private const string HttpStatusFailurePrefix = "kind=http_status;status=";
+    private const string HttpStatusFailureSuffix = ";reason=non_success_status";
+    private static readonly HashSet<string> CanonicalFailureSummaries =
+    [
+        "kind=timeout;reason=delivery_timeout",
+        "kind=canceled;reason=delivery_canceled",
+        "kind=transport_error;reason=transport_error",
+        "kind=unsafe_destination;reason=unsafe_destination",
+        "kind=unknown;reason=unknown_failure"
+    ];
+
     /// <summary>
-    /// Maximum number of characters exposed from stored last_error.
+    /// Maximum number of characters exposed from stored safe failure details.
     /// </summary>
     public const int MaxLastErrorSummaryLength = 256;
 
@@ -187,24 +198,45 @@ public static class AshlarSecurityEventWebhookOutboxBrowser
     }
 
     /// <summary>
-    /// Creates a conservative error summary from stored last_error.
+    /// Creates a conservative error summary from stored safe failure details.
     /// </summary>
-    /// <param name="lastError">Stored failure detail from the dispatcher.</param>
-    /// <returns>The safe error summary.</returns>
+    /// <param name="lastError">Stored safe failure detail from the dispatcher.</param>
+    /// <returns>The safe error summary, or <see langword="null" /> when stored detail is malformed or legacy raw exception text.</returns>
     public static string? CreateLastErrorSummary(string? lastError)
     {
-        if (lastError is null)
+        var summary = lastError?.Trim();
+        if (string.IsNullOrWhiteSpace(summary)
+            || summary.Contains('\r', StringComparison.Ordinal)
+            || summary.Contains('\n', StringComparison.Ordinal)
+            || summary.Length > MaxLastErrorSummaryLength
+            || !IsSafePersistedFailureDetail(summary))
         {
             return null;
         }
 
-        var summary = lastError.Replace('\r', ' ').Replace('\n', ' ').Trim();
-        if (summary.Length > MaxLastErrorSummaryLength)
+        return summary;
+    }
+
+    private static bool IsSafePersistedFailureDetail(string value)
+    {
+        if (CanonicalFailureSummaries.Contains(value))
         {
-            summary = summary[..MaxLastErrorSummaryLength];
+            return true;
         }
 
-        return summary;
+        if (!value.StartsWith(HttpStatusFailurePrefix, StringComparison.Ordinal)
+            || !value.EndsWith(HttpStatusFailureSuffix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var status = value[HttpStatusFailurePrefix.Length..^HttpStatusFailureSuffix.Length];
+        if (!int.TryParse(status, out var statusCode))
+        {
+            return false;
+        }
+
+        return statusCode >= 100 && statusCode <= 599;
     }
 
     /// <summary>

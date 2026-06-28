@@ -119,7 +119,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
     }
 
     [Test]
-    public async Task ListAsyncSanitizesMalformedSafeFieldsAndLastError()
+    public async Task ListAsyncSuppressesMalformedSafeFieldsAndUnsafeLastError()
     {
         var longError = "first line\r\n" + new string('x', AshlarSecurityEventWebhookOutboxBrowser.MaxLastErrorSummaryLength + 20);
         await InsertRowsAsync(eventType: "bad\nevent", outcome: "bad\routcome", lastError: longError);
@@ -136,10 +136,23 @@ internal sealed class PostgresSecurityEventWebhookOutboxBrowserTests : PostgresT
         {
             Assert.That(delivery.EventType, Is.Null);
             Assert.That(delivery.Outcome, Is.Null);
-            Assert.That(delivery.LastErrorSummary, Has.Length.EqualTo(AshlarSecurityEventWebhookOutboxBrowser.MaxLastErrorSummaryLength));
-            Assert.That(delivery.LastErrorSummary, Does.Not.Contain("\r"));
-            Assert.That(delivery.LastErrorSummary, Does.Not.Contain("\n"));
+            Assert.That(delivery.LastErrorSummary, Is.Null);
         }
+    }
+
+    [Test]
+    public async Task ListAsyncReturnsSafeStoredFailureSummary()
+    {
+        await InsertRowsAsync(lastError: "kind=http_status;status=502;reason=non_success_status");
+
+        var result = await _provider.GetRequiredService<IAshlarSecurityEventWebhookOutboxBrowser>()
+            .ListAsync(new AshlarSecurityEventWebhookOutboxBrowseRequest
+            {
+                Statuses = new HashSet<AshlarSecurityEventWebhookOutboxStatus> { AshlarSecurityEventWebhookOutboxStatus.Failed },
+                Limit = 10
+            });
+
+        Assert.That(result.Deliveries.Single().LastErrorSummary, Is.EqualTo("kind=http_status;status=502;reason=non_success_status"));
     }
 
     [Test]

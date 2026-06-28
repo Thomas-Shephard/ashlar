@@ -315,7 +315,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             Assert.That(transport.Requests, Is.Empty);
             Assert.That(row.FailedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
             Assert.That(row.AttemptCount, Is.EqualTo(1));
-            Assert.That(row.LastError, Does.Contain("InvalidOperationException"));
+            Assert.That(row.LastError, Is.EqualTo("kind=unknown;reason=unknown_failure"));
         }
     }
 
@@ -378,7 +378,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             Assert.That(row.SentAt, Is.Null);
             Assert.That(row.FailedAt, Is.EqualTo(start.AddSeconds(30)));
             Assert.That(row.AttemptCount, Is.EqualTo(2));
-            Assert.That(row.LastError, Does.Contain("HTTP 502"));
+            Assert.That(row.LastError, Is.EqualTo("kind=http_status;status=502;reason=non_success_status"));
             Assert.That(row.AvailableAt, Is.EqualTo(start.AddSeconds(30)));
         }
     }
@@ -405,7 +405,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             Assert.That(row.SentAt, Is.Null);
             Assert.That(row.FailedAt, Is.Null);
             Assert.That(row.AttemptCount, Is.EqualTo(1));
-            Assert.That(row.LastError, Does.Contain("TaskCanceledException").Or.Contain("OperationCanceledException"));
+            Assert.That(row.LastError, Is.EqualTo("kind=timeout;reason=delivery_timeout"));
         }
     }
 
@@ -435,7 +435,8 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             Assert.That(row.SentAt, Is.Null);
             Assert.That(row.FailedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
             Assert.That(row.AttemptCount, Is.EqualTo(1));
-            Assert.That(row.LastError, Does.Contain(nameof(AshlarSecurityEventWebhookUnsafeDestinationException)));
+            Assert.That(row.LastError, Is.EqualTo("kind=unsafe_destination;reason=unsafe_destination"));
+            Assert.That(row.LastError, Does.Not.Contain("127.0.0.1"));
         }
     }
 
@@ -567,16 +568,25 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     }
 
     [Test]
-    public void FailureUpdateTruncatesLargeErrors()
+    public void FailureUpdatePersistsSafeFailureSummary()
     {
         var failure = AshlarSecurityEventWebhookOutboxDispatch.CreateFailureUpdate(
             0,
             5,
             TimeSpan.FromSeconds(1),
             _timeProvider.GetUtcNow(),
-            new InvalidOperationException(new string('X', 2000)));
+            new InvalidOperationException("https://example.test/path?token=secret\r\n   at Unsafe.Stack()"));
 
-        Assert.That(failure.LastError, Has.Length.EqualTo(1000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure.LastError, Is.EqualTo("kind=unknown;reason=unknown_failure"));
+            Assert.That(failure.LastError, Has.Length.LessThanOrEqualTo(AshlarSecurityEventWebhookOutboxDispatch.MaxPersistedFailureDetailLength));
+            Assert.That(failure.LastError, Does.Not.Contain("https://example.test"));
+            Assert.That(failure.LastError, Does.Not.Contain("token=secret"));
+            Assert.That(failure.LastError, Does.Not.Contain("Unsafe.Stack"));
+            Assert.That(failure.LastError, Does.Not.Contain("\r"));
+            Assert.That(failure.LastError, Does.Not.Contain("\n"));
+        }
     }
 
     [Test]

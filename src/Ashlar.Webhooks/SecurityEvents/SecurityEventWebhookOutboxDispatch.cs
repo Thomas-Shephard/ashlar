@@ -146,7 +146,10 @@ public sealed record AshlarSecurityEventWebhookOutboxDispatchContext(
 /// </summary>
 public static class AshlarSecurityEventWebhookOutboxDispatch
 {
-    private const int MaxLastErrorLength = 1000;
+    /// <summary>
+    /// Maximum number of characters persisted for safe webhook outbox failure details.
+    /// </summary>
+    public const int MaxPersistedFailureDetailLength = 128;
 
     /// <summary>
     /// Maps a durable outbox entry to the HTTP request that should be sent.
@@ -225,7 +228,7 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
             using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                var exception = new HttpRequestException($"Webhook endpoint returned HTTP {(int)response.StatusCode}.");
+                var exception = new HttpRequestException(null, null, response.StatusCode);
                 RecordFailure(context, entry, start, AshlarSecurityEventWebhookDeliveryTelemetry.HttpStatusFailureKind);
                 await MarkAsFailedAsync(entry, context, exception).ConfigureAwait(false);
                 return;
@@ -425,11 +428,7 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
         var backoffMultiplier = Math.Pow(2, nextAttemptCount - 1);
         var maxDelayTicks = TimeSpan.FromDays(7).Ticks;
         var delayTicks = Math.Min(initialRetryDelay.Ticks * backoffMultiplier, maxDelayTicks);
-        var lastError = exception.ToString();
-        if (lastError.Length > MaxLastErrorLength)
-        {
-            lastError = lastError[..MaxLastErrorLength];
-        }
+        var lastError = AshlarSecurityEventWebhookOutboxFailureSummary.FromException(exception).ToPersistedString();
 
         return new AshlarSecurityEventWebhookOutboxFailureUpdate(
             nextAttemptCount,
@@ -440,12 +439,143 @@ public static class AshlarSecurityEventWebhookOutboxDispatch
 }
 
 /// <summary>
+/// Safe, bounded security event webhook delivery failure categories persisted in durable outbox state.
+/// </summary>
+public enum AshlarSecurityEventWebhookOutboxFailureKind
+{
+    /// <summary>
+    /// The endpoint returned a non-success HTTP status code.
+    /// </summary>
+    HttpStatus,
+
+    /// <summary>
+    /// The delivery attempt timed out.
+    /// </summary>
+    Timeout,
+
+    /// <summary>
+    /// The delivery attempt was canceled.
+    /// </summary>
+    Canceled,
+
+    /// <summary>
+    /// The transport failed before a response was received.
+    /// </summary>
+    TransportError,
+
+    /// <summary>
+    /// The destination safety policy rejected the webhook endpoint.
+    /// </summary>
+    UnsafeDestination,
+
+    /// <summary>
+    /// The failure did not match a more specific safe category.
+    /// </summary>
+    Unknown
+}
+
+/// <summary>
+/// Safe operational summary for a security event webhook delivery failure.
+/// </summary>
+/// <param name="Kind">The fixed failure category.</param>
+/// <param name="StatusCode">The HTTP status code when safely available.</param>
+/// <param name="Reason">A fixed safe reason string.</param>
+public sealed record AshlarSecurityEventWebhookOutboxFailureSummary(
+    AshlarSecurityEventWebhookOutboxFailureKind Kind,
+    int? StatusCode,
+    string Reason)
+{
+    private const string HttpStatusReason = "non_success_status";
+    private const string TimeoutReason = "delivery_timeout";
+    private const string CanceledReason = "delivery_canceled";
+    private const string TransportErrorReason = "transport_error";
+    private const string UnsafeDestinationReason = "unsafe_destination";
+    private const string UnknownReason = "unknown_failure";
+
+    /// <summary>
+    /// Creates a safe failure summary from a dispatch exception without retaining exception text.
+    /// </summary>
+    /// <param name="exception">The dispatch exception.</param>
+    /// <returns>The safe failure summary.</returns>
+    public static AshlarSecurityEventWebhookOutboxFailureSummary FromException(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+
+        return exception switch
+        {
+            HttpRequestException { StatusCode: { } statusCode } => new(AshlarSecurityEventWebhookOutboxFailureKind.HttpStatus, (int)statusCode, HttpStatusReason),
+            OperationCanceledException => new(AshlarSecurityEventWebhookOutboxFailureKind.Timeout, null, TimeoutReason),
+            AshlarSecurityEventWebhookUnsafeDestinationException => new(AshlarSecurityEventWebhookOutboxFailureKind.UnsafeDestination, null, UnsafeDestinationReason),
+            HttpRequestException => new(AshlarSecurityEventWebhookOutboxFailureKind.TransportError, null, TransportErrorReason),
+            _ => new(AshlarSecurityEventWebhookOutboxFailureKind.Unknown, null, UnknownReason)
+        };
+    }
+
+    /// <summary>
+    /// Creates a safe failure summary for an externally canceled dispatch attempt.
+    /// </summary>
+    /// <returns>The safe canceled summary.</returns>
+    public static AshlarSecurityEventWebhookOutboxFailureSummary Canceled()
+    {
+        return new AshlarSecurityEventWebhookOutboxFailureSummary(AshlarSecurityEventWebhookOutboxFailureKind.Canceled, null, CanceledReason);
+    }
+
+    /// <summary>
+    /// Formats the summary for durable storage using only fixed tokens and optional numeric status code.
+    /// </summary>
+    /// <returns>The safe persisted failure detail.</returns>
+    public string ToPersistedString()
+    {
+        var kind = Kind switch
+        {
+            AshlarSecurityEventWebhookOutboxFailureKind.HttpStatus => "http_status",
+            AshlarSecurityEventWebhookOutboxFailureKind.Timeout => "timeout",
+            AshlarSecurityEventWebhookOutboxFailureKind.Canceled => "canceled",
+            AshlarSecurityEventWebhookOutboxFailureKind.TransportError => "transport_error",
+            AshlarSecurityEventWebhookOutboxFailureKind.UnsafeDestination => "unsafe_destination",
+            _ => "unknown"
+        };
+        var reason = GetSafeReason(Kind, Reason);
+        var value = TryGetSafeStatusCode(out var statusCode)
+            ? $"kind={kind};status={statusCode};reason={reason}"
+            : $"kind={kind};reason={reason}";
+        return value;
+    }
+
+    private bool TryGetSafeStatusCode(out int statusCode)
+    {
+        statusCode = 0;
+        if (Kind != AshlarSecurityEventWebhookOutboxFailureKind.HttpStatus || !StatusCode.HasValue)
+        {
+            return false;
+        }
+
+        statusCode = StatusCode.Value;
+        return statusCode >= 100 && statusCode <= 599;
+    }
+
+    private static string GetSafeReason(AshlarSecurityEventWebhookOutboxFailureKind kind, string reason)
+    {
+        return kind switch
+        {
+            AshlarSecurityEventWebhookOutboxFailureKind.HttpStatus when reason == HttpStatusReason => reason,
+            AshlarSecurityEventWebhookOutboxFailureKind.Timeout when reason == TimeoutReason => reason,
+            AshlarSecurityEventWebhookOutboxFailureKind.Canceled when reason == CanceledReason => reason,
+            AshlarSecurityEventWebhookOutboxFailureKind.TransportError when reason == TransportErrorReason => reason,
+            AshlarSecurityEventWebhookOutboxFailureKind.UnsafeDestination when reason == UnsafeDestinationReason => reason,
+            AshlarSecurityEventWebhookOutboxFailureKind.Unknown when reason == UnknownReason => reason,
+            _ => UnknownReason
+        };
+    }
+}
+
+/// <summary>
 /// Represents durable state changes for a failed security event webhook dispatch attempt.
 /// </summary>
 /// <param name="AttemptCount">The updated attempt count.</param>
 /// <param name="FailedAt">The terminal failure timestamp, if the entry exhausted retry attempts.</param>
 /// <param name="AvailableAt">The next time the entry is eligible for dispatch.</param>
-/// <param name="LastError">The safe truncated error text to persist.</param>
+/// <param name="LastError">The safe bounded operational failure summary to persist, never a raw transport exception.</param>
 public sealed record AshlarSecurityEventWebhookOutboxFailureUpdate(
     int AttemptCount,
     DateTimeOffset? FailedAt,
