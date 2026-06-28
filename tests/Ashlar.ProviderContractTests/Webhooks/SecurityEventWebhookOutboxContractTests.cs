@@ -45,7 +45,7 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
             Assert.That(failed.Deliveries.Select(delivery => delivery.EndpointName), Is.EqualTo(FailedEndpointNames));
             Assert.That(failedDelivery.EventType, Is.EqualTo("security.test"));
             Assert.That(failedDelivery.Outcome, Is.EqualTo("success"));
-            Assert.That(failedDelivery.LastErrorSummary, Is.EqualTo("delivery failure"));
+            Assert.That(failedDelivery.LastErrorSummary, Is.EqualTo("kind=transport_error;reason=transport_error"));
         }
     }
 
@@ -185,7 +185,7 @@ internal abstract class SecurityEventWebhookOutboxContractTests : ProviderContra
         await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Pending("scheduled", createdAt: Now.AddMinutes(-4), availableAt: Now.AddMinutes(30)));
         await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Locked("locked", Now.AddMinutes(5), createdAt: Now.AddMinutes(-3)));
         await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Locked("expired", Now.AddMinutes(-1), createdAt: Now.AddMinutes(-2)));
-        await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Failed("failed", failedAt: Now.AddSeconds(-30), createdAt: Now.AddMinutes(-1), lastError: "delivery failure"));
+        await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Failed("failed", failedAt: Now.AddSeconds(-30), createdAt: Now.AddMinutes(-1), lastError: "kind=transport_error;reason=transport_error"));
         await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Sent("sent"));
         await SeedWebhookOutboxRowAsync(SeedWebhookOutboxRow.Discarded("discarded"));
     }

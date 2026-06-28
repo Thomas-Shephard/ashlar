@@ -257,7 +257,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Assert.That(transport.Requests, Is.Empty);
             Assert.That(row.FailedAt, Is.EqualTo(_now));
             Assert.That(row.AttemptCount, Is.EqualTo(1));
-            Assert.That(row.LastError, Does.Contain("InvalidOperationException"));
+            Assert.That(row.LastError, Is.EqualTo("kind=unknown;reason=unknown_failure"));
         }
     }
 
@@ -342,7 +342,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Assert.That(row.AttemptCount, Is.EqualTo(1));
             Assert.That(row.LastAttemptAt, Is.EqualTo(_now));
             Assert.That(row.AvailableAt, Is.EqualTo(_now.AddSeconds(30)));
-            Assert.That(row.LastError, Does.Contain("HTTP 502"));
+            Assert.That(row.LastError, Is.EqualTo("kind=http_status;status=502;reason=non_success_status"));
         }
     }
 
@@ -416,7 +416,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Assert.That(row.SentAt, Is.Null);
             Assert.That(row.FailedAt, Is.Null);
             Assert.That(row.AttemptCount, Is.EqualTo(1));
-            Assert.That(row.LastError, Does.Contain("TaskCanceledException").Or.Contain("OperationCanceledException"));
+            Assert.That(row.LastError, Is.EqualTo("kind=timeout;reason=delivery_timeout"));
         }
     }
 
@@ -439,7 +439,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Assert.That(row.SentAt, Is.Null);
             Assert.That(row.FailedAt, Is.EqualTo(_now));
             Assert.That(row.AttemptCount, Is.EqualTo(1));
-            Assert.That(row.LastError, Does.Contain(nameof(AshlarSecurityEventWebhookUnsafeDestinationException)));
+            Assert.That(row.LastError, Is.EqualTo("kind=unsafe_destination;reason=unsafe_destination"));
+            Assert.That(row.LastError, Does.Not.Contain("127.0.0.1"));
         }
     }
 
@@ -589,7 +590,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(failure.LastError, Has.Length.EqualTo(1000));
+            Assert.That(failure.LastError, Is.EqualTo("kind=unknown;reason=unknown_failure"));
+            Assert.That(failure.LastError, Has.Length.LessThanOrEqualTo(AshlarSecurityEventWebhookOutboxDispatch.MaxPersistedFailureDetailLength));
             Assert.That(contentHeaderRequest.Headers.TryGetValues("X-Ashlar-Event-Type", out var requestValues), Is.True);
             Assert.That(requestValues!.Single(), Is.EqualTo("ashlar.test"));
             Assert.That(contentHeaderRequest.Content!.Headers.ContentEncoding.Single(), Is.EqualTo("gzip"));

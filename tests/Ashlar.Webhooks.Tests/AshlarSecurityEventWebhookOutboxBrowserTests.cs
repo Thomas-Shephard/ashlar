@@ -1,3 +1,4 @@
+using System.Net;
 using Ashlar.Webhooks.SecurityEvents;
 
 namespace Ashlar.Webhooks.Tests;
@@ -75,17 +76,41 @@ internal sealed class AshlarSecurityEventWebhookOutboxBrowserTests
     }
 
     [Test]
-    public void LastErrorSummaryIsNullSafeSingleLineAndTruncated()
+    public void LastErrorSummaryOnlyAllowsSafePersistedFailureDetails()
     {
-        var longError = "prefix\r\n" + new string('x', AshlarSecurityEventWebhookOutboxBrowser.MaxLastErrorSummaryLength + 10);
-        var summary = AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary(longError);
+        var summary = AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=http_status;status=502;reason=non_success_status");
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary(null), Is.Null);
-            Assert.That(summary, Has.Length.EqualTo(AshlarSecurityEventWebhookOutboxBrowser.MaxLastErrorSummaryLength));
-            Assert.That(summary, Does.Not.Contain("\r"));
-            Assert.That(summary, Does.Not.Contain("\n"));
+            Assert.That(summary, Is.EqualTo("kind=http_status;status=502;reason=non_success_status"));
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=timeout;reason=delivery_timeout"), Is.EqualTo("kind=timeout;reason=delivery_timeout"));
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=canceled;reason=delivery_canceled"), Is.EqualTo("kind=canceled;reason=delivery_canceled"));
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=transport_error;reason=transport_error"), Is.EqualTo("kind=transport_error;reason=transport_error"));
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=unsafe_destination;reason=unsafe_destination"), Is.EqualTo("kind=unsafe_destination;reason=unsafe_destination"));
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=unknown;reason=unknown_failure"), Is.EqualTo("kind=unknown;reason=unknown_failure"));
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary(" kind=unknown;reason=unknown_failure "), Is.EqualTo("kind=unknown;reason=unknown_failure"));
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary(" "), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=unknown;reason=unknown_failure" + new string('x', AshlarSecurityEventWebhookOutboxBrowser.MaxLastErrorSummaryLength)), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("System.Exception: https://example.test?token=secret"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("=unknown;reason=unknown_failure"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=;reason=unknown_failure"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=invalid;reason=unknown_failure"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=unknown;status=abc;reason=unknown_failure"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=http_status;status=abc;reason=non_success_status"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=http_status;status=600;reason=non_success_status"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=http_status;status=99;reason=non_success_status"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=http_status;status=-1;reason=non_success_status"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=http_status;reason=secret"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=http_status;reason=transport_error"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=timeout;status=502;reason=delivery_timeout"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=unknown;kind=timeout;reason=unknown_failure"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=http_status;status=502;reason=non_success_status;extra=value"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=http_status;status=502"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("reason=unknown_failure"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=unknown;reason=unknown_failure\r\nx-test"), Is.Null);
+            Assert.That(AshlarSecurityEventWebhookOutboxBrowser.CreateLastErrorSummary("kind=unknown;reason=unknown_failure\nx-test"), Is.Null);
         }
     }
 
@@ -99,6 +124,32 @@ internal sealed class AshlarSecurityEventWebhookOutboxBrowserTests
             Assert.That(AshlarSecurityEventWebhookOutboxBrowser.ParseStatus("unknown"), Is.EqualTo(AshlarSecurityEventWebhookOutboxStatus.Pending));
             Assert.That(AshlarSecurityEventWebhookOutboxBrowser.ParseStatus("99"), Is.EqualTo(AshlarSecurityEventWebhookOutboxStatus.Pending));
         }
+    }
+
+    [Test]
+    public void FailureSummaryMapsExceptionsToSafePersistedDetails()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AshlarSecurityEventWebhookOutboxFailureSummary.FromException(new HttpRequestException("https://example.test?token=secret", null, HttpStatusCode.BadGateway)).ToPersistedString(), Is.EqualTo("kind=http_status;status=502;reason=non_success_status"));
+            Assert.That(new AshlarSecurityEventWebhookOutboxFailureSummary(AshlarSecurityEventWebhookOutboxFailureKind.HttpStatus, null, "non_success_status").ToPersistedString(), Is.EqualTo("kind=http_status;reason=non_success_status"));
+            Assert.That(new AshlarSecurityEventWebhookOutboxFailureSummary(AshlarSecurityEventWebhookOutboxFailureKind.HttpStatus, 99, "non_success_status").ToPersistedString(), Is.EqualTo("kind=http_status;reason=non_success_status"));
+            Assert.That(new AshlarSecurityEventWebhookOutboxFailureSummary(AshlarSecurityEventWebhookOutboxFailureKind.HttpStatus, 600, "non_success_status").ToPersistedString(), Is.EqualTo("kind=http_status;reason=non_success_status"));
+            Assert.That(AshlarSecurityEventWebhookOutboxFailureSummary.FromException(new OperationCanceledException("https://example.test?token=secret")).ToPersistedString(), Is.EqualTo("kind=timeout;reason=delivery_timeout"));
+            Assert.That(AshlarSecurityEventWebhookOutboxFailureSummary.Canceled().ToPersistedString(), Is.EqualTo("kind=canceled;reason=delivery_canceled"));
+            Assert.That(AshlarSecurityEventWebhookOutboxFailureSummary.FromException(new AshlarSecurityEventWebhookUnsafeDestinationException("https://127.0.0.1/path?secret=value")).ToPersistedString(), Is.EqualTo("kind=unsafe_destination;reason=unsafe_destination"));
+            Assert.That(AshlarSecurityEventWebhookOutboxFailureSummary.FromException(new HttpRequestException("https://example.test?token=secret")).ToPersistedString(), Is.EqualTo("kind=transport_error;reason=transport_error"));
+            Assert.That(AshlarSecurityEventWebhookOutboxFailureSummary.FromException(new InvalidOperationException("https://example.test?token=secret")).ToPersistedString(), Is.EqualTo("kind=unknown;reason=unknown_failure"));
+            Assert.That(new AshlarSecurityEventWebhookOutboxFailureSummary(AshlarSecurityEventWebhookOutboxFailureKind.Unknown, 599, "unsafe\r\nreason").ToPersistedString(), Is.EqualTo("kind=unknown;reason=unknown_failure"));
+            Assert.That(new AshlarSecurityEventWebhookOutboxFailureSummary(AshlarSecurityEventWebhookOutboxFailureKind.Unknown, 99, "unknown_failure").ToPersistedString(), Is.EqualTo("kind=unknown;reason=unknown_failure"));
+            Assert.That(new AshlarSecurityEventWebhookOutboxFailureSummary(AshlarSecurityEventWebhookOutboxFailureKind.Unknown, 600, "unknown_failure").ToPersistedString(), Is.EqualTo("kind=unknown;reason=unknown_failure"));
+        }
+    }
+
+    [Test]
+    public void FailureSummaryRejectsNullException()
+    {
+        Assert.Throws<ArgumentNullException>(() => AshlarSecurityEventWebhookOutboxFailureSummary.FromException(null!));
     }
 
     [Test]
