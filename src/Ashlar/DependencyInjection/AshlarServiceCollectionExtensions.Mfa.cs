@@ -153,11 +153,17 @@ public static partial class AshlarServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers Ashlar's MFA policy and authentication orchestration services.
+    /// Registers Ashlar's MFA authentication orchestration services without selecting an MFA policy.
     /// </summary>
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="configure">Optional MFA orchestration configuration.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
+    /// <remarks>
+    /// This connects primary authentication to MFA policy evaluation and handshake management. Register
+    /// <see cref="AddAshlarNoMfaPolicy(IServiceCollection)" />, <see cref="AddAshlarRequireMfaForAllUsers(IServiceCollection, Action{RequireMfaForAllUsersPolicyOptions})" />,
+    /// <see cref="AddAshlarRequireMfaWhenCredentialExists(IServiceCollection, Action{CredentialBackedMfaPolicyOptions})" />, or a custom policy evaluator before resolving
+    /// <see cref="IAuthenticationOrchestrator" />.
+    /// </remarks>
     public static IServiceCollection AddAshlarMfaOrchestration(
         this IServiceCollection services,
         Action<MfaOrchestrationOptions>? configure = null)
@@ -172,7 +178,6 @@ public static partial class AshlarServiceCollectionExtensions
             services.Configure(configure);
         }
 
-        services.TryAddScoped<IMfaPolicyEvaluator, MfaPolicyEvaluator>();
         services.TryAddScoped(provider => new AuthenticationOrchestratorDependencies(
             provider.GetService<IOptions<MfaOrchestrationOptions>>(),
             provider,
@@ -190,7 +195,7 @@ public static partial class AshlarServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Explicitly registers the no-MFA policy evaluator.
+    /// Explicitly registers the no-MFA policy evaluator for applications that want orchestration without policy-required MFA.
     /// </summary>
     /// <param name="services">The service collection to add registrations to.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
@@ -199,7 +204,7 @@ public static partial class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarMfaOrchestration();
-        services.Replace(ServiceDescriptor.Scoped<IMfaPolicyEvaluator, MfaPolicyEvaluator>());
+        services.Replace(ServiceDescriptor.Scoped<IMfaPolicyEvaluator, NoMfaPolicyEvaluator>());
 
         return services;
     }

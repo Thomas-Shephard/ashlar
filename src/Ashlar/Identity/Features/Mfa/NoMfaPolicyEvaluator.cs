@@ -1,12 +1,12 @@
 namespace Ashlar.Identity.Features.Mfa;
 
 /// <summary>
-/// Default MFA policy evaluator that does not require secondary verification.
+/// Explicit MFA policy evaluator that never requires secondary verification.
 /// </summary>
-public sealed class MfaPolicyEvaluator : IMfaPolicyEvaluator
+public sealed class NoMfaPolicyEvaluator : IMfaPolicyEvaluator
 {
     /// <summary>
-    /// Evaluates the default MFA policy for a user.
+    /// Evaluates the no-MFA policy for a user.
     /// </summary>
     /// <param name="user">User being authenticated.</param>
     /// <param name="context">Authentication request context supplied by the host application.</param>

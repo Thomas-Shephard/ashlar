@@ -17,7 +17,8 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
 
         using (Assert.EnterMultipleScope())
         {
-            AssertDescriptor<IMfaPolicyEvaluator, MfaPolicyEvaluator>(services, ServiceLifetime.Scoped);
+            Assert.That(services, Has.None.Matches<ServiceDescriptor>(descriptor =>
+                descriptor.ServiceType == typeof(IMfaPolicyEvaluator)));
             AssertDescriptor<IAuthenticationOrchestrator>(services, ServiceLifetime.Scoped);
             AssertDescriptor<AuthenticationHandshakeService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAuthenticationHandshakeService>(services, ServiceLifetime.Scoped);
@@ -25,14 +26,14 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
     }
 
     [Test]
-    public void AddAshlarMfaOrchestrationResolvesOrchestratorWhenRequiredDependenciesArePresent()
+    public void AddAshlarNoMfaPolicyResolvesOrchestratorWhenRequiredDependenciesArePresent()
     {
         var services = new ServiceCollection();
         services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddAshlarMfaOrchestration();
+        services.AddAshlarNoMfaPolicy();
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
@@ -43,7 +44,7 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
     }
 
     [Test]
-    public async Task AddAshlarMfaOrchestrationUsesRegisteredHandshakeServiceForSafeHandshakeOperations()
+    public async Task AddAshlarNoMfaPolicyUsesRegisteredHandshakeServiceForSafeHandshakeOperations()
     {
         var services = new ServiceCollection();
         var handshakeService = new Mock<IAuthenticationHandshakeService>();
@@ -55,7 +56,7 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
-        services.AddAshlarMfaOrchestration();
+        services.AddAshlarNoMfaPolicy();
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
@@ -135,7 +136,18 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
 
         services.AddAshlarNoMfaPolicy();
 
-        AssertDescriptor<IMfaPolicyEvaluator, MfaPolicyEvaluator>(services, ServiceLifetime.Scoped);
+        AssertDescriptor<IMfaPolicyEvaluator, NoMfaPolicyEvaluator>(services, ServiceLifetime.Scoped);
+    }
+
+    [Test]
+    public void AddAshlarMfaOrchestrationDoesNotSilentlyRegisterPermissivePolicy()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarMfaOrchestration();
+
+        Assert.That(services, Has.None.Matches<ServiceDescriptor>(descriptor =>
+            descriptor.ServiceType == typeof(IMfaPolicyEvaluator)));
     }
 
     [Test]

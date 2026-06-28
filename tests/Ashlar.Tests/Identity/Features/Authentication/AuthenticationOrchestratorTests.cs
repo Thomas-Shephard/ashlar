@@ -1609,9 +1609,9 @@ internal sealed class AuthenticationOrchestratorTests
     }
 
     [Test]
-    public async Task MfaPolicyEvaluatorDefaultsToNoMfa()
+    public async Task NoMfaPolicyEvaluatorDefaultsToNoMfa()
     {
-        var evaluator = new MfaPolicyEvaluator();
+        var evaluator = new NoMfaPolicyEvaluator();
         var result = await evaluator.EvaluateAsync(_userMock.Object, _context);
         Assert.That(result.IsMfaRequired, Is.False);
     }
@@ -1646,9 +1646,9 @@ internal sealed class AuthenticationOrchestratorTests
 
     [Test]
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
-    public void MfaPolicyEvaluatorThrowsWhenArgumentsAreNull()
+    public void NoMfaPolicyEvaluatorThrowsWhenArgumentsAreNull()
     {
-        var evaluator = new MfaPolicyEvaluator();
+        var evaluator = new NoMfaPolicyEvaluator();
 
         using (Assert.EnterMultipleScope())
         {

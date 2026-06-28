@@ -644,6 +644,7 @@ internal sealed class MagicLinkSignInTests
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton<IEmailSender, RecordingEmailSender>();
         services.AddAshlarMagicLinkSignIn(options => options.EmailSubject = "Modified");
+        services.AddAshlarNoMfaPolicy();
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();

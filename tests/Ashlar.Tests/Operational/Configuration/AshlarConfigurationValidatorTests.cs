@@ -156,6 +156,137 @@ internal sealed class AshlarConfigurationValidatorTests
     }
 
     [Test]
+    public async Task CoreCheckReportsWarningForPermissiveMfaPolicyWhenOrchestrationUsesNoMfaPolicy()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarNoMfaPolicy();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        var issue = AssertIssue(result, AshlarConfigurationIssueCodes.PermissiveMfaPolicy, AshlarConfigurationIssueSeverity.Warning);
+        var text = $"{issue.Message} {issue.Recommendation}";
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(text, Does.Contain(nameof(NoMfaPolicyEvaluator)));
+            Assert.That(text, Does.Contain("registered MFA factors are available but not required"));
+            Assert.That(text, Does.Contain(nameof(AshlarServiceCollectionExtensions.AddAshlarNoMfaPolicy)));
+            Assert.That(text, Does.Contain(nameof(AshlarServiceCollectionExtensions.AddAshlarRequireMfaForAllUsers)));
+            Assert.That(text, Does.Contain(nameof(AshlarServiceCollectionExtensions.AddAshlarRequireMfaWhenCredentialExists)));
+            Assert.That(text, Does.Contain(nameof(IMfaPolicyEvaluator)));
+        }
+    }
+
+    [Test]
+    public async Task CoreCheckReportsErrorWhenMfaOrchestrationHasNoPolicyEvaluator()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarMfaOrchestration();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        var issue = AssertIssue(result, AshlarConfigurationIssueCodes.MfaPolicyMissing, AshlarConfigurationIssueSeverity.Error);
+        var text = $"{issue.Message} {issue.Recommendation}";
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(text, Does.Contain("without an MFA policy evaluator"));
+            Assert.That(text, Does.Contain(nameof(AshlarServiceCollectionExtensions.AddAshlarNoMfaPolicy)));
+            Assert.That(text, Does.Contain(nameof(AshlarServiceCollectionExtensions.AddAshlarRequireMfaForAllUsers)));
+            Assert.That(text, Does.Contain(nameof(AshlarServiceCollectionExtensions.AddAshlarRequireMfaWhenCredentialExists)));
+            Assert.That(text, Does.Contain(nameof(IMfaPolicyEvaluator)));
+            Assert.That(text, Does.Contain(nameof(IAuthenticationOrchestrator)));
+        }
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotReportPermissiveMfaPolicyWhenRequireAllUsersPolicyIsRegistered()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarRequireMfaForAllUsers(options => options.RequiredFactors.Add(AuthenticationFactorTypes.Totp));
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.PermissiveMfaPolicy));
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotReportPermissiveMfaPolicyWhenCredentialBackedPolicyIsRegistered()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddAshlarRequireMfaWhenCredentialExists(options =>
+        {
+            options.CredentialProviderKeys.Add(new AuthenticationProviderKey(ProviderType.Mfa, "totp"));
+            options.RequiredFactors.Add(AuthenticationFactorTypes.Totp);
+        });
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.PermissiveMfaPolicy));
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotResolveBrokenMfaPolicyWhenReportingConfigurationIssues()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarRequireMfaWhenCredentialExists(options =>
+        {
+            options.CredentialProviderKeys.Add(new AuthenticationProviderKey(ProviderType.Mfa, "totp"));
+            options.RequiredFactors.Add(AuthenticationFactorTypes.Totp);
+        });
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertIssue(result, AshlarConfigurationIssueCodes.CredentialRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.MfaPolicyMissing));
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.PermissiveMfaPolicy));
+        }
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotThrowWhenRegisteredMfaPolicyOptionsAreInvalid()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarRequireMfaForAllUsers(_ => { });
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.MfaPolicyMissing));
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.PermissiveMfaPolicy));
+        }
+    }
+
+    [Test]
+    public async Task CoreCheckDoesNotReportPermissiveMfaPolicyWhenCustomPolicyIsRegistered()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarMfaPolicyEvaluator<CustomMfaPolicyEvaluator>();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.PermissiveMfaPolicy));
+    }
+
+    [Test]
     public async Task CoreCheckReportsDetailedInMemoryRateLimiterWarning()
     {
         var services = new ServiceCollection();
@@ -1157,6 +1288,14 @@ internal sealed class AshlarConfigurationValidatorTests
         public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(Result.Success());
+        }
+    }
+
+    private sealed class CustomMfaPolicyEvaluator : IMfaPolicyEvaluator
+    {
+        public Task<MfaPolicyEvaluation> EvaluateAsync(IUser user, AuthenticationContext context, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new MfaPolicyEvaluation(true, new MfaRequirement([AuthenticationFactorTypes.Totp])));
         }
     }
 

@@ -22,6 +22,7 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
             options.Origin = "https://example.com";
             options.RelyingPartyId = "example.com";
         });
+        services.AddAshlarNoMfaPolicy();
 
         using var provider = services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptions<PasskeyOptions>>().Value;
@@ -72,6 +73,7 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
             options.Origin = "https://example.com";
             options.RelyingPartyId = "example.com";
         });
+        services.AddAshlarNoMfaPolicy();
 
         using var provider = ServiceProviderValidation.BuildValidatedServiceProvider(
             services,

@@ -434,6 +434,7 @@ internal sealed class EmailCodeSignInTests
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton<IEmailSender, RecordingEmailSender>();
         services.AddAshlarEmailCodeSignIn(options => options.CodeLength = 6);
+        services.AddAshlarNoMfaPolicy();
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
