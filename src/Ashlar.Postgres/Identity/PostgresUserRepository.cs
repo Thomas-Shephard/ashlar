@@ -90,7 +90,7 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
         var parameters = new
         {
             user.Id,
-            DisplayEmail = user.DisplayEmail,
+            user.DisplayEmail,
             NormalizedEmail = IdentityNormalization.NormalizeEmail(user.DisplayEmail),
             user.Name,
             AccountState = user.AccountState.ToStorageValue(),
@@ -124,7 +124,7 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
         var parameters = new
         {
             user.Id,
-            DisplayEmail = user.DisplayEmail,
+            user.DisplayEmail,
             NormalizedEmail = IdentityNormalization.NormalizeEmail(user.DisplayEmail),
             user.Name,
             AccountState = user.AccountState.ToStorageValue(),

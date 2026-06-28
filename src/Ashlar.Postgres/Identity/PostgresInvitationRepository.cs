@@ -32,7 +32,7 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         var parameters = new
         {
             invitation.Id,
-            DisplayEmail = invitation.DisplayEmail,
+            invitation.DisplayEmail,
             NormalizedEmail = IdentityNormalization.NormalizeEmail(invitation.DisplayEmail),
             invitation.TenantId,
             invitation.TokenHash,
