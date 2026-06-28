@@ -95,7 +95,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         var userBucket = AuthenticationRateLimitDimensions.User(user.Id);
         var rateLimit = await _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(RequestPurpose, AuthenticationRateLimitDimensions.DimensionName(userBucket), userBucket, _options.Value.RequestRateLimit)
         {
-            Email = user.Email,
+            Email = user.DisplayEmail,
             UserId = user.Id,
             TenantId = (user as ITenantUser)?.TenantId,
             Context = EmailFlowRateLimitHelpers.ToAuthenticationContext(request.Audit)
@@ -141,7 +141,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(request.CallbackBaseUri, _options.Value.TokenParameterName, token, user.Id, _options.Value.UserIdParameterName);
         var message = IdentityUrlHelper.FormatEmailBody(_options.Value.EmailTextTemplate, callbackUrl, "Verification token", token);
         var emailMessage = new EmailMessage(
-            user.Email,
+            user.DisplayEmail,
             _options.Value.Subject,
             message,
             options: new EmailMessageOptions
@@ -312,9 +312,9 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         /// </summary>
         public Guid Id => original.Id;
         /// <summary>
-        /// Existing email address.
+        /// Existing sanitized display/delivery email address.
         /// </summary>
-        public string Email => original.Email;
+        public string DisplayEmail => original.DisplayEmail;
         /// <summary>
         /// Existing display name.
         /// </summary>

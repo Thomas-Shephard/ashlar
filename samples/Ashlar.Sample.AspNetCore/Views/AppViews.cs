@@ -1475,7 +1475,7 @@ internal static class AppViews
 
                 let adminUsers = [];
 
-                const renderUserOptionText = u => (u.name || 'No Name') + ' (' + u.email + ')';
+                const renderUserOptionText = u => (u.name || 'No Name') + ' (' + u.displayEmail + ')';
 
                 const setSecurityActions = posture => {
                     document.getElementById('disableUserBtn').classList.toggle('hidden', !posture.canSignIn);

@@ -5,36 +5,35 @@ using Ashlar.Identity.Models.Tenants;
 namespace Ashlar.Postgres.Identity;
 
 /// <summary>
-/// Provides postgres invitation repository behavior.
+/// PostgreSQL-backed invitation repository.
 /// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-/// <param name="timeProvider">The time provider value.</param>
+/// <param name="connectionProvider">Connection provider used for invitation reads and writes.</param>
+/// <param name="timeProvider">Clock used for invitation revocation and optimistic updates.</param>
 public sealed class PostgresInvitationRepository(IPostgresConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IInvitationRepository
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
     /// <summary>
-    /// Performs the create invitation <see langword="async" /> operation and returns the result.
+    /// Persists a new invitation.
     /// </summary>
-    /// <param name="invitation">The invitation value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="invitation">Invitation to create. <see cref="UserInvitation.DisplayEmail" /> is stored as the sanitized display/delivery address and normalized separately for lookup and uniqueness.</param>
+    /// <param name="cancellationToken">Token that can cancel invitation creation.</param>
     public async Task CreateInvitationAsync(UserInvitation invitation, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(invitation);
         ValidateMetadata(invitation.Metadata);
 
         const string sql = """
-            INSERT INTO ashlar_invitations (id, email, normalized_email, tenant_id, token_hash, created_at, updated_at, expires_at, metadata, version)
-            VALUES (@Id, @Email, @NormalizedEmail, @TenantId, @TokenHash, @CreatedAt, @UpdatedAt, @ExpiresAt, @Metadata::jsonb, @Version)
+            INSERT INTO ashlar_invitations (id, display_email, normalized_email, tenant_id, token_hash, created_at, updated_at, expires_at, metadata, version)
+            VALUES (@Id, @DisplayEmail, @NormalizedEmail, @TenantId, @TokenHash, @CreatedAt, @UpdatedAt, @ExpiresAt, @Metadata::jsonb, @Version)
             """;
 
         var parameters = new
         {
             invitation.Id,
-            invitation.Email,
-            NormalizedEmail = IdentityNormalization.NormalizeEmail(invitation.Email),
+            invitation.DisplayEmail,
+            NormalizedEmail = IdentityNormalization.NormalizeEmail(invitation.DisplayEmail),
             invitation.TenantId,
             invitation.TokenHash,
             invitation.CreatedAt,
@@ -53,17 +52,17 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
     }
 
     /// <summary>
-    /// Performs the get invitation by token hash <see langword="async" /> operation and returns the result.
+    /// Finds an invitation by its stored token hash.
     /// </summary>
-    /// <param name="tokenHash">The token hash value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="tokenHash">Stored hash of the raw invitation token.</param>
+    /// <param name="cancellationToken">Token that can cancel invitation lookup.</param>
+    /// <returns>The matching invitation, or <see langword="null" /> when no invitation exists.</returns>
     public async Task<UserInvitation?> GetInvitationByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tokenHash);
 
         const string sql = """
-            SELECT id, email, tenant_id AS TenantId, token_hash AS TokenHash, created_at AS CreatedAt, updated_at AS UpdatedAt,
+            SELECT id, display_email AS DisplayEmail, tenant_id AS TenantId, token_hash AS TokenHash, created_at AS CreatedAt, updated_at AS UpdatedAt,
                    expires_at AS ExpiresAt, accepted_at AS AcceptedAt, revoked_at AS RevokedAt, metadata, version
             FROM ashlar_invitations
             WHERE token_hash = @TokenHash
@@ -78,12 +77,12 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
     }
 
     /// <summary>
-    /// Performs the update invitation <see langword="async" /> operation and returns the result.
+    /// Conditionally updates an available invitation.
     /// </summary>
-    /// <param name="invitation">The invitation value.</param>
-    /// <param name="expectedVersion">The expected version value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="invitation">Invitation state to persist.</param>
+    /// <param name="expectedVersion">Version that must match before the update is applied.</param>
+    /// <param name="cancellationToken">Token that can cancel invitation update.</param>
+    /// <returns><see langword="true" /> when the invitation was updated; otherwise, <see langword="false" />.</returns>
     public async Task<bool> UpdateInvitationAsync(UserInvitation invitation, string expectedVersion, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(invitation);
@@ -132,12 +131,12 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
     }
 
     /// <summary>
-    /// Performs the revoke invitations by email <see langword="async" /> operation and returns the result.
+    /// Revokes outstanding invitations for an email address.
     /// </summary>
-    /// <param name="email">The email value.</param>
-    /// <param name="tenantId">The tenant id value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="email">Email address whose invitations should be revoked. The repository normalizes this value for lookup.</param>
+    /// <param name="tenantId">Tenant scope for invitations to revoke, or <see langword="null" /> for global invitations.</param>
+    /// <param name="cancellationToken">Token that can cancel invitation revocation.</param>
+    /// <returns>Number of invitations revoked.</returns>
     public async Task<int> RevokeInvitationsByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
@@ -179,7 +178,7 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
 
         var sql = $"""
             SELECT id,
-                   email,
+                   display_email AS DisplayEmail,
                    tenant_id AS TenantId,
                    {StatusSql("@Now")} AS Status,
                    created_at AS CreatedAt,
@@ -220,7 +219,7 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
 
         var sql = $"""
             SELECT id,
-                   email,
+                   display_email AS DisplayEmail,
                    tenant_id AS TenantId,
                    {StatusSql("@Now")} AS Status,
                    created_at AS CreatedAt,
@@ -337,14 +336,14 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
 
         if (!string.IsNullOrWhiteSpace(request.EmailQuery))
         {
-            sql += " AND normalized_email ILIKE @EmailQuery";
-            parameters.Add("EmailQuery", $"%{IdentityNormalization.NormalizeEmail(request.EmailQuery)}%");
+            sql += " AND normalized_email LIKE @NormalizedEmailQuery";
+            parameters.Add("NormalizedEmailQuery", $"%{IdentityNormalization.NormalizeEmail(request.EmailQuery)}%");
         }
 
         if (!string.IsNullOrWhiteSpace(request.Email))
         {
-            sql += " AND normalized_email = @Email";
-            parameters.Add("Email", IdentityNormalization.NormalizeEmail(request.Email));
+            sql += " AND normalized_email = @NormalizedEmail";
+            parameters.Add("NormalizedEmail", IdentityNormalization.NormalizeEmail(request.Email));
         }
 
         if (request.Status != null)
@@ -410,7 +409,7 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
 
     private sealed record InvitationAdministrationSummaryRow(
         Guid Id,
-        string Email,
+        string DisplayEmail,
         Guid? TenantId,
         int Status,
         DateTime CreatedAt,
@@ -423,7 +422,7 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         {
             return new InvitationAdministrationSummary(
                 Id,
-                Email,
+                DisplayEmail,
                 TenantId,
                 (InvitationAdministrationStatus)Status,
                 PostgresAdminQuery.ToDateTimeOffset(CreatedAt),

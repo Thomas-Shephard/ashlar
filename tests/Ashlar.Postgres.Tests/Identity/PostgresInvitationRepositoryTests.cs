@@ -4,7 +4,7 @@ namespace Ashlar.Postgres.Tests.Identity;
 
 internal sealed class PostgresInvitationRepositoryTests : PostgresTestBase
 {
-    private IServiceProvider _serviceProvider;
+    private IServiceProvider _serviceProvider = null!;
 
     public override async Task OneTimeSetUp()
     {
@@ -39,7 +39,7 @@ internal sealed class PostgresInvitationRepositoryTests : PostgresTestBase
         var invitation = new UserInvitation
         {
             Id = Guid.NewGuid(),
-            Email = "test@example.com",
+            DisplayEmail = "test@example.com",
             TokenHash = "hash123",
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
@@ -56,7 +56,7 @@ internal sealed class PostgresInvitationRepositoryTests : PostgresTestBase
         {
             Assert.That(fetched, Is.Not.Null);
             Assert.That(fetched!.Id, Is.EqualTo(invitation.Id));
-            Assert.That(fetched.Email, Is.EqualTo("test@example.com"));
+            Assert.That(fetched.DisplayEmail, Is.EqualTo("test@example.com"));
             Assert.That(fetched.Metadata, Does.Contain("\"key\"").And.Contain("\"val\""));
             Assert.That(fetched.UpdatedAt, Is.Not.Null);
         }
@@ -79,7 +79,7 @@ internal sealed class PostgresInvitationRepositoryTests : PostgresTestBase
         var invitation = new UserInvitation
         {
             Id = Guid.NewGuid(),
-            Email = "update@example.com",
+            DisplayEmail = "update@example.com",
             TokenHash = "hash-update",
             CreatedAt = DateTimeOffset.UtcNow,
             ExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
@@ -111,7 +111,7 @@ internal sealed class PostgresInvitationRepositoryTests : PostgresTestBase
         var invitation = new UserInvitation
         {
             Id = Guid.NewGuid(),
-            Email = "wrong-version@example.com",
+            DisplayEmail = "wrong-version@example.com",
             TokenHash = "hash-wrong",
             CreatedAt = DateTimeOffset.UtcNow,
             ExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
@@ -152,7 +152,7 @@ internal sealed class PostgresInvitationRepositoryTests : PostgresTestBase
         var invitation = CreateInvitation("revoked-update@example.com", "hash-revoked-update");
 
         await repo.CreateInvitationAsync(invitation);
-        await repo.RevokeInvitationsByEmailAsync(invitation.Email);
+        await repo.RevokeInvitationsByEmailAsync(invitation.DisplayEmail);
 
         invitation.AcceptedAt = DateTimeOffset.UtcNow;
         var result = await repo.UpdateInvitationAsync(invitation, invitation.Version);
@@ -219,7 +219,7 @@ internal sealed class PostgresInvitationRepositoryTests : PostgresTestBase
         return new UserInvitation
         {
             Id = Guid.NewGuid(),
-            Email = email,
+            DisplayEmail = email,
             TokenHash = hash,
             CreatedAt = created,
             ExpiresAt = expiresAt ?? created.AddDays(7),

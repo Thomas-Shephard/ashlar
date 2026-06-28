@@ -30,7 +30,7 @@ public interface IInvitationRepository
     /// <summary>
     /// Revokes outstanding invitations for an email address.
     /// </summary>
-    /// <param name="email">Normalized email address whose invitations should be revoked.</param>
+    /// <param name="email">Email address whose invitations should be revoked. Implementations normalize this value for lookup.</param>
     /// <param name="tenantId">Tenant scope to revoke within, or <see langword="null" /> for global invitations.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>
     /// <returns>The number of invitations newly revoked.</returns>

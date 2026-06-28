@@ -6,7 +6,7 @@ namespace Ashlar.Identity.Models.Invitations;
 public sealed class CreateInvitationRequest
 {
     /// <summary>
-    /// Email address that will receive the invitation. Treat as personal data.
+    /// Email address that will receive the invitation. Ashlar stores a sanitized display/delivery address and uses a separate normalized form for lookup and uniqueness checks. Treat as personal data.
     /// </summary>
     public required string Email { get; init; }
     /// <summary>

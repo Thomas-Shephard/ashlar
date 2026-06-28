@@ -27,7 +27,7 @@ internal sealed class AuthenticationSessionServiceTests
         _tokenHasherMock.Setup(h => h.HashToken(It.IsAny<string>())).Returns<string>(token => $"hashed:{token}");
         _userRepositoryMock
             .Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid userId, CancellationToken _) => new User { Id = userId, Email = "user@example.com" });
+            .ReturnsAsync((Guid userId, CancellationToken _) => new User { Id = userId, DisplayEmail = "user@example.com" });
 
         _service = new AuthenticationSessionService(
             _repositoryMock.Object,
@@ -263,7 +263,7 @@ internal sealed class AuthenticationSessionServiceTests
         var tenantId = Guid.NewGuid();
         _userRepositoryMock
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = tenantId });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "tenant@example.com", TenantId = tenantId });
 
         var result = await _service.CreateSessionAsync(userId, new CreateAuthenticationSessionRequest(TenantId: tenantId));
 
@@ -280,7 +280,7 @@ internal sealed class AuthenticationSessionServiceTests
         var userId = Guid.NewGuid();
         _userRepositoryMock
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "global@example.com", TenantId = null });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "global@example.com", TenantId = null });
 
         var result = await _service.CreateSessionAsync(userId, new CreateAuthenticationSessionRequest(TenantId: null));
 
@@ -300,7 +300,7 @@ internal sealed class AuthenticationSessionServiceTests
         var requestedTenantId = requestedTenantIsNull ? (Guid?)null : Guid.NewGuid();
         _userRepositoryMock
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = userTenantId });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "tenant@example.com", TenantId = userTenantId });
 
         var exception = Assert.ThrowsAsync<AshlarOperationException>(async () =>
             await _service.CreateSessionAsync(userId, new CreateAuthenticationSessionRequest(TenantId: requestedTenantId)));
@@ -318,7 +318,7 @@ internal sealed class AuthenticationSessionServiceTests
         var userId = Guid.NewGuid();
         _userRepositoryMock
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "global@example.com", TenantId = null });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "global@example.com", TenantId = null });
 
         var exception = Assert.ThrowsAsync<AshlarOperationException>(async () =>
             await _service.CreateSessionAsync(userId, new CreateAuthenticationSessionRequest(TenantId: Guid.NewGuid())));
@@ -340,7 +340,7 @@ internal sealed class AuthenticationSessionServiceTests
         var tenantId = Guid.NewGuid();
         _userRepositoryMock
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = tenantId });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "tenant@example.com", TenantId = tenantId });
         var service = new AuthenticationSessionService(
             _repositoryMock.Object,
             tokenHasher.Object,
@@ -372,7 +372,7 @@ internal sealed class AuthenticationSessionServiceTests
         var tenantId = Guid.NewGuid();
         _userRepositoryMock
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "user@example.com", AccountState = accountState, TenantId = tenantId });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "user@example.com", AccountState = accountState, TenantId = tenantId });
         var service = new AuthenticationSessionService(
             _repositoryMock.Object,
             tokenHasher.Object,
@@ -413,7 +413,7 @@ internal sealed class AuthenticationSessionServiceTests
         var requestedTenantId = Guid.NewGuid();
         _userRepositoryMock
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = userTenantId });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "tenant@example.com", TenantId = userTenantId });
         var service = new AuthenticationSessionService(
             _repositoryMock.Object,
             _tokenHasherMock.Object,
@@ -603,7 +603,7 @@ internal sealed class AuthenticationSessionServiceTests
             .ReturnsAsync(session);
         _userRepositoryMock
             .Setup(r => r.GetUserByIdAsync(session.UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = session.UserId, Email = "user@example.com", AccountState = accountState });
+            .ReturnsAsync(new User { Id = session.UserId, DisplayEmail = "user@example.com", AccountState = accountState });
         var service = new AuthenticationSessionService(
             _repositoryMock.Object,
             _tokenHasherMock.Object,
@@ -824,7 +824,7 @@ internal sealed class AuthenticationSessionServiceTests
         var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
         _userRepositoryMock
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "user@example.com", AccountState = accountState, TenantId = tenantId });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "user@example.com", AccountState = accountState, TenantId = tenantId });
 
         var result = await service.MarkStepUpVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
         {
@@ -860,7 +860,7 @@ internal sealed class AuthenticationSessionServiceTests
         var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
         _userRepositoryMock
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "user@example.com", AccountState = UserAccountState.Disabled });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Disabled });
 
         var result = await service.MarkStepUpVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
         {
@@ -888,7 +888,7 @@ internal sealed class AuthenticationSessionServiceTests
         var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
         _userRepositoryMock
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = userTenantId });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "tenant@example.com", TenantId = userTenantId });
 
         var result = await _service.MarkStepUpVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
         {
@@ -914,7 +914,7 @@ internal sealed class AuthenticationSessionServiceTests
         var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
         _userRepositoryMock
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "global@example.com" });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "global@example.com" });
 
         var result = await _service.MarkStepUpVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
         {
@@ -947,7 +947,7 @@ internal sealed class AuthenticationSessionServiceTests
         var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
         _userRepositoryMock
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = Guid.NewGuid() });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "tenant@example.com", TenantId = Guid.NewGuid() });
 
         await service.MarkStepUpVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
         {
@@ -1059,7 +1059,7 @@ internal sealed class AuthenticationSessionServiceTests
     {
         var userId = Guid.NewGuid();
         var now = _timeProvider.GetUtcNow();
-        var user = new User { Id = userId, Email = "user@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "user@example.com" };
         var userRepository = new Mock<IUserRepository>();
         var notificationService = new Mock<ISecurityNotificationService>();
         var service = new AuthenticationSessionService(
@@ -1083,7 +1083,7 @@ internal sealed class AuthenticationSessionServiceTests
 
         notificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
             notification.Type == SecurityNotificationType.AllSessionsRevoked &&
-            notification.RecipientEmail == user.Email &&
+            notification.RecipientEmail == user.DisplayEmail &&
             notification.OccurredAt == now &&
             notification.Metadata != null &&
             notification.Metadata["count"] == "2" &&
@@ -1182,7 +1182,7 @@ internal sealed class AuthenticationSessionServiceTests
         var sessionId = Guid.NewGuid();
         var secondSessionId = Guid.NewGuid();
         var now = _timeProvider.GetUtcNow();
-        var user = new User { Id = userId, Email = "user@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "user@example.com" };
         var userRepository = new Mock<IUserRepository>();
         var notificationService = new Mock<ISecurityNotificationService>();
         var service = new AuthenticationSessionService(
@@ -1239,7 +1239,7 @@ internal sealed class AuthenticationSessionServiceTests
             .ReturnsAsync(true);
         userRepository
             .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "user@example.com" });
 
         var revoked = await service.RevokeSessionForUserAsync(userId, new RevokeAuthenticationSessionRequest { SessionId = sessionId });
 

@@ -8,7 +8,7 @@ namespace Ashlar.Identity.Models.Bootstrap;
 public sealed class BootstrapFirstAdminRequest
 {
     /// <summary>
-    /// Email address for the first administrator account.
+    /// Email address for the first administrator account. Ashlar stores a sanitized display/delivery address and uses a separate normalized form for lookup and uniqueness checks.
     /// </summary>
     public required string Email { get; init; }
     /// <summary>

@@ -67,7 +67,8 @@ internal sealed class PasswordResetService : IPasswordResetService
         }
 
         var startedAt = _dependencies.TimeProvider.GetTimestamp();
-        var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
+        var displayEmail = IdentityNormalization.SanitizeEmailForDelivery(email);
+        var normalizedEmail = IdentityNormalization.NormalizeEmail(displayEmail);
         context = (context ?? new AuthenticationContext()) with { Email = normalizedEmail };
 
         if (!_dependencies.UriValidator.IsValid(callbackBaseUri))
@@ -123,7 +124,7 @@ internal sealed class PasswordResetService : IPasswordResetService
             return Result.Failure(AshlarFailureCodes.RateLimited, TooManyRequestsMessage);
         }
 
-        var user = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(normalizedEmail, context.TenantId, cancellationToken);
+        var user = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(displayEmail, context.TenantId, cancellationToken);
         if (user == null || !user.CanSignIn() || !await HasLocalPasswordCredentialAsync(user.Id, cancellationToken))
         {
             _ = _dependencies.TokenContext.Hasher.HashToken(_dependencies.TokenContext.Generator.GenerateToken());
@@ -166,7 +167,7 @@ internal sealed class PasswordResetService : IPasswordResetService
         var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(callbackBaseUri, _options.Value.TokenParameterName, token);
         var message = IdentityUrlHelper.FormatEmailBody(_options.Value.EmailTextTemplate, callbackUrl, ResetTokenLabel, token);
         var resetEmail = new EmailMessage(
-            user.Email,
+            user.DisplayEmail,
             _options.Value.Subject,
             message,
             options: new EmailMessageOptions

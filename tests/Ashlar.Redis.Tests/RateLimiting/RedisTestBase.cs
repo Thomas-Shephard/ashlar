@@ -10,7 +10,7 @@ internal abstract class RedisTestBase
     private static readonly Lazy<RedisContainer> RedisContainer = new(() => new RedisBuilder("redis:7-alpine").Build());
     private static bool _containerStarted;
 
-    private Lazy<ConnectionMultiplexer>? _connection;
+    private Lazy<ConnectionMultiplexer> _connection = null!;
 
     [OneTimeSetUp]
     public virtual async Task OneTimeSetUp()

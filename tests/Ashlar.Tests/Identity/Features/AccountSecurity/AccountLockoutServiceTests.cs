@@ -283,7 +283,7 @@ internal sealed class AccountLockoutServiceTests
 
     private User CreateUser(Guid? tenantId = null, UserAccountState accountState = UserAccountState.Active, Guid? id = null)
     {
-        return new User { Id = id ?? _userId, Email = "user@example.com", TenantId = tenantId, AccountState = accountState };
+        return new User { Id = id ?? _userId, DisplayEmail = "user@example.com", TenantId = tenantId, AccountState = accountState };
     }
 
     private sealed class RecordingSecurityEventSink : ISecurityEventSink
@@ -297,7 +297,7 @@ internal sealed class AccountLockoutServiceTests
         }
     }
 
-    private sealed record BasicUser(Guid Id, string Email, UserAccountState AccountState) : IUser
+    private sealed record BasicUser(Guid Id, string DisplayEmail, UserAccountState AccountState) : IUser
     {
         public string? Name => null;
         public DateTimeOffset? EmailVerifiedAt => null;

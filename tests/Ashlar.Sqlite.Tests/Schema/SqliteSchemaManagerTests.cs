@@ -1,3 +1,4 @@
+using Ashlar.Identity.Features.Infrastructure;
 using Ashlar.Sqlite.Schema;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
@@ -154,14 +155,14 @@ internal sealed class SqliteSchemaManagerTests : SqliteTestBase
     {
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO ashlar_users (id, email, normalized_email, account_state, tenant_id, created_at)
-            VALUES ($id, $email, $normalized_email, 'active', $tenant_id, $created_at);
+            INSERT INTO ashlar_users (id, display_email, normalized_email, account_state, tenant_id, created_at)
+            VALUES ($id, $displayEmail, $normalizedEmail, 'active', $tenantId, $createdAt);
             """;
         command.Parameters.AddWithValue("$id", id);
-        command.Parameters.AddWithValue("$email", email);
-        command.Parameters.AddWithValue("$normalized_email", email.ToUpperInvariant());
-        command.Parameters.AddWithValue("$tenant_id", tenantId == null ? DBNull.Value : tenantId);
-        command.Parameters.AddWithValue("$created_at", DateTimeOffset.UtcNow.ToString("O"));
+        command.Parameters.AddWithValue("$displayEmail", email);
+        command.Parameters.AddWithValue("$normalizedEmail", IdentityNormalization.NormalizeEmail(email));
+        command.Parameters.AddWithValue("$tenantId", tenantId == null ? DBNull.Value : tenantId);
+        command.Parameters.AddWithValue("$createdAt", DateTimeOffset.UtcNow.ToString("O"));
         await command.ExecuteNonQueryAsync();
     }
 

@@ -159,7 +159,7 @@ internal sealed class SqliteAuthorizationGrantRepositoryTests : SqliteTestBase
         var user = new AshlarUser
         {
             Id = Guid.NewGuid(),
-            Email = $"{Guid.NewGuid():N}@example.com",
+            DisplayEmail = $"{Guid.NewGuid():N}@example.com",
             AccountState = UserAccountState.Active,
             TenantId = tenantId
         };

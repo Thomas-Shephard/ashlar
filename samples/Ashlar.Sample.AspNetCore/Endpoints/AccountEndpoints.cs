@@ -45,7 +45,7 @@ internal static class AccountEndpoints
         var isAdmin = (await auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), cancellationToken)).Succeeded;
 
         return AppViews.RenderAccountSettings(
-            ashlarUser.Email,
+            ashlarUser.DisplayEmail,
             ashlarUser.Name,
             posture.Value,
             isAdmin,

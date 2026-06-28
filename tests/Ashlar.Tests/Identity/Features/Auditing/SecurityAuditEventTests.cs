@@ -170,7 +170,7 @@ internal sealed class SecurityAuditEventTests
     {
         var sink = new RecordingSecurityEventSink();
         var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sink);
-        user = new User { Id = user.Id, Email = user.Email, AccountState = UserAccountState.Disabled };
+        user = new User { Id = user.Id, DisplayEmail = user.DisplayEmail, AccountState = UserAccountState.Disabled };
         var context = CreateContext();
 
         credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
@@ -235,7 +235,7 @@ internal sealed class SecurityAuditEventTests
         provider.Setup(p => p.ProtectsCredentials).Returns(true);
         protector.Setup(p => p.Protect("prepared-secret")).Returns("protected-secret");
         repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
         repository.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "provider-key", It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
 
@@ -300,7 +300,7 @@ internal sealed class SecurityAuditEventTests
         provider.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), userId)).Returns("missing-key");
         provider.Setup(p => p.ProtectsCredentials).Returns(true);
         repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
         credentialRepository.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Local, AuthenticationProviderKey.Local.Name, "missing-key", It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserCredential?)null);
 
@@ -468,7 +468,7 @@ internal sealed class SecurityAuditEventTests
         var assertion = new TestAssertion(default);
         IAuthenticationProvider? provider = providerMock.Object;
         registry.Setup(r => r.TryGetProvider(assertion, out provider)).Returns(true);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var context = CreateContext();
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
@@ -534,7 +534,7 @@ internal sealed class SecurityAuditEventTests
         IAuthenticationProvider? provider = providerMock.Object;
         registry.Setup(r => r.TryGetProvider(assertion, out provider))
             .Returns(true);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -567,7 +567,7 @@ internal sealed class SecurityAuditEventTests
         hasher.Setup(h => h.HashToken(It.IsAny<string>())).Returns<string>(token => $"hashed:{token}");
         var users = new Mock<IUserRepository>();
         users.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid userId, CancellationToken _) => new User { Id = userId, Email = "user@example.com" });
+            .ReturnsAsync((Guid userId, CancellationToken _) => new User { Id = userId, DisplayEmail = "user@example.com" });
         timeProvider = new FakeTimeProvider(TestTime);
 
         return new AuthenticationSessionService(

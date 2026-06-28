@@ -405,7 +405,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<IAccountLockoutService>();
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = Guid.NewGuid() };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = Guid.NewGuid() };
 
         var status = await service.GetStatusAsync(user, AuthenticationProviderKey.Local);
         var failure = await service.RecordFailureAsync(user, AuthenticationProviderKey.Local);
@@ -893,7 +893,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         }
     }
 
-    private sealed record BasicUser(Guid Id, string Email, UserAccountState AccountState) : IUser
+    private sealed record BasicUser(Guid Id, string DisplayEmail, UserAccountState AccountState) : IUser
     {
         public string? Name => null;
         public DateTimeOffset? EmailVerifiedAt => null;

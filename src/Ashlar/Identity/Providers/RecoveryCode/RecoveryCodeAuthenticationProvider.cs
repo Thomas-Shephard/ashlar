@@ -95,7 +95,7 @@ public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFa
     /// Resolves a user by the email in the authentication context.
     /// </summary>
     /// <param name="assertion">Recovery-code assertion supplied to the authentication pipeline.</param>
-    /// <param name="context">Authentication context containing the normalized email and tenant scope.</param>
+    /// <param name="context">Authentication context containing the email address and tenant scope used by normalized repository lookup.</param>
     /// <param name="repository">User repository used to resolve the account.</param>
     /// <param name="cancellationToken">Token for aborting lookup work.</param>
     /// <returns>The matching user, or <see langword="null" /> when the assertion or email cannot resolve an account.</returns>

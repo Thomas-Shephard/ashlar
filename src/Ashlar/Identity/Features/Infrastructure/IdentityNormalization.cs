@@ -6,10 +6,10 @@ namespace Ashlar.Identity.Features.Infrastructure;
 public static class IdentityNormalization
 {
     /// <summary>
-    /// Normalizes an email address for consistent storage and lookup.
+    /// Normalizes an email address for lookup keys, uniqueness checks, rate-limit buckets, and security comparisons.
     /// </summary>
     /// <param name="email">Email address to normalize.</param>
-    /// <returns>The normalized email address.</returns>
+    /// <returns>The normalized lookup form of the email address.</returns>
     /// <exception cref="ArgumentException">Thrown if the email is <see langword="null" /> or whitespace.</exception>
     public static string NormalizeEmail(string email)
     {
@@ -18,10 +18,10 @@ public static class IdentityNormalization
     }
 
     /// <summary>
-    /// Trims an email address and rejects values that could escape email headers.
+    /// Trims an email address for display/delivery while preserving user-provided casing, and rejects values that could escape email headers.
     /// </summary>
     /// <param name="email">Email address to prepare for outbound delivery.</param>
-    /// <returns>The sanitized email address.</returns>
+    /// <returns>The sanitized display/delivery email address.</returns>
     /// <exception cref="ArgumentException">Thrown if the email is <see langword="null" />, whitespace, or contains line breaks.</exception>
     public static string SanitizeEmailForDelivery(string email)
     {

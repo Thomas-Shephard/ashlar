@@ -38,7 +38,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         var userId = Guid.NewGuid();
         var user = new Mock<IUser>();
         user.Setup(u => u.Id).Returns(userId);
-        user.Setup(u => u.Email).Returns("pat@example.com");
+        user.Setup(u => u.DisplayEmail).Returns("pat@example.com");
         var challenge = Base64Url.Encode(RandomNumberGenerator.GetBytes(32));
         var options = new PasskeyOptions
         {
@@ -151,7 +151,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
     {
         var user = new Mock<IUser>();
         user.Setup(u => u.Id).Returns(Guid.NewGuid());
-        user.Setup(u => u.Email).Returns("pat@example.com");
+        user.Setup(u => u.DisplayEmail).Returns("pat@example.com");
         var challenge = Base64Url.Encode(RandomNumberGenerator.GetBytes(32));
         var options = new PasskeyOptions
         {
@@ -183,7 +183,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
     {
         var user = new Mock<IUser>();
         user.Setup(u => u.Id).Returns(Guid.NewGuid());
-        user.Setup(u => u.Email).Returns("pat@example.com");
+        user.Setup(u => u.DisplayEmail).Returns("pat@example.com");
         var options = new PasskeyOptions
         {
             RelyingPartyId = "example.com",
@@ -203,7 +203,7 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
     {
         var user = new Mock<IUser>();
         user.Setup(u => u.Id).Returns(Guid.NewGuid());
-        user.Setup(u => u.Email).Returns("pat@example.com");
+        user.Setup(u => u.DisplayEmail).Returns("pat@example.com");
         var options = new PasskeyOptions
         {
             RelyingPartyId = "example.com",

@@ -102,7 +102,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com", IpAddress: "203.0.113.10");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var primaryRateLimiter = new Mock<IPrimaryAuthenticationRateLimiter>();
         primaryRateLimiter.Setup(l => l.CheckAsync(context, assertion, AuthenticationProviderKey.Local, It.IsAny<CancellationToken>()))
@@ -169,7 +169,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com", IpAddress: "203.0.113.10");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var logger = new Ashlar.Testing.RecordingLogger<AuthenticationPipeline>();
         var primaryRateLimiter = new Mock<IPrimaryAuthenticationRateLimiter>();
@@ -320,7 +320,7 @@ internal sealed class AuthenticationPipelineTests
         IAuthenticationProvider? provider = providerMock.Object;
         _providerRegistryMock.Setup(r => r.TryGetProvider(assertion, out provider))
             .Returns(true);
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var primaryRateLimiter = new Mock<IPrimaryAuthenticationRateLimiter>(MockBehavior.Strict);
         _pipeline = new AuthenticationPipeline(
@@ -396,7 +396,7 @@ internal sealed class AuthenticationPipelineTests
         IAuthenticationProvider? provider = providerMock.Object;
         _providerRegistryMock.Setup(r => r.TryGetProvider(assertion, out provider))
             .Returns(true);
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var factorRateLimiter = new Mock<IAuthenticationFactorRateLimiter>();
         factorRateLimiter.Setup(l => l.CheckAsync(context, assertion.ProviderIdentity, It.IsAny<CancellationToken>()))
@@ -519,7 +519,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com", UserId: userId);
         var assertion = new TestUserVerifiedAssertion(AuthenticationProviderKey.Local, UserVerified: false);
         ConfigureProviderResolution(assertion);
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
         var credential = CreateCredential(userId);
         _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, _providerMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync((user, credential, credential, false));
@@ -641,7 +641,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
 
         _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
@@ -663,7 +663,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com", TenantId: Guid.NewGuid());
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = context.TenantId };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = context.TenantId };
         var credential = CreateCredential(user.Id);
         UseAccountLockoutService();
         _accountLockoutServiceMock.Setup(s => s.GetStatusAsync(user, AuthenticationProviderKey.Local, It.IsAny<AccountLockoutContext>(), It.IsAny<CancellationToken>()))
@@ -692,7 +692,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = Guid.NewGuid() };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = Guid.NewGuid() };
         var credential = CreateCredential(user.Id);
         UseAccountLockoutService();
         _accountLockoutServiceMock.Setup(s => s.GetStatusAsync(user, AuthenticationProviderKey.Local, It.IsAny<AccountLockoutContext>(), It.IsAny<CancellationToken>()))
@@ -721,7 +721,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
         UseAccountLockoutService();
@@ -752,7 +752,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var audit = new RecordingSecurityEventSink();
         UseAccountLockoutService(audit);
@@ -781,7 +781,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var audit = new RecordingSecurityEventSink();
         UseAccountLockoutService(audit);
@@ -837,7 +837,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", AccountState = accountState };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", AccountState = accountState };
         var credential = CreateCredential(user.Id);
         UseAccountLockoutService();
 
@@ -864,7 +864,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(providerKey);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         UseAccountLockoutService();
 
@@ -890,7 +890,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", AccountState = accountState };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", AccountState = accountState };
         var credential = CreateCredential(user.Id);
 
         _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
@@ -914,7 +914,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", AccountState = (UserAccountState)999 };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", AccountState = (UserAccountState)999 };
         var credential = CreateCredential(user.Id);
 
         _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
@@ -933,7 +933,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var claims = new Dictionary<string, string> { ["amr"] = "pwd" };
         var result = new AuthenticationResult(AuthenticationResultStatus.MfaRequired, claims);
@@ -964,7 +964,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var result = new AuthenticationResult(AuthenticationResultStatus.MfaRequired);
         UseAccountLockoutService();
@@ -1020,7 +1020,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var logger = new Ashlar.Testing.RecordingLogger<AuthenticationPipeline>();
         UseAccountLockoutService(logger);
@@ -1050,7 +1050,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         UseAccountLockoutService(new AccountLockoutOptions { FailOpenOnBackendFailure = true });
         _accountLockoutServiceMock.Setup(s => s.GetStatusAsync(user, AuthenticationProviderKey.Local, It.IsAny<AccountLockoutContext>(), It.IsAny<CancellationToken>()))
@@ -1079,7 +1079,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var logger = new Ashlar.Testing.RecordingLogger<AuthenticationPipeline>();
         UseAccountLockoutService(logger);
@@ -1112,7 +1112,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var logger = new Ashlar.Testing.RecordingLogger<AuthenticationPipeline>();
         UseAccountLockoutService(
@@ -1147,7 +1147,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
         UseAccountLockoutService();
@@ -1174,7 +1174,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var claims = new Dictionary<string, string> { ["sub"] = user.Id.ToString() };
         var result = new AuthenticationResult(AuthenticationResultStatus.SucceededWithCredentialUpdate, claims);
@@ -1203,7 +1203,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var claims = new Dictionary<string, string> { ["sub"] = user.Id.ToString() };
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, claims);
 
@@ -1233,7 +1233,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
 
@@ -1255,7 +1255,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
         UseAccountLockoutService();
@@ -1284,7 +1284,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, IsCredentialConsumed: true);
 
@@ -1304,7 +1304,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.Required);
 
@@ -1330,7 +1330,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.Required);
 
@@ -1356,7 +1356,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.BestEffort);
 
@@ -1384,7 +1384,7 @@ internal sealed class AuthenticationPipelineTests
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
         _providerMock.SetupGet(p => p.Key).Returns(AuthenticationProviderKey.Local);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.BestEffort);
 
@@ -1408,7 +1408,7 @@ internal sealed class AuthenticationPipelineTests
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.BestEffort);
 

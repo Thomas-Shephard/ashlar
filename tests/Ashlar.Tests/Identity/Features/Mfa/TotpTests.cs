@@ -15,14 +15,14 @@ namespace Ashlar.Tests.Identity.Features.Mfa;
 [TestFixture]
 internal sealed class TotpTests
 {
-    private Mock<IUserRepository> _repository;
-    private Mock<ICredentialRepository> _credentialRepository;
-    private Mock<ICredentialService> _credentialService;
-    private Mock<IAshlarTransactionProvider> _transactionProvider;
-    private Mock<IAshlarTransaction> _transaction;
-    private Mock<ISecurityEventSink> _securityEvents;
-    private FakeTimeProvider _timeProvider;
-    private TotpOptions _options;
+    private Mock<IUserRepository> _repository = null!;
+    private Mock<ICredentialRepository> _credentialRepository = null!;
+    private Mock<ICredentialService> _credentialService = null!;
+    private Mock<IAshlarTransactionProvider> _transactionProvider = null!;
+    private Mock<IAshlarTransaction> _transaction = null!;
+    private Mock<ISecurityEventSink> _securityEvents = null!;
+    private FakeTimeProvider _timeProvider = null!;
+    private TotpOptions _options = null!;
 
     [SetUp]
     public void SetUp()
@@ -58,7 +58,7 @@ internal sealed class TotpTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success());
         _repository.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid userId, CancellationToken _) => new User { Id = userId, Email = "user@example.com" });
+            .ReturnsAsync((Guid userId, CancellationToken _) => new User { Id = userId, DisplayEmail = "user@example.com" });
     }
 
     private TotpService CreateService()
@@ -385,7 +385,7 @@ internal sealed class TotpTests
         var userTenantId = Guid.NewGuid();
         var requestedTenantId = Guid.NewGuid();
         _repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = userTenantId });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "tenant@example.com", TenantId = userTenantId });
 
         var exception = Assert.ThrowsAsync<AshlarOperationException>(() =>
             StartEnrollmentAsync(service, userId, "Ashlar", "user@example.com", new TenantContext(requestedTenantId)));
@@ -496,7 +496,7 @@ internal sealed class TotpTests
         var tenantId = Guid.NewGuid();
 
         _repository.Setup(x => x.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "user@example.com", TenantId = tenantId });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "user@example.com", TenantId = tenantId });
 
         var result = await CompleteEnrollmentAsync(service, userId, secret, code, new TenantContext(tenantId), audit);
 
@@ -545,7 +545,7 @@ internal sealed class TotpTests
         var code = TotpAuthenticator.GenerateCode(secretBytes, _timeProvider.GetUtcNow().ToUnixTimeSeconds() / 30);
 
         _repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = Guid.NewGuid() });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "tenant@example.com", TenantId = Guid.NewGuid() });
 
         var result = await CompleteEnrollmentAsync(service, userId, secret, code, new TenantContext(requestedTenantId));
 
@@ -734,7 +734,7 @@ internal sealed class TotpTests
         _credentialRepository.Setup(x => x.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
         _repository.Setup(x => x.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "user@example.com" });
 
         var result = await DisableAsync(service, userId);
 
@@ -770,7 +770,7 @@ internal sealed class TotpTests
         var userId = Guid.NewGuid();
         var requestedTenantId = Guid.NewGuid();
         _repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "tenant@example.com", TenantId = Guid.NewGuid() });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "tenant@example.com", TenantId = Guid.NewGuid() });
 
         var result = await DisableAsync(service, userId, new TenantContext(requestedTenantId));
 
@@ -1138,7 +1138,7 @@ internal sealed class TotpTests
     {
         var provider = CreateProvider();
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
         var context = new AuthenticationContext(UserId: userId);
 
         _repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))

@@ -33,7 +33,7 @@ public sealed class SecurityNotificationEmitter(ISecurityNotificationService? no
         await notificationService.NotifyAsync(new SecurityNotification
         {
             Type = type,
-            RecipientEmail = user.Email,
+            RecipientEmail = user.DisplayEmail,
             OccurredAt = occurredAt,
             IpAddress = context?.IpAddress,
             UserAgent = context?.UserAgent,

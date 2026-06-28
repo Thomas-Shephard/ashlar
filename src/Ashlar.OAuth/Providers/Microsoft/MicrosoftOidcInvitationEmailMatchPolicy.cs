@@ -1,3 +1,5 @@
+using Ashlar.Identity.Features.Infrastructure;
+
 namespace Ashlar.OAuth.Providers.Microsoft;
 
 /// <summary>
@@ -60,7 +62,7 @@ public sealed class MicrosoftOidcInvitationEmailMatchPolicy : IOidcInvitationEma
 
         if (_allowedEmailLikeClaimTypes
             .SelectMany(context.Principal.FindAll)
-            .Any(claim => string.Equals(claim.Value.Trim(), context.Invitation.Email.Trim(), StringComparison.OrdinalIgnoreCase)))
+            .Any(claim => IdentityNormalization.NormalizeEmail(claim.Value) == IdentityNormalization.NormalizeEmail(context.Invitation.DisplayEmail)))
         {
             return OidcInvitationEmailMatchResult.Success();
         }

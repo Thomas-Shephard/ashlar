@@ -314,7 +314,7 @@ internal sealed class PostgresAuthenticationHandshakeRepositoryTests : PostgresT
         var user = new AshlarPostgresUser
         {
             Id = Guid.NewGuid(),
-            Email = $"{Guid.NewGuid()}@example.com",
+            DisplayEmail = $"{Guid.NewGuid()}@example.com",
             AccountState = UserAccountState.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };

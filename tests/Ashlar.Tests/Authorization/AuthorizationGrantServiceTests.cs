@@ -714,12 +714,15 @@ internal sealed class AuthorizationGrantServiceTests
 
         public void Add(Guid userId, Guid? tenantId)
         {
-            _users[userId] = new User { Id = userId, Email = $"{userId:N}@example.com", TenantId = tenantId };
+            _users[userId] = new User { Id = userId, DisplayEmail = $"{userId:N}@example.com", TenantId = tenantId };
         }
 
         public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult<IUser?>(_users.Values.FirstOrDefault(user => user.Email == email && user.TenantId == tenantId));
+            var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
+            return Task.FromResult<IUser?>(_users.Values.FirstOrDefault(user =>
+                IdentityNormalization.NormalizeEmail(user.DisplayEmail) == normalizedEmail
+                && user.TenantId == tenantId));
         }
 
         public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -734,7 +737,7 @@ internal sealed class AuthorizationGrantServiceTests
 
         public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
         {
-            _users[user.Id] = new User { Id = user.Id, Email = user.Email, Name = user.Name, AccountState = user.AccountState, TenantId = user is ITenantUser tenantUser ? tenantUser.TenantId : null };
+            _users[user.Id] = new User { Id = user.Id, DisplayEmail = user.DisplayEmail, Name = user.Name, AccountState = user.AccountState, TenantId = user is ITenantUser tenantUser ? tenantUser.TenantId : null };
             return Task.CompletedTask;
         }
 

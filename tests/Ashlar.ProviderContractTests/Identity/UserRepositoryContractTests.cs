@@ -17,7 +17,7 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
         {
             Assert.That(fetched, Is.Not.Null);
             Assert.That(fetched!.Id, Is.EqualTo(user.Id));
-            Assert.That(fetched.Email, Is.EqualTo(user.Email));
+            Assert.That(fetched.DisplayEmail, Is.EqualTo(user.DisplayEmail));
         }
     }
 
@@ -40,8 +40,31 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fetchedNoTenant?.Id, Is.EqualTo(noTenant.Id));
+            Assert.That(fetchedNoTenant?.DisplayEmail, Is.EqualTo(email));
             Assert.That(fetchedTenant1?.Id, Is.EqualTo(user1.Id));
+            Assert.That(fetchedTenant1?.DisplayEmail, Is.EqualTo(email));
             Assert.That(fetchedTenant2?.Id, Is.EqualTo(user2.Id));
+            Assert.That(fetchedTenant2?.DisplayEmail, Is.EqualTo(email));
+        }
+    }
+
+    [Test]
+    public async Task CreateAndUpdatePreserveDisplayEmailWhileLookupUsesNormalizedEmail()
+    {
+        await using var scope = CreateAsyncScope();
+        var users = GetUserRepository(scope.ServiceProvider);
+        var tenantId = Guid.NewGuid();
+        var user = await CreateUserAsync(users, "Display.User@Example.COM", tenantId);
+
+        var fetchedByLowercase = await users.GetUserByEmailAsync("display.user@example.com", tenantId);
+        await users.UpdateUserAsync(user with { DisplayEmail = "Updated.User@Example.COM" });
+        var updatedByUppercase = await users.GetUserByEmailAsync("UPDATED.USER@EXAMPLE.COM", tenantId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fetchedByLowercase?.DisplayEmail, Is.EqualTo("Display.User@Example.COM"));
+            Assert.That(updatedByUppercase?.Id, Is.EqualTo(user.Id));
+            Assert.That(updatedByUppercase?.DisplayEmail, Is.EqualTo("Updated.User@Example.COM"));
         }
     }
 
@@ -180,7 +203,7 @@ internal abstract class UserRepositoryContractTests : ProviderContractFixture
             userId = Guid.NewGuid();
 
             await using var transaction = await transactionProvider.BeginTransactionAsync();
-            await users.CreateUserAsync(new AshlarUser { Id = userId, Email = "rollback@example.com", AccountState = UserAccountState.Active });
+            await users.CreateUserAsync(new AshlarUser { Id = userId, DisplayEmail = "rollback@example.com", AccountState = UserAccountState.Active });
             await transaction.RollbackAsync();
         }
 

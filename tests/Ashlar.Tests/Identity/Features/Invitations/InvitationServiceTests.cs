@@ -14,13 +14,13 @@ namespace Ashlar.Tests.Identity.Features.Invitations;
 
 internal sealed class InvitationServiceTests
 {
-    private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Email = "existing@example.com", AccountState = UserAccountState.Active };
+    private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), DisplayEmail = "existing@example.com", AccountState = UserAccountState.Active };
 
     [Test]
     public async Task CreateInvitationSendsEmailAndStoresHashedInvitation()
     {
         var fixture = CreateFixture();
-        var request = new CreateInvitationRequest { Email = " invitee@example.com ", Metadata = "{\"role\":\"admin\"}" };
+        var request = new CreateInvitationRequest { Email = " Invitee.User@Example.COM ", Metadata = "{\"role\":\"admin\"}" };
         var baseUri = new Uri("https://myapp.com/join");
 
         await fixture.Service.CreateInvitationAsync(request, baseUri);
@@ -28,17 +28,17 @@ internal sealed class InvitationServiceTests
         var message = fixture.EmailSender.Messages.First();
         var invitation = fixture.InvitationRepository.Invitations.First();
 
-        Assert.That(message.To, Is.EqualTo("invitee@example.com"));
+        Assert.That(message.To, Is.EqualTo("Invitee.User@Example.COM"));
         var token = ExtractToken(message);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(invitation.Email, Is.EqualTo("invitee@example.com"));
+            Assert.That(invitation.DisplayEmail, Is.EqualTo("Invitee.User@Example.COM"));
             Assert.That(invitation.TokenHash, Is.EqualTo(fixture.TokenHasher.HashToken(token)));
             Assert.That(invitation.Metadata, Is.EqualTo("{\"role\":\"admin\"}"));
             Assert.That(invitation.ExpiresAt, Is.EqualTo(fixture.Time.GetUtcNow().AddDays(7)));
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.InvitationCreated), Is.True);
-            Assert.That(GetProperties(fixture.Audit.Events.First(e => e.EventType == AshlarSecurityEventTypes.InvitationCreated))["email"], Is.EqualTo("INVITEE@EXAMPLE.COM"));
+            Assert.That(GetProperties(fixture.Audit.Events.First(e => e.EventType == AshlarSecurityEventTypes.InvitationCreated))["email"], Is.EqualTo("INVITEE.USER@EXAMPLE.COM"));
             Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
         }
     }
@@ -155,7 +155,7 @@ internal sealed class InvitationServiceTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.Value, Is.Not.EqualTo(Guid.Empty));
-            var user = fixture.UserRepository.Users.First(u => u.Email == "NewUser@Example.Com");
+            var user = fixture.UserRepository.Users.First(u => u.DisplayEmail == "NewUser@Example.Com");
             Assert.That(user.Name, Is.EqualTo("New User"));
             Assert.That(user.CanSignIn(), Is.True);
             Assert.That(fixture.InvitationRepository.Invitations.Any(i => i.AcceptedAt != null), Is.True);
@@ -176,7 +176,7 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            var user = fixture.UserRepository.Users.First(u => u.Email == "NewUser@Example.Com");
+            var user = fixture.UserRepository.Users.First(u => u.DisplayEmail == "NewUser@Example.Com");
             Assert.That(user.EmailVerifiedAt, Is.EqualTo(fixture.Time.GetUtcNow()));
         }
     }
@@ -193,7 +193,7 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            var user = fixture.UserRepository.Users.First(u => u.Email == "NewUser@Example.Com");
+            var user = fixture.UserRepository.Users.First(u => u.DisplayEmail == "NewUser@Example.Com");
             Assert.That(user.Name, Is.Null);
             Assert.That(user.EmailVerifiedAt, Is.Null);
         }
@@ -202,7 +202,7 @@ internal sealed class InvitationServiceTests
     [Test]
     public async Task AcceptInvitationActivatesDisabledUser()
     {
-        var inactiveUser = new User { Id = Guid.NewGuid(), Email = "INACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Disabled, Name = "Old Name" };
+        var inactiveUser = new User { Id = Guid.NewGuid(), DisplayEmail = "INACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Disabled, Name = "Old Name" };
         var fixture = CreateFixture(inactiveUser);
         await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "inactive@example.com" }, new Uri("https://myapp.com/join"));
         var token = ExtractToken(fixture.EmailSender.Messages.First());
@@ -224,7 +224,7 @@ internal sealed class InvitationServiceTests
     {
         var fixture = CreateFixture(_user);
 
-        var result = await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = _user.Email }, new Uri("https://myapp.com/join"));
+        var result = await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = _user.DisplayEmail }, new Uri("https://myapp.com/join"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -242,7 +242,7 @@ internal sealed class InvitationServiceTests
     [Test]
     public async Task AcceptInvitationActivatesDisabledUserWithoutVerifyingWhenDisabled()
     {
-        var inactiveUser = new User { Id = Guid.NewGuid(), Email = "INACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Disabled, Name = "Old Name" };
+        var inactiveUser = new User { Id = Guid.NewGuid(), DisplayEmail = "INACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Disabled, Name = "Old Name" };
         var fixture = CreateFixture(inactiveUser, configureOptions: options => options.VerifyEmailOnAcceptance = false);
         await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "inactive@example.com" }, new Uri("https://myapp.com/join"));
         var token = ExtractToken(fixture.EmailSender.Messages.First());
@@ -263,7 +263,7 @@ internal sealed class InvitationServiceTests
     public async Task AcceptInvitationPreservesExistingVerificationTimestamp()
     {
         var verifiedAt = new DateTimeOffset(2026, 5, 1, 9, 0, 0, TimeSpan.Zero);
-        var inactiveUser = new User { Id = Guid.NewGuid(), Email = "VERIFIED@EXAMPLE.COM", AccountState = UserAccountState.Disabled, Name = "Original Name", EmailVerifiedAt = verifiedAt };
+        var inactiveUser = new User { Id = Guid.NewGuid(), DisplayEmail = "VERIFIED@EXAMPLE.COM", AccountState = UserAccountState.Disabled, Name = "Original Name", EmailVerifiedAt = verifiedAt };
         var fixture = CreateFixture(inactiveUser, configureOptions: options => options.VerifyEmailOnAcceptance = true);
         await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "verified@example.com" }, new Uri("https://myapp.com/join"));
         var token = ExtractToken(fixture.EmailSender.Messages.First());
@@ -282,12 +282,12 @@ internal sealed class InvitationServiceTests
     [Test]
     public async Task AcceptInvitationVerifiesExistingActiveUnverifiedUserWhenConfigured()
     {
-        var activeUser = new User { Id = Guid.NewGuid(), Email = "ACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Active, Name = "Active User" };
+        var activeUser = new User { Id = Guid.NewGuid(), DisplayEmail = "ACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Active, Name = "Active User" };
         var fixture = CreateFixture(activeUser, configureOptions: options => options.VerifyEmailOnAcceptance = true);
         fixture.InvitationRepository.Invitations.Add(new UserInvitation
         {
             Id = Guid.NewGuid(),
-            Email = "active@example.com",
+            DisplayEmail = "active@example.com",
             TokenHash = fixture.TokenHasher.HashToken("token"),
             CreatedAt = fixture.Time.GetUtcNow(),
             ExpiresAt = fixture.Time.GetUtcNow().AddDays(1),
@@ -310,12 +310,12 @@ internal sealed class InvitationServiceTests
     public async Task AcceptInvitationDoesNotUpdateExistingActiveUserWhenNoActivationOrVerificationIsNeeded()
     {
         var verifiedAt = new DateTimeOffset(2026, 5, 1, 9, 0, 0, TimeSpan.Zero);
-        var activeUser = new User { Id = Guid.NewGuid(), Email = "ACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Active, Name = "Active User", EmailVerifiedAt = verifiedAt };
+        var activeUser = new User { Id = Guid.NewGuid(), DisplayEmail = "ACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Active, Name = "Active User", EmailVerifiedAt = verifiedAt };
         var fixture = CreateFixture(activeUser, configureOptions: options => options.VerifyEmailOnAcceptance = true);
         fixture.InvitationRepository.Invitations.Add(new UserInvitation
         {
             Id = Guid.NewGuid(),
-            Email = "active@example.com",
+            DisplayEmail = "active@example.com",
             TokenHash = fixture.TokenHasher.HashToken("token"),
             CreatedAt = fixture.Time.GetUtcNow(),
             ExpiresAt = fixture.Time.GetUtcNow().AddDays(1),
@@ -463,7 +463,7 @@ internal sealed class InvitationServiceTests
     {
         var fixture = CreateFixture();
         var tenantId = Guid.NewGuid();
-        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = tenantId }, new Uri("https://myapp.com/join"));
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "Preview.User@Example.COM", TenantId = tenantId }, new Uri("https://myapp.com/join"));
         var token = ExtractToken(fixture.EmailSender.Messages.First());
 
         var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token }, new AuthenticationContext(TenantId: tenantId));
@@ -481,7 +481,7 @@ internal sealed class InvitationServiceTests
     {
         var fixture = CreateFixture();
         var tenantId = Guid.NewGuid();
-        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = tenantId }, new Uri("https://myapp.com/join"));
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "Preview.User@Example.COM", TenantId = tenantId }, new Uri("https://myapp.com/join"));
         var token = ExtractToken(fixture.EmailSender.Messages.First());
 
         var result = await fixture.Service.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token });
@@ -500,10 +500,10 @@ internal sealed class InvitationServiceTests
         var tenantId = Guid.NewGuid();
         var actorUserId = Guid.NewGuid();
         var audit = new AuditContext(actorUserId, "203.0.113.40", "NUnit", "corr-revoke");
-        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = tenantId }, new Uri("https://myapp.com/join"));
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "Preview.User@Example.COM", TenantId = tenantId }, new Uri("https://myapp.com/join"));
 
         fixture.Audit.Events.Clear();
-        await fixture.Service.RevokeInvitationsAsync("test@example.com", tenantId, audit);
+        await fixture.Service.RevokeInvitationsAsync("preview.user@example.com", tenantId, audit);
         var securityEvent = fixture.Audit.Events.First();
 
         using (Assert.EnterMultipleScope())
@@ -645,7 +645,7 @@ internal sealed class InvitationServiceTests
     [Test]
     public async Task AcceptInvitationUsesExistingUserNameIfRequestNameIsNull()
     {
-        var inactiveUser = new User { Id = Guid.NewGuid(), Email = "INACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Disabled, Name = "Original Name" };
+        var inactiveUser = new User { Id = Guid.NewGuid(), DisplayEmail = "INACTIVE@EXAMPLE.COM", AccountState = UserAccountState.Disabled, Name = "Original Name" };
         var fixture = CreateFixture(inactiveUser);
         await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "inactive@example.com" }, new Uri("https://myapp.com/join"));
         var token = ExtractToken(fixture.EmailSender.Messages.First());
@@ -724,7 +724,7 @@ internal sealed class InvitationServiceTests
     {
         var fixture = CreateFixture();
         var tenantId = Guid.NewGuid();
-        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "test@example.com", TenantId = tenantId }, new Uri("https://myapp.com/join"));
+        await fixture.Service.CreateInvitationAsync(new CreateInvitationRequest { Email = "Preview.User@Example.COM", TenantId = tenantId }, new Uri("https://myapp.com/join"));
         var token = ExtractToken(fixture.EmailSender.Messages.First());
 
         var result = await fixture.Service.GetInvitationAcceptancePreviewAsync(token);
@@ -732,7 +732,7 @@ internal sealed class InvitationServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.Value?.Email, Is.EqualTo("test@example.com"));
+            Assert.That(result.Value?.DisplayEmail, Is.EqualTo("Preview.User@Example.COM"));
             Assert.That(result.Value?.TenantId, Is.EqualTo(tenantId));
         }
     }
@@ -1202,7 +1202,11 @@ internal sealed class InvitationServiceTests
     {
         public List<User> Users { get; } = users.OfType<User>().ToList();
         public int UpdateCount { get; private set; }
-        public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(Users.FirstOrDefault(u => string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase)));
+        public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
+        {
+            var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
+            return Task.FromResult<IUser?>(Users.FirstOrDefault(user => IdentityNormalization.NormalizeEmail(user.DisplayEmail) == normalizedEmail));
+        }
         public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(Users.FirstOrDefault(u => u.Id == userId));
         public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
         {
@@ -1210,7 +1214,7 @@ internal sealed class InvitationServiceTests
             Users.Add(new User
             {
                 Id = user.Id,
-                Email = user.Email,
+                DisplayEmail = user.DisplayEmail,
                 Name = user.Name,
                 AccountState = user.AccountState,
                 TenantId = (user as ITenantUser)?.TenantId,
@@ -1272,7 +1276,7 @@ internal sealed class InvitationServiceTests
         public Task<int> RevokeInvitationsByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
         {
             var normalizedSearchEmail = IdentityNormalization.NormalizeEmail(email);
-            var toRevoke = Invitations.Where(i => IdentityNormalization.NormalizeEmail(i.Email) == normalizedSearchEmail && i.TenantId == tenantId && i.AcceptedAt == null && i.RevokedAt == null).ToList();
+            var toRevoke = Invitations.Where(i => IdentityNormalization.NormalizeEmail(i.DisplayEmail) == normalizedSearchEmail && i.TenantId == tenantId && i.AcceptedAt == null && i.RevokedAt == null).ToList();
             foreach (var i in toRevoke)
             {
                 i.RevokedAt = timeProvider.GetUtcNow();

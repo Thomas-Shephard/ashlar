@@ -1244,7 +1244,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
 
     private sealed record TenantUser(Guid Id, Guid? TenantId) : ITenantUser
     {
-        public string Email => "tenant@example.com";
+        public string DisplayEmail => "tenant@example.com";
         public string? Name => null;
         public UserAccountState AccountState => UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt => null;
@@ -1252,7 +1252,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
 
     private sealed record BasicUser(Guid Id) : IUser
     {
-        public string Email => "global@example.com";
+        public string DisplayEmail => "global@example.com";
         public string? Name => null;
         public UserAccountState AccountState => UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt => null;

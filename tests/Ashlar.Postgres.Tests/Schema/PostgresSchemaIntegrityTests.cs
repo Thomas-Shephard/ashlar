@@ -1,3 +1,4 @@
+using Ashlar.Identity.Features.Infrastructure;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -8,12 +9,13 @@ internal sealed class PostgresSchemaIntegrityTests : PostgresTestBase
 {
     private static readonly string[] ExpectedQuerySupportingIndexes =
     [
-        "ak_ashlar_users_email_tenant",
+        "ak_ashlar_users_normalized_email_tenant",
         "ix_ashlar_credentials_active_user_provider_created",
         "ix_ashlar_credentials_active_provider_key",
         "ix_ashlar_authorization_grants_user_created",
         "ix_ashlar_authorization_grants_active_user_scope",
-        "ix_ashlar_invitations_active_email_tenant",
+        "ix_ashlar_invitations_normalized_email_tenant",
+        "ix_ashlar_invitations_active_normalized_email_tenant",
         "ix_ashlar_email_outbox_pending",
         "ix_ashlar_security_event_webhook_outbox_pending",
         "ix_ashlar_passkey_challenges_active_expires",
@@ -111,7 +113,7 @@ internal sealed class PostgresSchemaIntegrityTests : PostgresTestBase
             "INSERT INTO ashlar_sessions (id, user_id, token_hash, created_at, expires_at) VALUES (@id, @userId, 'same-token', @now, @expires)",
             new { id = Guid.NewGuid(), userId, now, expires = now.AddHours(1) });
         await connection.ExecuteAsync(
-            "INSERT INTO ashlar_invitations (id, email, normalized_email, token_hash, created_at, expires_at, version) VALUES (@id, 'invite@example.com', 'invite@example.com', 'same-invite', @now, @expires, 'v1')",
+            "INSERT INTO ashlar_invitations (id, display_email, normalized_email, token_hash, created_at, expires_at, version) VALUES (@id, 'invite@example.com', 'INVITE@EXAMPLE.COM', 'same-invite', @now, @expires, 'v1')",
             new { id = Guid.NewGuid(), now, expires = now.AddHours(1) });
         await connection.ExecuteAsync(
             "INSERT INTO ashlar_mfa_handshakes (id, user_id, token_hash, created_at, expires_at, required_factors, verified_factors) VALUES (@id, @userId, 'same-handshake', @now, @expires, '[]'::jsonb, '[]'::jsonb)",
@@ -123,7 +125,7 @@ internal sealed class PostgresSchemaIntegrityTests : PostgresTestBase
                 new { id = Guid.NewGuid(), userId, now, expires = now.AddHours(1) }));
         var duplicateInvitation = Assert.ThrowsAsync<PostgresException>(async () =>
             await connection.ExecuteAsync(
-                "INSERT INTO ashlar_invitations (id, email, normalized_email, token_hash, created_at, expires_at, version) VALUES (@id, 'other@example.com', 'other@example.com', 'same-invite', @now, @expires, 'v1')",
+                "INSERT INTO ashlar_invitations (id, display_email, normalized_email, token_hash, created_at, expires_at, version) VALUES (@id, 'other@example.com', 'OTHER@EXAMPLE.COM', 'same-invite', @now, @expires, 'v1')",
                 new { id = Guid.NewGuid(), now, expires = now.AddHours(1) }));
         var duplicateHandshake = Assert.ThrowsAsync<PostgresException>(async () =>
             await connection.ExecuteAsync(
@@ -229,8 +231,8 @@ internal sealed class PostgresSchemaIntegrityTests : PostgresTestBase
 
         var invitationBothAcceptedAndRevoked = Assert.ThrowsAsync<PostgresException>(async () =>
             await connection.ExecuteAsync("""
-                INSERT INTO ashlar_invitations (id, email, normalized_email, token_hash, created_at, expires_at, accepted_at, revoked_at, version)
-                VALUES (@id, 'invite@example.com', 'invite@example.com', @token, @now, @expires, @now, @now, 'v1')
+                INSERT INTO ashlar_invitations (id, display_email, normalized_email, token_hash, created_at, expires_at, accepted_at, revoked_at, version)
+                VALUES (@id, 'invite@example.com', 'INVITE@EXAMPLE.COM', @token, @now, @expires, @now, @now, 'v1')
                 """, new { id = Guid.NewGuid(), token = Guid.NewGuid().ToString("N"), now, expires = now.AddHours(1) }));
         var completedHandshakeWithoutTimestamp = Assert.ThrowsAsync<PostgresException>(async () =>
             await connection.ExecuteAsync("""
@@ -273,9 +275,10 @@ internal sealed class PostgresSchemaIntegrityTests : PostgresTestBase
 
     private static Task<int> InsertUserAsync(NpgsqlConnection connection, Guid id, string email, Guid? tenantId)
     {
+        var displayEmail = email;
         return connection.ExecuteAsync(
-            "INSERT INTO ashlar_users (id, email, normalized_email, tenant_id, created_at) VALUES (@id, @email, lower(@email), @tenantId, @now)",
-            new { id, email, tenantId, now = DateTimeOffset.UtcNow });
+            "INSERT INTO ashlar_users (id, display_email, normalized_email, tenant_id, created_at) VALUES (@id, @displayEmail, @normalizedEmail, @tenantId, @now)",
+            new { id, displayEmail, normalizedEmail = IdentityNormalization.NormalizeEmail(displayEmail), tenantId, now = DateTimeOffset.UtcNow });
     }
 
     private static Task<int> InsertCredentialAsync(NpgsqlConnection connection, Guid userId, int status, DateTimeOffset? revokedAt)

@@ -10,9 +10,9 @@ public sealed record AshlarUser : ITenantUser
     /// </summary>
     public required Guid Id { get; init; }
     /// <summary>
-    /// Normalized email address used for account lookup and notifications.
+    /// Sanitized display/delivery email address. Ashlar derives a separate normalized lookup form for uniqueness, lookup, rate-limit keys, and comparisons.
     /// </summary>
-    public required string Email { get; init; }
+    public required string DisplayEmail { get; init; }
     /// <summary>
     /// Optional display name supplied by the host application.
     /// </summary>

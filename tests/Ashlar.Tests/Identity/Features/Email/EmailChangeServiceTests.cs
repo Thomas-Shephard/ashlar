@@ -14,7 +14,7 @@ namespace Ashlar.Tests.Identity.Features.Email;
 
 internal sealed class EmailChangeServiceTests
 {
-    private static AshlarUser CreateUser(string email = "old@example.com") => new() { Id = Guid.NewGuid(), Email = email, AccountState = UserAccountState.Active };
+    private static AshlarUser CreateUser(string email = "old@example.com") => new() { Id = Guid.NewGuid(), DisplayEmail = email, AccountState = UserAccountState.Active };
 
     [Test]
     [SuppressMessage("ReSharper", "NullableWarningSuppressionIsUsed")]
@@ -140,7 +140,7 @@ internal sealed class EmailChangeServiceTests
     [Test]
     public async Task RequestChangeSameEmailWorksForNonTenantUser()
     {
-        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "old@example.com", AccountState = UserAccountState.Active };
+        var user = new MetadataUser { Id = Guid.NewGuid(), DisplayEmail = "old@example.com", AccountState = UserAccountState.Active };
         var fixture = CreateFixture(user);
         var request = new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "old@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") };
 
@@ -186,7 +186,7 @@ internal sealed class EmailChangeServiceTests
     [Test]
     public async Task RequestChangeRateLimitWorksForNonTenantUser()
     {
-        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "old@example.com", AccountState = UserAccountState.Active };
+        var user = new MetadataUser { Id = Guid.NewGuid(), DisplayEmail = "old@example.com", AccountState = UserAccountState.Active };
         var fixture = CreateFixture(users: [user], requestAllowed: false);
 
         var result = await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
@@ -230,7 +230,7 @@ internal sealed class EmailChangeServiceTests
         var tenantId = Guid.NewGuid();
         var user = CreateUser() with { TenantId = tenantId };
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = " New.User@Example.COM ", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
         fixture.Audit.Events.Clear();
 
@@ -242,7 +242,7 @@ internal sealed class EmailChangeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True, result.FailureReason);
-            Assert.That(updatedUser.Email, Is.EqualTo("new@example.com"));
+            Assert.That(updatedUser.DisplayEmail, Is.EqualTo("New.User@Example.COM"));
             Assert.That(updatedUser.EmailVerifiedAt, Is.Not.Null);
             Assert.That(fixture.SessionRepository.RevokedUserId, Is.EqualTo(user.Id));
             Assert.That(securityEvent.TenantId, Is.EqualTo(tenantId));
@@ -318,9 +318,31 @@ internal sealed class EmailChangeServiceTests
     }
 
     [Test]
+    public async Task ConfirmChangeAllowsNewEmailWhenItAlreadyBelongsToSameUser()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = CreateUser() with { TenantId = tenantId };
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "New@Example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
+        var token = ExtractToken(fixture.EmailSender.Messages.Single());
+
+        fixture.UserCredentialStore.Users.Remove(user);
+        fixture.UserCredentialStore.Users.Add(user with { DisplayEmail = "New@Example.com" });
+        fixture.Audit.Events.Clear();
+
+        var result = await fixture.Service.ConfirmChangeAsync(new ConfirmEmailChangeRequest { UserId = user.Id, Token = token });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True, result.FailureReason);
+            Assert.That(fixture.Audit.Events.Any(e => e.FailureReason == AshlarFailureCodes.EmailAlreadyInUse.Value), Is.False);
+        }
+    }
+
+    [Test]
     public async Task ConfirmChangePreservesAuditMetadataForMetadataBackedUser()
     {
-        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "old@example.com", AccountState = UserAccountState.Active, CreatedAt = DateTimeOffset.UtcNow.AddDays(-1) };
+        var user = new MetadataUser { Id = Guid.NewGuid(), DisplayEmail = "old@example.com", AccountState = UserAccountState.Active, CreatedAt = DateTimeOffset.UtcNow.AddDays(-1) };
         var fixture = CreateFixture(user);
         await fixture.Service.RequestChangeAsync(new RequestEmailChangeRequest { UserId = user.Id, NewEmail = "new@example.com", CallbackBaseUri = new Uri("http://localhost/confirm") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
@@ -330,7 +352,7 @@ internal sealed class EmailChangeServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True, result.FailureReason);
-            Assert.That(user.Email, Is.EqualTo("new@example.com"));
+            Assert.That(user.DisplayEmail, Is.EqualTo("new@example.com"));
             Assert.That(user.UpdatedAt, Is.Not.Null);
         }
     }
@@ -452,7 +474,7 @@ internal sealed class EmailChangeServiceTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidOrExpiredToken));
-            Assert.That(unchangedUser?.Email, Is.EqualTo("old@example.com"));
+            Assert.That(unchangedUser?.DisplayEmail, Is.EqualTo("old@example.com"));
             Assert.That(fixture.UserCredentialStore.Credentials.Single().Status, Is.EqualTo(CredentialStatus.Active));
             Assert.That(fixture.SessionRepository.RevokedUserId, Is.Null);
             Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.EmailChangeFailed).FailureReason, Is.EqualTo(AshlarFailureCodes.InvalidOrExpiredToken.Value));
@@ -475,7 +497,7 @@ internal sealed class EmailChangeServiceTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidOrExpiredToken));
-            Assert.That(unchangedUser?.Email, Is.EqualTo("old@example.com"));
+            Assert.That(unchangedUser?.DisplayEmail, Is.EqualTo("old@example.com"));
             Assert.That(fixture.UserCredentialStore.Credentials.Single().Status, Is.EqualTo(CredentialStatus.Active));
             Assert.That(fixture.SessionRepository.RevokedUserId, Is.Null);
             Assert.That(fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.EmailChangeFailed).FailureReason, Is.EqualTo(AshlarFailureCodes.InvalidOrExpiredToken.Value));
@@ -679,7 +701,9 @@ internal sealed class EmailChangeServiceTests
         public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
         {
             var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
-            return Task.FromResult(Users.SingleOrDefault(u => string.Equals(IdentityNormalization.NormalizeEmail(u.Email), normalizedEmail, StringComparison.OrdinalIgnoreCase) && (u as ITenantUser)?.TenantId == tenantId));
+            return Task.FromResult(Users.SingleOrDefault(user =>
+                IdentityNormalization.NormalizeEmail(user.DisplayEmail) == normalizedEmail
+                && (user as ITenantUser)?.TenantId == tenantId));
         }
         public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => Task.FromResult(Users.SingleOrDefault(u => u.Id == userId));
         public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -689,12 +713,12 @@ internal sealed class EmailChangeServiceTests
             switch (existing)
             {
                 case AshlarUser ashlarUser:
-                    var updatedAshlar = ashlarUser with { Email = user.Email, EmailVerifiedAt = user.EmailVerifiedAt };
+                    var updatedAshlar = ashlarUser with { DisplayEmail = user.DisplayEmail, EmailVerifiedAt = user.EmailVerifiedAt };
                     Users.Remove(ashlarUser);
                     Users.Add(updatedAshlar);
                     break;
                 case MetadataUser metadataUser:
-                    metadataUser.Email = user.Email;
+                    metadataUser.DisplayEmail = user.DisplayEmail;
                     metadataUser.EmailVerifiedAt = user.EmailVerifiedAt;
                     break;
             }
@@ -743,7 +767,7 @@ internal sealed class EmailChangeServiceTests
     private sealed class MetadataUser : IUser, IHasAuditMetadata
     {
         public required Guid Id { get; init; }
-        public required string Email { get; set; }
+        public required string DisplayEmail { get; set; }
         public string? Name { get; set; }
         public UserAccountState AccountState { get; set; }
         public DateTimeOffset? EmailVerifiedAt { get; set; }

@@ -5,10 +5,10 @@ using Microsoft.Data.Sqlite;
 namespace Ashlar.Sqlite.Identity;
 
 /// <summary>
-/// Provides SQLite invitation repository behavior.
+/// SQLite-backed invitation repository.
 /// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-/// <param name="timeProvider">The time provider value.</param>
+/// <param name="connectionProvider">Connection provider used for invitation reads and writes.</param>
+/// <param name="timeProvider">Clock used for invitation revocation and optimistic updates.</param>
 public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IInvitationRepository
 {
     private const string TenantIdColumn = "tenant_id";
@@ -26,8 +26,8 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
         ValidateMetadata(invitation.Metadata);
 
         const string sql = """
-            INSERT INTO ashlar_invitations (id, email, normalized_email, tenant_id, token_hash, created_at, updated_at, expires_at, accepted_at, revoked_at, metadata, version)
-            VALUES ($id, $email, $normalizedEmail, $tenantId, $tokenHash, $createdAt, $updatedAt, $expiresAt, $acceptedAt, $revokedAt, $metadata, $version);
+            INSERT INTO ashlar_invitations (id, display_email, normalized_email, tenant_id, token_hash, created_at, updated_at, expires_at, accepted_at, revoked_at, metadata, version)
+            VALUES ($id, $displayEmail, $normalizedEmail, $tenantId, $tokenHash, $createdAt, $updatedAt, $expiresAt, $acceptedAt, $revokedAt, $metadata, $version);
             """;
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -43,7 +43,7 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
         ArgumentException.ThrowIfNullOrWhiteSpace(tokenHash);
 
         const string sql = """
-            SELECT id, email, tenant_id, token_hash, created_at, updated_at, expires_at, accepted_at, revoked_at, metadata, version
+            SELECT id, display_email, tenant_id, token_hash, created_at, updated_at, expires_at, accepted_at, revoked_at, metadata, version
             FROM ashlar_invitations
             WHERE token_hash = $tokenHash;
             """;
@@ -138,7 +138,7 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
 
         var sql = $"""
             SELECT id,
-                   email,
+                   display_email,
                    tenant_id,
                    {StatusSql("$now")} AS status,
                    created_at,
@@ -176,7 +176,7 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
 
         var sql = $"""
             SELECT id,
-                   email,
+                   display_email,
                    tenant_id,
                    {StatusSql("$now")} AS status,
                    created_at,
@@ -255,8 +255,8 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
     private static void AddParameters(SqliteCommand command, UserInvitation invitation)
     {
         command.AddGuidParameter("$id", invitation.Id);
-        command.AddParameter("$email", invitation.Email);
-        command.AddParameter("$normalizedEmail", IdentityNormalization.NormalizeEmail(invitation.Email));
+        command.AddParameter("$displayEmail", invitation.DisplayEmail);
+        command.AddParameter("$normalizedEmail", IdentityNormalization.NormalizeEmail(invitation.DisplayEmail));
         command.AddNullableGuidParameter("$tenantId", invitation.TenantId);
         command.AddParameter("$tokenHash", invitation.TokenHash);
         command.AddDateTimeOffsetParameter("$createdAt", invitation.CreatedAt);
@@ -273,7 +273,7 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
         return new UserInvitation
         {
             Id = reader.GetGuidFromText("id"),
-            Email = reader.GetString(reader.GetOrdinal("email")),
+            DisplayEmail = reader.GetString(reader.GetOrdinal("display_email")),
             TenantId = reader.GetNullableGuidFromText(TenantIdColumn),
             TokenHash = reader.GetString(reader.GetOrdinal("token_hash")),
             CreatedAt = reader.GetDateTimeOffsetFromText(CreatedAtColumn),
@@ -330,14 +330,14 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
 
         if (!string.IsNullOrWhiteSpace(request.EmailQuery))
         {
-            sql += " AND normalized_email LIKE $emailQuery";
-            command.AddParameter("$emailQuery", $"%{IdentityNormalization.NormalizeEmail(request.EmailQuery)}%");
+            sql += " AND normalized_email LIKE $normalizedEmailQuery";
+            command.AddParameter("$normalizedEmailQuery", $"%{IdentityNormalization.NormalizeEmail(request.EmailQuery)}%");
         }
 
         if (!string.IsNullOrWhiteSpace(request.Email))
         {
-            sql += " AND normalized_email = $email";
-            command.AddParameter("$email", IdentityNormalization.NormalizeEmail(request.Email));
+            sql += " AND normalized_email = $normalizedEmail";
+            command.AddParameter("$normalizedEmail", IdentityNormalization.NormalizeEmail(request.Email));
         }
 
         if (request.Status != null)
@@ -373,7 +373,7 @@ public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connect
     {
         return new InvitationAdministrationSummary(
             reader.GetGuidFromText("id"),
-            reader.GetString(reader.GetOrdinal("email")),
+            reader.GetString(reader.GetOrdinal("display_email")),
             reader.GetNullableGuidFromText(TenantIdColumn),
             (InvitationAdministrationStatus)reader.GetInt32ByName("status"),
             reader.GetDateTimeOffsetFromText(CreatedAtColumn),

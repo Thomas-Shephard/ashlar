@@ -37,7 +37,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         Assert.That(fetched, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(fetched!.Email, Is.EqualTo(invitation.Email));
+            Assert.That(fetched!.DisplayEmail, Is.EqualTo(invitation.DisplayEmail));
             Assert.That(fetched.TenantId, Is.EqualTo(tenantId));
             Assert.That(JsonDocument.Parse(fetched.Metadata!).RootElement.GetProperty("source").GetString(), Is.EqualTo("test"));
         }
@@ -391,7 +391,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         var user = new AshlarUser
         {
             Id = Guid.NewGuid(),
-            Email = $"{Guid.NewGuid():N}@example.com",
+            DisplayEmail = $"{Guid.NewGuid():N}@example.com",
             AccountState = UserAccountState.Active
         };
         await _serviceProvider.GetRequiredService<IUserRepository>().CreateUserAsync(user);
@@ -404,7 +404,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         return new UserInvitation
         {
             Id = Guid.NewGuid(),
-            Email = email,
+            DisplayEmail = email,
             TenantId = tenantId,
             TokenHash = tokenHash,
             CreatedAt = created,

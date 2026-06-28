@@ -1651,7 +1651,7 @@ internal sealed class AllowRateLimiter : IAuthenticationRateLimiter
     }
 }
 
-internal sealed record TestUser(Guid Id, string Email) : IUser
+internal sealed record TestUser(Guid Id, string DisplayEmail) : IUser
 {
     public string? Name => null;
     public UserAccountState AccountState => UserAccountState.Active;

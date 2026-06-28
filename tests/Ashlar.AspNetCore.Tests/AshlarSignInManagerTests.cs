@@ -918,7 +918,7 @@ internal sealed class AshlarSignInManagerTests
             return Task.FromResult<IUser?>(new AshlarUser
             {
                 Id = userId,
-                Email = $"{userId:N}@example.com",
+                DisplayEmail = $"{userId:N}@example.com",
                 AccountState = UserAccountState.Active
             });
         }

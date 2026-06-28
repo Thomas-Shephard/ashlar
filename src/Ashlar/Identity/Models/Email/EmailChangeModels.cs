@@ -74,7 +74,7 @@ public sealed class RequestEmailChangeRequest
     /// </summary>
     public required Guid UserId { get; init; }
     /// <summary>
-    /// New email address to confirm before it replaces the current address.
+    /// New email address to confirm before it replaces the current address. Ashlar stores a sanitized display/delivery address and uses a separate normalized form for lookup and uniqueness checks.
     /// </summary>
     public required string NewEmail { get; init; }
 

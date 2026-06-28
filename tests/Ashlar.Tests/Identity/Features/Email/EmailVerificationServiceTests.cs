@@ -10,7 +10,7 @@ namespace Ashlar.Tests.Identity.Features.Email;
 
 internal sealed class EmailVerificationServiceTests
 {
-    private readonly AshlarUser _user = new() { Id = Guid.NewGuid(), Email = "user@example.com", AccountState = UserAccountState.Active };
+    private readonly AshlarUser _user = new() { Id = Guid.NewGuid(), DisplayEmail = "user@example.com", AccountState = UserAccountState.Active };
 
     [Test]
     public void ConstructorUsesDefaultOptionsWhenOptionsAreNull()
@@ -41,7 +41,7 @@ internal sealed class EmailVerificationServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(message.To, Is.EqualTo(_user.Email));
+            Assert.That(message.To, Is.EqualTo(_user.DisplayEmail));
             Assert.That(credential.UserId, Is.EqualTo(_user.Id));
             Assert.That(credential.Purpose, Is.EqualTo("email-verification"));
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailVerificationRequested), Is.True);
@@ -73,7 +73,7 @@ internal sealed class EmailVerificationServiceTests
     [Test]
     public async Task RequestVerificationSucceedsIfAlreadyVerified()
     {
-        var verifiedUser = new AshlarUser { Id = Guid.NewGuid(), Email = "verified@example.com", AccountState = UserAccountState.Active, EmailVerifiedAt = DateTimeOffset.UtcNow };
+        var verifiedUser = new AshlarUser { Id = Guid.NewGuid(), DisplayEmail = "verified@example.com", AccountState = UserAccountState.Active, EmailVerifiedAt = DateTimeOffset.UtcNow };
         var fixture = CreateFixture(verifiedUser);
         var request = new EmailVerificationRequest { UserId = verifiedUser.Id, CallbackBaseUri = new Uri("https://example.com/callback") };
 
@@ -119,7 +119,7 @@ internal sealed class EmailVerificationServiceTests
     [Test]
     public async Task RequestVerificationRateLimitWorksForNonTenantUser()
     {
-        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "user@example.com", AccountState = UserAccountState.Active };
+        var user = new MetadataUser { Id = Guid.NewGuid(), DisplayEmail = "user@example.com", AccountState = UserAccountState.Active };
         var fixture = CreateFixture(user, requestAllowed: false);
         var request = new EmailVerificationRequest { UserId = user.Id, CallbackBaseUri = new Uri("https://example.com/callback") };
 
@@ -175,7 +175,7 @@ internal sealed class EmailVerificationServiceTests
     [Test]
     public async Task VerifyTokenPreservesAuditMetadataForMetadataBackedUser()
     {
-        var user = new MetadataUser { Id = Guid.NewGuid(), Email = "user@example.com", AccountState = UserAccountState.Active, CreatedAt = DateTimeOffset.UtcNow.AddDays(-1) };
+        var user = new MetadataUser { Id = Guid.NewGuid(), DisplayEmail = "user@example.com", AccountState = UserAccountState.Active, CreatedAt = DateTimeOffset.UtcNow.AddDays(-1) };
         var fixture = CreateFixture(user);
         await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = user.Id, CallbackBaseUri = new Uri("https://example.com/callback") });
         var token = ExtractToken(fixture.EmailSender.Messages.Single());
@@ -206,7 +206,7 @@ internal sealed class EmailVerificationServiceTests
     [Test]
     public async Task VerifyTokenReturnsInvalidOrExpiredForOverlongTokenWithoutMutatingState()
     {
-        var user = new AshlarUser { Id = Guid.NewGuid(), Email = "user@example.com", AccountState = UserAccountState.Active };
+        var user = new AshlarUser { Id = Guid.NewGuid(), DisplayEmail = "user@example.com", AccountState = UserAccountState.Active };
         var fixture = CreateFixture(user);
         await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = user.Id, CallbackBaseUri = new Uri("https://example.com/callback") });
         fixture.Audit.Events.Clear();
@@ -228,7 +228,7 @@ internal sealed class EmailVerificationServiceTests
     [TestCase(" ")]
     public async Task VerifyTokenReturnsInvalidOrExpiredForMissingTokenWithoutMutatingState(string? token)
     {
-        var user = new AshlarUser { Id = Guid.NewGuid(), Email = "user@example.com", AccountState = UserAccountState.Active };
+        var user = new AshlarUser { Id = Guid.NewGuid(), DisplayEmail = "user@example.com", AccountState = UserAccountState.Active };
         var fixture = CreateFixture(user);
         await fixture.Service.RequestVerificationAsync(new EmailVerificationRequest { UserId = user.Id, CallbackBaseUri = new Uri("https://example.com/callback") });
         fixture.Audit.Events.Clear();
@@ -479,7 +479,11 @@ internal sealed class EmailVerificationServiceTests
             if (user != null) Users.Add(user);
         }
 
-        public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(Users.SingleOrDefault(u => string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase)));
+        public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
+        {
+            var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
+            return Task.FromResult<IUser?>(Users.SingleOrDefault(user => IdentityNormalization.NormalizeEmail(user.DisplayEmail) == normalizedEmail));
+        }
         public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(Users.SingleOrDefault(u => u.Id == userId));
         public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task UpdateUserAsync(IUser user, CancellationToken cancellationToken = default)
@@ -488,12 +492,12 @@ internal sealed class EmailVerificationServiceTests
             switch (existing)
             {
                 case AshlarUser ashlarUser:
-                    var updatedAshlar = ashlarUser with { Email = user.Email, EmailVerifiedAt = user.EmailVerifiedAt };
+                    var updatedAshlar = ashlarUser with { DisplayEmail = user.DisplayEmail, EmailVerifiedAt = user.EmailVerifiedAt };
                     Users.Remove(ashlarUser);
                     Users.Add(updatedAshlar);
                     break;
                 case MetadataUser metadataUser:
-                    metadataUser.Email = user.Email;
+                    metadataUser.DisplayEmail = user.DisplayEmail;
                     metadataUser.EmailVerifiedAt = user.EmailVerifiedAt;
                     break;
             }
@@ -542,7 +546,7 @@ internal sealed class EmailVerificationServiceTests
     private sealed class MetadataUser : IUser, IHasAuditMetadata
     {
         public required Guid Id { get; init; }
-        public required string Email { get; set; }
+        public required string DisplayEmail { get; set; }
         public string? Name { get; set; }
         public UserAccountState AccountState { get; set; }
         public DateTimeOffset? EmailVerifiedAt { get; set; }

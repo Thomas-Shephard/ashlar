@@ -557,7 +557,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         var rows = await connection.ExecuteAsync("""
             UPDATE ashlar_users
             SET email_verified_at = NULL
-            WHERE lower(email) = lower(@Email)
+            WHERE normalized_email = upper(@Email)
             """, new { Email = email });
 
         Assert.That(rows, Is.EqualTo(1));
@@ -737,7 +737,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         var user = new AshlarUser
         {
             Id = Guid.NewGuid(),
-            Email = email,
+            DisplayEmail = email,
             Name = "GitHub Smoke",
             AccountState = UserAccountState.Active,
             TenantId = tenantId,

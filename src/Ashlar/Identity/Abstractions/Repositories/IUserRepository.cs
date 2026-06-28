@@ -6,9 +6,9 @@ namespace Ashlar.Identity.Abstractions.Repositories;
 public interface IUserRepository
 {
     /// <summary>
-    /// Finds a user by normalized email address within an optional tenant boundary.
+    /// Finds a user by email address within an optional tenant boundary using Ashlar's normalized lookup form.
     /// </summary>
-    /// <param name="email">The email address to search for.</param>
+    /// <param name="email">The email address to search for. The repository must normalize this value for comparison.</param>
     /// <param name="tenantId">The tenant boundary for the lookup, or <see langword="null" /> for tenantless users.</param>
     /// <param name="cancellationToken">A token that can cancel email lookup.</param>
     /// <returns>The matching user, or <see langword="null" /> when no user exists.</returns>
@@ -35,14 +35,14 @@ public interface IUserRepository
     /// <summary>
     /// Persists a new user.
     /// </summary>
-    /// <param name="user">The user to create.</param>
+    /// <param name="user">The user to create. <see cref="IUser.DisplayEmail" /> is the sanitized display/delivery address; repositories store a separate normalized form for lookup and uniqueness when their schema supports it.</param>
     /// <param name="cancellationToken">A token that can cancel user creation.</param>
     Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Persists updates to an existing user.
     /// </summary>
-    /// <param name="user">The user state to save.</param>
+    /// <param name="user">The user state to save. <see cref="IUser.DisplayEmail" /> remains the sanitized display/delivery address while lookup indexes use its normalized form.</param>
     /// <param name="cancellationToken">A token that can cancel user updates.</param>
     Task UpdateUserAsync(IUser user, CancellationToken cancellationToken = default);
 }

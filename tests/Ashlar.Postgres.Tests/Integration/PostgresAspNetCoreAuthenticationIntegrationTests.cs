@@ -56,7 +56,7 @@ internal sealed class PostgresAspNetCoreAuthenticationIntegrationTests : Postgre
         var user = new AshlarPostgresUser
         {
             Id = Guid.NewGuid(),
-            Email = "magic-e2e@example.com",
+            DisplayEmail = "magic-e2e@example.com",
             AccountState = UserAccountState.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -65,7 +65,7 @@ internal sealed class PostgresAspNetCoreAuthenticationIntegrationTests : Postgre
         await setupScope.ServiceProvider.GetRequiredService<IUserRepository>().CreateUserAsync(user);
 
         var magicLinks = setupScope.ServiceProvider.GetRequiredService<IMagicLinkSignInService>();
-        await magicLinks.RequestLinkAsync(user.Email, new Uri("https://example.test/sign-in/callback"));
+        await magicLinks.RequestLinkAsync(user.DisplayEmail, new Uri("https://example.test/sign-in/callback"));
 
         var message = _emailSender.Messages.Single();
         var body = message.TextBody ?? throw new AssertionException("Magic-link email should include a text body.");

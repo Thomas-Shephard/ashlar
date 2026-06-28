@@ -17,15 +17,16 @@ namespace Ashlar.Tests.Identity.Features.Email;
 
 internal sealed class EmailCodeSignInTests
 {
-    private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Email = "user@example.com", AccountState = UserAccountState.Active };
+    private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), DisplayEmail = "user@example.com", AccountState = UserAccountState.Active };
     private static readonly string[] RequiredMfaFactors = ["totp"];
 
     [Test]
     public async Task RequestCodeSendsEmailAndStoresHashedCredentialForActiveUser()
     {
-        var fixture = CreateFixture(_user);
+        var user = new User { Id = _user.Id, DisplayEmail = "Stored.User@Example.COM", AccountState = _user.AccountState };
+        var fixture = CreateFixture(user);
 
-        await fixture.Service.RequestCodeAsync(" User@Example.com ", new AuthenticationContext(IpAddress: "127.0.0.1", CorrelationId: "corr"));
+        await fixture.Service.RequestCodeAsync(" stored.user@example.com ", new AuthenticationContext(IpAddress: "127.0.0.1", CorrelationId: "corr"));
 
         var message = fixture.EmailSender.Messages.Single();
         var credential = fixture.Repository.Credentials.Single();
@@ -33,7 +34,7 @@ internal sealed class EmailCodeSignInTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(message.To, Is.EqualTo("USER@EXAMPLE.COM"));
+            Assert.That(message.To, Is.EqualTo("Stored.User@Example.COM"));
             Assert.That(credential.ProviderType, Is.EqualTo(ProviderType.EmailCode));
             Assert.That(credential.ProviderName, Is.EqualTo(ProviderType.EmailCode.Value));
             Assert.That(credential.ProviderKey, Is.EqualTo(_user.Id.ToString("D")));
@@ -44,11 +45,11 @@ internal sealed class EmailCodeSignInTests
             Assert.That(credential.ExpiresAt, Is.EqualTo(fixture.Time.GetUtcNow().AddMinutes(10)));
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.EmailCodeRequested), Is.True);
             Assert.That(AllAuditText(fixture), Does.Not.Contain(code));
-            Assert.That(AllAuditText(fixture), Does.Not.Contain("USER@EXAMPLE.COM"));
+            Assert.That(AllAuditText(fixture), Does.Not.Contain("STORED.USER@EXAMPLE.COM"));
             Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
             var requestAttempts = fixture.RateLimiter.Attempts.Where(a => a.Purpose == "email-code-request").ToArray();
             Assert.That(requestAttempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("email-code-request", "source", "source:ip:127.0.0.1")));
-            Assert.That(requestAttempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("email-code-request", "email", "email:USER@EXAMPLE.COM")));
+            Assert.That(requestAttempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("email-code-request", "email", "email:STORED.USER@EXAMPLE.COM")));
         }
     }
 
@@ -73,10 +74,10 @@ internal sealed class EmailCodeSignInTests
     [TestCase(UserAccountState.Suspended, "user_suspended")]
     public async Task RequestCodeDoesNotSendForUnavailableUser(UserAccountState accountState, string failureReason)
     {
-        var user = new User { Id = Guid.NewGuid(), Email = "inactive@example.com", AccountState = accountState };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "inactive@example.com", AccountState = accountState };
         var fixture = CreateFixture(user);
 
-        await fixture.Service.RequestCodeAsync(user.Email);
+        await fixture.Service.RequestCodeAsync(user.DisplayEmail);
 
         using (Assert.EnterMultipleScope())
         {
@@ -88,10 +89,10 @@ internal sealed class EmailCodeSignInTests
     [Test]
     public async Task RequestCodeUsesGenericSuppressionReasonForUnknownUnavailableState()
     {
-        var user = new User { Id = Guid.NewGuid(), Email = "inactive@example.com", AccountState = (UserAccountState)999 };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "inactive@example.com", AccountState = (UserAccountState)999 };
         var fixture = CreateFixture(user);
 
-        await fixture.Service.RequestCodeAsync(user.Email);
+        await fixture.Service.RequestCodeAsync(user.DisplayEmail);
 
         Assert.That(fixture.Audit.Events.Single().FailureReason, Is.EqualTo("invalid_credentials"));
     }
@@ -101,7 +102,7 @@ internal sealed class EmailCodeSignInTests
     {
         var fixture = CreateFixture(_user, requestAllowed: false);
 
-        await fixture.Service.RequestCodeAsync(_user.Email, new AuthenticationContext(IpAddress: "203.0.113.10"));
+        await fixture.Service.RequestCodeAsync(_user.DisplayEmail, new AuthenticationContext(IpAddress: "203.0.113.10"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -112,7 +113,7 @@ internal sealed class EmailCodeSignInTests
             var auditEvent = fixture.Audit.Events.Single();
             Assert.That(auditEvent.EventType, Is.EqualTo(AshlarSecurityEventTypes.EmailCodeRequestRateLimited));
             Assert.That(auditEvent.FailureReason, Is.EqualTo("rate_limited"));
-            Assert.That(AllAuditText(fixture), Does.Not.Contain(_user.Email));
+            Assert.That(AllAuditText(fixture), Does.Not.Contain(_user.DisplayEmail));
         }
     }
 
@@ -122,7 +123,7 @@ internal sealed class EmailCodeSignInTests
         var fixture = CreateFixture(_user);
         fixture.RateLimiter.BlockedKeys.Add(ExpectedRateLimitKey("email-code-request", "email", "email:USER@EXAMPLE.COM"));
 
-        await fixture.Service.RequestCodeAsync(_user.Email, new AuthenticationContext(IpAddress: "203.0.113.10"));
+        await fixture.Service.RequestCodeAsync(_user.DisplayEmail, new AuthenticationContext(IpAddress: "203.0.113.10"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -142,10 +143,10 @@ internal sealed class EmailCodeSignInTests
     public async Task VerifyCodeSucceedsAndConsumesCredential()
     {
         var fixture = CreateFixture(_user);
-        await fixture.Service.RequestCodeAsync(_user.Email);
+        await fixture.Service.RequestCodeAsync(_user.DisplayEmail);
         var code = ExtractCode(GetTextBody(fixture.EmailSender.Messages.Single()));
 
-        var response = await fixture.Service.VerifyCodeAsync(_user.Email, code);
+        var response = await fixture.Service.VerifyCodeAsync(_user.DisplayEmail, code);
 
         using (Assert.EnterMultipleScope())
         {
@@ -161,10 +162,10 @@ internal sealed class EmailCodeSignInTests
     public async Task VerifyCodeReturnsMfaRequiredWhenPolicyRequiresMfa()
     {
         var fixture = CreateFixture(_user, requireMfa: true);
-        await fixture.Service.RequestCodeAsync(_user.Email);
+        await fixture.Service.RequestCodeAsync(_user.DisplayEmail);
         var code = ExtractCode(GetTextBody(fixture.EmailSender.Messages.Single()));
 
-        var response = await fixture.Service.VerifyCodeAsync(_user.Email, code);
+        var response = await fixture.Service.VerifyCodeAsync(_user.DisplayEmail, code);
 
         using (Assert.EnterMultipleScope())
         {
@@ -179,9 +180,10 @@ internal sealed class EmailCodeSignInTests
     public async Task VerifyCodeUsesOrchestratorInsteadOfIdentityService()
     {
         var orchestrator = new Mock<IAuthenticationOrchestrator>();
+        var normalizedEmail = IdentityNormalization.NormalizeEmail(_user.DisplayEmail);
         orchestrator
             .Setup(o => o.AuthenticateAsync(
-                It.Is<AuthenticationContext>(context => string.Equals(context.Email, _user.Email, StringComparison.OrdinalIgnoreCase)),
+                It.Is<AuthenticationContext>(context => context.Email == normalizedEmail),
                 It.IsAny<EmailCodeAssertion>(),
                 null,
                 It.IsAny<CancellationToken>()))
@@ -189,13 +191,13 @@ internal sealed class EmailCodeSignInTests
         var identity = new Mock<IIdentityService>(MockBehavior.Strict);
         var fixture = CreateFixture(_user, authenticationOrchestrator: orchestrator.Object, identityService: identity.Object);
 
-        var response = await fixture.Service.VerifyCodeAsync(_user.Email, "123456");
+        var response = await fixture.Service.VerifyCodeAsync(_user.DisplayEmail, "123456");
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
             orchestrator.Verify(o => o.AuthenticateAsync(
-                It.Is<AuthenticationContext>(context => string.Equals(context.Email, _user.Email, StringComparison.OrdinalIgnoreCase)),
+                It.Is<AuthenticationContext>(context => context.Email == normalizedEmail),
                 It.IsAny<EmailCodeAssertion>(),
                 null,
                 It.IsAny<CancellationToken>()), Times.Once);
@@ -210,9 +212,9 @@ internal sealed class EmailCodeSignInTests
     public async Task VerifyCodeFailsForWrongCode()
     {
         var fixture = CreateFixture(_user);
-        await fixture.Service.RequestCodeAsync(_user.Email);
+        await fixture.Service.RequestCodeAsync(_user.DisplayEmail);
 
-        var response = await fixture.Service.VerifyCodeAsync(_user.Email, "000000");
+        var response = await fixture.Service.VerifyCodeAsync(_user.DisplayEmail, "000000");
 
         using (Assert.EnterMultipleScope())
         {
@@ -226,11 +228,11 @@ internal sealed class EmailCodeSignInTests
     public async Task VerifyCodeFailsForExpiredCredential()
     {
         var fixture = CreateFixture(_user);
-        await fixture.Service.RequestCodeAsync(_user.Email);
+        await fixture.Service.RequestCodeAsync(_user.DisplayEmail);
         var code = ExtractCode(GetTextBody(fixture.EmailSender.Messages.Single()));
         fixture.Time.Advance(TimeSpan.FromMinutes(11));
 
-        var response = await fixture.Service.VerifyCodeAsync(_user.Email, code);
+        var response = await fixture.Service.VerifyCodeAsync(_user.DisplayEmail, code);
 
         Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
     }
@@ -241,7 +243,7 @@ internal sealed class EmailCodeSignInTests
         var orchestrator = new Mock<IAuthenticationOrchestrator>(MockBehavior.Strict);
         var fixture = CreateFixture(_user, verifyAllowed: false, authenticationOrchestrator: orchestrator.Object);
 
-        var response = await fixture.Service.VerifyCodeAsync(_user.Email, "123456");
+        var response = await fixture.Service.VerifyCodeAsync(_user.DisplayEmail, "123456");
 
         using (Assert.EnterMultipleScope())
         {
@@ -281,7 +283,7 @@ internal sealed class EmailCodeSignInTests
         var provider = CreateProvider();
         var repository = new InMemoryUserCredentialStore(_user);
 
-        var wrongAssertion = await provider.FindUserAsync(new LocalPasswordAssertion("pw"), new AuthenticationContext(_user.Email), repository);
+        var wrongAssertion = await provider.FindUserAsync(new LocalPasswordAssertion("pw"), new AuthenticationContext(_user.DisplayEmail), repository);
         var missingEmail = await provider.FindUserAsync(new EmailCodeAssertion("123456"), new AuthenticationContext(" "), repository);
 
         using (Assert.EnterMultipleScope())
@@ -322,7 +324,7 @@ internal sealed class EmailCodeSignInTests
             EmailTextTemplate = "Code={0}; Minutes={1}"
         });
 
-        await fixture.Service.RequestCodeAsync(_user.Email);
+        await fixture.Service.RequestCodeAsync(_user.DisplayEmail);
 
         using (Assert.EnterMultipleScope())
         {
@@ -335,10 +337,10 @@ internal sealed class EmailCodeSignInTests
     public async Task CreateOrReplaceCredentialReplacesExistingEmailCredential()
     {
         var fixture = CreateFixture(_user);
-        await fixture.Service.RequestCodeAsync(_user.Email);
+        await fixture.Service.RequestCodeAsync(_user.DisplayEmail);
         var firstId = fixture.Repository.Credentials.Single().Id;
 
-        await fixture.Service.RequestCodeAsync(_user.Email);
+        await fixture.Service.RequestCodeAsync(_user.DisplayEmail);
 
         using (Assert.EnterMultipleScope())
         {
@@ -366,8 +368,8 @@ internal sealed class EmailCodeSignInTests
         using (Assert.EnterMultipleScope())
         {
             Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RequestCodeAsync(" "));
-            Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => fixture.Service.RequestCodeAsync(_user.Email));
-            Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.VerifyCodeAsync(_user.Email, " "));
+            Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => fixture.Service.RequestCodeAsync(_user.DisplayEmail));
+            Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.VerifyCodeAsync(_user.DisplayEmail, " "));
         }
     }
 
@@ -376,7 +378,7 @@ internal sealed class EmailCodeSignInTests
     {
         var fixture = CreateFixture(_user, options: new EmailCodeSignInOptions { CodeLength = 10 });
 
-        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => fixture.Service.RequestCodeAsync(_user.Email));
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => fixture.Service.RequestCodeAsync(_user.DisplayEmail));
     }
 
     [Test]
@@ -655,7 +657,8 @@ internal sealed class EmailCodeSignInTests
         public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
         {
             GetUserByEmailCalls++;
-            return Task.FromResult<IUser?>(_users.SingleOrDefault(u => string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase)));
+            var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
+            return Task.FromResult<IUser?>(_users.SingleOrDefault(user => IdentityNormalization.NormalizeEmail(user.DisplayEmail) == normalizedEmail));
         }
         public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(_users.SingleOrDefault(u => u.Id == userId));
         public Task<UserCredential?> GetCredentialForUserAsync(Guid userId, ProviderType type, string providerName, string? providerKey = null, CancellationToken cancellationToken = default) => Task.FromResult(Credentials.SingleOrDefault(c => c.UserId == userId && c.ProviderType == type && string.Equals(c.ProviderName, providerName, StringComparison.OrdinalIgnoreCase) && (providerKey == null || c.ProviderKey == providerKey))?.Clone());

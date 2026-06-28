@@ -97,7 +97,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         var user = new AshlarPostgresUser
         {
             Id = Guid.NewGuid(),
-            Email = "test@example.com",
+            DisplayEmail = "test@example.com",
             Name = "Test User",
             AccountState = UserAccountState.Active,
             CreatedAt = DateTimeOffset.UtcNow
@@ -106,7 +106,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         await repo.CreateUserAsync(user);
 
         var fetchedById = await repo.GetUserByIdAsync(user.Id);
-        var fetchedByEmail = await repo.GetUserByEmailAsync(user.Email);
+        var fetchedByEmail = await repo.GetUserByEmailAsync(user.DisplayEmail);
 
         using (Assert.EnterMultipleScope())
         {
@@ -116,7 +116,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(fetchedById.Email, Is.EqualTo(user.Email));
+            Assert.That(fetchedById.DisplayEmail, Is.EqualTo(user.DisplayEmail));
             Assert.That(fetchedByEmail.Id, Is.EqualTo(user.Id));
         }
     }
@@ -129,7 +129,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         var user = new AshlarPostgresUser
         {
             Id = Guid.NewGuid(),
-            Email = "preserved@example.com",
+            DisplayEmail = "preserved@example.com",
             CreatedAt = specificTime
         };
 
@@ -147,7 +147,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         var user = new AshlarPostgresUser
         {
             Id = Guid.NewGuid(),
-            Email = "MixedCase@Example.Com",
+            DisplayEmail = "MixedCase@Example.Com",
             AccountState = UserAccountState.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -171,7 +171,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         var user1 = new AshlarPostgresUser
         {
             Id = Guid.NewGuid(),
-            Email = email,
+            DisplayEmail = email,
             TenantId = tenant1,
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -179,7 +179,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         var user2 = new AshlarPostgresUser
         {
             Id = Guid.NewGuid(),
-            Email = email,
+            DisplayEmail = email,
             TenantId = tenant2,
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -643,7 +643,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         var updatedUser = new AshlarPostgresUser
         {
             Id = user.Id,
-            Email = user.Email,
+            DisplayEmail = user.DisplayEmail,
             Name = "Updated Name",
             AccountState = user.AccountState,
             TenantId = user.TenantId,
@@ -670,7 +670,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         {
             // ReSharper disable once NullableWarningSuppressionIsUsed
             Assert.ThrowsAsync<ArgumentNullException>(async () => await repo.UpdateUserAsync(null!));
-            Assert.ThrowsAsync<ArgumentException>(async () => await repo.UpdateUserAsync(new AshlarPostgresUser { Id = Guid.NewGuid(), Email = "", CreatedAt = default }));
+            Assert.ThrowsAsync<ArgumentException>(async () => await repo.UpdateUserAsync(new AshlarPostgresUser { Id = Guid.NewGuid(), DisplayEmail = "", CreatedAt = default }));
         }
     }
 
@@ -682,7 +682,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         var user = new AshlarPostgresUser
         {
             Id = Guid.NewGuid(),
-            Email = "nonexistent@example.com",
+            DisplayEmail = "nonexistent@example.com",
             CreatedAt = DateTimeOffset.UtcNow
         };
 
@@ -699,7 +699,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         var user = new MinimalUser
         {
             Id = Guid.NewGuid(),
-            Email = "minimal@example.com",
+            DisplayEmail = "minimal@example.com",
             AccountState = UserAccountState.Active,
             Name = "Original"
         };
@@ -709,7 +709,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         var updatedUser = new MinimalUser
         {
             Id = user.Id,
-            Email = user.Email,
+            DisplayEmail = user.DisplayEmail,
             AccountState = user.AccountState,
             Name = "Updated"
         };
@@ -727,7 +727,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
         var user = new AshlarPostgresUser
         {
             Id = Guid.NewGuid(),
-            Email = $"{Guid.NewGuid()}@example.com",
+            DisplayEmail = $"{Guid.NewGuid()}@example.com",
             AccountState = UserAccountState.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -777,7 +777,7 @@ internal sealed class PostgresUserAndCredentialRepositoryTests : PostgresTestBas
     private sealed class MinimalUser : IUser
     {
         public Guid Id { get; init; }
-        public required string Email { get; init; }
+        public required string DisplayEmail { get; init; }
         public string? Name { get; init; }
         public UserAccountState AccountState { get; init; } = UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt { get; init; }

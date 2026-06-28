@@ -194,7 +194,7 @@ internal sealed class LocalPasswordProviderTests
     public void GetProviderKeyShouldReturnUserId()
     {
         var assertion = new LocalPasswordAssertion("pass");
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
 
         var key = _provider.GetProviderKey(assertion, user.Id);
 
@@ -275,7 +275,7 @@ internal sealed class LocalPasswordProviderTests
         var assertion = new LocalPasswordAssertion("pass");
         var email = "test@example.com";
         var tenantId = Guid.NewGuid();
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var repoMock = new Mock<IUserRepository>();
         repoMock.Setup(r => r.GetUserByEmailAsync(email, tenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);

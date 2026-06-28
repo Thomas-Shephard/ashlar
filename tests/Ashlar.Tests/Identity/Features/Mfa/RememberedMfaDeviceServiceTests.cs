@@ -319,7 +319,7 @@ internal sealed class RememberedMfaDeviceServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((await fixture.Service.CreateAfterSuccessfulMfaAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, User: new User { Id = Guid.Empty, Email = "empty@example.com" }, FreshMfaSatisfied: true), new CreateRememberedMfaDeviceRequest())).Succeeded, Is.False);
+            Assert.That((await fixture.Service.CreateAfterSuccessfulMfaAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, User: new User { Id = Guid.Empty, DisplayEmail = "empty@example.com" }, FreshMfaSatisfied: true), new CreateRememberedMfaDeviceRequest())).Succeeded, Is.False);
             Assert.ThrowsAsync<ArgumentNullException>(() => fixture.Service.CreateAfterSuccessfulMfaAsync(SuccessfulMfa(user), null!));
             Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => fixture.Service.CreateAfterSuccessfulMfaAsync(SuccessfulMfa(user), new CreateRememberedMfaDeviceRequest { Lifetime = TimeSpan.Zero }));
             Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.CreateAfterSuccessfulMfaAsync(SuccessfulMfa(user), new CreateRememberedMfaDeviceRequest { DisplayName = new string('x', 129) }));
@@ -553,7 +553,7 @@ internal sealed class RememberedMfaDeviceServiceTests
 
         public User AddUser(Guid? tenantId = null, UserAccountState accountState = UserAccountState.Active)
         {
-            var user = new User { Id = Guid.NewGuid(), Email = $"{Guid.NewGuid():N}@example.com", TenantId = tenantId, AccountState = accountState };
+            var user = new User { Id = Guid.NewGuid(), DisplayEmail = $"{Guid.NewGuid():N}@example.com", TenantId = tenantId, AccountState = accountState };
             _users.Add(user);
             return user;
         }
@@ -565,7 +565,7 @@ internal sealed class RememberedMfaDeviceServiceTests
 
         public Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<IUser?> GetUserByEmailAsync(string normalizedEmail, Guid? tenantId = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default)
         {

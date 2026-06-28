@@ -20,19 +20,19 @@ internal sealed class BootstrapServiceTests
     private const string SetupSecretHash = "sha256:setup-secret-hash";
     private const string WrongSetupSecret = "wrong-setup-secret";
 
-    private Mock<IBootstrapStateRepository> _stateRepository;
-    private Mock<IUserRepository> _userRepository;
-    private Mock<IAshlarTransactionProvider> _transactionProvider;
-    private Mock<IAuthorizationGrantService> _grantService;
-    private Mock<IAuthenticationRateLimiter> _rateLimiter;
-    private Mock<ISecureTokenGenerator> _tokenGenerator;
-    private Mock<ISecureTokenHasher> _tokenHasher;
-    private FakeTimeProvider _timeProvider;
-    private Mock<ISecurityEventSink> _securityEventSink;
-    private BootstrapOptions _options;
-    private SecureTokenContext _tokenContext;
-    private IdentityAuditContext _auditContext;
-    private BootstrapService _service;
+    private Mock<IBootstrapStateRepository> _stateRepository = null!;
+    private Mock<IUserRepository> _userRepository = null!;
+    private Mock<IAshlarTransactionProvider> _transactionProvider = null!;
+    private Mock<IAuthorizationGrantService> _grantService = null!;
+    private Mock<IAuthenticationRateLimiter> _rateLimiter = null!;
+    private Mock<ISecureTokenGenerator> _tokenGenerator = null!;
+    private Mock<ISecureTokenHasher> _tokenHasher = null!;
+    private FakeTimeProvider _timeProvider = null!;
+    private Mock<ISecurityEventSink> _securityEventSink = null!;
+    private BootstrapOptions _options = null!;
+    private SecureTokenContext _tokenContext = null!;
+    private IdentityAuditContext _auditContext = null!;
+    private BootstrapService _service = null!;
 
     [SetUp]
     public void SetUp()
@@ -446,10 +446,10 @@ internal sealed class BootstrapServiceTests
             Assert.That(result.Value, Is.Not.EqualTo(Guid.Empty));
         }
 
-        _userRepository.Verify(r => r.GetUserByEmailAsync("ADMIN@EXAMPLE.COM", tenantId, It.IsAny<CancellationToken>()), Times.Once);
+        _userRepository.Verify(r => r.GetUserByEmailAsync("Admin@Example.com", tenantId, It.IsAny<CancellationToken>()), Times.Once);
         _userRepository.Verify(r => r.CreateUserAsync(It.Is<IUser>(u =>
             u.Id == result.Value &&
-            u.Email == "Admin@Example.com" &&
+            u.DisplayEmail == "Admin@Example.com" &&
             u.Name == "Admin" &&
             u.CanSignIn() &&
             HasTenant(u, tenantId) &&
@@ -522,7 +522,7 @@ internal sealed class BootstrapServiceTests
         ArrangeSuccessfulBootstrap(userId, existingUser: new AshlarUser
         {
             Id = userId,
-            Email = "admin@example.com",
+            DisplayEmail = "admin@example.com",
             Name = "Old Name",
             AccountState = UserAccountState.Disabled
         });
@@ -555,7 +555,7 @@ internal sealed class BootstrapServiceTests
         ArrangeSuccessfulBootstrap(userId, existingUser: new AshlarUser
         {
             Id = userId,
-            Email = "admin@example.com",
+            DisplayEmail = "admin@example.com",
             Name = "Existing Admin",
             AccountState = UserAccountState.Active
         });
@@ -580,7 +580,7 @@ internal sealed class BootstrapServiceTests
         ArrangeSuccessfulBootstrap(userId, existingUser: new AshlarUser
         {
             Id = userId,
-            Email = "admin@example.com",
+            DisplayEmail = "admin@example.com",
             Name = "Existing Admin",
             AccountState = UserAccountState.Active,
             EmailVerifiedAt = _timeProvider.GetUtcNow().AddDays(-1)
@@ -759,7 +759,7 @@ internal sealed class BootstrapServiceTests
         var userId = Guid.NewGuid();
         ArrangeSuccessfulBootstrap(executeCommitCallbacks: true);
         _userRepository.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid id, CancellationToken _) => new AshlarUser { Id = id, Email = "admin@example.com", AccountState = UserAccountState.Active });
+            .ReturnsAsync((Guid id, CancellationToken _) => new AshlarUser { Id = id, DisplayEmail = "admin@example.com", AccountState = UserAccountState.Active });
         var notificationService = new Mock<ISecurityNotificationService>();
         notificationService.Setup(s => s.NotifyAsync(It.IsAny<SecurityNotification>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(SecurityNotificationResult.Success());

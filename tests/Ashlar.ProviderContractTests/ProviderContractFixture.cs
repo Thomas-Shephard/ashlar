@@ -206,7 +206,7 @@ internal abstract class ProviderContractFixture
         var user = new AshlarUser
         {
             Id = Guid.NewGuid(),
-            Email = email ?? $"{Guid.NewGuid():N}@example.com",
+            DisplayEmail = email ?? $"{Guid.NewGuid():N}@example.com",
             Name = "Test User",
             AccountState = AccountState,
             TenantId = tenantId

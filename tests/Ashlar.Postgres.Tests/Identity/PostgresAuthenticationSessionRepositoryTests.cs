@@ -580,7 +580,7 @@ internal sealed class PostgresAuthenticationSessionRepositoryTests : PostgresTes
         var user = new AshlarPostgresUser
         {
             Id = Guid.NewGuid(),
-            Email = $"{Guid.NewGuid()}@example.com",
+            DisplayEmail = $"{Guid.NewGuid()}@example.com",
             AccountState = UserAccountState.Active,
             TenantId = tenantId,
             CreatedAt = DateTimeOffset.UtcNow

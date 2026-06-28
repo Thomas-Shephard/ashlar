@@ -11,7 +11,7 @@ public interface IIdentityService
     IEnumerable<AuthenticationProviderKey> SupportedProviderKeys { get; }
 
     /// <summary>
-    /// Finds a user by normalized email address and optional tenant.
+    /// Finds a user by email address within an optional tenant boundary using Ashlar's normalized lookup form.
     /// </summary>
     /// <param name="email">The email address to look up.</param>
     /// <param name="tenantId">The tenant boundary for the lookup, or <see langword="null" /> for tenantless users.</param>
