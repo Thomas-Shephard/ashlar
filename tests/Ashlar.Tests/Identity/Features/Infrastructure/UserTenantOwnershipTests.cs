@@ -30,7 +30,7 @@ internal sealed class UserTenantOwnershipTests
 
     private sealed record NonTenantUser(Guid Id) : IUser
     {
-        public string Email => $"{Id:N}@example.com";
+        public string DisplayEmail => $"{Id:N}@example.com";
         public string? Name => null;
         public UserAccountState AccountState => UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt => null;
@@ -38,7 +38,7 @@ internal sealed class UserTenantOwnershipTests
 
     private sealed record TenantUser(Guid Id, Guid? TenantId) : ITenantUser
     {
-        public string Email => $"{Id:N}@example.com";
+        public string DisplayEmail => $"{Id:N}@example.com";
         public string? Name => null;
         public UserAccountState AccountState => UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt => null;

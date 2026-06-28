@@ -5,7 +5,7 @@ namespace Ashlar.Identity.Models.Administration;
 /// </summary>
 public sealed record SearchUsersRequest
 {
-    /// <summary>Optional case-insensitive email or name query.</summary>
+    /// <summary>Optional query matched against normalized email addresses and display names.</summary>
     public string? Query { get; init; }
 
     /// <summary>Tenant scope to search. Use <see cref="TenantContext.Global" /> for global users; leave <see langword="null" /> only when <see cref="IncludeAllTenants" /> is enabled.</summary>
@@ -41,17 +41,17 @@ public sealed record SearchUsersRequest
 /// Safe summary of a user for administrator display.
 /// </summary>
 /// <param name="UserId">Stable user identifier.</param>
-/// <param name="Email">User email address safe for administrator display.</param>
+/// <param name="DisplayEmail">Sanitized display/delivery email address returned for administrator display. This is not the normalized lookup form.</param>
 /// <param name="Name">Optional user display name.</param>
 /// <param name="TenantId">Tenant scope for the user, or <see langword="null" /> for a global user.</param>
 /// <param name="AccountState">Current account state that controls sign-in eligibility.</param>
 /// <param name="CanSignIn">Whether account state permits sign-in.</param>
-/// <param name="IsEmailVerified">Whether <paramref name="Email" /> is verified.</param>
+/// <param name="IsEmailVerified">Whether <paramref name="DisplayEmail" /> is verified.</param>
 /// <param name="CreatedAt">UTC time when the account was created.</param>
 /// <param name="UpdatedAt">UTC time when account metadata or state last changed, when known.</param>
 public sealed record UserSummary(
     Guid UserId,
-    string Email,
+    string DisplayEmail,
     string? Name,
     Guid? TenantId,
     UserAccountState AccountState,

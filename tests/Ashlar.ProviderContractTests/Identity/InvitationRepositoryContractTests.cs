@@ -25,7 +25,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fetched!.Id, Is.EqualTo(invitation.Id));
-            Assert.That(fetched.Email, Is.EqualTo(invitation.Email));
+            Assert.That(fetched.DisplayEmail, Is.EqualTo(invitation.DisplayEmail));
             Assert.That(fetched.TenantId, Is.EqualTo(tenantId));
             Assert.That(fetched.TokenHash, Is.EqualTo(invitation.TokenHash));
             Assert.That(fetched.CreatedAt, Is.EqualTo(invitation.CreatedAt));
@@ -101,7 +101,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         var repository = GetInvitationRepository(scope.ServiceProvider);
         var invitation = CreateInvitation("revoked@example.com", "revoked-token");
         await repository.CreateInvitationAsync(invitation);
-        Assert.That(await repository.RevokeInvitationsByEmailAsync(invitation.Email), Is.EqualTo(1));
+        Assert.That(await repository.RevokeInvitationsByEmailAsync(invitation.DisplayEmail), Is.EqualTo(1));
 
         var revoked = await repository.GetInvitationByTokenHashAsync(invitation.TokenHash);
         revoked!.AcceptedAt = CreatedAt.AddHours(1);
@@ -217,7 +217,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         await repository.CreateInvitationAsync(expired);
         accepted.AcceptedAt = RepositoryNow.AddMinutes(-30);
         var acceptedUpdated = await repository.UpdateInvitationAsync(accepted, accepted.Version);
-        var revokedCount = await repository.RevokeInvitationsByEmailAsync(revoked.Email);
+        var revokedCount = await repository.RevokeInvitationsByEmailAsync(revoked.DisplayEmail);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(acceptedUpdated, Is.True);
@@ -350,7 +350,7 @@ internal abstract class InvitationRepositoryContractTests : ProviderContractFixt
         return new UserInvitation
         {
             Id = Guid.NewGuid(),
-            Email = email,
+            DisplayEmail = email,
             TenantId = tenantId,
             TokenHash = tokenHash,
             CreatedAt = created,

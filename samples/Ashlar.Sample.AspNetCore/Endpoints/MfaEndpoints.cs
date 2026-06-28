@@ -32,7 +32,7 @@ internal static class MfaEndpoints
             if (!hasTotp)
             {
                 var enrollment = await services.Totp.StartEnrollmentAsync(
-                    new StartTotpEnrollmentRequest(userId, services.Options.Value.AppName, ashlarUser.Email)
+                    new StartTotpEnrollmentRequest(userId, services.Options.Value.AppName, ashlarUser.DisplayEmail)
                     {
                         Tenant = services.HttpContext.ToTenantContext(),
                         Audit = services.HttpContext.ToAuditContext()

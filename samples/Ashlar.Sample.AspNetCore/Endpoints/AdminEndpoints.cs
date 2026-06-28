@@ -42,12 +42,12 @@ internal static partial class AdminEndpoints
             {
                 var command = tenant.TenantId.HasValue
                     ? new CommandDefinition(
-                        "SELECT id, email, name FROM ashlar_users WHERE tenant_id = @TenantId ORDER BY email, id LIMIT 100",
+                        "SELECT id, display_email AS displayEmail, name FROM ashlar_users WHERE tenant_id = @TenantId ORDER BY display_email, id LIMIT 100",
                         new { tenant.TenantId },
                         transaction: connection.Transaction,
                         cancellationToken: cancellationToken)
                     : new CommandDefinition(
-                        "SELECT id, email, name FROM ashlar_users WHERE tenant_id IS NULL ORDER BY email, id LIMIT 100",
+                        "SELECT id, display_email AS displayEmail, name FROM ashlar_users WHERE tenant_id IS NULL ORDER BY display_email, id LIMIT 100",
                         transaction: connection.Transaction,
                         cancellationToken: cancellationToken);
                 var users = await connection.Connection.QueryAsync(command);

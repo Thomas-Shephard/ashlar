@@ -5,7 +5,7 @@ namespace Ashlar.Sqlite.Identity;
 /// <summary>
 /// Provides SQLite-backed administrator user reads.
 /// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
+/// <param name="connectionProvider">Connection provider used for administrator reads.</param>
 public sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvider connectionProvider) : IUserAdministrationRepository
 {
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
@@ -13,9 +13,9 @@ public sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvider
     /// <summary>
     /// Searches users using safe administrator-display fields.
     /// </summary>
-    /// <param name="request">The search request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">Search request containing scope, filters, and paging.</param>
+    /// <param name="cancellationToken">Token that can cancel the search.</param>
+    /// <returns>Display-safe user summaries matching the request.</returns>
     public async Task<IReadOnlyList<UserSummary>> SearchUsersAsync(SearchUsersRequest request, CancellationToken cancellationToken = default)
     {
         SearchUsersRequest.ThrowIfInvalid(request);
@@ -23,15 +23,17 @@ public sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvider
         return await SqliteQuery.QueryAsync(_connectionProvider, command =>
         {
             var sql = """
-                SELECT id, email, name, tenant_id, account_state, email_verified_at, created_at, updated_at
+                SELECT id, display_email, name, tenant_id, account_state, email_verified_at, created_at, updated_at
                 FROM ashlar_users
                 WHERE 1 = 1
                 """;
 
             if (!string.IsNullOrWhiteSpace(request.Query))
             {
-                sql += " AND (instr(lower(email), lower($query)) > 0 OR instr(lower(coalesce(name, '')), lower($query)) > 0)";
-                command.AddParameter("$query", request.Query.Trim());
+                sql += " AND (normalized_email LIKE $normalizedEmailQuery OR instr(lower(coalesce(name, '')), lower($nameQuery)) > 0)";
+                var query = request.Query.Trim();
+                command.AddParameter("$normalizedEmailQuery", $"%{IdentityNormalization.NormalizeEmail(query)}%");
+                command.AddParameter("$nameQuery", query);
             }
 
             command.AddTenantFilter(request.Tenant, "tenant_id", "$tenantId", ref sql);
@@ -49,7 +51,7 @@ public sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvider
                     : " AND email_verified_at IS NULL";
             }
 
-            sql += " ORDER BY lower(email), id LIMIT $limit OFFSET $offset;";
+            sql += " ORDER BY lower(display_email), id LIMIT $limit OFFSET $offset;";
             command.AddParameter("$limit", request.Limit);
             command.AddParameter("$offset", request.Offset);
 
@@ -60,9 +62,9 @@ public sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvider
     /// <summary>
     /// Gets a user summary by id.
     /// </summary>
-    /// <param name="request">The detail request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="request">Detail request containing user id and scope.</param>
+    /// <param name="cancellationToken">Token that can cancel the lookup.</param>
+    /// <returns>The display-safe user summary, or <see langword="null" /> when no matching user exists.</returns>
     public async Task<UserSummary?> GetUserSummaryAsync(UserAdministrationDetailRequest request, CancellationToken cancellationToken = default)
     {
         UserAdministrationDetailRequest.ThrowIfInvalid(request);
@@ -70,7 +72,7 @@ public sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvider
         return await SqliteQuery.QuerySingleAsync(_connectionProvider, command =>
         {
             var sql = """
-            SELECT id, email, name, tenant_id, account_state, email_verified_at, created_at, updated_at
+            SELECT id, display_email, name, tenant_id, account_state, email_verified_at, created_at, updated_at
             FROM ashlar_users
             WHERE id = $userId
             """;
@@ -86,7 +88,7 @@ public sealed class SqliteUserAdministrationRepository(ISqliteConnectionProvider
         var accountState = UserAccountStates.FromStorageValue(reader.GetString(reader.GetOrdinal("account_state")));
         return new UserSummary(
             reader.GetGuidFromText("id"),
-            reader.GetString(reader.GetOrdinal("email")),
+            reader.GetString(reader.GetOrdinal("display_email")),
             reader.GetNullableString("name"),
             reader.GetNullableGuidFromText("tenant_id"),
             accountState,

@@ -1068,7 +1068,7 @@ internal sealed class AuthenticationHandshakeServiceTests
                             WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
                         });
         userRepository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-                          .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
+                          .ReturnsAsync(new User { Id = userId, DisplayEmail = "user@example.com" });
 
         await service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
 
@@ -1128,7 +1128,7 @@ internal sealed class AuthenticationHandshakeServiceTests
                             WindowResetAt = _timeProvider.GetUtcNow().AddMinutes(1)
                         });
         userRepository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-                          .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
+                          .ReturnsAsync(new User { Id = userId, DisplayEmail = "user@example.com" });
 
         await service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(
             "raw-token",

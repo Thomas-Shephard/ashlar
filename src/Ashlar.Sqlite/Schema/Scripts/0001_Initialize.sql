@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS ashlar_users (
     id TEXT PRIMARY KEY,
-    email TEXT NOT NULL,
+    display_email TEXT NOT NULL,
     normalized_email TEXT NOT NULL,
     name TEXT,
     account_state TEXT NOT NULL DEFAULT 'active' CHECK (account_state IN ('active', 'disabled', 'locked', 'suspended')),
@@ -10,11 +10,11 @@ CREATE TABLE IF NOT EXISTS ashlar_users (
     updated_at TEXT
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS ak_ashlar_users_email_tenant
+CREATE UNIQUE INDEX IF NOT EXISTS ak_ashlar_users_normalized_email_tenant
 ON ashlar_users (normalized_email, tenant_id)
 WHERE tenant_id IS NOT NULL;
 
-CREATE UNIQUE INDEX IF NOT EXISTS ak_ashlar_users_email_no_tenant
+CREATE UNIQUE INDEX IF NOT EXISTS ak_ashlar_users_normalized_email_no_tenant
 ON ashlar_users (normalized_email)
 WHERE tenant_id IS NULL;
 
@@ -285,7 +285,7 @@ CREATE INDEX IF NOT EXISTS ix_ashlar_rate_limits_expires_at ON ashlar_rate_limit
 
 CREATE TABLE IF NOT EXISTS ashlar_invitations (
     id TEXT PRIMARY KEY,
-    email TEXT NOT NULL,
+    display_email TEXT NOT NULL,
     normalized_email TEXT NOT NULL,
     tenant_id TEXT,
     token_hash TEXT NOT NULL UNIQUE,
@@ -300,8 +300,8 @@ CREATE TABLE IF NOT EXISTS ashlar_invitations (
     CONSTRAINT ck_ashlar_invitations_expiry_after_creation CHECK (expires_at >= created_at)
 );
 
-CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_email_tenant ON ashlar_invitations (normalized_email, tenant_id);
-CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_active_email_tenant ON ashlar_invitations (normalized_email, tenant_id)
+CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_normalized_email_tenant ON ashlar_invitations (normalized_email, tenant_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_active_normalized_email_tenant ON ashlar_invitations (normalized_email, tenant_id)
 WHERE accepted_at IS NULL AND revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_expires_at ON ashlar_invitations (expires_at);
 CREATE INDEX IF NOT EXISTS ix_ashlar_invitations_accepted_at ON ashlar_invitations (accepted_at) WHERE accepted_at IS NOT NULL;

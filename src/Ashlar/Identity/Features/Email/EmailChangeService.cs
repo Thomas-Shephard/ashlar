@@ -80,7 +80,7 @@ internal sealed class EmailChangeService(
 
         var newEmail = IdentityNormalization.SanitizeEmailForDelivery(request.NewEmail);
         var normalizedNewEmail = IdentityNormalization.NormalizeEmail(newEmail);
-        if (normalizedNewEmail == IdentityNormalization.NormalizeEmail(user.Email))
+        if (normalizedNewEmail == IdentityNormalization.NormalizeEmail(user.DisplayEmail))
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
@@ -116,7 +116,7 @@ internal sealed class EmailChangeService(
             return Result.Failure(AshlarFailureCodes.RateLimited, "Too many requests.");
         }
 
-        var existingUser = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(normalizedNewEmail, (user as ITenantUser)?.TenantId, cancellationToken);
+        var existingUser = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(newEmail, (user as ITenantUser)?.TenantId, cancellationToken);
         if (existingUser != null) return await SuppressEmailChangeRequestAsync(newEmail, user, request.Audit, cancellationToken);
 
         var token = _dependencies.TokenContext.Generator.GenerateToken();
@@ -304,8 +304,6 @@ internal sealed class EmailChangeService(
             return Result.Failure(AshlarFailureCodes.InvalidTokenData, "Invalid token data.");
         }
 
-        var normalizedNewEmail = IdentityNormalization.NormalizeEmail(newEmail);
-
         await using var transaction = await _dependencies.IdentityContext.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
         var user = await _dependencies.IdentityContext.UserRepository.GetUserByIdAsync(request.UserId, cancellationToken);
@@ -336,9 +334,9 @@ internal sealed class EmailChangeService(
             return Result.Failure(AshlarFailureCodes.TokenConsumptionFailed, InvalidOrExpiredTokenMessage);
         }
 
-        var existingUser = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(normalizedNewEmail, (user as ITenantUser)?.TenantId, cancellationToken);
         var tenantId = (user as ITenantUser)?.TenantId;
-        if (existingUser != null)
+        var existingUser = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(newEmail, tenantId, cancellationToken);
+        if (existingUser != null && existingUser.Id != user.Id)
         {
             transaction.OnCommitted(async ct =>
             {
@@ -356,8 +354,7 @@ internal sealed class EmailChangeService(
             return Result.Failure(AshlarFailureCodes.EmailAlreadyInUse, "New email is already in use.");
         }
 
-        var oldEmail = user.Email;
-        // Update user
+        var oldDisplayEmail = user.DisplayEmail;
         var updatedUser = new UpdatedUserWrapper(user, newEmail, now);
 
         await _dependencies.IdentityContext.UserRepository.UpdateUserAsync(updatedUser, cancellationToken);
@@ -378,18 +375,18 @@ internal sealed class EmailChangeService(
                 Audit = request.Audit,
                 Properties = new Dictionary<string, string>
                 {
-                    ["old_email"] = oldEmail,
+                    ["old_email"] = oldDisplayEmail,
                     ["new_email"] = newEmail
                 }
             }, ct);
 
             var notificationMetadata = new Dictionary<string, string>
             {
-                ["old_email"] = oldEmail,
+                ["old_email"] = oldDisplayEmail,
                 ["new_email"] = newEmail
             };
 
-            await _notifications.NotifyAsync(SecurityNotificationType.EmailChanged, oldEmail, now, metadata: notificationMetadata, cancellationToken: ct);
+            await _notifications.NotifyAsync(SecurityNotificationType.EmailChanged, oldDisplayEmail, now, metadata: notificationMetadata, cancellationToken: ct);
             await _notifications.NotifyAsync(SecurityNotificationType.EmailChanged, updatedUser, now, metadata: notificationMetadata, cancellationToken: ct);
         });
 
@@ -405,9 +402,9 @@ internal sealed class EmailChangeService(
         /// </summary>
         public Guid Id => original.Id;
         /// <summary>
-        /// Replacement email address.
+        /// Replacement sanitized display/delivery email address.
         /// </summary>
-        public string Email { get; } = newEmail;
+        public string DisplayEmail { get; } = newEmail;
         /// <summary>
         /// Existing display name.
         /// </summary>

@@ -1,40 +1,40 @@
 namespace Ashlar.Postgres.Models;
 
 /// <summary>
-/// Provides ashlar postgres user behavior.
+/// PostgreSQL-backed user record returned by Ashlar repositories.
 /// </summary>
 public sealed class AshlarPostgresUser : ITenantUser, IHasAuditMetadata
 {
     /// <summary>
-    /// Gets or sets the id value.
+    /// Stable user identifier.
     /// </summary>
     public required Guid Id { get; init; }
     /// <summary>
-    /// Gets or sets the email value.
+    /// Sanitized display/delivery email address. This is not the normalized lookup form.
     /// </summary>
-    public required string Email { get; set; }
+    public required string DisplayEmail { get; set; }
     /// <summary>
-    /// Gets or sets the name value.
+    /// Optional display name supplied by the host application.
     /// </summary>
     public string? Name { get; set; }
     /// <summary>
-    /// Gets or sets the account state value.
+    /// Account state that controls whether authentication can continue.
     /// </summary>
     public UserAccountState AccountState { get; set; } = UserAccountState.Active;
     /// <summary>
-    /// Gets or sets the tenant id value.
+    /// Tenant scope for the user, or <see langword="null" /> for a global account.
     /// </summary>
     public Guid? TenantId { get; init; }
     /// <summary>
-    /// Gets or sets the email verified at value.
+    /// UTC time when the email address was verified, when known.
     /// </summary>
     public DateTimeOffset? EmailVerifiedAt { get; set; }
     /// <summary>
-    /// Gets or sets the created at value.
+    /// UTC time when the account was created.
     /// </summary>
     public required DateTimeOffset CreatedAt { get; init; }
     /// <summary>
-    /// Gets or sets the updated at value.
+    /// UTC time when account metadata or state last changed, when known.
     /// </summary>
     public DateTimeOffset? UpdatedAt { get; set; }
 }

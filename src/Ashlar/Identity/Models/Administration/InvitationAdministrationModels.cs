@@ -33,10 +33,10 @@ public sealed record SearchInvitationsRequest
     /// <summary>Whether to search across all tenant scopes. Cannot be combined with <see cref="Tenant" />.</summary>
     public bool IncludeAllTenants { get; init; }
 
-    /// <summary>Optional case-insensitive email fragment.</summary>
+    /// <summary>Optional email fragment matched against the normalized lookup form.</summary>
     public string? EmailQuery { get; init; }
 
-    /// <summary>Optional exact email address match.</summary>
+    /// <summary>Optional exact email address matched using the normalized lookup form.</summary>
     public string? Email { get; init; }
 
     /// <summary>Optional invitation lifecycle state filter.</summary>
@@ -96,7 +96,7 @@ public sealed record SearchInvitationsRequest
 /// Display-safe invitation row for administrator search results.
 /// </summary>
 /// <param name="Id">Stable invitation identifier.</param>
-/// <param name="Email">Invited email address safe for administrator display.</param>
+/// <param name="DisplayEmail">Sanitized display/delivery email address on the invitation, returned for administrator display. This is not the normalized lookup form.</param>
 /// <param name="TenantId">Tenant scope for the invitation, or <see langword="null" /> for a global invitation.</param>
 /// <param name="Status">Current invitation lifecycle state.</param>
 /// <param name="CreatedAt">UTC time when the invitation was created.</param>
@@ -106,7 +106,7 @@ public sealed record SearchInvitationsRequest
 /// <param name="RevokedAt">UTC time when the invitation was revoked, when applicable.</param>
 public sealed record InvitationAdministrationSummary(
     Guid Id,
-    string Email,
+    string DisplayEmail,
     Guid? TenantId,
     InvitationAdministrationStatus Status,
     DateTimeOffset CreatedAt,

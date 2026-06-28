@@ -18,15 +18,16 @@ namespace Ashlar.Tests.Identity.Features.Email;
 
 internal sealed class MagicLinkSignInTests
 {
-    private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Email = "user@example.com", AccountState = UserAccountState.Active };
+    private readonly User _user = new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), DisplayEmail = "user@example.com", AccountState = UserAccountState.Active };
 
     [Test]
     public async Task RequestLinkSendsEmailAndStoresHashedCredentialForActiveUser()
     {
-        var fixture = CreateFixture(_user);
+        var user = new User { Id = _user.Id, DisplayEmail = "Stored.User@Example.COM", AccountState = _user.AccountState };
+        var fixture = CreateFixture(user);
         var baseUri = new Uri("https://myapp.com/verify");
 
-        await fixture.Service.RequestLinkAsync(" User@Example.com ", baseUri, new AuthenticationContext(IpAddress: "127.0.0.1", CorrelationId: "corr"));
+        await fixture.Service.RequestLinkAsync(" stored.user@example.com ", baseUri, new AuthenticationContext(IpAddress: "127.0.0.1", CorrelationId: "corr"));
 
         var message = fixture.EmailSender.Messages.Single();
         var credential = fixture.Repository.Credentials.Single();
@@ -36,7 +37,7 @@ internal sealed class MagicLinkSignInTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(message.To, Is.EqualTo("USER@EXAMPLE.COM"));
+            Assert.That(message.To, Is.EqualTo("Stored.User@Example.COM"));
             Assert.That(credential.ProviderType, Is.EqualTo(ProviderType.MagicLink));
             Assert.That(credential.ProviderName, Is.EqualTo(ProviderType.MagicLink.Value));
             Assert.That(credential.ProviderKey, Is.EqualTo(fixture.TokenHasher.HashToken(token)));
@@ -45,11 +46,11 @@ internal sealed class MagicLinkSignInTests
             Assert.That(credential.ExpiresAt, Is.EqualTo(fixture.Time.GetUtcNow().AddMinutes(10)));
             Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.MagicLinkRequested), Is.True);
             Assert.That(message.TextBody, Does.Contain($"token={token}"));
-            Assert.That(message.TextBody, Does.Not.Contain("USER@EXAMPLE.COM"));
+            Assert.That(message.TextBody, Does.Not.Contain("STORED.USER@EXAMPLE.COM"));
             Assert.That(message.Sensitivity, Is.EqualTo(EmailMessageSensitivity.ContainsLiveSecret));
             var requestAttempts = fixture.RateLimiter.Attempts.Where(a => a.Purpose == "magic-link-request").ToArray();
             Assert.That(requestAttempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("magic-link-request", "source", "source:ip:127.0.0.1")));
-            Assert.That(requestAttempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("magic-link-request", "email", "email:USER@EXAMPLE.COM")));
+            Assert.That(requestAttempts.Select(a => a.Key), Does.Contain(ExpectedRateLimitKey("magic-link-request", "email", "email:STORED.USER@EXAMPLE.COM")));
         }
     }
 
@@ -58,7 +59,7 @@ internal sealed class MagicLinkSignInTests
     {
         var fixture = CreateFixture(_user, transactionalEmailSender: true);
 
-        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"));
+        await fixture.Service.RequestLinkAsync(_user.DisplayEmail, new Uri("https://myapp.com/verify"));
 
         Assert.That(fixture.Events, Is.EqualTo(SendBeforeCommitEvents));
     }
@@ -68,7 +69,7 @@ internal sealed class MagicLinkSignInTests
     {
         var fixture = CreateFixture(_user);
 
-        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"));
+        await fixture.Service.RequestLinkAsync(_user.DisplayEmail, new Uri("https://myapp.com/verify"));
 
         Assert.That(fixture.Events, Is.EqualTo(CommitBeforeSendEvents));
     }
@@ -94,7 +95,7 @@ internal sealed class MagicLinkSignInTests
     {
         var fixture = CreateFixture(_user, callbackAllowed: false);
 
-        var ex = Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://evil.example/verify")));
+        var ex = Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RequestLinkAsync(_user.DisplayEmail, new Uri("https://evil.example/verify")));
 
         using (Assert.EnterMultipleScope())
         {
@@ -109,10 +110,10 @@ internal sealed class MagicLinkSignInTests
     [TestCase(UserAccountState.Suspended, "user_suspended")]
     public async Task RequestLinkDoesNotSendForUnavailableUser(UserAccountState accountState, string failureReason)
     {
-        var user = new User { Id = Guid.NewGuid(), Email = "inactive@example.com", AccountState = accountState };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "inactive@example.com", AccountState = accountState };
         var fixture = CreateFixture(user);
 
-        await fixture.Service.RequestLinkAsync(user.Email, new Uri("https://myapp.com/verify"));
+        await fixture.Service.RequestLinkAsync(user.DisplayEmail, new Uri("https://myapp.com/verify"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -124,10 +125,10 @@ internal sealed class MagicLinkSignInTests
     [Test]
     public async Task RequestLinkUsesGenericSuppressionReasonForUnknownUnavailableState()
     {
-        var user = new User { Id = Guid.NewGuid(), Email = "inactive@example.com", AccountState = (UserAccountState)999 };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "inactive@example.com", AccountState = (UserAccountState)999 };
         var fixture = CreateFixture(user);
 
-        await fixture.Service.RequestLinkAsync(user.Email, new Uri("https://myapp.com/verify"));
+        await fixture.Service.RequestLinkAsync(user.DisplayEmail, new Uri("https://myapp.com/verify"));
 
         Assert.That(fixture.Audit.Events.Single().FailureReason, Is.EqualTo("invalid_credentials"));
     }
@@ -137,7 +138,7 @@ internal sealed class MagicLinkSignInTests
     {
         var fixture = CreateFixture(_user, requestAllowed: false);
 
-        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"), new AuthenticationContext(IpAddress: "203.0.113.10"));
+        await fixture.Service.RequestLinkAsync(_user.DisplayEmail, new Uri("https://myapp.com/verify"), new AuthenticationContext(IpAddress: "203.0.113.10"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -148,7 +149,7 @@ internal sealed class MagicLinkSignInTests
             var auditEvent = fixture.Audit.Events.Single();
             Assert.That(auditEvent.EventType, Is.EqualTo(AshlarSecurityEventTypes.MagicLinkRequestRateLimited));
             Assert.That(auditEvent.FailureReason, Is.EqualTo("rate_limited"));
-            Assert.That(AllAuditText(fixture), Does.Not.Contain(_user.Email));
+            Assert.That(AllAuditText(fixture), Does.Not.Contain(_user.DisplayEmail));
             Assert.That(AllAuditText(fixture), Does.Not.Contain("https://myapp.com/verify"));
         }
     }
@@ -159,7 +160,7 @@ internal sealed class MagicLinkSignInTests
         var fixture = CreateFixture(_user);
         fixture.RateLimiter.BlockedKeys.Add(ExpectedRateLimitKey("magic-link-request", "email", "email:USER@EXAMPLE.COM"));
 
-        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"), new AuthenticationContext(IpAddress: "203.0.113.10"));
+        await fixture.Service.RequestLinkAsync(_user.DisplayEmail, new Uri("https://myapp.com/verify"), new AuthenticationContext(IpAddress: "203.0.113.10"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -180,7 +181,7 @@ internal sealed class MagicLinkSignInTests
     {
         var fixture = CreateFixture(_user);
         var baseUri = new Uri("https://myapp.com/verify?existing=val");
-        await fixture.Service.RequestLinkAsync(_user.Email, baseUri);
+        await fixture.Service.RequestLinkAsync(_user.DisplayEmail, baseUri);
 
         var message = fixture.EmailSender.Messages.Single();
         Assert.That(message.TextBody, Is.Not.Null);
@@ -202,7 +203,7 @@ internal sealed class MagicLinkSignInTests
     public async Task VerifyLinkReturnsMfaRequiredWhenPolicyRequiresMfa()
     {
         var fixture = CreateFixture(_user, requireMfa: true);
-        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"));
+        await fixture.Service.RequestLinkAsync(_user.DisplayEmail, new Uri("https://myapp.com/verify"));
         var token = ExtractToken(fixture.EmailSender.Messages.Single().TextBody);
 
         var response = await fixture.Service.VerifyLinkAsync(token);
@@ -254,11 +255,11 @@ internal sealed class MagicLinkSignInTests
         var baseUri = new Uri("https://myapp.com/verify");
 
         // Request first link
-        await fixture.Service.RequestLinkAsync(_user.Email, baseUri);
+        await fixture.Service.RequestLinkAsync(_user.DisplayEmail, baseUri);
         var firstToken = ExtractToken(fixture.EmailSender.Messages[0].TextBody);
 
         // Request second link
-        await fixture.Service.RequestLinkAsync(_user.Email, baseUri);
+        await fixture.Service.RequestLinkAsync(_user.DisplayEmail, baseUri);
         var secondToken = ExtractToken(fixture.EmailSender.Messages[1].TextBody);
 
         using (Assert.EnterMultipleScope())
@@ -281,7 +282,7 @@ internal sealed class MagicLinkSignInTests
     public async Task VerifyLinkFailsForWrongToken()
     {
         var fixture = CreateFixture(_user);
-        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"));
+        await fixture.Service.RequestLinkAsync(_user.DisplayEmail, new Uri("https://myapp.com/verify"));
 
         var response = await fixture.Service.VerifyLinkAsync("wrong-token");
 
@@ -298,9 +299,9 @@ internal sealed class MagicLinkSignInTests
     {
         var tenantId = Guid.NewGuid();
         var otherTenantId = Guid.NewGuid();
-        var user = new User { Id = _user.Id, Email = _user.Email, AccountState = _user.AccountState, TenantId = tenantId };
+        var user = new User { Id = _user.Id, DisplayEmail = _user.DisplayEmail, AccountState = _user.AccountState, TenantId = tenantId };
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestLinkAsync(user.Email, new Uri("https://myapp.com/verify"), new AuthenticationContext(TenantId: tenantId));
+        await fixture.Service.RequestLinkAsync(user.DisplayEmail, new Uri("https://myapp.com/verify"), new AuthenticationContext(TenantId: tenantId));
         var token = ExtractToken(fixture.EmailSender.Messages.Single().TextBody);
 
         var response = await fixture.Service.VerifyLinkAsync(token, new AuthenticationContext(TenantId: otherTenantId));
@@ -340,7 +341,7 @@ internal sealed class MagicLinkSignInTests
     public async Task VerifyLinkFailsGenericallyForMissingTokenWithoutMutatingState(string? token)
     {
         var fixture = CreateFixture(_user);
-        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"));
+        await fixture.Service.RequestLinkAsync(_user.DisplayEmail, new Uri("https://myapp.com/verify"));
         fixture.Audit.Events.Clear();
         fixture.RateLimiter.Attempts.Clear();
 
@@ -361,7 +362,7 @@ internal sealed class MagicLinkSignInTests
     public async Task VerifyLinkFailsForExpiredCredential()
     {
         var fixture = CreateFixture(_user);
-        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"));
+        await fixture.Service.RequestLinkAsync(_user.DisplayEmail, new Uri("https://myapp.com/verify"));
 
         var message = fixture.EmailSender.Messages.Single();
         Assert.That(message.TextBody, Is.Not.Null);
@@ -542,7 +543,7 @@ internal sealed class MagicLinkSignInTests
             EmailTextTemplate = "Link={0}"
         });
 
-        await fixture.Service.RequestLinkAsync(_user.Email, new Uri("https://myapp.com/verify"));
+        await fixture.Service.RequestLinkAsync(_user.DisplayEmail, new Uri("https://myapp.com/verify"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -570,7 +571,7 @@ internal sealed class MagicLinkSignInTests
         using (Assert.EnterMultipleScope())
         {
             // ReSharper disable once NullableWarningSuppressionIsUsed
-            Assert.ThrowsAsync<ArgumentNullException>(() => fixture.Service.RequestLinkAsync(_user.Email, null!));
+            Assert.ThrowsAsync<ArgumentNullException>(() => fixture.Service.RequestLinkAsync(_user.DisplayEmail, null!));
             Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.RequestLinkAsync(" ", new Uri("https://myapp.com/verify")));
         }
     }
@@ -920,7 +921,8 @@ internal sealed class MagicLinkSignInTests
         public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
         {
             GetUserByEmailCalls++;
-            return Task.FromResult<IUser?>(_users.SingleOrDefault(u => string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase)));
+            var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
+            return Task.FromResult<IUser?>(_users.SingleOrDefault(user => IdentityNormalization.NormalizeEmail(user.DisplayEmail) == normalizedEmail));
         }
         public Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(_users.SingleOrDefault(u => u.Id == userId));
         public Task<UserCredential?> GetCredentialForUserAsync(Guid userId, ProviderType type, string providerName, string? providerKey = null, CancellationToken cancellationToken = default) => Task.FromResult(Credentials.SingleOrDefault(c => c.UserId == userId && c.ProviderType == type && string.Equals(c.ProviderName, providerName, StringComparison.OrdinalIgnoreCase) && (providerKey == null || c.ProviderKey == providerKey))?.Clone());

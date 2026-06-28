@@ -10,9 +10,9 @@ public sealed class UserInvitation
     /// </summary>
     public required Guid Id { get; init; }
     /// <summary>
-    /// Invited email address. Treat as personal data.
+    /// Sanitized display/delivery email address on the invitation. This is not the normalized lookup form. Treat as personal data.
     /// </summary>
-    public required string Email { get; init; }
+    public required string DisplayEmail { get; init; }
     /// <summary>
     /// Tenant the invite applies to, or <see langword="null" /> for a global invitation.
     /// </summary>

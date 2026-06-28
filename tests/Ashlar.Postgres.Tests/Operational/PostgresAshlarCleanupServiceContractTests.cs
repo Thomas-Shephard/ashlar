@@ -62,13 +62,13 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
             (@g3, @userId, 'active', @now, @future, NULL),
             (@g4, @userId, 'recent-revoked', @now, NULL, @recent);
 
-            INSERT INTO ashlar_invitations (id, email, normalized_email, token_hash, created_at, expires_at, accepted_at, revoked_at, version) VALUES
-            (@i1, 'a@example.com', 'a@example.com', 'expired-invite', @old, @old, NULL, NULL, 'v1'),
-            (@i2, 'b@example.com', 'b@example.com', 'accepted-invite', @old, @future, @old, NULL, 'v1'),
-            (@i3, 'c@example.com', 'c@example.com', 'revoked-invite', @old, @future, NULL, @old, 'v1'),
-            (@i4, 'd@example.com', 'd@example.com', 'pending-invite', @now, @future, NULL, NULL, 'v1'),
-            (@i5, 'e@example.com', 'e@example.com', 'recent-accepted-invite', @now, @future, @recent, NULL, 'v1'),
-            (@i6, 'f@example.com', 'f@example.com', 'recent-revoked-invite', @now, @future, NULL, @recent, 'v1');
+            INSERT INTO ashlar_invitations (id, display_email, normalized_email, token_hash, created_at, expires_at, accepted_at, revoked_at, version) VALUES
+            (@i1, 'a@example.com', 'A@EXAMPLE.COM', 'expired-invite', @old, @old, NULL, NULL, 'v1'),
+            (@i2, 'b@example.com', 'B@EXAMPLE.COM', 'accepted-invite', @old, @future, @old, NULL, 'v1'),
+            (@i3, 'c@example.com', 'C@EXAMPLE.COM', 'revoked-invite', @old, @future, NULL, @old, 'v1'),
+            (@i4, 'd@example.com', 'D@EXAMPLE.COM', 'pending-invite', @now, @future, NULL, NULL, 'v1'),
+            (@i5, 'e@example.com', 'E@EXAMPLE.COM', 'recent-accepted-invite', @now, @future, @recent, NULL, 'v1'),
+            (@i6, 'f@example.com', 'F@EXAMPLE.COM', 'recent-revoked-invite', @now, @future, NULL, @recent, 'v1');
 
             INSERT INTO ashlar_mfa_handshakes (id, user_id, token_hash, created_at, expires_at, is_revoked, is_completed, revoked_at, completed_at, required_factors, verified_factors) VALUES
             (@h1, @userId, 'expired-handshake', @old, @old, false, false, NULL, NULL, '[]'::jsonb, '[]'::jsonb),
@@ -265,7 +265,7 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
     {
         await using var connection = await OpenConnectionAsync();
         await connection.ExecuteAsync(
-            "INSERT INTO ashlar_users (id, email, normalized_email, created_at) VALUES (@id, 'test@example.com', 'test@example.com', @now) ON CONFLICT DO NOTHING",
+            "INSERT INTO ashlar_users (id, display_email, normalized_email, created_at) VALUES (@id, 'test@example.com', 'TEST@EXAMPLE.COM', @now) ON CONFLICT DO NOTHING",
             new { id = TestUserId, now = Now });
     }
 

@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using Ashlar.Identity.Features.Infrastructure;
 using Ashlar.Authorization.Models;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,7 +32,7 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
         await using var connection = await GetDataSource().OpenConnectionAsync();
         await connection.ExecuteAsync("TRUNCATE ashlar_authorization_grants, ashlar_users CASCADE;");
         await connection.ExecuteAsync(
-            "INSERT INTO ashlar_users (id, email, normalized_email, created_at) VALUES (@id, 'authz@example.com', 'authz@example.com', @now)",
+            "INSERT INTO ashlar_users (id, display_email, normalized_email, created_at) VALUES (@id, 'authz@example.com', 'AUTHZ@EXAMPLE.COM', @now)",
             new { id = UserId, now = _now });
     }
 
@@ -193,10 +194,11 @@ internal sealed class PostgresAuthorizationGrantRepositoryTests : PostgresTestBa
     private async Task<Guid> CreateUserAsync(Guid? tenantId)
     {
         var id = Guid.NewGuid();
+        var displayEmail = $"{id:N}@example.com";
         await using var connection = await GetDataSource().OpenConnectionAsync();
         await connection.ExecuteAsync(
-            "INSERT INTO ashlar_users (id, email, normalized_email, tenant_id, created_at) VALUES (@id, @email, @email, @tenantId, @now)",
-            new { id, email = $"{id:N}@example.com", tenantId, now = _now });
+            "INSERT INTO ashlar_users (id, display_email, normalized_email, tenant_id, created_at) VALUES (@id, @displayEmail, @normalizedEmail, @tenantId, @now)",
+            new { id, displayEmail, normalizedEmail = IdentityNormalization.NormalizeEmail(displayEmail), tenantId, now = _now });
         return id;
     }
 }

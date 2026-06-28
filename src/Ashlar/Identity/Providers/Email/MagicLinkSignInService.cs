@@ -49,7 +49,8 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
 
         _dependencies.UriValidator.ValidateOrThrow(callbackBaseUri);
 
-        var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
+        var displayEmail = IdentityNormalization.SanitizeEmailForDelivery(email);
+        var normalizedEmail = IdentityNormalization.NormalizeEmail(displayEmail);
         context = (context ?? new AuthenticationContext()) with { Email = normalizedEmail };
 
         var signInOptions = _options.Value;
@@ -69,7 +70,7 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
-        var user = await _dependencies.UserRepository.GetUserByEmailAsync(normalizedEmail, context.TenantId, cancellationToken);
+        var user = await _dependencies.UserRepository.GetUserByEmailAsync(displayEmail, context.TenantId, cancellationToken);
         if (user == null || !user.CanSignIn())
         {
             transaction.OnCommitted(ct => RecordAsync(AshlarSecurityEventTypes.MagicLinkRequestSuppressed, SecurityEventOutcomes.Success, context, user?.Id, user == null ? "user_missing" : user.AccountState.ToSecurityFailureReason(), ct));
@@ -103,7 +104,7 @@ internal sealed class MagicLinkSignInService : IMagicLinkSignInService
         var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(callbackBaseUri, signInOptions.LinkTokenParameterName, token);
         var message = IdentityUrlHelper.FormatEmailBody(signInOptions.EmailTextTemplate, callbackUrl);
         var emailMessage = new EmailMessage(
-            normalizedEmail,
+            user.DisplayEmail,
             signInOptions.EmailSubject,
             message,
             options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });

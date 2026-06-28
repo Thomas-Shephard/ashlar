@@ -9,7 +9,7 @@ internal sealed class SecurityNotificationEmitterTests
     public void NotifyAsyncWithUserDoesNothingWhenServiceIsNull()
     {
         var emitter = new SecurityNotificationEmitter(null);
-        var user = new User { Id = Guid.NewGuid(), Email = "user@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" };
 
         Assert.DoesNotThrowAsync(() => emitter.NotifyAsync(SecurityNotificationType.SignIn, user, DateTimeOffset.UtcNow));
     }
@@ -19,7 +19,7 @@ internal sealed class SecurityNotificationEmitterTests
     {
         var service = new Mock<ISecurityNotificationService>();
         var emitter = new SecurityNotificationEmitter(service.Object);
-        var user = new User { Id = Guid.NewGuid(), Email = "user@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "user@example.com" };
         var sessionId = Guid.NewGuid();
         var metadata = new Dictionary<string, string> { ["reason"] = "test" };
         var occurredAt = DateTimeOffset.UtcNow;

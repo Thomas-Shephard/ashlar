@@ -429,7 +429,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
 
     private static void AddEmailSignInIfAvailable(List<CredentialPostureItem> primaryCredentials, IUser user, DateTimeOffset now)
     {
-        if (!string.IsNullOrWhiteSpace(user.Email)
+        if (!string.IsNullOrWhiteSpace(user.DisplayEmail)
             && !primaryCredentials.Any(item => item.Provider.Type == ProviderType.EmailCode || item.Provider.Type == ProviderType.MagicLink))
         {
             primaryCredentials.Add(new CredentialPostureItem(
@@ -539,7 +539,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         return new AshlarUser
         {
             Id = user.Id,
-            Email = user.Email,
+            DisplayEmail = user.DisplayEmail,
             Name = user.Name,
             AccountState = accountState,
             TenantId = (user as ITenantUser)?.TenantId,

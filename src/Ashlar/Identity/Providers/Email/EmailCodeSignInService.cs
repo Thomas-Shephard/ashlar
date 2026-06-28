@@ -46,7 +46,8 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
     /// <returns>A task that completes after the request has been handled. Missing or disabled accounts are deliberately suppressed.</returns>
     public async Task RequestCodeAsync(string email, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
-        var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
+        var displayEmail = IdentityNormalization.SanitizeEmailForDelivery(email);
+        var normalizedEmail = IdentityNormalization.NormalizeEmail(displayEmail);
         context = WithEmail(context, normalizedEmail);
 
         var signInOptions = _options.Value;
@@ -66,7 +67,7 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
-        var user = await _dependencies.UserRepository.GetUserByEmailAsync(normalizedEmail, context.TenantId, cancellationToken);
+        var user = await _dependencies.UserRepository.GetUserByEmailAsync(displayEmail, context.TenantId, cancellationToken);
         if (user == null || !user.CanSignIn())
         {
             transaction.OnCommitted(ct => RecordAsync(AshlarSecurityEventTypes.EmailCodeRequestSuppressed, SecurityEventOutcomes.Success, context, user?.Id, user == null ? "user_missing" : user.AccountState.ToSecurityFailureReason(), ct));
@@ -97,7 +98,7 @@ internal sealed class EmailCodeSignInService : IEmailCodeSignInService
         var lifetimeMinutes = (int)Math.Ceiling(signInOptions.CodeLifetime.TotalMinutes);
         var message = string.Format(CultureInfo.InvariantCulture, signInOptions.EmailTextTemplate, code, lifetimeMinutes);
         var emailMessage = new EmailMessage(
-            normalizedEmail,
+            user.DisplayEmail,
             signInOptions.EmailSubject,
             message,
             options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });

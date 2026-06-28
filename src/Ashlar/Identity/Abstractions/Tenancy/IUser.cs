@@ -10,9 +10,9 @@ public interface IUser
     /// </summary>
     Guid Id { get; }
     /// <summary>
-    /// Normalized email address used for account lookup and notifications.
+    /// Sanitized display/delivery email address. Ashlar derives a separate normalized lookup form for uniqueness, lookup, rate-limit keys, and comparisons.
     /// </summary>
-    string Email { get; }
+    string DisplayEmail { get; }
     /// <summary>
     /// Optional display name supplied by the host application.
     /// </summary>

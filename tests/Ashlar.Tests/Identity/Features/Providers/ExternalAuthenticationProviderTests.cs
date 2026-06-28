@@ -159,7 +159,7 @@ internal sealed class ExternalAuthenticationProviderTests
         var providerName = "Google";
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = otherTenantId };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = otherTenantId };
 
         var repoMock = new Mock<IUserRepository>();
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
@@ -177,7 +177,7 @@ internal sealed class ExternalAuthenticationProviderTests
         var providerName = "Google";
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = Guid.NewGuid() };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = Guid.NewGuid() };
 
         var repoMock = new Mock<IUserRepository>();
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
@@ -196,7 +196,7 @@ internal sealed class ExternalAuthenticationProviderTests
         var providerName = "Google";
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = null };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = null };
 
         var repoMock = new Mock<IUserRepository>();
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
@@ -214,7 +214,7 @@ internal sealed class ExternalAuthenticationProviderTests
         var providerName = "Google";
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, providerName, providerKey, new Dictionary<string, string>());
 
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = null };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = null };
 
         var repoMock = new Mock<IUserRepository>();
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
@@ -260,7 +260,7 @@ internal sealed class ExternalAuthenticationProviderTests
         Assert.That(result, Is.SameAs(user));
     }
 
-    private sealed record GlobalUser(Guid Id, string Email) : IUser
+    private sealed record GlobalUser(Guid Id, string DisplayEmail) : IUser
     {
         public string? Name => null;
         public UserAccountState AccountState => UserAccountState.Active;

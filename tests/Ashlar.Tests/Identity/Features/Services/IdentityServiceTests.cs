@@ -10,14 +10,14 @@ namespace Ashlar.Tests.Identity.Features.Services;
 
 internal sealed class IdentityServiceTests
 {
-    private Mock<IUserRepository> _repositoryMock;
-    private Mock<ICredentialRepository> _credentialRepositoryMock;
-    private Mock<ISecretProtector> _secretProtectorMock;
-    private FakeTimeProvider _timeProvider;
-    private FakePasswordHasher _fakeHasher;
-    private FakePasswordHasher _oldHasher;
-    private PasswordHasherSelector _hasherSelector;
-    private IdentityService _identityService;
+    private Mock<IUserRepository> _repositoryMock = null!;
+    private Mock<ICredentialRepository> _credentialRepositoryMock = null!;
+    private Mock<ISecretProtector> _secretProtectorMock = null!;
+    private FakeTimeProvider _timeProvider = null!;
+    private FakePasswordHasher _fakeHasher = null!;
+    private FakePasswordHasher _oldHasher = null!;
+    private PasswordHasherSelector _hasherSelector = null!;
+    private IdentityService _identityService = null!;
 
     [SetUp]
     public void SetUp()
@@ -206,7 +206,7 @@ internal sealed class IdentityServiceTests
         var email = "test@example.com";
         var password = "password123";
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = email };
+        var user = new User { Id = userId, DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -241,7 +241,7 @@ internal sealed class IdentityServiceTests
         var email = "test@example.com";
         var password = "wrong-password";
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = email };
+        var user = new User { Id = userId, DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -277,7 +277,7 @@ internal sealed class IdentityServiceTests
         var email = "google-user@example.com";
         var providerKey = "google-sub-123";
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = email };
+        var user = new User { Id = userId, DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -313,7 +313,7 @@ internal sealed class IdentityServiceTests
         var providerName = "Google";
         var providerKey = "google-sub-123";
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "google-user@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "google-user@example.com" };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -366,7 +366,7 @@ internal sealed class IdentityServiceTests
         var email = "test@example.com";
         var providerName = "GitHub";
         var providerKey = "gh-123";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -397,7 +397,7 @@ internal sealed class IdentityServiceTests
         var type = ProviderType.Oidc;
         var providerName = "Google";
         var providerKey = "sub";
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -423,7 +423,7 @@ internal sealed class IdentityServiceTests
         var assertion = new ExternalIdentityAssertion(type, providerName, providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
         _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, type, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserCredential?)null);
 
@@ -440,7 +440,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncWithDisabledUserShouldReturnDisabledStatus()
     {
         var email = "inactive@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email, AccountState = UserAccountState.Disabled };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email, AccountState = UserAccountState.Disabled };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -475,7 +475,7 @@ internal sealed class IdentityServiceTests
         var email = "test@example.com";
         var providerName = "Google";
         var providerKey = "sub-123";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -509,7 +509,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncWithRehashNeededShouldUpdateCredential()
     {
         var email = "rehash@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -552,7 +552,7 @@ internal sealed class IdentityServiceTests
         var expectedHash = Convert.ToBase64String(new byte[] { 0x02, 0, 0, 0 });
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
         _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Local, AuthenticationProviderKey.Local.Name, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserCredential?)null);
 
@@ -578,11 +578,11 @@ internal sealed class IdentityServiceTests
         var type = ProviderType.Oidc;
         var providerName = "Google";
         var providerKey = "sub-123";
-        var anotherUser = new User { Id = anotherUserId, Email = "another@example.com" };
+        var anotherUser = new User { Id = anotherUserId, DisplayEmail = "another@example.com" };
         var assertion = new ExternalIdentityAssertion(type, providerName, providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "user@example.com" });
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(type, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(anotherUser);
 
@@ -605,7 +605,7 @@ internal sealed class IdentityServiceTests
         var assertion = new ExternalIdentityAssertion(type, providerName, providerKey, new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "user@example.com" });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "user@example.com" });
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(type, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
         _credentialRepositoryMock.Setup(r => r.CreateOrReplaceCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
@@ -628,7 +628,7 @@ internal sealed class IdentityServiceTests
         var password = "password";
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
         _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, type, AuthenticationProviderKey.Local.Name, userId.ToString(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserCredential?)null);
 
@@ -644,7 +644,7 @@ internal sealed class IdentityServiceTests
         var userId = Guid.NewGuid();
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
 
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.CatchAsync<ArgumentException>(() => _identityService.LinkCredentialAsync(userId, new LocalPasswordAssertion(null!)));
@@ -656,7 +656,7 @@ internal sealed class IdentityServiceTests
         var email = "oauth-user@example.com";
         var providerKey = "oauth-sub-123";
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = email };
+        var user = new User { Id = userId, DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -690,7 +690,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncWithRehashUpdateExceptionShouldStillReturnSuccess()
     {
         var email = "rehash-fail@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -727,7 +727,7 @@ internal sealed class IdentityServiceTests
     {
         var email = "test@example.com";
         var tenantId = Guid.NewGuid();
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         _repositoryMock.Setup(r => r.GetUserByEmailAsync(email, tenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
@@ -741,7 +741,7 @@ internal sealed class IdentityServiceTests
     {
         var provider = new AuthenticationProviderKey(ProviderType.Oidc, "Google");
         var providerKey = "sub-123";
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(provider.Type, provider.Name, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
@@ -776,7 +776,7 @@ internal sealed class IdentityServiceTests
     [Test]
     public async Task CreateUserAsyncShouldCallRepository()
     {
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         _repositoryMock.Setup(r => r.CreateUserAsync(user, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
@@ -789,7 +789,7 @@ internal sealed class IdentityServiceTests
     [Test]
     public void CreateUserAsyncShouldRejectEmailWithLineBreaks()
     {
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com\r\nBcc: attacker@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com\r\nBcc: attacker@example.com" };
 
         Assert.ThrowsAsync<ArgumentException>(() => _identityService.CreateUserAsync(user));
 
@@ -797,14 +797,14 @@ internal sealed class IdentityServiceTests
     }
 
     [Test]
-    public async Task CreateUserAsyncShouldTrimEmailBeforePersisting()
+    public async Task CreateUserAsyncShouldTrimEmailBeforePersistingAndPreserveDisplayCasing()
     {
         var createdAt = new DateTimeOffset(2026, 5, 10, 12, 0, 0, TimeSpan.Zero);
         var updatedAt = createdAt.AddMinutes(1);
         var user = new AuditedUser
         {
             Id = Guid.NewGuid(),
-            Email = " test@example.com ",
+            DisplayEmail = " Mixed.Display@Example.COM ",
             Name = "Test User",
             AccountState = UserAccountState.Active,
             TenantId = Guid.NewGuid(),
@@ -822,8 +822,8 @@ internal sealed class IdentityServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Email, Is.EqualTo("test@example.com"));
-            Assert.That(persistedUser?.Email, Is.EqualTo("test@example.com"));
+            Assert.That(result.DisplayEmail, Is.EqualTo("Mixed.Display@Example.COM"));
+            Assert.That(persistedUser?.DisplayEmail, Is.EqualTo("Mixed.Display@Example.COM"));
             Assert.That(persistedUser?.Name, Is.EqualTo(user.Name));
             Assert.That(persistedUser?.CanSignIn(), Is.True);
             Assert.That((persistedUser as ITenantUser)?.TenantId, Is.EqualTo(user.TenantId));
@@ -842,7 +842,7 @@ internal sealed class IdentityServiceTests
         var user = new BasicUser
         {
             Id = Guid.NewGuid(),
-            Email = " basic@example.com ",
+            DisplayEmail = " basic@example.com ",
             AccountState = UserAccountState.Active
         };
         IUser? persistedUser = null;
@@ -909,7 +909,7 @@ internal sealed class IdentityServiceTests
         assertionMock.Setup(a => a.ProviderIdentity).Returns(new AuthenticationProviderKey((ProviderType)"Unsupported", "Unsupported"));
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
 
         var result = await _identityService.LinkCredentialAsync(userId, assertionMock.Object);
 
@@ -924,7 +924,7 @@ internal sealed class IdentityServiceTests
     public async Task LinkCredentialAsyncWithSameUserAlreadyLinkedShouldFail()
     {
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
         var assertion = new LocalPasswordAssertion("pass");
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
@@ -945,7 +945,7 @@ internal sealed class IdentityServiceTests
     public async Task LinkCredentialAsyncWithSameUserAlreadyLinkedExternalShouldFail()
     {
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
@@ -965,7 +965,7 @@ internal sealed class IdentityServiceTests
     [Test]
     public async Task LoginAsyncWithRehashNeededButNullCredentialShouldNotAttemptUpdate()
     {
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var providerMock = new Mock<IPrimaryAuthenticationProvider>();
         providerMock.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey((ProviderType)"MOCK", "MOCK"));
         providerMock.Setup(p => p.AuthenticateAsync(It.IsAny<IAuthenticationAssertion>(), It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
@@ -997,7 +997,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncWithRehashNeededButNoNewValueShouldNotAttemptUpdate()
     {
         var email = "rehash@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -1045,7 +1045,7 @@ internal sealed class IdentityServiceTests
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
 
         await _identityService.LinkCredentialAsync(userId, assertion);
 
@@ -1059,7 +1059,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncWithUnprotectFailureShouldReturnFailedEvenIfAuthenticateSucceeds()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -1131,7 +1131,7 @@ internal sealed class IdentityServiceTests
     public async Task LinkCredentialAsyncWithProviderKeyDerivationFailureShouldFail()
     {
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
 
         var providerMock = new Mock<IPrimaryAuthenticationProvider>();
         providerMock.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey((ProviderType)"MOCK", "MOCK"));
@@ -1194,7 +1194,7 @@ internal sealed class IdentityServiceTests
     public async Task LinkCredentialAsyncWithExternalAssertionAlreadyLinkedToSameUserShouldFail()
     {
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
@@ -1242,7 +1242,7 @@ internal sealed class IdentityServiceTests
     {
         var providerKey = "saml-sub";
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "saml@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "saml@example.com" };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -1277,7 +1277,7 @@ internal sealed class IdentityServiceTests
         var assertion = new ExternalIdentityAssertion(type, providerName, "sub", new Dictionary<string, string>());
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
 
         await _identityService.LinkCredentialAsync(userId, assertion, plainToken);
 
@@ -1292,7 +1292,7 @@ internal sealed class IdentityServiceTests
         var email = "test@example.com";
         var providerKey = "sub-123";
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = email };
+        var user = new User { Id = userId, DisplayEmail = email };
         var protectedToken = "protected(raw-token)";
         var plainToken = "raw-token";
         var credential = new UserCredential
@@ -1344,7 +1344,7 @@ internal sealed class IdentityServiceTests
         var email = "test@example.com";
         var password = "pass";
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = email };
+        var user = new User { Id = userId, DisplayEmail = email };
         var hash = Convert.ToBase64String([0x02, 1, 2, 3]);
         var credential = new UserCredential
         {
@@ -1375,7 +1375,7 @@ internal sealed class IdentityServiceTests
         var email = "test@example.com";
         var providerKey = "sub-123";
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = email };
+        var user = new User { Id = userId, DisplayEmail = email };
         var oldTokenProtected = "protected(old-token)";
         var newTokenPlain = "new-token";
         var newTokenProtected = "protected(new-token)";
@@ -1423,7 +1423,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncWithExternalProviderAndCredentialWithNullValueAndDummyUnprotectFailureShouldReturnSuccess()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -1496,7 +1496,7 @@ internal sealed class IdentityServiceTests
         var email = "test@example.com";
         var providerKey = "sub-123";
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = email };
+        var user = new User { Id = userId, DisplayEmail = email };
         var malformedToken = "not-protected";
         var credential = new UserCredential
         {
@@ -1545,7 +1545,7 @@ internal sealed class IdentityServiceTests
         var email = "test@example.com";
         var providerKey = "sub-123";
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = email };
+        var user = new User { Id = userId, DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -1609,7 +1609,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncWithUpdateCredentialFailureShouldStillReturnSuccess()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -1642,7 +1642,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncWithRehashUpdateConflictShouldStillReturnSuccessWithCredentialUpdate()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -1678,7 +1678,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncWithLastUsedAtUpdateConflictShouldStillReturnSuccess()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -1708,7 +1708,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncShouldUpdateLastUsedAt()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -1739,7 +1739,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncShouldPreserveAndUpdateMetadata()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -1783,7 +1783,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncShouldConsumeCredentialAtomicallyIfRequested()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -1829,7 +1829,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncShouldPreserveExistingMetadataWhenOnlyLastUsedAtUpdates()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -1859,7 +1859,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncShouldUpdateMetadataWhenCredentialValueIsNull()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -1903,7 +1903,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncShouldReturnFailedWhenAtomicConsumeReturnsFalse()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -1954,7 +1954,7 @@ internal sealed class IdentityServiceTests
     public Task LoginAsyncShouldThrowIfCredentialConsumptionIsCancelled()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -1999,7 +1999,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncShouldNotReProtectWhenOnlyMetadataChanges()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -2046,7 +2046,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncShouldPreserveOldCredentialValueWhenNewValueIsNullAndUpdateRequested()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -2095,7 +2095,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncShouldUpdateMetadataWhenExplicitlyEmptyAndCurrentIsNull()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -2139,7 +2139,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncShouldNotUpdateMetadataWhenProviderReturnsNull()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -2183,7 +2183,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncShouldNotUpdateCredentialIfLastUsedAtIsRecent()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var lastUsedAt = DateTimeOffset.UtcNow.AddSeconds(-30); // 30 seconds ago
         var credential = new UserCredential
         {
@@ -2214,7 +2214,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncShouldGenerateRandomProviderKeyIfProviderReturnsNullOrEmpty()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
 
         var providerMock = new Mock<IPrimaryAuthenticationProvider>();
         providerMock.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey((ProviderType)"MOCK", "MOCK"));
@@ -2246,7 +2246,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncWithSuccessWithCredentialUpdateShouldUpdateRepository()
     {
         var email = "rehash@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -2287,7 +2287,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncWithRequiredUpdateFailureShouldReturnFailed()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -2327,7 +2327,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncWithConsumptionFailureShouldReturnFailed()
     {
         var email = "test@example.com";
-        var user = new User { Id = Guid.NewGuid(), Email = email };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -2390,7 +2390,7 @@ internal sealed class IdentityServiceTests
     private sealed class AuditedUser : ITenantUser, IHasAuditMetadata
     {
         public required Guid Id { get; init; }
-        public required string Email { get; set; }
+        public required string DisplayEmail { get; set; }
         public string? Name { get; set; }
         public UserAccountState AccountState { get; set; }
         public Guid? TenantId { get; set; }
@@ -2402,7 +2402,7 @@ internal sealed class IdentityServiceTests
     private sealed class BasicUser : IUser
     {
         public required Guid Id { get; init; }
-        public required string Email { get; init; }
+        public required string DisplayEmail { get; init; }
         public string? Name { get; init; }
         public UserAccountState AccountState { get; init; } = UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt { get; init; }

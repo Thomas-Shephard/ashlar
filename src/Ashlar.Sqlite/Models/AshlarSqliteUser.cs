@@ -1,12 +1,15 @@
 namespace Ashlar.Sqlite.Models;
 
 /// <summary>
-/// Provides Ashlar SQLite user behavior.
+/// SQLite-backed user record returned by Ashlar repositories.
 /// </summary>
 public sealed class AshlarSqliteUser : ITenantUser, IHasAuditMetadata
 {
     public required Guid Id { get; init; }
-    public required string Email { get; set; }
+    /// <summary>
+    /// Sanitized display/delivery email address. This is not the normalized lookup form.
+    /// </summary>
+    public required string DisplayEmail { get; set; }
     public string? Name { get; set; }
     public UserAccountState AccountState { get; set; } = UserAccountState.Active;
     public Guid? TenantId { get; init; }

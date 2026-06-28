@@ -34,9 +34,9 @@ public sealed class IdentityService(
     public IEnumerable<AuthenticationProviderKey> SupportedProviderKeys => _providerRegistry.SupportedProviderKeys;
 
     /// <summary>
-    /// Finds a user by email address, optionally scoped to a tenant.
+    /// Finds a user by email address within an optional tenant boundary using Ashlar's normalized lookup form.
     /// </summary>
-    /// <param name="email">The email address to search for.</param>
+    /// <param name="email">The email address to search for. The repository normalizes this value for comparison.</param>
     /// <param name="tenantId">The tenant scope for the lookup, or <see langword="null" /> for tenantless users.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
     /// <returns>The matching user, or <see langword="null" /> when no user exists.</returns>
@@ -77,7 +77,7 @@ public sealed class IdentityService(
     /// </summary>
     /// <param name="user">The user to create.</param>
     /// <param name="cancellationToken">A token that can cancel user creation.</param>
-    /// <returns>The created user with a sanitized email address when normalization changed it.</returns>
+    /// <returns>The created user with a sanitized display/delivery email address when sanitization changed it.</returns>
     public async Task<IUser> CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
@@ -120,22 +120,22 @@ public sealed class IdentityService(
 
     private static IUser SanitizeUserEmail(IUser user)
     {
-        var email = IdentityNormalization.SanitizeEmailForDelivery(user.Email);
-        return string.Equals(email, user.Email, StringComparison.Ordinal)
+        var displayEmail = IdentityNormalization.SanitizeEmailForDelivery(user.DisplayEmail);
+        return string.Equals(displayEmail, user.DisplayEmail, StringComparison.Ordinal)
             ? user
-            : new SanitizedUserWrapper(user, email);
+            : new SanitizedUserWrapper(user, displayEmail);
     }
 
-    private sealed class SanitizedUserWrapper(IUser original, string email) : ITenantUser, IHasAuditMetadata
+    private sealed class SanitizedUserWrapper(IUser original, string displayEmail) : ITenantUser, IHasAuditMetadata
     {
         /// <summary>
         /// Existing user identifier.
         /// </summary>
         public Guid Id => original.Id;
         /// <summary>
-        /// Sanitized email address.
+        /// Sanitized display/delivery email address.
         /// </summary>
-        public string Email { get; } = email;
+        public string DisplayEmail { get; } = displayEmail;
         /// <summary>
         /// Existing display name.
         /// </summary>

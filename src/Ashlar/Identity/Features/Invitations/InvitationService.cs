@@ -68,7 +68,7 @@ internal sealed class InvitationService(
             return Result.Failure(AshlarFailureCodes.RateLimited);
         }
 
-        var existingUser = await _dependencies.UserRepository.GetUserByEmailAsync(normalizedEmail, request.TenantId, cancellationToken);
+        var existingUser = await _dependencies.UserRepository.GetUserByEmailAsync(email, request.TenantId, cancellationToken);
         if (existingUser?.CanSignIn() == true)
         {
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
@@ -90,7 +90,7 @@ internal sealed class InvitationService(
         var invitation = new UserInvitation
         {
             Id = Guid.NewGuid(),
-            Email = email,
+            DisplayEmail = email,
             TenantId = request.TenantId,
             TokenHash = tokenHash,
             CreatedAt = now,
@@ -102,7 +102,7 @@ internal sealed class InvitationService(
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
 
-        await _dependencies.InvitationRepository.RevokeInvitationsByEmailAsync(normalizedEmail, request.TenantId, cancellationToken);
+        await _dependencies.InvitationRepository.RevokeInvitationsByEmailAsync(email, request.TenantId, cancellationToken);
         await _dependencies.InvitationRepository.CreateInvitationAsync(invitation, cancellationToken);
 
         var callbackUrl = IdentityUrlHelper.ConstructCallbackUrl(callbackBaseUri, invitationOptions.TokenParameterName, token);
@@ -245,7 +245,7 @@ internal sealed class InvitationService(
             return Result.Failure<InvitationAcceptancePreview>(AshlarFailureCodes.InvalidInvitation);
         }
 
-        return Result.Success(new InvitationAcceptancePreview(availableInvitation.Email, availableInvitation.TenantId));
+        return Result.Success(new InvitationAcceptancePreview(availableInvitation.DisplayEmail, availableInvitation.TenantId));
     }
 
     private async Task<(UserInvitation? AvailableInvitation, Guid? AuditTenantId, DateTimeOffset Now)> ResolveAvailableInvitationAsync(
@@ -305,7 +305,7 @@ internal sealed class InvitationService(
 
     private async Task<AcceptedInvitationUser> AcceptInvitationUserAsync(UserInvitation invitation, string? requestedUserName, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var user = await _dependencies.UserRepository.GetUserByEmailAsync(invitation.Email, invitation.TenantId, cancellationToken);
+        var user = await _dependencies.UserRepository.GetUserByEmailAsync(invitation.DisplayEmail, invitation.TenantId, cancellationToken);
 
         if (user == null)
         {
@@ -313,7 +313,7 @@ internal sealed class InvitationService(
             var newUser = new AshlarUser
             {
                 Id = userId,
-                Email = invitation.Email,
+                DisplayEmail = invitation.DisplayEmail,
                 Name = requestedUserName,
                 AccountState = UserAccountState.Active,
                 EmailVerifiedAt = _options.Value.VerifyEmailOnAcceptance ? now : null,
@@ -328,7 +328,7 @@ internal sealed class InvitationService(
             var updatedUser = new AshlarUser
             {
                 Id = user.Id,
-                Email = user.Email,
+                DisplayEmail = user.DisplayEmail,
                 Name = requestedUserName ?? user.Name,
                 AccountState = UserAccountState.Active,
                 EmailVerifiedAt = _options.Value.VerifyEmailOnAcceptance ? (user.EmailVerifiedAt ?? now) : user.EmailVerifiedAt,
@@ -354,7 +354,7 @@ internal sealed class InvitationService(
 
         var sanitizedEmail = IdentityNormalization.SanitizeEmailForDelivery(email);
         var normalizedEmail = IdentityNormalization.NormalizeEmail(sanitizedEmail);
-        var revokedCount = await _dependencies.InvitationRepository.RevokeInvitationsByEmailAsync(normalizedEmail, tenantId, cancellationToken);
+        var revokedCount = await _dependencies.InvitationRepository.RevokeInvitationsByEmailAsync(sanitizedEmail, tenantId, cancellationToken);
 
         if (revokedCount > 0)
         {

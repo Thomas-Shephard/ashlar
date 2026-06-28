@@ -29,7 +29,7 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
 
         const string sql = """
-            SELECT id, email, name, account_state, tenant_id, email_verified_at, created_at, updated_at
+            SELECT id, display_email, name, account_state, tenant_id, email_verified_at, created_at, updated_at
             FROM ashlar_users
             WHERE normalized_email = $normalizedEmail AND 
             """;
@@ -48,7 +48,7 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
     public async Task<IUser?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         const string sql = """
-            SELECT id, email, name, account_state, tenant_id, email_verified_at, created_at, updated_at
+            SELECT id, display_email, name, account_state, tenant_id, email_verified_at, created_at, updated_at
             FROM ashlar_users
             WHERE id = $id;
             """;
@@ -69,7 +69,7 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
         ArgumentException.ThrowIfNullOrWhiteSpace(providerKey);
 
         const string sql = """
-            SELECT u.id, u.email, u.name, u.account_state, u.tenant_id, u.email_verified_at, u.created_at, u.updated_at
+            SELECT u.id, u.display_email, u.name, u.account_state, u.tenant_id, u.email_verified_at, u.created_at, u.updated_at
             FROM ashlar_users u
             JOIN ashlar_credentials c ON u.id = c.user_id
             WHERE c.provider_type = $providerType AND c.provider_name = $providerName AND c.provider_key = $providerKey
@@ -92,11 +92,11 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
     public async Task CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
-        ArgumentException.ThrowIfNullOrWhiteSpace(user.Email);
+        ArgumentException.ThrowIfNullOrWhiteSpace(user.DisplayEmail);
 
         const string sql = """
-            INSERT INTO ashlar_users (id, email, normalized_email, name, account_state, tenant_id, email_verified_at, created_at)
-            VALUES ($id, $email, $normalizedEmail, $name, $accountState, $tenantId, $emailVerifiedAt, $createdAt);
+            INSERT INTO ashlar_users (id, display_email, normalized_email, name, account_state, tenant_id, email_verified_at, created_at)
+            VALUES ($id, $displayEmail, $normalizedEmail, $name, $accountState, $tenantId, $emailVerifiedAt, $createdAt);
             """;
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -110,11 +110,11 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
     public async Task UpdateUserAsync(IUser user, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
-        ArgumentException.ThrowIfNullOrWhiteSpace(user.Email);
+        ArgumentException.ThrowIfNullOrWhiteSpace(user.DisplayEmail);
 
         const string sql = """
             UPDATE ashlar_users
-            SET email = $email, normalized_email = $normalizedEmail, name = $name, account_state = $accountState,
+            SET display_email = $displayEmail, normalized_email = $normalizedEmail, name = $name, account_state = $accountState,
                 email_verified_at = $emailVerifiedAt, updated_at = $updatedAt
             WHERE id = $id AND 
             """;
@@ -140,8 +140,8 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
         var tenantId = (user as ITenantUser)?.TenantId;
 
         command.AddGuidParameter(IdParameter, user.Id);
-        command.AddParameter("$email", user.Email);
-        command.AddParameter(NormalizedEmailParameter, IdentityNormalization.NormalizeEmail(user.Email));
+        command.AddParameter("$displayEmail", user.DisplayEmail);
+        command.AddParameter(NormalizedEmailParameter, IdentityNormalization.NormalizeEmail(user.DisplayEmail));
         command.AddParameter("$name", user.Name);
         command.AddParameter("$accountState", user.AccountState.ToStorageValue());
         command.AddNullableGuidParameter(TenantIdParameter, tenantId);
@@ -158,7 +158,7 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
         return new AshlarSqliteUser
         {
             Id = reader.GetGuidFromText("id"),
-            Email = reader.GetString(reader.GetOrdinal("email")),
+            DisplayEmail = reader.GetString(reader.GetOrdinal("display_email")),
             Name = reader.GetNullableString("name"),
             AccountState = UserAccountStates.FromStorageValue(reader.GetString(reader.GetOrdinal("account_state"))),
             TenantId = reader.GetNullableGuidFromText("tenant_id"),

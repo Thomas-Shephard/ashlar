@@ -156,7 +156,7 @@ internal sealed class PostgresPasskeyChallengeRepositoryTests : PostgresTestBase
         var user = new AshlarPostgresUser
         {
             Id = Guid.NewGuid(),
-            Email = $"{Guid.NewGuid():N}@example.com",
+            DisplayEmail = $"{Guid.NewGuid():N}@example.com",
             AccountState = UserAccountState.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };

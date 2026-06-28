@@ -44,8 +44,8 @@ public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
             User = new Fido2User
             {
                 Id = user.Id.ToByteArray(),
-                Name = user.Email,
-                DisplayName = string.IsNullOrWhiteSpace(displayName) ? user.Email : displayName
+                Name = user.DisplayEmail,
+                DisplayName = string.IsNullOrWhiteSpace(displayName) ? user.DisplayEmail : displayName
             },
             ExcludeCredentials = existingCredentials.Select(ToDescriptor).ToList(),
             AuthenticatorSelection = new AuthenticatorSelection

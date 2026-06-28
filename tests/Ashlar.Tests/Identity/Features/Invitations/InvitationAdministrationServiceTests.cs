@@ -269,7 +269,7 @@ internal sealed class InvitationAdministrationServiceTests
     private static InvitationAdministrationSummary CreateSingleResult()
     {
         var summary = CreateSummary();
-        return new InvitationAdministrationSummary(summary.Id, summary.Email, summary.TenantId, summary.Status, summary.CreatedAt, summary.UpdatedAt, summary.ExpiresAt, summary.AcceptedAt, summary.RevokedAt);
+        return new InvitationAdministrationSummary(summary.Id, summary.DisplayEmail, summary.TenantId, summary.Status, summary.CreatedAt, summary.UpdatedAt, summary.ExpiresAt, summary.AcceptedAt, summary.RevokedAt);
     }
 
     private static AuditContext CreateAudit()

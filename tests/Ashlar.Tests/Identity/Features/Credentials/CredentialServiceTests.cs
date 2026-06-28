@@ -9,11 +9,11 @@ namespace Ashlar.Tests.Identity.Features.Credentials;
 
 internal sealed class CredentialServiceTests
 {
-    private Mock<IUserRepository> _repositoryMock;
-    private Mock<ICredentialRepository> _credentialRepositoryMock;
-    private Mock<ISecretProtector> _secretProtectorMock;
-    private FakeTimeProvider _timeProvider;
-    private CredentialService _service;
+    private Mock<IUserRepository> _repositoryMock = null!;
+    private Mock<ICredentialRepository> _credentialRepositoryMock = null!;
+    private Mock<ISecretProtector> _secretProtectorMock = null!;
+    private FakeTimeProvider _timeProvider = null!;
+    private CredentialService _service = null!;
 
     [SetUp]
     public void SetUp()
@@ -76,7 +76,7 @@ internal sealed class CredentialServiceTests
     public async Task LinkCredentialAsyncShouldUseClockForCreatedAt()
     {
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
         var assertionMock = new Mock<IAuthenticationAssertion>();
         assertionMock.Setup(a => a.ProviderIdentity).Returns(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
 
@@ -107,7 +107,7 @@ internal sealed class CredentialServiceTests
             expiresAt: testTime.AddSeconds(1)); // Not yet expired
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(credential.UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = credential.UserId, Email = "test@example.com" });
+            .ReturnsAsync(new User { Id = credential.UserId, DisplayEmail = "test@example.com" });
         _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(credential.UserId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
 
@@ -125,7 +125,7 @@ internal sealed class CredentialServiceTests
     {
         var email = "test@example.com";
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = email };
+        var user = new User { Id = userId, DisplayEmail = email };
         var credential = new UserCredential
         {
             Id = Guid.NewGuid(),
@@ -180,7 +180,7 @@ internal sealed class CredentialServiceTests
     public async Task ResolveAsyncShouldRespectUserIdFromContextWhenProviderFindUserReturnsNull()
     {
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
         var context = new AuthenticationContext(UserId: userId);
         var assertionMock = new Mock<IAuthenticationAssertion>();
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -205,7 +205,7 @@ internal sealed class CredentialServiceTests
     public async Task ResolveAsyncShouldRejectProviderUserFromDifferentTenant()
     {
         var contextTenantId = Guid.NewGuid();
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = Guid.NewGuid() };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = Guid.NewGuid() };
         var context = new AuthenticationContext(TenantId: contextTenantId);
         var assertionMock = new Mock<IAuthenticationAssertion>();
         var providerMock = CreateProviderMock();
@@ -225,7 +225,7 @@ internal sealed class CredentialServiceTests
     [Test]
     public async Task ResolveAsyncShouldRejectTenantAwareGlobalUserWhenContextTenantIsSet()
     {
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = null };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = null };
         var context = new AuthenticationContext(TenantId: Guid.NewGuid());
         var assertionMock = new Mock<IAuthenticationAssertion>();
         var providerMock = CreateProviderMock();
@@ -244,7 +244,7 @@ internal sealed class CredentialServiceTests
     [Test]
     public async Task ResolveAsyncShouldRejectNonTenantUserWhenContextTenantIsSet()
     {
-        var user = new NonTenantUser { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new NonTenantUser { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var context = new AuthenticationContext(TenantId: Guid.NewGuid());
         var assertionMock = new Mock<IAuthenticationAssertion>();
         var providerMock = CreateProviderMock();
@@ -260,7 +260,7 @@ internal sealed class CredentialServiceTests
     public async Task ResolveAsyncShouldAcceptProviderUserFromMatchingTenant()
     {
         var tenantId = Guid.NewGuid();
-        var user = new User { Id = Guid.NewGuid(), Email = "test@example.com", TenantId = tenantId };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = tenantId };
         var credential = CreateCredential(user.Id);
         var context = new AuthenticationContext(TenantId: tenantId);
         var assertionMock = new Mock<IAuthenticationAssertion>();
@@ -282,7 +282,7 @@ internal sealed class CredentialServiceTests
     [Test]
     public async Task ResolveAsyncShouldAcceptAnyUserWhenContextTenantIsNull()
     {
-        var user = new NonTenantUser { Id = Guid.NewGuid(), Email = "test@example.com" };
+        var user = new NonTenantUser { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         var context = new AuthenticationContext();
         var assertionMock = new Mock<IAuthenticationAssertion>();
@@ -306,7 +306,7 @@ internal sealed class CredentialServiceTests
     {
         var userId = Guid.NewGuid();
         var context = new AuthenticationContext(TenantId: Guid.NewGuid(), UserId: userId);
-        var user = new User { Id = userId, Email = "test@example.com", TenantId = Guid.NewGuid() };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com", TenantId = Guid.NewGuid() };
         var assertionMock = new Mock<IAuthenticationAssertion>();
         var providerMock = CreateProviderMock();
         providerMock.Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
@@ -343,7 +343,7 @@ internal sealed class CredentialServiceTests
         providerMock.Setup(p => p.ProtectsCredentials).Returns(false);
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = credential.UserId, Email = "test@example.com" });
+            .ReturnsAsync(new User { Id = credential.UserId, DisplayEmail = "test@example.com" });
         _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
 
@@ -372,7 +372,7 @@ internal sealed class CredentialServiceTests
         providerMock.Setup(p => p.ProtectsCredentials).Returns(false);
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(credential.UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = credential.UserId, Email = "test@example.com" });
+            .ReturnsAsync(new User { Id = credential.UserId, DisplayEmail = "test@example.com" });
         _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(credential.UserId, ProviderType.Local, AuthenticationProviderKey.Local.Name, "key", It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), credential.UserId)).Returns("key");
@@ -971,7 +971,7 @@ internal sealed class CredentialServiceTests
     public async Task LinkCredentialAsyncShouldCreateCredential()
     {
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
         var assertionMock = new Mock<IAuthenticationAssertion>();
         assertionMock.Setup(a => a.ProviderIdentity).Returns(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
 
@@ -1020,7 +1020,7 @@ internal sealed class CredentialServiceTests
             credentialValue: "protected(token)");
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = userId, Email = "test@example.com" });
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
         _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
 
@@ -1153,7 +1153,7 @@ internal sealed class CredentialServiceTests
     public async Task LinkCredentialAsyncWithEmptyProviderKeyShouldFail()
     {
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
         var assertionMock = new Mock<IAuthenticationAssertion>();
         assertionMock.Setup(a => a.ProviderIdentity).Returns(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -1175,7 +1175,7 @@ internal sealed class CredentialServiceTests
     {
         var userId = Guid.NewGuid();
         var otherUserId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
         var assertionMock = new Mock<IAuthenticationAssertion>();
         assertionMock.Setup(a => a.ProviderIdentity).Returns(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -1184,7 +1184,7 @@ internal sealed class CredentialServiceTests
 
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "key", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = otherUserId, Email = "other@example.com" });
+            .ReturnsAsync(new User { Id = otherUserId, DisplayEmail = "other@example.com" });
 
         var result = await _service.LinkCredentialAsync(userId, assertionMock.Object, providerMock.Object);
 
@@ -1199,7 +1199,7 @@ internal sealed class CredentialServiceTests
     public async Task LinkCredentialAsyncWithDuplicateKeyForSameUserShouldFail()
     {
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
         var assertionMock = new Mock<IAuthenticationAssertion>();
         assertionMock.Setup(a => a.ProviderIdentity).Returns(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -1223,7 +1223,7 @@ internal sealed class CredentialServiceTests
     public async Task LinkCredentialAsyncWithDuplicateKeyForSameUserLocalShouldFail()
     {
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, Email = "test@example.com" };
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
         var assertionMock = new Mock<IAuthenticationAssertion>();
         assertionMock.Setup(a => a.ProviderIdentity).Returns(AuthenticationProviderKey.Local);
         var providerMock = new Mock<IAuthenticationProvider>();
@@ -1344,7 +1344,7 @@ internal sealed class CredentialServiceTests
     private async Task<UserCredential?> ResolveCredentialAsync(UserCredential credential)
     {
         _repositoryMock.Setup(r => r.GetUserByIdAsync(credential.UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Id = credential.UserId, Email = "test@example.com" });
+            .ReturnsAsync(new User { Id = credential.UserId, DisplayEmail = "test@example.com" });
         _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(credential.UserId, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
 
@@ -1394,7 +1394,7 @@ internal sealed class CredentialServiceTests
     private sealed class NonTenantUser : IUser
     {
         public required Guid Id { get; init; }
-        public required string Email { get; set; }
+        public required string DisplayEmail { get; set; }
         public string? Name { get; set; }
         public UserAccountState AccountState { get; set; } = UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt { get; set; }

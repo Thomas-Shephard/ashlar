@@ -41,7 +41,7 @@ internal sealed class PasswordResetServiceTests
         var user = CreateUser();
         var fixture = CreateFixture(user);
 
-        var result = await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        var result = await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
         var message = fixture.EmailSender.Messages.Single();
         var credential = fixture.Store.Credentials.Single(c => c.ProviderType == ProviderType.Internal);
         var token = ExtractQueryValue(message.TextBody!, "t");
@@ -49,7 +49,7 @@ internal sealed class PasswordResetServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(message.To, Is.EqualTo(user.Email));
+            Assert.That(message.To, Is.EqualTo(user.DisplayEmail));
             Assert.That(message.TextBody, Does.Contain(token));
             Assert.That(credential.ProviderName, Is.EqualTo(PasswordResetService.ProviderName));
             Assert.That(credential.ProviderKey, Is.EqualTo(new Sha256TokenHasher().HashToken(token)));
@@ -87,7 +87,7 @@ internal sealed class PasswordResetServiceTests
         var user = CreateUser();
         var fixture = CreateFixture(user, includeLocalPassword: false);
 
-        var result = await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        var result = await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
         var securityEvent = fixture.Audit.Events.Single(e => e.EventType == AshlarSecurityEventTypes.PasswordResetRequestSuppressed);
 
         using (Assert.EnterMultipleScope())
@@ -106,7 +106,7 @@ internal sealed class PasswordResetServiceTests
         var fixture = CreateFixture(user);
         fixture.UriValidator.Setup(v => v.IsValid(It.IsAny<Uri?>())).Returns(false);
 
-        var result = await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://evil.example/reset"));
+        var result = await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://evil.example/reset"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -141,7 +141,7 @@ internal sealed class PasswordResetServiceTests
         var fixture = CreateFixture(user);
         fixture.RateLimiter.BlockedKeys.Add(ExpectedRateLimitKey("password-reset-request", "email", "email:USER@EXAMPLE.COM"));
 
-        var result = await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        var result = await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -158,7 +158,7 @@ internal sealed class PasswordResetServiceTests
         var user = CreateUser(tenantId: Guid.NewGuid());
         var fixture = CreateFixture(user);
         var context = new AuthenticationContext(TenantId: user.TenantId);
-        await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"), context);
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"), context);
         var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
         fixture.Audit.Events.Clear();
 
@@ -186,7 +186,7 @@ internal sealed class PasswordResetServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user, configure: options => options.RevokeSessions = false);
-        await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
         var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
 
         var result = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword });
@@ -210,7 +210,7 @@ internal sealed class PasswordResetServiceTests
             .ReturnsAsync(2);
         var fixture = CreateFixture(user, configure: options => options.RevokeSessions = false, rememberedMfaDeviceService: rememberedDevices.Object);
         var context = new AuthenticationContext(TenantId: tenantId, IpAddress: "203.0.113.10", UserAgent: "unit-test", CorrelationId: "corr");
-        await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"), context);
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"), context);
         var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
 
         var result = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword }, context);
@@ -241,7 +241,7 @@ internal sealed class PasswordResetServiceTests
             .Setup(s => s.RevokeAllAsync(user.Id, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
         var fixture = CreateFixture(user, rememberedMfaDeviceService: rememberedDevices.Object);
-        await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
         var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
 
         var result = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword });
@@ -303,7 +303,7 @@ internal sealed class PasswordResetServiceTests
         fixture.RateLimiter.BlockedKeys.Add(ExpectedRateLimitKey("password-reset-request", "source", "source:ip:203.0.113.40"));
 
         var result = await fixture.Service.RequestPasswordResetAsync(
-            user.Email,
+            user.DisplayEmail,
             new Uri("https://example.com/reset"),
             new AuthenticationContext(IpAddress: "203.0.113.40"));
 
@@ -324,7 +324,7 @@ internal sealed class PasswordResetServiceTests
         var fixture = CreateFixture(user);
         fixture.EmailSender.ThrowOnSend = true;
 
-        var result = await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        var result = await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -342,7 +342,7 @@ internal sealed class PasswordResetServiceTests
         var fixture = CreateFixture(user, transactionalEmailSender: true);
         fixture.EmailSender.ThrowOnSend = true;
 
-        var result = await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        var result = await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -359,7 +359,7 @@ internal sealed class PasswordResetServiceTests
         var user = CreateUser();
         var fixture = CreateFixture(user, transactionalEmailSender: true);
 
-        var result = await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        var result = await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -421,7 +421,7 @@ internal sealed class PasswordResetServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
         var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
 
         var blankPassword = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = " " });
@@ -440,7 +440,7 @@ internal sealed class PasswordResetServiceTests
     {
         var user = CreateUser(tenantId: Guid.NewGuid());
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"), new AuthenticationContext(TenantId: user.TenantId));
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"), new AuthenticationContext(TenantId: user.TenantId));
         var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
         var credential = fixture.Store.Credentials.Single(c => c.ProviderType == ProviderType.Internal);
         fixture.Store.Credentials.Remove(credential);
@@ -461,19 +461,19 @@ internal sealed class PasswordResetServiceTests
         var wrongProvider = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword }, new AuthenticationContext(TenantId: user.TenantId));
 
         fixture = CreateFixture(user);
-        await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"), new AuthenticationContext(TenantId: user.TenantId));
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"), new AuthenticationContext(TenantId: user.TenantId));
         token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
         var wrongTenant = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword }, new AuthenticationContext(TenantId: Guid.NewGuid()));
 
         var tenantlessUser = CreateUser();
         fixture = CreateFixture(tenantlessUser);
-        await fixture.Service.RequestPasswordResetAsync(tenantlessUser.Email, new Uri("https://example.com/reset"));
+        await fixture.Service.RequestPasswordResetAsync(tenantlessUser.DisplayEmail, new Uri("https://example.com/reset"));
         token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
         var tenantRequiredForTenantlessUser = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword }, new AuthenticationContext(TenantId: Guid.NewGuid()));
 
-        var nonTenantUser = new NonTenantUser { Id = Guid.NewGuid(), Email = "plain@example.com", AccountState = UserAccountState.Active };
+        var nonTenantUser = new NonTenantUser { Id = Guid.NewGuid(), DisplayEmail = "plain@example.com", AccountState = UserAccountState.Active };
         fixture = CreateFixture(nonTenantUser);
-        await fixture.Service.RequestPasswordResetAsync(nonTenantUser.Email, new Uri("https://example.com/reset"));
+        await fixture.Service.RequestPasswordResetAsync(nonTenantUser.DisplayEmail, new Uri("https://example.com/reset"));
         token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
         var tenantRequiredForNonTenantUser = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword }, new AuthenticationContext(TenantId: Guid.NewGuid()));
 
@@ -491,7 +491,7 @@ internal sealed class PasswordResetServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
         var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
 
         var first = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword });
@@ -514,7 +514,7 @@ internal sealed class PasswordResetServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
         var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
 
         await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword });
@@ -537,7 +537,7 @@ internal sealed class PasswordResetServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
 
         var sessionService = new Mock<IAuthenticationSessionService>();
         sessionService
@@ -570,7 +570,7 @@ internal sealed class PasswordResetServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
         var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
         var tokenHash = new Sha256TokenHasher().HashToken(token);
         fixture.RateLimiter.BlockedKeys.Add(ExpectedRateLimitKey("password-reset-verify", "token-hash", $"token:{tokenHash}"));
@@ -590,7 +590,7 @@ internal sealed class PasswordResetServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
         var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
         fixture.RateLimiter.Attempts.Clear();
 
@@ -616,7 +616,7 @@ internal sealed class PasswordResetServiceTests
         var actorUserId = Guid.NewGuid();
         var fixture = CreateFixture(user);
 
-        var result = await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"), new AuthenticationContext(UserId: actorUserId));
+        var result = await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"), new AuthenticationContext(UserId: actorUserId));
 
         using (Assert.EnterMultipleScope())
         {
@@ -632,7 +632,7 @@ internal sealed class PasswordResetServiceTests
         var fixture = CreateFixture(user);
 
         var result = await fixture.Service.RequestPasswordResetAsync(
-            user.Email,
+            user.DisplayEmail,
             new Uri("https://example.com/reset"),
             new AuthenticationContext(IpAddress: "203.0.113.30"));
 
@@ -649,7 +649,7 @@ internal sealed class PasswordResetServiceTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        await fixture.Service.RequestPasswordResetAsync(user.Email, new Uri("https://example.com/reset"));
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
         var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
         mutate(fixture);
 
@@ -709,7 +709,7 @@ internal sealed class PasswordResetServiceTests
 
     private static AshlarUser CreateUser(UserAccountState accountState = UserAccountState.Active, Guid? tenantId = null)
     {
-        return new AshlarUser { Id = Guid.NewGuid(), Email = "user@example.com", AccountState = accountState, TenantId = tenantId };
+        return new AshlarUser { Id = Guid.NewGuid(), DisplayEmail = "user@example.com", AccountState = accountState, TenantId = tenantId };
     }
 
     private static UserCredential CreatePasswordCredential(Guid userId, string password, DateTimeOffset now)
@@ -838,8 +838,9 @@ internal sealed class PasswordResetServiceTests
 
         public Task<IUser?> GetUserByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
         {
+            var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
             return Task.FromResult<IUser?>(Users.SingleOrDefault(user =>
-                string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase)
+                IdentityNormalization.NormalizeEmail(user.DisplayEmail) == normalizedEmail
                 && (user as ITenantUser)?.TenantId == tenantId));
         }
 
@@ -988,7 +989,7 @@ internal sealed class PasswordResetServiceTests
     private sealed class NonTenantUser : IUser
     {
         public required Guid Id { get; init; }
-        public required string Email { get; init; }
+        public required string DisplayEmail { get; init; }
         public string? Name { get; init; }
         public UserAccountState AccountState { get; init; } = UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt { get; init; }

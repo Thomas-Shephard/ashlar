@@ -49,7 +49,6 @@ internal sealed class BootstrapService(
     {
         ArgumentNullException.ThrowIfNull(request);
         var email = IdentityNormalization.SanitizeEmailForDelivery(request.Email);
-        var normalizedEmail = IdentityNormalization.NormalizeEmail(email);
 
         if (await GetStatusAsync(cancellationToken) == BootstrapStatus.Initialized)
         {
@@ -80,10 +79,10 @@ internal sealed class BootstrapService(
             return Result.Failure<Guid>(AshlarFailureCodes.InvalidSecret);
         }
 
-        return await CompleteFirstAdminBootstrapAsync(request, email, normalizedEmail, context, cancellationToken);
+        return await CompleteFirstAdminBootstrapAsync(request, email, context, cancellationToken);
     }
 
-    private async Task<Result<Guid>> CompleteFirstAdminBootstrapAsync(BootstrapFirstAdminRequest request, string email, string normalizedEmail, AuthenticationContext? context, CancellationToken cancellationToken)
+    private async Task<Result<Guid>> CompleteFirstAdminBootstrapAsync(BootstrapFirstAdminRequest request, string email, AuthenticationContext? context, CancellationToken cancellationToken)
     {
         if (await GetStatusAsync(cancellationToken) == BootstrapStatus.Initialized)
         {
@@ -118,7 +117,7 @@ internal sealed class BootstrapService(
         }
 
         await using var transaction = await _dependencies.TransactionProvider.BeginTransactionAsync(cancellationToken);
-        var createdUser = await CreateOrActivateFirstAdminUserAsync(normalizedEmail, email, request.UserName, request.TenantId, now, cancellationToken);
+        var createdUser = await CreateOrActivateFirstAdminUserAsync(email, request.UserName, request.TenantId, now, cancellationToken);
         var userId = createdUser.UserId;
 
         if (authorizationGrantService is not null)
@@ -247,21 +246,20 @@ internal sealed class BootstrapService(
     }
 
     private async Task<BootstrapUser> CreateOrActivateFirstAdminUserAsync(
-        string normalizedEmail,
         string email,
         string? requestedUserName,
         Guid? tenantId,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var user = await _dependencies.UserRepository.GetUserByEmailAsync(normalizedEmail, tenantId, cancellationToken);
+        var user = await _dependencies.UserRepository.GetUserByEmailAsync(email, tenantId, cancellationToken);
         if (user == null)
         {
             var userId = Guid.NewGuid();
             await _dependencies.UserRepository.CreateUserAsync(new AshlarUser
             {
                 Id = userId,
-                Email = email,
+                DisplayEmail = email,
                 Name = requestedUserName,
                 AccountState = UserAccountState.Active,
                 EmailVerifiedAt = now,
@@ -275,7 +273,7 @@ internal sealed class BootstrapService(
             await _dependencies.UserRepository.UpdateUserAsync(new AshlarUser
             {
                 Id = user.Id,
-                Email = user.Email,
+                DisplayEmail = user.DisplayEmail,
                 Name = requestedUserName ?? user.Name,
                 AccountState = UserAccountState.Active,
                 EmailVerifiedAt = user.EmailVerifiedAt ?? now,

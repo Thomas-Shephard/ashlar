@@ -17,9 +17,24 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exact.Select(user => user.UserId), Does.Contain(expected.Id));
+            Assert.That(exact.Single(user => user.UserId == expected.Id).DisplayEmail, Is.EqualTo("Mixed.Admin@example.com"));
             Assert.That(partial.Select(user => user.UserId), Does.Contain(expected.Id));
-            Assert.That(partial.Select(user => user.Email), Does.Not.Contain("other@example.com"));
+            Assert.That(partial.Single(user => user.UserId == expected.Id).DisplayEmail, Is.EqualTo("Mixed.Admin@example.com"));
+            Assert.That(partial.Select(user => user.DisplayEmail), Does.Not.Contain("other@example.com"));
         }
+    }
+
+    [Test]
+    public async Task DetailReturnsDisplayEmailRatherThanNormalizedLookupEmail()
+    {
+        await using var scope = CreateAsyncScope();
+        var identity = GetUserRepository(scope.ServiceProvider);
+        var repository = GetUserAdministrationRepository(scope.ServiceProvider);
+        var user = await CreateUserAsync(identity, "Admin.Detail@Example.COM");
+
+        var detail = await repository.GetUserSummaryAsync(new UserAdministrationDetailRequest(user.Id, IncludeAllTenants: true));
+
+        Assert.That(detail?.DisplayEmail, Is.EqualTo("Admin.Detail@Example.COM"));
     }
 
     [Test]
@@ -36,7 +51,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Select(user => user.UserId), Does.Contain(expected.Id));
-            Assert.That(result.Select(user => user.Email), Does.Not.Contain("name-miss@example.com"));
+            Assert.That(result.Select(user => user.DisplayEmail), Does.Not.Contain("name-miss@example.com"));
         }
     }
 
@@ -195,7 +210,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         var alpha2 = await CreateUserAsync(identity, "a-admin-order@example.com", Guid.NewGuid());
 
         var result = await repository.SearchUsersAsync(new SearchUsersRequest { IncludeAllTenants = true, Query = "admin-order@example.com", Limit = 10 });
-        var expected = new[] { alpha1, alpha2, beta }.OrderBy(user => user.Email, StringComparer.OrdinalIgnoreCase).ThenBy(user => user.Id).Select(user => user.Id);
+        var expected = new[] { alpha1, alpha2, beta }.OrderBy(user => user.DisplayEmail, StringComparer.OrdinalIgnoreCase).ThenBy(user => user.Id).Select(user => user.Id);
 
         Assert.That(result.Select(user => user.UserId), Is.EqualTo(expected));
     }
@@ -213,7 +228,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         }
 
         var result = await repository.SearchUsersAsync(new SearchUsersRequest { IncludeAllTenants = true, Query = "page-", Limit = 2, Offset = 1 });
-        var expected = users.OrderBy(user => user.Email, StringComparer.OrdinalIgnoreCase).ThenBy(user => user.Id).Skip(1).Take(2).Select(user => user.Id);
+        var expected = users.OrderBy(user => user.DisplayEmail, StringComparer.OrdinalIgnoreCase).ThenBy(user => user.Id).Skip(1).Take(2).Select(user => user.Id);
 
         Assert.That(result.Select(user => user.UserId), Is.EqualTo(expected));
     }
@@ -235,8 +250,8 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(search.Single().Email, Is.EqualTo(user.Email));
-            Assert.That(detail?.Email, Is.EqualTo(user.Email));
+            Assert.That(search.Single().DisplayEmail, Is.EqualTo(user.DisplayEmail));
+            Assert.That(detail?.DisplayEmail, Is.EqualTo(user.DisplayEmail));
         }
     }
 
@@ -259,7 +274,7 @@ internal abstract class UserAdministrationRepositoryContractTests : ProviderCont
         var user = new AshlarUser
         {
             Id = Guid.NewGuid(),
-            Email = email,
+            DisplayEmail = email,
             Name = name,
             AccountState = UserAccountState.Active,
             TenantId = tenantId,
