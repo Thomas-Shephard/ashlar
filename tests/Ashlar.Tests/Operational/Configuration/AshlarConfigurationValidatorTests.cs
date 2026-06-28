@@ -257,6 +257,23 @@ internal sealed class AshlarConfigurationValidatorTests
     }
 
     [Test]
+    public async Task CoreCheckDoesNotThrowWhenRegisteredMfaPolicyOptionsAreInvalid()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarRequireMfaForAllUsers(_ => { });
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.MfaPolicyMissing));
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.PermissiveMfaPolicy));
+        }
+    }
+
+    [Test]
     public async Task CoreCheckDoesNotReportPermissiveMfaPolicyWhenCustomPolicyIsRegistered()
     {
         var services = new ServiceCollection();
