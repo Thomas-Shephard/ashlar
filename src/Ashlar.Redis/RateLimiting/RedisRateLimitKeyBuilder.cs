@@ -33,15 +33,7 @@ internal static class RedisRateLimitKeyBuilder
             return false;
         }
 
-        foreach (var character in bucketId)
-        {
-            if (!IsLowerHex(character))
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return bucketId.All(IsLowerHex);
     }
 
     internal static string NormalizePrefix(string prefix)
