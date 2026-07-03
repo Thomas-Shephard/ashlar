@@ -462,9 +462,42 @@ internal sealed class BootstrapServiceTests
             r.Audit.ActorUserId == context.UserId &&
             r.Audit.IpAddress == context.IpAddress &&
             r.Audit.UserAgent == context.UserAgent &&
-            r.Audit.CorrelationId == context.CorrelationId), It.IsAny<CancellationToken>()), Times.Once);
+            r.Audit.CorrelationId == context.CorrelationId &&
+            r.Audit.Items != null &&
+            r.Audit.Items["system"] == "bootstrap"), It.IsAny<CancellationToken>()), Times.Once);
         _stateRepository.Verify(r => r.MarkAsInitializedAsync(result.Value, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
         transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task BootstrapFirstAdminAsyncUsesSystemAuditForGrantCreationWithoutContext()
+    {
+        ArrangeSuccessfulBootstrap();
+        _options.Grants.Add(new BootstrapGrantTemplate { Role = "admin" });
+        _grantService.Setup(s => s.CreateGrantAsync(It.IsAny<CreateAuthorizationGrantRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CreateAuthorizationGrantRequest request, CancellationToken _) => Result.Success(new AuthorizationGrant
+            {
+                Id = Guid.NewGuid(),
+                UserId = request.UserId,
+                Role = request.Role,
+                CreatedAt = _timeProvider.GetUtcNow()
+            }));
+
+        var result = await _service.BootstrapFirstAdminAsync(new BootstrapFirstAdminRequest
+        {
+            Email = "admin@example.com",
+            SetupSecret = SetupSecret
+        });
+
+        Assert.That(result.Succeeded, Is.True);
+        _grantService.Verify(s => s.CreateGrantAsync(It.Is<CreateAuthorizationGrantRequest>(r =>
+            r.Audit != null &&
+            r.Audit.ActorUserId == null &&
+            r.Audit.IpAddress == null &&
+            r.Audit.UserAgent == null &&
+            r.Audit.CorrelationId == null &&
+            r.Audit.Items != null &&
+            r.Audit.Items["system"] == "bootstrap"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]

@@ -1148,11 +1148,12 @@ services.AddAshlarAuthorization();
 services.AddAshlarPostgres(connectionString);
 ```
 
-Grant a permission:
+Grant a permission. Grant creation and revocation are privilege changes, so service-layer mutations require explicit audit context:
 
 ```csharp
 var grant = await grantService.CreateGrantAsync(new CreateAuthorizationGrantRequest(
     UserId: userId,
+    Audit: new AuditContext(ActorUserId: adminUserId, IpAddress: ipAddress, CorrelationId: correlationId),
     Permission: "posts.edit"));
 ```
 
@@ -1161,6 +1162,7 @@ Grant a scoped role:
 ```csharp
 await grantService.CreateGrantAsync(new CreateAuthorizationGrantRequest(
     UserId: userId,
+    Audit: new AuditContext(ActorUserId: adminUserId, IpAddress: ipAddress, CorrelationId: correlationId),
     TenantId: tenantId,
     ScopeType: "project",
     ScopeId: projectId.ToString("D"),

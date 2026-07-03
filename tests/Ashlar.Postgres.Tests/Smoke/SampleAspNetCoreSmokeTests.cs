@@ -829,7 +829,11 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     {
         await using var scope = services.CreateAsyncScope();
         var grants = scope.ServiceProvider.GetRequiredService<IAuthorizationGrantService>();
-        var result = await grants.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, tenantId, Role: "admin"));
+        var result = await grants.CreateGrantAsync(new CreateAuthorizationGrantRequest(
+            userId,
+            new AuditContext(CorrelationId: "sample-smoke-grant-admin-role", Items: new Dictionary<string, string> { ["system"] = "sample-smoke-test" }),
+            tenantId,
+            Role: "admin"));
         Assert.That(result.Succeeded, Is.True, result.FailureMessage);
     }
 

@@ -13,6 +13,7 @@ internal sealed class AuthorizationGrantServiceTests
     private FakeRepository _repository;
     private FakeUserRepository _userRepository;
     private AuthorizationGrantService _service;
+    private AuditContext _audit;
 
     [SetUp]
     public void SetUp()
@@ -21,6 +22,7 @@ internal sealed class AuthorizationGrantServiceTests
         _repository = new FakeRepository();
         _userRepository = new FakeUserRepository();
         _service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider);
+        _audit = new AuditContext(ActorUserId: Guid.NewGuid(), IpAddress: "203.0.113.10", UserAgent: "unit-test", CorrelationId: "grant-test");
     }
 
     [Test]
@@ -28,7 +30,7 @@ internal sealed class AuthorizationGrantServiceTests
     {
         var userId = AddGlobalUser();
 
-        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, Permission: " Posts.Edit ", Metadata: "{}"));
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: " Posts.Edit ", Metadata: "{}"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -48,13 +50,35 @@ internal sealed class AuthorizationGrantServiceTests
         var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
         var userId = AddGlobalUser();
 
-        await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, Permission: "posts.edit"));
+        await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "posts.edit"));
 
         var createdEvent = auditSink.Events.Single(securityEvent => securityEvent.EventType == AshlarSecurityEventTypes.AuthorizationGrantCreated);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(createdEvent.ActorUserId, Is.EqualTo(_audit.ActorUserId));
+            Assert.That(createdEvent.IpAddress, Is.EqualTo(_audit.IpAddress));
+            Assert.That(createdEvent.UserAgent, Is.EqualTo(_audit.UserAgent));
+            Assert.That(createdEvent.CorrelationId, Is.EqualTo(_audit.CorrelationId));
             Assert.That(createdEvent.Properties?["grant_type"], Is.EqualTo("permission"));
             Assert.That(createdEvent.Properties?["grant_value"], Is.EqualTo("posts.edit"));
+        }
+    }
+
+    [Test]
+    public async Task CreateGrantAsyncShouldRejectMissingAuditBeforeRepositoryCreation()
+    {
+        var auditSink = new RecordingSecurityEventSink();
+        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var userId = AddGlobalUser();
+
+        var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, null!, Permission: "read"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(_repository.Grants, Is.Empty);
+            Assert.That(auditSink.Events, Is.Empty);
         }
     }
 
@@ -63,7 +87,7 @@ internal sealed class AuthorizationGrantServiceTests
     {
         var userId = AddGlobalUser();
 
-        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, Permission: "read", Metadata: " "));
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "read", Metadata: " "));
 
         using (Assert.EnterMultipleScope())
         {
@@ -75,7 +99,7 @@ internal sealed class AuthorizationGrantServiceTests
     [Test]
     public async Task CreateGrantAsyncShouldRejectInvalidJsonMetadata()
     {
-        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), Permission: "read", Metadata: "{invalid"));
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.NewGuid(), _audit, Permission: "read", Metadata: "{invalid"));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Succeeded, Is.False);
@@ -88,7 +112,7 @@ internal sealed class AuthorizationGrantServiceTests
     {
         var userId = AddGlobalUser();
 
-        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, Role: " ", Permission: "read"));
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Role: " ", Permission: "read"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -105,7 +129,7 @@ internal sealed class AuthorizationGrantServiceTests
         var tenantId = Guid.NewGuid();
         _userRepository.Add(userId, tenantId);
 
-        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, tenantId, " Project ", " ABC ", Role: " Reviewer "));
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, tenantId, " Project ", " ABC ", Role: " Reviewer "));
 
         using (Assert.EnterMultipleScope())
         {
@@ -123,7 +147,7 @@ internal sealed class AuthorizationGrantServiceTests
         var userId = Guid.NewGuid();
         _userRepository.Add(userId, null);
 
-        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, Permission: "read"));
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "read"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -142,7 +166,7 @@ internal sealed class AuthorizationGrantServiceTests
         var requestedTenantId = requestedTenantIsNull ? (Guid?)null : Guid.NewGuid();
         _userRepository.Add(userId, userTenantId);
 
-        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, requestedTenantId, Permission: "read"));
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, requestedTenantId, Permission: "read"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -159,7 +183,7 @@ internal sealed class AuthorizationGrantServiceTests
         var requestedTenantId = Guid.NewGuid();
         _userRepository.Add(userId, null);
 
-        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, requestedTenantId, Permission: "read"));
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, requestedTenantId, Permission: "read"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -179,7 +203,7 @@ internal sealed class AuthorizationGrantServiceTests
         var requestedTenantId = Guid.NewGuid();
         _userRepository.Add(userId, userTenantId);
 
-        await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, requestedTenantId, Permission: "read"));
+        await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, requestedTenantId, Permission: "read"));
 
         var securityEvent = auditSink.Events.Single();
         using (Assert.EnterMultipleScope())
@@ -204,7 +228,7 @@ internal sealed class AuthorizationGrantServiceTests
         var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
         var userId = Guid.NewGuid();
 
-        var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, Permission: "read"));
+        var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "read"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -221,11 +245,11 @@ internal sealed class AuthorizationGrantServiceTests
     {
         var userId = Guid.NewGuid();
 
-        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.Empty, Permission: "x")));
-        var missingGrant = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId));
-        var roleAndPermission = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, Role: "r", Permission: "p"));
-        var missingScopeId = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, ScopeType: "project", Permission: "p"));
-        var missingScopeType = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, ScopeId: "1", Permission: "p"));
+        Assert.ThrowsAsync<ArgumentException>(() => _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(Guid.Empty, _audit, Permission: "x")));
+        var missingGrant = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit));
+        var roleAndPermission = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Role: "r", Permission: "p"));
+        var missingScopeId = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, ScopeType: "project", Permission: "p"));
+        var missingScopeType = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, ScopeId: "1", Permission: "p"));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(missingGrant.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidGrantShape));
@@ -236,7 +260,7 @@ internal sealed class AuthorizationGrantServiceTests
         Assert.ThrowsAsync<ArgumentNullException>(() => _service.CreateGrantAsync(null!));
         Assert.ThrowsAsync<ArgumentNullException>(() => _service.ListGrantsAsync(null!));
         Assert.ThrowsAsync<ArgumentNullException>(() => _service.RevokeGrantAsync(null!));
-        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(Guid.Empty)));
+        Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(Guid.Empty, _audit)));
     }
 
     [Test]
@@ -252,11 +276,11 @@ internal sealed class AuthorizationGrantServiceTests
         }, timeProvider: null, securityEventSink: null);
         var userId = Guid.NewGuid();
 
-        var role = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, Role: "xx"));
-        var permission = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, Permission: "xx"));
-        var scopeType = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, ScopeType: "xx", ScopeId: "1", Permission: "x"));
-        var scopeId = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, ScopeType: "x", ScopeId: "12", Permission: "x"));
-        var metadata = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, Permission: "x", Metadata: "{}"));
+        var role = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Role: "xx"));
+        var permission = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "xx"));
+        var scopeType = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, ScopeType: "xx", ScopeId: "1", Permission: "x"));
+        var scopeId = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, ScopeType: "x", ScopeId: "12", Permission: "x"));
+        var metadata = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "x", Metadata: "{}"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -274,10 +298,10 @@ internal sealed class AuthorizationGrantServiceTests
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         _userRepository.Add(userId, tenantId);
-        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, tenantId, Permission: "read"));
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, tenantId, Permission: "read"));
         var grant = result.Value!;
 
-        var revoked = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, tenantId));
+        var revoked = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, _audit, tenantId));
 
         using (Assert.EnterMultipleScope())
         {
@@ -291,13 +315,41 @@ internal sealed class AuthorizationGrantServiceTests
     }
 
     [Test]
+    public async Task RevokeGrantAsyncShouldRejectMissingAuditBeforeStorageLookup()
+    {
+        var auditSink = new RecordingSecurityEventSink();
+        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        _userRepository.Add(userId, tenantId);
+        var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, tenantId, Permission: "read"));
+        var grant = result.Value!;
+        _repository.GetCalls = 0;
+        auditSink.Events.Clear();
+
+        var revoked = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, null!, tenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.ValidationFailed));
+            Assert.That(revoked.GrantId, Is.EqualTo(grant.Id));
+            Assert.That(revoked.TenantId, Is.EqualTo(tenantId));
+            Assert.That(revoked.UserId, Is.Null);
+            Assert.That(grant.RevokedAt, Is.Null);
+            Assert.That(_repository.GetCalls, Is.Zero);
+            Assert.That(_repository.RevokeCalls, Is.Zero);
+            Assert.That(auditSink.Events, Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task RevokeGrantAsyncShouldRevokeGlobalGrantWhenRequestedTenantIsNull()
     {
         var userId = AddGlobalUser();
-        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, Permission: "read"));
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "read"));
         var grant = result.Value!;
 
-        var revoked = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, TenantId: null));
+        var revoked = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, _audit, TenantId: null));
 
         using (Assert.EnterMultipleScope())
         {
@@ -316,10 +368,10 @@ internal sealed class AuthorizationGrantServiceTests
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         _userRepository.Add(userId, tenantId);
-        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, tenantId, Permission: "read"));
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, tenantId, Permission: "read"));
         var grant = result.Value!;
 
-        var revoked = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, TenantId: null));
+        var revoked = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, _audit, TenantId: null));
 
         using (Assert.EnterMultipleScope())
         {
@@ -336,10 +388,10 @@ internal sealed class AuthorizationGrantServiceTests
     public async Task RevokeGrantAsyncShouldNotRevokeGlobalGrantWhenRequestedTenantIsNonNull()
     {
         var userId = AddGlobalUser();
-        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, Permission: "read"));
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "read"));
         var grant = result.Value!;
 
-        var revoked = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, Guid.NewGuid()));
+        var revoked = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, _audit, Guid.NewGuid()));
 
         using (Assert.EnterMultipleScope())
         {
@@ -358,10 +410,10 @@ internal sealed class AuthorizationGrantServiceTests
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         _userRepository.Add(userId, tenantId);
-        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, tenantId, Permission: "read"));
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, tenantId, Permission: "read"));
         var grant = result.Value!;
 
-        var revoked = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, Guid.NewGuid()));
+        var revoked = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, _audit, Guid.NewGuid()));
 
         using (Assert.EnterMultipleScope())
         {
@@ -380,11 +432,11 @@ internal sealed class AuthorizationGrantServiceTests
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         _userRepository.Add(userId, tenantId);
-        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, tenantId, Permission: "read"));
+        var result = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, tenantId, Permission: "read"));
         var grant = result.Value!;
 
-        var first = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, tenantId));
-        var second = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, tenantId));
+        var first = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, _audit, tenantId));
+        var second = await _service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, _audit, tenantId));
 
         using (Assert.EnterMultipleScope())
         {
@@ -403,11 +455,11 @@ internal sealed class AuthorizationGrantServiceTests
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         _userRepository.Add(userId, tenantId);
-        var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, tenantId, Permission: "read"));
+        var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, tenantId, Permission: "read"));
         var grant = result.Value!;
-        await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, tenantId));
+        await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, _audit, tenantId));
 
-        var revokedAgain = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, tenantId));
+        var revokedAgain = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, _audit, tenantId));
 
         var failedRevokedEvent = auditSink.Events
             .Where(securityEvent => securityEvent.EventType == AshlarSecurityEventTypes.AuthorizationGrantRevoked)
@@ -430,14 +482,18 @@ internal sealed class AuthorizationGrantServiceTests
         var auditSink = new RecordingSecurityEventSink();
         var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
         var userId = AddGlobalUser();
-        var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, Permission: "read"));
+        var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "read"));
         var grant = result.Value!;
 
-        await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id));
+        await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, _audit));
 
         var revokedEvent = auditSink.Events.Single(securityEvent => securityEvent.EventType == AshlarSecurityEventTypes.AuthorizationGrantRevoked);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(revokedEvent.ActorUserId, Is.EqualTo(_audit.ActorUserId));
+            Assert.That(revokedEvent.IpAddress, Is.EqualTo(_audit.IpAddress));
+            Assert.That(revokedEvent.UserAgent, Is.EqualTo(_audit.UserAgent));
+            Assert.That(revokedEvent.CorrelationId, Is.EqualTo(_audit.CorrelationId));
             Assert.That(revokedEvent.UserId, Is.EqualTo(grant.UserId));
             Assert.That(revokedEvent.Properties?["grant_type"], Is.EqualTo("permission"));
             Assert.That(revokedEvent.Properties?["grant_value"], Is.EqualTo("read"));
@@ -451,7 +507,7 @@ internal sealed class AuthorizationGrantServiceTests
         var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, securityEventSink: auditSink);
         var userId = AddGlobalUser();
 
-        var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, Role: "Reviewer"));
+        var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Role: "Reviewer"));
         var grant = result.Value!;
 
         var createdEvent = auditSink.Events.Single(securityEvent => securityEvent.EventType == AshlarSecurityEventTypes.AuthorizationGrantCreated);
@@ -471,7 +527,7 @@ internal sealed class AuthorizationGrantServiceTests
         var grantId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
 
-        var revoked = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grantId, tenantId));
+        var revoked = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grantId, _audit, tenantId));
 
         var revokedEvent = auditSink.Events.Single();
         using (Assert.EnterMultipleScope())
@@ -495,10 +551,10 @@ internal sealed class AuthorizationGrantServiceTests
         var requestedTenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         _userRepository.Add(userId, grantTenantId);
-        var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, grantTenantId, Permission: "read"));
+        var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, grantTenantId, Permission: "read"));
         var grant = result.Value!;
 
-        var revoked = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, requestedTenantId));
+        var revoked = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, _audit, requestedTenantId));
 
         var revokedEvent = auditSink.Events.Single(securityEvent => securityEvent.EventType == AshlarSecurityEventTypes.AuthorizationGrantRevoked);
         using (Assert.EnterMultipleScope())
@@ -529,7 +585,7 @@ internal sealed class AuthorizationGrantServiceTests
         };
         _repository.Grants.Add(grant);
 
-        await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id));
+        await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(grant.Id, _audit));
 
         var revokedEvent = auditSink.Events.Single();
         using (Assert.EnterMultipleScope())
@@ -642,6 +698,7 @@ internal sealed class AuthorizationGrantServiceTests
         public List<AuthorizationGrant> Grants { get; } = [];
         public ListAuthorizationGrantsRequest? LastListRequest { get; private set; }
         public Guid? LastRevokedTenantId { get; private set; }
+        public int GetCalls { get; set; }
         public int RevokeCalls { get; private set; }
 
         public Task CreateGrantAsync(AuthorizationGrant grant, CancellationToken cancellationToken = default)
@@ -664,6 +721,7 @@ internal sealed class AuthorizationGrantServiceTests
 
         public Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, Guid? tenantId, CancellationToken cancellationToken = default)
         {
+            GetCalls++;
             return Task.FromResult(Grants.FirstOrDefault(grant => grant.Id == grantId && grant.TenantId == tenantId));
         }
 

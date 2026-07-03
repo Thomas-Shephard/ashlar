@@ -44,12 +44,16 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
     /// <summary>
     /// Creates a role or permission grant after validating user and tenant ownership.
     /// </summary>
-    /// <param name="request">Grant details supplied by an authorized caller.</param>
+    /// <param name="request">Grant details and required audit context supplied by an authorized caller.</param>
     /// <param name="cancellationToken">A token that can cancel the create operation.</param>
     /// <returns>Created grant, or a failure when validation or tenant checks fail.</returns>
     public async Task<Result<AuthorizationGrant>> CreateGrantAsync(CreateAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (request.Audit is null)
+        {
+            return Result.Failure<AuthorizationGrant>(AshlarFailureCodes.ValidationError);
+        }
 
         if (request.UserId == Guid.Empty)
         {
@@ -181,7 +185,7 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
         return Result<AuthorizationGrant>.Success(grant);
     }
 
-    private async Task<Result> ValidateUserTenantAsync(Guid userId, Guid? tenantId, AuditContext? audit, CancellationToken cancellationToken)
+    private async Task<Result> ValidateUserTenantAsync(Guid userId, Guid? tenantId, AuditContext audit, CancellationToken cancellationToken)
     {
         var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken);
         if (user == null)
@@ -220,12 +224,17 @@ public sealed class AuthorizationGrantService : IAuthorizationGrantService
     /// <summary>
     /// Revokes an authorization grant in the requested tenant scope.
     /// </summary>
-    /// <param name="request">Grant identifier, tenant scope, and audit context for the revocation.</param>
+    /// <param name="request">Grant identifier, tenant scope, and required audit context for the revocation.</param>
     /// <param name="cancellationToken">A token that can cancel the revoke operation.</param>
     /// <returns>Revocation result with the grant id, requested tenant boundary, and outcome.</returns>
     public async Task<RevokeAuthorizationGrantResult> RevokeGrantAsync(RevokeAuthorizationGrantRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (request.Audit is null)
+        {
+            return new RevokeAuthorizationGrantResult(AuthorizationGrantRevocationStatus.ValidationFailed, request.GrantId, request.TenantId);
+        }
+
         if (request.GrantId == Guid.Empty)
         {
             throw new ArgumentException("Grant id must not be empty.", nameof(request));

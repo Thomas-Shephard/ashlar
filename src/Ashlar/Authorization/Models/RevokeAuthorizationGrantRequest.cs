@@ -6,9 +6,10 @@ namespace Ashlar.Authorization.Models;
 /// Request to revoke an authorization grant.
 /// </summary>
 /// <param name="GrantId">Stable authorization grant identifier to revoke.</param>
+/// <param name="Audit">Actor and request context to include in emitted security events. Grant revocation is a privilege change and requires audit context.</param>
 /// <param name="TenantId">Tenant boundary that must match the grant. A <see langword="null" /> value matches only global grants.</param>
-/// <param name="Audit">Actor and request context to include in emitted security events.</param>
-public sealed record RevokeAuthorizationGrantRequest(Guid GrantId, Guid? TenantId = null, AuditContext? Audit = null);
+/// <remarks>Service-layer mutation rejects a missing <paramref name="Audit" />.</remarks>
+public sealed record RevokeAuthorizationGrantRequest(Guid GrantId, AuditContext Audit, Guid? TenantId = null);
 
 /// <summary>
 /// Outcome for an authorization grant revocation request.
@@ -28,7 +29,12 @@ public enum AuthorizationGrantRevocationStatus
     /// <summary>
     /// The grant existed in the requested tenant boundary, but the repository did not change it.
     /// </summary>
-    NotRevoked = 2
+    NotRevoked = 2,
+
+    /// <summary>
+    /// The revocation request failed validation before storage was inspected.
+    /// </summary>
+    ValidationFailed = 3
 }
 
 /// <summary>

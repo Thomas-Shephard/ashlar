@@ -131,7 +131,7 @@ internal sealed class BootstrapService(
                     ScopeId: template.ScopeId,
                     Role: template.Role,
                     Permission: template.Permission,
-                    Audit: new AuditContext(ActorUserId: context?.UserId, IpAddress: context?.IpAddress, UserAgent: context?.UserAgent, CorrelationId: context?.CorrelationId)
+                    Audit: CreateBootstrapGrantAudit(request.Audit, context)
                 ), cancellationToken);
 
                 if (!grantResult.Succeeded)
@@ -309,6 +309,21 @@ internal sealed class BootstrapService(
         }, cancellationToken);
 
         return false;
+    }
+
+    private static AuditContext CreateBootstrapGrantAudit(AuditContext? audit, AuthenticationContext? context)
+    {
+        var items = audit?.Items is null
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>(audit.Items);
+        items["system"] = "bootstrap";
+
+        return new AuditContext(
+            ActorUserId: audit?.ActorUserId ?? context?.UserId,
+            IpAddress: audit?.IpAddress ?? context?.IpAddress,
+            UserAgent: audit?.UserAgent ?? context?.UserAgent,
+            CorrelationId: audit?.CorrelationId ?? context?.CorrelationId,
+            Items: items);
     }
 
     private string? GetSetupAuthorizationFailureReason(BootstrapOptions bootstrapOptions, string? setupSecret)
