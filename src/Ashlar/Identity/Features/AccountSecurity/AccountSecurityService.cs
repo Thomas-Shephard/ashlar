@@ -542,7 +542,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
             DisplayEmail = user.DisplayEmail,
             Name = user.Name,
             AccountState = accountState,
-            TenantId = (user as ITenantUser)?.TenantId,
+            TenantId = user is ITenantUser { TenantId: { } tenantId } ? tenantId : null,
             EmailVerifiedAt = user.EmailVerifiedAt
         };
     }

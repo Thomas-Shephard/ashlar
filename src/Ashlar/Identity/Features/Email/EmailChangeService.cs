@@ -87,7 +87,7 @@ internal sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeFailed,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = user.Id,
-                TenantId = (user as ITenantUser)?.TenantId,
+                TenantId = GetTenantId(user),
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.SameEmail.Value
             }, cancellationToken);
@@ -98,7 +98,7 @@ internal sealed class EmailChangeService(
         var rateLimit = await _rateLimitChecker.CheckAsync(new AuthenticationRateLimitCheck(RequestPurpose, AuthenticationRateLimitDimensions.DimensionName(userBucket), userBucket, _options.Value.RequestRateLimit)
         {
             UserId = user.Id,
-            TenantId = (user as ITenantUser)?.TenantId,
+            TenantId = GetTenantId(user),
             Context = EmailFlowRateLimitHelpers.ToAuthenticationContext(request.Audit)
         }, cancellationToken);
 
@@ -109,14 +109,17 @@ internal sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = user.Id,
-                TenantId = (user as ITenantUser)?.TenantId,
+                TenantId = GetTenantId(user),
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.RateLimited.Value
             }, cancellationToken);
             return Result.Failure(AshlarFailureCodes.RateLimited, "Too many requests.");
         }
 
-        var existingUser = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(newEmail, (user as ITenantUser)?.TenantId, cancellationToken);
+        var existingUser = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(
+            newEmail,
+            GetTenantId(user),
+            cancellationToken);
         if (existingUser != null) return await SuppressEmailChangeRequestAsync(newEmail, user, request.Audit, cancellationToken);
 
         var token = _dependencies.TokenContext.Generator.GenerateToken();
@@ -163,7 +166,7 @@ internal sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeRequested,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = user.Id,
-                TenantId = (user as ITenantUser)?.TenantId,
+                TenantId = GetTenantId(user),
                 Audit = request.Audit,
                 Properties = new Dictionary<string, string> { ["new_email"] = newEmail }
             }, ct);
@@ -192,7 +195,7 @@ internal sealed class EmailChangeService(
                 EventType = AshlarSecurityEventTypes.EmailChangeRequestSuppressed,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = user.Id,
-                TenantId = (user as ITenantUser)?.TenantId,
+                TenantId = GetTenantId(user),
                 Audit = audit,
                 FailureReason = AshlarFailureCodes.EmailAlreadyInUse.Value
             }, ct);
@@ -334,7 +337,7 @@ internal sealed class EmailChangeService(
             return Result.Failure(AshlarFailureCodes.TokenConsumptionFailed, InvalidOrExpiredTokenMessage);
         }
 
-        var tenantId = (user as ITenantUser)?.TenantId;
+        var tenantId = GetTenantId(user);
         var existingUser = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(newEmail, tenantId, cancellationToken);
         if (existingUser != null && existingUser.Id != user.Id)
         {
@@ -395,6 +398,11 @@ internal sealed class EmailChangeService(
         return Result.Success();
     }
 
+    private static Guid? GetTenantId(IUser user)
+    {
+        return user is ITenantUser { TenantId: { } tenantId } ? tenantId : null;
+    }
+
     private sealed class UpdatedUserWrapper(IUser original, string newEmail, DateTimeOffset? emailVerifiedAt) : ITenantUser, IHasAuditMetadata
     {
         /// <summary>
@@ -416,7 +424,7 @@ internal sealed class EmailChangeService(
         /// <summary>
         /// Existing tenant identifier.
         /// </summary>
-        public Guid? TenantId => (original as ITenantUser)?.TenantId;
+        public Guid? TenantId => GetTenantId(original);
         /// <summary>
         /// Updated email verification timestamp.
         /// </summary>

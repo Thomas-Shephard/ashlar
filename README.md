@@ -409,13 +409,38 @@ services.AddAshlarTotp(options =>
 ```
 
 ### Enrollment
-To enroll a user, generate a new shared secret and an authenticator URI:
+To enroll a user, generate a new shared secret and an authenticator URI. Self-service
+enrollment is a sensitive account-security mutation, so the request must include proof
+created server-side from the current authenticated session. If the account has no usable
+additional-verification factor yet, use fresh primary-authentication proof; replacing an
+existing factor must use fresh MFA proof.
 
 ```csharp
+using Ashlar.AspNetCore.Mfa;
+
 // 1. Start enrollment (totpService is ITotpService)
 // actorUserId must come from the authenticated session owner, not request input.
+if (!httpContext.TryGetAshlarSessionContext(out var actorUserId, out var sessionId, out _))
+{
+    return Results.Forbid();
+}
+
+var proof = httpContext.CreateFreshPrimaryAuthenticationProof(
+    stepUpService,
+    TimeSpan.FromMinutes(10));
+if (!proof.Succeeded)
+{
+    return Results.Forbid();
+}
+
 var enrollment = await totpService.StartEnrollmentAsync(
-    new StartTotpEnrollmentRequest(actorUserId, "Ashlar", "user@example.com"));
+    new StartTotpEnrollmentRequest(actorUserId, "Ashlar", "user@example.com")
+    {
+        FreshPrimaryAuthenticationProof = proof.Value,
+        CurrentSessionId = sessionId,
+        Tenant = httpContext.ToTenantContext(),
+        Audit = httpContext.ToAuditContext()
+    });
 
 // 2. Return enrollment.AuthenticatorUri to the client for QR code generation.
 // 3. Keep enrollment.SharedSecret temporarily to verify the first code.
@@ -426,7 +451,13 @@ The user must verify a code from their authenticator app to finalize enrollment:
 ```csharp
 // 4. Verify first code and finalize enrollment for the authenticated owner
 var result = await totpService.CompleteEnrollmentAsync(
-    new VerifyTotpEnrollmentRequest(actorUserId, sharedSecret, userInputCode));
+    new VerifyTotpEnrollmentRequest(actorUserId, sharedSecret, userInputCode)
+    {
+        FreshPrimaryAuthenticationProof = proof.Value,
+        CurrentSessionId = sessionId,
+        Tenant = httpContext.ToTenantContext(),
+        Audit = httpContext.ToAuditContext()
+    });
 bool success = result.Succeeded;
 ```
 
@@ -454,7 +485,19 @@ if (result.Status == MfaAuthenticationStatus.Succeeded)
 To disable TOTP for the authenticated account owner:
 
 ```csharp
-await totpService.DisableAsync(new DisableTotpRequest(actorUserId));
+var proof = httpContext.CreateFreshMfaProof(stepUpService, new StepUpRequirement(TimeSpan.FromMinutes(10)));
+if (!proof.Succeeded)
+{
+    return Results.Forbid();
+}
+
+await totpService.DisableAsync(new DisableTotpRequest(actorUserId)
+{
+    FreshMfaProof = proof.Value,
+    CurrentSessionId = sessionId,
+    Tenant = httpContext.ToTenantContext(),
+    Audit = httpContext.ToAuditContext()
+});
 ```
 
 TOTP verification is automatically throttled by `IAuthenticationRateLimiter` to protect against brute-force attacks. Shared secrets are never stored in raw form; they are always encrypted using `ISecretProtector`.
@@ -566,16 +609,45 @@ services.AddAshlarRecoveryCodes(options =>
 });
 ```
 
-To generate and retrieve the raw recovery codes for a user:
+To generate and retrieve the raw recovery codes for the authenticated account owner, first
+require recent additional verification and create fresh MFA proof from the current server-side
+session. Do not bind proof objects, user ids, tenant scope, or session ids from request JSON.
 
 ```csharp
+using Ashlar.AspNetCore.Mfa;
 using Ashlar.Identity.Providers.RecoveryCode;
 
 var recoveryCodes = httpContext.RequestServices.GetRequiredService<IRecoveryCodeService>();
+var stepUpService = httpContext.RequestServices.GetRequiredService<IStepUpAuthenticationService>();
+
+if (!httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out _))
+{
+    return Results.Forbid();
+}
+
+var proof = httpContext.CreateFreshMfaProof(
+    stepUpService,
+    new StepUpRequirement(TimeSpan.FromMinutes(10)));
+if (!proof.Succeeded)
+{
+    return Results.Forbid();
+}
 
 // Generates new codes. Any existing codes are revoked.
-var rawCodes = await recoveryCodes.GenerateRecoveryCodesAsync(userId);
+var rawCodes = await recoveryCodes.GenerateRecoveryCodesAsync(
+    userId,
+    new RecoveryCodeGenerationRequest
+    {
+        FreshMfaProof = proof.Value,
+        CurrentSessionId = sessionId,
+        Tenant = httpContext.ToTenantContext(),
+        Audit = httpContext.ToAuditContext()
+    });
 ```
+
+Use `GenerateRecoveryCodesPrivilegedAsync` and `RevokeRecoveryCodesPrivilegedAsync` only
+from explicitly authorized admin or account-recovery workflows with audit context. Ordinary
+self-service account endpoints should use the proof-bound methods above.
 
 To verify a recovery code during sign-in, continue the pending MFA handshake through the MFA orchestrator with a `RecoveryCodeAssertion`:
 

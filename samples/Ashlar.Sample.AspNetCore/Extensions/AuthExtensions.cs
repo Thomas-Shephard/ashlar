@@ -72,7 +72,7 @@ internal static class HttpContextExtensions
             IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
             UserAgent: httpContext.Request.Headers.UserAgent.ToString(),
             CorrelationId: httpContext.TraceIdentifier,
-            TenantId: (user as ITenantUser)?.TenantId,
+            TenantId: user is ITenantUser { TenantId: { } tenantId } ? tenantId : null,
             PrimaryProvider: primaryProvider);
     }
 

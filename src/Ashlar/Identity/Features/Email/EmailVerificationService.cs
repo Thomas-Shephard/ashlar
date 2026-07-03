@@ -97,7 +97,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         {
             Email = user.DisplayEmail,
             UserId = user.Id,
-            TenantId = (user as ITenantUser)?.TenantId,
+            TenantId = GetTenantId(user),
             Context = EmailFlowRateLimitHelpers.ToAuthenticationContext(request.Audit)
         }, cancellationToken);
 
@@ -108,7 +108,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationRateLimited,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = user.Id,
-                TenantId = (user as ITenantUser)?.TenantId,
+                TenantId = GetTenantId(user),
                 Audit = request.Audit,
                 FailureReason = AshlarFailureCodes.RateLimited.Value
             }, cancellationToken);
@@ -158,7 +158,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerificationRequested,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = user.Id,
-                TenantId = (user as ITenantUser)?.TenantId,
+                TenantId = GetTenantId(user),
                 Audit = request.Audit
             }, ct);
         });
@@ -293,7 +293,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
                 EventType = AshlarSecurityEventTypes.EmailVerified,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = userId,
-                TenantId = (updatedUser as ITenantUser)?.TenantId,
+                TenantId = GetTenantId(updatedUser),
                 Audit = request.Audit
             }, ct);
 
@@ -303,6 +303,11 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         await transaction.CommitAsync(cancellationToken);
 
         return Result.Success();
+    }
+
+    private static Guid? GetTenantId(IUser user)
+    {
+        return user is ITenantUser { TenantId: { } tenantId } ? tenantId : null;
     }
 
     private sealed class UpdatedUserWrapper(IUser original, DateTimeOffset? emailVerifiedAt) : ITenantUser, IHasAuditMetadata
@@ -326,7 +331,7 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         /// <summary>
         /// Tenant that owns the user.
         /// </summary>
-        public Guid? TenantId => (original as ITenantUser)?.TenantId;
+        public Guid? TenantId => GetTenantId(original);
         /// <summary>
         /// Timestamp assigned when the email address is verified.
         /// </summary>

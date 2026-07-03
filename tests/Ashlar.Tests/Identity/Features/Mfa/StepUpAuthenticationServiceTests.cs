@@ -36,6 +36,103 @@ internal sealed class StepUpAuthenticationServiceTests
     }
 
     [Test]
+    public void CreateFreshMfaProofShouldScopeProofToFreshSession()
+    {
+        var service = CreateService();
+        var tenantId = Guid.NewGuid();
+        var session = CreateSession(
+            tenantId: tenantId,
+            additionalVerificationAt: _now.AddMinutes(-1),
+            additionalVerificationProvider: TotpProvider(),
+            additionalVerificationFactor: "totp");
+
+        var result = service.CreateFreshMfaProof(new StepUpEvaluationRequest(
+            session,
+            new StepUpRequirement(TimeSpan.FromMinutes(10), [TotpProvider()], ["totp"])));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value!.UserId, Is.EqualTo(session.UserId));
+            Assert.That(result.Value.TenantId, Is.EqualTo(tenantId));
+            Assert.That(result.Value.SessionId, Is.EqualTo(session.Id));
+            Assert.That(result.Value.VerifiedAt, Is.EqualTo(session.AdditionalVerificationAt));
+            Assert.That(result.Value.ExpiresAt, Is.EqualTo(session.AdditionalVerificationAt!.Value.AddMinutes(10)));
+        }
+    }
+
+    [Test]
+    public void CreateFreshMfaProofShouldRejectStaleOrMissingVerification()
+    {
+        var service = CreateService();
+        var stale = service.CreateFreshMfaProof(new StepUpEvaluationRequest(
+            CreateSession(additionalVerificationAt: _now.AddMinutes(-11)),
+            new StepUpRequirement(TimeSpan.FromMinutes(10))));
+        var missing = service.CreateFreshMfaProof(new StepUpEvaluationRequest(
+            CreateSession(),
+            new StepUpRequirement(TimeSpan.FromMinutes(10))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stale.Succeeded, Is.False);
+            Assert.That(stale.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpExpired));
+            Assert.That(missing.Succeeded, Is.False);
+            Assert.That(missing.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+        }
+    }
+
+    [Test]
+    public void CreateFreshPrimaryAuthenticationProofShouldScopeProofToFreshSession()
+    {
+        var service = CreateService();
+        var tenantId = Guid.NewGuid();
+        var session = CreateSession(tenantId: tenantId, authenticatedAt: _now.AddMinutes(-1));
+
+        var result = service.CreateFreshPrimaryAuthenticationProof(new PrimaryAuthenticationEvaluationRequest(session, TimeSpan.FromMinutes(10)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value!.UserId, Is.EqualTo(session.UserId));
+            Assert.That(result.Value.TenantId, Is.EqualTo(tenantId));
+            Assert.That(result.Value.SessionId, Is.EqualTo(session.Id));
+            Assert.That(result.Value.AuthenticatedAt, Is.EqualTo(session.AuthenticatedAt));
+            Assert.That(result.Value.ExpiresAt, Is.EqualTo(session.AuthenticatedAt!.Value.AddMinutes(10)));
+        }
+    }
+
+    [Test]
+    public void CreateFreshPrimaryAuthenticationProofShouldRejectMissingStaleOrInactiveSession()
+    {
+        var service = CreateService();
+        var missing = service.CreateFreshPrimaryAuthenticationProof(new PrimaryAuthenticationEvaluationRequest(CreateSession(), TimeSpan.FromMinutes(10)));
+        var stale = service.CreateFreshPrimaryAuthenticationProof(new PrimaryAuthenticationEvaluationRequest(CreateSession(authenticatedAt: _now.AddMinutes(-11)), TimeSpan.FromMinutes(10)));
+        var future = service.CreateFreshPrimaryAuthenticationProof(new PrimaryAuthenticationEvaluationRequest(CreateSession(authenticatedAt: _now.AddMinutes(1)), TimeSpan.FromMinutes(10)));
+        var inactive = service.CreateFreshPrimaryAuthenticationProof(new PrimaryAuthenticationEvaluationRequest(CreateSession(expiresAt: _now, authenticatedAt: _now.AddMinutes(-1)), TimeSpan.FromMinutes(10)));
+        var missingSession = service.CreateFreshPrimaryAuthenticationProof(new PrimaryAuthenticationEvaluationRequest(null, TimeSpan.FromMinutes(10)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missing.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(stale.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpExpired));
+            Assert.That(future.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpExpired));
+            Assert.That(inactive.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactive));
+            Assert.That(missingSession.FailureCode, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactive));
+        }
+    }
+
+    [Test]
+    public void CreateFreshPrimaryAuthenticationProofShouldRejectInvalidRequests()
+    {
+        var service = CreateService();
+
+        Assert.Throws<ArgumentNullException>(() => service.CreateFreshPrimaryAuthenticationProof(null!));
+        Assert.Throws<ArgumentOutOfRangeException>(() => service.CreateFreshPrimaryAuthenticationProof(new PrimaryAuthenticationEvaluationRequest(
+            CreateSession(authenticatedAt: _now),
+            TimeSpan.Zero)));
+    }
+
+    [Test]
     public void EvaluateShouldFailForExpiredAdditionalVerification()
     {
         var service = CreateService();
@@ -206,6 +303,8 @@ internal sealed class StepUpAuthenticationServiceTests
 
     private AuthenticationSession CreateSession(
         DateTimeOffset? expiresAt = null,
+        Guid? tenantId = null,
+        DateTimeOffset? authenticatedAt = null,
         DateTimeOffset? additionalVerificationAt = null,
         AuthenticationProviderKey? additionalVerificationProvider = null,
         string? additionalVerificationFactor = null)
@@ -214,8 +313,10 @@ internal sealed class StepUpAuthenticationServiceTests
         {
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid(),
+            TenantId = tenantId,
             TokenHash = "hashed-token",
             CreatedAt = _now.AddHours(-1),
+            AuthenticatedAt = authenticatedAt,
             ExpiresAt = expiresAt ?? _now.AddHours(1),
             AdditionalVerificationAt = additionalVerificationAt,
             AdditionalVerificationProvider = additionalVerificationProvider,
