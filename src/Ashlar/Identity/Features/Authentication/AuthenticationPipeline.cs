@@ -424,11 +424,7 @@ public sealed class AuthenticationPipeline(
             }
 
             return await CompleteSuccessfulLoginAsync(
-                lifecycle.User,
-                lifecycle.Provider,
-                lifecycle.Context,
-                lifecycle.Status,
-                lifecycle.Result.Claims,
+                lifecycle,
                 properties: null,
                 credentialUpdatePersisted: false,
                 cancellationToken);
@@ -449,11 +445,7 @@ public sealed class AuthenticationPipeline(
             }
 
             return await CompleteSuccessfulLoginAsync(
-                lifecycle.User,
-                lifecycle.Provider,
-                lifecycle.Context,
-                lifecycle.Status,
-                lifecycle.Result.Claims,
+                lifecycle,
                 properties: null,
                 credentialUpdatePersisted: credentialUsageUpdate.UpdatePersisted,
                 cancellationToken);
@@ -484,11 +476,7 @@ public sealed class AuthenticationPipeline(
         }
 
         return await CompleteSuccessfulLoginAsync(
-            lifecycle.User,
-            lifecycle.Provider,
-            lifecycle.Context,
-            lifecycle.Status,
-            lifecycle.Result.Claims,
+            lifecycle,
             lifecycleFailureProperties,
             credentialUpdatePersisted: false,
             cancellationToken);
@@ -517,11 +505,7 @@ public sealed class AuthenticationPipeline(
     }
 
     private async Task<AuthenticationResponse> CompleteSuccessfulLoginAsync(
-        IUser user,
-        IAuthenticationProvider provider,
-        AuthenticationContext context,
-        AuthenticationStatus status,
-        IReadOnlyDictionary<string, IReadOnlyList<string>>? claims,
+        CredentialLifecycleContext lifecycle,
         Dictionary<string, string>? properties,
         bool credentialUpdatePersisted,
         CancellationToken cancellationToken)
@@ -531,14 +515,14 @@ public sealed class AuthenticationPipeline(
         {
             EventType = AshlarSecurityEventTypes.AuthenticationSucceeded,
             Outcome = SecurityEventOutcomes.Success,
-            UserId = user.Id,
-            Provider = provider.Key,
-            Context = context,
+            UserId = lifecycle.User.Id,
+            Provider = lifecycle.Provider.Key,
+            Context = lifecycle.Context,
             Properties = properties
         }, ct));
 
         await transaction.CommitAsync(cancellationToken);
-        return new AuthenticationResponse(true, user, status, claims, credentialUpdatePersisted);
+        return new AuthenticationResponse(true, lifecycle.User, lifecycle.Status, lifecycle.Result.Claims, credentialUpdatePersisted);
     }
 
     private sealed record CredentialLifecycleContext(
