@@ -504,6 +504,70 @@ internal sealed class AuthenticationSessionServiceTests
         }
     }
 
+    [Test]
+    public async Task ValidateSessionAsyncShouldSucceedForTenantUserWithMatchingTenantSession()
+    {
+        var tenantId = Guid.NewGuid();
+        var session = CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1), userId: Guid.NewGuid(), tenantId: tenantId);
+        _repositoryMock
+            .Setup(r => r.GetSessionByTokenHashAsync("hashed:raw-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(session.UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = session.UserId, DisplayEmail = "tenant@example.com", TenantId = tenantId });
+        _repositoryMock
+            .Setup(r => r.UpdateSessionLastSeenAsync(session.Id, _timeProvider.GetUtcNow(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await _service.ValidateSessionAsync("raw-token");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Succeeded));
+            Assert.That(result.Session, Is.EqualTo(session));
+            Assert.That(result.UserId, Is.EqualTo(session.UserId));
+        }
+    }
+
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    [TestCase(false, true)]
+    public async Task ValidateSessionAsyncShouldFailWhenSessionTenantDoesNotMatchCurrentUserTenant(bool userHasTenant, bool sessionHasTenant)
+    {
+        var sink = new RecordingSecurityEventSink();
+        var userTenantId = userHasTenant ? Guid.NewGuid() : (Guid?)null;
+        var sessionTenantId = sessionHasTenant ? Guid.NewGuid() : (Guid?)null;
+        var session = CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1), userId: Guid.NewGuid(), tenantId: sessionTenantId);
+        _repositoryMock
+            .Setup(r => r.GetSessionByTokenHashAsync("hashed:raw-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(session.UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = session.UserId, DisplayEmail = "user@example.com", TenantId = userTenantId });
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: sink, UserRepository: _userRepositoryMock.Object));
+
+        var result = await service.ValidateSessionAsync("raw-token");
+
+        using (Assert.EnterMultipleScope())
+        {
+            var securityEvent = sink.Events.Single();
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Status, Is.EqualTo(AuthenticationSessionValidationStatus.Failed));
+            Assert.That(result.Session, Is.EqualTo(session));
+            Assert.That(result.UserId, Is.EqualTo(session.UserId));
+            Assert.That(securityEvent.TenantId, Is.EqualTo(sessionTenantId));
+            Assert.That(securityEvent.FailureReason, Is.EqualTo(AshlarFailureCodes.TenantMismatchValue));
+        }
+
+        _repositoryMock.Verify(r => r.UpdateSessionLastSeenAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [TestCase(null)]
     [TestCase(" ")]
     public async Task ValidateSessionAsyncShouldFailForMissingToken(string? token)
@@ -1465,12 +1529,13 @@ internal sealed class AuthenticationSessionServiceTests
             new AuthenticationSessionServiceDependencies(_userRepositoryMock.Object, Options: new AuthenticationSessionOptions { MaxMetadataLength = 0 })));
     }
 
-    private AuthenticationSession CreateSession(DateTimeOffset expiresAt, DateTimeOffset? lastSeenAt = null, Guid? userId = null)
+    private AuthenticationSession CreateSession(DateTimeOffset expiresAt, DateTimeOffset? lastSeenAt = null, Guid? userId = null, Guid? tenantId = null)
     {
         return new AuthenticationSession
         {
             Id = Guid.NewGuid(),
             UserId = userId ?? Guid.NewGuid(),
+            TenantId = tenantId,
             TokenHash = "hashed:raw-token",
             CreatedAt = _timeProvider.GetUtcNow().AddDays(-1),
             ExpiresAt = expiresAt,

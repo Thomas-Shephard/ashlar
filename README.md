@@ -875,6 +875,8 @@ Conditional fresh MFA is weaker than strict fresh MFA because a user with no usa
 
 When supplied to `CreateSessionAsync`, session IP address, user agent, and metadata are persisted by default. These values can contain personal data, so applications should only pass them when their privacy policy and security requirements allow it. Use `AuthenticationSessionOptions.StoreIpAddress`, `StoreUserAgent`, and `StoreMetadata` to opt out, and tune the max-length options if the defaults do not fit your storage policy.
 
+Authentication sessions are tenant-bound. Session creation derives a tenant scope that must exactly match the referenced user: global users receive only global sessions, and tenant users receive only sessions for their tenant. Bundled PostgreSQL and SQLite schemas also keep user tenant membership immutable and enforce session/user tenant parity at the database boundary. Session validation re-checks the current user tenant against the persisted session tenant before accepting the token, so custom stores or repair flows that drift these values fail closed.
+
 ```csharp
 var createResult = await sessionService.CreateSessionAsync(
     authenticationResult.User.Id,

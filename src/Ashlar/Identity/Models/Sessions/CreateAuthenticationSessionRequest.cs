@@ -8,7 +8,7 @@ namespace Ashlar.Identity.Models.Sessions;
 /// <param name="UserAgent">Client user-agent text captured by the host application. It may be user supplied.</param>
 /// <param name="Metadata">Optional host-defined session metadata. Do not include secrets or bearer tokens.</param>
 /// <param name="CorrelationId">Host-defined identifier for tracing the session issuance request.</param>
-/// <param name="TenantId">Tenant scope for the issued session, or <see langword="null" /> for a global session.</param>
+/// <param name="TenantId">Tenant scope for the issued session. It must exactly match the current tenant ownership of the referenced user; <see langword="null" /> issues a global session only for a global user.</param>
 /// <param name="AuthenticatedAt">UTC time when primary authentication completed.</param>
 /// <param name="PrimaryProvider">Provider that authenticated the primary credential.</param>
 public sealed record CreateAuthenticationSessionRequest(
