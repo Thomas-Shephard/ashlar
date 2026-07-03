@@ -16,9 +16,9 @@ public sealed class SqlitePasskeyChallengeRepository(ISqliteConnectionProvider c
 
         const string sql = """
             INSERT INTO ashlar_passkey_challenges
-                (id, version, purpose, user_id, handshake_token_hash, factor_type, display_name, challenge, options_json, relying_party_id, origin, created_at, expires_at, consumed_at)
+                (id, version, purpose, user_id, tenant_id, handshake_token_hash, factor_type, display_name, challenge, options_json, relying_party_id, origin, created_at, expires_at, consumed_at)
             VALUES
-                ($id, $version, $purpose, $userId, $handshakeTokenHash, $factorType, $displayName, $challenge, $optionsJson, $relyingPartyId, $origin, $createdAt, $expiresAt, $consumedAt);
+                ($id, $version, $purpose, $userId, $tenantId, $handshakeTokenHash, $factorType, $displayName, $challenge, $optionsJson, $relyingPartyId, $origin, $createdAt, $expiresAt, $consumedAt);
             """;
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -32,7 +32,7 @@ public sealed class SqlitePasskeyChallengeRepository(ISqliteConnectionProvider c
     public async Task<PasskeyChallenge?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
         const string sql = """
-            SELECT id, version, purpose, user_id, handshake_token_hash, factor_type, display_name, challenge, options_json,
+            SELECT id, version, purpose, user_id, tenant_id, handshake_token_hash, factor_type, display_name, challenge, options_json,
                    relying_party_id, origin, created_at, expires_at, consumed_at
             FROM ashlar_passkey_challenges
             WHERE id = $id;
@@ -80,6 +80,7 @@ public sealed class SqlitePasskeyChallengeRepository(ISqliteConnectionProvider c
         command.AddParameter("$version", challenge.Version);
         command.AddParameter("$purpose", challenge.Purpose);
         command.AddNullableGuidParameter("$userId", challenge.UserId);
+        command.AddNullableGuidParameter("$tenantId", challenge.TenantId);
         command.AddParameter("$handshakeTokenHash", challenge.HandshakeTokenHash);
         command.AddParameter("$factorType", challenge.FactorType);
         command.AddParameter("$displayName", challenge.DisplayName);
@@ -100,6 +101,7 @@ public sealed class SqlitePasskeyChallengeRepository(ISqliteConnectionProvider c
             Version = reader.GetString(reader.GetOrdinal("version")),
             Purpose = reader.GetString(reader.GetOrdinal("purpose")),
             UserId = reader.GetNullableGuidFromText("user_id"),
+            TenantId = reader.GetNullableGuidFromText("tenant_id"),
             HandshakeTokenHash = reader.GetNullableString("handshake_token_hash"),
             FactorType = reader.GetNullableString("factor_type"),
             DisplayName = reader.GetNullableString("display_name"),

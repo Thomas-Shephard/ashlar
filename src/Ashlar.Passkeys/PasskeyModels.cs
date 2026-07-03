@@ -8,8 +8,9 @@ namespace Ashlar.Passkeys;
 /// </summary>
 /// <param name="UserId">The user id.</param>
 /// <param name="DisplayName">The passkey display name.</param>
+/// <param name="Tenant">The tenant scope that must own the user. Use <see cref="TenantContext.Global" /> or omit for global users only.</param>
 /// <param name="Audit">The optional audit context.</param>
-public sealed record StartPasskeyRegistrationRequest(Guid UserId, string DisplayName, AuditContext? Audit = null);
+public sealed record StartPasskeyRegistrationRequest(Guid UserId, string DisplayName, TenantContext? Tenant = null, AuditContext? Audit = null);
 /// <summary>
 /// Represents a request to complete passkey registration.
 /// </summary>
@@ -17,8 +18,9 @@ public sealed record StartPasskeyRegistrationRequest(Guid UserId, string Display
 /// <param name="CredentialResponse">The browser credential response.</param>
 /// <param name="DisplayName">The optional passkey display name.</param>
 /// <param name="UserId">The expected user id for the registration challenge.</param>
+/// <param name="Tenant">The tenant scope that must match the challenge and user. Use <see cref="TenantContext.Global" /> or omit for global users only.</param>
 /// <param name="Audit">The optional audit context.</param>
-public sealed record CompletePasskeyRegistrationRequest(Guid ChallengeId, JsonElement CredentialResponse, string? DisplayName = null, Guid? UserId = null, AuditContext? Audit = null);
+public sealed record CompletePasskeyRegistrationRequest(Guid ChallengeId, JsonElement CredentialResponse, string? DisplayName = null, Guid? UserId = null, TenantContext? Tenant = null, AuditContext? Audit = null);
 /// <summary>
 /// Represents a request to start passkey authentication.
 /// </summary>

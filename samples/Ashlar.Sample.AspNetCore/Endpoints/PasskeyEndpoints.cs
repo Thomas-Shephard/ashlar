@@ -23,13 +23,13 @@ internal static class PasskeyEndpoints
 
     private static async Task<IResult> StartRegistrationAsync(PasskeyDisplayNameRequest request, IPasskeyService passkeys, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
     {
-        var result = await passkeys.StartRegistrationAsync(new StartPasskeyRegistrationRequest(user.GetAshlarUserId(), request.DisplayName ?? "Passkey", httpContext.ToAuditContext()), cancellationToken);
+        var result = await passkeys.StartRegistrationAsync(new StartPasskeyRegistrationRequest(user.GetAshlarUserId(), request.DisplayName ?? "Passkey", httpContext.ToTenantContext(), httpContext.ToAuditContext()), cancellationToken);
         return Results.Json(new { result.ChallengeId, result.ExpiresAt, options = JsonDocument.Parse(result.OptionsJson).RootElement });
     }
 
     private static async Task<IResult> CompleteRegistrationAsync(PasskeyCompleteRegistrationSampleRequest request, IPasskeyService passkeys, ClaimsPrincipal user, HttpContext httpContext, CancellationToken cancellationToken)
     {
-        var result = await passkeys.CompleteRegistrationAsync(new CompletePasskeyRegistrationRequest(request.ChallengeId, request.CredentialResponse, request.DisplayName, user.GetAshlarUserId(), httpContext.ToAuditContext()), cancellationToken);
+        var result = await passkeys.CompleteRegistrationAsync(new CompletePasskeyRegistrationRequest(request.ChallengeId, request.CredentialResponse, request.DisplayName, user.GetAshlarUserId(), httpContext.ToTenantContext(), httpContext.ToAuditContext()), cancellationToken);
         return result.Succeeded ? Results.Ok() : Results.BadRequest(SampleResultErrors.From(result));
     }
 

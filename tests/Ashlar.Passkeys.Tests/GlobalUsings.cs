@@ -7,3 +7,4 @@ global using Ashlar.Identity.Models.Credentials;
 global using Ashlar.Identity.Models.Handshakes;
 global using Ashlar.Identity.Models.Mfa;
 global using Ashlar.Identity.Models.Passkeys;
+global using Ashlar.Identity.Models.Tenants;

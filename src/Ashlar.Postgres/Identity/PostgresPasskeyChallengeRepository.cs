@@ -21,9 +21,9 @@ public sealed class PostgresPasskeyChallengeRepository(IPostgresConnectionProvid
 
         const string sql = """
             INSERT INTO ashlar_passkey_challenges
-                (id, version, purpose, user_id, handshake_token_hash, factor_type, display_name, challenge, options_json, relying_party_id, origin, created_at, expires_at, consumed_at)
+                (id, version, purpose, user_id, tenant_id, handshake_token_hash, factor_type, display_name, challenge, options_json, relying_party_id, origin, created_at, expires_at, consumed_at)
             VALUES
-                (@Id, @Version, @Purpose, @UserId, @HandshakeTokenHash, @FactorType, @DisplayName, @Challenge, @OptionsJson::jsonb, @RelyingPartyId, @Origin, @CreatedAt, @ExpiresAt, @ConsumedAt)
+                (@Id, @Version, @Purpose, @UserId, @TenantId, @HandshakeTokenHash, @FactorType, @DisplayName, @Challenge, @OptionsJson::jsonb, @RelyingPartyId, @Origin, @CreatedAt, @ExpiresAt, @ConsumedAt)
             """;
 
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -43,7 +43,7 @@ public sealed class PostgresPasskeyChallengeRepository(IPostgresConnectionProvid
     public async Task<PasskeyChallenge?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
         const string sql = """
-            SELECT id, version, purpose, user_id AS UserId, handshake_token_hash AS HandshakeTokenHash, factor_type AS FactorType, display_name AS DisplayName, challenge, options_json::text AS OptionsJson,
+            SELECT id, version, purpose, user_id AS UserId, tenant_id AS TenantId, handshake_token_hash AS HandshakeTokenHash, factor_type AS FactorType, display_name AS DisplayName, challenge, options_json::text AS OptionsJson,
                    relying_party_id AS RelyingPartyId, origin, created_at AS CreatedAt, expires_at AS ExpiresAt, consumed_at AS ConsumedAt
             FROM ashlar_passkey_challenges
             WHERE id = @Id

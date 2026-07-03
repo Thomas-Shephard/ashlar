@@ -22,6 +22,10 @@ public sealed class PasskeyChallenge
     /// </summary>
     public Guid? UserId { get; init; }
     /// <summary>
+    /// Tenant security boundary for the challenged user, or <see langword="null" /> when the challenge belongs to a global user.
+    /// </summary>
+    public Guid? TenantId { get; init; }
+    /// <summary>
     /// Storage-safe hash of the raw handshake token for MFA passkey verification, when applicable.
     /// </summary>
     public string? HandshakeTokenHash { get; init; }
