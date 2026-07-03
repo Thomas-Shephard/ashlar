@@ -193,6 +193,11 @@ public sealed class AshlarOidcInvitationRegistrationService
             return new AshlarOidcInvitationRegistrationResult(emailMatch.Status ?? AshlarOidcInvitationRegistrationStatus.Failed, Assertion: assertion);
         }
 
+        if (_transactionProvider is not IAshlarDurableTransactionProvider)
+        {
+            return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.Failed, Assertion: assertion);
+        }
+
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         var acceptance = await _invitationService.AcceptInvitationAsync(

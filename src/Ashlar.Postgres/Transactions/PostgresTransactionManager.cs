@@ -7,7 +7,7 @@ namespace Ashlar.Postgres.Transactions;
 /// <summary>
 /// Manages the connection and transaction lifecycle for a scoped database interaction.
 /// </summary>
-internal sealed class PostgresTransactionManager : IAshlarTransactionProvider, IPostgresConnectionProvider, IAsyncDisposable
+internal sealed class PostgresTransactionManager : IAshlarDurableTransactionProvider, IPostgresConnectionProvider, IAsyncDisposable
 {
     private static readonly Action<ILogger, int, int, Exception?> PostCommitHookFailed =
         LoggerMessage.Define<int, int>(
