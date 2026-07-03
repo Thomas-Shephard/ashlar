@@ -69,7 +69,12 @@ public sealed class PasskeyService : IPasskeyService
         var displayName = NormalizeDisplayName(request.DisplayName);
         var challengeValue = CreateChallenge();
         var optionsJson = _ceremonyValidator.CreateRegistrationOptions(_options, user, displayName, challengeValue, existing.Where(IsPasskey).ToList());
-        var challenge = CreateChallengeEntity(RegistrationPurpose, challengeValue, optionsJson, request.UserId, displayName: displayName, tenantId: request.Tenant?.TenantId);
+        var challenge = CreateChallengeEntity(
+            RegistrationPurpose,
+            challengeValue,
+            optionsJson,
+            request.UserId,
+            new ChallengeEntityMetadata(DisplayName: displayName, TenantId: request.Tenant?.TenantId));
         await _challengeRepository.CreateAsync(challenge, cancellationToken);
         await RecordAsync(AshlarSecurityEventTypes.PasskeyRegistrationStarted, SecurityEventOutcomes.Success, request.UserId, null, request.Audit, cancellationToken);
         return new PasskeyCeremonyOptions(challenge.Id, optionsJson, challenge.ExpiresAt);
@@ -308,8 +313,7 @@ public sealed class PasskeyService : IPasskeyService
             challengeValue,
             optionsJson,
             handshake.UserId,
-            handshakeTokenHash,
-            factorType);
+            new ChallengeEntityMetadata(HandshakeTokenHash: handshakeTokenHash, FactorType: factorType));
         await _challengeRepository.CreateAsync(challenge, cancellationToken);
         await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationStarted, SecurityEventOutcomes.Success, handshake.UserId, null, request.Audit, cancellationToken);
         return Result.Success(new PasskeyCeremonyOptions(challenge.Id, optionsJson, challenge.ExpiresAt));
@@ -557,7 +561,7 @@ public sealed class PasskeyService : IPasskeyService
         return user;
     }
 
-    private PasskeyChallenge CreateChallengeEntity(string purpose, string challenge, string optionsJson, Guid? userId, string? handshakeTokenHash = null, string? factorType = null, string? displayName = null, Guid? tenantId = null)
+    private PasskeyChallenge CreateChallengeEntity(string purpose, string challenge, string optionsJson, Guid? userId, ChallengeEntityMetadata metadata = default)
     {
         var now = _timeProvider.GetUtcNow();
         return new PasskeyChallenge
@@ -566,10 +570,10 @@ public sealed class PasskeyService : IPasskeyService
             Version = Guid.NewGuid().ToString("N"),
             Purpose = purpose,
             UserId = userId,
-            TenantId = tenantId,
-            HandshakeTokenHash = handshakeTokenHash,
-            FactorType = factorType,
-            DisplayName = displayName,
+            TenantId = metadata.TenantId,
+            HandshakeTokenHash = metadata.HandshakeTokenHash,
+            FactorType = metadata.FactorType,
+            DisplayName = metadata.DisplayName,
             Challenge = challenge,
             OptionsJson = optionsJson,
             RelyingPartyId = _options.RelyingPartyId,
@@ -578,6 +582,8 @@ public sealed class PasskeyService : IPasskeyService
             ExpiresAt = now.Add(_options.ChallengeLifetime)
         };
     }
+
+    private readonly record struct ChallengeEntityMetadata(string? HandshakeTokenHash = null, string? FactorType = null, string? DisplayName = null, Guid? TenantId = null);
 
     private static string? NormalizeFactorType(string factorType)
     {
