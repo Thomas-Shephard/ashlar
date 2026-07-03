@@ -80,6 +80,7 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
             Assert.That(blocked.Value.Items[0].BucketId, Does.Not.StartWith(_keyPrefix));
             Assert.That(blocked.Value.Items[0].BucketId, Does.Not.Contain("auth:"));
             Assert.That(blocked.Value.Items[0].BucketId, Does.Not.Contain(blockedKey));
+            Assert.That(blocked.Value.Items[0].BucketId, Does.Match("^[0-9a-f]{64}$"));
         }
     }
 
@@ -112,14 +113,60 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
         }
     }
 
+    [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde")]
+    [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0")]
+    [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg")]
+    [TestCase("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF")]
+    [TestCase("0123456789abcdef0123456789abcdef:../../0123456789abcdef01234567a")]
+    public async Task GetBucketAsyncReturnsNotFoundForMalformedRedisBucketId(string bucketId)
+    {
+        var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
+
+        var lookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(bucketId, "detail"));
+
+        Assert.That(lookup.Succeeded, Is.False);
+    }
+
+    [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde")]
+    [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0")]
+    [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg")]
+    [TestCase("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF")]
+    [TestCase("0123456789abcdef0123456789abcdef:../../0123456789abcdef01234567a")]
+    public async Task ResetBucketAsyncReturnsNotFoundForMalformedRedisBucketIdAndDoesNotDeleteExistingBucket(string bucketId)
+    {
+        var limiter = _provider.GetRequiredService<IAuthenticationRateLimiter>();
+        var administration = _provider.GetRequiredService<IAuthenticationRateLimitAdministrationService>();
+        await limiter.CheckAsync(
+            new RateLimitAttempt { Purpose = "detail", Key = UniqueKey() },
+            new RateLimitRule { PermitLimit = 5, Window = TimeSpan.FromMinutes(10) });
+        var existing = (await administration.SearchBucketsAsync(new SearchAuthenticationRateLimitBucketsRequest { Purpose = "detail" })).Value!.Items.Single();
+
+        var reset = await administration.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest(bucketId, "detail", new AuditContext(Guid.NewGuid())));
+        var existingLookup = await administration.GetBucketAsync(new AuthenticationRateLimitBucketLookupRequest(existing.BucketId, "detail"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reset.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.NotFound));
+            Assert.That(existingLookup.Value!.BucketId, Is.EqualTo(existing.BucketId));
+        }
+    }
+
     [Test]
     public async Task RepositorySkipsMalformedRowsAndCanProjectExpiredRows()
     {
         var database = GetConnection().GetDatabase();
         var prefix = _keyPrefix.TrimEnd(':');
-        var malformedKey = (RedisKey)$"{prefix}:auth:malformed";
-        var expiredKey = (RedisKey)$"{prefix}:auth:expired";
-        await database.HashSetAsync(malformedKey, [new HashEntry("purpose", "malformed")]);
+        var malformedSuffixKey = (RedisKey)$"{prefix}:auth:malformed";
+        var malformedHashKey = (RedisKey)$"{prefix}:auth:{new string('0', 64)}";
+        var expiredKey = (RedisKey)$"{prefix}:auth:{new string('1', 64)}";
+        await database.HashSetAsync(malformedSuffixKey,
+        [
+            new HashEntry("purpose", "malformed"),
+            new HashEntry("count", 1),
+            new HashEntry("windowStart", Start.ToUnixTimeMilliseconds()),
+            new HashEntry("expiresAt", (Start + TimeSpan.FromMinutes(1)).ToUnixTimeMilliseconds())
+        ]);
+        await database.HashSetAsync(malformedHashKey, [new HashEntry("purpose", "malformed")]);
         await database.HashSetAsync(expiredKey,
         [
             new HashEntry("purpose", "expired"),

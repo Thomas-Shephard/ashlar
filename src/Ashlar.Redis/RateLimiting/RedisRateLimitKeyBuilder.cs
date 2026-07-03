@@ -5,6 +5,8 @@ namespace Ashlar.Redis.RateLimiting;
 
 internal static class RedisRateLimitKeyBuilder
 {
+    internal const int BucketIdLength = 64;
+
     internal static string Build(string prefix, string? purpose, string key)
     {
         var normalizedPurpose = purpose ?? string.Empty;
@@ -24,8 +26,23 @@ internal static class RedisRateLimitKeyBuilder
         return $"{NormalizePrefix(prefix)}:auth:{hex}";
     }
 
+    internal static bool IsBucketId(string bucketId)
+    {
+        if (bucketId.Length != BucketIdLength)
+        {
+            return false;
+        }
+
+        return bucketId.All(IsLowerHex);
+    }
+
     internal static string NormalizePrefix(string prefix)
     {
         return prefix.TrimEnd(':');
+    }
+
+    private static bool IsLowerHex(char character)
+    {
+        return character is >= '0' and <= '9' or >= 'a' and <= 'f';
     }
 }

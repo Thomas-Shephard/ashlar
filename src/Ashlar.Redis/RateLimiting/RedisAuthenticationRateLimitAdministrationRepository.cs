@@ -108,6 +108,10 @@ public sealed class RedisAuthenticationRateLimitAdministrationRepository : IAuth
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
+        if (!RedisRateLimitKeyBuilder.IsBucketId(request.BucketId))
+        {
+            return null;
+        }
 
         var connection = await _getConnectionAsync();
         var database = connection.GetDatabase(_options.Database ?? -1);
@@ -118,7 +122,7 @@ public sealed class RedisAuthenticationRateLimitAdministrationRepository : IAuth
             return null;
         }
 
-        return new AuthenticationRateLimitBucketSummary(row.BucketId, row.Purpose, row.Count, row.WindowStart, row.ExpiresAt, row.BlockedUntil, row.Status);
+        return row;
     }
 
     /// <summary>
@@ -131,6 +135,10 @@ public sealed class RedisAuthenticationRateLimitAdministrationRepository : IAuth
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
+        if (!RedisRateLimitKeyBuilder.IsBucketId(request.BucketId))
+        {
+            return false;
+        }
 
         var connection = await _getConnectionAsync();
         var database = connection.GetDatabase(_options.Database ?? -1);
@@ -161,6 +169,12 @@ public sealed class RedisAuthenticationRateLimitAdministrationRepository : IAuth
     {
         var keyText = key.ToString();
         var expectedPrefix = $"{prefix}:auth:";
+        var bucketId = keyText[expectedPrefix.Length..];
+        if (!RedisRateLimitKeyBuilder.IsBucketId(bucketId))
+        {
+            return null;
+        }
+
         var values = await database.HashGetAsync(key, ["purpose", "count", "windowStart", "expiresAt", "blockedUntil"]);
         if (!values[0].HasValue || !values[1].HasValue || !values[2].HasValue || !values[3].HasValue)
         {
@@ -175,7 +189,7 @@ public sealed class RedisAuthenticationRateLimitAdministrationRepository : IAuth
         var status = DeriveStatus(expiresAt, blockedUntil, now);
 
         return new AuthenticationRateLimitBucketSummary(
-            keyText[expectedPrefix.Length..],
+            bucketId,
             purpose,
             count,
             windowStart,

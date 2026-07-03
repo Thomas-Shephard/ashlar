@@ -174,6 +174,17 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
         }
     }
 
+    [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", true)]
+    [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde", false)]
+    [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0", false)]
+    [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg", false)]
+    [TestCase("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF", false)]
+    [TestCase("0123456789abcdef0123456789abcdef:../../0123456789abcdef01234567a", false)]
+    public void KeyBuilderValidatesEmittedBucketIdShape(string bucketId, bool expected)
+    {
+        Assert.That(RedisRateLimitKeyBuilder.IsBucketId(bucketId), Is.EqualTo(expected));
+    }
+
     [Test]
     public void KeyBuilderIsolatesAppSpecificPrefixes()
     {
