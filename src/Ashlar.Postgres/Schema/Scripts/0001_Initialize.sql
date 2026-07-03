@@ -278,6 +278,7 @@ CREATE INDEX IF NOT EXISTS ix_ashlar_security_events_actor_user_id ON ashlar_sec
 CREATE TABLE IF NOT EXISTS ashlar_mfa_handshakes (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
+    tenant_id UUID,
     token_hash TEXT NOT NULL UNIQUE,
     created_at TIMESTAMPTZ NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
@@ -298,9 +299,14 @@ CREATE TABLE IF NOT EXISTS ashlar_mfa_handshakes (
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_user_id ON ashlar_mfa_handshakes (user_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_tenant_user_id ON ashlar_mfa_handshakes (tenant_id, user_id);
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_expires_at ON ashlar_mfa_handshakes (expires_at) WHERE is_revoked = FALSE AND is_completed = FALSE;
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_completed_at ON ashlar_mfa_handshakes (completed_at) WHERE completed_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_revoked_at ON ashlar_mfa_handshakes (revoked_at) WHERE revoked_at IS NOT NULL;
+
+CREATE OR REPLACE TRIGGER trg_ashlar_mfa_handshakes_user_tenant_match
+BEFORE INSERT OR UPDATE OF user_id, tenant_id ON ashlar_mfa_handshakes
+FOR EACH ROW EXECUTE FUNCTION ashlar_enforce_user_tenant_match();
 
 CREATE TABLE IF NOT EXISTS ashlar_passkey_challenges (
     id UUID PRIMARY KEY,

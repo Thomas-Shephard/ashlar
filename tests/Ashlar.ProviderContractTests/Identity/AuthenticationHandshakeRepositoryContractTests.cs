@@ -15,8 +15,9 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         await using var scope = CreateAsyncScope();
         var userRepository = GetUserRepository(scope.ServiceProvider);
         var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
-        var user = await CreateUserAsync(userRepository);
-        var handshake = CreateHandshake(user.Id, requiredFactors: new HashSet<string>(TotpAndEmailFactors), verifiedFactors: new HashSet<string>(TotpFactor), metadata: new Dictionary<string, string> { ["device"] = "test", ["risk"] = "low" });
+        var tenantId = Guid.NewGuid();
+        var user = await CreateUserAsync(userRepository, tenantId: tenantId);
+        var handshake = CreateHandshake(user.Id, tenantId, requiredFactors: new HashSet<string>(TotpAndEmailFactors), verifiedFactors: new HashSet<string>(TotpFactor), metadata: new Dictionary<string, string> { ["device"] = "test", ["risk"] = "low" });
 
         await repository.CreateAsync(handshake);
 
@@ -24,6 +25,45 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
 
         Assert.That(fetched, Is.Not.Null);
         AssertHandshake(fetched!, handshake);
+    }
+
+    [Test]
+    public async Task GlobalAndTenantHandshakesRoundTripDistinctTenantScopes()
+    {
+        await using var scope = CreateAsyncScope();
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
+        var tenantId = Guid.NewGuid();
+        var globalUser = await CreateUserAsync(userRepository);
+        var tenantUser = await CreateUserAsync(userRepository, tenantId: tenantId);
+        var globalHandshake = CreateHandshake(globalUser.Id, tokenHash: "hash:global");
+        var tenantHandshake = CreateHandshake(tenantUser.Id, tenantId, tokenHash: "hash:tenant");
+
+        await repository.CreateAsync(globalHandshake);
+        await repository.CreateAsync(tenantHandshake);
+
+        var fetchedGlobal = await repository.FindByTokenHashAsync(globalHandshake.TokenHash);
+        var fetchedTenant = await repository.FindByTokenHashAsync(tenantHandshake.TokenHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fetchedGlobal!.TenantId, Is.Null);
+            Assert.That(fetchedTenant!.TenantId, Is.EqualTo(tenantId));
+            AssertHandshake(fetchedGlobal, globalHandshake);
+            AssertHandshake(fetchedTenant, tenantHandshake);
+        }
+    }
+
+    [Test]
+    public async Task CreateRejectsHandshakeTenantThatDoesNotMatchUserTenant()
+    {
+        await using var scope = CreateAsyncScope();
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var repository = GetAuthenticationHandshakeRepository(scope.ServiceProvider);
+        var tenantUser = await CreateUserAsync(userRepository, tenantId: Guid.NewGuid());
+        var handshake = CreateHandshake(tenantUser.Id, Guid.NewGuid());
+
+        Assert.That(async () => await repository.CreateAsync(handshake), Throws.InstanceOf<Exception>());
     }
 
     [Test]
@@ -350,6 +390,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
 
     private static AuthenticationHandshake CreateHandshake(
         Guid userId,
+        Guid? tenantId = null,
         string? tokenHash = null,
         IReadOnlySet<string>? requiredFactors = null,
         IReadOnlySet<string>? verifiedFactors = null,
@@ -366,7 +407,10 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
             false,
             requiredFactors ?? new HashSet<string> { "totp" },
             verifiedFactors ?? new HashSet<string>(),
-            metadata);
+            metadata)
+        {
+            TenantId = tenantId
+        };
     }
 
     private static void AssertHandshake(AuthenticationHandshake actual, AuthenticationHandshake expected)
@@ -375,6 +419,7 @@ internal abstract class AuthenticationHandshakeRepositoryContractTests : Provide
         {
             Assert.That(actual.Id, Is.EqualTo(expected.Id));
             Assert.That(actual.UserId, Is.EqualTo(expected.UserId));
+            Assert.That(actual.TenantId, Is.EqualTo(expected.TenantId));
             Assert.That(actual.TokenHash, Is.EqualTo(expected.TokenHash));
             Assert.That(actual.CreatedAt, Is.EqualTo(expected.CreatedAt));
             Assert.That(actual.ExpiresAt, Is.EqualTo(expected.ExpiresAt));

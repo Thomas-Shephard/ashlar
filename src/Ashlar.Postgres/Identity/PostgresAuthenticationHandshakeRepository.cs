@@ -24,8 +24,8 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
         ArgumentNullException.ThrowIfNull(handshake);
 
         const string sql = """
-            INSERT INTO ashlar_mfa_handshakes (id, user_id, token_hash, created_at, expires_at, is_revoked, is_completed, revoked_at, completed_at, required_factors, verified_factors, metadata)
-            VALUES (@Id, @UserId, @TokenHash, @CreatedAt, @ExpiresAt, @IsRevoked, @IsCompleted, @RevokedAt, @CompletedAt, @RequiredFactors::jsonb, @VerifiedFactors::jsonb, @Metadata::jsonb)
+            INSERT INTO ashlar_mfa_handshakes (id, user_id, tenant_id, token_hash, created_at, expires_at, is_revoked, is_completed, revoked_at, completed_at, required_factors, verified_factors, metadata)
+            VALUES (@Id, @UserId, @TenantId, @TokenHash, @CreatedAt, @ExpiresAt, @IsRevoked, @IsCompleted, @RevokedAt, @CompletedAt, @RequiredFactors::jsonb, @VerifiedFactors::jsonb, @Metadata::jsonb)
             """;
 
         var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -35,6 +35,7 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
             {
                 handshake.Id,
                 handshake.UserId,
+                handshake.TenantId,
                 handshake.TokenHash,
                 handshake.CreatedAt,
                 handshake.ExpiresAt,
@@ -62,7 +63,7 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
         ArgumentException.ThrowIfNullOrWhiteSpace(tokenHash);
 
         var sql = """
-            SELECT id AS Id, user_id AS UserId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
+            SELECT id AS Id, user_id AS UserId, tenant_id AS TenantId, token_hash AS TokenHash, created_at AS CreatedAt, expires_at AS ExpiresAt,
                    is_revoked AS IsRevoked, is_completed AS IsCompleted, revoked_at AS RevokedAt, completed_at AS CompletedAt, required_factors AS RequiredFactorsRaw,
                    verified_factors AS VerifiedFactorsRaw, metadata AS MetadataRaw
             FROM ashlar_mfa_handshakes
@@ -100,7 +101,10 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
                 metadataRaw == null ? null : JsonSerializer.Deserialize<Dictionary<string, string>>(metadataRaw),
                 await GetNullableDateTimeOffsetAsync(reader, "RevokedAt", cancellationToken),
                 await GetNullableDateTimeOffsetAsync(reader, "CompletedAt", cancellationToken)
-            );
+            )
+            {
+                TenantId = await GetNullableGuidAsync(reader, "TenantId", cancellationToken)
+            };
         }
 
         return handshake;
@@ -162,5 +166,16 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
         return await reader.IsDBNullAsync(ordinal, cancellationToken)
             ? null
             : await reader.GetFieldValueAsync<DateTimeOffset>(ordinal, cancellationToken);
+    }
+
+    private static async Task<Guid?> GetNullableGuidAsync(
+        System.Data.Common.DbDataReader reader,
+        string columnName,
+        CancellationToken cancellationToken)
+    {
+        var ordinal = reader.GetOrdinal(columnName);
+        return await reader.IsDBNullAsync(ordinal, cancellationToken)
+            ? null
+            : reader.GetGuid(ordinal);
     }
 }

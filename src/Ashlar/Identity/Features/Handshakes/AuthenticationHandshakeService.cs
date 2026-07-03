@@ -123,7 +123,10 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
             false,
             requiredFactors,
             new HashSet<string>(),
-            metadata);
+            metadata)
+        {
+            TenantId = request.Context?.TenantId
+        };
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
@@ -310,6 +313,12 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
             return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeNotFound);
         }
 
+        if (!TenantMatches(handshake, request.Context))
+        {
+            await RecordHandshakeTenantMismatchAsync(request.Context, cancellationToken);
+            return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.HandshakeNotFound);
+        }
+
         if (rateLimitMode == HandshakeRateLimitMode.LookupAndVerification)
         {
             var rateLimitResult = await CheckRateLimitAsync(handshake, request.Context, cancellationToken);
@@ -366,6 +375,12 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
 
         var handshake = await _repository.FindByTokenHashAsync(tokenHash, forUpdate: true, cancellationToken: cancellationToken);
         if (handshake == null) return Result.Failure(AshlarFailureCodes.HandshakeNotFound);
+        if (!TenantMatches(handshake, context))
+        {
+            await RecordHandshakeTenantMismatchAsync(context, cancellationToken);
+            return Result.Failure(AshlarFailureCodes.HandshakeNotFound);
+        }
+
         if (handshake.IsRevoked) return Result.Success();
 
         var updatedHandshake = handshake with { IsRevoked = true, RevokedAt = _timeProvider.GetUtcNow() };
@@ -415,6 +430,22 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
             FailureReason = reason.Value,
             Properties = new Dictionary<string, string> { [HandshakeIdProperty] = handshake.Id.ToString() }
         }, cancellationToken);
+    }
+
+    private Task RecordHandshakeTenantMismatchAsync(AuthenticationContext? context, CancellationToken cancellationToken)
+    {
+        return _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.AuthenticationHandshakeFailed,
+            Outcome = SecurityEventOutcomes.Failure,
+            Context = context,
+            FailureReason = AshlarFailureCodes.HandshakeNotFound.Value
+        }, cancellationToken);
+    }
+
+    private static bool TenantMatches(AuthenticationHandshake handshake, AuthenticationContext? context)
+    {
+        return handshake.TenantId == context?.TenantId;
     }
 
     private async Task<Result<AuthenticationHandshake>?> CheckRateLimitAsync(AuthenticationHandshake handshake, AuthenticationContext? context, CancellationToken cancellationToken)
@@ -479,7 +510,8 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
         return new AuthenticationRateLimitCheck(VerificationRateLimitPurpose, dimensionName, dimensionValue, _options.VerificationRateLimit)
         {
             Context = context,
-            UserId = handshake.UserId
+            UserId = handshake.UserId,
+            TenantId = handshake.TenantId
         };
     }
 

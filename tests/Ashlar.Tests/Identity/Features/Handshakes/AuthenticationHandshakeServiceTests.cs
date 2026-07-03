@@ -84,6 +84,25 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
+    public async Task CreateHandshakeAsyncShouldPersistTenantFromContext()
+    {
+        var tenantId = Guid.NewGuid();
+
+        var result = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(
+            Guid.NewGuid(),
+            ["totp"],
+            Context: new AuthenticationContext(TenantId: tenantId)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Value!.Handshake.TenantId, Is.EqualTo(tenantId));
+        }
+
+        _repositoryMock.Verify(r => r.CreateAsync(It.Is<AuthenticationHandshake>(h => h.TenantId == tenantId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
     public void CreateHandshakeAsyncShouldThrowOnNullRequest()
     {
         // ReSharper disable once NullableWarningSuppressionIsUsed
@@ -226,6 +245,129 @@ internal sealed class AuthenticationHandshakeServiceTests
 
         _repositoryMock.Verify(r => r.UpdateAsync(It.Is<AuthenticationHandshake>(h => h.IsCompleted && h.CompletedAt == _timeProvider.GetUtcNow()), It.IsAny<CancellationToken>()), Times.Once);
         _repositoryMock.Verify(r => r.FindByTokenHashAsync("hashed:raw-token", true, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task CompleteFactorVerificationAsyncShouldSucceedForTenantHandshakeWithMatchingTenant()
+    {
+        var tenantId = Guid.NewGuid();
+        var handshake = CreateHandshake(tenantId);
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(
+            "raw-token",
+            "totp",
+            Context: new AuthenticationContext(TenantId: tenantId)));
+
+        Assert.That(result.Succeeded, Is.True);
+    }
+
+    [Test]
+    public async Task CompleteFactorVerificationAsyncShouldFailGenericallyWhenTenantHandshakeOmitsTenant()
+    {
+        var handshake = CreateHandshake(Guid.NewGuid());
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeNotFound));
+        }
+
+        _repositoryMock.Verify(r => r.UpdateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task CompleteFactorVerificationAsyncShouldFailGenericallyWhenTenantHandshakeUsesWrongTenant()
+    {
+        var handshake = CreateHandshake(Guid.NewGuid());
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(
+            "raw-token",
+            "totp",
+            Context: new AuthenticationContext(TenantId: Guid.NewGuid())));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeNotFound));
+    }
+
+    [Test]
+    public async Task CompleteFactorVerificationAsyncShouldSucceedForGlobalHandshakeWithOmittedTenant()
+    {
+        var handshake = CreateHandshake();
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+
+        Assert.That(result.Succeeded, Is.True);
+    }
+
+    [Test]
+    public async Task CompleteFactorVerificationAsyncShouldFailGenericallyWhenGlobalHandshakeUsesTenant()
+    {
+        var handshake = CreateHandshake();
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await _service.CompleteFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest(
+            "raw-token",
+            "totp",
+            Context: new AuthenticationContext(TenantId: Guid.NewGuid())));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeNotFound));
+    }
+
+    [Test]
+    public async Task BeginVerificationAsyncShouldFailGenericallyBeforeVerificationRateLimitWhenTenantMismatches()
+    {
+        var handshake = CreateHandshake(Guid.NewGuid());
+        var wrongTenantId = Guid.NewGuid();
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await _service.BeginVerificationAsync(new BeginAuthenticationHandshakeVerificationRequest(
+            "raw-token",
+            new AuthenticationContext(TenantId: wrongTenantId)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeNotFound));
+        }
+
+        _rateLimiterMock.Verify(r => r.CheckAsync(
+            It.Is<RateLimitAttempt>(attempt => attempt.Purpose == "handshake-verify"),
+            It.IsAny<RateLimitRule>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        _eventSinkMock.Verify(sink => sink.RecordAsync(It.Is<AshlarSecurityEvent>(securityEvent =>
+            securityEvent.EventType == AshlarSecurityEventTypes.AuthenticationHandshakeFailed &&
+            securityEvent.Outcome == SecurityEventOutcomes.Failure &&
+            securityEvent.FailureReason == AshlarFailureCodes.HandshakeNotFound.Value &&
+            securityEvent.TenantId == wrongTenantId &&
+            securityEvent.UserId == null &&
+            securityEvent.Properties == null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task BeginFactorVerificationAsyncShouldFailGenericallyWhenTenantHandshakeOmitsTenant()
+    {
+        var handshake = CreateHandshake(Guid.NewGuid());
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await _service.BeginFactorVerificationAsync(new VerifyAuthenticationHandshakeRequest("raw-token", "totp"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeNotFound));
+        }
     }
 
     [Test]
@@ -1255,6 +1397,24 @@ internal sealed class AuthenticationHandshakeServiceTests
     }
 
     [Test]
+    public async Task RevokeHandshakeAsyncShouldFailGenericallyForTenantMismatch()
+    {
+        var handshake = CreateHandshake(Guid.NewGuid());
+        _repositoryMock.Setup(r => r.FindByTokenHashAsync("hashed:raw-token", true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(handshake);
+
+        var result = await _service.RevokeHandshakeAsync("raw-token", new AuthenticationContext(TenantId: Guid.NewGuid()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.HandshakeNotFound));
+        }
+
+        _repositoryMock.Verify(r => r.UpdateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public async Task RevokeHandshakeAsyncShouldFailOnStaleUpdateWithoutCommitOrSuccessEvent()
     {
         var operations = new List<string>();
@@ -1428,6 +1588,23 @@ internal sealed class AuthenticationHandshakeServiceTests
             new AuthenticationHandshakeServiceDependencies(TimeProvider: _timeProvider));
 
         Assert.That(service, Is.Not.Null);
+    }
+
+    private AuthenticationHandshake CreateHandshake(Guid? tenantId = null)
+    {
+        return new AuthenticationHandshake(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hashed:raw-token",
+            _timeProvider.GetUtcNow(),
+            _timeProvider.GetUtcNow().AddMinutes(5),
+            false,
+            false,
+            new HashSet<string> { "totp" },
+            new HashSet<string>())
+        {
+            TenantId = tenantId
+        };
     }
 
     private sealed class FixedTokenGenerator(string token) : ISecureTokenGenerator
