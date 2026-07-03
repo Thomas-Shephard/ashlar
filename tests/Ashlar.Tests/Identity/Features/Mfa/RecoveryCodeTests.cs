@@ -842,6 +842,52 @@ internal sealed class RecoveryCodeTests
     }
 
     [Test]
+    public async Task ProviderResolveCredentialAsyncReturnsNullForOverlongCodeWithoutRepositoryOrHashingWork()
+    {
+        const int maximumDefaultSubmittedCodeLength = 52;
+        var hasher = new RecordingPasswordHasher();
+        var hasherSelector = new PasswordHasherSelector([hasher]);
+        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, Options.Create(new RecoveryCodeOptions()));
+        var credentialRepository = new Mock<ICredentialRepository>(MockBehavior.Strict);
+
+        var result = await provider.ResolveCredentialAsync(Guid.NewGuid(), new RecoveryCodeAssertion(new string('A', maximumDefaultSubmittedCodeLength + 1)), null, credentialRepository.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(hasher.VerifyCalls, Is.Zero);
+        }
+
+        credentialRepository.Verify(
+            r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Test]
+    public async Task ProviderResolveCredentialAsyncAcceptsMaximumFormattedDefaultLength()
+    {
+        var hasherSelector = new PasswordHasherSelector([new PasswordHasherV1()]);
+        var options = Options.Create(new RecoveryCodeOptions());
+        var credentialRepository = new Mock<ICredentialRepository>();
+        var userId = Guid.NewGuid();
+        var idCode = "ABCDE";
+        var secretCode = "ABCD-EFGH-IJKL";
+        var rawCode = $"{idCode}-{secretCode}{new string(' ', 32)}";
+        var hashedCode = Convert.ToBase64String(hasherSelector.DefaultHasher.HashPassword(secretCode));
+        var credential = CreateCredential(userId, hashedCode, idCode);
+
+        credentialRepository
+            .Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", $"{userId:N}-{idCode}", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(credential);
+
+        var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, options);
+
+        var result = await provider.ResolveCredentialAsync(userId, new RecoveryCodeAssertion(rawCode), null, credentialRepository.Object);
+
+        Assert.That(result, Is.SameAs(credential));
+    }
+
+    [Test]
     public async Task ProviderAuthenticateAsyncSucceedsIfCredentialNotNull()
     {
         var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
@@ -1227,6 +1273,19 @@ internal sealed class RecoveryCodeTests
         {
             Events.Add(securityEvent);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingPasswordHasher : IPasswordHasher
+    {
+        public byte Version => 1;
+        public int VerifyCalls { get; private set; }
+        public byte[] HashPassword(ReadOnlySpan<char> password) => [Version];
+
+        public bool VerifyPassword(ReadOnlySpan<char> password, ReadOnlySpan<byte> encodedHash)
+        {
+            VerifyCalls++;
+            return false;
         }
     }
 }
