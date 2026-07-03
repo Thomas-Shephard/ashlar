@@ -30,9 +30,9 @@ public static partial class AshlarServiceCollectionExtensions
     /// <remarks>
     /// This method intentionally does not register <see cref="IUserRepository"/> or <see cref="ICredentialRepository"/> or
     /// <see cref="ISecretProtector"/>. Applications should provide those dependencies explicitly.
-    /// The default <see cref="IAccountSecurityGuard"/> is <see cref="AllowAccountSecurityGuard"/>, which permits every
-    /// account-state change; hosts that need business approval, risk review, or separation-of-duties checks should
-    /// register an application-specific guard before calling this method or by replacing the service registration.
+    /// If no <see cref="IAccountSecurityGuard"/> is registered, this method adds <see cref="PermissiveAccountSecurityGuard"/>
+    /// as a fallback and configuration validation reports it as permissive. Hosts that need business approval, risk
+    /// review, or separation-of-duties checks should register an application-specific guard.
     /// </remarks>
     public static IServiceCollection AddAshlarIdentity(
         this IServiceCollection services,
@@ -114,7 +114,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<IMfaPolicyEvaluator>(),
             provider.GetService<IAuthenticationProviderRegistry>(),
             provider.GetService<IRememberedMfaDeviceService>()));
-        services.TryAddScoped<IAccountSecurityGuard, AllowAccountSecurityGuard>();
+        services.AddPermissiveAccountSecurityGuard();
         services.TryAddScoped<IAccountSecurityService, AccountSecurityService>();
         services.TryAddScoped(provider => new AccountLockoutServiceDependencies(
             provider.GetService<TimeProvider>(),
@@ -186,6 +186,25 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarTransactionProvider, NullTransactionProvider>();
         services.AddAshlarUriValidation();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Explicitly registers the account-security guard that permits every account-state change.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    /// <remarks>
+    /// Use this only when the host deliberately allows account-state changes without application-specific business
+    /// approval, risk review, tenant-specific policy, or separation-of-duties checks. Configuration validation reports
+    /// this guard as permissive.
+    /// </remarks>
+    public static IServiceCollection AddPermissiveAccountSecurityGuard(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.TryAddScoped<IAccountSecurityGuard, PermissiveAccountSecurityGuard>();
 
         return services;
     }

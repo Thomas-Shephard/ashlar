@@ -132,8 +132,9 @@ internal sealed class AshlarConfigurationValidatorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(text, Does.Contain(nameof(AllowAccountSecurityGuard)));
-            Assert.That(text, Does.Contain("high-risk account-state transitions are allowed by default"));
+            Assert.That(text, Does.Contain(nameof(PermissiveAccountSecurityGuard)));
+            Assert.That(text, Does.Contain("all guarded account-state changes are allowed"));
+            Assert.That(text, Does.Contain(nameof(AshlarServiceCollectionExtensions.AddPermissiveAccountSecurityGuard)));
             Assert.That(text, Does.Contain(nameof(IAccountSecurityGuard)));
             Assert.That(text, Does.Contain("business approval"));
             Assert.That(text, Does.Contain("risk review"));

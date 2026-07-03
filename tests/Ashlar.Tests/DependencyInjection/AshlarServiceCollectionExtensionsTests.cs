@@ -41,6 +41,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<IPrimaryAuthenticationRateLimiter, PrimaryAuthenticationRateLimiter>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialService, CredentialService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IAccountSecurityGuard, PermissiveAccountSecurityGuard>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialAdministrationService, CredentialAdministrationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAccountRecoveryAdministrationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAccountRecoveryAdministrationExecutor, AccountRecoveryAdministrationExecutor>(services, ServiceLifetime.Scoped);
@@ -58,6 +59,55 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<TimeProvider>(services, ServiceLifetime.Singleton);
             Assert.That(services.Any(d => d.ServiceType == typeof(IUserRepository)), Is.False);
         }
+    }
+
+    [Test]
+    public void AddPermissiveAccountSecurityGuardRegistersPermissiveGuardExplicitly()
+    {
+        var services = new ServiceCollection();
+
+        services.AddPermissiveAccountSecurityGuard();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        Assert.That(scope.ServiceProvider.GetRequiredService<IAccountSecurityGuard>(), Is.TypeOf<PermissiveAccountSecurityGuard>());
+    }
+
+    [Test]
+    public void AddPermissiveAccountSecurityGuardDoesNotOverrideCustomGuard()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<IAccountSecurityGuard, CustomAccountSecurityGuard>();
+
+        services.AddPermissiveAccountSecurityGuard();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        Assert.That(scope.ServiceProvider.GetRequiredService<IAccountSecurityGuard>(), Is.TypeOf<CustomAccountSecurityGuard>());
+    }
+
+    [Test]
+    public void AddAshlarIdentityAllowsCustomGuardRegisteredAfterIdentity()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarIdentity();
+        services.AddScoped<IAccountSecurityGuard, CustomAccountSecurityGuard>();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        Assert.That(scope.ServiceProvider.GetRequiredService<IAccountSecurityGuard>(), Is.TypeOf<CustomAccountSecurityGuard>());
+    }
+
+    [Test]
+    public void AddPermissiveAccountSecurityGuardRejectsNullServices()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => AshlarServiceCollectionExtensions.AddPermissiveAccountSecurityGuard(null!));
+
+        Assert.That(exception.ParamName, Is.EqualTo("services"));
     }
 
     [Test]
@@ -890,6 +940,14 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
+        }
+    }
+
+    private sealed class CustomAccountSecurityGuard : IAccountSecurityGuard
+    {
+        public Task<Result> CanChangeAccountStateAsync(IUser user, UserAccountState targetState, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(Result.Success());
         }
     }
 

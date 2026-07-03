@@ -1074,6 +1074,8 @@ Applications should render `PrimaryCredentials`, `AdditionalVerificationFactors`
 
 Sensitive admin operations require `AccountSecurityOperationRequest` with an `AuditContext` and an explicit scope. Pass a concrete `TenantContext`, `TenantContext.Global` for global users, or `IncludeAllTenants = true` for intentionally unrestricted mutations; requests with no scope or both scope forms are rejected. Applications are responsible for authorizing access before calling these methods, typically with an application admin role or scoped permission enforced by ASP.NET Core authorization. Ashlar records audit events with actor metadata, target user id, tenant id, reason, and affected counts; it does not return or log raw secrets, tokens, password hashes, recovery codes, protected payloads, or session tokens.
 
+`AddAshlarIdentity()` keeps minimal composition low-friction by falling back to `PermissiveAccountSecurityGuard`, which allows account-state changes. Production applications should register an application-specific `IAccountSecurityGuard` for business safety rules such as approval policy, risk review, tenant-specific constraints, or separation of duties. If allowing every account-state change is deliberate, include an explicit `AddPermissiveAccountSecurityGuard()` call so the choice is visible in service registration; configuration validation still reports this as `ASHLAR-CONFIG-PERMISSIVE-ACCOUNT-SECURITY-GUARD`.
+
 These primitives do not implement a full helpdesk workflow, admin UI, passkeys, OAuth, or OIDC. Applications can layer approval workflows, break-glass controls, and support tooling on top of the service.
 
 ### Automatic Account Lockout
@@ -1370,7 +1372,7 @@ foreach (var issue in result.Issues)
 }
 ```
 
-`AddAshlarIdentity()` registers the validator automatically; applications can also call `AddAshlarConfigurationValidation()` directly. This is not a replacement for health checks: health checks answer whether running infrastructure is healthy, while configuration validation answers whether Ashlar appears safely and completely configured. Warnings may be acceptable in development. Production apps should pay attention to missing repositories, missing secret protection, missing or null email delivery for email-based flows, `NullSecurityEventSink`, in-memory authentication rate limiting, and no durable transaction provider.
+`AddAshlarIdentity()` registers the validator automatically; applications can also call `AddAshlarConfigurationValidation()` directly. This is not a replacement for health checks: health checks answer whether running infrastructure is healthy, while configuration validation answers whether Ashlar appears safely and completely configured. Warnings may be acceptable in development. Production apps should pay attention to missing repositories, missing secret protection, missing or null email delivery for email-based flows, `NullSecurityEventSink`, `PermissiveAccountSecurityGuard`, in-memory authentication rate limiting, and no durable transaction provider.
 
 ## Transactions
 Ashlar supports scoped database transactions through the `IAshlarTransactionProvider` abstraction. This allows multiple repository operations within a single service scope to participate in a shared unit of work.

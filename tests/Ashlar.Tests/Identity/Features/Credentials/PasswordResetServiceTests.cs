@@ -552,7 +552,7 @@ internal sealed class PasswordResetServiceTests
             fixture.Store,
             sessionService.Object,
             new NullTransactionProvider(),
-            new AllowAccountSecurityGuard(),
+            new PermissiveAccountSecurityGuard(),
             new AccountSecurityServiceDependencies(fixture.Time, fixture.Audit, ProviderRegistry: providerRegistry));
 
         var posture = await accountSecurity.GetUserSecurityPostureAsync(user.Id);
