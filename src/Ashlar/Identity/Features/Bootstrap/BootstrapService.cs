@@ -314,7 +314,7 @@ internal sealed class BootstrapService(
     private static AuditContext CreateBootstrapGrantAudit(AuditContext? audit, AuthenticationContext? context)
     {
         var items = audit?.Items is null
-            ? new Dictionary<string, string>()
+            ? []
             : new Dictionary<string, string>(audit.Items);
         items["system"] = "bootstrap";
 
