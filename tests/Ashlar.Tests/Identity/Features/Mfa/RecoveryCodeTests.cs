@@ -106,7 +106,7 @@ internal sealed class RecoveryCodeTests
 
         var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options));
 
-        var result = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest { Audit = new AuditContext(IpAddress: "203.0.113.51") });
+        var result = await service.GenerateRecoveryCodesPrivilegedAsync(userId, new RecoveryCodeGenerationRequest { Audit = new AuditContext(IpAddress: "203.0.113.51") });
 
         using (Assert.EnterMultipleScope())
         {
@@ -116,6 +116,89 @@ internal sealed class RecoveryCodeTests
         credentialRepository.Verify(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()), Times.Once);
         credentialRepository.Verify(r => r.CreateCredentialAsync(It.Is<UserCredential>(c => c.Purpose == "recovery-code" && c.ExpiresAt != null), It.IsAny<CancellationToken>()), Times.Exactly(5));
         transaction.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ServiceGenerateRecoveryCodesAsyncShouldRejectMissingOrMismatchedFreshMfaProof()
+    {
+        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 });
+        var userId = Guid.NewGuid();
+        var tenant = new TenantContext(Guid.NewGuid());
+
+        var missing = await service.GenerateRecoveryCodesAsync(userId);
+        var mismatched = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest
+        {
+            FreshMfaProof = CreateProof(Guid.NewGuid(), tenant),
+            Tenant = tenant
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missing.Succeeded, Is.False);
+            Assert.That(missing.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(mismatched.Succeeded, Is.False);
+            Assert.That(mismatched.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+        }
+    }
+
+    [Test]
+    public async Task ServiceGenerateRecoveryCodesAsyncShouldRejectGlobalProofForAnotherUser()
+    {
+        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 });
+        var userId = Guid.NewGuid();
+
+        var result = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest
+        {
+            FreshMfaProof = CreateProof(Guid.NewGuid())
+        });
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+    }
+
+    [Test]
+    public async Task ServiceGenerateRecoveryCodesAsyncShouldRejectTenantProofForGlobalRequest()
+    {
+        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 });
+        var userId = Guid.NewGuid();
+
+        var result = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest
+        {
+            FreshMfaProof = CreateProof(userId, new TenantContext(Guid.NewGuid()))
+        });
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
+    }
+
+    [Test]
+    public async Task ServiceGenerateRecoveryCodesAsyncShouldRejectExpiredFreshMfaProof()
+    {
+        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 });
+        var userId = Guid.NewGuid();
+        var proof = CreateProof(userId, expiresAt: DateTimeOffset.UtcNow.AddSeconds(-1));
+
+        var result = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest
+        {
+            FreshMfaProof = proof,
+            CurrentSessionId = proof.SessionId
+        });
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpExpired));
+    }
+
+    [Test]
+    public async Task ServiceGenerateRecoveryCodesAsyncShouldRejectProofForAnotherSession()
+    {
+        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 });
+        var userId = Guid.NewGuid();
+        var proof = CreateProof(userId);
+
+        var result = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest
+        {
+            FreshMfaProof = proof,
+            CurrentSessionId = Guid.NewGuid()
+        });
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
     }
 
     [Test]
@@ -138,7 +221,7 @@ internal sealed class RecoveryCodeTests
         var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options));
 
         var request = new RecoveryCodeGenerationRequest { CodeCount = 3, ReplaceExisting = false, ExpiresAfter = TimeSpan.FromHours(1) };
-        var result = await service.GenerateRecoveryCodesAsync(userId, request);
+        var result = await service.GenerateRecoveryCodesPrivilegedAsync(userId, request with { Audit = new AuditContext(ActorUserId: userId) });
 
         using (Assert.EnterMultipleScope())
         {
@@ -180,7 +263,7 @@ internal sealed class RecoveryCodeTests
             });
         var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, securityEventSink: securityEvents.Object, notificationService: notificationService.Object));
 
-        var result = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest { Audit = audit });
+        var result = await service.GenerateRecoveryCodesPrivilegedAsync(userId, new RecoveryCodeGenerationRequest { Audit = audit });
 
         Assert.That(result.Succeeded, Is.True);
         securityEvents.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
@@ -224,7 +307,8 @@ internal sealed class RecoveryCodeTests
             });
         var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, notificationService: notificationService.Object));
 
-        var result = await service.GenerateRecoveryCodesAsync(userId);
+        var proof = CreateProof(userId);
+        var result = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest { FreshMfaProof = proof, CurrentSessionId = proof.SessionId });
 
         Assert.That(result.Succeeded, Is.True);
         notificationService.Verify(n => n.NotifyAsync(It.Is<SecurityNotification>(notification =>
@@ -252,7 +336,7 @@ internal sealed class RecoveryCodeTests
 
         var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options));
 
-        var result = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest { Audit = new AuditContext(IpAddress: "203.0.113.51") });
+        var result = await service.GenerateRecoveryCodesPrivilegedAsync(userId, new RecoveryCodeGenerationRequest { Audit = new AuditContext(IpAddress: "203.0.113.51") });
 
         using (Assert.EnterMultipleScope())
         {
@@ -266,7 +350,24 @@ internal sealed class RecoveryCodeTests
     public void ServiceGenerateRecoveryCodesAsyncThrowsOnInvalidUserId()
     {
         var service = new RecoveryCodeService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IAshlarTransactionProvider>().Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions())));
+        Assert.That(async () => await service.GenerateRecoveryCodesPrivilegedAsync(Guid.Empty, new RecoveryCodeGenerationRequest { Audit = new AuditContext(ActorUserId: Guid.NewGuid()) }), Throws.ArgumentException);
         Assert.That(async () => await service.GenerateRecoveryCodesAsync(Guid.Empty), Throws.ArgumentException);
+    }
+
+    [Test]
+    public void ServiceGenerateRecoveryCodesPrivilegedAsyncShouldRequireAudit()
+    {
+        var service = new RecoveryCodeService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IAshlarTransactionProvider>().Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions())));
+
+        Assert.ThrowsAsync<ArgumentException>(() => service.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid()));
+    }
+
+    [Test]
+    public void ServiceGenerateRecoveryCodesPrivilegedAsyncShouldRejectNullRequest()
+    {
+        var service = new RecoveryCodeService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IAshlarTransactionProvider>().Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions())));
+
+        Assert.ThrowsAsync<ArgumentException>(() => service.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), null!));
     }
 
     [Test]
@@ -287,7 +388,7 @@ internal sealed class RecoveryCodeTests
 
         var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options));
 
-        var result = await service.GenerateRecoveryCodesAsync(userId);
+        var result = await service.GenerateRecoveryCodesPrivilegedAsync(userId, new RecoveryCodeGenerationRequest { Audit = new AuditContext(ActorUserId: userId) });
 
         using (Assert.EnterMultipleScope())
         {
@@ -313,7 +414,7 @@ internal sealed class RecoveryCodeTests
 
         var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, securityEventSink: securityEvents.Object));
 
-        var result = await service.GenerateRecoveryCodesAsync(userId, new RecoveryCodeGenerationRequest { ReplaceExisting = true, Tenant = new TenantContext(requestedTenantId) });
+        var result = await service.GenerateRecoveryCodesPrivilegedAsync(userId, new RecoveryCodeGenerationRequest { ReplaceExisting = true, Tenant = new TenantContext(requestedTenantId), Audit = new AuditContext(ActorUserId: userId) });
 
         using (Assert.EnterMultipleScope())
         {
@@ -338,7 +439,7 @@ internal sealed class RecoveryCodeTests
     {
         var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 }, Guid.NewGuid());
 
-        var result = await service.GenerateRecoveryCodesAsync(Guid.NewGuid());
+        var result = await service.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), new RecoveryCodeGenerationRequest { Audit = new AuditContext(ActorUserId: Guid.NewGuid()) });
 
         using (Assert.EnterMultipleScope())
         {
@@ -356,9 +457,9 @@ internal sealed class RecoveryCodeTests
         var zero = new RecoveryCodeGenerationRequest { CodeCount = 0, Audit = audit };
         var negativeExpiry = new RecoveryCodeGenerationRequest { CodeCount = 1, ExpiresAfter = TimeSpan.Zero, Audit = audit };
 
-        var tooManyResult = await service.GenerateRecoveryCodesAsync(Guid.NewGuid(), tooMany);
-        var zeroResult = await service.GenerateRecoveryCodesAsync(Guid.NewGuid(), zero);
-        var negativeExpiryResult = await service.GenerateRecoveryCodesAsync(Guid.NewGuid(), negativeExpiry);
+        var tooManyResult = await service.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), tooMany);
+        var zeroResult = await service.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), zero);
+        var negativeExpiryResult = await service.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), negativeExpiry);
 
         using (Assert.EnterMultipleScope())
         {
@@ -375,8 +476,8 @@ internal sealed class RecoveryCodeTests
         var invalidGroupSize = CreateServiceForGenerationValidation(new RecoveryCodeOptions { GroupSize = 0 });
 
         var request = new RecoveryCodeGenerationRequest { Audit = new AuditContext(IpAddress: "203.0.113.53") };
-        var invalidCodeLengthResult = await invalidCodeLength.GenerateRecoveryCodesAsync(Guid.NewGuid(), request);
-        var invalidGroupSizeResult = await invalidGroupSize.GenerateRecoveryCodesAsync(Guid.NewGuid(), request);
+        var invalidCodeLengthResult = await invalidCodeLength.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), request);
+        var invalidGroupSizeResult = await invalidGroupSize.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), request);
 
         using (Assert.EnterMultipleScope())
         {
@@ -398,10 +499,10 @@ internal sealed class RecoveryCodeTests
         var invalidConfiguration = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeLength = 0 });
         var invalidExpiry = CreateServiceForGenerationValidation(new RecoveryCodeOptions { ExpiresAfter = TimeSpan.Zero });
 
-        var missingUserResult = await missingUser.GenerateRecoveryCodesAsync(Guid.NewGuid());
-        var invalidCountResult = await invalidCount.GenerateRecoveryCodesAsync(Guid.NewGuid());
-        var invalidConfigurationResult = await invalidConfiguration.GenerateRecoveryCodesAsync(Guid.NewGuid());
-        var invalidExpiryResult = await invalidExpiry.GenerateRecoveryCodesAsync(Guid.NewGuid());
+        var missingUserResult = await missingUser.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), new RecoveryCodeGenerationRequest { Audit = new AuditContext(ActorUserId: Guid.NewGuid()) });
+        var invalidCountResult = await invalidCount.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), new RecoveryCodeGenerationRequest { Audit = new AuditContext(ActorUserId: Guid.NewGuid()) });
+        var invalidConfigurationResult = await invalidConfiguration.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), new RecoveryCodeGenerationRequest { Audit = new AuditContext(ActorUserId: Guid.NewGuid()) });
+        var invalidExpiryResult = await invalidExpiry.GenerateRecoveryCodesPrivilegedAsync(Guid.NewGuid(), new RecoveryCodeGenerationRequest { Audit = new AuditContext(ActorUserId: Guid.NewGuid()) });
 
         using (Assert.EnterMultipleScope())
         {
@@ -447,10 +548,11 @@ internal sealed class RecoveryCodeTests
 
         var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, securityEventSink: securityEvents));
 
-        var result1 = await service.RevokeRecoveryCodesAsync(userId, "test reason");
+        var result1 = await service.RevokeRecoveryCodesPrivilegedAsync(userId, new RevokeRecoveryCodesRequest { Reason = "test reason", Audit = new AuditContext(ActorUserId: userId) });
         Assert.That(result1, Is.EqualTo(10));
 
-        var result2 = await service.RevokeRecoveryCodesAsync(userId);
+        var proof = CreateProof(userId);
+        var result2 = await service.RevokeRecoveryCodesAsync(userId, new RevokeRecoveryCodesRequest { FreshMfaProof = proof, CurrentSessionId = proof.SessionId });
         Assert.That(result2, Is.EqualTo(10));
 
         credentialRepository.Verify(r => r.RevokeCredentialsAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.IsAny<CancellationToken>()), Times.Exactly(2));
@@ -468,6 +570,34 @@ internal sealed class RecoveryCodeTests
             Assert.That(securityEvents.Events[1].Properties, Does.ContainKey("revoked").WithValue("true"));
             Assert.That(securityEvents.Events[1].Properties, Does.Not.ContainKey("reason"));
             Assert.That(string.Join("|", securityEvents.Events.SelectMany(e => e.Properties?.Values ?? [])), Does.Not.Contain("RECOVERY-CODE").And.Not.Contain("hash"));
+        }
+    }
+
+    [Test]
+    public async Task ServiceRevokeRecoveryCodesAsyncShouldRejectMissingOrMismatchedFreshMfaProof()
+    {
+        var service = CreateServiceForGenerationValidation(new RecoveryCodeOptions { CodeCount = 1 });
+        var userId = Guid.NewGuid();
+        var tenant = new TenantContext(Guid.NewGuid());
+        var proof = CreateProof(userId);
+
+        var missing = await service.RevokeRecoveryCodesAsync(userId);
+        var mismatched = await service.RevokeRecoveryCodesAsync(userId, new RevokeRecoveryCodesRequest
+        {
+            FreshMfaProof = CreateProof(userId, new TenantContext(Guid.NewGuid())),
+            Tenant = tenant
+        });
+        var wrongSession = await service.RevokeRecoveryCodesAsync(userId, new RevokeRecoveryCodesRequest
+        {
+            FreshMfaProof = proof,
+            CurrentSessionId = Guid.NewGuid()
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missing, Is.Zero);
+            Assert.That(mismatched, Is.Zero);
+            Assert.That(wrongSession, Is.Zero);
         }
     }
 
@@ -502,7 +632,7 @@ internal sealed class RecoveryCodeTests
             });
         var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, securityEventSink: securityEvents));
 
-        var count = await service.RevokeRecoveryCodesAsync(userId, "admin cleanup");
+        var count = await service.RevokeRecoveryCodesPrivilegedAsync(userId, new RevokeRecoveryCodesRequest { Reason = "admin cleanup", Audit = new AuditContext(ActorUserId: userId) });
 
         using (Assert.EnterMultipleScope())
         {
@@ -534,7 +664,7 @@ internal sealed class RecoveryCodeTests
 
         var service = new RecoveryCodeService(repository.Object, credentialRepository.Object, transactionProvider.Object, hasherSelector, CreateDependencies(options, securityEventSink: securityEvents.Object));
 
-        var result = await service.RevokeRecoveryCodesAsync(userId, "admin", new TenantContext(requestedTenantId));
+        var result = await service.RevokeRecoveryCodesPrivilegedAsync(userId, new RevokeRecoveryCodesRequest { Reason = "admin", Tenant = new TenantContext(requestedTenantId), Audit = new AuditContext(ActorUserId: userId) });
 
         using (Assert.EnterMultipleScope())
         {
@@ -554,7 +684,24 @@ internal sealed class RecoveryCodeTests
     public void ServiceRevokeRecoveryCodesAsyncThrowsOnInvalidUserId()
     {
         var service = new RecoveryCodeService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IAshlarTransactionProvider>().Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions())));
+        Assert.That(async () => await service.RevokeRecoveryCodesPrivilegedAsync(Guid.Empty, new RevokeRecoveryCodesRequest { Audit = new AuditContext(ActorUserId: Guid.NewGuid()) }), Throws.ArgumentException);
         Assert.That(async () => await service.RevokeRecoveryCodesAsync(Guid.Empty), Throws.ArgumentException);
+    }
+
+    [Test]
+    public void ServiceRevokeRecoveryCodesPrivilegedAsyncShouldRequireAudit()
+    {
+        var service = new RecoveryCodeService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IAshlarTransactionProvider>().Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions())));
+
+        Assert.ThrowsAsync<ArgumentException>(() => service.RevokeRecoveryCodesPrivilegedAsync(Guid.NewGuid()));
+    }
+
+    [Test]
+    public void ServiceRevokeRecoveryCodesPrivilegedAsyncShouldRejectNullRequest()
+    {
+        var service = new RecoveryCodeService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IAshlarTransactionProvider>().Object, new PasswordHasherSelector([new PasswordHasherV1()]), CreateDependencies(Options.Create(new RecoveryCodeOptions())));
+
+        Assert.ThrowsAsync<ArgumentException>(() => service.RevokeRecoveryCodesPrivilegedAsync(Guid.NewGuid(), null!));
     }
 
     [Test]
@@ -1053,6 +1200,12 @@ internal sealed class RecoveryCodeTests
         ISecurityNotificationService? notificationService = null)
     {
         return new RecoveryCodeServiceDependencies(options, timeProvider, securityEventSink, notificationService);
+    }
+
+    private static FreshMfaVerificationProof CreateProof(Guid userId, TenantContext? tenant = null, DateTimeOffset? expiresAt = null)
+    {
+        var verifiedAt = DateTimeOffset.UtcNow;
+        return new FreshMfaVerificationProof(userId, tenant?.TenantId, Guid.NewGuid(), verifiedAt, expiresAt ?? verifiedAt.AddMinutes(10));
     }
 
     private sealed class DefaultResolveCredentialProvider : IAuthenticationProvider

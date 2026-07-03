@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Ashlar.Identity.Features.Mfa;
 
 /// <summary>
@@ -61,6 +63,64 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
         }
 
         return StepUpEvaluationResult.Success;
+    }
+
+    /// <inheritdoc />
+    public Result<FreshMfaVerificationProof> CreateFreshMfaProof(StepUpEvaluationRequest request)
+    {
+        var evaluation = Evaluate(request);
+        if (!evaluation.Succeeded)
+        {
+            var failureCode = evaluation.FailureCode.GetValueOrDefault(AshlarFailureCodes.StepUpRequired);
+            return Result.Failure<FreshMfaVerificationProof>(failureCode);
+        }
+
+        var session = request.Session;
+        Debug.Assert(session != null);
+        Debug.Assert(session.AdditionalVerificationAt.HasValue);
+        var verifiedAt = session.AdditionalVerificationAt.Value;
+
+        return Result.Success(new FreshMfaVerificationProof(
+            session.UserId,
+            session.TenantId,
+            session.Id,
+            verifiedAt,
+            verifiedAt + request.Requirement.FreshnessWindow));
+    }
+
+    /// <inheritdoc />
+    public Result<FreshPrimaryAuthenticationProof> CreateFreshPrimaryAuthenticationProof(PrimaryAuthenticationEvaluationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.FreshnessWindow <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), request.FreshnessWindow, "Primary-authentication freshness window must be positive.");
+        }
+
+        var now = _timeProvider.GetUtcNow();
+        var session = request.Session;
+        if (session == null || !session.IsActive(now))
+        {
+            return Result.Failure<FreshPrimaryAuthenticationProof>(AshlarFailureCodes.SessionNotFoundOrInactive);
+        }
+
+        if (session.AuthenticatedAt == null)
+        {
+            return Result.Failure<FreshPrimaryAuthenticationProof>(AshlarFailureCodes.StepUpRequired);
+        }
+
+        if (session.AuthenticatedAt.Value > now ||
+            now - session.AuthenticatedAt.Value > request.FreshnessWindow)
+        {
+            return Result.Failure<FreshPrimaryAuthenticationProof>(AshlarFailureCodes.StepUpExpired);
+        }
+
+        return Result.Success(new FreshPrimaryAuthenticationProof(
+            session.UserId,
+            session.TenantId,
+            session.Id,
+            session.AuthenticatedAt.Value,
+            session.AuthenticatedAt.Value + request.FreshnessWindow));
     }
 
     /// <inheritdoc />

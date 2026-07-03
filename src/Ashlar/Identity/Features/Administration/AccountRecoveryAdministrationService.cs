@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Ashlar.Identity.Features.Administration;
 
 /// <summary>
@@ -124,12 +126,12 @@ public sealed class AccountRecoveryAdministrationService(
         return displayName ?? provider.Name;
     }
 
-    private static bool TryValidateRequest(AccountRecoveryOptionsRequest request, out Result<AccountRecoveryOptions> failure)
+    private static bool TryValidateRequest(AccountRecoveryOptionsRequest request, [NotNullWhen(false)] out Result<AccountRecoveryOptions>? failure)
     {
         try
         {
             AccountRecoveryOptionsRequest.ThrowIfInvalid(request);
-            failure = null!;
+            failure = null;
             return true;
         }
         catch (ArgumentException exception)

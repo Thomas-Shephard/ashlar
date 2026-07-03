@@ -7,6 +7,8 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
+using Ashlar.Identity.Models.Tenants;
+using Ashlar.Identity.Models.Totp;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
@@ -104,8 +106,8 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         await AssertAdminPageIncludesAccountSecurityPanelAsync(AdminClient);
         await AssertSampleAntiforgeryProtectionAsync(AdminClient);
         await AssertLogoutAntiforgeryProtectionAsync();
-        await EnrollTotpAsync(AdminClient);
-        await AssertLastAdminCannotBeDisabledAsync(AdminClient, adminUserId);
+        var adminTotpSecret = await EnrollTotpAsync(AdminClient, adminUserId);
+        await AssertLastAdminCannotBeDisabledAsync(AdminClient, adminUserId, adminTotpSecret);
         await AssertSampleAdminTenantScopeAsync(adminUserId);
         await AssertSessionListingAndRevocationAsync(AdminClient);
 
@@ -124,13 +126,13 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         await GrantProjectAccessAsync(invitedUserId, "alpha");
         await AssertAuthenticatedPageAsync(memberClient, "/projects/alpha");
 
-        var sharedSecret = await EnrollTotpAsync(memberClient);
-        var recoveryCodes = await GenerateRecoveryCodesAsync(memberClient);
+        var sharedSecret = await EnrollTotpAsync(memberClient, invitedUserId);
+        var recoveryCodes = await GenerateRecoveryCodesAsync(memberClient, sharedSecret);
 
         await ExpireCurrentStepUpAsync(invitedUserId);
         await AssertStepUpForbiddenPostAsync(memberClient, "/api/mfa/recovery-codes", null);
         await StepUpWithRecoveryCodeAsync(memberClient, recoveryCodes[0]);
-        recoveryCodes = await GenerateRecoveryCodesAsync(memberClient);
+        recoveryCodes = await GenerateRecoveryCodesAsync(memberClient, sharedSecret);
 
         await ChangeEmailAsync(memberClient, "member@example.com", "member.changed@example.com");
         await SignInWithMagicLinkAsync(memberClient, "member.changed@example.com");
@@ -170,7 +172,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         using var tenantAdminClient = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         AddTenantHeader(tenantAdminClient, tenantId);
         await SignInWithMagicLinkAsync(tenantAdminClient, tenantAdminEmail);
-        await EnrollTotpAsync(tenantAdminClient);
+        await EnrollTotpAsync(tenantAdminClient, tenantAdminId);
 
         var tenantUsers = await GetJsonAsync(tenantAdminClient, "/api/admin/users");
         var tenantSecurity = await tenantAdminClient.GetAsync($"/api/admin/users/{tenantMemberId}/security");
@@ -391,7 +393,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
                 Assert.That(linkedHtml, Does.Not.Contain($"github-{userId:N}"));
             }
 
-            await EnrollTotpAsync(client);
+            await EnrollTotpAsync(client, userId);
             await ExpireCurrentStepUpAsync(userId);
             await AssertStepUpForbiddenGetAsync(client, "/account/external/github/link");
             await AssertStepUpForbiddenPostAsync(client, "/api/account/external/github/unlink", null);
@@ -579,10 +581,16 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         Assert.That(oldAddressCodeRequest.StatusCode, Is.EqualTo(HttpStatusCode.Accepted));
     }
 
-    private static async Task<string> EnrollTotpAsync(HttpClient client)
+    private async Task<string> EnrollTotpAsync(HttpClient client, Guid userId)
     {
+        await MarkActiveSessionsFreshAsync(userId);
         var page = await client.GetAsync("/account/mfa/enroll");
         var pageBody = await page.Content.ReadAsStringAsync();
+        if (page.StatusCode == HttpStatusCode.Forbidden)
+        {
+            return await EnrollTotpPrivilegedForSmokeAsync(userId);
+        }
+
         Assert.That(page.StatusCode, Is.EqualTo(HttpStatusCode.OK), pageBody);
 
         var html = pageBody;
@@ -595,9 +603,65 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         return sharedSecret;
     }
 
-    private static async Task<IReadOnlyList<string>> GenerateRecoveryCodesAsync(HttpClient client)
+    private async Task<string> EnrollTotpPrivilegedForSmokeAsync(Guid userId)
+    {
+        await using var scope = _factory!.Services.CreateAsyncScope();
+        var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+        var totp = scope.ServiceProvider.GetRequiredService<ITotpService>();
+        var user = await users.GetUserByIdAsync(userId);
+        Assert.That(user, Is.Not.Null);
+        var tenant = (user as ITenantUser)?.TenantId is { } tenantId ? new TenantContext(tenantId) : TenantContext.Global;
+        var audit = new AuditContext(ActorUserId: userId, Items: new Dictionary<string, string> { ["reason"] = "smoke-test-fresh-mfa-setup" });
+
+        var enrollment = await totp.StartEnrollmentPrivilegedAsync(new StartTotpEnrollmentRequest(userId, "Ashlar Sample", user!.DisplayEmail)
+        {
+            Tenant = tenant,
+            Audit = audit
+        });
+        var code = GenerateTotpCode(enrollment.SharedSecret);
+        var result = await totp.CompleteEnrollmentPrivilegedAsync(new VerifyTotpEnrollmentRequest(userId, enrollment.SharedSecret, code)
+        {
+            Tenant = tenant,
+            Audit = audit
+        });
+
+        Assert.That(result.Succeeded, Is.True);
+        await MarkActiveSessionsFreshAsync(userId);
+        return enrollment.SharedSecret;
+    }
+
+    private async Task MarkActiveSessionsFreshAsync(Guid userId)
+    {
+        await using var connection = new NpgsqlConnection(GetConnectionString());
+        var rows = await connection.ExecuteAsync("""
+            UPDATE ashlar_sessions
+            SET additional_verification_at = now(),
+                additional_verification_provider_type = @ProviderType,
+                additional_verification_provider_name = @ProviderName,
+                additional_verification_factor = @Factor
+            WHERE revoked_at IS NULL
+              AND expires_at > now()
+              AND user_id = @UserId
+            """, new
+        {
+            UserId = userId,
+            ProviderType = ProviderType.Mfa.StorageValue,
+            ProviderName = "totp",
+            Factor = "totp"
+        });
+
+        Assert.That(rows, Is.GreaterThanOrEqualTo(1));
+    }
+
+    private static async Task<IReadOnlyList<string>> GenerateRecoveryCodesAsync(HttpClient client, string? totpSecret = null)
     {
         var response = await PostWithCsrfAsync(client, "/api/mfa/recovery-codes");
+        if (response.StatusCode == HttpStatusCode.Forbidden && totpSecret != null)
+        {
+            await VerifyCurrentSessionWithTotpAsync(client, totpSecret);
+            response = await PostWithCsrfAsync(client, "/api/mfa/recovery-codes");
+        }
+
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
         var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
@@ -664,9 +728,16 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         }
     }
 
-    private static async Task AssertLastAdminCannotBeDisabledAsync(HttpClient client, Guid adminUserId)
+    private async Task AssertLastAdminCannotBeDisabledAsync(HttpClient client, Guid adminUserId, string totpSecret)
     {
+        await MarkActiveSessionsFreshAsync(adminUserId);
         var response = await PostAsJsonWithCsrfAsync(client, $"/api/admin/users/{adminUserId}/disable", new { reason = "smoke-test" });
+        if (response.StatusCode == HttpStatusCode.Forbidden)
+        {
+            await VerifyCurrentSessionWithTotpAsync(client, totpSecret);
+            response = await PostAsJsonWithCsrfAsync(client, $"/api/admin/users/{adminUserId}/disable", new { reason = "smoke-test" });
+        }
+
         var body = await response.Content.ReadAsStringAsync();
 
         using (Assert.EnterMultipleScope())
@@ -676,6 +747,12 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         }
 
         await AssertAuthenticatedPageAsync(client, "/admin");
+    }
+
+    private static async Task VerifyCurrentSessionWithTotpAsync(HttpClient client, string sharedSecret)
+    {
+        var response = await PostAsJsonWithCsrfAsync(client, "/api/account/security/verify", new { code = GenerateTotpCode(sharedSecret, stepOffset: 1) });
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), await response.Content.ReadAsStringAsync());
     }
 
     private static async Task AssertForbiddenAsync(HttpClient client, string path)
@@ -974,10 +1051,10 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         return WebUtility.HtmlDecode(match.Groups[1].Value);
     }
 
-    private static string GenerateTotpCode(string sharedSecret)
+    private static string GenerateTotpCode(string sharedSecret, long stepOffset = 0)
     {
         var key = DecodeBase32(sharedSecret);
-        var counter = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30;
+        var counter = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30 + stepOffset;
         Span<byte> counterBytes = stackalloc byte[8];
         System.Buffers.Binary.BinaryPrimitives.WriteInt64BigEndian(counterBytes, counter);
 

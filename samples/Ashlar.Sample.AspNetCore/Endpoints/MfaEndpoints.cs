@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Ashlar.AspNetCore.Mfa;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
@@ -16,6 +17,7 @@ internal static class MfaEndpoints
 {
     public static void MapMfaEndpoints(this IEndpointRouteBuilder app)
     {
+        var selfServiceMfaManagementRequirement = new StepUpRequirement(TimeSpan.FromMinutes(10));
         app.MapPost("/api/mfa/verify", VerifyMfaAsync);
         app.MapGet("/api/account/security/step-up-options", GetStepUpOptionsAsync).RequireAuthorization();
         app.MapPost("/api/account/security/verify", VerifyCurrentSessionAsync).RequireAuthorization().RequireSampleAntiforgery();
@@ -31,35 +33,90 @@ internal static class MfaEndpoints
 
             if (!hasTotp)
             {
-                var enrollment = await services.Totp.StartEnrollmentAsync(
-                    new StartTotpEnrollmentRequest(userId, services.Options.Value.AppName, ashlarUser.DisplayEmail)
-                    {
-                        Tenant = services.HttpContext.ToTenantContext(),
-                        Audit = services.HttpContext.ToAuditContext()
-                    },
-                    services.CancellationToken);
+                if (!services.HttpContext.TryGetAshlarSessionContext(out _, out var sessionId, out _)) return Results.Forbid();
+                var posture = await services.AccountSecurity.GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(services.HttpContext.ToTenantContext()), services.CancellationToken);
+                if (!posture.Succeeded) return Results.Forbid();
+                if (posture.Value is not { } securityPosture) return Results.Forbid();
+
+                var enrollmentRequest = new StartTotpEnrollmentRequest(userId, services.Options.Value.AppName, ashlarUser.DisplayEmail)
+                {
+                    CurrentSessionId = sessionId,
+                    Tenant = services.HttpContext.ToTenantContext(),
+                    Audit = services.HttpContext.ToAuditContext()
+                };
+                if (securityPosture.AdditionalVerificationFactors.Any(factor => factor.IsUsable))
+                {
+                    var proof = services.HttpContext.CreateFreshMfaProof(services.StepUp, selfServiceMfaManagementRequirement);
+                    if (!proof.Succeeded) return Results.Forbid();
+
+                    enrollmentRequest = enrollmentRequest with { FreshMfaProof = proof.Value };
+                }
+                else
+                {
+                    var proof = services.HttpContext.CreateFreshPrimaryAuthenticationProof(services.StepUp, selfServiceMfaManagementRequirement.FreshnessWindow);
+                    if (!proof.Succeeded) return Results.Forbid();
+
+                    enrollmentRequest = enrollmentRequest with { FreshPrimaryAuthenticationProof = proof.Value };
+                }
+
+                var enrollment = await services.Totp.StartEnrollmentAsync(enrollmentRequest, services.CancellationToken);
                 var isAdmin = (await services.Auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), services.CancellationToken)).Succeeded;
                 return AppViews.RenderMfaSetup(enrollment.SharedSecret, enrollment.AuthenticatorUri, isAdmin);
             }
 
             return Results.Redirect("/account");
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireFreshMfaIfAvailable();
 
         app.MapPost("/api/mfa/totp/verify", async Task<IResult> (
             TotpVerifyRequest request,
             ITotpService totp,
             IStepUpAuthenticationService stepUp,
             HttpContext httpContext,
+            ICredentialRepository credentials,
+            IAccountSecurityService accountSecurity,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
             var userId = user.GetAshlarUserId();
+            if (!httpContext.TryGetAshlarSessionContext(out _, out var currentSessionId, out _))
+            {
+                return Results.Forbid();
+            }
+
+            var totpCredential = await credentials.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, cancellationToken);
+            var posture = await accountSecurity.GetUserSecurityPostureAsync(userId, new AccountSecurityPostureRequest(httpContext.ToTenantContext()), cancellationToken);
+            if (!posture.Succeeded)
+            {
+                return Results.Forbid();
+            }
+            if (posture.Value is not { } securityPosture)
+            {
+                return Results.Forbid();
+            }
+
+            var verifyRequest = new VerifyTotpEnrollmentRequest(userId, request.SharedSecret, request.Code)
+            {
+                CurrentSessionId = currentSessionId,
+                Tenant = httpContext.ToTenantContext(),
+                Audit = httpContext.ToAuditContext()
+            };
+            if (totpCredential == null && !securityPosture.AdditionalVerificationFactors.Any(factor => factor.IsUsable))
+            {
+                var proof = httpContext.CreateFreshPrimaryAuthenticationProof(stepUp, selfServiceMfaManagementRequirement.FreshnessWindow);
+                if (!proof.Succeeded) return Results.Forbid();
+
+                verifyRequest = verifyRequest with { FreshPrimaryAuthenticationProof = proof.Value };
+            }
+            else
+            {
+                var proof = httpContext.CreateFreshMfaProof(stepUp, selfServiceMfaManagementRequirement);
+                if (!proof.Succeeded) return Results.Forbid();
+
+                verifyRequest = verifyRequest with { FreshMfaProof = proof.Value };
+            }
+
             var result = await totp.CompleteEnrollmentAsync(
-                new VerifyTotpEnrollmentRequest(userId, request.SharedSecret, request.Code)
-                {
-                    Tenant = httpContext.ToTenantContext(),
-                    Audit = httpContext.ToAuditContext()
-                },
+                verifyRequest,
                 cancellationToken);
             if (!result.Succeeded)
             {
@@ -79,18 +136,35 @@ internal static class MfaEndpoints
             }
 
             return Results.Ok();
-        }).RequireAuthorization().RequireSampleAntiforgery();
+        }).RequireAuthorization().RequireFreshMfaIfAvailable().RequireSampleAntiforgery();
 
         app.MapPost("/api/mfa/totp/reset", async (
             ITotpService totp,
+            IStepUpAuthenticationService stepUp,
             HttpContext httpContext,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
             var userId = user.GetAshlarUserId();
+            var proof = httpContext.CreateFreshMfaProof(stepUp, selfServiceMfaManagementRequirement);
+            if (!proof.Succeeded)
+            {
+                return Results.Forbid();
+            }
+            if (proof.Value is not { } freshProof)
+            {
+                return Results.Forbid();
+            }
+            if (!httpContext.TryGetAshlarSessionContext(out _, out var currentSessionId, out _))
+            {
+                return Results.Forbid();
+            }
+
             await totp.DisableAsync(
                 new DisableTotpRequest(userId)
                 {
+                    FreshMfaProof = freshProof,
+                    CurrentSessionId = currentSessionId,
                     Tenant = httpContext.ToTenantContext(),
                     Audit = httpContext.ToAuditContext()
                 },
@@ -100,13 +174,28 @@ internal static class MfaEndpoints
 
         app.MapPost("/api/mfa/recovery-codes", async (
             IRecoveryCodeService recoveryCodes,
+            IStepUpAuthenticationService stepUp,
             HttpContext httpContext,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
+            var proof = httpContext.CreateFreshMfaProof(stepUp, selfServiceMfaManagementRequirement);
+            if (!proof.Succeeded)
+            {
+                return Results.Forbid();
+            }
+            if (proof.Value is not { } freshProof)
+            {
+                return Results.Forbid();
+            }
+            if (!httpContext.TryGetAshlarSessionContext(out _, out var currentSessionId, out _))
+            {
+                return Results.Forbid();
+            }
+
             var result = await recoveryCodes.GenerateRecoveryCodesAsync(
                 user.GetAshlarUserId(),
-                new RecoveryCodeGenerationRequest { Tenant = httpContext.ToTenantContext(), Audit = httpContext.ToAuditContext() },
+                new RecoveryCodeGenerationRequest { FreshMfaProof = freshProof, CurrentSessionId = currentSessionId, Tenant = httpContext.ToTenantContext(), Audit = httpContext.ToAuditContext() },
                 cancellationToken);
             return result.Succeeded ? Results.Ok(new { codes = result.Value }) : Results.BadRequest(SampleResultErrors.From(result));
         }).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
@@ -116,7 +205,9 @@ internal static class MfaEndpoints
         [FromServices] ITotpService Totp,
         [FromServices] IUserRepository Users,
         [FromServices] ICredentialRepository Credentials,
+        [FromServices] IAccountSecurityService AccountSecurity,
         [FromServices] IAuthorizationEvaluator Auth,
+        [FromServices] IStepUpAuthenticationService StepUp,
         HttpContext HttpContext,
         ClaimsPrincipal User,
         [FromServices] IOptions<SampleAshlarOptions> Options,

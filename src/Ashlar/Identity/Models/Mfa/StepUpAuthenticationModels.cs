@@ -19,6 +19,13 @@ public sealed record StepUpRequirement(
 public sealed record StepUpEvaluationRequest(AuthenticationSession? Session, StepUpRequirement Requirement);
 
 /// <summary>
+/// Describes the recent primary-authentication freshness required for first-factor setup.
+/// </summary>
+/// <param name="Session">Application session whose primary-authentication metadata is evaluated.</param>
+/// <param name="FreshnessWindow">Maximum age of the primary sign-in ceremony that may satisfy the requirement.</param>
+public sealed record PrimaryAuthenticationEvaluationRequest(AuthenticationSession? Session, TimeSpan FreshnessWindow);
+
+/// <summary>
 /// Describes the result of a step-up freshness evaluation.
 /// </summary>
 /// <param name="Succeeded">Whether the requirement was satisfied.</param>
@@ -30,4 +37,75 @@ public sealed record StepUpEvaluationResult(bool Succeeded, AshlarFailureCode? F
     /// Gets a successful evaluation result.
     /// </summary>
     public static StepUpEvaluationResult Success { get; } = new(true);
+}
+
+/// <summary>
+/// Capability proving that Ashlar validated recent additional verification for a specific active session.
+/// </summary>
+/// <remarks>
+/// Hosts obtain this proof from <see cref="Ashlar.Identity.Abstractions.Services.IStepUpAuthenticationService.CreateFreshMfaProof" />
+/// after Ashlar has validated the current session. The type has no public constructor so normal request JSON cannot mint proof.
+/// It is valid only for self-service mutations on the same user and tenant-bound session.
+/// </remarks>
+public sealed class FreshMfaVerificationProof
+{
+    internal FreshMfaVerificationProof(Guid userId, Guid? tenantId, Guid sessionId, DateTimeOffset verifiedAt, DateTimeOffset expiresAt)
+    {
+        UserId = userId;
+        TenantId = tenantId;
+        SessionId = sessionId;
+        VerifiedAt = verifiedAt;
+        ExpiresAt = expiresAt;
+    }
+
+    /// <summary>User that owns the freshly verified session.</summary>
+    public Guid UserId { get; }
+
+    /// <summary>Tenant that bounds the freshly verified session, or <see langword="null" /> for a global session.</summary>
+    public Guid? TenantId { get; }
+
+    /// <summary>Session that satisfied the freshness requirement.</summary>
+    public Guid SessionId { get; }
+
+    /// <summary>UTC time when additional verification was recorded on the session.</summary>
+    public DateTimeOffset VerifiedAt { get; }
+
+    /// <summary>UTC time after which this proof no longer satisfies the step-up requirement used to create it.</summary>
+    public DateTimeOffset ExpiresAt { get; }
+}
+
+/// <summary>
+/// Capability proving that Ashlar validated recent primary authentication for a specific active session.
+/// </summary>
+/// <remarks>
+/// Hosts obtain this proof from <see cref="Ashlar.Identity.Abstractions.Services.IStepUpAuthenticationService.CreateFreshPrimaryAuthenticationProof" />
+/// after Ashlar has validated the current session. It is intended for bootstrapping the first additional-verification
+/// factor, such as initial TOTP enrollment when no usable MFA factor exists yet. It is not accepted for replacing or
+/// disabling existing MFA factors or managing recovery codes.
+/// </remarks>
+public sealed class FreshPrimaryAuthenticationProof
+{
+    internal FreshPrimaryAuthenticationProof(Guid userId, Guid? tenantId, Guid sessionId, DateTimeOffset authenticatedAt, DateTimeOffset expiresAt)
+    {
+        UserId = userId;
+        TenantId = tenantId;
+        SessionId = sessionId;
+        AuthenticatedAt = authenticatedAt;
+        ExpiresAt = expiresAt;
+    }
+
+    /// <summary>User that owns the freshly authenticated session.</summary>
+    public Guid UserId { get; }
+
+    /// <summary>Tenant that bounds the freshly authenticated session, or <see langword="null" /> for a global session.</summary>
+    public Guid? TenantId { get; }
+
+    /// <summary>Session that satisfied the freshness requirement.</summary>
+    public Guid SessionId { get; }
+
+    /// <summary>UTC time when primary authentication was recorded on the session.</summary>
+    public DateTimeOffset AuthenticatedAt { get; }
+
+    /// <summary>UTC time after which this proof no longer satisfies the primary-authentication freshness requirement used to create it.</summary>
+    public DateTimeOffset ExpiresAt { get; }
 }
