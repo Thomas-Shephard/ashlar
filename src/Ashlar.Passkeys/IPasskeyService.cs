@@ -16,8 +16,11 @@ public interface IPasskeyService
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The browser ceremony options.</returns>
     /// <remarks>
-    /// The target user must exist, be in the requested tenant scope, and have an account state that can sign in.
-    /// Omitted tenant scope is treated as global scope.
+    /// This is the self-service registration path for the authenticated account owner. The request must include an
+    /// Ashlar-issued fresh-verification proof minted for <c>passkey-registration</c>. Accounts with an existing usable
+    /// additional-verification factor require fresh MFA proof; first-passkey setup may use fresh primary-authentication
+    /// proof from the current authenticated session. The target user must exist, be in the requested tenant scope, and
+    /// have an account state that can sign in. Omitted tenant scope is treated as global scope.
     /// </remarks>
     Task<PasskeyCeremonyOptions> StartRegistrationAsync(StartPasskeyRegistrationRequest request, CancellationToken cancellationToken = default);
     /// <summary>
@@ -27,8 +30,9 @@ public interface IPasskeyService
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The operation result.</returns>
     /// <remarks>
-    /// The challenge user is reloaded before credential persistence. The expected user, request tenant, challenge
-    /// tenant, and stored user tenant must all match, and the account must still be able to sign in.
+    /// The same proof purpose, session, tenant, and user binding is checked again before credential persistence. The
+    /// challenge user is reloaded before credential persistence. The actor user, request tenant, challenge tenant,
+    /// proof tenant, and stored user tenant must all match, and the account must still be able to sign in.
     /// </remarks>
     Task<Result> CompleteRegistrationAsync(CompletePasskeyRegistrationRequest request, CancellationToken cancellationToken = default);
     /// <summary>

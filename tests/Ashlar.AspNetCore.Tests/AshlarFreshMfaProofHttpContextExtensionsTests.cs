@@ -76,9 +76,14 @@ internal sealed class AshlarFreshMfaProofHttpContextExtensionsTests
 
         var result = context.CreateFreshPrimaryAuthenticationProof(
             new StepUpAuthenticationService(new FakeTimeProvider(Now)),
-            TimeSpan.FromMinutes(10));
+            TimeSpan.FromMinutes(10),
+            "passkey-registration");
 
-        Assert.That(result.Value?.SessionId, Is.EqualTo(session.Id));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value?.SessionId, Is.EqualTo(session.Id));
+            Assert.That(result.Value?.Purpose, Is.EqualTo("passkey-registration"));
+        }
     }
 
     private sealed class FakeTimeProvider(DateTimeOffset now) : TimeProvider

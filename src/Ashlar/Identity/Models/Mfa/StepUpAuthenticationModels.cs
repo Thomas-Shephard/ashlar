@@ -6,10 +6,12 @@ namespace Ashlar.Identity.Models.Mfa;
 /// <param name="FreshnessWindow">Maximum age of an additional-verification ceremony that may satisfy step-up.</param>
 /// <param name="AllowedProviders">Provider keys that may satisfy the step-up requirement, or <see langword="null" /> to allow any.</param>
 /// <param name="AllowedFactors">Provider-neutral factor families that may satisfy the step-up requirement, or <see langword="null" /> to allow any.</param>
+/// <param name="Purpose">Optional operation purpose this proof is minted for, such as <c>passkey-registration</c>.</param>
 public sealed record StepUpRequirement(
     TimeSpan FreshnessWindow,
     IReadOnlyCollection<AuthenticationProviderKey>? AllowedProviders = null,
-    IReadOnlyCollection<string>? AllowedFactors = null);
+    IReadOnlyCollection<string>? AllowedFactors = null,
+    string? Purpose = null);
 
 /// <summary>
 /// Describes a step-up evaluation request.
@@ -23,7 +25,8 @@ public sealed record StepUpEvaluationRequest(AuthenticationSession? Session, Ste
 /// </summary>
 /// <param name="Session">Application session whose primary-authentication metadata is evaluated.</param>
 /// <param name="FreshnessWindow">Maximum age of the primary sign-in ceremony that may satisfy the requirement.</param>
-public sealed record PrimaryAuthenticationEvaluationRequest(AuthenticationSession? Session, TimeSpan FreshnessWindow);
+/// <param name="Purpose">Optional operation purpose this proof is minted for, such as <c>passkey-registration</c>.</param>
+public sealed record PrimaryAuthenticationEvaluationRequest(AuthenticationSession? Session, TimeSpan FreshnessWindow, string? Purpose = null);
 
 /// <summary>
 /// Describes the result of a step-up freshness evaluation.
@@ -49,13 +52,14 @@ public sealed record StepUpEvaluationResult(bool Succeeded, AshlarFailureCode? F
 /// </remarks>
 public sealed class FreshMfaVerificationProof
 {
-    internal FreshMfaVerificationProof(Guid userId, Guid? tenantId, Guid sessionId, DateTimeOffset verifiedAt, DateTimeOffset expiresAt)
+    internal FreshMfaVerificationProof(Guid userId, Guid? tenantId, Guid sessionId, DateTimeOffset verifiedAt, DateTimeOffset expiresAt, string? purpose = null)
     {
         UserId = userId;
         TenantId = tenantId;
         SessionId = sessionId;
         VerifiedAt = verifiedAt;
         ExpiresAt = expiresAt;
+        Purpose = purpose;
     }
 
     /// <summary>User that owns the freshly verified session.</summary>
@@ -72,6 +76,9 @@ public sealed class FreshMfaVerificationProof
 
     /// <summary>UTC time after which this proof no longer satisfies the step-up requirement used to create it.</summary>
     public DateTimeOffset ExpiresAt { get; }
+
+    /// <summary>Operation purpose this proof was minted for, or <see langword="null" /> for a general session freshness proof.</summary>
+    public string? Purpose { get; }
 }
 
 /// <summary>
@@ -85,13 +92,14 @@ public sealed class FreshMfaVerificationProof
 /// </remarks>
 public sealed class FreshPrimaryAuthenticationProof
 {
-    internal FreshPrimaryAuthenticationProof(Guid userId, Guid? tenantId, Guid sessionId, DateTimeOffset authenticatedAt, DateTimeOffset expiresAt)
+    internal FreshPrimaryAuthenticationProof(Guid userId, Guid? tenantId, Guid sessionId, DateTimeOffset authenticatedAt, DateTimeOffset expiresAt, string? purpose = null)
     {
         UserId = userId;
         TenantId = tenantId;
         SessionId = sessionId;
         AuthenticatedAt = authenticatedAt;
         ExpiresAt = expiresAt;
+        Purpose = purpose;
     }
 
     /// <summary>User that owns the freshly authenticated session.</summary>
@@ -108,4 +116,7 @@ public sealed class FreshPrimaryAuthenticationProof
 
     /// <summary>UTC time after which this proof no longer satisfies the primary-authentication freshness requirement used to create it.</summary>
     public DateTimeOffset ExpiresAt { get; }
+
+    /// <summary>Operation purpose this proof was minted for, or <see langword="null" /> for a general primary-authentication freshness proof.</summary>
+    public string? Purpose { get; }
 }

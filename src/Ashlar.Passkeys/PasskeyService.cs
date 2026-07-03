@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Ashlar.Auditing;
+using Ashlar.Identity.Features.Mfa;
 using Ashlar.Identity.RateLimiting;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
@@ -17,6 +18,8 @@ public sealed class PasskeyService : IPasskeyService
     private const string RegistrationPurpose = "passkey-registration";
     private const string AuthenticationPurpose = "passkey-authentication";
     private const string AuthenticationChallengeStartPurpose = "passkey-authentication-start";
+    private const string MfaRegistrationProofType = "fresh-mfa";
+    private const string PrimaryRegistrationProofType = "fresh-primary";
     private const string PrimaryProviderTypeMetadataKey = "primary_provider_type";
     private const string PrimaryProviderNameMetadataKey = "primary_provider_name";
     private const string PrimaryCredentialKeyMetadataKey = "primary_credential_key";
@@ -31,6 +34,7 @@ public sealed class PasskeyService : IPasskeyService
     private readonly PasskeyOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ISecurityEventSink? _securityEventSink;
+    private readonly IReadOnlyList<ISecondaryAuthenticationFactorProvider> _additionalVerificationProviders;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PasskeyService" /> class.
@@ -39,12 +43,14 @@ public sealed class PasskeyService : IPasskeyService
     /// <param name="credentialRepository">Stores and retrieves credentials.</param>
     /// <param name="challengeRepository">The passkey challenge repository.</param>
     /// <param name="ceremonyValidator">The passkey ceremony validator.</param>
+    /// <param name="providers">Registered authentication providers used to decide whether first-factor registration may use primary-authentication freshness.</param>
     /// <param name="dependencies">The passkey service dependencies.</param>
     public PasskeyService(
         IUserRepository userRepository,
         ICredentialRepository credentialRepository,
         IPasskeyChallengeRepository challengeRepository,
         IPasskeyCeremonyValidator ceremonyValidator,
+        IEnumerable<IAuthenticationProvider> providers,
         PasskeyServiceDependencies dependencies)
     {
         ArgumentNullException.ThrowIfNull(dependencies);
@@ -53,6 +59,7 @@ public sealed class PasskeyService : IPasskeyService
         _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
         _challengeRepository = challengeRepository ?? throw new ArgumentNullException(nameof(challengeRepository));
         _ceremonyValidator = ceremonyValidator ?? throw new ArgumentNullException(nameof(ceremonyValidator));
+        _additionalVerificationProviders = (providers ?? throw new ArgumentNullException(nameof(providers))).OfType<ISecondaryAuthenticationFactorProvider>().ToArray();
         _authenticationOrchestrator = dependencies.AuthenticationOrchestrator;
         _handshakeService = dependencies.HandshakeService;
         _tokenHasher = dependencies.TokenHasher;
@@ -62,10 +69,37 @@ public sealed class PasskeyService : IPasskeyService
         _securityEventSink = dependencies.SecurityEventSink;
     }
 
+    internal PasskeyService(
+        IUserRepository userRepository,
+        ICredentialRepository credentialRepository,
+        IPasskeyChallengeRepository challengeRepository,
+        IPasskeyCeremonyValidator ceremonyValidator,
+        PasskeyServiceDependencies dependencies)
+        : this(userRepository, credentialRepository, challengeRepository, ceremonyValidator, [], dependencies)
+    {
+    }
+
     public async Task<PasskeyCeremonyOptions> StartRegistrationAsync(StartPasskeyRegistrationRequest request, CancellationToken cancellationToken = default)
     {
-        var user = await GetAvailableRegistrationUserAsync(request.UserId, request.Tenant, cancellationToken);
-        var existing = await _credentialRepository.ListCredentialsForUserAsync(request.UserId, cancellationToken: cancellationToken);
+        ArgumentNullException.ThrowIfNull(request);
+        var tenant = request.Tenant ?? TenantContext.Global;
+        var user = await GetAvailableRegistrationUserAsync(request.ActorUserId, tenant, cancellationToken);
+        var existing = await _credentialRepository.ListCredentialsForUserAsync(request.ActorUserId, cancellationToken: cancellationToken);
+        var proofBindingResult = ValidateRegistrationProof(
+            new RegistrationProofValidationRequest(
+                request.ActorUserId,
+                tenant,
+                request.FreshMfaProof,
+                request.FreshPrimaryAuthenticationProof,
+                request.CurrentSessionId),
+            existing);
+        if (!proofBindingResult.TryGetValue(out var proofBinding))
+        {
+            var failure = proofBindingResult.GetFailureOr(AshlarFailureCodes.StepUpRequired);
+            await RecordAsync(AshlarSecurityEventTypes.PasskeyRegistrationStarted, SecurityEventOutcomes.Failure, request.ActorUserId, failure.Code.Value, request.Audit, cancellationToken);
+            throw new AshlarOperationException(failure.Code, "Fresh verification is required for passkey registration.");
+        }
+
         var displayName = NormalizeDisplayName(request.DisplayName);
         var challengeValue = CreateChallenge();
         var optionsJson = _ceremonyValidator.CreateRegistrationOptions(_options, user, displayName, challengeValue, existing.Where(IsPasskey).ToList());
@@ -73,29 +107,44 @@ public sealed class PasskeyService : IPasskeyService
             RegistrationPurpose,
             challengeValue,
             optionsJson,
-            request.UserId,
-            new ChallengeEntityMetadata(DisplayName: displayName, TenantId: request.Tenant?.TenantId));
+            request.ActorUserId,
+            new ChallengeEntityMetadata(DisplayName: displayName, TenantId: tenant.TenantId, RegistrationProof: proofBinding));
         await _challengeRepository.CreateAsync(challenge, cancellationToken);
-        await RecordAsync(AshlarSecurityEventTypes.PasskeyRegistrationStarted, SecurityEventOutcomes.Success, request.UserId, null, request.Audit, cancellationToken);
+        await RecordAsync(AshlarSecurityEventTypes.PasskeyRegistrationStarted, SecurityEventOutcomes.Success, request.ActorUserId, null, request.Audit, cancellationToken);
         return new PasskeyCeremonyOptions(challenge.Id, optionsJson, challenge.ExpiresAt);
     }
 
     public async Task<Result> CompleteRegistrationAsync(CompletePasskeyRegistrationRequest request, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(request);
         var challenge = await GetChallengeAsync(request.ChallengeId, RegistrationPurpose, cancellationToken);
         if (challenge == null || challenge.UserId == null)
         {
             return Result.Failure(AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
-        if (request.UserId.HasValue && request.UserId.Value != challenge.UserId.Value)
+        if (request.ActorUserId != challenge.UserId.Value)
         {
             return Result.Failure(AshlarFailureCodes.PasskeyChallengeInvalid);
         }
 
-        if (request.Tenant?.TenantId != challenge.TenantId)
+        var tenant = request.Tenant ?? TenantContext.Global;
+        if (tenant.TenantId != challenge.TenantId)
         {
             return Result.Failure(AshlarFailureCodes.TenantMismatch);
+        }
+
+        var proofResult = ValidateRegistrationCompletionProof(
+            challenge,
+            new RegistrationProofValidationRequest(
+                request.ActorUserId,
+                tenant,
+                request.FreshMfaProof,
+                request.FreshPrimaryAuthenticationProof,
+                request.CurrentSessionId));
+        if (!proofResult.Succeeded)
+        {
+            return Result.Failure(proofResult.GetFailureOr(AshlarFailureCodes.StepUpRequired));
         }
 
         var user = await _userRepository.GetUserByIdAsync(challenge.UserId.Value, cancellationToken);
@@ -543,12 +592,110 @@ public sealed class PasskeyService : IPasskeyService
         return true;
     }
 
-    private async Task<IUser> GetAvailableRegistrationUserAsync(Guid userId, TenantContext? tenant, CancellationToken cancellationToken)
+    private Result<RegistrationProofBinding> ValidateRegistrationProof(
+        RegistrationProofValidationRequest request,
+        IReadOnlyList<UserCredential> existingCredentials)
+    {
+        var proofType = HasExistingAdditionalVerification(existingCredentials)
+            ? MfaRegistrationProofType
+            : PrimaryRegistrationProofType;
+        var result = proofType == MfaRegistrationProofType
+            ? ValidateMfaRegistrationProof(request)
+            : ValidatePrimaryRegistrationProof(request);
+
+        if (result.TryGetValue(out var binding))
+        {
+            return Result.Success(binding);
+        }
+
+        return Result.Failure<RegistrationProofBinding>(result.GetFailureOr(AshlarFailureCodes.StepUpRequired));
+    }
+
+    private Result ValidateRegistrationCompletionProof(PasskeyChallenge challenge, RegistrationProofValidationRequest request)
+    {
+        if (challenge.RegistrationProofType == MfaRegistrationProofType)
+        {
+            var result = ValidateMfaRegistrationProof(request);
+            return ValidateStoredProofBinding(challenge, result);
+        }
+
+        if (challenge.RegistrationProofType == PrimaryRegistrationProofType)
+        {
+            var result = ValidatePrimaryRegistrationProof(request);
+            return ValidateStoredProofBinding(challenge, result);
+        }
+
+        return Result.Failure(AshlarFailureCodes.StepUpRequired);
+    }
+
+    private Result<RegistrationProofBinding> ValidateMfaRegistrationProof(RegistrationProofValidationRequest request)
+    {
+        var failure = FreshVerificationProofValidator.ValidateMfaProof(request.UserId, request.Tenant, request.MfaProof, request.CurrentSessionId, _timeProvider.GetUtcNow(), RegistrationPurpose);
+        return failure == null
+            ? Result.Success(new RegistrationProofBinding(MfaRegistrationProofType, request.MfaProof!.SessionId, request.MfaProof.ExpiresAt))
+            : Result.Failure<RegistrationProofBinding>(failure.Value);
+    }
+
+    private Result<RegistrationProofBinding> ValidatePrimaryRegistrationProof(RegistrationProofValidationRequest request)
+    {
+        var failure = FreshVerificationProofValidator.ValidatePrimaryAuthenticationProof(request.UserId, request.Tenant, request.PrimaryProof, request.CurrentSessionId, _timeProvider.GetUtcNow(), RegistrationPurpose);
+        return failure == null
+            ? Result.Success(new RegistrationProofBinding(PrimaryRegistrationProofType, request.PrimaryProof!.SessionId, request.PrimaryProof.ExpiresAt))
+            : Result.Failure<RegistrationProofBinding>(failure.Value);
+    }
+
+    private static Result ValidateStoredProofBinding(PasskeyChallenge challenge, Result<RegistrationProofBinding> result)
+    {
+        if (!result.TryGetValue(out var binding))
+        {
+            return Result.Failure(result.GetFailureOr(AshlarFailureCodes.StepUpRequired));
+        }
+
+        if (challenge.RegistrationProofSessionId != binding.SessionId)
+        {
+            return Result.Failure(AshlarFailureCodes.StepUpRequired);
+        }
+
+        if (!ProofExpiresAtMatches(challenge.RegistrationProofExpiresAt, binding.ExpiresAt))
+        {
+            return Result.Failure(AshlarFailureCodes.StepUpRequired);
+        }
+
+        return Result.Success();
+    }
+
+    private static bool ProofExpiresAtMatches(DateTimeOffset? storedExpiresAt, DateTimeOffset proofExpiresAt)
+    {
+        return storedExpiresAt.HasValue
+            && Math.Abs((storedExpiresAt.Value - proofExpiresAt).TotalMilliseconds) < 1;
+    }
+
+    private bool HasExistingAdditionalVerification(IReadOnlyList<UserCredential> existingCredentials)
+    {
+        var now = _timeProvider.GetUtcNow();
+        foreach (var credential in existingCredentials)
+        {
+            if (!credential.IsAvailable(now))
+            {
+                continue;
+            }
+
+            var providerKey = new AuthenticationProviderKey(credential.ProviderType, credential.ProviderName);
+            if (_additionalVerificationProviders.Any(provider => provider.Key == providerKey))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async Task<IUser> GetAvailableRegistrationUserAsync(Guid userId, TenantContext tenant, CancellationToken cancellationToken)
     {
         var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken)
             ?? throw new InvalidOperationException("User was not found.");
 
-        if (!UserTenantOwnership.Matches(user, tenant?.TenantId))
+        if (!UserTenantOwnership.Matches(user, tenant.TenantId))
         {
             throw new InvalidOperationException("User was not found.");
         }
@@ -574,6 +721,9 @@ public sealed class PasskeyService : IPasskeyService
             HandshakeTokenHash = metadata.HandshakeTokenHash,
             FactorType = metadata.FactorType,
             DisplayName = metadata.DisplayName,
+            RegistrationProofType = metadata.RegistrationProof?.ProofType,
+            RegistrationProofSessionId = metadata.RegistrationProof?.SessionId,
+            RegistrationProofExpiresAt = metadata.RegistrationProof?.ExpiresAt,
             Challenge = challenge,
             OptionsJson = optionsJson,
             RelyingPartyId = _options.RelyingPartyId,
@@ -583,7 +733,7 @@ public sealed class PasskeyService : IPasskeyService
         };
     }
 
-    private readonly record struct ChallengeEntityMetadata(string? HandshakeTokenHash = null, string? FactorType = null, string? DisplayName = null, Guid? TenantId = null);
+    private readonly record struct ChallengeEntityMetadata(string? HandshakeTokenHash = null, string? FactorType = null, string? DisplayName = null, Guid? TenantId = null, RegistrationProofBinding? RegistrationProof = null);
 
     private static string? NormalizeFactorType(string factorType)
     {
@@ -700,6 +850,15 @@ internal sealed record SucceededPasskeyAssertion(
         return new PasskeyAssertion(Verified.CredentialId, Verified.SignCount, Verified.UserVerified, providerKey);
     }
 }
+
+internal sealed record RegistrationProofValidationRequest(
+    Guid UserId,
+    TenantContext Tenant,
+    FreshMfaVerificationProof? MfaProof,
+    FreshPrimaryAuthenticationProof? PrimaryProof,
+    Guid? CurrentSessionId);
+
+internal sealed record RegistrationProofBinding(string ProofType, Guid SessionId, DateTimeOffset ExpiresAt);
 
 /// <summary>
 /// Provides passkey service dependencies.

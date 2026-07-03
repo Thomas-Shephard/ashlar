@@ -85,7 +85,8 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
             session.TenantId,
             session.Id,
             verifiedAt,
-            verifiedAt + request.Requirement.FreshnessWindow));
+            verifiedAt + request.Requirement.FreshnessWindow,
+            request.Requirement.Purpose));
     }
 
     /// <inheritdoc />
@@ -120,7 +121,8 @@ public sealed class StepUpAuthenticationService(IAuthenticationSessionService? s
             session.TenantId,
             session.Id,
             session.AuthenticatedAt.Value,
-            session.AuthenticatedAt.Value + request.FreshnessWindow));
+            session.AuthenticatedAt.Value + request.FreshnessWindow,
+            request.Purpose));
     }
 
     /// <inheritdoc />

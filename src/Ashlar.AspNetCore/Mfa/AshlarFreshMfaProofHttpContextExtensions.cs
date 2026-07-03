@@ -42,6 +42,7 @@ public static class AshlarFreshMfaProofHttpContextExtensions
     /// <param name="httpContext">Current request context populated by Ashlar session authentication.</param>
     /// <param name="stepUp">Step-up service used to evaluate the validated session.</param>
     /// <param name="freshnessWindow">Maximum age of the current primary sign-in.</param>
+    /// <param name="purpose">Optional operation purpose this proof is minted for.</param>
     /// <returns>Fresh primary-authentication proof scoped to the current user, tenant, and session, or a failure when sign-in is missing or stale.</returns>
     /// <remarks>
     /// This proof is for enrolling MFA when the account has no usable additional-verification factor.
@@ -50,7 +51,8 @@ public static class AshlarFreshMfaProofHttpContextExtensions
     public static Result<FreshPrimaryAuthenticationProof> CreateFreshPrimaryAuthenticationProof(
         this HttpContext httpContext,
         IStepUpAuthenticationService stepUp,
-        TimeSpan freshnessWindow)
+        TimeSpan freshnessWindow,
+        string? purpose = null)
     {
         ArgumentNullException.ThrowIfNull(httpContext);
         ArgumentNullException.ThrowIfNull(stepUp);
@@ -60,6 +62,6 @@ public static class AshlarFreshMfaProofHttpContextExtensions
             return Result.Failure<FreshPrimaryAuthenticationProof>(AshlarFailureCodes.SessionNotFoundOrInactive);
         }
 
-        return stepUp.CreateFreshPrimaryAuthenticationProof(new PrimaryAuthenticationEvaluationRequest(session, freshnessWindow));
+        return stepUp.CreateFreshPrimaryAuthenticationProof(new PrimaryAuthenticationEvaluationRequest(session, freshnessWindow, purpose));
     }
 }
