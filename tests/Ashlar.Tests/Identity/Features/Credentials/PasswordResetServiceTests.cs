@@ -182,6 +182,46 @@ internal sealed class PasswordResetServiceTests
     }
 
     [Test]
+    public async Task ResetPasswordAsyncRejectsTenantUserTokenWhenContextTenantIsOmitted()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = CreateUser(tenantId: tenantId);
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"), new AuthenticationContext(TenantId: tenantId));
+        var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
+
+        var result = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidOrExpiredToken));
+            Assert.That(fixture.Store.Credentials.Any(c => c.ProviderType == ProviderType.Internal), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task ResetPasswordAsyncRejectsTenantUserTokenWhenContextTenantDiffers()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = CreateUser(tenantId: tenantId);
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"), new AuthenticationContext(TenantId: tenantId));
+        var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
+
+        var result = await fixture.Service.ResetPasswordAsync(
+            new PasswordResetRequest { Token = token, NewPassword = NewPassword },
+            new AuthenticationContext(TenantId: Guid.NewGuid()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidOrExpiredToken));
+            Assert.That(fixture.Store.Credentials.Any(c => c.ProviderType == ProviderType.Internal), Is.True);
+        }
+    }
+
+    [Test]
     public async Task ResetPasswordAsyncCanLeaveSessionsActiveWhenConfigured()
     {
         var user = CreateUser();

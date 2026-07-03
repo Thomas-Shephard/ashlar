@@ -687,12 +687,12 @@ internal sealed class AuthenticationPipelineTests
     }
 
     [Test]
-    public async Task LoginAsyncWithTenantScopedLocalPasswordUserAndNoContextTenantShouldLetLockoutDeriveTenantFromUser()
+    public async Task LoginAsyncWithGlobalLocalPasswordUserAndNoContextTenantShouldUseGlobalLockoutContext()
     {
         var context = new AuthenticationContext("test@example.com");
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
         var provider = ConfigureProviderResolution(assertion);
-        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = Guid.NewGuid() };
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
         UseAccountLockoutService();
         _accountLockoutServiceMock.Setup(s => s.GetStatusAsync(user, AuthenticationProviderKey.Local, It.IsAny<AccountLockoutContext>(), It.IsAny<CancellationToken>()))

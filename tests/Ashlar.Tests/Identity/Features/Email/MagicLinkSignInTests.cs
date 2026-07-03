@@ -320,6 +320,45 @@ internal sealed class MagicLinkSignInTests
     }
 
     [Test]
+    public async Task VerifyLinkFailsGenericallyWhenTenantUserTokenHasNoTenantContext()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = new User { Id = _user.Id, DisplayEmail = _user.DisplayEmail, AccountState = _user.AccountState, TenantId = tenantId };
+        var fixture = CreateFixture(user);
+        await fixture.Service.RequestLinkAsync(user.DisplayEmail, new Uri("https://myapp.com/verify"), new AuthenticationContext(TenantId: tenantId));
+        var token = ExtractToken(fixture.EmailSender.Messages.Single().TextBody);
+
+        var response = await fixture.Service.VerifyLinkAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Failed));
+            Assert.That(response.User, Is.Null);
+            Assert.That(response.ErrorMessage, Is.EqualTo("Authentication failed."));
+            Assert.That(fixture.Repository.Credentials, Has.Count.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task VerifyLinkSucceedsWhenTenantUserTokenHasMatchingTenantContext()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = new User { Id = _user.Id, DisplayEmail = _user.DisplayEmail, AccountState = _user.AccountState, TenantId = tenantId };
+        var fixture = CreateFixture(user);
+        var context = new AuthenticationContext(TenantId: tenantId);
+        await fixture.Service.RequestLinkAsync(user.DisplayEmail, new Uri("https://myapp.com/verify"), context);
+        var token = ExtractToken(fixture.EmailSender.Messages.Single().TextBody);
+
+        var response = await fixture.Service.VerifyLinkAsync(token, context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
+            Assert.That(response.User?.Id, Is.EqualTo(user.Id));
+        }
+    }
+
+    [Test]
     public async Task VerifyLinkFailsForOverlongTokenAfterSourceRateLimitCheck()
     {
         var fixture = CreateFixture(_user);

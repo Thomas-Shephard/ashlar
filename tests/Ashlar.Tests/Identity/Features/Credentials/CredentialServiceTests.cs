@@ -291,7 +291,7 @@ internal sealed class CredentialServiceTests
     }
 
     [Test]
-    public async Task ResolveAsyncShouldAcceptAnyUserWhenContextTenantIsNull()
+    public async Task ResolveAsyncShouldAcceptGlobalUserWhenContextTenantIsNull()
     {
         var user = new NonTenantUser { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
         var credential = CreateCredential(user.Id);
@@ -310,6 +310,26 @@ internal sealed class CredentialServiceTests
             Assert.That(resolvedUser, Is.EqualTo(user));
             Assert.That(resolvedCredential, Is.Not.Null);
         }
+    }
+
+    [Test]
+    public async Task ResolveAsyncShouldRejectTenantUserWhenContextTenantIsNull()
+    {
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com", TenantId = Guid.NewGuid() };
+        var context = new AuthenticationContext();
+        var assertionMock = new Mock<IAuthenticationAssertion>();
+        var providerMock = CreateProviderMock();
+        providerMock.Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        var (resolvedUser, resolvedCredential, _, _) = await _service.ResolveAsync(context, assertionMock.Object, providerMock.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolvedUser, Is.Null);
+            Assert.That(resolvedCredential, Is.Null);
+        }
+        _credentialRepositoryMock.Verify(r => r.GetCredentialForUserAsync(user.Id, It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]

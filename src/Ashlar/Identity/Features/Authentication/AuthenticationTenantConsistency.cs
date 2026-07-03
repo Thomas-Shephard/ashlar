@@ -7,10 +7,7 @@ internal static class AuthenticationTenantConsistency
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(user);
 
-        return context.TenantId switch
-        {
-            null => true,
-            Guid tenantId => user is ITenantUser tenantUser && tenantUser.TenantId == tenantId
-        };
+        var userTenantId = user is ITenantUser tenantUser ? tenantUser.TenantId : null;
+        return context.TenantId == userTenantId;
     }
 }
