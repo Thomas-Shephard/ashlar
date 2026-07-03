@@ -8,6 +8,10 @@ namespace Ashlar.Identity.Providers.RecoveryCode;
 /// </summary>
 public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFactorProvider
 {
+    private const int IdCodeLength = 5;
+    private const int IdSecretSeparatorLength = 1;
+    private const int ExtraSubmittedFormattingCharacters = 32;
+
     private readonly PasswordHasherSelector _hasherSelector;
     private readonly RecoveryCodeOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -134,6 +138,11 @@ public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFa
             return null;
         }
 
+        if (recoveryCodeAssertion.Code.Length > MaximumSubmittedCodeLength)
+        {
+            return null;
+        }
+
         var normalizedCode = recoveryCodeAssertion.Code.Replace(" ", "").ToUpperInvariant();
         var codeSpan = normalizedCode.AsSpan();
         var separatorIndex = codeSpan.IndexOf('-');
@@ -167,6 +176,13 @@ public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFa
 
         return null;
     }
+
+    private int MaximumSubmittedCodeLength =>
+        IdCodeLength
+        + IdSecretSeparatorLength
+        + _options.CodeLength
+        + ((_options.CodeLength - 1) / _options.GroupSize)
+        + ExtraSubmittedFormattingCharacters;
 
     /// <summary>
     /// Marks a previously resolved recovery-code credential as successful and consumed.
