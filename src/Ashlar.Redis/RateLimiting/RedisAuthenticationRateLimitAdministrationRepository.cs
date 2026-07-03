@@ -31,6 +31,7 @@ public sealed class RedisAuthenticationRateLimitAdministrationRepository : IAuth
 
         _getConnectionAsync = () => ValueTask.FromResult(connection);
         _options = options.Value;
+        ValidateOptions(options);
     }
 
     internal RedisAuthenticationRateLimitAdministrationRepository(RedisAuthenticationRateLimiterConnection connectionWrapper, IOptions<RedisAuthenticationRateLimiterOptions> options)
@@ -40,6 +41,7 @@ public sealed class RedisAuthenticationRateLimitAdministrationRepository : IAuth
 
         _getConnectionAsync = connectionWrapper.GetConnectionAsync;
         _options = options.Value;
+        ValidateOptions(options);
     }
 
     /// <summary>
@@ -145,6 +147,14 @@ public sealed class RedisAuthenticationRateLimitAdministrationRepository : IAuth
     private RedisKey BuildPhysicalKey(string bucketId)
     {
         return (RedisKey)$"{RedisRateLimitKeyBuilder.NormalizePrefix(_options.KeyPrefix)}:auth:{bucketId}";
+    }
+
+    private static void ValidateOptions(IOptions<RedisAuthenticationRateLimiterOptions> options)
+    {
+        if (!RedisAuthenticationRateLimiterOptions.Validate(options.Value))
+        {
+            throw new ArgumentException("Redis rate limiter options are invalid.", nameof(options));
+        }
     }
 
     private static async Task<AuthenticationRateLimitBucketSummary?> ReadBucketAsync(IDatabase database, RedisKey key, string prefix, DateTimeOffset now)

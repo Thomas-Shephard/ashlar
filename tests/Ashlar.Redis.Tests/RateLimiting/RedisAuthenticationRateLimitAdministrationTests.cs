@@ -175,12 +175,23 @@ internal sealed class RedisAuthenticationRateLimitAdministrationTests : RedisTes
     public void PublicRepositoryConstructorValidatesInputs()
     {
         var options = Options.Create(new RedisAuthenticationRateLimiterOptions { KeyPrefix = _keyPrefix });
+        var invalidOptions = Options.Create(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "invalid prefix" });
 
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentNullException>(() => _ = new RedisAuthenticationRateLimitAdministrationRepository((IConnectionMultiplexer)null!, options));
             Assert.Throws<ArgumentNullException>(() => _ = new RedisAuthenticationRateLimitAdministrationRepository(GetConnection(), null!));
+            Assert.Throws<ArgumentException>(() => _ = new RedisAuthenticationRateLimitAdministrationRepository(GetConnection(), invalidOptions));
         }
+    }
+
+    [Test]
+    public void WrapperRepositoryConstructorRejectsInvalidOptions()
+    {
+        var connection = new RedisAuthenticationRateLimiterConnection(new Lazy<Task<IConnectionMultiplexer>>(() => Task.FromResult(GetConnection())), false);
+        var options = Options.Create(new RedisAuthenticationRateLimiterOptions());
+
+        Assert.Throws<ArgumentException>(() => _ = new RedisAuthenticationRateLimitAdministrationRepository(connection, options));
     }
 
     private static string UniqueKey() => $"redis-admin-{Guid.NewGuid():N}";

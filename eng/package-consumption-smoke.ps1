@@ -156,7 +156,10 @@ builder.Services.AddAshlarOAuth(options => options.AddGoogle(oidc =>
 }));
 
 // Ashlar.Redis
-builder.Services.AddAshlarRedisRateLimiting("localhost:6379");
+builder.Services.AddAshlarRedisRateLimiting("localhost:6379", options =>
+{
+    options.KeyPrefix = "package-smoke:ashlar:rate-limits";
+});
 
 var app = builder.Build();
 
