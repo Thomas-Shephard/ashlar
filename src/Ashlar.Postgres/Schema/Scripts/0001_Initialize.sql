@@ -317,6 +317,9 @@ CREATE TABLE IF NOT EXISTS ashlar_passkey_challenges (
     handshake_token_hash TEXT,
     factor_type TEXT,
     display_name TEXT,
+    registration_proof_type TEXT,
+    registration_proof_session_id UUID,
+    registration_proof_expires_at TIMESTAMPTZ,
     challenge TEXT NOT NULL UNIQUE,
     options_json JSONB NOT NULL,
     relying_party_id TEXT NOT NULL,
@@ -327,9 +330,11 @@ CREATE TABLE IF NOT EXISTS ashlar_passkey_challenges (
     CONSTRAINT ck_ashlar_passkey_challenges_purpose CHECK (purpose IN ('passkey-registration', 'passkey-authentication')),
     CONSTRAINT ck_ashlar_passkey_challenges_expiry_after_creation CHECK (expires_at >= created_at),
     CONSTRAINT ck_ashlar_passkey_challenges_registration_user CHECK (purpose <> 'passkey-registration' OR user_id IS NOT NULL),
+    CONSTRAINT ck_ashlar_passkey_challenges_registration_proof CHECK (purpose <> 'passkey-registration' OR (registration_proof_type IN ('fresh-mfa', 'fresh-primary') AND registration_proof_session_id IS NOT NULL AND registration_proof_expires_at IS NOT NULL)),
+    CONSTRAINT ck_ashlar_passkey_challenges_nonregistration_proof CHECK (purpose = 'passkey-registration' OR (registration_proof_type IS NULL AND registration_proof_session_id IS NULL AND registration_proof_expires_at IS NULL)),
     CONSTRAINT ck_ashlar_passkey_challenges_factor_binding CHECK ((handshake_token_hash IS NULL AND factor_type IS NULL) OR (handshake_token_hash IS NOT NULL AND factor_type IS NOT NULL)),
     CONSTRAINT ck_ashlar_passkey_challenges_factor_shape CHECK (handshake_token_hash IS NULL OR (purpose = 'passkey-authentication' AND user_id IS NOT NULL)),
-    CONSTRAINT ck_ashlar_passkey_challenges_nonblank_fields CHECK (btrim(version) <> '' AND btrim(purpose) <> '' AND btrim(challenge) <> '' AND btrim(relying_party_id) <> '' AND btrim(origin) <> '' AND (handshake_token_hash IS NULL OR btrim(handshake_token_hash) <> '') AND (factor_type IS NULL OR btrim(factor_type) <> '') AND (display_name IS NULL OR (btrim(display_name) <> '' AND char_length(display_name) <= 100)))
+    CONSTRAINT ck_ashlar_passkey_challenges_nonblank_fields CHECK (btrim(version) <> '' AND btrim(purpose) <> '' AND btrim(challenge) <> '' AND btrim(relying_party_id) <> '' AND btrim(origin) <> '' AND (handshake_token_hash IS NULL OR btrim(handshake_token_hash) <> '') AND (factor_type IS NULL OR btrim(factor_type) <> '') AND (display_name IS NULL OR (btrim(display_name) <> '' AND char_length(display_name) <= 100)) AND (registration_proof_type IS NULL OR btrim(registration_proof_type) <> ''))
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_passkey_challenges_active_expires ON ashlar_passkey_challenges (expires_at, id)

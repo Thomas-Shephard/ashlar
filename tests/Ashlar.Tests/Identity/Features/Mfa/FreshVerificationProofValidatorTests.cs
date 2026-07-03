@@ -14,7 +14,7 @@ internal sealed class FreshVerificationProofValidatorTests
             _now,
             _now.AddMinutes(10));
 
-        var failure = FreshVerificationProofValidator.Validate(Guid.Empty, TenantContext.Global, proof, proof.SessionId, _now);
+        var failure = FreshVerificationProofValidator.ValidateMfaProof(Guid.Empty, TenantContext.Global, proof, proof.SessionId, _now);
 
         Assert.That(failure, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
     }
@@ -30,7 +30,7 @@ internal sealed class FreshVerificationProofValidatorTests
             _now,
             _now.AddMinutes(10));
 
-        var failure = FreshVerificationProofValidator.Validate(userId, TenantContext.Global, proof, proof.SessionId, _now);
+        var failure = FreshVerificationProofValidator.ValidatePrimaryAuthenticationProof(userId, TenantContext.Global, proof, proof.SessionId, _now);
 
         Assert.That(failure, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
     }
@@ -46,8 +46,26 @@ internal sealed class FreshVerificationProofValidatorTests
             _now,
             _now.AddMinutes(10));
 
-        var failure = FreshVerificationProofValidator.Validate(userId, TenantContext.Global, proof, currentSessionId: null, _now);
+        var failure = FreshVerificationProofValidator.ValidateMfaProof(userId, TenantContext.Global, proof, currentSessionId: null, _now);
+
+        Assert.That(failure, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+    }
+
+    [Test]
+    public void ValidateShouldRejectWrongPurposeWhenRequired()
+    {
+        var userId = Guid.NewGuid();
+        var proof = new FreshPrimaryAuthenticationProof(
+            userId,
+            tenantId: null,
+            Guid.NewGuid(),
+            _now,
+            _now.AddMinutes(10),
+            "totp-enrollment");
+
+        var failure = FreshVerificationProofValidator.ValidatePrimaryAuthenticationProof(userId, TenantContext.Global, proof, proof.SessionId, _now, "passkey-registration");
 
         Assert.That(failure, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
     }
 }
+

@@ -346,7 +346,7 @@ public sealed class TotpService : ITotpService
         string eventType,
         CancellationToken cancellationToken)
     {
-        var failure = FreshVerificationProofValidator.Validate(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow());
+        var failure = FreshVerificationProofValidator.ValidateMfaProof(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow());
         if (failure == null)
         {
             return Result.Success();
@@ -402,7 +402,7 @@ public sealed class TotpService : ITotpService
         string eventType,
         CancellationToken cancellationToken)
     {
-        var failure = FreshVerificationProofValidator.Validate(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow());
+        var failure = FreshVerificationProofValidator.ValidatePrimaryAuthenticationProof(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow());
         if (failure == null)
         {
             return Result.Success();

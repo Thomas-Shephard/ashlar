@@ -48,7 +48,7 @@ internal sealed class StepUpAuthenticationServiceTests
 
         var result = service.CreateFreshMfaProof(new StepUpEvaluationRequest(
             session,
-            new StepUpRequirement(TimeSpan.FromMinutes(10), [TotpProvider()], ["totp"])));
+            new StepUpRequirement(TimeSpan.FromMinutes(10), [TotpProvider()], ["totp"], "passkey-registration")));
 
         using (Assert.EnterMultipleScope())
         {
@@ -58,6 +58,7 @@ internal sealed class StepUpAuthenticationServiceTests
             Assert.That(result.Value.SessionId, Is.EqualTo(session.Id));
             Assert.That(result.Value.VerifiedAt, Is.EqualTo(session.AdditionalVerificationAt));
             Assert.That(result.Value.ExpiresAt, Is.EqualTo(session.AdditionalVerificationAt!.Value.AddMinutes(10)));
+            Assert.That(result.Value.Purpose, Is.EqualTo("passkey-registration"));
         }
     }
 
@@ -88,7 +89,7 @@ internal sealed class StepUpAuthenticationServiceTests
         var tenantId = Guid.NewGuid();
         var session = CreateSession(tenantId: tenantId, authenticatedAt: _now.AddMinutes(-1));
 
-        var result = service.CreateFreshPrimaryAuthenticationProof(new PrimaryAuthenticationEvaluationRequest(session, TimeSpan.FromMinutes(10)));
+        var result = service.CreateFreshPrimaryAuthenticationProof(new PrimaryAuthenticationEvaluationRequest(session, TimeSpan.FromMinutes(10), "passkey-registration"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -98,6 +99,7 @@ internal sealed class StepUpAuthenticationServiceTests
             Assert.That(result.Value.SessionId, Is.EqualTo(session.Id));
             Assert.That(result.Value.AuthenticatedAt, Is.EqualTo(session.AuthenticatedAt));
             Assert.That(result.Value.ExpiresAt, Is.EqualTo(session.AuthenticatedAt!.Value.AddMinutes(10)));
+            Assert.That(result.Value.Purpose, Is.EqualTo("passkey-registration"));
         }
     }
 

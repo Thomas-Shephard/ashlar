@@ -282,6 +282,9 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
             HandshakeTokenHash = handshakeTokenHash,
             FactorType = factorType,
             DisplayName = displayName,
+            RegistrationProofType = purpose == "passkey-registration" ? "fresh-primary" : null,
+            RegistrationProofSessionId = purpose == "passkey-registration" ? Guid.NewGuid() : null,
+            RegistrationProofExpiresAt = purpose == "passkey-registration" ? (expiresAt ?? now.Add(ChallengeLifetime)) : null,
             Challenge = challengeValue ?? Guid.NewGuid().ToString("N"),
             OptionsJson = optionsJson,
             RelyingPartyId = "example.com",
@@ -303,6 +306,16 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
             Assert.That(actual.HandshakeTokenHash, Is.EqualTo(expected.HandshakeTokenHash));
             Assert.That(actual.FactorType, Is.EqualTo(expected.FactorType));
             Assert.That(actual.DisplayName, Is.EqualTo(expected.DisplayName));
+            Assert.That(actual.RegistrationProofType, Is.EqualTo(expected.RegistrationProofType));
+            Assert.That(actual.RegistrationProofSessionId, Is.EqualTo(expected.RegistrationProofSessionId));
+            if (expected.RegistrationProofExpiresAt.HasValue)
+            {
+                Assert.That(actual.RegistrationProofExpiresAt, Is.EqualTo(expected.RegistrationProofExpiresAt).Within(TimeSpan.FromMilliseconds(1)));
+            }
+            else
+            {
+                Assert.That(actual.RegistrationProofExpiresAt, Is.Null);
+            }
             Assert.That(actual.Challenge, Is.EqualTo(expected.Challenge));
             Assert.That(JsonNode.DeepEquals(JsonNode.Parse(actual.OptionsJson), JsonNode.Parse(expected.OptionsJson)), Is.True);
             Assert.That(actual.RelyingPartyId, Is.EqualTo(expected.RelyingPartyId));

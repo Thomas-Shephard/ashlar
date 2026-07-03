@@ -38,6 +38,18 @@ public sealed class PasskeyChallenge
     /// </summary>
     public string? DisplayName { get; init; }
     /// <summary>
+    /// Fresh-verification proof type used to authorize passkey registration, when applicable.
+    /// </summary>
+    public string? RegistrationProofType { get; init; }
+    /// <summary>
+    /// Current session id bound to the fresh-verification proof used for passkey registration, when applicable.
+    /// </summary>
+    public Guid? RegistrationProofSessionId { get; init; }
+    /// <summary>
+    /// Expiry timestamp from the fresh-verification proof used for passkey registration, when applicable.
+    /// </summary>
+    public DateTimeOffset? RegistrationProofExpiresAt { get; init; }
+    /// <summary>
     /// Short-lived WebAuthn challenge sent to the client. It is not a bearer secret, but avoid logging it as routine metadata.
     /// </summary>
     public required string Challenge { get; init; }

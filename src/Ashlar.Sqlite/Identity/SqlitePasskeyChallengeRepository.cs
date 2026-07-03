@@ -16,9 +16,9 @@ public sealed class SqlitePasskeyChallengeRepository(ISqliteConnectionProvider c
 
         const string sql = """
             INSERT INTO ashlar_passkey_challenges
-                (id, version, purpose, user_id, tenant_id, handshake_token_hash, factor_type, display_name, challenge, options_json, relying_party_id, origin, created_at, expires_at, consumed_at)
+                (id, version, purpose, user_id, tenant_id, handshake_token_hash, factor_type, display_name, registration_proof_type, registration_proof_session_id, registration_proof_expires_at, challenge, options_json, relying_party_id, origin, created_at, expires_at, consumed_at)
             VALUES
-                ($id, $version, $purpose, $userId, $tenantId, $handshakeTokenHash, $factorType, $displayName, $challenge, $optionsJson, $relyingPartyId, $origin, $createdAt, $expiresAt, $consumedAt);
+                ($id, $version, $purpose, $userId, $tenantId, $handshakeTokenHash, $factorType, $displayName, $registrationProofType, $registrationProofSessionId, $registrationProofExpiresAt, $challenge, $optionsJson, $relyingPartyId, $origin, $createdAt, $expiresAt, $consumedAt);
             """;
 
         await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
@@ -32,7 +32,7 @@ public sealed class SqlitePasskeyChallengeRepository(ISqliteConnectionProvider c
     public async Task<PasskeyChallenge?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
         const string sql = """
-            SELECT id, version, purpose, user_id, tenant_id, handshake_token_hash, factor_type, display_name, challenge, options_json,
+            SELECT id, version, purpose, user_id, tenant_id, handshake_token_hash, factor_type, display_name, registration_proof_type, registration_proof_session_id, registration_proof_expires_at, challenge, options_json,
                    relying_party_id, origin, created_at, expires_at, consumed_at
             FROM ashlar_passkey_challenges
             WHERE id = $id;
@@ -84,6 +84,9 @@ public sealed class SqlitePasskeyChallengeRepository(ISqliteConnectionProvider c
         command.AddParameter("$handshakeTokenHash", challenge.HandshakeTokenHash);
         command.AddParameter("$factorType", challenge.FactorType);
         command.AddParameter("$displayName", challenge.DisplayName);
+        command.AddParameter("$registrationProofType", challenge.RegistrationProofType);
+        command.AddNullableGuidParameter("$registrationProofSessionId", challenge.RegistrationProofSessionId);
+        command.AddNullableDateTimeOffsetParameter("$registrationProofExpiresAt", challenge.RegistrationProofExpiresAt);
         command.AddParameter("$challenge", challenge.Challenge);
         command.AddParameter("$optionsJson", challenge.OptionsJson);
         command.AddParameter("$relyingPartyId", challenge.RelyingPartyId);
@@ -105,6 +108,9 @@ public sealed class SqlitePasskeyChallengeRepository(ISqliteConnectionProvider c
             HandshakeTokenHash = reader.GetNullableString("handshake_token_hash"),
             FactorType = reader.GetNullableString("factor_type"),
             DisplayName = reader.GetNullableString("display_name"),
+            RegistrationProofType = reader.GetNullableString("registration_proof_type"),
+            RegistrationProofSessionId = reader.GetNullableGuidFromText("registration_proof_session_id"),
+            RegistrationProofExpiresAt = reader.GetNullableDateTimeOffsetFromText("registration_proof_expires_at"),
             Challenge = reader.GetString(reader.GetOrdinal("challenge")),
             OptionsJson = reader.GetString(reader.GetOrdinal("options_json")),
             RelyingPartyId = reader.GetString(reader.GetOrdinal("relying_party_id")),

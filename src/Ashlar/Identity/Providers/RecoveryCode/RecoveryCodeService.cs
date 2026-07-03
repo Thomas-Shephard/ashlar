@@ -250,7 +250,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         string eventType,
         CancellationToken cancellationToken)
     {
-        var failure = FreshVerificationProofValidator.Validate(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow());
+        var failure = FreshVerificationProofValidator.ValidateMfaProof(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow());
         if (failure == null)
         {
             return Result.Success();
