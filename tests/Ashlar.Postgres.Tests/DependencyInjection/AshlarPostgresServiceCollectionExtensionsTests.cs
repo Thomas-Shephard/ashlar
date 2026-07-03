@@ -113,14 +113,14 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
     }
 
     [Test]
-    public void AddAshlarPostgresCleanupRegistersCleanupService()
+    public async Task AddAshlarPostgresCleanupRegistersCleanupService()
     {
         var services = new ServiceCollection();
 
         services.AddAshlarPostgres(GetDataSource());
         services.AddAshlarPostgresCleanup(options => options.BatchSize = 42);
-        using var provider = services.BuildServiceProvider();
-        using var scope = provider.CreateScope();
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
 
         using (Assert.EnterMultipleScope())
         {

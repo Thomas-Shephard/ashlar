@@ -746,11 +746,8 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
             RemoveSentEmailsAfter = TimeSpan.FromDays(30),
             RemoveFailedEmailsAfter = TimeSpan.FromDays(30)
         };
-
-        var cleanupService = new PostgresAshlarCleanupService(
-            GetDataSource(),
-            _timeProvider,
-            Options.Create(cleanupOptions));
+        await using var connectionProvider = new PostgresTransactionManager(GetDataSource());
+        var cleanupService = new PostgresAshlarCleanupService(connectionProvider, _timeProvider, Options.Create(cleanupOptions));
 
         var result = await cleanupService.CleanupAsync();
 

@@ -1,7 +1,6 @@
 using Ashlar.Operational;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Ashlar.Postgres.Tests.Webhooks;
@@ -81,16 +80,16 @@ internal sealed class PostgresSecurityEventWebhookOutboxCleanupContractTests : S
 
     protected override async Task<AshlarCleanupResult> RunCleanupWithNullWebhookRetentionsAsync()
     {
-        await using var dataSource = new Npgsql.NpgsqlDataSourceBuilder(_database!.ConnectionString).Build();
-        var service = new PostgresAshlarCleanupService(
-            dataSource,
-            new FakeTimeProvider(CleanupNow),
-            Options.Create(new AshlarCleanupOptions
-            {
-                RemoveSentSecurityEventWebhooksAfter = null,
-                RemoveFailedSecurityEventWebhooksAfter = null,
-                RemoveDiscardedSecurityEventWebhooksAfter = null
-            }));
-        return await service.CleanupAsync();
+        var services = new ServiceCollection();
+        services.AddAshlarPostgres(_database!.ConnectionString);
+        services.AddSingleton<TimeProvider>(new FakeTimeProvider(CleanupNow));
+        services.AddAshlarPostgresCleanup(options =>
+        {
+            options.RemoveSentSecurityEventWebhooksAfter = null;
+            options.RemoveFailedSecurityEventWebhooksAfter = null;
+            options.RemoveDiscardedSecurityEventWebhooksAfter = null;
+        });
+        await using var provider = services.BuildServiceProvider();
+        return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
     }
 }

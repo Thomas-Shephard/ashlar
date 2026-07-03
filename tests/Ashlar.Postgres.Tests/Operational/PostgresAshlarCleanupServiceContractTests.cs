@@ -1,7 +1,6 @@
 using Ashlar.Operational;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Npgsql;
 
@@ -13,6 +12,8 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
     private static readonly DateTimeOffset Now = new(2026, 5, 8, 12, 0, 0, TimeSpan.Zero);
     private PostgresContractDatabaseLease? _database;
     private FakeTimeProvider _timeProvider = null!;
+
+    protected override bool SupportsCleanupTransactionRollback => true;
 
     protected override async Task<IServiceProvider> CreateInitializedServiceProviderAsync()
     {
@@ -203,12 +204,8 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
             throw new InvalidOperationException("Contract database is not initialized.");
         }
 
-        await using var dataSource = new NpgsqlDataSourceBuilder(_database.ConnectionString).Build();
-        var service = new PostgresAshlarCleanupService(
-            dataSource,
-            _timeProvider,
-            Options.Create(new AshlarCleanupOptions { RemoveAuditEventsAfter = null }));
-        return await service.CleanupAsync();
+        await using var provider = CreateCleanupProvider(options => options.RemoveAuditEventsAfter = null);
+        return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
     }
 
     protected override async Task<AshlarCleanupResult> RunCleanupWithNullRememberedMfaDeviceRetentionsAsync()
@@ -218,16 +215,12 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
             throw new InvalidOperationException("Contract database is not initialized.");
         }
 
-        await using var dataSource = new NpgsqlDataSourceBuilder(_database.ConnectionString).Build();
-        var service = new PostgresAshlarCleanupService(
-            dataSource,
-            _timeProvider,
-            Options.Create(new AshlarCleanupOptions
-            {
-                RemoveExpiredRememberedMfaDevicesAfter = null,
-                RemoveRevokedRememberedMfaDevicesAfter = null
-            }));
-        return await service.CleanupAsync();
+        await using var provider = CreateCleanupProvider(options =>
+        {
+            options.RemoveExpiredRememberedMfaDevicesAfter = null;
+            options.RemoveRevokedRememberedMfaDevicesAfter = null;
+        });
+        return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
     }
 
     protected override async Task<AshlarCleanupResult> RunCleanupWithNullEmailDiscardRetentionAsync()
@@ -237,16 +230,26 @@ internal sealed class PostgresAshlarCleanupServiceContractTests : AshlarCleanupS
             throw new InvalidOperationException("Contract database is not initialized.");
         }
 
-        await using var dataSource = new NpgsqlDataSourceBuilder(_database.ConnectionString).Build();
-        var service = new PostgresAshlarCleanupService(
-            dataSource,
-            _timeProvider,
-            Options.Create(new AshlarCleanupOptions
-            {
-                RemoveDiscardedEmailsAfter = null,
-                RemoveDiscardedSensitiveEmailsAfter = null
-            }));
-        return await service.CleanupAsync();
+        await using var provider = CreateCleanupProvider(options =>
+        {
+            options.RemoveDiscardedEmailsAfter = null;
+            options.RemoveDiscardedSensitiveEmailsAfter = null;
+        });
+        return await provider.GetRequiredService<IAshlarCleanupService>().CleanupAsync();
+    }
+
+    private ServiceProvider CreateCleanupProvider(Action<AshlarCleanupOptions> configure)
+    {
+        if (_database == null)
+        {
+            throw new InvalidOperationException("Contract database is not initialized.");
+        }
+
+        var services = new ServiceCollection();
+        services.AddAshlarPostgres(_database.ConnectionString);
+        services.AddAshlarPostgresCleanup(configure);
+        services.AddSingleton<TimeProvider>(_timeProvider);
+        return services.BuildServiceProvider();
     }
 
     private async Task<NpgsqlConnection> OpenConnectionAsync()

@@ -1345,7 +1345,7 @@ services.AddAshlarPostgresCleanupHostedService(options =>
 });
 ```
 
-Cleanup uses bounded batches and the application's `TimeProvider`, so repeated or concurrent runs are safe and deterministic in tests. `MaxBatchesPerRun` lets one cleanup run catch up on backlog without making the run unbounded.
+Cleanup uses bounded batches and the application's `TimeProvider`, so repeated or concurrent runs are safe and deterministic in tests. `MaxBatchesPerRun` lets one cleanup run catch up on backlog without making the run unbounded. PostgreSQL and SQLite cleanup use the provider connection abstraction: inside an active Ashlar transaction they participate in that transaction, and normal maintenance/background cleanup runs on a fresh provider connection when no transaction is active.
 
 Cleanup diagnostics are available through `IAshlarCleanupDiagnostics` when provider cleanup is registered:
 
