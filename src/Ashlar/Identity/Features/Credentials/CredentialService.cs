@@ -257,7 +257,7 @@ public sealed class CredentialService(
     }
 
     /// <inheritdoc />
-    public async Task<bool> UpdateCredentialUsageAsync(
+    public async Task<CredentialUsageUpdateResult> UpdateCredentialUsageAsync(
         UserCredential unprotectedCredential,
         UserCredential? originalCredential,
         AuthenticationResult result,
@@ -270,7 +270,7 @@ public sealed class CredentialService(
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
-        bool updated;
+        CredentialUsageUpdateResult updated;
         if (result.IsCredentialConsumed)
         {
             updated = await ConsumeAndRecordAsync(unprotectedCredential, originalCredential, transaction, cancellationToken);
@@ -285,7 +285,7 @@ public sealed class CredentialService(
         return updated;
     }
 
-    private async Task<bool> PerformUpdateAsync(
+    private async Task<CredentialUsageUpdateResult> PerformUpdateAsync(
         UserCredential unprotectedCredential,
         UserCredential? originalCredential,
         AuthenticationResult result,
@@ -293,10 +293,14 @@ public sealed class CredentialService(
         IAshlarTransaction transaction,
         CancellationToken cancellationToken)
     {
+        var metadataChanged = result.NewMetadata != null && result.NewMetadata != unprotectedCredential.Metadata;
         bool needsUpdate = PrepareMetadataAndUsage(unprotectedCredential, result);
 
+        var valueUpdateRequested = result is { Status: AuthenticationResultStatus.SucceededWithCredentialUpdate, NewCredentialValue: not null };
         var (protectionSucceeded, valueRequestedUpdate) = PrepareCredentialValue(unprotectedCredential, originalCredential, result, provider);
         needsUpdate |= valueRequestedUpdate;
+        var providerRequestedUpdateAttempted = metadataChanged || valueUpdateRequested;
+        var providerRequestedUpdateCanPersist = (metadataChanged || valueRequestedUpdate) && protectionSucceeded;
 
         if (!protectionSucceeded && !HandleProtectionFailure(unprotectedCredential, originalCredential, result, ref needsUpdate))
         {
@@ -308,7 +312,7 @@ public sealed class CredentialService(
                 unprotectedCredential.ProviderName,
                 null);
             transaction.OnCommitted(ct => RecordCredentialUpdateFailedAsync(unprotectedCredential, "protect_failed", ct));
-            return false;
+            return CredentialUsageUpdateResult.RequiredFailed;
         }
 
         if (needsUpdate && IsWipeRisk(unprotectedCredential, originalCredential, provider))
@@ -321,7 +325,9 @@ public sealed class CredentialService(
                 unprotectedCredential.ProviderName,
                 null);
             transaction.OnCommitted(ct => RecordCredentialUpdateFailedAsync(unprotectedCredential, "wipe_risk", ct));
-            return false;
+            return result.CredentialUpdateRequirement == CredentialUpdateRequirement.Required
+                ? CredentialUsageUpdateResult.RequiredFailed
+                : CredentialUsageUpdateResult.BestEffortFailed;
         }
 
         if (needsUpdate)
@@ -329,10 +335,22 @@ public sealed class CredentialService(
             unprotectedCredential.UpdatedAt = _timeProvider.GetUtcNow();
         }
 
-        return !needsUpdate || await PersistAndRecordUpdateAsync(unprotectedCredential, originalCredential, result, transaction, cancellationToken);
+        if (!needsUpdate)
+        {
+            return CredentialUsageUpdateResult.NotNeeded;
+        }
+
+        return await PersistAndRecordUpdateAsync(
+            unprotectedCredential,
+            originalCredential,
+            result,
+            providerRequestedUpdateAttempted,
+            providerRequestedUpdateCanPersist,
+            transaction,
+            cancellationToken);
     }
 
-    private async Task<bool> ConsumeAndRecordAsync(
+    private async Task<CredentialUsageUpdateResult> ConsumeAndRecordAsync(
         UserCredential unprotectedCredential,
         UserCredential? originalCredential,
         IAshlarTransaction transaction,
@@ -352,32 +370,39 @@ public sealed class CredentialService(
                 ["operation"] = "consume"
             }
         }, ct));
-        return consumed;
+        return consumed ? CredentialUsageUpdateResult.NotNeeded : CredentialUsageUpdateResult.RequiredFailed;
     }
 
-    private async Task<bool> PersistAndRecordUpdateAsync(
+    private async Task<CredentialUsageUpdateResult> PersistAndRecordUpdateAsync(
         UserCredential unprotectedCredential,
         UserCredential? originalCredential,
         AuthenticationResult result,
+        bool providerRequestedUpdateAttempted,
+        bool providerRequestedUpdateCanPersist,
         IAshlarTransaction transaction,
         CancellationToken cancellationToken)
     {
         var (succeeded, persisted) = await PersistUpdateAsync(unprotectedCredential, originalCredential, result, cancellationToken);
-        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        var providerUpdatePersisted = persisted && providerRequestedUpdateCanPersist;
+        if (providerRequestedUpdateAttempted)
         {
-            EventType = persisted ? AshlarSecurityEventTypes.CredentialUpdatePersisted : AshlarSecurityEventTypes.CredentialUpdateFailed,
-            Outcome = persisted ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
-            UserId = unprotectedCredential.UserId,
-            Provider = new AuthenticationProviderKey(unprotectedCredential.ProviderType, unprotectedCredential.ProviderName),
-            FailureReason = persisted ? null : SecurityEventFailureReasons.CredentialUpdateFailed,
-            Properties = new Dictionary<string, string>
+            transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
-                [CredentialIdPropertyName] = unprotectedCredential.Id.ToString(),
-                ["operation"] = "update",
-                ["required"] = (result.CredentialUpdateRequirement == CredentialUpdateRequirement.Required).ToString()
-            }
-        }, ct));
-        return succeeded;
+                EventType = providerUpdatePersisted ? AshlarSecurityEventTypes.CredentialUpdatePersisted : AshlarSecurityEventTypes.CredentialUpdateFailed,
+                Outcome = providerUpdatePersisted ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
+                UserId = unprotectedCredential.UserId,
+                Provider = new AuthenticationProviderKey(unprotectedCredential.ProviderType, unprotectedCredential.ProviderName),
+                FailureReason = providerUpdatePersisted ? null : SecurityEventFailureReasons.CredentialUpdateFailed,
+                Properties = new Dictionary<string, string>
+                {
+                    [CredentialIdPropertyName] = unprotectedCredential.Id.ToString(),
+                    ["operation"] = "update",
+                    ["required"] = (result.CredentialUpdateRequirement == CredentialUpdateRequirement.Required).ToString()
+                }
+            }, ct));
+        }
+
+        return new CredentialUsageUpdateResult(succeeded, providerUpdatePersisted);
     }
 
     private bool PrepareMetadataAndUsage(UserCredential credential, AuthenticationResult result)

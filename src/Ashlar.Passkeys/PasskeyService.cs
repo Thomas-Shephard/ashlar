@@ -490,7 +490,7 @@ public sealed class PasskeyService : IPasskeyService
         if (alreadyPersisted)
         {
             var persisted = await _credentialRepository.GetCredentialForUserAsync(credential.UserId, credential.ProviderType, credential.ProviderName, credential.ProviderKey, cancellationToken);
-            return IsPersistedAssertionMetadataCurrent(persisted, assertion.Verified.SignCount) ? persisted : null;
+            return IsPersistedAssertionCurrent(persisted, assertion.Verified.SignCount, assertion.Credential.Version) ? persisted : null;
         }
 
         credential.LastUsedAt = _timeProvider.GetUtcNow();
@@ -499,11 +499,13 @@ public sealed class PasskeyService : IPasskeyService
             : null;
     }
 
-    private static bool IsPersistedAssertionMetadataCurrent(UserCredential? credential, long signCount)
+    private static bool IsPersistedAssertionCurrent(UserCredential? credential, long signCount, string originalVersion)
     {
         return credential != null
+            && credential.LastUsedAt.HasValue
+            && !string.Equals(credential.Version, originalVersion, StringComparison.Ordinal)
             && PasskeyCredentialMetadataOperations.TryRead(credential.Metadata, out var metadata)
-            && metadata.SignCount >= signCount;
+            && metadata.SignCount == signCount;
     }
 
     private static bool TryApplyVerifiedAssertionMetadata(UserCredential credential, long signCount)

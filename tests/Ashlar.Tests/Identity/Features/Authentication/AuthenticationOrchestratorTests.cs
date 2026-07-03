@@ -66,7 +66,7 @@ internal sealed class AuthenticationOrchestratorTests
         var options = new MfaOrchestrationOptions();
         var claims = new Dictionary<string, string> { ["test"] = "value" };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate, claims));
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate, AuthenticationClaims.FromSingleValues(claims), CredentialUpdatePersisted: true));
 
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
@@ -78,6 +78,25 @@ internal sealed class AuthenticationOrchestratorTests
             Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
             Assert.That(result.User, Is.EqualTo(_userMock.Object));
             Assert.That(result.Claims?["test"], Is.EqualTo(["value"]));
+            Assert.That(result.CredentialUpdatePersisted, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task AuthenticateAsyncDoesNotInferCredentialUpdatePersistenceFromStatus()
+    {
+        _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate));
+
+        _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaPolicyEvaluation(false));
+
+        var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
+            Assert.That(result.CredentialUpdatePersisted, Is.False);
         }
     }
 
@@ -181,7 +200,7 @@ internal sealed class AuthenticationOrchestratorTests
         context = context.WithRememberedMfaDeviceToken("remembered-token");
         var claims = new Dictionary<string, string> { ["test"] = "value" };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate, claims));
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate, AuthenticationClaims.FromSingleValues(claims), CredentialUpdatePersisted: true));
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         var rememberedMfaDeviceService = CreateRememberedDeviceService(
@@ -700,7 +719,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success));
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate, CredentialUpdatePersisted: true));
 
         var updatedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "totp" } };
         _handshakeCompletionService.CompletionResult = Result.Success(updatedHandshake);
@@ -713,6 +732,7 @@ internal sealed class AuthenticationOrchestratorTests
             Assert.That(result.User, Is.EqualTo(_userMock.Object));
             Assert.That(result.HandshakeToken, Is.EqualTo("token"));
             Assert.That(result.RequiredFactors, Is.EquivalentTo(remainingFactors));
+            Assert.That(result.CredentialUpdatePersisted, Is.True);
         }
     }
 
@@ -788,7 +808,12 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(Result.Success(handshake));
 
         _factorPipelineMock.Setup(p => p.VerifyFactorAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success, new Dictionary<string, string> { ["new_claim"] = "new_val" }));
+            .ReturnsAsync(new AuthenticationResponse(
+                true,
+                _userMock.Object,
+                AuthenticationStatus.SuccessWithCredentialUpdate,
+                AuthenticationClaims.FromSingleValues(new Dictionary<string, string> { ["new_claim"] = "new_val" }),
+                CredentialUpdatePersisted: true));
 
         var completedHandshake = handshake with { VerifiedFactors = new HashSet<string> { "totp" }, IsCompleted = true, Metadata = new Dictionary<string, string>(metadata) { ["claim:new_claim"] = "[\"new_val\"]" } };
         _handshakeCompletionService.CompletionResult = Result.Success(completedHandshake);
@@ -802,6 +827,7 @@ internal sealed class AuthenticationOrchestratorTests
             Assert.That(result.Claims?["role"], Is.EqualTo(["admin"]));
             Assert.That(result.Claims?["new_claim"], Is.EqualTo(["new_val"]));
             Assert.That(result.FreshMfaSatisfied, Is.True);
+            Assert.That(result.CredentialUpdatePersisted, Is.True);
         }
     }
 
