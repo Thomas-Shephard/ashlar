@@ -121,7 +121,7 @@ public static class AshlarConfigurationIssueCodes
     public const string NullSecurityEventSink = "ASHLAR-CONFIG-NULL-SECURITY-EVENT-SINK";
 
     /// <summary>
-    /// Account security operations are configured with Ashlar's permissive guard.
+    /// Account-state changes are configured with Ashlar's permissive guard.
     /// </summary>
     public const string PermissiveAccountSecurityGuard = "ASHLAR-CONFIG-PERMISSIVE-ACCOUNT-SECURITY-GUARD";
 

@@ -408,13 +408,13 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
 
     private static void AddPermissiveAccountSecurityGuardIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
     {
-        if (serviceProvider.GetService<IAccountSecurityGuard>() is AllowAccountSecurityGuard)
+        if (serviceProvider.GetService<IAccountSecurityGuard>() is PermissiveAccountSecurityGuard)
         {
             issues.Add(new AshlarConfigurationIssue(
                 AshlarConfigurationIssueCodes.PermissiveAccountSecurityGuard,
                 AshlarConfigurationIssueSeverity.Warning,
-                "Account security operations use the permissive AllowAccountSecurityGuard, so high-risk account-state transitions are allowed by default.",
-                "Register an application-specific IAccountSecurityGuard before relying on account-state changes for business approval, risk review, or separation-of-duties controls.",
+                "Account-state changes use PermissiveAccountSecurityGuard, so all guarded account-state changes are allowed.",
+                "Keep AddPermissiveAccountSecurityGuard only when this is deliberate. Register an application-specific IAccountSecurityGuard before relying on account-state changes for business approval, risk review, or separation-of-duties controls.",
                 "Account security guard"));
         }
     }
