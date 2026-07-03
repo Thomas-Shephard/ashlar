@@ -33,7 +33,7 @@ internal sealed class AshlarRedisServiceCollectionExtensionsTests
     }
 
     [Test]
-    public void AddAshlarRedisRateLimitingWithoutConfigureRegistersDefaultOptions()
+    public void AddAshlarRedisRateLimitingWithoutConfigureRequiresExplicitKeyPrefixOnStart()
     {
         var connection = Mock.Of<IConnectionMultiplexer>();
         var services = new ServiceCollection();
@@ -41,7 +41,8 @@ internal sealed class AshlarRedisServiceCollectionExtensionsTests
         services.AddAshlarRedisRateLimiting(connection);
         using var provider = services.BuildServiceProvider();
 
-        Assert.That(provider.GetRequiredService<IOptions<RedisAuthenticationRateLimiterOptions>>().Value.KeyPrefix, Is.EqualTo("ashlar:rate-limits"));
+        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
+        Assert.That(exception?.OptionsType, Is.EqualTo(typeof(RedisAuthenticationRateLimiterOptions)));
     }
 
     [Test]
@@ -50,7 +51,7 @@ internal sealed class AshlarRedisServiceCollectionExtensionsTests
         var connection = Mock.Of<IConnectionMultiplexer>();
         var services = new ServiceCollection();
         services.AddAshlarIdentity();
-        services.AddAshlarRedisRateLimiting(connection);
+        services.AddAshlarRedisRateLimiting(connection, options => options.KeyPrefix = "test-app:ashlar:rate-limits");
         using var provider = services.BuildServiceProvider();
 
         var issueCodes = (await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync()).Issues.Select(issue => issue.Code);
@@ -94,7 +95,7 @@ internal sealed class AshlarRedisServiceCollectionExtensionsTests
             Assert.That(provider.GetRequiredService<IAuthenticationRateLimiter>(), Is.SameAs(customRateLimiter));
         }
 
-        services.AddAshlarRedisRateLimiting(connection);
+        services.AddAshlarRedisRateLimiting(connection, options => options.KeyPrefix = "test-app:ashlar:rate-limits");
         using var redisProvider = ServiceProviderValidation.BuildValidatedServiceProvider(
             services,
             typeof(IAuthenticationRateLimiter),
@@ -136,7 +137,7 @@ internal sealed class AshlarRedisServiceCollectionExtensionsTests
 
         var services = new ServiceCollection();
         services.AddSingleton(ambientConnection.Object);
-        services.AddAshlarRedisRateLimiting(explicitConnection.Object);
+        services.AddAshlarRedisRateLimiting(explicitConnection.Object, options => options.KeyPrefix = "test-app:ashlar:rate-limits");
         using var provider = services.BuildServiceProvider();
 
         var limiter = provider.GetRequiredService<IAuthenticationRateLimiter>();
@@ -169,11 +170,21 @@ internal sealed class AshlarRedisServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "" }), Is.False);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "   " }), Is.False);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = ":" }), Is.False);
             Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "has spaces" }), Is.False);
-            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { Database = -1 }), Is.False);
-            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { ExpirationSkew = TimeSpan.FromMilliseconds(-1) }), Is.False);
-            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "ashlar:test" }), Is.True);
-            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { Database = 0 }), Is.True);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "has\tspaces" }), Is.False);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "has*glob" }), Is.False);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "has?glob" }), Is.False);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "has[glob]" }), Is.False);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "has{brace" }), Is.False);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "ashlar:rate-limits" }), Is.False);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "ashlar:rate-limits:" }), Is.False);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "ashlar:test", Database = -1 }), Is.False);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "ashlar:test", ExpirationSkew = TimeSpan.FromMilliseconds(-1) }), Is.False);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "APP1:Ashlar.Test" }), Is.True);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "my-app_1.ashlar:test:" }), Is.True);
+            Assert.That(RedisAuthenticationRateLimiterOptions.Validate(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "ashlar:test", Database = 0 }), Is.True);
         }
     }
 }

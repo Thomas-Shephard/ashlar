@@ -26,7 +26,7 @@ internal sealed class RedisAuthenticationRateLimiterDiagnosticsUnitTests
 
         var diagnostics = new RedisAuthenticationRateLimiterDiagnostics(
             new RedisAuthenticationRateLimiterConnection(new Lazy<Task<IConnectionMultiplexer>>(() => Task.FromResult(connection.Object)), false),
-            Options.Create(new RedisAuthenticationRateLimiterOptions { Database = 3 }),
+            Options.Create(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "unit-test:ashlar:rate-limits", Database = 3 }),
             new FakeTimeProvider(CheckedAt),
             NullLogger<RedisAuthenticationRateLimiterDiagnostics>.Instance);
 
@@ -54,7 +54,7 @@ internal sealed class RedisAuthenticationRateLimiterDiagnosticsUnitTests
         }), false);
         var diagnostics = new RedisAuthenticationRateLimiterDiagnostics(
             connection,
-            Options.Create(new RedisAuthenticationRateLimiterOptions()),
+            ValidOptions(),
             new FakeTimeProvider(CheckedAt),
             NullLogger<RedisAuthenticationRateLimiterDiagnostics>.Instance);
         using var cancellationTokenSource = new CancellationTokenSource();
@@ -68,7 +68,7 @@ internal sealed class RedisAuthenticationRateLimiterDiagnosticsUnitTests
     public void ConstructorRejectsNullArguments()
     {
         var connection = new RedisAuthenticationRateLimiterConnection(new Lazy<Task<IConnectionMultiplexer>>(() => Task.FromResult(Mock.Of<IConnectionMultiplexer>())), false);
-        var options = Options.Create(new RedisAuthenticationRateLimiterOptions());
+        var options = ValidOptions();
         var timeProvider = new FakeTimeProvider(CheckedAt);
 
         using (Assert.EnterMultipleScope())
@@ -77,5 +77,26 @@ internal sealed class RedisAuthenticationRateLimiterDiagnosticsUnitTests
             Assert.Throws<ArgumentNullException>(() => _ = new RedisAuthenticationRateLimiterDiagnostics(connection, null!, timeProvider));
             Assert.Throws<ArgumentNullException>(() => _ = new RedisAuthenticationRateLimiterDiagnostics(connection, options, null!));
         }
+    }
+
+    [Test]
+    public void ConstructorRejectsInvalidOptions()
+    {
+        var connection = new RedisAuthenticationRateLimiterConnection(new Lazy<Task<IConnectionMultiplexer>>(() => Task.FromResult(Mock.Of<IConnectionMultiplexer>())), false);
+        var timeProvider = new FakeTimeProvider(CheckedAt);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentException>(() => _ = new RedisAuthenticationRateLimiterDiagnostics(connection, Options.Create(new RedisAuthenticationRateLimiterOptions()), timeProvider));
+            Assert.Throws<ArgumentException>(() => _ = new RedisAuthenticationRateLimiterDiagnostics(
+                connection,
+                Options.Create(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "ashlar:rate-limits" }),
+                timeProvider));
+        }
+    }
+
+    private static IOptions<RedisAuthenticationRateLimiterOptions> ValidOptions()
+    {
+        return Options.Create(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "unit-test:ashlar:rate-limits" });
     }
 }

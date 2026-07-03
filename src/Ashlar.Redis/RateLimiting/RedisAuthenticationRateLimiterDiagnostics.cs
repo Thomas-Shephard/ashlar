@@ -32,6 +32,11 @@ internal sealed class RedisAuthenticationRateLimiterDiagnostics : IAuthenticatio
 
         _connection = connection;
         _options = options.Value;
+        if (!RedisAuthenticationRateLimiterOptions.Validate(_options))
+        {
+            throw new ArgumentException("Redis rate limiter options are invalid.", nameof(options));
+        }
+
         _timeProvider = timeProvider;
         _logger = logger ?? NullLogger<RedisAuthenticationRateLimiterDiagnostics>.Instance;
     }

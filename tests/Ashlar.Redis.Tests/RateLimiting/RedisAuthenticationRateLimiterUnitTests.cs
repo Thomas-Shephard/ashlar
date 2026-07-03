@@ -11,7 +11,7 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
     public void ConstructorRejectsNullArguments()
     {
         var connection = Mock.Of<IConnectionMultiplexer>();
-        var options = Options.Create(new RedisAuthenticationRateLimiterOptions());
+        var options = ValidOptions();
 
         using (Assert.EnterMultipleScope())
         {
@@ -49,7 +49,7 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
             .Returns(database);
         var limiter = new RedisAuthenticationRateLimiter(
             connection.Object,
-            Options.Create(new RedisAuthenticationRateLimiterOptions()),
+            ValidOptions(),
             new FakeTimeProvider());
 
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await limiter.CheckAsync(
@@ -63,7 +63,7 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
         var connection = new Mock<IConnectionMultiplexer>(MockBehavior.Strict);
         var limiter = new RedisAuthenticationRateLimiter(
             connection.Object,
-            Options.Create(new RedisAuthenticationRateLimiterOptions()),
+            ValidOptions(),
             new FakeTimeProvider());
         using var cancellationTokenSource = new CancellationTokenSource();
         cancellationTokenSource.Cancel();
@@ -93,7 +93,7 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
             .Returns(database.Object);
         var limiter = new RedisAuthenticationRateLimiter(
             connection.Object,
-            Options.Create(new RedisAuthenticationRateLimiterOptions()),
+            ValidOptions(),
             new FakeTimeProvider());
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await limiter.CheckAsync(
@@ -119,7 +119,7 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
             .Returns(database.Object);
         var limiter = new RedisAuthenticationRateLimiter(
             connection.Object,
-            Options.Create(new RedisAuthenticationRateLimiterOptions()),
+            ValidOptions(),
             new FakeTimeProvider());
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await limiter.CheckAsync(
@@ -145,7 +145,7 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
             .Returns(database.Object);
         var limiter = new RedisAuthenticationRateLimiter(
             connection.Object,
-            Options.Create(new RedisAuthenticationRateLimiterOptions()),
+            ValidOptions(),
             new FakeTimeProvider());
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await limiter.CheckAsync(
@@ -172,5 +172,33 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
             Assert.That(key, Does.StartWith("ashlar:test:auth:"));
             Assert.That(key, Has.Length.EqualTo("ashlar:test:auth:".Length + 64));
         }
+    }
+
+    [Test]
+    public void KeyBuilderIsolatesAppSpecificPrefixes()
+    {
+        var first = RedisRateLimitKeyBuilder.Build("first-app:ashlar:rate-limits", "login", "same-key");
+        var second = RedisRateLimitKeyBuilder.Build("second-app:ashlar:rate-limits", "login", "same-key");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Does.StartWith("first-app:ashlar:rate-limits:auth:"));
+            Assert.That(second, Does.StartWith("second-app:ashlar:rate-limits:auth:"));
+            Assert.That(first, Is.Not.EqualTo(second));
+        }
+    }
+
+    [Test]
+    public void KeyBuilderTrimsTrailingPrefixColonsConsistently()
+    {
+        var normalized = RedisRateLimitKeyBuilder.Build("my-app:ashlar:rate-limits", "login", "same-key");
+        var trailing = RedisRateLimitKeyBuilder.Build("my-app:ashlar:rate-limits::", "login", "same-key");
+
+        Assert.That(trailing, Is.EqualTo(normalized));
+    }
+
+    private static IOptions<RedisAuthenticationRateLimiterOptions> ValidOptions()
+    {
+        return Options.Create(new RedisAuthenticationRateLimiterOptions { KeyPrefix = "unit-test:ashlar:rate-limits" });
     }
 }

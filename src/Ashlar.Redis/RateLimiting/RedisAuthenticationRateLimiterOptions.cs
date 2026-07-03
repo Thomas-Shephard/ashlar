@@ -5,15 +5,23 @@ namespace Ashlar.Redis.RateLimiting;
 /// </summary>
 public sealed class RedisAuthenticationRateLimiterOptions
 {
+    internal const string SharedDefaultKeyPrefix = "ashlar:rate-limits";
+
     /// <summary>
     /// The Redis database number. Defaults to the connection multiplexer default database.
     /// </summary>
     public int? Database { get; set; }
 
     /// <summary>
-    /// Namespace prefix used for Ashlar rate-limit keys.
+    /// Application-specific namespace prefix used for Ashlar rate-limit keys.
     /// </summary>
-    public string KeyPrefix { get; set; } = "ashlar:rate-limits";
+    /// <remarks>
+    /// This value is required and must identify the owning application, for example
+    /// <c>my-app:ashlar:rate-limits</c>. Allowed characters are ASCII letters, digits,
+    /// colon, period, underscore, and hyphen. Trailing colons are ignored when Redis keys
+    /// are built. Do not use the shared package prefix <c>ashlar:rate-limits</c>.
+    /// </remarks>
+    public string KeyPrefix { get; set; } = string.Empty;
 
     /// <summary>
     /// Extra time added to each Redis key TTL to tolerate small clock and network delays.
@@ -34,7 +42,18 @@ public sealed class RedisAuthenticationRateLimiterOptions
             return false;
         }
 
-        if (options.KeyPrefix.Any(char.IsWhiteSpace))
+        var normalizedPrefix = RedisRateLimitKeyBuilder.NormalizePrefix(options.KeyPrefix);
+        if (normalizedPrefix.Length == 0)
+        {
+            return false;
+        }
+
+        if (options.KeyPrefix.Any(static character => !IsValidPrefixCharacter(character)))
+        {
+            return false;
+        }
+
+        if (string.Equals(normalizedPrefix, SharedDefaultKeyPrefix, StringComparison.Ordinal))
         {
             return false;
         }
@@ -50,5 +69,11 @@ public sealed class RedisAuthenticationRateLimiterOptions
         }
 
         return true;
+    }
+
+    private static bool IsValidPrefixCharacter(char character)
+    {
+        return char.IsAsciiLetterOrDigit(character)
+            || character is ':' or '.' or '_' or '-';
     }
 }
