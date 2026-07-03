@@ -13,6 +13,8 @@ namespace Ashlar.Identity.Features.Mfa;
 /// </summary>
 public sealed class TotpService : ITotpService
 {
+    private const string EmptyActorUserIdMessage = "Actor user ID cannot be empty.";
+
     private readonly IUserRepository _userRepository;
     private readonly ICredentialRepository _credentialRepository;
     private readonly ICredentialService _credentialService;
@@ -62,18 +64,10 @@ public sealed class TotpService : ITotpService
     public async Task<TotpEnrollment> StartEnrollmentAsync(StartTotpEnrollmentRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.ActorUserId == Guid.Empty) throw new ArgumentException("Actor user ID cannot be empty.", $"{nameof(request)}.{nameof(request.ActorUserId)}");
+        if (request.ActorUserId == Guid.Empty) throw new ArgumentException(EmptyActorUserIdMessage, $"{nameof(request)}.{nameof(request.ActorUserId)}");
         var tenant = request.Tenant ?? TenantContext.Global;
         await ValidateUserTenantAsync(request.ActorUserId, tenant, request.Audit, AshlarSecurityEventTypes.TotpEnrollmentStarted, throwOnFailure: true, cancellationToken);
-        var proofResult = await ValidateEnrollmentProofAsync(
-            request.ActorUserId,
-            tenant,
-            request.FreshMfaProof,
-            request.FreshPrimaryAuthenticationProof,
-            request.CurrentSessionId,
-            request.Audit,
-            AshlarSecurityEventTypes.TotpEnrollmentStarted,
-            cancellationToken);
+        var proofResult = await ValidateEnrollmentProofAsync(CreateEnrollmentProofValidationRequest(request, tenant, AshlarSecurityEventTypes.TotpEnrollmentStarted), cancellationToken);
         if (proofResult.Succeeded)
         {
             return await StartEnrollmentCoreAsync(request, validateUser: false, cancellationToken);
@@ -95,7 +89,7 @@ public sealed class TotpService : ITotpService
     {
         ArgumentNullException.ThrowIfNull(request);
         var userId = request.ActorUserId;
-        if (userId == Guid.Empty) throw new ArgumentException("Actor user ID cannot be empty.", $"{nameof(request)}.{nameof(request.ActorUserId)}");
+        if (userId == Guid.Empty) throw new ArgumentException(EmptyActorUserIdMessage, $"{nameof(request)}.{nameof(request.ActorUserId)}");
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Issuer);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.AccountName);
         var tenant = request.Tenant ?? TenantContext.Global;
@@ -127,7 +121,7 @@ public sealed class TotpService : ITotpService
     public async Task<Result> CompleteEnrollmentAsync(VerifyTotpEnrollmentRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.ActorUserId == Guid.Empty) throw new ArgumentException("Actor user ID cannot be empty.", $"{nameof(request)}.{nameof(request.ActorUserId)}");
+        if (request.ActorUserId == Guid.Empty) throw new ArgumentException(EmptyActorUserIdMessage, $"{nameof(request)}.{nameof(request.ActorUserId)}");
         var tenant = request.Tenant ?? TenantContext.Global;
         var userResult = await ValidateUserTenantAsync(request.ActorUserId, tenant, request.Audit, AshlarSecurityEventTypes.TotpEnrollmentCompleted, throwOnFailure: false, cancellationToken);
         if (!userResult.Succeeded)
@@ -135,15 +129,7 @@ public sealed class TotpService : ITotpService
             return ToFailureResult(userResult);
         }
 
-        var proofResult = await ValidateEnrollmentProofAsync(
-            request.ActorUserId,
-            tenant,
-            request.FreshMfaProof,
-            request.FreshPrimaryAuthenticationProof,
-            request.CurrentSessionId,
-            request.Audit,
-            AshlarSecurityEventTypes.TotpEnrollmentCompleted,
-            cancellationToken);
+        var proofResult = await ValidateEnrollmentProofAsync(CreateEnrollmentProofValidationRequest(request, tenant, AshlarSecurityEventTypes.TotpEnrollmentCompleted), cancellationToken);
         if (!proofResult.Succeeded)
         {
             return ToFailureResult(proofResult);
@@ -164,7 +150,7 @@ public sealed class TotpService : ITotpService
     {
         ArgumentNullException.ThrowIfNull(request);
         var userId = request.ActorUserId;
-        if (userId == Guid.Empty) throw new ArgumentException("Actor user ID cannot be empty.", $"{nameof(request)}.{nameof(request.ActorUserId)}");
+        if (userId == Guid.Empty) throw new ArgumentException(EmptyActorUserIdMessage, $"{nameof(request)}.{nameof(request.ActorUserId)}");
         var tenant = request.Tenant ?? TenantContext.Global;
 
         if (string.IsNullOrWhiteSpace(request.Code))
@@ -294,7 +280,7 @@ public sealed class TotpService : ITotpService
     public async Task<bool> DisableAsync(DisableTotpRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.ActorUserId == Guid.Empty) throw new ArgumentException("Actor user ID cannot be empty.", $"{nameof(request)}.{nameof(request.ActorUserId)}");
+        if (request.ActorUserId == Guid.Empty) throw new ArgumentException(EmptyActorUserIdMessage, $"{nameof(request)}.{nameof(request.ActorUserId)}");
         var tenant = request.Tenant ?? TenantContext.Global;
         var proofResult = await ValidateFreshMfaProofAsync(request.ActorUserId, tenant, request.FreshMfaProof, request.CurrentSessionId, request.Audit, AshlarSecurityEventTypes.TotpDisabled, cancellationToken);
         if (!proofResult.Succeeded)
@@ -317,7 +303,7 @@ public sealed class TotpService : ITotpService
     {
         ArgumentNullException.ThrowIfNull(request);
         var userId = request.ActorUserId;
-        if (userId == Guid.Empty) throw new ArgumentException("Actor user ID cannot be empty.", $"{nameof(request)}.{nameof(request.ActorUserId)}");
+        if (userId == Guid.Empty) throw new ArgumentException(EmptyActorUserIdMessage, $"{nameof(request)}.{nameof(request.ActorUserId)}");
         var tenant = request.Tenant ?? TenantContext.Global;
 
         var userResult = await ValidateUserTenantAsync(userId, tenant, request.Audit, AshlarSecurityEventTypes.TotpDisabled, throwOnFailure: false, cancellationToken);
@@ -402,22 +388,40 @@ public sealed class TotpService : ITotpService
     }
 
     private async Task<Result> ValidateEnrollmentProofAsync(
-        Guid userId,
-        TenantContext tenant,
-        FreshMfaVerificationProof? mfaProof,
-        FreshPrimaryAuthenticationProof? primaryProof,
-        Guid? currentSessionId,
-        AuditContext? audit,
-        string eventType,
+        EnrollmentProofValidationRequest request,
         CancellationToken cancellationToken)
     {
-        var hasExistingAdditionalVerification = await HasExistingAdditionalVerificationAsync(userId, cancellationToken);
+        var hasExistingAdditionalVerification = await HasExistingAdditionalVerificationAsync(request.UserId, cancellationToken);
         if (hasExistingAdditionalVerification)
         {
-            return await ValidateFreshMfaProofAsync(userId, tenant, mfaProof, currentSessionId, audit, eventType, cancellationToken);
+            return await ValidateFreshMfaProofAsync(request.UserId, request.Tenant, request.MfaProof, request.CurrentSessionId, request.Audit, request.EventType, cancellationToken);
         }
 
-        return await ValidateFreshPrimaryAuthenticationProofAsync(userId, tenant, primaryProof, currentSessionId, audit, eventType, cancellationToken);
+        return await ValidateFreshPrimaryAuthenticationProofAsync(request.UserId, request.Tenant, request.PrimaryProof, request.CurrentSessionId, request.Audit, request.EventType, cancellationToken);
+    }
+
+    private static EnrollmentProofValidationRequest CreateEnrollmentProofValidationRequest(StartTotpEnrollmentRequest request, TenantContext tenant, string eventType)
+    {
+        return new EnrollmentProofValidationRequest(
+            request.ActorUserId,
+            tenant,
+            request.FreshMfaProof,
+            request.FreshPrimaryAuthenticationProof,
+            request.CurrentSessionId,
+            request.Audit,
+            eventType);
+    }
+
+    private static EnrollmentProofValidationRequest CreateEnrollmentProofValidationRequest(VerifyTotpEnrollmentRequest request, TenantContext tenant, string eventType)
+    {
+        return new EnrollmentProofValidationRequest(
+            request.ActorUserId,
+            tenant,
+            request.FreshMfaProof,
+            request.FreshPrimaryAuthenticationProof,
+            request.CurrentSessionId,
+            request.Audit,
+            eventType);
     }
 
     private async Task<Result> ValidateFreshPrimaryAuthenticationProofAsync(
@@ -554,6 +558,15 @@ public sealed class TotpService : ITotpService
             CorrelationId: audit.CorrelationId);
     }
 }
+
+internal sealed record EnrollmentProofValidationRequest(
+    Guid UserId,
+    TenantContext Tenant,
+    FreshMfaVerificationProof? MfaProof,
+    FreshPrimaryAuthenticationProof? PrimaryProof,
+    Guid? CurrentSessionId,
+    AuditContext? Audit,
+    string EventType);
 
 /// <summary>
 /// Groups optional dependencies used by the TOTP service.

@@ -9,6 +9,8 @@ namespace Ashlar.Identity.Providers.RecoveryCode;
 /// </summary>
 public sealed class RecoveryCodeService : IRecoveryCodeService
 {
+    private const string EmptyUserIdMessage = "User ID cannot be empty.";
+
     private readonly IUserRepository _userRepository;
     private readonly ICredentialRepository _credentialRepository;
     private readonly IAshlarTransactionProvider _transactionProvider;
@@ -55,7 +57,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
     {
         if (userId == Guid.Empty)
         {
-            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+            throw new ArgumentException(EmptyUserIdMessage, nameof(userId));
         }
 
         request ??= new RecoveryCodeGenerationRequest();
@@ -81,7 +83,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
     {
         if (userId == Guid.Empty)
         {
-            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+            throw new ArgumentException(EmptyUserIdMessage, nameof(userId));
         }
 
         var tenant = request.Tenant ?? TenantContext.Global;
@@ -210,7 +212,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
     {
         if (userId == Guid.Empty)
         {
-            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+            throw new ArgumentException(EmptyUserIdMessage, nameof(userId));
         }
 
         request ??= new RevokeRecoveryCodesRequest();
@@ -236,7 +238,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
     {
         if (userId == Guid.Empty)
         {
-            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+            throw new ArgumentException(EmptyUserIdMessage, nameof(userId));
         }
         var tenant = request.Tenant ?? TenantContext.Global;
 
