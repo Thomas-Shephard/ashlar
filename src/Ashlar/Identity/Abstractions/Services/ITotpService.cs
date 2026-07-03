@@ -10,7 +10,7 @@ public interface ITotpService
     /// <summary>
     /// Starts a new TOTP enrollment for a user.
     /// </summary>
-    /// <param name="request">Target user identity, fresh verification proof, tenant scope, audit context, and authenticator labels for the enrollment.</param>
+    /// <param name="request">Target user identity, fresh verification proof, current session id, tenant scope, audit context, and authenticator labels for the enrollment.</param>
     /// <param name="cancellationToken">A token that can cancel enrollment setup.</param>
     /// <returns>The shared secret and otpauth URI to show once to the user.</returns>
     /// <remarks>
@@ -18,7 +18,8 @@ public interface ITotpService
     /// <see cref="StartTotpEnrollmentRequest.ActorUserId" />. Hosts must pass the authenticated
     /// session owner, not a route or body value controlled by the client. Hosts must obtain
     /// <see cref="FreshPrimaryAuthenticationProof" /> only when the account has no usable additional-verification
-    /// factor yet, or <see cref="FreshMfaVerificationProof" /> when any usable MFA or step-up factor already exists. The method keeps tenant
+    /// factor yet, or <see cref="FreshMfaVerificationProof" /> when any usable MFA or step-up factor already exists.
+    /// The proof must match the same user, tenant, and current session id. The method keeps tenant
     /// checks and returns secret material only for an accepted owner. The secret must be verified via
     /// <see cref="CompleteEnrollmentAsync"/> to be finalized.
     /// </remarks>
@@ -41,7 +42,7 @@ public interface ITotpService
     /// <summary>
     /// Verifies a TOTP code and finalizes enrollment for a user.
     /// </summary>
-    /// <param name="request">Target user identity, fresh verification proof, secret, code, tenant scope, and audit context for enrollment completion.</param>
+    /// <param name="request">Target user identity, fresh verification proof, current session id, secret, code, tenant scope, and audit context for enrollment completion.</param>
     /// <param name="cancellationToken">A token that can cancel verification.</param>
     /// <returns>A result indicating whether the credential was enrolled.</returns>
     /// <remarks>
@@ -64,7 +65,7 @@ public interface ITotpService
     /// <summary>
     /// Disables TOTP for a user.
     /// </summary>
-    /// <param name="request">Target user identity, fresh MFA proof, tenant scope, and audit context for the disable attempt.</param>
+    /// <param name="request">Target user identity, fresh MFA proof, current session id, tenant scope, and audit context for the disable attempt.</param>
     /// <param name="cancellationToken">A token that can cancel the update.</param>
     /// <returns><see langword="true" /> when an active TOTP credential was disabled.</returns>
     /// <remarks>

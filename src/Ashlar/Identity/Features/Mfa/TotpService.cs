@@ -346,44 +346,13 @@ public sealed class TotpService : ITotpService
         string eventType,
         CancellationToken cancellationToken)
     {
-        AshlarFailureCode? failure = null;
-        if (userId == Guid.Empty || proof == null)
-        {
-            failure = AshlarFailureCodes.StepUpRequired;
-        }
-        else if (proof.UserId != userId)
-        {
-            failure = AshlarFailureCodes.TenantMismatch;
-        }
-        else if (proof.TenantId != tenant.TenantId)
-        {
-            failure = AshlarFailureCodes.TenantMismatch;
-        }
-        else if (currentSessionId == null || proof.SessionId != currentSessionId.Value)
-        {
-            failure = AshlarFailureCodes.StepUpRequired;
-        }
-        else if (proof.ExpiresAt <= _timeProvider.GetUtcNow())
-        {
-            failure = AshlarFailureCodes.StepUpExpired;
-        }
-
+        var failure = FreshVerificationProofValidator.Validate(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow());
         if (failure == null)
         {
             return Result.Success();
         }
 
-        await _securityEvents.RecordAsync(new SecurityEventDescriptor
-        {
-            EventType = eventType,
-            Outcome = SecurityEventOutcomes.Failure,
-            UserId = userId,
-            TenantId = tenant.TenantId,
-            Audit = audit,
-            Provider = _options.ProviderKey,
-            FailureReason = failure.Value.Value
-        }, cancellationToken);
-
+        await RecordProofFailureAsync(userId, tenant, audit, eventType, failure.Value, cancellationToken);
         return Result.Failure(failure.Value);
     }
 
@@ -433,34 +402,25 @@ public sealed class TotpService : ITotpService
         string eventType,
         CancellationToken cancellationToken)
     {
-        AshlarFailureCode? failure = null;
-        if (userId == Guid.Empty || proof == null)
-        {
-            failure = AshlarFailureCodes.StepUpRequired;
-        }
-        else if (proof.UserId != userId)
-        {
-            failure = AshlarFailureCodes.TenantMismatch;
-        }
-        else if (proof.TenantId != tenant.TenantId)
-        {
-            failure = AshlarFailureCodes.TenantMismatch;
-        }
-        else if (currentSessionId == null || proof.SessionId != currentSessionId.Value)
-        {
-            failure = AshlarFailureCodes.StepUpRequired;
-        }
-        else if (proof.ExpiresAt <= _timeProvider.GetUtcNow())
-        {
-            failure = AshlarFailureCodes.StepUpExpired;
-        }
-
+        var failure = FreshVerificationProofValidator.Validate(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow());
         if (failure == null)
         {
             return Result.Success();
         }
 
-        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        await RecordProofFailureAsync(userId, tenant, audit, eventType, failure.Value, cancellationToken);
+        return Result.Failure(failure.Value);
+    }
+
+    private Task RecordProofFailureAsync(
+        Guid userId,
+        TenantContext tenant,
+        AuditContext? audit,
+        string eventType,
+        AshlarFailureCode failure,
+        CancellationToken cancellationToken)
+    {
+        return _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = eventType,
             Outcome = SecurityEventOutcomes.Failure,
@@ -468,10 +428,8 @@ public sealed class TotpService : ITotpService
             TenantId = tenant.TenantId,
             Audit = audit,
             Provider = _options.ProviderKey,
-            FailureReason = failure.Value.Value
+            FailureReason = failure.Value
         }, cancellationToken);
-
-        return Result.Failure(failure.Value);
     }
 
     private async Task<bool> HasExistingAdditionalVerificationAsync(Guid userId, CancellationToken cancellationToken)

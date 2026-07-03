@@ -97,47 +97,20 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         var codeCount = request.CodeCount ?? _options.CodeCount;
         if (codeCount <= 0 || codeCount > _options.CodeCount * 2)
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                TenantId = tenant.TenantId,
-                Audit = request.Audit,
-                Provider = _options.ProviderKey,
-                FailureReason = AshlarFailureCodes.InvalidCodeCount.Value
-            }, cancellationToken);
+            await RecordGenerationFailureAsync(userId, tenant, request.Audit, AshlarFailureCodes.InvalidCodeCount, cancellationToken);
             return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.InvalidCodeCount);
         }
 
         if (_options.CodeLength <= 0 || _options.GroupSize <= 0)
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                TenantId = tenant.TenantId,
-                Audit = request.Audit,
-                Provider = _options.ProviderKey,
-                FailureReason = AshlarFailureCodes.InvalidConfiguration.Value
-            }, cancellationToken);
+            await RecordGenerationFailureAsync(userId, tenant, request.Audit, AshlarFailureCodes.InvalidConfiguration, cancellationToken);
             return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.InvalidConfiguration);
         }
 
         var expiresAfter = request.ExpiresAfter ?? _options.ExpiresAfter;
         if (expiresAfter.HasValue && expiresAfter.Value <= TimeSpan.Zero)
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
-                Outcome = SecurityEventOutcomes.Failure,
-                UserId = userId,
-                TenantId = tenant.TenantId,
-                Audit = request.Audit,
-                Provider = _options.ProviderKey,
-                FailureReason = AshlarFailureCodes.InvalidExpiry.Value
-            }, cancellationToken);
+            await RecordGenerationFailureAsync(userId, tenant, request.Audit, AshlarFailureCodes.InvalidExpiry, cancellationToken);
             return Result.Failure<IReadOnlyList<string>>(AshlarFailureCodes.InvalidExpiry);
         }
 
@@ -277,28 +250,7 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         string eventType,
         CancellationToken cancellationToken)
     {
-        AshlarFailureCode? failure = null;
-        if (userId == Guid.Empty || proof == null)
-        {
-            failure = AshlarFailureCodes.StepUpRequired;
-        }
-        else if (proof.UserId != userId)
-        {
-            failure = AshlarFailureCodes.TenantMismatch;
-        }
-        else if (proof.TenantId != tenant.TenantId)
-        {
-            failure = AshlarFailureCodes.TenantMismatch;
-        }
-        else if (currentSessionId == null || proof.SessionId != currentSessionId.Value)
-        {
-            failure = AshlarFailureCodes.StepUpRequired;
-        }
-        else if (proof.ExpiresAt <= _timeProvider.GetUtcNow())
-        {
-            failure = AshlarFailureCodes.StepUpExpired;
-        }
-
+        var failure = FreshVerificationProofValidator.Validate(userId, tenant, proof, currentSessionId, _timeProvider.GetUtcNow());
         if (failure == null)
         {
             return Result.Success();
@@ -316,6 +268,25 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         }, cancellationToken);
 
         return Result.Failure(failure.Value);
+    }
+
+    private Task RecordGenerationFailureAsync(
+        Guid userId,
+        TenantContext tenant,
+        AuditContext? audit,
+        AshlarFailureCode failure,
+        CancellationToken cancellationToken)
+    {
+        return _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
+            Outcome = SecurityEventOutcomes.Failure,
+            UserId = userId,
+            TenantId = tenant.TenantId,
+            Audit = audit,
+            Provider = _options.ProviderKey,
+            FailureReason = failure.Value
+        }, cancellationToken);
     }
 
     private static void RequirePrivilegedAudit(AuditContext? audit)
