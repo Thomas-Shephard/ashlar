@@ -253,6 +253,17 @@ public sealed class AuthenticationSessionService(
             return new ValidateAuthenticationSessionResult(false, session, session.UserId, AuthenticationSessionValidationStatus.Failed);
         }
 
+        if (!UserTenantOwnership.Matches(user, session.TenantId))
+        {
+            await RecordSessionValidationFailedAsync(
+                AuthenticationSessionValidationStatus.Failed,
+                session,
+                AshlarFailureCodes.TenantMismatchValue,
+                cancellationToken);
+
+            return new ValidateAuthenticationSessionResult(false, session, session.UserId, AuthenticationSessionValidationStatus.Failed);
+        }
+
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         await TryUpdateLastSeenAsync(session, now, cancellationToken);
