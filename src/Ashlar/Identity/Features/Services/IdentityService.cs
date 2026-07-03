@@ -147,7 +147,7 @@ public sealed class IdentityService(
         /// <summary>
         /// Tenant that owns the user.
         /// </summary>
-        public Guid? TenantId => (original as ITenantUser)?.TenantId;
+        public Guid? TenantId => original is ITenantUser { TenantId: { } tenantId } ? tenantId : null;
         /// <summary>
         /// Gets when the user's email address was verified.
         /// </summary>

@@ -85,7 +85,7 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
             """;
 
         var createdAt = user is not IHasAuditMetadata audit || audit.CreatedAt == default ? _timeProvider.GetUtcNow() : audit.CreatedAt;
-        var tenantId = (user as ITenantUser)?.TenantId;
+        var tenantId = user is ITenantUser { TenantId: { } scopedUserTenantId } ? (Guid?)scopedUserTenantId : null;
 
         var parameters = new
         {
@@ -119,7 +119,7 @@ public sealed class PostgresUserRepository(IPostgresConnectionProvider connectio
             """;
 
         var now = _timeProvider.GetUtcNow();
-        var tenantId = (user as ITenantUser)?.TenantId;
+        var tenantId = user is ITenantUser { TenantId: { } scopedUserTenantId } ? (Guid?)scopedUserTenantId : null;
 
         var parameters = new
         {

@@ -44,7 +44,7 @@ internal sealed class DisabledAccountLockoutService : IAccountLockoutService
         ArgumentNullException.ThrowIfNull(user);
         AuthenticationProviderKey.ThrowIfNotConfigured(provider, nameof(provider));
 
-        var tenantId = (user as ITenantUser)?.TenantId;
+        var tenantId = user is ITenantUser { TenantId: { } scopedUserTenantId } ? (Guid?)scopedUserTenantId : null;
         return AccountLockoutStatus.None(user.Id, tenantId, provider);
     }
 }

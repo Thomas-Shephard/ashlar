@@ -109,7 +109,7 @@ public sealed class AccountLockoutService(
 
     private static Guid? GetTenantId(IUser user, AccountLockoutContext? context)
     {
-        var actualTenantId = (user as ITenantUser)?.TenantId;
+        var actualTenantId = user is ITenantUser { TenantId: { } scopedUserTenantId } ? (Guid?)scopedUserTenantId : null;
         if (context?.Tenant == null)
         {
             return actualTenantId;

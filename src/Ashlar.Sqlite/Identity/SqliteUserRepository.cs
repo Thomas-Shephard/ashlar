@@ -137,7 +137,7 @@ public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionPro
     private void AddUserParameters(SqliteCommand command, IUser user, bool includeUpdatedAt, DateTimeOffset? updatedAt = null)
     {
         var createdAt = user is not IHasAuditMetadata audit || audit.CreatedAt == default ? _timeProvider.GetUtcNow() : audit.CreatedAt;
-        var tenantId = (user as ITenantUser)?.TenantId;
+        var tenantId = user is ITenantUser { TenantId: { } scopedUserTenantId } ? (Guid?)scopedUserTenantId : null;
 
         command.AddGuidParameter(IdParameter, user.Id);
         command.AddParameter("$displayEmail", user.DisplayEmail);
