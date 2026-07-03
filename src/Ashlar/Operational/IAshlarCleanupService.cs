@@ -10,5 +10,9 @@ public interface IAshlarCleanupService
     /// </summary>
     /// <param name="cancellationToken">A token that can cancel cleanup execution.</param>
     /// <returns>Counts for records removed or discarded by cleanup.</returns>
+    /// <remarks>
+    /// Providers with Ashlar transaction support join the active scoped transaction when one exists; otherwise
+    /// cleanup runs on a fresh provider connection.
+    /// </remarks>
     Task<AshlarCleanupResult> CleanupAsync(CancellationToken cancellationToken = default);
 }

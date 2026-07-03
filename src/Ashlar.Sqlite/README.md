@@ -69,6 +69,8 @@ var result = await diagnostics.CheckAsync();
 
 The result reports provider name, `CheckedAt`, whether cleanup is configured, whether `AshlarCleanupOptions` are valid, cleanup interval, batch size, max batches per run, and enabled/disabled cleanup category counts.
 
+SQLite cleanup uses `ISqliteConnectionProvider`: it joins the active scoped Ashlar transaction when one exists, and otherwise runs on a fresh SQLite connection.
+
 Cleanup diagnostics return:
 
 - `Healthy` when cleanup is configured and cleanup options are valid.
@@ -131,10 +133,6 @@ Implemented:
 - `IAshlarSchemaDiagnostics`
 - `IAshlarCleanupDiagnostics`
 
-Not implemented yet:
-
-- provider contract tests shared with PostgreSQL
-
 ## SQLite Limitations
 
 SQLite stores GUIDs, timestamps, provider values, version tokens, and JSON payloads as `TEXT` in this schema. Authorization grant metadata and security event properties are serialized text, not `JSONB`, and provider code should not rely on database JSON operators.
@@ -148,12 +146,6 @@ SQLite email outbox dispatch is single-instance best effort. It claims pending r
 SQLite cleanup deletes bounded batches with SQLite-compatible `rowid` subqueries. It is single-instance best effort and does not provide PostgreSQL-style multi-worker coordination with `SKIP LOCKED`.
 
 Tenant email uniqueness is represented with SQLite-compatible partial unique indexes: one index for tenant-scoped users and one index for users without a tenant.
-
-## Planned Slices
-
-The intended repository implementation order is:
-
-1. Reusable provider contract tests shared with PostgreSQL where practical.
 
 ## Related Packages
 

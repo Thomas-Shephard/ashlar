@@ -55,7 +55,7 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
     [Test]
     public async Task CleanupAsyncOnEmptyDatabaseReturnsZeroCounts()
     {
-        using var cleanup = CreateCleanupService();
+        await using var cleanup = CreateCleanupService();
         var result = await cleanup.Service.CleanupAsync();
 
         Assert.That(result, Is.EqualTo(AshlarCleanupResult.Empty));
@@ -66,7 +66,7 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
     {
         await SeedMixedRowsAsync();
 
-        using var cleanup = CreateCleanupService();
+        await using var cleanup = CreateCleanupService();
         var result = await cleanup.Service.CleanupAsync();
 
         using (Assert.EnterMultipleScope())
@@ -115,14 +115,16 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
                 new { id = Guid.NewGuid(), userId = TestUserId, token = $"batch-{index}", created = _now.AddDays(-20), expires = _now.AddDays(-10) });
         }
 
-        var service = new PostgresAshlarCleanupService(
-            GetDataSource(),
-            _timeProvider,
-            Options.Create(new AshlarCleanupOptions { BatchSize = 2, MaxBatchesPerRun = 1, RemoveAuditEventsAfter = TimeSpan.FromDays(1) }));
+        await using var cleanup = CreateCleanupService(options =>
+        {
+            options.BatchSize = 2;
+            options.MaxBatchesPerRun = 1;
+            options.RemoveAuditEventsAfter = TimeSpan.FromDays(1);
+        });
 
-        var first = await service.CleanupAsync();
-        var second = await service.CleanupAsync();
-        var third = await service.CleanupAsync();
+        var first = await cleanup.Service.CleanupAsync();
+        var second = await cleanup.Service.CleanupAsync();
+        var third = await cleanup.Service.CleanupAsync();
 
         using (Assert.EnterMultipleScope())
         {
@@ -150,7 +152,7 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
             recent = _now.AddMinutes(-30)
         });
 
-        using var cleanup = CreateCleanupService();
+        await using var cleanup = CreateCleanupService();
         var result = await cleanup.Service.CleanupAsync();
 
         using (Assert.EnterMultipleScope())
@@ -181,7 +183,7 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
             recent = _now.AddMinutes(-30)
         });
 
-        using var cleanup = CreateCleanupService();
+        await using var cleanup = CreateCleanupService();
         var result = await cleanup.Service.CleanupAsync();
 
         using (Assert.EnterMultipleScope())
@@ -212,7 +214,7 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
             lockedUntil = _now.AddMinutes(5)
         });
 
-        using var cleanup = CreateCleanupService();
+        await using var cleanup = CreateCleanupService();
         var result = await cleanup.Service.CleanupAsync();
 
         using (Assert.EnterMultipleScope())
@@ -236,12 +238,14 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
                 new { id = Guid.NewGuid(), userId = TestUserId, token = $"multi-batch-{index}", created = _now.AddDays(-20), expires = _now.AddDays(-10) });
         }
 
-        var service = new PostgresAshlarCleanupService(
-            GetDataSource(),
-            _timeProvider,
-            Options.Create(new AshlarCleanupOptions { BatchSize = 2, MaxBatchesPerRun = 2, RemoveAuditEventsAfter = TimeSpan.FromDays(1) }));
+        await using var cleanup = CreateCleanupService(options =>
+        {
+            options.BatchSize = 2;
+            options.MaxBatchesPerRun = 2;
+            options.RemoveAuditEventsAfter = TimeSpan.FromDays(1);
+        });
 
-        var result = await service.CleanupAsync();
+        var result = await cleanup.Service.CleanupAsync();
 
         using (Assert.EnterMultipleScope())
         {
@@ -280,7 +284,7 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
         {
             foreach (var cleanup in cleanups)
             {
-                cleanup.Dispose();
+                await cleanup.DisposeAsync();
             }
         }
     }
@@ -289,7 +293,7 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
     public void ConstructorRejectsInvalidOptionsWhenValidationIsBypassed()
     {
         Assert.Throws<ArgumentException>(() => _ = new PostgresAshlarCleanupService(
-            GetDataSource(),
+            _serviceProvider.GetRequiredService<IPostgresConnectionProvider>(),
             _timeProvider,
             Options.Create(new AshlarCleanupOptions { BatchSize = 0 })));
     }
@@ -301,8 +305,8 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
         var options = Options.Create(new AshlarCleanupOptions());
 
         Assert.Throws<ArgumentNullException>(() => _ = new PostgresAshlarCleanupService(null!, _timeProvider, options));
-        Assert.Throws<ArgumentNullException>(() => _ = new PostgresAshlarCleanupService(GetDataSource(), null!, options));
-        Assert.Throws<ArgumentNullException>(() => _ = new PostgresAshlarCleanupService(GetDataSource(), _timeProvider, null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new PostgresAshlarCleanupService(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>(), null!, options));
+        Assert.Throws<ArgumentNullException>(() => _ = new PostgresAshlarCleanupService(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>(), _timeProvider, null!));
     }
 
     [Test]
@@ -312,12 +316,9 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
         await connection.ExecuteAsync(
             "INSERT INTO ashlar_security_events (id, event_type, occurred_at) VALUES (@id, 'old-event', @occurred)",
             new { id = Guid.NewGuid(), occurred = _now.AddYears(-10) });
-        var service = new PostgresAshlarCleanupService(
-            GetDataSource(),
-            _timeProvider,
-            Options.Create(new AshlarCleanupOptions()));
+        await using var cleanup = CreateCleanupService(options => options.RemoveAuditEventsAfter = null);
 
-        var result = await service.CleanupAsync();
+        var result = await cleanup.Service.CleanupAsync();
 
         using (Assert.EnterMultipleScope())
         {
@@ -335,8 +336,9 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
         };
         await using var dataSource = new NpgsqlDataSourceBuilder(connectionStringBuilder.ConnectionString).Build();
         var logger = new RecordingLogger<PostgresAshlarCleanupService>();
+        await using var connectionProvider = new PostgresTransactionManager(dataSource);
         var service = new PostgresAshlarCleanupService(
-            dataSource,
+            connectionProvider,
             _timeProvider,
             Options.Create(new AshlarCleanupOptions()),
             logger);
@@ -353,16 +355,22 @@ internal sealed class PostgresAshlarCleanupServiceTests : PostgresTestBase
 
     private CleanupServiceScope CreateCleanupService()
     {
-        var scope = _serviceProvider.CreateScope();
+        var scope = _serviceProvider.CreateAsyncScope();
         return new CleanupServiceScope(scope, scope.ServiceProvider.GetRequiredService<IAshlarCleanupService>());
     }
 
-    private sealed record CleanupServiceScope(IServiceScope Scope, IAshlarCleanupService Service) : IDisposable
+    private CleanupServiceScope CreateCleanupService(Action<AshlarCleanupOptions> configure)
     {
-        public void Dispose()
-        {
-            Scope.Dispose();
-        }
+        var options = new AshlarCleanupOptions();
+        configure(options);
+        var connectionProvider = new PostgresTransactionManager(GetDataSource());
+        var service = new PostgresAshlarCleanupService(connectionProvider, _timeProvider, Options.Create(options));
+        return new CleanupServiceScope(connectionProvider, service);
+    }
+
+    private sealed record CleanupServiceScope(IAsyncDisposable Scope, IAshlarCleanupService Service) : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync() => Scope.DisposeAsync();
     }
 
     private static readonly Guid TestUserId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");

@@ -93,6 +93,8 @@ var result = await diagnostics.CheckAsync();
 
 The result reports provider name, `CheckedAt`, whether cleanup is configured, whether `AshlarCleanupOptions` are valid, cleanup interval, batch size, max batches per run, and enabled/disabled cleanup category counts.
 
+PostgreSQL cleanup uses `IPostgresConnectionProvider`: it joins the active scoped Ashlar transaction when one exists, and otherwise runs on a fresh PostgreSQL connection.
+
 Cleanup diagnostics return:
 
 - `Healthy` when cleanup is configured and cleanup options are valid.
