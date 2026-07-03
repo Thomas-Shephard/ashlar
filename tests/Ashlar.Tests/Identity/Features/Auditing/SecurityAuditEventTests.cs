@@ -105,7 +105,7 @@ internal sealed class SecurityAuditEventTests
         providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
         credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
 
         var response = await pipeline.LoginAsync(context, assertion);
 
@@ -273,7 +273,8 @@ internal sealed class SecurityAuditEventTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(consumed, Is.True);
+            Assert.That(consumed.CanProceed, Is.True);
+            Assert.That(consumed.UpdatePersisted, Is.False);
             Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.CredentialConsumed));
             Assert.That(sink.Events.Single().Properties?.Values, Does.Not.Contain("raw-secret"));
         }
@@ -437,7 +438,7 @@ internal sealed class SecurityAuditEventTests
         providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
         credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
 
         var login = await pipeline.LoginAsync(context, assertion);
 
@@ -477,7 +478,7 @@ internal sealed class SecurityAuditEventTests
         providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
         credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
         var pipeline = new AuthenticationPipeline(
             registry.Object,
             credentialService.Object,
@@ -506,7 +507,7 @@ internal sealed class SecurityAuditEventTests
         providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
         credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
 
         var login = await pipeline.LoginAsync(context, assertion);
 

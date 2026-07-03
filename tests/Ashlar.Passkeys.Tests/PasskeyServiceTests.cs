@@ -597,8 +597,9 @@ internal sealed class PasskeyServiceTests
         var challenge = CreateAuthenticationChallenge(now);
         var credential = CreatePasskeyCredential(user.Id, "cred", now);
         var persistedCredential = credential.Clone();
+        persistedCredential.Version = "v2";
         persistedCredential.Metadata = JsonSerializer.Serialize(new PasskeyCredentialMetadata { DisplayName = "Laptop", PublicKey = "pk", SignCount = 2, Transports = ["internal"] }, PasskeyJson.Options);
-        persistedCredential.LastUsedAt = now;
+        persistedCredential.LastUsedAt = now.AddSeconds(-1);
         var repo = new Mock<IUserRepository>();
         var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
@@ -621,7 +622,7 @@ internal sealed class PasskeyServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Credential?.SignCount, Is.EqualTo(2));
-            Assert.That(result.Credential?.LastUsedAt, Is.EqualTo(now));
+            Assert.That(result.Credential?.LastUsedAt, Is.EqualTo(now.AddSeconds(-1)));
         }
 
         credentials.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -658,6 +659,9 @@ internal sealed class PasskeyServiceTests
     [TestCase("missing")]
     [TestCase("malformed")]
     [TestCase("stale-counter")]
+    [TestCase("future-counter")]
+    [TestCase("missing-last-used")]
+    [TestCase("same-version")]
     public async Task CompleteAuthenticationAsyncShouldFailClosedWhenPersistedCredentialIsNotCurrent(string persistedState)
     {
         var user = new TestUser(Guid.NewGuid(), "test@example.com");
@@ -667,9 +671,26 @@ internal sealed class PasskeyServiceTests
         UserCredential? persistedCredential = persistedState == "missing" ? null : credential.Clone();
         if (persistedCredential != null)
         {
+            persistedCredential.Version = persistedState == "same-version" ? credential.Version : "v2";
             persistedCredential.Metadata = persistedState == "malformed"
                 ? "{"
-                : JsonSerializer.Serialize(new PasskeyCredentialMetadata { DisplayName = "Laptop", PublicKey = "pk", SignCount = 1, Transports = ["internal"] }, PasskeyJson.Options);
+                : JsonSerializer.Serialize(new PasskeyCredentialMetadata
+                {
+                    DisplayName = "Laptop",
+                    PublicKey = "pk",
+                    SignCount = persistedState switch
+                    {
+                        "stale-counter" => 1,
+                        "future-counter" => 3,
+                        _ => 2
+                    },
+                    Transports = ["internal"]
+                }, PasskeyJson.Options);
+            persistedCredential.LastUsedAt = persistedState switch
+            {
+                "missing-last-used" => null,
+                _ => now
+            };
         }
 
         var repo = new Mock<IUserRepository>();
@@ -1461,6 +1482,105 @@ internal sealed class PasskeyServiceTests
         var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, "token"));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyValidationFailed));
+    }
+
+    [Test]
+    public async Task CompleteFactorAsyncShouldNotRewriteWhenOrchestratorPersistedCounter()
+    {
+        var user = new TestUser(Guid.NewGuid(), "test@example.com");
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var challenge = CreateAuthenticationChallenge(now, user.Id, "hashed:token", "passkey");
+        var credential = CreatePasskeyCredential(user.Id, "cred", now);
+        var persistedCredential = credential.Clone();
+        persistedCredential.Version = "v2";
+        persistedCredential.Metadata = JsonSerializer.Serialize(new PasskeyCredentialMetadata { DisplayName = "Laptop", PublicKey = "pk", SignCount = 2, Transports = ["internal"] }, PasskeyJson.Options);
+        persistedCredential.LastUsedAt = now.AddSeconds(-1);
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var validator = new Mock<IPasskeyCeremonyValidator>();
+        var orchestrator = new Mock<IAuthenticationOrchestrator>();
+        challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
+        challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, now, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        credentials.SetupSequence(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(credential)
+            .ReturnsAsync(persistedCredential);
+        validator.Setup(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), challenge, credential, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PasskeyAuthenticationVerificationResult("cred", 2, true));
+        orchestrator.Setup(o => o.VerifyFactorAsync("token", "passkey", It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user, CredentialUpdatePersisted: true));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+
+        var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, "token"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Credential?.SignCount, Is.EqualTo(2));
+            Assert.That(result.Credential?.LastUsedAt, Is.EqualTo(now.AddSeconds(-1)));
+        }
+
+        credentials.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [TestCase("missing")]
+    [TestCase("malformed")]
+    [TestCase("stale-counter")]
+    [TestCase("future-counter")]
+    [TestCase("missing-last-used")]
+    [TestCase("same-version")]
+    public async Task CompleteFactorAsyncShouldFailClosedWhenPersistedCredentialIsNotCurrent(string persistedState)
+    {
+        var user = new TestUser(Guid.NewGuid(), "test@example.com");
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var challenge = CreateAuthenticationChallenge(now, user.Id, "hashed:token", "passkey");
+        var credential = CreatePasskeyCredential(user.Id, "cred", now);
+        UserCredential? persistedCredential = persistedState == "missing" ? null : credential.Clone();
+        if (persistedCredential != null)
+        {
+            persistedCredential.Version = persistedState == "same-version" ? credential.Version : "v2";
+            persistedCredential.Metadata = persistedState == "malformed"
+                ? "{"
+                : JsonSerializer.Serialize(new PasskeyCredentialMetadata
+                {
+                    DisplayName = "Laptop",
+                    PublicKey = "pk",
+                    SignCount = persistedState switch
+                    {
+                        "stale-counter" => 1,
+                        "future-counter" => 3,
+                        _ => 2
+                    },
+                    Transports = ["internal"]
+                }, PasskeyJson.Options);
+            persistedCredential.LastUsedAt = persistedState switch
+            {
+                "missing-last-used" => null,
+                _ => now
+            };
+        }
+
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var validator = new Mock<IPasskeyCeremonyValidator>();
+        var orchestrator = new Mock<IAuthenticationOrchestrator>();
+        challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
+        challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, now, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        credentials.SetupSequence(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(credential)
+            .ReturnsAsync(persistedCredential);
+        validator.Setup(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), challenge, credential, It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PasskeyAuthenticationVerificationResult("cred", 2, true));
+        orchestrator.Setup(o => o.VerifyFactorAsync("token", "passkey", It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, user, CredentialUpdatePersisted: true));
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+
+        var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, "token"));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyValidationFailed));
+        credentials.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]

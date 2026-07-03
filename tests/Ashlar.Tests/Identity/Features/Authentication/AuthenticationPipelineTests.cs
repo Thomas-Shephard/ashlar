@@ -524,7 +524,7 @@ internal sealed class AuthenticationPipelineTests
         _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, _providerMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync((user, credential, credential, false));
         _credentialServiceMock.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, It.IsAny<AuthenticationResult>(), _providerMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
         _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded));
 
@@ -735,7 +735,7 @@ internal sealed class AuthenticationPipelineTests
         _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
         _credentialServiceMock.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
 
         var response = await _pipeline.LoginAsync(context, assertion);
 
@@ -1161,7 +1161,7 @@ internal sealed class AuthenticationPipelineTests
         _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
         _credentialServiceMock.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
 
         var response = await _pipeline.LoginAsync(context, assertion);
 
@@ -1184,7 +1184,7 @@ internal sealed class AuthenticationPipelineTests
         _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
         _credentialServiceMock.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync(CredentialUsageUpdateResult.Persisted);
 
         var response = await _pipeline.LoginAsync(context, assertion);
 
@@ -1194,6 +1194,34 @@ internal sealed class AuthenticationPipelineTests
             Assert.That(response.User, Is.SameAs(user));
             Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessWithCredentialUpdate));
             Assert.That(response.Claims, Is.SameAs(result.Claims));
+            Assert.That(response.CredentialUpdatePersisted, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task LoginAsyncWithFailedBestEffortCredentialUpdateShouldStillSucceedWithoutPersistenceSignal()
+    {
+        var context = new AuthenticationContext("test@example.com");
+        var assertion = new TestAssertion(AuthenticationProviderKey.Local);
+        var provider = ConfigureProviderResolution(assertion);
+        var user = new User { Id = Guid.NewGuid(), DisplayEmail = "test@example.com" };
+        var credential = CreateCredential(user.Id);
+        var result = new AuthenticationResult(AuthenticationResultStatus.SucceededWithCredentialUpdate, CredentialUpdateRequirement: CredentialUpdateRequirement.BestEffort);
+
+        _credentialServiceMock.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+        _credentialServiceMock.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CredentialUsageUpdateResult.BestEffortFailed);
+
+        var response = await _pipeline.LoginAsync(context, assertion);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Succeeded, Is.True);
+            Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.SuccessWithCredentialUpdate));
+            Assert.That(response.CredentialUpdatePersisted, Is.False);
         }
     }
 
@@ -1220,6 +1248,7 @@ internal sealed class AuthenticationPipelineTests
             Assert.That(response.User, Is.SameAs(user));
             Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Success));
             Assert.That(response.Claims, Is.SameAs(result.Claims));
+            Assert.That(response.CredentialUpdatePersisted, Is.False);
         }
 
         _credentialServiceMock.Verify(
@@ -1242,7 +1271,7 @@ internal sealed class AuthenticationPipelineTests
         _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
         _credentialServiceMock.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+            .ReturnsAsync(CredentialUsageUpdateResult.RequiredFailed);
 
         var response = await _pipeline.LoginAsync(context, assertion);
 
@@ -1267,7 +1296,7 @@ internal sealed class AuthenticationPipelineTests
         _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
         _credentialServiceMock.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+            .ReturnsAsync(CredentialUsageUpdateResult.RequiredFailed);
 
         var response = await _pipeline.LoginAsync(context, assertion);
 
@@ -1313,7 +1342,7 @@ internal sealed class AuthenticationPipelineTests
         _providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
         _credentialServiceMock.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+            .ReturnsAsync(CredentialUsageUpdateResult.RequiredFailed);
 
         var response = await _pipeline.LoginAsync(context, assertion);
 
@@ -1374,6 +1403,7 @@ internal sealed class AuthenticationPipelineTests
             Assert.That(response.Succeeded, Is.True);
             Assert.That(response.User, Is.SameAs(user));
             Assert.That(response.Status, Is.EqualTo(AuthenticationStatus.Success));
+            Assert.That(response.CredentialUpdatePersisted, Is.False);
         }
     }
 

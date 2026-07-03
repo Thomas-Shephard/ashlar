@@ -423,22 +423,40 @@ public sealed class AuthenticationPipeline(
                 return await RecordFailureAsync(lifecycle.Context, lifecycle.Provider.Key, lifecycle.User.Id, SecurityEventFailureReasons.CredentialUpdateFailed, cancellationToken);
             }
 
-            return await CompleteSuccessfulLoginAsync(lifecycle.User, lifecycle.Provider, lifecycle.Context, lifecycle.Status, lifecycle.Result.Claims, properties: null, cancellationToken);
+            return await CompleteSuccessfulLoginAsync(
+                lifecycle.User,
+                lifecycle.Provider,
+                lifecycle.Context,
+                lifecycle.Status,
+                lifecycle.Result.Claims,
+                properties: null,
+                credentialUpdatePersisted: false,
+                cancellationToken);
         }
 
-        var lifecycleUpdateFailed = false;
+        Dictionary<string, string>? lifecycleFailureProperties = null;
         try
         {
-            var credentialUsageUpdated = await _credentialService.UpdateCredentialUsageAsync(
+            var credentialUsageUpdate = await _credentialService.UpdateCredentialUsageAsync(
                 lifecycle.Credential,
                 lifecycle.OriginalCredential,
                 lifecycle.Result,
                 lifecycle.Provider,
                 cancellationToken);
-            if (!credentialUsageUpdated)
+            if (!credentialUsageUpdate.CanProceed)
             {
                 return await RecordFailureAsync(lifecycle.Context, lifecycle.Provider.Key, lifecycle.User.Id, SecurityEventFailureReasons.CredentialUpdateFailed, cancellationToken);
             }
+
+            return await CompleteSuccessfulLoginAsync(
+                lifecycle.User,
+                lifecycle.Provider,
+                lifecycle.Context,
+                lifecycle.Status,
+                lifecycle.Result.Claims,
+                properties: null,
+                credentialUpdatePersisted: credentialUsageUpdate.UpdatePersisted,
+                cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -455,7 +473,7 @@ public sealed class AuthenticationPipeline(
                 return await RecordFailureAsync(lifecycle.Context, lifecycle.Provider.Key, lifecycle.User.Id, SecurityEventFailureReasons.CredentialUpdateFailed, cancellationToken);
             }
 
-            lifecycleUpdateFailed = true;
+            lifecycleFailureProperties = new Dictionary<string, string> { ["lifecycle_update_failed"] = "true" };
             CredentialLifecycleUpdateFailed(
                 _logger,
                 lifecycle.User.Id,
@@ -471,7 +489,8 @@ public sealed class AuthenticationPipeline(
             lifecycle.Context,
             lifecycle.Status,
             lifecycle.Result.Claims,
-            lifecycleUpdateFailed ? new Dictionary<string, string> { ["lifecycle_update_failed"] = "true" } : null,
+            lifecycleFailureProperties,
+            credentialUpdatePersisted: false,
             cancellationToken);
     }
 
@@ -504,6 +523,7 @@ public sealed class AuthenticationPipeline(
         AuthenticationStatus status,
         IReadOnlyDictionary<string, IReadOnlyList<string>>? claims,
         Dictionary<string, string>? properties,
+        bool credentialUpdatePersisted,
         CancellationToken cancellationToken)
     {
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
@@ -518,7 +538,7 @@ public sealed class AuthenticationPipeline(
         }, ct));
 
         await transaction.CommitAsync(cancellationToken);
-        return new AuthenticationResponse(true, user, status, claims);
+        return new AuthenticationResponse(true, user, status, claims, credentialUpdatePersisted);
     }
 
     private sealed record CredentialLifecycleContext(

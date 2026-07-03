@@ -1,3 +1,4 @@
+using Ashlar.Auditing;
 using Ashlar.Identity.Providers.External;
 using Ashlar.Security.Encryption;
 using Ashlar.Testing;
@@ -32,6 +33,16 @@ internal sealed class CredentialServiceTests
             _secretProtectorMock.Object,
             new NullTransactionProvider(),
             new CredentialServiceDependencies(TimeProvider: _timeProvider));
+    }
+
+    private CredentialService CreateService(ISecurityEventSink securityEventSink)
+    {
+        return new CredentialService(
+            _repositoryMock.Object,
+            _credentialRepositoryMock.Object,
+            _secretProtectorMock.Object,
+            new NullTransactionProvider(),
+            new CredentialServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: securityEventSink));
     }
 
     [Test]
@@ -409,9 +420,110 @@ internal sealed class CredentialServiceTests
         _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
-        await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+        var update = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
-        _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.Metadata == "new"), "v1", It.IsAny<CancellationToken>()), Times.Once);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.CanProceed, Is.True);
+            Assert.That(update.UpdatePersisted, Is.True);
+            _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.Metadata == "new"), "v1", It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
+    public async Task UpdateCredentialUsageAsyncWithMetadataChangeShouldEmitCredentialUpdatePersisted()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = CreateService(sink);
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = ProviderType.Oidc,
+            ProviderName = "Google",
+            ProviderKey = "sub",
+            Version = "v1",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            Status = CredentialStatus.Active,
+            Metadata = "old",
+            LastUsedAt = _timeProvider.GetUtcNow()
+        };
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, NewMetadata: "new");
+        var providerMock = new Mock<IAuthenticationProvider>();
+
+        _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), "v1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var update = await service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.UpdatePersisted, Is.True);
+            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.CredentialUpdatePersisted));
+        }
+    }
+
+    [Test]
+    public async Task UpdateCredentialUsageAsyncWithRoutineUsageWriteShouldProceedWithoutCredentialUpdatePersistence()
+    {
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = ProviderType.Oidc,
+            ProviderName = "Google",
+            ProviderKey = "sub",
+            Version = "v1",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            Status = CredentialStatus.Active,
+            LastUsedAt = _timeProvider.GetUtcNow().AddDays(-1)
+        };
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
+        var providerMock = new Mock<IAuthenticationProvider>();
+
+        _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var update = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.CanProceed, Is.True);
+            Assert.That(update.UpdatePersisted, Is.False);
+            _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), "v1", It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
+    public async Task UpdateCredentialUsageAsyncWithRoutineUsageWriteShouldNotEmitCredentialUpdateEvent()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = CreateService(sink);
+        var credential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = ProviderType.Oidc,
+            ProviderName = "Google",
+            ProviderKey = "sub",
+            Version = "v1",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            Status = CredentialStatus.Active,
+            LastUsedAt = _timeProvider.GetUtcNow().AddDays(-1)
+        };
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
+        var providerMock = new Mock<IAuthenticationProvider>();
+
+        _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), "v1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var update = await service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.UpdatePersisted, Is.False);
+            Assert.That(sink.Events, Is.Empty);
+        }
     }
 
     [Test]
@@ -434,9 +546,13 @@ internal sealed class CredentialServiceTests
         _credentialRepositoryMock.Setup(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
-        var consumed = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+        var update = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
-        Assert.That(consumed, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.CanProceed, Is.True);
+            Assert.That(update.UpdatePersisted, Is.False);
+        }
         _credentialRepositoryMock.Verify(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -460,13 +576,17 @@ internal sealed class CredentialServiceTests
         _credentialRepositoryMock.Setup(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        var consumed = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+        var update = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
-        Assert.That(consumed, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.CanProceed, Is.False);
+            Assert.That(update.UpdatePersisted, Is.False);
+        }
     }
 
     [Test]
-    public async Task UpdateCredentialUsageAsyncWithBestEffortUpdateConflictShouldReturnTrue()
+    public async Task UpdateCredentialUsageAsyncWithBestEffortUpdateConflictShouldProceedWithoutPersistence()
     {
         var credential = new UserCredential
         {
@@ -486,13 +606,17 @@ internal sealed class CredentialServiceTests
         _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        var success = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+        var update = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
-        Assert.That(success, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.CanProceed, Is.True);
+            Assert.That(update.UpdatePersisted, Is.False);
+        }
     }
 
     [Test]
-    public async Task UpdateCredentialUsageAsyncWithRequiredUpdateConflictShouldReturnFalse()
+    public async Task UpdateCredentialUsageAsyncWithRequiredUpdateConflictShouldFailWithoutPersistence()
     {
         var credential = new UserCredential
         {
@@ -512,13 +636,17 @@ internal sealed class CredentialServiceTests
         _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        var success = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+        var update = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
-        Assert.That(success, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.CanProceed, Is.False);
+            Assert.That(update.UpdatePersisted, Is.False);
+        }
     }
 
     [Test]
-    public async Task UpdateCredentialUsageAsyncWithBestEffortUpdateExceptionShouldReturnTrue()
+    public async Task UpdateCredentialUsageAsyncWithBestEffortUpdateExceptionShouldProceedWithoutPersistence()
     {
         var credential = new UserCredential
         {
@@ -538,13 +666,17 @@ internal sealed class CredentialServiceTests
         _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("DB Error"));
 
-        var success = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+        var update = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
-        Assert.That(success, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.CanProceed, Is.True);
+            Assert.That(update.UpdatePersisted, Is.False);
+        }
     }
 
     [Test]
-    public async Task UpdateCredentialUsageAsyncWithUninitializedProviderTypeInFailurePathShouldReturnTrue()
+    public async Task UpdateCredentialUsageAsyncWithUninitializedProviderTypeInFailurePathShouldProceedWithoutPersistence()
     {
         var credential = new UserCredential
         {
@@ -567,13 +699,17 @@ internal sealed class CredentialServiceTests
 
         _secretProtectorMock.Setup(s => s.Protect("rotated-secret")).Throws(new InvalidOperationException("Protection failed"));
 
-        var success = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+        var update = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
-        Assert.That(success, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.CanProceed, Is.True);
+            Assert.That(update.UpdatePersisted, Is.False);
+        }
     }
 
     [Test]
-    public async Task UpdateCredentialUsageAsyncWithRequiredUpdateExceptionShouldReturnFalse()
+    public async Task UpdateCredentialUsageAsyncWithRequiredUpdateExceptionShouldFailWithoutPersistence()
     {
         var credential = new UserCredential
         {
@@ -593,9 +729,13 @@ internal sealed class CredentialServiceTests
         _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("DB Error"));
 
-        var success = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+        var update = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
-        Assert.That(success, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.CanProceed, Is.False);
+            Assert.That(update.UpdatePersisted, Is.False);
+        }
     }
 
     [Test]
@@ -623,7 +763,7 @@ internal sealed class CredentialServiceTests
     }
 
     [Test]
-    public async Task UpdateCredentialUsageAsyncWithConsumeConflictShouldAlwaysReturnFalseRegardlessOfRequirement()
+    public async Task UpdateCredentialUsageAsyncWithConsumeConflictShouldAlwaysFailRegardlessOfRequirement()
     {
         var credential = new UserCredential
         {
@@ -643,9 +783,13 @@ internal sealed class CredentialServiceTests
         _credentialRepositoryMock.Setup(r => r.ConsumeCredentialAsync(credential.Id, "v1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        var success = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+        var update = await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
-        Assert.That(success, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.CanProceed, Is.False);
+            Assert.That(update.UpdatePersisted, Is.False);
+        }
     }
 
     [Test]
@@ -682,10 +826,61 @@ internal sealed class CredentialServiceTests
 
         _secretProtectorMock.Setup(s => s.Protect("new-raw")).Throws(new InvalidOperationException("Encryption error"));
 
-        await _service.UpdateCredentialUsageAsync(unprotectedCredential, originalCredential, result, providerMock.Object);
+        var update = await _service.UpdateCredentialUsageAsync(unprotectedCredential, originalCredential, result, providerMock.Object);
 
-        // Verify that UpdateCredentialAsync was called with the original protected value, NOT the plain-text one.
-        _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.CredentialValue == "protected-original"), "v1", It.IsAny<CancellationToken>()), Times.Once);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.CanProceed, Is.True);
+            Assert.That(update.UpdatePersisted, Is.False);
+            // Verify that UpdateCredentialAsync was called with the original protected value, NOT the plain-text one.
+            _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.CredentialValue == "protected-original"), "v1", It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
+    public async Task UpdateCredentialUsageAsyncWithMetadataChangeAndFailedValueProtectionShouldEmitCredentialUpdateFailed()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = CreateService(sink);
+        var originalCredential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = ProviderType.Oidc,
+            ProviderName = "Google",
+            ProviderKey = "sub",
+            Version = "v1",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            Status = CredentialStatus.Active,
+            CredentialValue = "protected-original",
+            Metadata = "old"
+        };
+        var unprotectedCredential = originalCredential.Clone();
+        unprotectedCredential.CredentialValue = "unprotected-original";
+        unprotectedCredential.LastUsedAt = _timeProvider.GetUtcNow().AddDays(-1);
+        var result = new AuthenticationResult(
+            AuthenticationResultStatus.SucceededWithCredentialUpdate,
+            NewCredentialValue: "new-raw",
+            NewMetadata: "new",
+            CredentialUpdateRequirement: CredentialUpdateRequirement.BestEffort);
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
+
+        _secretProtectorMock.Setup(s => s.Protect("new-raw")).Throws(new InvalidOperationException("Encryption error"));
+        _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), "v1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var update = await service.UpdateCredentialUsageAsync(unprotectedCredential, originalCredential, result, providerMock.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.CanProceed, Is.True);
+            Assert.That(update.UpdatePersisted, Is.False);
+            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.CredentialUpdateFailed));
+            _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
+                c.Metadata == "new" &&
+                c.CredentialValue == "protected-original"), "v1", It.IsAny<CancellationToken>()), Times.Once);
+        }
     }
 
     [Test]
@@ -780,17 +975,18 @@ internal sealed class CredentialServiceTests
 
         _secretProtectorMock.Setup(s => s.Protect("new-raw")).Throws(new InvalidOperationException("Encryption error"));
 
-        var success = await _service.UpdateCredentialUsageAsync(unprotectedCredential, originalCredential, result, providerMock.Object);
+        var update = await _service.UpdateCredentialUsageAsync(unprotectedCredential, originalCredential, result, providerMock.Object);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(success, Is.False);
+            Assert.That(update.CanProceed, Is.False);
+            Assert.That(update.UpdatePersisted, Is.False);
             _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
     [Test]
-    public async Task UpdateCredentialUsageAsyncWithProtectedProviderAndNoValueOrOriginalShouldReturnFalseToAvoidWipe()
+    public async Task UpdateCredentialUsageAsyncWithProtectedProviderAndNoValueOrOriginalShouldFailToAvoidWipe()
     {
         var unprotectedCredential = new UserCredential
         {
@@ -810,11 +1006,42 @@ internal sealed class CredentialServiceTests
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
 
         // We are NOT passing originalCredential.
-        var success = await _service.UpdateCredentialUsageAsync(unprotectedCredential, null, result, providerMock.Object);
+        var update = await _service.UpdateCredentialUsageAsync(unprotectedCredential, null, result, providerMock.Object);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(success, Is.False);
+            Assert.That(update.CanProceed, Is.True);
+            Assert.That(update.UpdatePersisted, Is.False);
+            _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task UpdateCredentialUsageAsyncWithRequiredProtectedProviderAndNoValueOrOriginalShouldFailAuthentication()
+    {
+        var unprotectedCredential = new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            ProviderType = ProviderType.Oidc,
+            ProviderName = "Google",
+            ProviderKey = "sub",
+            Version = "v1",
+            CreatedAt = _timeProvider.GetUtcNow(),
+            Status = CredentialStatus.Active,
+            CredentialValue = null,
+            LastUsedAt = _timeProvider.GetUtcNow().AddDays(-1)
+        };
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded, CredentialUpdateRequirement: CredentialUpdateRequirement.Required);
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
+
+        var update = await _service.UpdateCredentialUsageAsync(unprotectedCredential, null, result, providerMock.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.CanProceed, Is.False);
+            Assert.That(update.UpdatePersisted, Is.False);
             _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
@@ -1132,6 +1359,8 @@ internal sealed class CredentialServiceTests
     [Test]
     public async Task UpdateCredentialUsageAsyncWithRequiredUnchangedMetadataShouldPersistLastUsedAt()
     {
+        var sink = new RecordingSecurityEventSink();
+        var service = CreateService(sink);
         var now = _timeProvider.GetUtcNow();
         var credential = CreateCredential(Guid.NewGuid());
         credential.Metadata = "unchanged";
@@ -1144,11 +1373,17 @@ internal sealed class CredentialServiceTests
         _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), credential.Version, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
-        await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+        var update = await service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
 
-        _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
-            c.LastUsedAt == now &&
-            c.UpdatedAt != null), credential.Version, It.IsAny<CancellationToken>()), Times.Once);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.CanProceed, Is.True);
+            Assert.That(update.UpdatePersisted, Is.False);
+            Assert.That(sink.Events, Is.Empty);
+            _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
+                c.LastUsedAt == now &&
+                c.UpdatedAt != null), credential.Version, It.IsAny<CancellationToken>()), Times.Once);
+        }
     }
 
     [Test]
@@ -1420,5 +1655,16 @@ internal sealed class CredentialServiceTests
         public string? Name { get; set; }
         public UserAccountState AccountState { get; set; } = UserAccountState.Active;
         public DateTimeOffset? EmailVerifiedAt { get; set; }
+    }
+
+    private sealed class RecordingSecurityEventSink : ISecurityEventSink
+    {
+        public List<AshlarSecurityEvent> Events { get; } = [];
+
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            Events.Add(securityEvent);
+            return Task.CompletedTask;
+        }
     }
 }

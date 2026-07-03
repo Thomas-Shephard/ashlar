@@ -112,7 +112,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             MfaAuthenticationStatus.Succeeded,
             response.User,
             Claims: response.Claims,
-            CredentialUpdatePersisted: response.Status == AuthenticationStatus.SuccessWithCredentialUpdate);
+            CredentialUpdatePersisted: response.CredentialUpdatePersisted);
     }
 
     public async Task<MfaAuthenticationResult> VerifyFactorAsync(
@@ -166,7 +166,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: GetHandshakeVerificationFailureMessage(result.FailureCode));
         }
 
-        return CreateResultFromHandshake(result.Value, response.User, handshakeToken, response.Status == AuthenticationStatus.SuccessWithCredentialUpdate);
+        return CreateResultFromHandshake(result.Value, response.User, handshakeToken, response.CredentialUpdatePersisted);
     }
 
     private MfaAuthenticationResult CreateFactorAuthenticationFailureResult(Guid userId, AuthenticationResponse response)
@@ -260,7 +260,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
                 MfaAuthenticationStatus.Succeeded,
                 user,
                 Claims: response.Claims,
-                CredentialUpdatePersisted: response.Status == AuthenticationStatus.SuccessWithCredentialUpdate);
+                CredentialUpdatePersisted: response.CredentialUpdatePersisted);
         }
 
         var result = await _handshakeService.CreateHandshakeAsync(
@@ -278,7 +278,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             user,
             created.Token,
             created.Handshake.RequiredFactors,
-            CredentialUpdatePersisted: response.Status == AuthenticationStatus.SuccessWithCredentialUpdate);
+            CredentialUpdatePersisted: response.CredentialUpdatePersisted);
     }
 
     private async Task<bool> TryValidateRememberedMfaDeviceAsync(

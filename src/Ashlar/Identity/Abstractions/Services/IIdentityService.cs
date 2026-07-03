@@ -70,7 +70,7 @@ public enum AuthenticationStatus
     /// </summary>
     Success = 1,
     /// <summary>
-    /// Authentication succeeded and the stored credential should be updated.
+    /// Authentication succeeded and the provider requested a stored credential update.
     /// </summary>
     SuccessWithCredentialUpdate = 2,
     /// <summary>
@@ -92,13 +92,15 @@ public enum AuthenticationStatus
 /// </summary>
 /// <param name="Succeeded">Whether authentication completed successfully.</param>
 /// <param name="User">The authenticated user when available.</param>
-/// <param name="Status">Outcome of the credential authentication attempt.</param>
+/// <param name="Status">Outcome of the credential authentication attempt. <see cref="AuthenticationStatus.SuccessWithCredentialUpdate" /> means the provider requested an update; it does not prove the update was persisted.</param>
 /// <param name="Claims">Additional claims produced by the authentication provider.</param>
+/// <param name="CredentialUpdatePersisted">Whether a provider-requested credential update was actually persisted during authentication.</param>
 public sealed record AuthenticationResponse(
     bool Succeeded,
     IUser? User = null,
     AuthenticationStatus Status = AuthenticationStatus.Failed,
-    IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims = null)
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims = null,
+    bool CredentialUpdatePersisted = false)
 {
     /// <summary>
     /// Creates an authentication response from single-value provider claims.

@@ -53,6 +53,34 @@ public interface ICredentialService
     /// <param name="result">Authentication decision that may request credential consumption or replacement.</param>
     /// <param name="provider">Authenticator implementation that owns the credential.</param>
     /// <param name="cancellationToken">A token that can cancel the update.</param>
-    /// <returns><see langword="true" /> when credential usage or mutation was persisted.</returns>
-    Task<bool> UpdateCredentialUsageAsync(UserCredential unprotectedCredential, UserCredential? originalCredential, AuthenticationResult result, IAuthenticationProvider provider, CancellationToken cancellationToken = default);
+    /// <returns>A result that states whether authentication may continue and whether an update was persisted.</returns>
+    Task<CredentialUsageUpdateResult> UpdateCredentialUsageAsync(UserCredential unprotectedCredential, UserCredential? originalCredential, AuthenticationResult result, IAuthenticationProvider provider, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Result of persisting credential usage, consumption, or replacement after provider authentication.
+/// </summary>
+/// <param name="CanProceed">Whether authentication may continue after applying required credential lifecycle rules.</param>
+/// <param name="UpdatePersisted">Whether all provider-requested credential data changes were actually persisted.</param>
+public sealed record CredentialUsageUpdateResult(bool CanProceed, bool UpdatePersisted)
+{
+    /// <summary>
+    /// Authentication may continue and the provider-requested credential update was persisted.
+    /// </summary>
+    public static CredentialUsageUpdateResult Persisted { get; } = new(true, true);
+
+    /// <summary>
+    /// Authentication may continue and no provider-requested credential update was persisted.
+    /// </summary>
+    public static CredentialUsageUpdateResult NotNeeded { get; } = new(true, false);
+
+    /// <summary>
+    /// Authentication may continue even though a best-effort provider-requested credential update was not persisted.
+    /// </summary>
+    public static CredentialUsageUpdateResult BestEffortFailed { get; } = new(true, false);
+
+    /// <summary>
+    /// Authentication must fail because a required credential lifecycle mutation was not persisted.
+    /// </summary>
+    public static CredentialUsageUpdateResult RequiredFailed { get; } = new(false, false);
 }
