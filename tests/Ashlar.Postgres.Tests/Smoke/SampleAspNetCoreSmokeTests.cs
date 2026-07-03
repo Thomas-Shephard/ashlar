@@ -610,7 +610,7 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
         var totp = scope.ServiceProvider.GetRequiredService<ITotpService>();
         var user = await users.GetUserByIdAsync(userId);
         Assert.That(user, Is.Not.Null);
-        var tenant = (user as ITenantUser)?.TenantId is { } tenantId ? new TenantContext(tenantId) : TenantContext.Global;
+        var tenant = user is ITenantUser { TenantId: { } tenantId } ? new TenantContext(tenantId) : TenantContext.Global;
         var audit = new AuditContext(ActorUserId: userId, Items: new Dictionary<string, string> { ["reason"] = "smoke-test-fresh-mfa-setup" });
 
         var enrollment = await totp.StartEnrollmentPrivilegedAsync(new StartTotpEnrollmentRequest(userId, "Ashlar Sample", user!.DisplayEmail)
