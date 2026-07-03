@@ -20,7 +20,7 @@ internal static class InvitationEndpoints
             var invitation = new CreateInvitationRequest
             {
                 Email = request.Email,
-                TenantId = httpContext.GetAshlarTenantId(),
+                TenantId = httpContext.GetDemoTenantIdFromUntrustedHeader(),
                 Expiry = request.Expiry,
                 Metadata = request.Metadata
             };

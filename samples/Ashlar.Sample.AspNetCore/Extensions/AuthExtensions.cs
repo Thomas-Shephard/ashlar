@@ -11,7 +11,7 @@ internal static class HttpContextExtensions
     {
         return new AuthenticationContext(
             Email: email,
-            TenantId: httpContext.GetAshlarTenantId(),
+            TenantId: httpContext.GetDemoTenantIdFromUntrustedHeader(),
             IpAddress: httpContext.Connection.RemoteIpAddress?.ToString(),
             UserAgent: httpContext.Request.Headers.UserAgent.ToString(),
             CorrelationId: httpContext.TraceIdentifier);
@@ -28,7 +28,7 @@ internal static class HttpContextExtensions
 
     public static TenantContext ToTenantContext(this HttpContext httpContext)
     {
-        return new TenantContext(httpContext.GetAshlarTenantId());
+        return new TenantContext(httpContext.GetDemoTenantIdFromUntrustedHeader());
     }
 
     public static bool TryGetAshlarSessionContext(this HttpContext httpContext, out Guid userId, out Guid sessionId, out TenantContext? tenant)
@@ -149,7 +149,11 @@ internal static class HttpContextExtensions
         }
     }
 
-    public static Guid? GetAshlarTenantId(this HttpContext httpContext)
+    /// <summary>
+    /// Reads the sample-only <c>X-Tenant-Id</c> tenant selector from the request.
+    /// This header is caller controlled and must not be used as a trusted production tenant resolver.
+    /// </summary>
+    public static Guid? GetDemoTenantIdFromUntrustedHeader(this HttpContext httpContext)
     {
         var value = httpContext.Request.Headers["X-Tenant-Id"].FirstOrDefault();
         return Guid.TryParse(value, out var tenantId) ? tenantId : null;

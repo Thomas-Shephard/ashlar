@@ -38,6 +38,8 @@ For local HTTP testing, set `Ashlar:Cookie:Secure` to `false`, use an HTTP `Publ
 
 The sample derives its allowed callback URIs from `PublicAppUrl` and the fixed magic-link, invitation, email verification, and email change paths it emits. Links are built from this configured value, not from request-supplied return URLs. Keep `PublicAppUrl` to the exact local or public origin you expect, without query strings or fragments. In production, configure an HTTPS public URL and keep `Ashlar:Cookie:Secure` enabled.
 
+The sample accepts an `X-Tenant-Id` request header as a demo-only tenant selector so local tests can exercise tenant-scoped Ashlar flows. Treat this header as untrusted caller input. Production apps should derive tenant scope from an authenticated session, route or domain binding, membership lookup, or an authorization decision, not directly from a caller-controlled header.
+
 ### Optional Google OIDC
 
 Google OIDC is disabled by default. The sample starts normally without Google configuration and hides all Google buttons when it is not configured.
