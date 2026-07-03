@@ -209,6 +209,118 @@ internal sealed class EmailCodeSignInTests
     }
 
     [Test]
+    public async Task VerifyCodeChecksEmailVerificationLimitBeforeCallingOrchestrator()
+    {
+        Mock<IAuthenticationOrchestrator>? orchestrator = null;
+        var fixture = CreateFixture(
+            _user,
+            authenticationOrchestratorFactory: rateLimiter =>
+            {
+                orchestrator = new Mock<IAuthenticationOrchestrator>();
+                orchestrator
+                    .Setup(o => o.AuthenticateAsync(
+                        It.IsAny<AuthenticationContext>(),
+                        It.IsAny<EmailCodeAssertion>(),
+                        null,
+                        It.IsAny<CancellationToken>()))
+                    .Callback(() => Assert.That(
+                        rateLimiter.Attempts.Select(a => a.Key),
+                        Is.EqualTo(new[] { ExpectedRateLimitKey("email-code-verify", "email", "email:USER@EXAMPLE.COM") })))
+                    .ReturnsAsync(new MfaAuthenticationResult(MfaAuthenticationStatus.Succeeded, _user));
+                return orchestrator.Object;
+            });
+
+        var response = await fixture.Service.VerifyCodeAsync(_user.DisplayEmail, "123456");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
+            Assert.That(fixture.RateLimiter.Attempts.Single().Purpose, Is.EqualTo("email-code-verify"));
+            orchestrator!.Verify(o => o.AuthenticateAsync(
+                It.IsAny<AuthenticationContext>(),
+                It.IsAny<EmailCodeAssertion>(),
+                null,
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
+    public async Task VerifyCodeThroughOrchestratorChecksPrimarySourceRateLimit()
+    {
+        var fixture = CreateFixture(_user, usePrimaryAuthenticationRateLimiter: true);
+        await fixture.Service.RequestCodeAsync(_user.DisplayEmail);
+        var code = ExtractCode(GetTextBody(fixture.EmailSender.Messages.Single()));
+        var context = new AuthenticationContext(IpAddress: "203.0.113.12");
+
+        var response = await fixture.Service.VerifyCodeAsync(_user.DisplayEmail, code, context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.Succeeded));
+            var primaryAttempts = fixture.RateLimiter.Attempts.Where(a => a.Purpose == "primary-authentication").ToArray();
+            Assert.That(primaryAttempts.Select(a => a.Key), Is.EqualTo(new[]
+            {
+                ExpectedPrimaryRateLimitKey(context, "source:ip:203.0.113.12", _user.DisplayEmail, "source"),
+                ExpectedPrimaryRateLimitKey(context, "email:USER@EXAMPLE.COM", _user.DisplayEmail, "identity")
+            }));
+        }
+    }
+
+    [Test]
+    public async Task VerifyCodeWithBlockedPrimarySourceRateLimitDoesNotAuthenticateProvider()
+    {
+        var fixture = CreateFixture(_user, usePrimaryAuthenticationRateLimiter: true);
+        await fixture.Service.RequestCodeAsync(_user.DisplayEmail);
+        var code = ExtractCode(GetTextBody(fixture.EmailSender.Messages.Single()));
+        var context = new AuthenticationContext(IpAddress: "203.0.113.12");
+        fixture.RateLimiter.BlockedKeys.Add(ExpectedPrimaryRateLimitKey(context, "source:ip:203.0.113.12", _user.DisplayEmail, "source"));
+
+        var response = await fixture.Service.VerifyCodeAsync(_user.DisplayEmail, code, context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.RateLimited));
+            Assert.That(response.ErrorMessage, Is.EqualTo("Rate limit exceeded."));
+            Assert.That(fixture.Repository.Credentials, Has.Count.EqualTo(1));
+            Assert.That(fixture.Repository.GetUserByEmailCalls, Is.EqualTo(1));
+            var primaryAttempts = fixture.RateLimiter.Attempts.Where(a => a.Purpose == "primary-authentication").ToArray();
+            Assert.That(primaryAttempts.Select(a => a.Key), Is.EqualTo(new[]
+            {
+                ExpectedPrimaryRateLimitKey(context, "source:ip:203.0.113.12", _user.DisplayEmail, "source")
+            }));
+            Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.CredentialConsumed), Is.False);
+            Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.AuthenticationRateLimited), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task VerifyCodeWithBlockedPrimaryIdentityRateLimitDoesNotAuthenticateProvider()
+    {
+        var fixture = CreateFixture(_user, usePrimaryAuthenticationRateLimiter: true);
+        await fixture.Service.RequestCodeAsync(_user.DisplayEmail);
+        var code = ExtractCode(GetTextBody(fixture.EmailSender.Messages.Single()));
+        var context = new AuthenticationContext(IpAddress: "203.0.113.12");
+        fixture.RateLimiter.BlockedKeys.Add(ExpectedPrimaryRateLimitKey(context, "email:USER@EXAMPLE.COM", _user.DisplayEmail, "identity"));
+
+        var response = await fixture.Service.VerifyCodeAsync(_user.DisplayEmail, code, context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Status, Is.EqualTo(MfaAuthenticationStatus.RateLimited));
+            Assert.That(fixture.Repository.Credentials, Has.Count.EqualTo(1));
+            Assert.That(fixture.Repository.GetUserByEmailCalls, Is.EqualTo(1));
+            var primaryAttempts = fixture.RateLimiter.Attempts.Where(a => a.Purpose == "primary-authentication").ToArray();
+            Assert.That(primaryAttempts.Select(a => a.Key), Is.EqualTo(new[]
+            {
+                ExpectedPrimaryRateLimitKey(context, "source:ip:203.0.113.12", _user.DisplayEmail, "source"),
+                ExpectedPrimaryRateLimitKey(context, "email:USER@EXAMPLE.COM", _user.DisplayEmail, "identity")
+            }));
+            Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.CredentialConsumed), Is.False);
+            Assert.That(fixture.Audit.Events.Any(e => e.EventType == AshlarSecurityEventTypes.AuthenticationRateLimited), Is.True);
+        }
+    }
+
+    [Test]
     public async Task VerifyCodeFailsForWrongCode()
     {
         var fixture = CreateFixture(_user);
@@ -444,6 +556,9 @@ internal sealed class EmailCodeSignInTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.ServiceProvider.GetRequiredService<IEmailCodeSignInService>(), Is.TypeOf<EmailCodeSignInService>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationOrchestrator>(), Is.Not.Null);
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAuthenticationPipeline>(), Is.TypeOf<AuthenticationPipeline>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IPrimaryAuthenticationRateLimiter>(), Is.TypeOf<PrimaryAuthenticationRateLimiter>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IEnumerable<IAuthenticationProvider>>().Any(p => p.Key == AuthenticationProviderKey.EmailCode), Is.True);
         }
     }
@@ -467,7 +582,9 @@ internal sealed class EmailCodeSignInTests
         EmailCodeSignInOptions? options = null,
         bool requireMfa = false,
         IAuthenticationOrchestrator? authenticationOrchestrator = null,
-        IIdentityService? identityService = null)
+        IIdentityService? identityService = null,
+        bool usePrimaryAuthenticationRateLimiter = false,
+        Func<StubRateLimiter, IAuthenticationOrchestrator>? authenticationOrchestratorFactory = null)
     {
         var repository = new InMemoryUserCredentialStore(user);
         var audit = new RecordingSecurityEventSink();
@@ -475,17 +592,21 @@ internal sealed class EmailCodeSignInTests
         var emailSender = new RecordingEmailSender();
         var provider = CreateProvider();
         var registry = new AuthenticationProviderRegistry([provider]);
+        var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed, time);
         var credentialService = new CredentialService(
             repository,
             repository,
             Mock.Of<ISecretProtector>(),
             new NullTransactionProvider(),
             new CredentialServiceDependencies(TimeProvider: time, SecurityEventSink: audit));
+        IPrimaryAuthenticationRateLimiter primaryRateLimiter = usePrimaryAuthenticationRateLimiter
+            ? new PrimaryAuthenticationRateLimiter(rateLimiter)
+            : AllowPrimaryAuthenticationRateLimiter.Instance;
         var pipeline = new AuthenticationPipeline(
             registry,
             credentialService,
             new NullTransactionProvider(),
-            AllowPrimaryAuthenticationRateLimiter.Instance,
+            primaryRateLimiter,
             AllowAuthenticationFactorRateLimiter.Instance,
             new AuthenticationPipelineDependencies(audit, time));
         var identity = identityService ?? new IdentityService(
@@ -495,8 +616,7 @@ internal sealed class EmailCodeSignInTests
             pipeline,
             new NullTransactionProvider(),
             new IdentityServiceDependencies(audit, time));
-        var orchestrator = authenticationOrchestrator ?? CreateOrchestrator(pipeline, user, requireMfa);
-        var rateLimiter = new StubRateLimiter(requestAllowed, verifyAllowed, time);
+        var orchestrator = authenticationOrchestrator ?? authenticationOrchestratorFactory?.Invoke(rateLimiter) ?? CreateOrchestrator(pipeline, user, requireMfa);
         var core = new IdentityContext(repository, repository, identity, new NullTransactionProvider());
         var dependencies = new EmailCodeSignInDependencies(core, emailSender, rateLimiter, provider, orchestrator, time, audit);
         var service = new EmailCodeSignInService(dependencies, Options.Create(options ?? new EmailCodeSignInOptions()));
@@ -579,6 +699,17 @@ internal sealed class EmailCodeSignInTests
             EncodeRateLimitKeySegment(dimensionName),
             EncodeRateLimitKeySegment(dimensionValue));
         return AuthenticationRateLimitKeyBuilder.HashKey(composed);
+    }
+
+    private static string ExpectedPrimaryRateLimitKey(AuthenticationContext context, string dimensionValue, string email, string dimensionName)
+    {
+        return AuthenticationRateLimitKeyBuilder.BuildAttempt(
+            new AuthenticationRateLimitAttemptDescriptor("primary-authentication", dimensionName, dimensionValue)
+            {
+                Context = context with { Email = email },
+                ProviderKey = AuthenticationProviderKey.EmailCode,
+                Email = IdentityNormalization.NormalizeEmail(email)
+            }).Key;
     }
 
     private static string EncodeRateLimitKeySegment(string value) => $"{value.Length}:{value}";
