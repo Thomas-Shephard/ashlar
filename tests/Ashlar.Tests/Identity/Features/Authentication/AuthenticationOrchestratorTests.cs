@@ -66,7 +66,7 @@ internal sealed class AuthenticationOrchestratorTests
         var options = new MfaOrchestrationOptions();
         var claims = new Dictionary<string, string> { ["test"] = "value" };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success, claims));
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate, claims));
 
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(false));
@@ -181,7 +181,7 @@ internal sealed class AuthenticationOrchestratorTests
         context = context.WithRememberedMfaDeviceToken("remembered-token");
         var claims = new Dictionary<string, string> { ["test"] = "value" };
         _pipelineMock.Setup(p => p.LoginAsync(It.IsAny<AuthenticationContext>(), _assertionMock.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.Success, claims));
+            .ReturnsAsync(new AuthenticationResponse(true, _userMock.Object, AuthenticationStatus.SuccessWithCredentialUpdate, claims));
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         var rememberedMfaDeviceService = CreateRememberedDeviceService(
@@ -204,6 +204,7 @@ internal sealed class AuthenticationOrchestratorTests
             Assert.That(result.HandshakeToken, Is.Null);
             Assert.That(result.RequiredFactors, Is.Null);
             Assert.That(result.FreshMfaSatisfied, Is.False);
+            Assert.That(result.CredentialUpdatePersisted, Is.True);
         }
 
         rememberedMfaDeviceService.Verify(s => s.ValidateAsync(

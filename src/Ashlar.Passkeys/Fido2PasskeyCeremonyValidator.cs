@@ -137,9 +137,7 @@ public sealed class Fido2PasskeyCeremonyValidator : IPasskeyCeremonyValidator
 
     private static PublicKeyCredentialDescriptor ToDescriptor(UserCredential credential)
     {
-        var metadata = string.IsNullOrWhiteSpace(credential.Metadata)
-            ? new PasskeyCredentialMetadata()
-            : JsonSerializer.Deserialize<PasskeyCredentialMetadata>(credential.Metadata, PasskeyJson.Options) ?? new PasskeyCredentialMetadata();
+        var metadata = PasskeyCredentialMetadataOperations.ReadOrDefault(credential.Metadata);
         var transports = metadata.Transports.Select(ParseTransport).Where(t => t.HasValue).Select(t => t!.Value).ToArray();
         return new PublicKeyCredentialDescriptor(PublicKeyCredentialType.PublicKey, Base64Url.Decode(credential.ProviderKey), transports);
     }

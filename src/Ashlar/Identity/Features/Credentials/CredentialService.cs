@@ -385,7 +385,9 @@ public sealed class CredentialService(
         var needsUpdate = false;
         var now = _timeProvider.GetUtcNow();
 
-        if (!credential.LastUsedAt.HasValue || (now - credential.LastUsedAt.Value) >= _options.LastUsedAtUpdateThreshold)
+        if (result.CredentialUpdateRequirement == CredentialUpdateRequirement.Required
+            || !credential.LastUsedAt.HasValue
+            || (now - credential.LastUsedAt.Value) >= _options.LastUsedAtUpdateThreshold)
         {
             credential.LastUsedAt = now;
             needsUpdate = true;

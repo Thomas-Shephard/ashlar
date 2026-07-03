@@ -121,17 +121,20 @@ internal sealed class Fido2PasskeyCeremonyValidatorTests
         }, PasskeyJson.Options);
         var withNullMetadata = CreateCredential(userId, Base64Url.Encode(RandomNumberGenerator.GetBytes(32)));
         withNullMetadata.Metadata = "null";
+        var withMalformedMetadata = CreateCredential(userId, Base64Url.Encode(RandomNumberGenerator.GetBytes(32)));
+        withMalformedMetadata.Metadata = "{";
         var validator = new Fido2PasskeyCeremonyValidator(new Mock<IUserRepository>().Object);
 
-        using var document = JsonDocument.Parse(validator.CreateAuthenticationOptions(options, challenge, [withoutMetadata, withInvalidTransport, withNullMetadata], options.AuthenticationUserVerification));
+        using var document = JsonDocument.Parse(validator.CreateAuthenticationOptions(options, challenge, [withoutMetadata, withInvalidTransport, withNullMetadata, withMalformedMetadata], options.AuthenticationUserVerification));
         var allowCredentials = document.RootElement.GetProperty("allowCredentials").EnumerateArray().ToArray();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(allowCredentials, Has.Length.EqualTo(3));
+            Assert.That(allowCredentials, Has.Length.EqualTo(4));
             Assert.That(allowCredentials[0].TryGetProperty("transports", out var firstTransports) ? firstTransports.GetArrayLength() : 0, Is.Zero);
             Assert.That(allowCredentials[1].TryGetProperty("transports", out var secondTransports) ? secondTransports.GetArrayLength() : 0, Is.Zero);
             Assert.That(allowCredentials[2].TryGetProperty("transports", out var thirdTransports) ? thirdTransports.GetArrayLength() : 0, Is.Zero);
+            Assert.That(allowCredentials[3].TryGetProperty("transports", out var fourthTransports) ? fourthTransports.GetArrayLength() : 0, Is.Zero);
         }
     }
 

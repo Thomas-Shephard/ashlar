@@ -1130,6 +1130,28 @@ internal sealed class CredentialServiceTests
     }
 
     [Test]
+    public async Task UpdateCredentialUsageAsyncWithRequiredUnchangedMetadataShouldPersistLastUsedAt()
+    {
+        var now = _timeProvider.GetUtcNow();
+        var credential = CreateCredential(Guid.NewGuid());
+        credential.Metadata = "unchanged";
+        credential.LastUsedAt = now;
+        var result = new AuthenticationResult(
+            AuthenticationResultStatus.SucceededWithCredentialUpdate,
+            NewMetadata: "unchanged",
+            CredentialUpdateRequirement: CredentialUpdateRequirement.Required);
+        var providerMock = new Mock<IAuthenticationProvider>();
+        _credentialRepositoryMock.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), credential.Version, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        await _service.UpdateCredentialUsageAsync(credential, null, result, providerMock.Object);
+
+        _credentialRepositoryMock.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c =>
+            c.LastUsedAt == now &&
+            c.UpdatedAt != null), credential.Version, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
     public void LinkCredentialAsyncWithEmptyUserIdShouldThrow()
     {
         Assert.ThrowsAsync<ArgumentException>(() => _service.LinkCredentialAsync(Guid.Empty, new Mock<IAuthenticationAssertion>().Object, new Mock<IAuthenticationProvider>().Object));
