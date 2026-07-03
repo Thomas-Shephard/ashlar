@@ -27,4 +27,11 @@ public sealed record AuthenticationHandshake(
     IReadOnlySet<string> VerifiedFactors,
     IDictionary<string, string>? Metadata = null,
     DateTimeOffset? RevokedAt = null,
-    DateTimeOffset? CompletedAt = null);
+    DateTimeOffset? CompletedAt = null)
+{
+    /// <summary>
+    /// Tenant security boundary for this handshake, or <see langword="null" /> when the handshake belongs to a global user.
+    /// Verification and revocation contexts must match this scope exactly.
+    /// </summary>
+    public Guid? TenantId { get; init; }
+}

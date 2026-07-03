@@ -335,6 +335,7 @@ CREATE INDEX IF NOT EXISTS ix_ashlar_security_events_actor_user_id ON ashlar_sec
 CREATE TABLE IF NOT EXISTS ashlar_mfa_handshakes (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES ashlar_users (id) ON DELETE CASCADE,
+    tenant_id TEXT,
     token_hash TEXT NOT NULL UNIQUE,
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
@@ -355,9 +356,36 @@ CREATE TABLE IF NOT EXISTS ashlar_mfa_handshakes (
 );
 
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_user_id ON ashlar_mfa_handshakes (user_id);
+CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_tenant_user_id ON ashlar_mfa_handshakes (tenant_id, user_id);
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_expires_at ON ashlar_mfa_handshakes (expires_at) WHERE is_revoked = 0 AND is_completed = 0;
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_completed_at ON ashlar_mfa_handshakes (completed_at) WHERE completed_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_mfa_handshakes_revoked_at ON ashlar_mfa_handshakes (revoked_at) WHERE revoked_at IS NOT NULL;
+
+CREATE TRIGGER IF NOT EXISTS trg_ashlar_mfa_handshakes_user_tenant_match_insert
+BEFORE INSERT ON ashlar_mfa_handshakes
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1
+    FROM ashlar_users
+    WHERE id = NEW.user_id
+      AND tenant_id IS NOT NEW.tenant_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'ashlar_mfa_handshakes user tenant mismatch');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_ashlar_mfa_handshakes_user_tenant_match_update
+BEFORE UPDATE OF user_id, tenant_id ON ashlar_mfa_handshakes
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1
+    FROM ashlar_users
+    WHERE id = NEW.user_id
+      AND tenant_id IS NOT NEW.tenant_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'ashlar_mfa_handshakes user tenant mismatch');
+END;
 
 CREATE TABLE IF NOT EXISTS ashlar_passkey_challenges (
     id TEXT PRIMARY KEY,
