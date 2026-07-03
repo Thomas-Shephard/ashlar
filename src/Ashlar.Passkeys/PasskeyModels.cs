@@ -114,8 +114,12 @@ public sealed record PasskeyCredentialSummary(
     string[] Transports);
 
 /// <summary>
-/// Stores passkey credential metadata in the Ashlar credential record.
+/// Stores passkey public metadata and signature counter state in the Ashlar credential record.
 /// </summary>
+/// <remarks>
+/// This metadata contains public credential state needed for future assertions. Raw WebAuthn assertion material,
+/// client data JSON, authenticator data, challenges, and ceremony payloads are not stored here.
+/// </remarks>
 public sealed class PasskeyCredentialMetadata
 {
     /// <summary>
@@ -123,11 +127,11 @@ public sealed class PasskeyCredentialMetadata
     /// </summary>
     public string DisplayName { get; set; } = "Passkey";
     /// <summary>
-    /// Gets or sets the credential public key.
+    /// Gets or sets the credential public key used to verify assertions.
     /// </summary>
     public string PublicKey { get; set; } = string.Empty;
     /// <summary>
-    /// Gets or sets the signature counter.
+    /// Gets or sets the last persisted WebAuthn signature counter used for cloned-authenticator detection.
     /// </summary>
     public long SignCount { get; set; }
     /// <summary>
@@ -146,6 +150,57 @@ public sealed class PasskeyCredentialMetadata
     /// Gets or sets whether the credential is discoverable.
     /// </summary>
     public bool Discoverable { get; set; } = true;
+}
+
+internal static class PasskeyCredentialMetadataOperations
+{
+    internal static PasskeyCredentialMetadata ReadOrDefault(string? credentialMetadata)
+    {
+        if (!TryRead(credentialMetadata, out var metadata))
+        {
+            return new PasskeyCredentialMetadata();
+        }
+
+        return metadata;
+    }
+
+    internal static bool TryRead(string? credentialMetadata, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out PasskeyCredentialMetadata? metadata)
+    {
+        metadata = null;
+        if (string.IsNullOrWhiteSpace(credentialMetadata))
+        {
+            return false;
+        }
+
+        try
+        {
+            metadata = JsonSerializer.Deserialize<PasskeyCredentialMetadata>(credentialMetadata, PasskeyJson.Options);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        return metadata != null;
+    }
+
+    internal static bool TryUpdateAssertionMetadata(string? credentialMetadata, long signCount, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? updatedMetadata)
+    {
+        updatedMetadata = null;
+        if (signCount < 0 || !TryRead(credentialMetadata, out var metadata))
+        {
+            return false;
+        }
+
+        if (metadata.SignCount < 0 || (metadata.SignCount > 0 && signCount <= metadata.SignCount))
+        {
+            return false;
+        }
+
+        metadata.SignCount = signCount;
+        updatedMetadata = JsonSerializer.Serialize(metadata, PasskeyJson.Options);
+        return true;
+    }
 }
 
 /// <summary>

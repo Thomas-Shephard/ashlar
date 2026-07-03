@@ -111,7 +111,8 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
         return new MfaAuthenticationResult(
             MfaAuthenticationStatus.Succeeded,
             response.User,
-            Claims: response.Claims);
+            Claims: response.Claims,
+            CredentialUpdatePersisted: response.Status == AuthenticationStatus.SuccessWithCredentialUpdate);
     }
 
     public async Task<MfaAuthenticationResult> VerifyFactorAsync(
@@ -165,7 +166,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             return new MfaAuthenticationResult(MfaAuthenticationStatus.Failed, ErrorMessage: GetHandshakeVerificationFailureMessage(result.FailureCode));
         }
 
-        return CreateResultFromHandshake(result.Value, response.User, handshakeToken);
+        return CreateResultFromHandshake(result.Value, response.User, handshakeToken, response.Status == AuthenticationStatus.SuccessWithCredentialUpdate);
     }
 
     private MfaAuthenticationResult CreateFactorAuthenticationFailureResult(Guid userId, AuthenticationResponse response)
@@ -207,7 +208,7 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
         return new MfaAuthenticationResult(status, ErrorMessage: GetHandshakeVerificationFailureMessage(failureCode));
     }
 
-    private static MfaAuthenticationResult CreateResultFromHandshake(AuthenticationHandshake handshake, IUser user, string? handshakeToken)
+    private static MfaAuthenticationResult CreateResultFromHandshake(AuthenticationHandshake handshake, IUser user, string? handshakeToken, bool credentialUpdatePersisted)
     {
         if (handshake.IsCompleted)
         {
@@ -217,7 +218,8 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
                 MfaAuthenticationStatus.Succeeded,
                 User: user,
                 Claims: claims,
-                FreshMfaSatisfied: true)
+                FreshMfaSatisfied: true,
+                CredentialUpdatePersisted: credentialUpdatePersisted)
             {
                 RememberedDeviceCreationProof = FreshMfaProof.Instance
             };
@@ -229,7 +231,8 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             HandshakeToken: handshakeToken,
             RequiredFactors: handshake.RequiredFactors
                 .Where(requiredFactor => !handshake.VerifiedFactors.Any(verifiedFactor => AuthenticationFactorTypes.Matches(requiredFactor, verifiedFactor)))
-                .ToArray());
+                .ToArray(),
+            CredentialUpdatePersisted: credentialUpdatePersisted);
     }
 
     private async Task<MfaAuthenticationResult> CreateMfaRequiredResultAsync(
@@ -256,7 +259,8 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             return new MfaAuthenticationResult(
                 MfaAuthenticationStatus.Succeeded,
                 user,
-                Claims: response.Claims);
+                Claims: response.Claims,
+                CredentialUpdatePersisted: response.Status == AuthenticationStatus.SuccessWithCredentialUpdate);
         }
 
         var result = await _handshakeService.CreateHandshakeAsync(
@@ -273,7 +277,8 @@ internal sealed class AuthenticationOrchestrator : IAuthenticationOrchestrator
             MfaAuthenticationStatus.MfaRequired,
             user,
             created.Token,
-            created.Handshake.RequiredFactors);
+            created.Handshake.RequiredFactors,
+            CredentialUpdatePersisted: response.Status == AuthenticationStatus.SuccessWithCredentialUpdate);
     }
 
     private async Task<bool> TryValidateRememberedMfaDeviceAsync(

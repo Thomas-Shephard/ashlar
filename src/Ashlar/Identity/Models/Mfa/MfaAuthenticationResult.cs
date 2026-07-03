@@ -37,6 +37,7 @@ public enum MfaAuthenticationStatus
 /// <param name="Claims">Additional claims produced by the authentication provider.</param>
 /// <param name="ErrorMessage">A generic, display-safe error message when authentication fails.</param>
 /// <param name="FreshMfaSatisfied">Whether this result came from a fresh MFA ceremony suitable for step-up decisions. This public signal is not proof for remembered-device token issuance.</param>
+/// <param name="CredentialUpdatePersisted">Whether a required credential metadata or value update was persisted during authentication.</param>
 public sealed record MfaAuthenticationResult(
     MfaAuthenticationStatus Status,
     IUser? User = null,
@@ -44,7 +45,8 @@ public sealed record MfaAuthenticationResult(
     IEnumerable<string>? RequiredFactors = null,
     IReadOnlyDictionary<string, IReadOnlyList<string>>? Claims = null,
     string? ErrorMessage = null,
-    bool FreshMfaSatisfied = false)
+    bool FreshMfaSatisfied = false,
+    bool CredentialUpdatePersisted = false)
 {
     /// <summary>
     /// Creates an MFA authentication result from single-value provider claims.
@@ -56,6 +58,7 @@ public sealed record MfaAuthenticationResult(
     /// <param name="claims">Additional single-value claims produced by the authentication provider.</param>
     /// <param name="errorMessage">A generic, display-safe error message when authentication fails.</param>
     /// <param name="freshMfaSatisfied">Whether this result came from a fresh MFA ceremony suitable for step-up decisions.</param>
+    /// <param name="credentialUpdatePersisted">Whether a required credential metadata or value update was persisted during authentication.</param>
     public MfaAuthenticationResult(
         MfaAuthenticationStatus status,
         IUser? user,
@@ -63,8 +66,9 @@ public sealed record MfaAuthenticationResult(
         IEnumerable<string>? requiredFactors,
         IDictionary<string, string>? claims,
         string? errorMessage = null,
-        bool freshMfaSatisfied = false)
-        : this(status, user, handshakeToken, requiredFactors, AuthenticationClaims.FromSingleValues(claims), errorMessage, freshMfaSatisfied)
+        bool freshMfaSatisfied = false,
+        bool credentialUpdatePersisted = false)
+        : this(status, user, handshakeToken, requiredFactors, AuthenticationClaims.FromSingleValues(claims), errorMessage, freshMfaSatisfied, credentialUpdatePersisted)
     {
     }
 

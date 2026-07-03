@@ -157,6 +157,30 @@ internal sealed class PasskeyAuthenticationProviderTests
     }
 
     [Test]
+    public async Task AuthenticateAsyncShouldRejectMalformedJsonMetadata()
+    {
+        var provider = new PasskeyAuthenticationProvider(Options.Create(new PasskeyOptions()));
+        var credential = CreateCredential(signCount: 0);
+        credential.Metadata = "{";
+
+        var result = await provider.AuthenticateAsync(new PasskeyAssertion("cred", 1), credential);
+
+        Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
+    }
+
+    [TestCase(-1, 1)]
+    [TestCase(0, -1)]
+    public async Task AuthenticateAsyncShouldRejectNegativeSignCounts(long storedSignCount, long assertionSignCount)
+    {
+        var provider = new PasskeyAuthenticationProvider(Options.Create(new PasskeyOptions()));
+        var credential = CreateCredential(storedSignCount);
+
+        var result = await provider.AuthenticateAsync(new PasskeyAssertion("cred", assertionSignCount), credential);
+
+        Assert.That(result.Status, Is.EqualTo(AuthenticationResultStatus.Failed));
+    }
+
+    [Test]
     public void AuthenticateAsyncShouldRejectUnsupportedAssertions()
     {
         var provider = new PasskeyAuthenticationProvider(Options.Create(new PasskeyOptions()));

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.Passkeys;
@@ -94,21 +93,19 @@ public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> optio
             throw new ArgumentException($"Unsupported assertion type: {assertion.GetType().Name}", nameof(assertion));
         }
 
-        if (credential == null || string.IsNullOrWhiteSpace(credential.Metadata))
+        if (credential == null)
         {
             return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
         }
 
-        var metadata = JsonSerializer.Deserialize<PasskeyCredentialMetadata>(credential.Metadata, PasskeyJson.Options);
-        if (metadata == null || (metadata.SignCount > 0 && passkey.SignCount <= metadata.SignCount))
+        if (!PasskeyCredentialMetadataOperations.TryUpdateAssertionMetadata(credential.Metadata, passkey.SignCount, out var metadata))
         {
             return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
         }
 
-        metadata.SignCount = passkey.SignCount;
         return Task.FromResult(new AuthenticationResult(
             AuthenticationResultStatus.SucceededWithCredentialUpdate,
-            NewMetadata: JsonSerializer.Serialize(metadata, PasskeyJson.Options),
+            NewMetadata: metadata,
             CredentialUpdateRequirement: CredentialUpdateRequirement.Required));
     }
 }

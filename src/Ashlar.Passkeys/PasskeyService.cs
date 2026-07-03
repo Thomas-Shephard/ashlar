@@ -216,10 +216,15 @@ public sealed class PasskeyService : IPasskeyService
                     ErrorMessage: response.ErrorMessage);
             }
 
+            var updatedCredential = await PersistSuccessfulAssertionAsync(succeededCeremony, response.CredentialUpdatePersisted, cancellationToken);
+            if (updatedCredential == null)
+            {
+                await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, succeededCeremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
+                return FailedAuthentication(AshlarFailureCodes.PasskeyValidationFailed, succeededCeremony.User);
+            }
+
             await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Success, succeededCeremony.User.Id, null, request.Audit, cancellationToken);
-            var summaryCredential = succeededCeremony.Credential.Clone();
-            summaryCredential.LastUsedAt = _timeProvider.GetUtcNow();
-            var summary = ToSummary(summaryCredential);
+            var summary = ToSummary(updatedCredential);
             return new PasskeyAuthenticationResult(
                 Succeeded: succeeded,
                 User: response.User,
@@ -356,13 +361,18 @@ public sealed class PasskeyService : IPasskeyService
                     ErrorMessage: response.ErrorMessage);
             }
 
+            var updatedCredential = await PersistSuccessfulAssertionAsync(succeededCeremony, response.CredentialUpdatePersisted, cancellationToken);
+            if (updatedCredential == null)
+            {
+                await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, succeededCeremony.User.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, request.Audit, cancellationToken);
+                return FailedAuthentication(AshlarFailureCodes.PasskeyValidationFailed, succeededCeremony.User);
+            }
+
             await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Success, succeededCeremony.User.Id, null, request.Audit, cancellationToken);
-            var summaryCredential = succeededCeremony.Credential.Clone();
-            summaryCredential.LastUsedAt = _timeProvider.GetUtcNow();
             return new PasskeyAuthenticationResult(
                 Succeeded: succeeded,
                 User: response.User,
-                Credential: ToSummary(summaryCredential),
+                Credential: ToSummary(updatedCredential),
                 FailureCode: null,
                 AuthenticationStatus: response.Status,
                 HandshakeToken: response.HandshakeToken,
@@ -390,7 +400,11 @@ public sealed class PasskeyService : IPasskeyService
             return Result.Failure(AshlarFailureCodes.PasskeyCredentialNotFound);
         }
 
-        var metadata = ReadMetadata(credential);
+        if (!PasskeyCredentialMetadataOperations.TryRead(credential.Metadata, out var metadata))
+        {
+            return Result.Failure(AshlarFailureCodes.PasskeyValidationFailed);
+        }
+
         metadata.DisplayName = NormalizeDisplayName(request.DisplayName);
         credential.Metadata = JsonSerializer.Serialize(metadata, PasskeyJson.Options);
         var updated = await _credentialRepository.UpdateCredentialAsync(credential, credential.Version, cancellationToken);
@@ -463,6 +477,44 @@ public sealed class PasskeyService : IPasskeyService
             await RecordAsync(AshlarSecurityEventTypes.PasskeyAuthenticationCompleted, SecurityEventOutcomes.Failure, user.Id, AshlarFailureCodes.PasskeyValidationFailed.Value, audit, cancellationToken);
             return FailedAssertion(AshlarFailureCodes.PasskeyValidationFailed);
         }
+    }
+
+    private async Task<UserCredential?> PersistSuccessfulAssertionAsync(SucceededPasskeyAssertion assertion, bool alreadyPersisted, CancellationToken cancellationToken)
+    {
+        var credential = assertion.Credential.Clone();
+        if (!TryApplyVerifiedAssertionMetadata(credential, assertion.Verified.SignCount))
+        {
+            return null;
+        }
+
+        if (alreadyPersisted)
+        {
+            var persisted = await _credentialRepository.GetCredentialForUserAsync(credential.UserId, credential.ProviderType, credential.ProviderName, credential.ProviderKey, cancellationToken);
+            return IsPersistedAssertionMetadataCurrent(persisted, assertion.Verified.SignCount) ? persisted : null;
+        }
+
+        credential.LastUsedAt = _timeProvider.GetUtcNow();
+        return await _credentialRepository.UpdateCredentialAsync(credential, assertion.Credential.Version, cancellationToken)
+            ? credential
+            : null;
+    }
+
+    private static bool IsPersistedAssertionMetadataCurrent(UserCredential? credential, long signCount)
+    {
+        return credential != null
+            && PasskeyCredentialMetadataOperations.TryRead(credential.Metadata, out var metadata)
+            && metadata.SignCount >= signCount;
+    }
+
+    private static bool TryApplyVerifiedAssertionMetadata(UserCredential credential, long signCount)
+    {
+        if (!PasskeyCredentialMetadataOperations.TryUpdateAssertionMetadata(credential.Metadata, signCount, out var metadata))
+        {
+            return false;
+        }
+
+        credential.Metadata = metadata;
+        return true;
     }
 
     private PasskeyChallenge CreateChallengeEntity(string purpose, string challenge, string optionsJson, Guid? userId, string? handshakeTokenHash = null, string? factorType = null, string? displayName = null)
@@ -545,9 +597,7 @@ public sealed class PasskeyService : IPasskeyService
 
     private static PasskeyCredentialMetadata ReadMetadata(UserCredential credential)
     {
-        return string.IsNullOrWhiteSpace(credential.Metadata)
-            ? new PasskeyCredentialMetadata()
-            : JsonSerializer.Deserialize<PasskeyCredentialMetadata>(credential.Metadata, PasskeyJson.Options) ?? new PasskeyCredentialMetadata();
+        return PasskeyCredentialMetadataOperations.ReadOrDefault(credential.Metadata);
     }
 
     private Task RecordAsync(string eventType, string outcome, Guid? userId, string? failureReason, AuditContext? audit, CancellationToken cancellationToken)
