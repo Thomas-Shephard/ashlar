@@ -15,6 +15,10 @@ public interface IPasskeyService
     /// <param name="request">The registration request.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The browser ceremony options.</returns>
+    /// <remarks>
+    /// The target user must exist, be in the requested tenant scope, and have an account state that can sign in.
+    /// Omitted tenant scope is treated as global scope.
+    /// </remarks>
     Task<PasskeyCeremonyOptions> StartRegistrationAsync(StartPasskeyRegistrationRequest request, CancellationToken cancellationToken = default);
     /// <summary>
     /// Completes a passkey registration ceremony.
@@ -22,6 +26,10 @@ public interface IPasskeyService
     /// <param name="request">The completion request.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The operation result.</returns>
+    /// <remarks>
+    /// The challenge user is reloaded before credential persistence. The expected user, request tenant, challenge
+    /// tenant, and stored user tenant must all match, and the account must still be able to sign in.
+    /// </remarks>
     Task<Result> CompleteRegistrationAsync(CompletePasskeyRegistrationRequest request, CancellationToken cancellationToken = default);
     /// <summary>
     /// Starts a passkey authentication ceremony.

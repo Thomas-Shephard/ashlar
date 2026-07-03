@@ -64,13 +64,12 @@ public sealed class PasskeyService : IPasskeyService
 
     public async Task<PasskeyCeremonyOptions> StartRegistrationAsync(StartPasskeyRegistrationRequest request, CancellationToken cancellationToken = default)
     {
-        var user = await _userRepository.GetUserByIdAsync(request.UserId, cancellationToken)
-            ?? throw new InvalidOperationException("User was not found.");
+        var user = await GetAvailableRegistrationUserAsync(request.UserId, request.Tenant, cancellationToken);
         var existing = await _credentialRepository.ListCredentialsForUserAsync(request.UserId, cancellationToken: cancellationToken);
         var displayName = NormalizeDisplayName(request.DisplayName);
         var challengeValue = CreateChallenge();
         var optionsJson = _ceremonyValidator.CreateRegistrationOptions(_options, user, displayName, challengeValue, existing.Where(IsPasskey).ToList());
-        var challenge = CreateChallengeEntity(RegistrationPurpose, challengeValue, optionsJson, request.UserId, displayName: displayName);
+        var challenge = CreateChallengeEntity(RegistrationPurpose, challengeValue, optionsJson, request.UserId, displayName: displayName, tenantId: request.Tenant?.TenantId);
         await _challengeRepository.CreateAsync(challenge, cancellationToken);
         await RecordAsync(AshlarSecurityEventTypes.PasskeyRegistrationStarted, SecurityEventOutcomes.Success, request.UserId, null, request.Audit, cancellationToken);
         return new PasskeyCeremonyOptions(challenge.Id, optionsJson, challenge.ExpiresAt);
@@ -87,6 +86,27 @@ public sealed class PasskeyService : IPasskeyService
         if (request.UserId.HasValue && request.UserId.Value != challenge.UserId.Value)
         {
             return Result.Failure(AshlarFailureCodes.PasskeyChallengeInvalid);
+        }
+
+        if (request.Tenant?.TenantId != challenge.TenantId)
+        {
+            return Result.Failure(AshlarFailureCodes.TenantMismatch);
+        }
+
+        var user = await _userRepository.GetUserByIdAsync(challenge.UserId.Value, cancellationToken);
+        if (user == null)
+        {
+            return Result.Failure(AshlarFailureCodes.UserNotFound);
+        }
+
+        if (!UserTenantOwnership.Matches(user, challenge.TenantId))
+        {
+            return Result.Failure(AshlarFailureCodes.TenantMismatch);
+        }
+
+        if (!user.CanSignIn())
+        {
+            return Result.Failure(AshlarFailureCodes.UserNotFoundOrUnavailable);
         }
 
         if (!await _challengeRepository.ConsumeAsync(challenge.Id, challenge.Version, _timeProvider.GetUtcNow(), cancellationToken))
@@ -519,7 +539,25 @@ public sealed class PasskeyService : IPasskeyService
         return true;
     }
 
-    private PasskeyChallenge CreateChallengeEntity(string purpose, string challenge, string optionsJson, Guid? userId, string? handshakeTokenHash = null, string? factorType = null, string? displayName = null)
+    private async Task<IUser> GetAvailableRegistrationUserAsync(Guid userId, TenantContext? tenant, CancellationToken cancellationToken)
+    {
+        var user = await _userRepository.GetUserByIdAsync(userId, cancellationToken)
+            ?? throw new InvalidOperationException("User was not found.");
+
+        if (!UserTenantOwnership.Matches(user, tenant?.TenantId))
+        {
+            throw new InvalidOperationException("User was not found.");
+        }
+
+        if (!user.CanSignIn())
+        {
+            throw new InvalidOperationException("User account is unavailable.");
+        }
+
+        return user;
+    }
+
+    private PasskeyChallenge CreateChallengeEntity(string purpose, string challenge, string optionsJson, Guid? userId, string? handshakeTokenHash = null, string? factorType = null, string? displayName = null, Guid? tenantId = null)
     {
         var now = _timeProvider.GetUtcNow();
         return new PasskeyChallenge
@@ -528,6 +566,7 @@ public sealed class PasskeyService : IPasskeyService
             Version = Guid.NewGuid().ToString("N"),
             Purpose = purpose,
             UserId = userId,
+            TenantId = tenantId,
             HandshakeTokenHash = handshakeTokenHash,
             FactorType = factorType,
             DisplayName = displayName,

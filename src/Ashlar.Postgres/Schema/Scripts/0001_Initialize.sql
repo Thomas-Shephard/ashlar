@@ -313,6 +313,7 @@ CREATE TABLE IF NOT EXISTS ashlar_passkey_challenges (
     version TEXT NOT NULL,
     purpose TEXT NOT NULL,
     user_id UUID REFERENCES ashlar_users (id) ON DELETE CASCADE,
+    tenant_id UUID,
     handshake_token_hash TEXT,
     factor_type TEXT,
     display_name TEXT,
@@ -337,6 +338,12 @@ CREATE INDEX IF NOT EXISTS ix_ashlar_passkey_challenges_consumed_at ON ashlar_pa
 WHERE consumed_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_ashlar_passkey_challenges_user_id ON ashlar_passkey_challenges (user_id)
 WHERE user_id IS NOT NULL;
+
+CREATE OR REPLACE TRIGGER trg_ashlar_passkey_challenges_user_tenant_match
+BEFORE INSERT OR UPDATE OF user_id, tenant_id ON ashlar_passkey_challenges
+FOR EACH ROW
+WHEN (NEW.purpose = 'passkey-registration')
+EXECUTE FUNCTION ashlar_enforce_user_tenant_match();
 
 CREATE TABLE IF NOT EXISTS ashlar_email_outbox (
     id UUID PRIMARY KEY,

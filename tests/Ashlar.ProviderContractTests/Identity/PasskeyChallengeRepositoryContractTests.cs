@@ -50,6 +50,35 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
     }
 
     [Test]
+    public async Task TenantRegistrationChallengeRoundTrips()
+    {
+        await using var scope = CreateAsyncScope();
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var repository = GetPasskeyChallengeRepository(scope.ServiceProvider);
+        var tenantId = Guid.NewGuid();
+        var user = await CreateUserAsync(userRepository, tenantId: tenantId);
+        var challenge = CreateRegistrationChallenge(user.Id, tenantId);
+
+        await repository.CreateAsync(challenge);
+
+        var fetched = await repository.GetAsync(challenge.Id);
+
+        AssertChallenge(fetched!, challenge);
+    }
+
+    [Test]
+    public async Task RegistrationChallengeRejectsTenantMismatch()
+    {
+        await using var scope = CreateAsyncScope();
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var repository = GetPasskeyChallengeRepository(scope.ServiceProvider);
+        var user = await CreateUserAsync(userRepository, tenantId: Guid.NewGuid());
+        var challenge = CreateRegistrationChallenge(user.Id, Guid.NewGuid());
+
+        Assert.That(async () => await repository.CreateAsync(challenge), Throws.Exception);
+    }
+
+    [Test]
     public async Task AuthenticationChallengeWithHandshakeBindingRoundTrips()
     {
         await using var scope = CreateAsyncScope();
@@ -198,7 +227,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         Assert.That(await verificationRepository.GetAsync(challengeId), Is.Null);
     }
 
-    private static PasskeyChallenge CreateRegistrationChallenge(Guid userId)
+    private static PasskeyChallenge CreateRegistrationChallenge(Guid userId, Guid? tenantId = null)
     {
         return CreateChallenge(
             "passkey-registration",
@@ -206,7 +235,8 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
             handshakeTokenHash: null,
             factorType: null,
             displayName: "Work Laptop",
-            optionsJson: """{"challenge":"registration","user":{"name":"user@example.com","displayName":"Test User"},"rp":{"id":"example.com","name":"Example"}}""");
+            optionsJson: """{"challenge":"registration","user":{"name":"user@example.com","displayName":"Test User"},"rp":{"id":"example.com","name":"Example"}}""",
+            tenantId: tenantId);
     }
 
     private static PasskeyChallenge CreateAuthenticationChallenge(
@@ -236,6 +266,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         string? factorType,
         string? displayName,
         string optionsJson,
+        Guid? tenantId = null,
         DateTimeOffset? createdAt = null,
         DateTimeOffset? expiresAt = null,
         string? challengeValue = null)
@@ -247,6 +278,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
             Version = Guid.NewGuid().ToString("N"),
             Purpose = purpose,
             UserId = userId,
+            TenantId = tenantId,
             HandshakeTokenHash = handshakeTokenHash,
             FactorType = factorType,
             DisplayName = displayName,
@@ -267,6 +299,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
             Assert.That(actual.Version, Is.EqualTo(expected.Version));
             Assert.That(actual.Purpose, Is.EqualTo(expected.Purpose));
             Assert.That(actual.UserId, Is.EqualTo(expected.UserId));
+            Assert.That(actual.TenantId, Is.EqualTo(expected.TenantId));
             Assert.That(actual.HandshakeTokenHash, Is.EqualTo(expected.HandshakeTokenHash));
             Assert.That(actual.FactorType, Is.EqualTo(expected.FactorType));
             Assert.That(actual.DisplayName, Is.EqualTo(expected.DisplayName));
