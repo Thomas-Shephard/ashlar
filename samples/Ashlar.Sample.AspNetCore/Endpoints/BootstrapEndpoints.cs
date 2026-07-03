@@ -28,7 +28,7 @@ internal static class BootstrapEndpoints
             {
                 Email = request.Email,
                 UserName = request.UserName,
-                TenantId = httpContext.GetAshlarTenantId(),
+                TenantId = httpContext.GetDemoTenantIdFromUntrustedHeader(),
                 Audit = httpContext.ToAuditContext(),
                 SetupSecret = request.SetupSecret
             }, httpContext.ToAuthenticationContext(), cancellationToken);

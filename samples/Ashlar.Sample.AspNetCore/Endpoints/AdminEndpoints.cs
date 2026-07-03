@@ -156,7 +156,7 @@ internal static partial class AdminEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var isAdmin = (await auth.EvaluateAsync(new AuthorizationEvaluationRequest(user.GetAshlarUserId(), Role: AdminPolicy, TenantId: httpContext.GetAshlarTenantId()), cancellationToken)).Succeeded;
+            var isAdmin = (await auth.EvaluateAsync(new AuthorizationEvaluationRequest(user.GetAshlarUserId(), Role: AdminPolicy, TenantId: httpContext.GetDemoTenantIdFromUntrustedHeader()), cancellationToken)).Succeeded;
             return AppViews.RenderProjectManage(projectId, isAdmin);
         }).RequireAuthorization("project.manage");
     }
@@ -308,7 +308,7 @@ internal static partial class AdminEndpoints
         IAuthorizationEvaluator auth,
         CancellationToken cancellationToken)
     {
-        var tenantId = httpContext.GetAshlarTenantId();
+        var tenantId = httpContext.GetDemoTenantIdFromUntrustedHeader();
         var result = await auth.EvaluateAsync(
             new AuthorizationEvaluationRequest(httpContext.User.GetAshlarUserId(), Role: AdminPolicy, TenantId: tenantId),
             cancellationToken);
@@ -325,7 +325,7 @@ internal static partial class AdminEndpoints
         IAuthorizationEvaluator auth,
         CancellationToken cancellationToken)
     {
-        if (httpContext.GetAshlarTenantId().HasValue)
+        if (httpContext.GetDemoTenantIdFromUntrustedHeader().HasValue)
         {
             return false;
         }
