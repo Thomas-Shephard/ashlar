@@ -473,6 +473,12 @@ internal sealed class EmailCodeSignInTests
     }
 
     [Test]
+    public void EmailCodeAssertionIsNotPublicConsumerApi()
+    {
+        Assert.That(typeof(IEmailCodeSignInService).Assembly.GetExportedTypes(), Does.Not.Contain(typeof(EmailCodeAssertion)));
+    }
+
+    [Test]
     public void RequestCodeValidatesEmailAndCodeLength()
     {
         var fixture = CreateFixture(_user, options: new EmailCodeSignInOptions { CodeLength = 0 });

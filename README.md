@@ -742,9 +742,9 @@ Verify an additional factor using the continuation token:
 ```csharp
 var result = await orchestrator.VerifyFactorAsync(
     tokenFromClient,
-    "email_code",
+    "totp",
     new AuthenticationContext(IpAddress: ip),
-    new EmailCodeAssertion(code));
+    new TotpAssertion(code));
 
 if (result.Status == MfaAuthenticationStatus.Succeeded)
 {

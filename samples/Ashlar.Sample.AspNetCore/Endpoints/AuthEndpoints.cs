@@ -2,7 +2,6 @@ using Ashlar.AspNetCore.Sessions;
 using Ashlar.Identity.Providers.Email;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
 namespace Ashlar.Sample.AspNetCore.Endpoints;
@@ -34,15 +33,12 @@ internal static class AuthEndpoints
 
         app.MapPost("/api/auth/magic-link/callback", async Task<IResult> (
             MagicLinkCallbackRequest request,
-            [FromServices] IAuthenticationOrchestrator orchestrator,
+            IMagicLinkSignInService magicLinks,
             IAshlarSignInManager signInManager,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var response = await orchestrator.AuthenticateAsync(
-                httpContext.ToAuthenticationContext(),
-                new MagicLinkAssertion(request.T),
-                cancellationToken: cancellationToken);
+            var response = await magicLinks.VerifyLinkAsync(request.T, httpContext.ToAuthenticationContext(), cancellationToken);
 
             return await HandleAuthResponse(response, signInManager, httpContext, AuthenticationProviderKey.MagicLink, cancellationToken);
         });
@@ -64,15 +60,12 @@ internal static class AuthEndpoints
 
         app.MapPost("/api/auth/email-code/verify", async Task<IResult> (
             EmailCodeVerifyRequest request,
-            [FromServices] IAuthenticationOrchestrator orchestrator,
+            IEmailCodeSignInService emailCodes,
             IAshlarSignInManager signInManager,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var response = await orchestrator.AuthenticateAsync(
-                httpContext.ToAuthenticationContext(request.Email),
-                new EmailCodeAssertion(request.Code),
-                cancellationToken: cancellationToken);
+            var response = await emailCodes.VerifyCodeAsync(request.Email, request.Code, httpContext.ToAuthenticationContext(request.Email), cancellationToken);
 
             return await HandleAuthResponse(response, signInManager, httpContext, AuthenticationProviderKey.EmailCode, cancellationToken);
         });
