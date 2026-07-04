@@ -203,8 +203,7 @@ public static class AshlarSqliteServiceCollectionExtensions
             services.TryAddScoped<TTransport>();
         }
 
-        services.TryAddScoped<SqliteEmailOutboxDispatcher<TTransport>>();
-        services.TryAddScoped<IEmailOutboxDispatcher>(provider => provider.GetRequiredService<SqliteEmailOutboxDispatcher<TTransport>>());
+        services.TryAddScoped<IEmailOutboxDispatcher, SqliteEmailOutboxDispatcher<TTransport>>();
 
         return services;
     }
@@ -224,7 +223,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarSqliteEmailOutboxDispatcher<TTransport>(configure);
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, SqliteEmailOutboxHostedService<TTransport>>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, SqliteEmailOutboxHostedService>());
 
         return services;
     }

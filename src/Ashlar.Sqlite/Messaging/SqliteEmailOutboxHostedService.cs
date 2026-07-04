@@ -10,19 +10,17 @@ namespace Ashlar.Sqlite.Messaging;
 /// <summary>
 /// A background service that periodically triggers the SQLite email outbox dispatcher.
 /// </summary>
-/// <typeparam name="TTransport">The transport type.</typeparam>
 /// <param name="serviceProvider">The service provider value.</param>
 /// <param name="options">The options value.</param>
 /// <param name="logger">The logger value.</param>
-public sealed class SqliteEmailOutboxHostedService<TTransport>(
+public sealed class SqliteEmailOutboxHostedService(
     IServiceProvider serviceProvider,
     IOptions<SqliteEmailOutboxOptions> options,
-    ILogger<SqliteEmailOutboxHostedService<TTransport>>? logger = null) : BackgroundService
-    where TTransport : IEmailTransport
+    ILogger<SqliteEmailOutboxHostedService>? logger = null) : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
     private readonly SqliteEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
-    private readonly ILogger<SqliteEmailOutboxHostedService<TTransport>> _logger = logger ?? NullLogger<SqliteEmailOutboxHostedService<TTransport>>.Instance;
+    private readonly ILogger<SqliteEmailOutboxHostedService> _logger = logger ?? NullLogger<SqliteEmailOutboxHostedService>.Instance;
 
     /// <summary>
     /// Validates options and starts the background email outbox dispatcher.
@@ -51,7 +49,7 @@ public sealed class SqliteEmailOutboxHostedService<TTransport>(
             _options.BatchSize,
             _options.PollingInterval,
             _logger,
-            static (provider, token) => provider.GetRequiredService<SqliteEmailOutboxDispatcher<TTransport>>().ProcessBatchAsync(token),
+            static (provider, token) => provider.GetRequiredService<IEmailOutboxDispatcher>().ProcessBatchAsync(token),
             SqliteEmailOutboxHostedServiceLog.OutboxBatchFailed,
             stoppingToken);
     }

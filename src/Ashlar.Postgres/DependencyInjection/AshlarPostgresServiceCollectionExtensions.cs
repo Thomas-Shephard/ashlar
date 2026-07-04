@@ -33,7 +33,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
 
-        services.Replace(ServiceDescriptor.Singleton(_ => new NpgsqlDataSourceBuilder(connectionString).Build()));
+        services.ReplacePostgresDataSource(connectionString);
         return services.AddAshlarPostgresPersistence();
     }
 
@@ -51,15 +51,13 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(dataSource);
 
-        services.Replace(ServiceDescriptor.Singleton(dataSource));
+        services.ReplacePostgresDataSource(dataSource);
         return services.AddAshlarPostgresPersistence();
     }
 
     private static IServiceCollection AddAshlarPostgresPersistence(this IServiceCollection services)
     {
-        services.TryAddScoped<PostgresTransactionManager>();
-        services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
-        services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
+        services.AddPostgresTransactionServices();
         services.TryAddScoped<IUserRepository, PostgresUserRepository>();
         services.TryAddScoped<ICredentialRepository, PostgresCredentialRepository>();
         services.TryAddScoped<IAccountLockoutRepository, PostgresAccountLockoutRepository>();
@@ -98,7 +96,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
 
-        services.Replace(ServiceDescriptor.Singleton(_ => new NpgsqlDataSourceBuilder(connectionString).Build()));
+        services.ReplacePostgresDataSource(connectionString);
         return services.AddAshlarPostgresBootstrapPersistence(configure);
     }
 
@@ -118,7 +116,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(dataSource);
 
-        services.Replace(ServiceDescriptor.Singleton(dataSource));
+        services.ReplacePostgresDataSource(dataSource);
         return services.AddAshlarPostgresBootstrapPersistence(configure);
     }
 
@@ -127,9 +125,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         Action<BootstrapOptions>? configure = null)
     {
         services.AddAshlarBootstrap(configure);
-        services.TryAddScoped<PostgresTransactionManager>();
-        services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
-        services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
+        services.AddPostgresTransactionServices();
         services.TryAddScoped<IBootstrapStateRepository, PostgresBootstrapStateRepository>();
 
         return services;
@@ -149,7 +145,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
 
-        services.Replace(ServiceDescriptor.Singleton(_ => new NpgsqlDataSourceBuilder(connectionString).Build()));
+        services.ReplacePostgresDataSource(connectionString);
         return services.AddAshlarPostgresAuthorizationPersistence();
     }
 
@@ -167,20 +163,35 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(dataSource);
 
-        services.Replace(ServiceDescriptor.Singleton(dataSource));
+        services.ReplacePostgresDataSource(dataSource);
         return services.AddAshlarPostgresAuthorizationPersistence();
     }
 
     private static IServiceCollection AddAshlarPostgresAuthorizationPersistence(this IServiceCollection services)
     {
         services.AddAshlarAuthorization();
-        services.TryAddScoped<PostgresTransactionManager>();
-        services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
-        services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
+        services.AddPostgresTransactionServices();
         services.TryAddScoped<IAuthorizationGrantRepository, PostgresAuthorizationGrantRepository>();
         services.TryAddScoped<IAuthorizationGrantAdministrationRepository, PostgresAuthorizationGrantAdministrationRepository>();
 
         return services;
+    }
+
+    private static void ReplacePostgresDataSource(this IServiceCollection services, string connectionString)
+    {
+        services.Replace(ServiceDescriptor.Singleton(_ => new NpgsqlDataSourceBuilder(connectionString).Build()));
+    }
+
+    private static void ReplacePostgresDataSource(this IServiceCollection services, NpgsqlDataSource dataSource)
+    {
+        services.Replace(ServiceDescriptor.Singleton(dataSource));
+    }
+
+    private static void AddPostgresTransactionServices(this IServiceCollection services)
+    {
+        services.TryAddScoped<PostgresTransactionManager>();
+        services.Replace(ServiceDescriptor.Scoped<IAshlarTransactionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>()));
+        services.TryAddScoped<IPostgresConnectionProvider>(provider => provider.GetRequiredService<PostgresTransactionManager>());
     }
 
     /// <summary>

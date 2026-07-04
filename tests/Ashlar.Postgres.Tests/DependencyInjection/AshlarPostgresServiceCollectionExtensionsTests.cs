@@ -14,30 +14,39 @@ namespace Ashlar.Postgres.Tests.DependencyInjection;
 internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresTestBase
 {
     [Test]
-    public void AddAshlarPostgresWithDataSourceShouldRegisterServices()
+    public async Task AddAshlarPostgresWithDataSourceShouldRegisterServices()
     {
         var services = new ServiceCollection();
         var dataSource = GetDataSource();
 
         services.AddAshlarPostgres(dataSource);
-        var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.GetService<NpgsqlDataSource>(), Is.Not.Null);
+            Assert.That(provider.GetService<NpgsqlDataSource>(), Is.SameAs(dataSource));
             Assert.That(provider.GetService<TimeProvider>(), Is.Not.Null);
             Assert.That(typeof(IPostgresConnectionProvider).IsNotPublic, Is.True);
-            Assert.That(provider.GetService<IPostgresConnectionProvider>(), Is.TypeOf<PostgresTransactionManager>());
-            Assert.That(provider.GetService<IAshlarSchemaDiagnostics>(), Is.TypeOf<PostgresSchemaDiagnostics>());
-            Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IUserRepository>(), Is.TypeOf<PostgresUserRepository>());
-            Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.ICredentialRepository>(), Is.TypeOf<PostgresCredentialRepository>());
-            Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.ICredentialAdministrationRepository>(), Is.TypeOf<PostgresCredentialAdministrationRepository>());
-            Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IAuthenticationSessionAdministrationRepository>(), Is.TypeOf<PostgresAuthenticationSessionAdministrationRepository>());
-            Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IInvitationRepository>(), Is.TypeOf<PostgresInvitationRepository>());
-            Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IAuthenticationSessionRepository>(), Is.TypeOf<PostgresAuthenticationSessionRepository>());
-            Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IAuthenticationHandshakeRepository>(), Is.TypeOf<PostgresAuthenticationHandshakeRepository>());
-            Assert.That(provider.GetService<IAuthorizationGrantAdministrationRepository>(), Is.TypeOf<PostgresAuthorizationGrantAdministrationRepository>());
-            Assert.That(provider.GetService<SchemaManager>(), Is.Not.Null);
+            Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<PostgresTransactionManager>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IPostgresConnectionProvider>(), Is.SameAs(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>()));
+            Assert.That(scope.ServiceProvider.GetService<IAshlarSchemaDiagnostics>(), Is.TypeOf<PostgresSchemaDiagnostics>());
+            Assert.That(scope.ServiceProvider.GetService<Ashlar.Identity.Abstractions.Repositories.IUserRepository>(), Is.TypeOf<PostgresUserRepository>());
+            Assert.That(scope.ServiceProvider.GetService<Ashlar.Identity.Abstractions.Repositories.ICredentialRepository>(), Is.TypeOf<PostgresCredentialRepository>());
+            Assert.That(scope.ServiceProvider.GetService<Ashlar.Identity.Abstractions.Repositories.IAccountLockoutRepository>(), Is.TypeOf<PostgresAccountLockoutRepository>());
+            Assert.That(scope.ServiceProvider.GetService<Ashlar.Identity.Abstractions.Repositories.IUserAdministrationRepository>(), Is.TypeOf<PostgresUserAdministrationRepository>());
+            Assert.That(scope.ServiceProvider.GetService<Ashlar.Identity.Abstractions.Repositories.ICredentialAdministrationRepository>(), Is.TypeOf<PostgresCredentialAdministrationRepository>());
+            Assert.That(scope.ServiceProvider.GetService<ISecurityEventAdministrationRepository>(), Is.TypeOf<PostgresSecurityEventAdministrationRepository>());
+            Assert.That(scope.ServiceProvider.GetService<Ashlar.Identity.Abstractions.Repositories.IAuthenticationSessionAdministrationRepository>(), Is.TypeOf<PostgresAuthenticationSessionAdministrationRepository>());
+            Assert.That(scope.ServiceProvider.GetService<Ashlar.Identity.Abstractions.Repositories.IBootstrapStateRepository>(), Is.TypeOf<PostgresBootstrapStateRepository>());
+            Assert.That(scope.ServiceProvider.GetService<Ashlar.Identity.Abstractions.Repositories.IInvitationRepository>(), Is.TypeOf<PostgresInvitationRepository>());
+            Assert.That(scope.ServiceProvider.GetService<Ashlar.Identity.Abstractions.Repositories.IAuthenticationSessionRepository>(), Is.TypeOf<PostgresAuthenticationSessionRepository>());
+            Assert.That(scope.ServiceProvider.GetService<Ashlar.Identity.Abstractions.Repositories.IAuthenticationHandshakeRepository>(), Is.TypeOf<PostgresAuthenticationHandshakeRepository>());
+            Assert.That(scope.ServiceProvider.GetService<Ashlar.Identity.Abstractions.Repositories.IRememberedMfaDeviceRepository>(), Is.TypeOf<PostgresRememberedMfaDeviceRepository>());
+            Assert.That(scope.ServiceProvider.GetService<Ashlar.Identity.Abstractions.Repositories.IPasskeyChallengeRepository>(), Is.TypeOf<PostgresPasskeyChallengeRepository>());
+            Assert.That(scope.ServiceProvider.GetService<IAuthorizationGrantRepository>(), Is.TypeOf<PostgresAuthorizationGrantRepository>());
+            Assert.That(scope.ServiceProvider.GetService<IAuthorizationGrantAdministrationRepository>(), Is.TypeOf<PostgresAuthorizationGrantAdministrationRepository>());
+            Assert.That(scope.ServiceProvider.GetService<SchemaManager>(), Is.Not.Null);
         }
     }
 
@@ -104,6 +113,13 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
             Assert.Throws<ArgumentNullException>(() => AshlarPostgresServiceCollectionExtensions.AddAshlarPostgres(null!, dataSource));
             // ReSharper disable once NullableWarningSuppressionIsUsed
             Assert.Throws<ArgumentNullException>(() => services.AddAshlarPostgres((NpgsqlDataSource)null!));
+            // ReSharper disable once NullableWarningSuppressionIsUsed
+            Assert.Throws<ArgumentNullException>(() => AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresAuthorization(null!, "conn"));
+            Assert.Throws<ArgumentException>(() => services.AddAshlarPostgresAuthorization(string.Empty));
+            // ReSharper disable once NullableWarningSuppressionIsUsed
+            Assert.Throws<ArgumentNullException>(() => AshlarPostgresServiceCollectionExtensions.AddAshlarPostgresAuthorization(null!, dataSource));
+            // ReSharper disable once NullableWarningSuppressionIsUsed
+            Assert.Throws<ArgumentNullException>(() => services.AddAshlarPostgresAuthorization((NpgsqlDataSource)null!));
             Assert.Throws<ArgumentNullException>(() => _ = new PostgresAuthorizationGrantAdministrationRepository(null!));
         }
     }
