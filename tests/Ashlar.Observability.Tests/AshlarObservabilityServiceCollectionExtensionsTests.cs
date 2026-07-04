@@ -91,7 +91,7 @@ internal sealed class AshlarObservabilityServiceCollectionExtensionsTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>(), Is.TypeOf<AshlarSecurityEventWebhookMetricsObserver>());
+            Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>(), Is.Not.Null);
             Assert.That(options.MeterName, Is.EqualTo("Custom.Webhook.Meter"));
             Assert.That(options.IncludeEndpointName, Is.True);
             Assert.That(options.EmitDurationHistogram, Is.False);
@@ -110,7 +110,100 @@ internal sealed class AshlarObservabilityServiceCollectionExtensionsTests
 
         using var provider = services.BuildServiceProvider();
 
-        Assert.That(provider.GetServices<IAshlarSecurityEventWebhookDeliveryObserver>().OfType<AshlarSecurityEventWebhookMetricsObserver>(), Has.Exactly(1).Items);
+        Assert.That(provider.GetServices<IAshlarSecurityEventWebhookDeliveryObserver>(), Has.Exactly(1).Items);
+    }
+
+    [Test]
+    public void AddAshlarSecurityEventWebhookMetricsRecordsMetricsOnceWhenRegisteredTwice()
+    {
+        using var listener = new RecordingMeterListener();
+        var services = new ServiceCollection();
+        services
+            .AddAshlarSecurityEventWebhookMetrics(options =>
+            {
+                options.MeterName = listener.MeterName;
+                options.EmitDurationHistogram = false;
+            })
+            .AddAshlarSecurityEventWebhookMetrics();
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>().RecordDeliveryAttempt(CreateTelemetry());
+
+        Assert.That(listener.Measurements.Count(measurement => measurement.InstrumentName == AshlarSecurityEventWebhookMetricsObserver.DeliveryAttemptsCounterName), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void AddAshlarSecurityEventWebhookMetricsPreservesExistingCustomObserver()
+    {
+        using var listener = new RecordingMeterListener();
+        var customObserver = new RecordingDeliveryObserver();
+        var services = new ServiceCollection();
+        services.AddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(customObserver);
+        services.AddAshlarSecurityEventWebhookMetrics(options =>
+        {
+            options.MeterName = listener.MeterName;
+            options.EmitDurationHistogram = false;
+        });
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>().RecordDeliveryAttempt(CreateTelemetry());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(customObserver.Telemetry, Has.Count.EqualTo(1));
+            Assert.That(listener.Measurements.Count(measurement => measurement.InstrumentName == AshlarSecurityEventWebhookMetricsObserver.DeliveryAttemptsCounterName), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void AddAshlarSecurityEventWebhookMetricsPreservesFactoryRegisteredCustomObserver()
+    {
+        var customObserver = new RecordingDeliveryObserver();
+        var services = new ServiceCollection();
+        services.AddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(_ => customObserver);
+        services.AddAshlarSecurityEventWebhookMetrics();
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>().RecordDeliveryAttempt(CreateTelemetry());
+
+        Assert.That(customObserver.Telemetry, Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public void AddAshlarSecurityEventWebhookDeliveryObserverAfterMetricsComposesWithMetrics()
+    {
+        using var listener = new RecordingMeterListener();
+        var services = new ServiceCollection();
+        services
+            .AddAshlarSecurityEventWebhookMetrics(options =>
+            {
+                options.MeterName = listener.MeterName;
+                options.EmitDurationHistogram = false;
+            })
+            .AddAshlarSecurityEventWebhookDeliveryObserver<RecordingDeliveryObserver>();
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>().RecordDeliveryAttempt(CreateTelemetry());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetRequiredService<RecordingDeliveryObserver>().Telemetry, Has.Count.EqualTo(1));
+            Assert.That(listener.Measurements.Count(measurement => measurement.InstrumentName == AshlarSecurityEventWebhookMetricsObserver.DeliveryAttemptsCounterName), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void AddAshlarSecurityEventWebhookMetricsContinuesFanOutWhenObserverThrows()
+    {
+        using var listener = new RecordingMeterListener();
+        var services = new ServiceCollection();
+        services.AddSingleton<IAshlarSecurityEventWebhookDeliveryObserver, ThrowingDeliveryObserver>();
+        services.AddAshlarSecurityEventWebhookMetrics(options => options.MeterName = listener.MeterName);
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>().RecordDeliveryAttempt(CreateTelemetry());
+
+        Assert.That(listener.Measurements.Count(measurement => measurement.InstrumentName == AshlarSecurityEventWebhookMetricsObserver.DeliveryAttemptsCounterName), Is.EqualTo(1));
     }
 
     [Test]
@@ -153,4 +246,34 @@ internal sealed class AshlarObservabilityServiceCollectionExtensionsTests
     }
 
     private sealed record RecordedMeasurement(string InstrumentName);
+
+    private static AshlarSecurityEventWebhookDeliveryTelemetry CreateTelemetry()
+    {
+        return new AshlarSecurityEventWebhookDeliveryTelemetry(
+            AshlarSecurityEventWebhookDeliveryTelemetry.BestEffortDeliveryMode,
+            "ashlar.sign_in.failed",
+            "audit",
+            AshlarSecurityEventWebhookDeliveryTelemetry.SuccessOutcome,
+            null,
+            TimeSpan.FromMilliseconds(12.5));
+    }
+
+    private sealed class RecordingDeliveryObserver : IAshlarSecurityEventWebhookDeliveryObserver
+    {
+        public List<AshlarSecurityEventWebhookDeliveryTelemetry> Telemetry { get; } = [];
+
+        public void RecordDeliveryAttempt(AshlarSecurityEventWebhookDeliveryTelemetry telemetry)
+        {
+            Telemetry.Add(telemetry);
+        }
+    }
+
+    private sealed class ThrowingDeliveryObserver : IAshlarSecurityEventWebhookDeliveryObserver
+    {
+        public void RecordDeliveryAttempt(AshlarSecurityEventWebhookDeliveryTelemetry telemetry)
+        {
+            throw new InvalidOperationException("observer failed");
+        }
+    }
+
 }

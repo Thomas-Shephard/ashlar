@@ -45,7 +45,7 @@ public static class AshlarWebhooksServiceCollectionExtensions
         services.TryAddSingleton<AshlarSecurityEventWebhookDestinationValidator>();
         services.TryAddSingleton<IAshlarSecurityEventWebhookSender, AshlarSecurityEventWebhookSender>();
         services.TryAddSingleton<IAshlarSecurityEventWebhookEndpointTester, AshlarSecurityEventWebhookEndpointTester>();
-        services.TryAddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(_ => NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance);
+        services.TryAddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance);
         services.AddAshlarSecurityEventHandler<AshlarSecurityEventWebhookHandler>();
 
         return services;
@@ -75,8 +75,26 @@ public static class AshlarWebhooksServiceCollectionExtensions
         services.TryAddSingleton<AshlarSecurityEventWebhookDeliveryFactory>();
         services.TryAddSingleton<IAshlarSecurityEventWebhookDestinationResolver, DnsAshlarSecurityEventWebhookDestinationResolver>();
         services.TryAddSingleton<AshlarSecurityEventWebhookDestinationValidator>();
-        services.TryAddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(_ => NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance);
+        services.TryAddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance);
         services.AddAshlarSecurityEventHandler<AshlarSecurityEventWebhookOutboxHandler>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers a singleton observer for Ashlar security event webhook delivery attempts.
+    /// </summary>
+    /// <typeparam name="TObserver">The observer type to register.</typeparam>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddAshlarSecurityEventWebhookDeliveryObserver<TObserver>(this IServiceCollection services)
+        where TObserver : class, IAshlarSecurityEventWebhookDeliveryObserver
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.TryAddSingleton<TObserver>();
+        EnsureWebhookDeliveryObserverComposite(services);
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAshlarSecurityEventWebhookDeliveryObserverContribution, AshlarSecurityEventWebhookDeliveryObserverContribution<TObserver>>());
 
         return services;
     }
@@ -85,5 +103,62 @@ public static class AshlarWebhooksServiceCollectionExtensions
     {
         var destinationValidator = provider.GetRequiredService<AshlarSecurityEventWebhookDestinationValidator>();
         return AshlarSecurityEventWebhookHttpMessageHandlerFactory.Create(destinationValidator);
+    }
+
+    private static void PreserveExistingWebhookDeliveryObservers(IServiceCollection services)
+    {
+        for (var index = services.Count - 1; index >= 0; index--)
+        {
+            var descriptor = services[index];
+            if (descriptor.ServiceType != typeof(IAshlarSecurityEventWebhookDeliveryObserver))
+            {
+                continue;
+            }
+
+            services.RemoveAt(index);
+            if (ReferenceEquals(descriptor.ImplementationInstance, NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance))
+            {
+                continue;
+            }
+
+            services.Insert(index, CreateWebhookDeliveryObserverContributionDescriptor(descriptor));
+        }
+    }
+
+    private static ServiceDescriptor CreateWebhookDeliveryObserverContributionDescriptor(ServiceDescriptor descriptor)
+    {
+        return ServiceDescriptor.Describe(
+            typeof(IAshlarSecurityEventWebhookDeliveryObserverContribution),
+            provider => new AshlarSecurityEventWebhookDeliveryObserverContribution<IAshlarSecurityEventWebhookDeliveryObserver>(
+                CreateWebhookDeliveryObserver(provider, descriptor)),
+            ServiceLifetime.Singleton);
+    }
+
+    private static IAshlarSecurityEventWebhookDeliveryObserver CreateWebhookDeliveryObserver(IServiceProvider provider, ServiceDescriptor descriptor)
+    {
+        if (descriptor.ImplementationInstance is IAshlarSecurityEventWebhookDeliveryObserver instance)
+        {
+            return instance;
+        }
+
+        if (descriptor.ImplementationFactory != null)
+        {
+            return (IAshlarSecurityEventWebhookDeliveryObserver)descriptor.ImplementationFactory(provider);
+        }
+
+        return (IAshlarSecurityEventWebhookDeliveryObserver)ActivatorUtilities.GetServiceOrCreateInstance(provider, descriptor.ImplementationType!);
+    }
+
+    private static void EnsureWebhookDeliveryObserverComposite(IServiceCollection services)
+    {
+        if (services.Any(descriptor =>
+                descriptor.ServiceType == typeof(IAshlarSecurityEventWebhookDeliveryObserver)
+                && descriptor.ImplementationType == typeof(CompositeAshlarSecurityEventWebhookDeliveryObserver)))
+        {
+            return;
+        }
+
+        PreserveExistingWebhookDeliveryObservers(services);
+        services.AddSingleton<IAshlarSecurityEventWebhookDeliveryObserver, CompositeAshlarSecurityEventWebhookDeliveryObserver>();
     }
 }

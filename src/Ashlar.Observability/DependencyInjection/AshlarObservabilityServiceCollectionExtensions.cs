@@ -4,7 +4,6 @@ namespace Microsoft.Extensions.DependencyInjection;
 #pragma warning restore IDE0130
 
 using Ashlar.Observability.SecurityEvents;
-using Ashlar.Webhooks.SecurityEvents;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 /// <summary>
@@ -53,7 +52,8 @@ public static class AshlarObservabilityServiceCollectionExtensions
             services.Configure(configure);
         }
 
-        services.Replace(ServiceDescriptor.Singleton<IAshlarSecurityEventWebhookDeliveryObserver, AshlarSecurityEventWebhookMetricsObserver>());
+        services.TryAddSingleton<AshlarSecurityEventWebhookMetricsObserver>();
+        services.AddAshlarSecurityEventWebhookDeliveryObserver<AshlarSecurityEventWebhookMetricsObserver>();
 
         return services;
     }
