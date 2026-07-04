@@ -427,6 +427,37 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
         }
     }
 
+    [TestCase("sent_at")]
+    [TestCase("failed_at")]
+    [TestCase("discarded_at")]
+    public async Task DispatcherDoesNotOverwriteTerminalEmailRowDuringFailedDelivery(string terminalColumn)
+    {
+        var transport = new TestTransport
+        {
+            OnDeliver = async (_, _) =>
+            {
+                await ExecuteAsync(
+                    $"UPDATE ashlar_email_outbox SET {terminalColumn} = $terminalAt",
+                    command => command.AddDateTimeOffsetParameter("$terminalAt", _timeProvider.GetUtcNow()));
+                throw new InvalidOperationException("terminal elsewhere");
+            }
+        };
+        var dispatcher = BuildDispatcher(transport, new SqliteEmailOutboxOptions { MaxAttempts = 1 });
+        await SeedMessageAsync("terminal-race@example.com");
+
+        await dispatcher.ProcessBatchAsync();
+        var row = await QuerySingleOutboxRowAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(row.SentAt, terminalColumn == "sent_at" ? Is.EqualTo(_now) : Is.Null);
+            Assert.That(row.FailedAt, terminalColumn == "failed_at" ? Is.EqualTo(_now) : Is.Null);
+            Assert.That(row.DiscardedAt, terminalColumn == "discarded_at" ? Is.EqualTo(_now) : Is.Null);
+            Assert.That(row.AttemptCount, Is.Zero);
+            Assert.That(row.LastError, Is.Null);
+        }
+    }
+
     [Test]
     public async Task DispatcherMarksFailedAtWhenMaxAttemptsReached()
     {
@@ -729,7 +760,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
         command.CommandText = """
             SELECT to_address, from_address, reply_to_address, cc_address, bcc_address, subject, text_body, html_body,
                    sensitivity, body_protection, headers, metadata, created_at, available_at, attempt_count, sent_at,
-                   failed_at, last_error, last_attempt_at
+                   failed_at, discarded_at, last_error, last_attempt_at
             FROM ashlar_email_outbox
             ORDER BY created_at, id
             LIMIT 1
@@ -755,6 +786,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             AttemptCount = reader.GetInt32ByName("attempt_count"),
             SentAt = reader.GetNullableDateTimeOffsetFromText("sent_at"),
             FailedAt = reader.GetNullableDateTimeOffsetFromText("failed_at"),
+            DiscardedAt = reader.GetNullableDateTimeOffsetFromText("discarded_at"),
             LastError = reader.GetNullableString("last_error"),
             LastAttemptAt = reader.GetNullableDateTimeOffsetFromText("last_attempt_at")
         };
@@ -837,6 +869,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
         public int AttemptCount { get; init; }
         public DateTimeOffset? SentAt { get; init; }
         public DateTimeOffset? FailedAt { get; init; }
+        public DateTimeOffset? DiscardedAt { get; init; }
         public string? LastError { get; init; }
         public DateTimeOffset? LastAttemptAt { get; init; }
     }

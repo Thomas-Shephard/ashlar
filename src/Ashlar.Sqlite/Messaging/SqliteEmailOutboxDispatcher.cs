@@ -54,7 +54,11 @@ internal sealed class SqliteEmailOutboxDispatcher<TTransport>(
             locked_by = NULL,
             last_attempt_at = $now,
             attempt_count = $attemptCount
-        WHERE id = $id AND locked_by = $lockedBy
+        WHERE id = $id
+          AND locked_by = $lockedBy
+          AND sent_at IS NULL
+          AND failed_at IS NULL
+          AND discarded_at IS NULL
         """;
     private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));

@@ -346,6 +346,33 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         }
     }
 
+    [TestCase("sent_at")]
+    [TestCase("failed_at")]
+    [TestCase("discarded_at")]
+    public async Task DispatcherDoesNotOverwriteTerminalWebhookRowDuringFailedDelivery(string terminalColumn)
+    {
+        await EnqueueAsync(CreateDelivery());
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.BadGateway)
+        {
+            OnRequestAsync = () => ExecuteAsync(
+                $"UPDATE ashlar_security_event_webhook_outbox SET {terminalColumn} = $terminalAt",
+                command => command.AddDateTimeOffsetParameter("$terminalAt", _timeProvider.GetUtcNow()))
+        };
+        var dispatcher = CreateDispatcher(transport, new SqliteSecurityEventWebhookOutboxOptions { MaxAttempts = 1 });
+
+        await dispatcher.ProcessBatchAsync();
+        var row = await QuerySingleOutboxRowAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(row.SentAt, terminalColumn == "sent_at" ? Is.EqualTo(_now) : Is.Null);
+            Assert.That(row.FailedAt, terminalColumn == "failed_at" ? Is.EqualTo(_now) : Is.Null);
+            Assert.That(row.DiscardedAt, terminalColumn == "discarded_at" ? Is.EqualTo(_now) : Is.Null);
+            Assert.That(row.AttemptCount, Is.Zero);
+            Assert.That(row.LastError, Is.Null);
+        }
+    }
+
     [Test]
     public async Task DispatcherMarksTerminalFailuresWhenMaxAttemptsReached()
     {
@@ -927,7 +954,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT endpoint_name, uri, event_id, event_type, outcome, occurred_at, timeout_ms, body, headers,
-                   created_at, available_at, sent_at, failed_at, attempt_count, last_error,
+                   created_at, available_at, sent_at, failed_at, discarded_at, attempt_count, last_error,
                    locked_by, last_attempt_at
             FROM ashlar_security_event_webhook_outbox
             ORDER BY created_at, id
@@ -950,6 +977,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             AvailableAt = reader.GetDateTimeOffsetFromText("available_at"),
             SentAt = reader.GetNullableDateTimeOffsetFromText("sent_at"),
             FailedAt = reader.GetNullableDateTimeOffsetFromText("failed_at"),
+            DiscardedAt = reader.GetNullableDateTimeOffsetFromText("discarded_at"),
             AttemptCount = reader.GetInt32ByName("attempt_count"),
             LastError = reader.GetNullableString("last_error"),
             LockedBy = reader.GetNullableString("locked_by"),
@@ -1198,6 +1226,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         public DateTimeOffset AvailableAt { get; init; }
         public DateTimeOffset? SentAt { get; init; }
         public DateTimeOffset? FailedAt { get; init; }
+        public DateTimeOffset? DiscardedAt { get; init; }
         public int AttemptCount { get; init; }
         public string? LastError { get; init; }
         public string? LockedBy { get; init; }
