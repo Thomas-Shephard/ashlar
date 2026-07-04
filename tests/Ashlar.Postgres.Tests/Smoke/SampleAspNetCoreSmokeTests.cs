@@ -295,6 +295,12 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     }
 
     [Test]
+    public async Task SamplePasswordlessVerificationUsesSignInServices()
+    {
+        await AssertSamplePasswordlessVerificationUsesSignInServicesAsync();
+    }
+
+    [Test]
     public async Task SampleGoogleInvitationCallbackClearsMalformedExternalTicket()
     {
         Environment.SetEnvironmentVariable("Authentication__Google__ClientId", "sample-client-id");
@@ -909,6 +915,25 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             Assert.That(signInIndex, Is.GreaterThan(orchestratorIndex));
             Assert.That(source, Does.Contain("new AuthenticationProviderKey(ProviderType.OAuth, SampleGitHubOAuth.ProviderName)"));
             Assert.That(source, Does.Not.Contain("CompleteExternalCredentialAuthenticationAsync"));
+        }
+    }
+
+    private static async Task AssertSamplePasswordlessVerificationUsesSignInServicesAsync()
+    {
+        var source = await File.ReadAllTextAsync(Path.Combine(
+            LocateRepositoryRoot(),
+            "samples",
+            "Ashlar.Sample.AspNetCore",
+            "Endpoints",
+            "AuthEndpoints.cs"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source, Does.Contain("magicLinks.VerifyLinkAsync"));
+            Assert.That(source, Does.Contain("emailCodes.VerifyCodeAsync"));
+            Assert.That(source, Does.Not.Contain("new MagicLinkAssertion"));
+            Assert.That(source, Does.Not.Contain("new EmailCodeAssertion"));
+            Assert.That(source, Does.Not.Contain("orchestrator.AuthenticateAsync"));
         }
     }
 

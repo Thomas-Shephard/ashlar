@@ -603,6 +603,12 @@ internal sealed class MagicLinkSignInTests
     }
 
     [Test]
+    public void MagicLinkAssertionIsNotPublicConsumerApi()
+    {
+        Assert.That(typeof(IMagicLinkSignInService).Assembly.GetExportedTypes(), Does.Not.Contain(typeof(MagicLinkAssertion)));
+    }
+
+    [Test]
     public void RequestLinkValidatesArguments()
     {
         var fixture = CreateFixture(_user);
