@@ -91,6 +91,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         }
 
         var changed = user.AccountState != request.AccountState;
+        var auditTenantId = GetAuditTenantId(request, user);
         var sessionsRevoked = 0;
         var rememberedMfaDevicesRevoked = 0;
         if (changed)
@@ -106,7 +107,8 @@ public sealed class AccountSecurityService : IAccountSecurityService
                         request,
                         failure.Code.Value,
                         FromAccountState: user.AccountState,
-                        ToAccountState: request.AccountState),
+                        ToAccountState: request.AccountState,
+                        AuditTenantId: auditTenantId),
                     cancellationToken);
                 return Result.Failure<AccountSecurityOperationResult>(failure);
             }
@@ -115,7 +117,13 @@ public sealed class AccountSecurityService : IAccountSecurityService
             if (!request.AccountState.CanSignIn() && request.RevokeSessionsAndRememberedMfaDevices)
             {
                 var reason = request.Reason ?? AdminReason;
-                sessionsRevoked = await _sessionService.RevokeSessionsForUserAsync(userId, reason, request.Tenant, request.Audit, cancellationToken);
+                sessionsRevoked = await _sessionService.RevokeSessionsForUserAsync(
+                    userId,
+                    reason,
+                    request.Tenant,
+                    request.Audit,
+                    auditTenantId: auditTenantId,
+                    cancellationToken);
                 rememberedMfaDevicesRevoked = await RevokeRememberedMfaDevicesAsync(userId, request, reason, cancellationToken);
             }
         }
@@ -127,7 +135,13 @@ public sealed class AccountSecurityService : IAccountSecurityService
             PreviousState: user.AccountState,
             CurrentState: request.AccountState,
             RememberedMfaDevicesRevoked: rememberedMfaDevicesRevoked);
-        transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserAccountStateChanged, result, request, ct, fromAccountState: user.AccountState, toAccountState: request.AccountState));
+        transaction.OnCommitted(ct => RecordSuccessAsync(
+            AshlarSecurityEventTypes.UserAccountStateChanged,
+            result,
+            request,
+            ct,
+            stateTransition: new AccountStateTransition(user.AccountState, request.AccountState),
+            auditTenantId: auditTenantId));
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success(result);
@@ -139,7 +153,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         ValidateUserId(userId);
         request = RequireAudit(request);
         var userResult = await GetUserForMutationAsync(userId, request, cancellationToken);
-        if (!userResult.Succeeded)
+        if (!userResult.TryGetValue(out var user))
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
             await RecordFailureAsync(
@@ -148,7 +162,13 @@ public sealed class AccountSecurityService : IAccountSecurityService
             return Result.Failure<AccountSecurityOperationResult>(failure);
         }
 
-        var revoked = await _sessionService.RevokeSessionsForUserAsync(userId, request.Reason ?? AdminReason, request.Tenant, request.Audit, cancellationToken);
+        var revoked = await _sessionService.RevokeSessionsForUserAsync(
+            userId,
+            request.Reason ?? AdminReason,
+            request.Tenant,
+            request.Audit,
+            auditTenantId: GetAuditTenantId(request, user),
+            cancellationToken);
         return Result.Success(new AccountSecurityOperationResult(userId, SessionsRevoked: revoked));
     }
 
@@ -160,7 +180,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         request = RequireAudit(request);
 
         var userResult = await GetUserForMutationAsync(userId, request, cancellationToken);
-        if (!userResult.Succeeded)
+        if (!userResult.TryGetValue(out var user))
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
             await RecordFailureAsync(
@@ -172,7 +192,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         var revoked = await _credentialRepository.RevokeCredentialsAsync(userId, provider.Type, provider.Name, cancellationToken);
         var result = new AccountSecurityOperationResult(userId, CredentialsRevoked: revoked);
-        transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserCredentialsRevoked, result, request, ct, provider));
+        transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserCredentialsRevoked, result, request, ct, provider, auditTenantId: GetAuditTenantId(request, user)));
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success(result);
@@ -185,7 +205,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         request = RequireAudit(request);
 
         var userResult = await GetUserForMutationAsync(userId, request, cancellationToken);
-        if (!userResult.Succeeded)
+        if (!userResult.TryGetValue(out var user))
         {
             var failure = userResult.GetFailureOr(AshlarFailureCodes.UserNotFound);
             await RecordFailureAsync(
@@ -202,7 +222,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
             userId,
             CredentialsRevoked: revoked,
             RememberedMfaDevicesRevoked: rememberedMfaDevicesRevoked);
-        transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserMfaReset, result, request, ct));
+        transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserMfaReset, result, request, ct, auditTenantId: GetAuditTenantId(request, user)));
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success(result);
@@ -313,6 +333,13 @@ public sealed class AccountSecurityService : IAccountSecurityService
         return user == null
             ? Result.Failure<IUser>(AshlarFailureCodes.UserNotFound)
             : Result.Success(user);
+    }
+
+    private static Guid? GetAuditTenantId(AccountSecurityOperationRequest request, IUser user)
+    {
+        return request.IncludeAllTenants && user is ITenantUser tenantUser
+            ? tenantUser.TenantId
+            : request.Tenant?.TenantId;
     }
 
     private CredentialPostureItem ClassifyCredential(UserCredential credential)
@@ -569,7 +596,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
             EventType = failureEvent.EventType,
             Outcome = SecurityEventOutcomes.Failure,
             UserId = failureEvent.UserId,
-            TenantId = failureEvent.Request.Tenant?.TenantId,
+            TenantId = failureEvent.AuditTenantId ?? failureEvent.Request.Tenant?.TenantId,
             Audit = failureEvent.Request.Audit,
             Provider = failureEvent.Provider,
             FailureReason = failureEvent.FailureReason,
@@ -583,8 +610,8 @@ public sealed class AccountSecurityService : IAccountSecurityService
         AccountSecurityOperationRequest request,
         CancellationToken cancellationToken,
         AuthenticationProviderKey? provider = null,
-        UserAccountState? fromAccountState = null,
-        UserAccountState? toAccountState = null)
+        AccountStateTransition? stateTransition = null,
+        Guid? auditTenantId = null)
     {
         var properties = new Dictionary<string, string>
         {
@@ -593,14 +620,10 @@ public sealed class AccountSecurityService : IAccountSecurityService
             ["credentials_revoked"] = result.CredentialsRevoked.ToString(CultureInfo.InvariantCulture),
             ["remembered_mfa_devices_revoked"] = result.RememberedMfaDevicesRevoked.ToString(CultureInfo.InvariantCulture)
         };
-        if (fromAccountState.HasValue)
+        if (stateTransition != null)
         {
-            properties["from_account_state"] = fromAccountState.Value.ToStorageValue();
-        }
-
-        if (toAccountState.HasValue)
-        {
-            properties["to_account_state"] = toAccountState.Value.ToStorageValue();
+            properties["from_account_state"] = stateTransition.From.ToStorageValue();
+            properties["to_account_state"] = stateTransition.To.ToStorageValue();
         }
 
         if (request.Reason != null)
@@ -613,7 +636,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
             EventType = eventType,
             Outcome = SecurityEventOutcomes.Success,
             UserId = result.UserId,
-            TenantId = request.Tenant?.TenantId,
+            TenantId = auditTenantId ?? request.Tenant?.TenantId,
             Audit = request.Audit,
             Provider = provider,
             Properties = properties
@@ -641,7 +664,10 @@ public sealed class AccountSecurityService : IAccountSecurityService
         string FailureReason,
         AuthenticationProviderKey? Provider = null,
         UserAccountState? FromAccountState = null,
-        UserAccountState? ToAccountState = null);
+        UserAccountState? ToAccountState = null,
+        Guid? AuditTenantId = null);
+
+    private sealed record AccountStateTransition(UserAccountState From, UserAccountState To);
 }
 
 /// <summary>
