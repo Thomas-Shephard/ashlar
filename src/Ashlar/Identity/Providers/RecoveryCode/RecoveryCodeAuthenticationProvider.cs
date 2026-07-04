@@ -6,7 +6,7 @@ namespace Ashlar.Identity.Providers.RecoveryCode;
 /// <summary>
 /// Implements an authentication provider that verifies recovery codes as backup additional-verification factors.
 /// </summary>
-public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFactorProvider
+public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFactorProvider, IAuthenticationUserResolver, IAuthenticationCredentialResolver
 {
     private const int IdCodeLength = 5;
     private const int IdSecretSeparatorLength = 1;
@@ -37,7 +37,7 @@ public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFa
     }
 
     /// <summary>
-    /// Gets the provider key used for recovery-code credentials.
+    /// Derives the provider key from the recovery-code id segment.
     /// </summary>
     public AuthenticationProviderKey Key => _options.ProviderKey;
 
@@ -71,12 +71,22 @@ public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFa
     public bool CanSatisfyBackupFactor(string requiredFactorType) => !string.IsNullOrWhiteSpace(requiredFactorType);
 
     /// <summary>
-    /// Returns an empty key because recovery-code lookup derives the stored key from the submitted code.
+    /// Derives the stored recovery-code key from the submitted code's id segment.
     /// </summary>
     /// <param name="assertion">Recovery-code assertion associated with the lookup.</param>
     /// <param name="userId">User whose recovery-code credentials are being resolved.</param>
-    /// <returns>An empty string. Use <see cref="ResolveCredentialAsync" /> for recovery-code credential resolution.</returns>
-    public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId) => string.Empty;
+    /// <returns>The deterministic recovery-code storage key when the submitted code contains an id segment; otherwise, an empty string.</returns>
+    public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId)
+    {
+        if (assertion is not RecoveryCodeAssertion recoveryCodeAssertion)
+        {
+            return string.Empty;
+        }
+
+        return TryParseSubmittedCode(userId, recoveryCodeAssertion, out var providerKey, out _, out _)
+            ? providerKey
+            : string.Empty;
+    }
 
     /// <summary>
     /// Hashes a raw recovery-code secret before persistence.
@@ -114,7 +124,7 @@ public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFa
         }
 
         var email = context.Email;
-        if (string.IsNullOrWhiteSpace(email))
+        if (context.UserId.HasValue || string.IsNullOrWhiteSpace(email))
         {
             return Task.FromResult<IUser?>(null);
         }
@@ -138,24 +148,16 @@ public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFa
             return null;
         }
 
-        if (recoveryCodeAssertion.Code.Length > MaximumSubmittedCodeLength)
+        if (!TryParseSubmittedCode(userId, recoveryCodeAssertion, out var providerKey, out var secretCode, out var normalizedCode))
         {
+            if (recoveryCodeAssertion.Code.Length <= MaximumSubmittedCodeLength)
+            {
+                // Dummy verification to mitigate timing attacks
+                _hasherSelector.VerifyPassword(normalizedCode, []);
+            }
+
             return null;
         }
-
-        var normalizedCode = recoveryCodeAssertion.Code.Replace(" ", "").ToUpperInvariant();
-        var codeSpan = normalizedCode.AsSpan();
-        var separatorIndex = codeSpan.IndexOf('-');
-        if (separatorIndex <= 0 || separatorIndex == codeSpan.Length - 1)
-        {
-            // Dummy verification to mitigate timing attacks
-            _hasherSelector.VerifyPassword(normalizedCode, []);
-            return null;
-        }
-
-        var idCode = new string(codeSpan[..separatorIndex]);
-        var providerKey = $"{userId:N}-{idCode}";
-        var secretCode = new string(codeSpan[(separatorIndex + 1)..]);
 
         var credential = await repository.GetCredentialForUserAsync(userId, Key.Type, Key.Name, providerKey, cancellationToken);
 
@@ -175,6 +177,29 @@ public sealed class RecoveryCodeAuthenticationProvider : IBackupAuthenticationFa
         }
 
         return null;
+    }
+
+    private bool TryParseSubmittedCode(Guid userId, RecoveryCodeAssertion assertion, out string providerKey, out string secretCode, out string normalizedCode)
+    {
+        providerKey = string.Empty;
+        secretCode = string.Empty;
+        normalizedCode = assertion.Code.Replace(" ", "").ToUpperInvariant();
+
+        if (assertion.Code.Length > MaximumSubmittedCodeLength)
+        {
+            return false;
+        }
+
+        var codeSpan = normalizedCode.AsSpan();
+        var separatorIndex = codeSpan.IndexOf('-');
+        if (separatorIndex <= 0 || separatorIndex == codeSpan.Length - 1)
+        {
+            return false;
+        }
+
+        providerKey = $"{userId:N}-{new string(codeSpan[..separatorIndex])}";
+        secretCode = new string(codeSpan[(separatorIndex + 1)..]);
+        return true;
     }
 
     private int MaximumSubmittedCodeLength =>

@@ -249,7 +249,7 @@ internal sealed class LocalPasswordProviderTests
     {
         var assertion = new LocalPasswordAssertion("pass");
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _provider.FindUserAsync(assertion, new AuthenticationContext("test@example.com"), null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => ((IAuthenticationUserResolver)_provider).FindUserAsync(assertion, new AuthenticationContext("test@example.com"), null!));
         return Task.CompletedTask;
     }
 
@@ -257,7 +257,7 @@ internal sealed class LocalPasswordProviderTests
     public async Task FindUserAsyncWithWrongAssertionTypeShouldReturnNull()
     {
         var assertion = new Mock<IAuthenticationAssertion>().Object;
-        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext("test@example.com"), new Mock<IUserRepository>().Object);
+        var result = await ((IAuthenticationUserResolver)_provider).FindUserAsync(assertion, new AuthenticationContext("test@example.com"), new Mock<IUserRepository>().Object);
         Assert.That(result, Is.Null);
     }
 
@@ -265,7 +265,7 @@ internal sealed class LocalPasswordProviderTests
     public async Task FindUserAsyncWithEmptyEmailShouldReturnNull()
     {
         var assertion = new LocalPasswordAssertion("pass");
-        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(""), new Mock<IUserRepository>().Object);
+        var result = await ((IAuthenticationUserResolver)_provider).FindUserAsync(assertion, new AuthenticationContext(""), new Mock<IUserRepository>().Object);
         Assert.That(result, Is.Null);
     }
 
@@ -280,7 +280,7 @@ internal sealed class LocalPasswordProviderTests
         repoMock.Setup(r => r.GetUserByEmailAsync(email, tenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(email, tenantId), repoMock.Object);
+        var result = await ((IAuthenticationUserResolver)_provider).FindUserAsync(assertion, new AuthenticationContext(email, tenantId), repoMock.Object);
 
         Assert.That(result, Is.EqualTo(user));
     }

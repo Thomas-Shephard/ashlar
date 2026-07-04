@@ -1599,28 +1599,11 @@ internal sealed class TotpTests
     }
 
     [Test]
-    public async Task ProviderResolveCredentialAsyncReturnsNullOnWrongAssertion()
+    public void ProviderShouldUseDefaultCredentialLookup()
     {
         var provider = CreateProvider();
 
-        var result = await provider.ResolveCredentialAsync(Guid.NewGuid(), new Mock<IAuthenticationAssertion>().Object, null, _credentialRepository.Object);
-        Assert.That(result, Is.Null);
-    }
-
-    [Test]
-    public async Task ProviderResolveCredentialAsyncReturnsCredential()
-    {
-        var provider = CreateProvider();
-        var userId = Guid.NewGuid();
-        var assertion = new TotpAssertion("123456");
-        var credential = new UserCredential { Id = Guid.NewGuid(), UserId = userId, ProviderType = _options.ProviderKey.Type, ProviderName = _options.ProviderKey.Name, ProviderKey = userId.ToString("D"), Status = CredentialStatus.Active, CreatedAt = DateTimeOffset.UtcNow, Version = "1" };
-
-        _credentialRepository.Setup(x => x.GetCredentialForUserAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, userId.ToString("D"), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(credential);
-
-        var result = await provider.ResolveCredentialAsync(userId, assertion, null, _credentialRepository.Object);
-
-        Assert.That(result, Is.SameAs(credential));
+        Assert.That(provider, Is.Not.InstanceOf<IAuthenticationCredentialResolver>());
     }
 
     [Test]
@@ -1643,44 +1626,11 @@ internal sealed class TotpTests
     }
 
     [Test]
-    public async Task ProviderFindUserAsyncReturnsNullForUserIdBecauseCredentialServiceOwnsFallback()
+    public void ProviderShouldNotResolveUsers()
     {
         var provider = CreateProvider();
-        var userId = Guid.NewGuid();
-        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
-        var context = new AuthenticationContext(UserId: userId);
 
-        _repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(user);
-
-        var found = await provider.FindUserAsync(new TotpAssertion("123456"), context, _repository.Object);
-
-        Assert.That(found, Is.Null);
-        _repository.Verify(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Test]
-    public async Task ProviderFindUserAsyncReturnsNullOnWrongAssertion()
-    {
-        var provider = CreateProvider();
-        var context = new AuthenticationContext(UserId: Guid.NewGuid());
-
-        var found = await provider.FindUserAsync(new Mock<IAuthenticationAssertion>().Object, context, _repository.Object);
-
-        Assert.That(found, Is.Null);
-        _repository.Verify(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Test]
-    public async Task ProviderFindUserAsyncReturnsNullWithoutUserId()
-    {
-        var provider = CreateProvider();
-        var context = new AuthenticationContext();
-
-        var found = await provider.FindUserAsync(new TotpAssertion("123456"), context, _repository.Object);
-
-        Assert.That(found, Is.Null);
-        _repository.Verify(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.That(provider, Is.Not.InstanceOf<IAuthenticationUserResolver>());
     }
 
     [Test]

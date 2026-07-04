@@ -395,8 +395,8 @@ internal sealed class EmailCodeSignInTests
         var provider = CreateProvider();
         var repository = new InMemoryUserCredentialStore(_user);
 
-        var wrongAssertion = await provider.FindUserAsync(new LocalPasswordAssertion("pw"), new AuthenticationContext(_user.DisplayEmail), repository);
-        var missingEmail = await provider.FindUserAsync(new EmailCodeAssertion("123456"), new AuthenticationContext(" "), repository);
+        var wrongAssertion = await ((IAuthenticationUserResolver)provider).FindUserAsync(new LocalPasswordAssertion("pw"), new AuthenticationContext(_user.DisplayEmail), repository);
+        var missingEmail = await ((IAuthenticationUserResolver)provider).FindUserAsync(new EmailCodeAssertion("123456"), new AuthenticationContext(" "), repository);
 
         using (Assert.EnterMultipleScope())
         {

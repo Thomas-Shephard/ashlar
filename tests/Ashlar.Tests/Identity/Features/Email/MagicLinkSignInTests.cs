@@ -519,7 +519,7 @@ internal sealed class MagicLinkSignInTests
             Assert.ThrowsAsync<ArgumentException>(() => provider.AuthenticateAsync(assertion, null));
             Assert.That(provider.GetProviderKey(assertion, Guid.NewGuid()), Is.Empty);
 
-            var user = await provider.FindUserAsync(assertion, new AuthenticationContext(), new InMemoryUserCredentialStore());
+            var user = await ((IAuthenticationUserResolver)provider).FindUserAsync(assertion, new AuthenticationContext(), new InMemoryUserCredentialStore());
             Assert.That(user, Is.Null);
         }
     }
@@ -564,7 +564,7 @@ internal sealed class MagicLinkSignInTests
         var repository = new InMemoryUserCredentialStore(_user);
 
         var providerKey = provider.GetProviderKey(assertion, _user.Id);
-        var user = await provider.FindUserAsync(assertion, new AuthenticationContext(), repository);
+        var user = await ((IAuthenticationUserResolver)provider).FindUserAsync(assertion, new AuthenticationContext(), repository);
 
         using (Assert.EnterMultipleScope())
         {

@@ -156,11 +156,6 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
 
         public string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue) => rawValue;
 
-        public Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult<IUser?>(null);
-        }
-
         public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Succeeded));

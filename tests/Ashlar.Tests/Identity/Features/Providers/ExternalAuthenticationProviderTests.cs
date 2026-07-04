@@ -130,7 +130,7 @@ internal sealed class ExternalAuthenticationProviderTests
     {
         var assertion = new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "key", new Dictionary<string, string>());
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.ThrowsAsync<ArgumentNullException>(() => _provider.FindUserAsync(assertion, new AuthenticationContext(), null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => ((IAuthenticationUserResolver)_provider).FindUserAsync(assertion, new AuthenticationContext(), null!));
         return Task.CompletedTask;
     }
 
@@ -138,7 +138,7 @@ internal sealed class ExternalAuthenticationProviderTests
     public async Task FindUserAsyncWithNonExternalAssertionShouldReturnNull()
     {
         var assertion = new Mock<IAuthenticationAssertion>().Object;
-        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(), new Mock<IUserRepository>().Object);
+        var result = await ((IAuthenticationUserResolver)_provider).FindUserAsync(assertion, new AuthenticationContext(), new Mock<IUserRepository>().Object);
         Assert.That(result, Is.Null);
     }
 
@@ -165,7 +165,7 @@ internal sealed class ExternalAuthenticationProviderTests
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(TenantId: tenantId), repoMock.Object);
+        var result = await ((IAuthenticationUserResolver)_provider).FindUserAsync(assertion, new AuthenticationContext(TenantId: tenantId), repoMock.Object);
 
         Assert.That(result, Is.SameAs(user));
     }
@@ -183,7 +183,7 @@ internal sealed class ExternalAuthenticationProviderTests
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(), repoMock.Object);
+        var result = await ((IAuthenticationUserResolver)_provider).FindUserAsync(assertion, new AuthenticationContext(), repoMock.Object);
 
         Assert.That(result, Is.SameAs(user));
     }
@@ -202,7 +202,7 @@ internal sealed class ExternalAuthenticationProviderTests
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(TenantId: tenantId), repoMock.Object);
+        var result = await ((IAuthenticationUserResolver)_provider).FindUserAsync(assertion, new AuthenticationContext(TenantId: tenantId), repoMock.Object);
 
         Assert.That(result, Is.SameAs(user));
     }
@@ -220,7 +220,7 @@ internal sealed class ExternalAuthenticationProviderTests
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(), repoMock.Object);
+        var result = await ((IAuthenticationUserResolver)_provider).FindUserAsync(assertion, new AuthenticationContext(), repoMock.Object);
 
         Assert.That(result, Is.EqualTo(user));
     }
@@ -238,7 +238,7 @@ internal sealed class ExternalAuthenticationProviderTests
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(TenantId: tenantId), repoMock.Object);
+        var result = await ((IAuthenticationUserResolver)_provider).FindUserAsync(assertion, new AuthenticationContext(TenantId: tenantId), repoMock.Object);
 
         Assert.That(result, Is.SameAs(user));
     }
@@ -255,7 +255,7 @@ internal sealed class ExternalAuthenticationProviderTests
         repoMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _provider.FindUserAsync(assertion, new AuthenticationContext(), repoMock.Object);
+        var result = await ((IAuthenticationUserResolver)_provider).FindUserAsync(assertion, new AuthenticationContext(), repoMock.Object);
 
         Assert.That(result, Is.SameAs(user));
     }

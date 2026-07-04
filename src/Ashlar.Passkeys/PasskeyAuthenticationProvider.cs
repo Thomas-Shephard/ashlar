@@ -6,7 +6,7 @@ namespace Ashlar.Passkeys;
 /// Authenticates verified passkey assertions against stored Ashlar credentials.
 /// </summary>
 /// <param name="options">The passkey options.</param>
-public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> options) : IPrimaryAuthenticationProvider, ISecondaryAuthenticationFactorProvider
+public sealed class PasskeyAuthenticationProvider(IOptions<PasskeyOptions> options) : IPrimaryAuthenticationProvider, ISecondaryAuthenticationFactorProvider, IAuthenticationUserResolver
 {
     private readonly PasskeyOptions _options = options.Value;
 

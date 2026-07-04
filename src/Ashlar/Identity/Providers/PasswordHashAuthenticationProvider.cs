@@ -6,7 +6,7 @@ namespace Ashlar.Identity.Providers;
 /// Base class for authentication providers that validate raw submissions against stored hashes.
 /// </summary>
 /// <param name="hasherSelector">Hashing component used to verify submissions and produce upgraded hashes.</param>
-public abstract class PasswordHashAuthenticationProvider(PasswordHasherSelector hasherSelector) : IPrimaryAuthenticationProvider
+public abstract class PasswordHashAuthenticationProvider(PasswordHasherSelector hasherSelector) : IPrimaryAuthenticationProvider, IAuthenticationUserResolver
 {
     /// <summary>
     /// Gets the hashing component used by derived providers.

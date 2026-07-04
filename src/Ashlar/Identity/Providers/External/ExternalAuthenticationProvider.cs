@@ -5,7 +5,7 @@ namespace Ashlar.Identity.Providers.External;
 /// </summary>
 /// <param name="supportedType">External provider family supported by this instance.</param>
 /// <param name="providerName">Configured external provider name.</param>
-public abstract class ExternalAuthenticationProvider(ProviderType supportedType, string providerName) : IPrimaryAuthenticationProvider
+public abstract class ExternalAuthenticationProvider(ProviderType supportedType, string providerName) : IPrimaryAuthenticationProvider, IAuthenticationUserResolver
 {
     /// <summary>
     /// Provider key this instance accepts.
