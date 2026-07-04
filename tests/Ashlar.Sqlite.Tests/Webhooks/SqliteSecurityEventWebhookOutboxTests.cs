@@ -611,7 +611,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         services.AddAshlarSqliteSecurityEventWebhookDispatcher(
             options => options.BatchSize = 7,
             webhooks => webhooks.DestinationPolicy = AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks,
-            builder => builder.ConfigureHttpClient(client => client.DefaultRequestHeaders.Add("X-Test", "configured")));
+            client => client.DefaultRequestHeaders.Add("X-Test", "configured"));
 
         await using var provider = services.BuildServiceProvider();
 
@@ -628,12 +628,13 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     }
 
     [Test]
-    public async Task HostedServiceRegistrationIsOptInAndDispatcherAllowsNullHttpClientConfigure()
+    public async Task HostedServiceRegistrationIsOptInAndPassesThroughHttpClientConfigure()
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddAshlarSqlite("Data Source=:memory:");
-        services.AddAshlarSqliteSecurityEventWebhookHostedService();
+        services.AddAshlarSqliteSecurityEventWebhookHostedService(
+            configureHttpClient: client => client.DefaultRequestHeaders.Add("X-Test", "configured"));
 
         await using var provider = services.BuildServiceProvider();
 
@@ -642,6 +643,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
             Assert.That(provider.GetServices<IHostedService>().Any(service => service is SqliteSecurityEventWebhookOutboxHostedService), Is.True);
             Assert.That(provider.GetService<IAshlarSecurityEventWebhookEnqueuer>(), Is.InstanceOf<SqliteSecurityEventWebhookEnqueuer>());
             Assert.That(provider.GetService<SqliteSecurityEventWebhookOutboxDispatcher>(), Is.Not.Null);
+            Assert.That(provider.GetRequiredService<IHttpClientFactory>().CreateClient(SqliteSecurityEventWebhookOutboxDispatcher.HttpClientName).DefaultRequestHeaders.GetValues("X-Test").Single(), Is.EqualTo("configured"));
         }
     }
 
@@ -806,17 +808,27 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
     }
 
     [Test]
-    public async Task DispatcherNamedHttpClientDisablesAutomaticRedirects()
+    public async Task DispatcherNamedHttpClientPreservesHardenedHandlerWithSafeConfiguration()
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddAshlarSqlite("Data Source=:memory:");
-        services.AddAshlarSqliteSecurityEventWebhookDispatcher();
+        services.AddAshlarSqliteSecurityEventWebhookDispatcher(configureHttpClient: client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(12);
+            client.DefaultRequestHeaders.Add("X-Test", "configured");
+        });
         await using var provider = services.BuildServiceProvider();
         using var handler = provider.GetRequiredService<IHttpMessageHandlerFactory>()
             .CreateHandler(SqliteSecurityEventWebhookOutboxDispatcher.HttpClientName);
+        var httpClient = provider.GetRequiredService<IHttpClientFactory>().CreateClient(SqliteSecurityEventWebhookOutboxDispatcher.HttpClientName);
 
-        Assert.That(ContainsHardenedSocketsHandler(handler), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ContainsHardenedSocketsHandler(handler), Is.True);
+            Assert.That(httpClient.Timeout, Is.EqualTo(TimeSpan.FromSeconds(12)));
+            Assert.That(httpClient.DefaultRequestHeaders.GetValues("X-Test").Single(), Is.EqualTo("configured"));
+        }
     }
 
     private static AshlarSecurityEventWebhookDestinationValidator CreateDestinationValidator()

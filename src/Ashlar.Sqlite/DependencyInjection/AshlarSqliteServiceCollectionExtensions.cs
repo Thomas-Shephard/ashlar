@@ -272,13 +272,13 @@ public static class AshlarSqliteServiceCollectionExtensions
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="configure">Optional webhook outbox configuration.</param>
     /// <param name="configureWebhooks">Optional webhook destination configuration.</param>
-    /// <param name="configureHttpClient">Optional HTTP client builder configuration.</param>
+    /// <param name="configureHttpClient">Optional <see cref="HttpClient" /> configuration. The primary handler is Ashlar-owned.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarSqliteSecurityEventWebhookDispatcher(
         this IServiceCollection services,
         Action<SqliteSecurityEventWebhookOutboxOptions>? configure = null,
         Action<AshlarSecurityEventWebhookOptions>? configureWebhooks = null,
-        Action<IHttpClientBuilder>? configureHttpClient = null)
+        Action<HttpClient>? configureHttpClient = null)
     {
         ArgumentNullException.ThrowIfNull(services);
 
@@ -295,7 +295,10 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.TryAddSingleton<AshlarSecurityEventWebhookDestinationValidator>();
         var httpClientBuilder = services.AddHttpClient(SqliteSecurityEventWebhookOutboxDispatcher.HttpClientName)
             .ConfigurePrimaryHttpMessageHandler(CreateWebhookHttpMessageHandler);
-        configureHttpClient?.Invoke(httpClientBuilder);
+        if (configureHttpClient != null)
+        {
+            httpClientBuilder.ConfigureHttpClient(configureHttpClient);
+        }
         services.TryAddScoped<AshlarSecurityEventWebhookOutboxDispatcherDependencies<SqliteSecurityEventWebhookOutboxOptions>>();
         services.TryAddScoped<SqliteSecurityEventWebhookOutboxDispatcher>();
 
@@ -308,13 +311,13 @@ public static class AshlarSqliteServiceCollectionExtensions
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="configure">Optional webhook outbox configuration.</param>
     /// <param name="configureWebhooks">Optional webhook destination configuration.</param>
-    /// <param name="configureHttpClient">Optional HTTP client builder configuration.</param>
+    /// <param name="configureHttpClient">Optional <see cref="HttpClient" /> configuration. The primary handler is Ashlar-owned.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarSqliteSecurityEventWebhookHostedService(
         this IServiceCollection services,
         Action<SqliteSecurityEventWebhookOutboxOptions>? configure = null,
         Action<AshlarSecurityEventWebhookOptions>? configureWebhooks = null,
-        Action<IHttpClientBuilder>? configureHttpClient = null)
+        Action<HttpClient>? configureHttpClient = null)
     {
         ArgumentNullException.ThrowIfNull(services);
 
