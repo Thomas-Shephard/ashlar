@@ -99,7 +99,7 @@ internal static class PasskeyEndpoints
 
     private static async Task<IResult> StartAuthenticationAsync(IPasskeyService passkeys, HttpContext httpContext, CancellationToken cancellationToken)
     {
-        var result = await passkeys.StartAuthenticationAsync(new StartPasskeyAuthenticationRequest(Audit: httpContext.ToAuditContext()), cancellationToken);
+        var result = await passkeys.StartAuthenticationAsync(new StartPasskeyAuthenticationRequest(Audit: httpContext.ToAuditContext()) { Tenant = httpContext.ToTenantContext() }, cancellationToken);
         if (result.Succeeded && result.Value != null)
         {
             return Results.Json(new { result.Value.ChallengeId, result.Value.ExpiresAt, options = JsonDocument.Parse(result.Value.OptionsJson).RootElement });
@@ -142,7 +142,7 @@ internal static class PasskeyEndpoints
 
     private static async Task<IResult> StartFactorAsync(PasskeyStartFactorSampleRequest request, IPasskeyService passkeys, HttpContext httpContext, CancellationToken cancellationToken)
     {
-        var result = await passkeys.StartFactorAsync(new StartPasskeyFactorRequest(request.HandshakeToken, request.FactorType ?? "passkey", httpContext.ToAuditContext()), cancellationToken);
+        var result = await passkeys.StartFactorAsync(new StartPasskeyFactorRequest(request.HandshakeToken, request.FactorType ?? "passkey", httpContext.ToAuditContext()) { Tenant = httpContext.ToTenantContext() }, cancellationToken);
         if (result.Succeeded && result.Value != null)
         {
             return Results.Json(new { result.Value.ChallengeId, result.Value.ExpiresAt, options = JsonDocument.Parse(result.Value.OptionsJson).RootElement });

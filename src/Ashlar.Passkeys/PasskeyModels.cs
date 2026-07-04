@@ -47,7 +47,11 @@ public sealed record CompletePasskeyRegistrationRequest(Guid ChallengeId, JsonEl
 /// </summary>
 /// <param name="UserId">The optional user id for user-scoped ceremonies.</param>
 /// <param name="Audit">The optional audit context.</param>
-public sealed record StartPasskeyAuthenticationRequest(Guid? UserId = null, AuditContext? Audit = null);
+public sealed record StartPasskeyAuthenticationRequest(Guid? UserId = null, AuditContext? Audit = null)
+{
+    /// <summary>Tenant scope. Omit or use <see cref="TenantContext.Global" /> for global users; this is not an all-tenant scope.</summary>
+    public TenantContext? Tenant { get; init; }
+}
 /// <summary>
 /// Represents a request to complete passkey authentication.
 /// </summary>
@@ -62,7 +66,11 @@ public sealed record CompletePasskeyAuthenticationRequest(Guid ChallengeId, Json
 /// <param name="HandshakeToken">The MFA handshake token.</param>
 /// <param name="FactorType">The requested factor type.</param>
 /// <param name="Audit">The optional audit context.</param>
-public sealed record StartPasskeyFactorRequest(string? HandshakeToken, string FactorType = "passkey", AuditContext? Audit = null);
+public sealed record StartPasskeyFactorRequest(string? HandshakeToken, string FactorType = "passkey", AuditContext? Audit = null)
+{
+    /// <summary>Tenant scope for the pending authentication handshake. Omit or use <see cref="TenantContext.Global" /> for global users; this is not an all-tenant scope.</summary>
+    public TenantContext? Tenant { get; init; }
+}
 /// <summary>
 /// Represents a request to complete passkey MFA factor verification.
 /// </summary>
