@@ -21,7 +21,7 @@ public sealed class AshlarSignInManager(
     private readonly IOptionsMonitor<AshlarSessionAuthenticationOptions> _options = options ?? throw new ArgumentNullException(nameof(options));
     private readonly AshlarSessionRegistration _registration = registration ?? throw new ArgumentNullException(nameof(registration));
 
-    public async Task<AuthenticationSession> SignInAsync(
+    public async Task<CreatedAuthenticationSession> SignInAsync(
         HttpContext httpContext,
         Guid userId,
         CreateAuthenticationSessionRequest? request = null,

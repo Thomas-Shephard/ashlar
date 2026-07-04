@@ -14,8 +14,8 @@ public interface IAshlarSignInManager
     /// <param name="userId">The user to sign in.</param>
     /// <param name="request">Optional session metadata such as lifetime, IP address, user agent, and correlation ID.</param>
     /// <param name="cancellationToken">A token used to cancel the operation.</param>
-    /// <returns>The created authentication session. The raw token is written only to the response cookie.</returns>
-    Task<AuthenticationSession> SignInAsync(
+    /// <returns>Public details for the created authentication session. The raw token is written only to the response cookie.</returns>
+    Task<CreatedAuthenticationSession> SignInAsync(
         HttpContext httpContext,
         Guid userId,
         CreateAuthenticationSessionRequest? request = null,

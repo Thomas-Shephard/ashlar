@@ -295,7 +295,7 @@ internal sealed class MfaPolicyEvaluatorsTests
             new HashSet<string> { "totp" },
             new HashSet<string>());
         handshakeService.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
+            .ReturnsAsync(Result.Success(CreateHandshakeCreated(handshake, "token")));
 
         var result = await orchestrator.AuthenticateAsync(_context, assertion.Object);
 
@@ -355,6 +355,20 @@ internal sealed class MfaPolicyEvaluatorsTests
             RevokedAt = revokedAt,
             Status = status
         };
+    }
+
+    private static AuthenticationHandshakeCreated CreateHandshakeCreated(AuthenticationHandshake handshake, string token)
+    {
+        return new AuthenticationHandshakeCreated(
+            new CreatedAuthenticationHandshake(
+                handshake.Id,
+                handshake.UserId,
+                handshake.TenantId,
+                handshake.CreatedAt,
+                handshake.ExpiresAt,
+                handshake.RequiredFactors,
+                handshake.Metadata),
+            token);
     }
 
     private sealed class StaticMfaPolicyEvaluator(MfaPolicyEvaluation evaluation) : IMfaPolicyEvaluator

@@ -120,7 +120,7 @@ internal static class HttpContextExtensions
         IAshlarSignInManager signInManager,
         IAuthenticationSessionService sessionService,
         Guid userId,
-        AuthenticationSession session,
+        CreatedAuthenticationSession session,
         CancellationToken cancellationToken)
     {
         Exception? revocationException = null;

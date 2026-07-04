@@ -10,7 +10,7 @@ public interface IAuthenticationHandshakeService
     /// </summary>
     /// <param name="request">The handshake creation details.</param>
     /// <param name="cancellationToken">A token that can cancel handshake creation.</param>
-    /// <returns>The created handshake and one-time raw token. Return the token to the client once; do not log or persist this value.</returns>
+    /// <returns>Public handshake details and one-time raw token. Return the token to the client once; do not log or persist this value. Token hashes are not returned.</returns>
     Task<Result<AuthenticationHandshakeCreated>> CreateHandshakeAsync(CreateAuthenticationHandshakeRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>

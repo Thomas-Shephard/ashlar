@@ -335,7 +335,7 @@ internal sealed class SecurityAuditEventTests
             Assert.That(securityEvent.IpAddress, Is.EqualTo("127.0.0.1"));
             Assert.That(securityEvent.UserAgent, Is.EqualTo("agent"));
             Assert.That(securityEvent.Properties?.Values ?? Array.Empty<string>(), Does.Not.Contain(result.Token));
-            Assert.That(result.Session.TokenHash, Is.Not.EqualTo(result.Token));
+            Assert.That(result.Session.GetType().GetProperty("TokenHash"), Is.Null);
         }
     }
 

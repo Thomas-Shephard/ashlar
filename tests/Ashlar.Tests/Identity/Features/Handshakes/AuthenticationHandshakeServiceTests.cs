@@ -3,6 +3,7 @@ using Ashlar.Identity.Notifications;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Security.Tokens;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
@@ -60,6 +61,11 @@ internal sealed class AuthenticationHandshakeServiceTests
     {
         var userId = Guid.NewGuid();
         var requiredFactors = new[] { "totp", "email" };
+        AuthenticationHandshake? storedHandshake = null;
+        _repositoryMock
+            .Setup(r => r.CreateAsync(It.IsAny<AuthenticationHandshake>(), It.IsAny<CancellationToken>()))
+            .Callback<AuthenticationHandshake, CancellationToken>((handshake, _) => storedHandshake = handshake)
+            .Returns(Task.CompletedTask);
 
         var result = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(userId, requiredFactors));
 
@@ -73,14 +79,28 @@ internal sealed class AuthenticationHandshakeServiceTests
             Assert.That(result.Succeeded, Is.True);
             Assert.That(token, Is.EqualTo("raw-token"));
             Assert.That(handshake.UserId, Is.EqualTo(userId));
-            Assert.That(handshake.TokenHash, Is.EqualTo("hashed:raw-token"));
+            Assert.That(storedHandshake?.TokenHash, Is.EqualTo("hashed:raw-token"));
             Assert.That(handshake.RequiredFactors, Is.EquivalentTo(requiredFactors));
-            Assert.That(handshake.VerifiedFactors, Is.Empty);
-            Assert.That(handshake.IsCompleted, Is.False);
-            Assert.That(handshake.IsRevoked, Is.False);
+            Assert.That(storedHandshake?.VerifiedFactors, Is.Empty);
+            Assert.That(storedHandshake?.IsCompleted, Is.False);
+            Assert.That(storedHandshake?.IsRevoked, Is.False);
         }
 
         _repositoryMock.Verify(r => r.CreateAsync(It.Is<AuthenticationHandshake>(h => h.Id == handshake.Id), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task CreateHandshakeAsyncResultShouldNotExposeTokenHash()
+    {
+        var result = await _service.CreateHandshakeAsync(new CreateAuthenticationHandshakeRequest(Guid.NewGuid(), ["totp"]));
+        var json = JsonSerializer.Serialize(result.Value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value!.Handshake.GetType().GetProperty("TokenHash"), Is.Null);
+            Assert.That(json, Does.Not.Contain("TokenHash"));
+            Assert.That(json, Does.Not.Contain("hashed:raw-token"));
+        }
     }
 
     [Test]

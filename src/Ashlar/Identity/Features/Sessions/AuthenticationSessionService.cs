@@ -161,7 +161,7 @@ public sealed class AuthenticationSessionService(
 
         await transaction.CommitAsync(cancellationToken);
 
-        return new CreateAuthenticationSessionResult(token, session);
+        return new CreateAuthenticationSessionResult(token, ToCreatedSession(session));
     }
 
     private async Task<IUser> GetUserForTenantValidationAsync(
@@ -190,6 +190,21 @@ public sealed class AuthenticationSessionService(
         }
 
         return user;
+    }
+
+    private static CreatedAuthenticationSession ToCreatedSession(AuthenticationSession session)
+    {
+        return new CreatedAuthenticationSession(
+            session.Id,
+            session.UserId,
+            session.TenantId,
+            session.CreatedAt,
+            session.AuthenticatedAt,
+            session.PrimaryProvider,
+            session.ExpiresAt,
+            session.IpAddress,
+            session.UserAgent,
+            session.Metadata);
     }
 
     public async Task<ValidateAuthenticationSessionResult> ValidateSessionAsync(
