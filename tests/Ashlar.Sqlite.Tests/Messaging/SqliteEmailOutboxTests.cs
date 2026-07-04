@@ -74,8 +74,8 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
             Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxDispatcher<TestTransport>(null!, _timeProvider, options));
             Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxDispatcher<TestTransport>(services, null!, options));
             Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxDispatcher<TestTransport>(services, _timeProvider, null!));
-            Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxHostedService<TestTransport>(null!, options));
-            Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxHostedService<TestTransport>(services, null!));
+            Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxHostedService(null!, options));
+            Assert.Throws<ArgumentNullException>(() => _ = new SqliteEmailOutboxHostedService(services, null!));
         }
     }
 
@@ -88,7 +88,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.DoesNotThrow(() => _ = new SqliteEmailOutboxDispatcher<TestTransport>(services, _timeProvider, options, NullLogger<SqliteEmailOutboxDispatcher<TestTransport>>.Instance));
-            Assert.DoesNotThrow(() => _ = new SqliteEmailOutboxHostedService<TestTransport>(services, options, NullLogger<SqliteEmailOutboxHostedService<TestTransport>>.Instance));
+            Assert.DoesNotThrow(() => _ = new SqliteEmailOutboxHostedService(services, options, NullLogger<SqliteEmailOutboxHostedService>.Instance));
         }
     }
 
@@ -602,7 +602,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
         };
         await SeedMessageAsync("hosted@example.com");
         await using var provider = BuildDispatcherProvider(transport, new SqliteEmailOutboxOptions { PollingInterval = TimeSpan.FromMilliseconds(1) }, trackForTearDown: false);
-        var hostedService = new SqliteEmailOutboxHostedService<TestTransport>(
+        var hostedService = new SqliteEmailOutboxHostedService(
             provider,
             Options.Create(new SqliteEmailOutboxOptions { PollingInterval = TimeSpan.FromMilliseconds(1) }));
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -618,7 +618,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
     public async Task HostedServiceThrowsForInvalidOptions()
     {
         await using var provider = new ServiceCollection().BuildServiceProvider();
-        var hostedService = new SqliteEmailOutboxHostedService<TestTransport>(
+        var hostedService = new SqliteEmailOutboxHostedService(
             provider,
             Options.Create(new SqliteEmailOutboxOptions { BatchSize = 0 }));
 
@@ -644,7 +644,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
         await SeedMessageAsync("hosted-one@example.com");
         await SeedMessageAsync("hosted-two@example.com");
         await using var provider = BuildDispatcherProvider(transport, new SqliteEmailOutboxOptions { BatchSize = 1, PollingInterval = TimeSpan.FromHours(1) }, trackForTearDown: false);
-        var hostedService = new SqliteEmailOutboxHostedService<TestTransport>(
+        var hostedService = new SqliteEmailOutboxHostedService(
             provider,
             Options.Create(new SqliteEmailOutboxOptions { BatchSize = 1, PollingInterval = TimeSpan.FromHours(1) }));
 
@@ -660,7 +660,7 @@ internal sealed class SqliteEmailOutboxTests : SqliteTestBase
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var services = new ServiceCollection();
         await using var provider = services.BuildServiceProvider();
-        var hostedService = new SqliteEmailOutboxHostedService<TestTransport>(
+        var hostedService = new SqliteEmailOutboxHostedService(
             provider,
             Options.Create(new SqliteEmailOutboxOptions { PollingInterval = TimeSpan.FromMilliseconds(1) }));
 

@@ -8,25 +8,26 @@ namespace Ashlar.Postgres.Tests.DependencyInjection;
 internal sealed class AshlarPostgresEmailOutboxServiceCollectionExtensionsTests
 {
     [Test]
-    public void AddAshlarPostgresEmailOutboxSenderRegistersRequiredServices()
+    public async Task AddAshlarPostgresEmailOutboxSenderRegistersRequiredServices()
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddAshlarPostgres("Host=localhost;Database=test");
         services.AddAshlarPostgresEmailOutboxSender();
 
-        var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.GetService<IEmailSender>(), Is.InstanceOf<PostgresEmailOutboxSender>());
+            Assert.That(scope.ServiceProvider.GetService<IEmailSender>(), Is.InstanceOf<PostgresEmailOutboxSender>());
             Assert.That(provider.GetService<IOptions<PostgresEmailOutboxOptions>>(), Is.Not.Null);
             Assert.That(provider.GetService<TimeProvider>(), Is.Not.Null);
         }
     }
 
     [Test]
-    public void AddAshlarPostgresEmailOutboxSenderConfiguresOptions()
+    public async Task AddAshlarPostgresEmailOutboxSenderConfiguresOptions()
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -36,7 +37,7 @@ internal sealed class AshlarPostgresEmailOutboxServiceCollectionExtensionsTests
             options.BatchSize = 123;
         });
 
-        var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptions<PostgresEmailOutboxOptions>>().Value;
 
         Assert.That(options.BatchSize, Is.EqualTo(123));
@@ -56,47 +57,36 @@ internal sealed class AshlarPostgresEmailOutboxServiceCollectionExtensionsTests
     }
 
     [Test]
-    public void AddAshlarPostgresEmailOutboxSenderRegistersEnqueueSender()
-    {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddAshlarPostgres("Host=localhost;Database=test");
-        services.AddAshlarPostgresEmailOutboxSender();
-
-        var provider = services.BuildServiceProvider();
-
-        Assert.That(provider.GetService<IEmailSender>(), Is.InstanceOf<PostgresEmailOutboxSender>());
-    }
-
-    [Test]
-    public void AddAshlarPostgresEmailOutboxDispatcherRegistersDispatcher()
+    public async Task AddAshlarPostgresEmailOutboxDispatcherRegistersDispatcher()
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddAshlarPostgres("Host=localhost;Database=test");
         services.AddAshlarPostgresEmailOutboxDispatcher<TestTransport>();
 
-        var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
 
-        Assert.That(provider.GetService<IEmailOutboxDispatcher>(), Is.InstanceOf<PostgresEmailOutboxDispatcher<TestTransport>>());
+        Assert.That(scope.ServiceProvider.GetService<IEmailOutboxDispatcher>(), Is.InstanceOf<PostgresEmailOutboxDispatcher<TestTransport>>());
     }
 
     [Test]
-    public void AddAshlarPostgresEmailOutboxHostedServiceRegistersBackgroundService()
+    public async Task AddAshlarPostgresEmailOutboxHostedServiceRegistersBackgroundService()
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddAshlarPostgres("Host=localhost;Database=test");
         services.AddAshlarPostgresEmailOutboxHostedService<TestTransport>();
 
-        var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
         var hostedServices = provider.GetServices<IHostedService>().ToList();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(hostedServices.Any(s => s is PostgresEmailOutboxHostedService), Is.True);
-            Assert.That(provider.GetService<IEmailOutboxDispatcher>(), Is.InstanceOf<PostgresEmailOutboxDispatcher<TestTransport>>());
-            Assert.That(provider.GetService<IEmailSender>(), Is.InstanceOf<PostgresEmailOutboxSender>());
+            Assert.That(scope.ServiceProvider.GetService<IEmailOutboxDispatcher>(), Is.InstanceOf<PostgresEmailOutboxDispatcher<TestTransport>>());
+            Assert.That(scope.ServiceProvider.GetService<IEmailSender>(), Is.InstanceOf<PostgresEmailOutboxSender>());
         }
     }
 
