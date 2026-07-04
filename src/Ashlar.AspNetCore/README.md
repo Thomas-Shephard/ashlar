@@ -66,8 +66,6 @@ services.AddAshlarAspNetCoreAuthorization(options =>
     options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.RecoveryCode);
     options.StepUp.AllowedFactors.Add(AuthenticationFactorTypes.Passkey);
 
-    options.RequireFreshMfa();
-    options.RequireFreshMfaIfAvailable();
     options.AddAshlarStepUpPolicy("Account.Security", stepUp =>
     {
         stepUp.FreshnessWindow = TimeSpan.FromMinutes(5);
@@ -76,13 +74,13 @@ services.AddAshlarAspNetCoreAuthorization(options =>
 });
 ```
 
-Use the named policy or endpoint helper on sensitive endpoints:
+`AddAshlarAspNetCoreAuthorization()` registers the default strict and conditional step-up policies. Use the named policy or endpoint helper on sensitive endpoints:
 
 ```csharp
 app.MapPost("/account/change-email", ChangeEmailAsync)
     .RequireFreshMfa();
 
-app.MapDelete("/api/sessions/{id:guid}", RevokeSessionForCurrentUserAsync)
+app.MapGet("/account/security-summary", GetSecuritySummaryAsync)
     .RequireFreshMfaIfAvailable();
 
 app.MapDelete("/api/passkeys/{id:guid}", DeletePasskeyAsync)

@@ -82,9 +82,9 @@ public static class AshlarAspNetCoreServiceCollectionExtensions
     /// <summary>
     /// Adds Ashlar ASP.NET Core authorization integration.
     /// </summary>
-    /// <param name="services">The services value.</param>
-    /// <param name="configure">The configure value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configure">The optional authorization options callback.</param>
+    /// <returns>The service collection.</returns>
     public static IServiceCollection AddAshlarAspNetCoreAuthorization(
         this IServiceCollection services,
         Action<AshlarAuthorizationOptions>? configure = null)
@@ -93,6 +93,7 @@ public static class AshlarAspNetCoreServiceCollectionExtensions
 
         var options = new AshlarAuthorizationOptions();
         configure?.Invoke(options);
+        options.EnsureDefaultStepUpPolicies();
 
         services.Configure<AshlarAuthorizationOptions>(opt =>
         {

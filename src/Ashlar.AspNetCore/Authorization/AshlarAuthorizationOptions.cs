@@ -8,6 +8,7 @@ namespace Ashlar.AspNetCore.Authorization;
 public sealed class AshlarAuthorizationOptions
 {
     private readonly Dictionary<string, AshlarScopeOptions> _policyScopes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, AuthorizationPolicy> _policies = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Gets the registered policy scope options.
@@ -115,7 +116,20 @@ public sealed class AshlarAuthorizationOptions
         AddAshlarStepUpIfAvailablePolicy(AshlarStepUpPolicyNames.FreshMfaIfAvailable, configure);
     }
 
-    internal List<(string Name, AuthorizationPolicy Policy)> Policies { get; } = [];
+    internal IReadOnlyDictionary<string, AuthorizationPolicy> Policies => _policies;
+
+    internal void EnsureDefaultStepUpPolicies()
+    {
+        if (!_policies.ContainsKey(AshlarStepUpPolicyNames.FreshMfa))
+        {
+            RequireFreshMfa();
+        }
+
+        if (!_policies.ContainsKey(AshlarStepUpPolicyNames.FreshMfaIfAvailable))
+        {
+            RequireFreshMfaIfAvailable();
+        }
+    }
 
     private void ConfigurePolicy(string policyName, IAuthorizationRequirement requirement, Action<AshlarScopeOptions>? configureScope)
     {
@@ -123,7 +137,7 @@ public sealed class AshlarAuthorizationOptions
         builder.AddRequirements(requirement);
         builder.RequireAuthenticatedUser();
 
-        Policies.Add((policyName, builder.Build()));
+        _policies[policyName] = builder.Build();
 
         if (configureScope != null)
         {

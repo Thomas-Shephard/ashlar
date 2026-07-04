@@ -834,12 +834,36 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
         services.AddSingleton<IStepUpAuthenticationService>(Mock.Of<IStepUpAuthenticationService>());
         services.AddSingleton(Mock.Of<IAccountSecurityService>());
         services.AddSingleton(Mock.Of<Ashlar.Authorization.Abstractions.IAuthorizationEvaluator>());
-        services.AddAshlarAspNetCoreAuthorization(options => options.RequireFreshMfa());
+        services.AddAshlarAspNetCoreAuthorization();
         using var provider = services.BuildServiceProvider();
 
         var handlers = provider.GetServices<IAuthorizationHandler>();
 
         Assert.That(handlers.OfType<AshlarStepUpAuthorizationHandler>(), Has.Exactly(1).Items);
+    }
+
+    [Test]
+    public async Task AddAshlarAspNetCoreAuthorizationShouldRegisterDefaultStrictPolicy()
+    {
+        var requirement = await ResolveStepUpRequirementAsync(AshlarStepUpPolicyNames.FreshMfa);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requirement, Is.Not.Null);
+            Assert.That(requirement?.Mode, Is.EqualTo(AshlarStepUpMode.Required));
+        }
+    }
+
+    [Test]
+    public async Task AddAshlarAspNetCoreAuthorizationShouldRegisterDefaultConditionalPolicy()
+    {
+        var requirement = await ResolveStepUpRequirementAsync(AshlarStepUpPolicyNames.FreshMfaIfAvailable);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requirement, Is.Not.Null);
+            Assert.That(requirement?.Mode, Is.EqualTo(AshlarStepUpMode.IfAvailable));
+        }
     }
 
     [Test]
@@ -871,6 +895,55 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
             Assert.That(requirement?.FreshnessWindow, Is.EqualTo(TimeSpan.FromMinutes(3)));
             Assert.That(requirement?.AllowedProviders, Is.EquivalentTo(PasskeyProvider));
             Assert.That(requirement?.AllowedFactors, Is.EquivalentTo(TotpAndPasskeyFactors));
+        }
+    }
+
+    [Test]
+    public async Task RequireFreshMfaShouldReplaceDefaultStrictPolicy()
+    {
+        var requirement = await ResolveStepUpRequirementAsync(
+            AshlarStepUpPolicyNames.FreshMfa,
+            options =>
+            {
+                options.StepUp.FreshnessWindow = TimeSpan.FromMinutes(20);
+                options.RequireFreshMfa(stepUp =>
+                {
+                    stepUp.FreshnessWindow = TimeSpan.FromMinutes(3);
+                    stepUp.AllowedFactors.Add(AuthenticationFactorTypes.Passkey);
+                });
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requirement, Is.Not.Null);
+            Assert.That(requirement?.FreshnessWindow, Is.EqualTo(TimeSpan.FromMinutes(3)));
+            Assert.That(requirement?.Mode, Is.EqualTo(AshlarStepUpMode.Required));
+            Assert.That(requirement?.AllowedFactors, Is.EquivalentTo([AuthenticationFactorTypes.Passkey]));
+        }
+    }
+
+    [Test]
+    public async Task RequireFreshMfaIfAvailableShouldReplaceDefaultConditionalPolicy()
+    {
+        var requirement = await ResolveStepUpRequirementAsync(
+            AshlarStepUpPolicyNames.FreshMfaIfAvailable,
+            options =>
+            {
+                options.StepUp.FreshnessWindow = TimeSpan.FromMinutes(20);
+                options.RequireFreshMfaIfAvailable(stepUp =>
+                {
+                    stepUp.FreshnessWindow = TimeSpan.FromMinutes(4);
+                    stepUp.AllowedFactors.Clear();
+                    stepUp.AllowedFactors.Add(AuthenticationFactorTypes.Passkey);
+                });
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requirement, Is.Not.Null);
+            Assert.That(requirement?.FreshnessWindow, Is.EqualTo(TimeSpan.FromMinutes(4)));
+            Assert.That(requirement?.Mode, Is.EqualTo(AshlarStepUpMode.IfAvailable));
+            Assert.That(requirement?.AllowedFactors, Is.EquivalentTo([AuthenticationFactorTypes.Passkey]));
         }
     }
 
@@ -930,16 +1003,25 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     }
 
     [Test]
-    public void RequireFreshMfaEndpointHelperShouldAddDefaultPolicy()
+    public async Task RequireFreshMfaEndpointHelperShouldAddRegisteredDefaultPolicy()
     {
         var builder = WebApplication.CreateSlimBuilder();
+        builder.Services.AddSingleton<IStepUpAuthenticationService>(Mock.Of<IStepUpAuthenticationService>());
+        builder.Services.AddSingleton(Mock.Of<IAccountSecurityService>());
+        builder.Services.AddAshlarAspNetCoreAuthorization();
         var app = builder.Build();
         app.MapGet("/sensitive", () => "ok").RequireFreshMfa();
 
         var dataSource = ((IEndpointRouteBuilder)app).DataSources.Single();
         var metadata = dataSource.Endpoints.Single().Metadata.GetOrderedMetadata<IAuthorizeData>();
+        var policyProvider = app.Services.GetRequiredService<IAuthorizationPolicyProvider>();
+        var policy = await policyProvider.GetPolicyAsync(metadata.Single().Policy!);
 
-        Assert.That(metadata.Single().Policy, Is.EqualTo(AshlarStepUpPolicyNames.FreshMfa));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata.Single().Policy, Is.EqualTo(AshlarStepUpPolicyNames.FreshMfa));
+            Assert.That(policy?.Requirements.OfType<AshlarStepUpRequirement>(), Has.Exactly(1).Items);
+        }
     }
 
     [Test]
@@ -951,16 +1033,25 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
     }
 
     [Test]
-    public void RequireFreshMfaIfAvailableEndpointHelperShouldAddDefaultPolicy()
+    public async Task RequireFreshMfaIfAvailableEndpointHelperShouldAddRegisteredDefaultPolicy()
     {
         var builder = WebApplication.CreateSlimBuilder();
+        builder.Services.AddSingleton<IStepUpAuthenticationService>(Mock.Of<IStepUpAuthenticationService>());
+        builder.Services.AddSingleton(Mock.Of<IAccountSecurityService>());
+        builder.Services.AddAshlarAspNetCoreAuthorization();
         var app = builder.Build();
         app.MapGet("/sensitive", () => "ok").RequireFreshMfaIfAvailable();
 
         var dataSource = ((IEndpointRouteBuilder)app).DataSources.Single();
         var metadata = dataSource.Endpoints.Single().Metadata.GetOrderedMetadata<IAuthorizeData>();
+        var policyProvider = app.Services.GetRequiredService<IAuthorizationPolicyProvider>();
+        var policy = await policyProvider.GetPolicyAsync(metadata.Single().Policy!);
 
-        Assert.That(metadata.Single().Policy, Is.EqualTo(AshlarStepUpPolicyNames.FreshMfaIfAvailable));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata.Single().Policy, Is.EqualTo(AshlarStepUpPolicyNames.FreshMfaIfAvailable));
+            Assert.That(policy?.Requirements.OfType<AshlarStepUpRequirement>(), Has.Exactly(1).Items);
+        }
     }
 
     [Test]
@@ -1002,6 +1093,22 @@ internal sealed class AshlarStepUpAuthorizationHandlerTests
             new StepUpAuthenticationService(new FixedTimeProvider(Now)),
             httpContextAccessor,
             accountSecurity);
+    }
+
+    private static async Task<AshlarStepUpRequirement?> ResolveStepUpRequirementAsync(
+        string policyName,
+        Action<AshlarAuthorizationOptions>? configure = null)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IStepUpAuthenticationService>(Mock.Of<IStepUpAuthenticationService>());
+        services.AddSingleton(Mock.Of<IAccountSecurityService>());
+        services.AddAshlarAspNetCoreAuthorization(configure);
+        await using var provider = services.BuildServiceProvider();
+        var policyProvider = provider.GetRequiredService<IAuthorizationPolicyProvider>();
+
+        var policy = await policyProvider.GetPolicyAsync(policyName);
+
+        return policy?.Requirements.OfType<AshlarStepUpRequirement>().SingleOrDefault();
     }
 
     private static AuthorizationHandlerContext CreateContext(AuthenticationSession session, AshlarStepUpRequirement requirement)
