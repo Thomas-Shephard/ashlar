@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Ashlar.Messaging;
 using Dapper;
+using Npgsql;
 using Testcontainers.PostgreSql;
 
 namespace Ashlar.Sample.AspNetCore;
@@ -144,27 +145,19 @@ internal static class SampleSchemaInitializer
     public static async Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         await using var scope = services.CreateAsyncScope();
-        var connectionProvider = scope.ServiceProvider.GetRequiredService<IPostgresConnectionProvider>();
-        var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
-        await using (connection)
-        {
-            await connection.Connection.ExecuteAsync(new CommandDefinition("""
-                CREATE TABLE IF NOT EXISTS sample_projects (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                );
+        var dataSource = scope.ServiceProvider.GetRequiredService<NpgsqlDataSource>();
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition("""
+            CREATE TABLE IF NOT EXISTS sample_projects (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
 
-                INSERT INTO sample_projects (id, name) 
-                VALUES ('alpha', 'Project Alpha'), ('beta', 'Project Beta') 
-                ON CONFLICT DO NOTHING;
-            """, transaction: connection.Transaction, cancellationToken: cancellationToken));
-
-            if (connection.Transaction != null)
-            {
-                await connection.Transaction.CommitAsync(cancellationToken);
-            }
-        }
+            INSERT INTO sample_projects (id, name)
+            VALUES ('alpha', 'Project Alpha'), ('beta', 'Project Beta')
+            ON CONFLICT DO NOTHING;
+        """, cancellationToken: cancellationToken));
     }
 }
 

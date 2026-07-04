@@ -2,19 +2,10 @@ using Dapper;
 
 namespace Ashlar.Postgres.Identity;
 
-/// <summary>
-/// Provides postgres bootstrap state repository behavior.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-public sealed class PostgresBootstrapStateRepository(IPostgresConnectionProvider connectionProvider) : IBootstrapStateRepository
+internal sealed class PostgresBootstrapStateRepository(IPostgresConnectionProvider connectionProvider) : IBootstrapStateRepository
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
-    /// <summary>
-    /// Performs the get bootstrap status <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<BootstrapStatus> GetBootstrapStatusAsync(CancellationToken cancellationToken = default)
     {
         const string sql = "SELECT is_initialized FROM ashlar_bootstrap_state WHERE id = 1";
@@ -29,13 +20,6 @@ public sealed class PostgresBootstrapStateRepository(IPostgresConnectionProvider
         }
     }
 
-    /// <summary>
-    /// Performs the mark as initialized <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="initializedAt">The initialized at value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<bool> MarkAsInitializedAsync(Guid userId, DateTimeOffset initializedAt, CancellationToken cancellationToken = default)
     {
         const string sql = """

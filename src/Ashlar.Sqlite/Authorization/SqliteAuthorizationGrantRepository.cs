@@ -4,12 +4,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Authorization;
 
-/// <summary>
-/// Provides SQLite authorization grant repository behavior.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-public sealed class SqliteAuthorizationGrantRepository(ISqliteConnectionProvider connectionProvider, TimeProvider? timeProvider = null)
+internal sealed class SqliteAuthorizationGrantRepository(ISqliteConnectionProvider connectionProvider, TimeProvider? timeProvider = null)
     : IAuthorizationGrantRepository
 {
     private const string IdParameter = "$id";

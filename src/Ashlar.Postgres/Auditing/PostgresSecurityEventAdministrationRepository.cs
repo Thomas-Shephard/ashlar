@@ -2,20 +2,10 @@ using Dapper;
 
 namespace Ashlar.Postgres.Auditing;
 
-/// <summary>
-/// Provides PostgreSQL-backed administrator security event reads.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConnectionProvider connectionProvider) : ISecurityEventAdministrationRepository
+internal sealed class PostgresSecurityEventAdministrationRepository(IPostgresConnectionProvider connectionProvider) : ISecurityEventAdministrationRepository
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
-    /// <summary>
-    /// Searches recorded security events using safe administrator-display fields.
-    /// </summary>
-    /// <param name="request">The search request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The matching security events.</returns>
     public async Task<IReadOnlyList<SecurityEventSummary>> SearchSecurityEventsAsync(SearchSecurityEventsRequest request, CancellationToken cancellationToken = default)
     {
         SearchSecurityEventsRequest.ThrowIfInvalid(request);
@@ -33,12 +23,6 @@ public sealed class PostgresSecurityEventAdministrationRepository(IPostgresConne
         return rows.Select(static row => row.ToStorageRecord().ToSummary()).ToList().AsReadOnly();
     }
 
-    /// <summary>
-    /// Gets a recorded security event by id.
-    /// </summary>
-    /// <param name="request">The detail request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The security event, or <see langword="null" /> when it does not exist.</returns>
     public async Task<SecurityEventSummary?> GetSecurityEventAsync(SecurityEventAdministrationDetailRequest request, CancellationToken cancellationToken = default)
     {
         SecurityEventAdministrationDetailRequest.ThrowIfInvalid(request);

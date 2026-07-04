@@ -2,13 +2,7 @@ using Ashlar.Webhooks.SecurityEvents;
 
 namespace Ashlar.Postgres.Webhooks;
 
-/// <summary>
-/// PostgreSQL-backed manual operations for failed durable security event webhook deliveries.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-/// <param name="securityEventSink">The security event sink value.</param>
-public sealed class PostgresSecurityEventWebhookOutboxOperations(
+internal sealed class PostgresSecurityEventWebhookOutboxOperations(
     IPostgresConnectionProvider connectionProvider,
     TimeProvider timeProvider,
     ISecurityEventSink? securityEventSink = null) : AshlarSecurityEventWebhookOutboxOperationsBase(timeProvider, securityEventSink)
@@ -50,12 +44,6 @@ public sealed class PostgresSecurityEventWebhookOutboxOperations(
 
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
-    /// <summary>
-    /// Applies the PostgreSQL conditional retry state change.
-    /// </summary>
-    /// <param name="deliveryId">The delivery id.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
     protected override async Task<AshlarSecurityEventWebhookOutboxOperationState?> RetryFailedAsync(
         Guid deliveryId,
         CancellationToken cancellationToken)
@@ -63,12 +51,6 @@ public sealed class PostgresSecurityEventWebhookOutboxOperations(
         return await ExecuteOperationAsync(RetrySql, deliveryId, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Applies the PostgreSQL conditional discard state change.
-    /// </summary>
-    /// <param name="deliveryId">The delivery id.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
     protected override async Task<AshlarSecurityEventWebhookOutboxOperationState?> DiscardFailedAsync(
         Guid deliveryId,
         CancellationToken cancellationToken)
@@ -86,12 +68,6 @@ public sealed class PostgresSecurityEventWebhookOutboxOperations(
         return row?.ToState();
     }
 
-    /// <summary>
-    /// Loads PostgreSQL safe state for no-op classification.
-    /// </summary>
-    /// <param name="deliveryId">The delivery id.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The stored safe state, or <see langword="null" /> when the delivery does not exist.</returns>
     protected override async Task<AshlarSecurityEventWebhookOutboxOperationState?> LoadAsync(Guid deliveryId, CancellationToken cancellationToken)
     {
         var row = await PostgresAdminQuery.QuerySingleAsync<OperationRow>(

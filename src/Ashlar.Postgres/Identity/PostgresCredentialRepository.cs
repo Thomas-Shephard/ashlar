@@ -2,12 +2,7 @@ using Dapper;
 
 namespace Ashlar.Postgres.Identity;
 
-/// <summary>
-/// Stores and retrieves credentials in PostgreSQL.
-/// </summary>
-/// <param name="connectionProvider">Provides PostgreSQL connections enlisted in the current Ashlar transaction.</param>
-/// <param name="timeProvider">Supplies timestamps for credential lifecycle updates.</param>
-public sealed class PostgresCredentialRepository(IPostgresConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : ICredentialRepository
+internal sealed class PostgresCredentialRepository(IPostgresConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : ICredentialRepository
 {
     private const string InsertCredentialSql = """
         INSERT INTO ashlar_credentials (id, user_id, provider_type, provider_name, provider_key, version, credential_value, metadata, last_used_at, created_at, updated_at, expires_at, revoked_at, status, purpose)
@@ -98,15 +93,6 @@ public sealed class PostgresCredentialRepository(IPostgresConnectionProvider con
         }
     }
 
-    /// <summary>
-    /// Creates the credential or replaces the existing credential with the same provider key for the same user.
-    /// </summary>
-    /// <param name="credential">The credential to create or replace.</param>
-    /// <param name="cancellationToken">A token that can cancel the database operation.</param>
-    /// <returns>A task that completes when the credential has been stored.</returns>
-    /// <exception cref="CredentialProviderKeyConflictException">
-    /// The credential provider key is already linked to a different user.
-    /// </exception>
     public async Task CreateOrReplaceCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(credential);
@@ -191,7 +177,7 @@ public sealed class PostgresCredentialRepository(IPostgresConnectionProvider con
         ArgumentException.ThrowIfNullOrWhiteSpace(providerName);
 
         const string sql = """
-            UPDATE ashlar_credentials 
+            UPDATE ashlar_credentials
             SET status = @RevokedStatus, revoked_at = @RevokedAt, updated_at = @RevokedAt, version = @NewVersion
             WHERE user_id = @UserId AND provider_type = @Type AND provider_name = @Name AND revoked_at IS NULL AND status = @ActiveStatus
             """;

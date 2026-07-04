@@ -4,10 +4,7 @@ using Ashlar.Identity.RateLimiting.Models;
 
 namespace Ashlar.Sqlite.RateLimiting;
 
-/// <summary>
-/// A SQLite-backed authentication rate limiter for single-instance deployments.
-/// </summary>
-public sealed class SqliteAuthenticationRateLimiter : IAuthenticationRateLimiter
+internal sealed class SqliteAuthenticationRateLimiter : IAuthenticationRateLimiter
 {
     private const string PurposeParameter = "$purpose";
     private const string KeyParameter = "$key";
@@ -24,12 +21,6 @@ public sealed class SqliteAuthenticationRateLimiter : IAuthenticationRateLimiter
 
     internal Func<SqliteConnectionHandle, string, string, CancellationToken, Task>? AfterInsertForTesting { get; set; }
 
-    /// <summary>
-    /// Initializes a configured SQLite authentication rate limiter.
-    /// </summary>
-    /// <param name="connectionProvider">The SQLite connection provider.</param>
-    /// <param name="transactionProvider">The Ashlar transaction provider.</param>
-    /// <param name="timeProvider">The time provider.</param>
     public SqliteAuthenticationRateLimiter(
         ISqliteConnectionProvider connectionProvider,
         IAshlarTransactionProvider transactionProvider,
@@ -57,12 +48,6 @@ public sealed class SqliteAuthenticationRateLimiter : IAuthenticationRateLimiter
         return decision;
     }
 
-    /// <summary>
-    /// Deletes expired rate-limit rows in a bounded batch.
-    /// </summary>
-    /// <param name="maxRows">The maximum number of rows to delete.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The deleted row count.</returns>
     public async Task<int> CleanupExpiredRowsAsync(int maxRows = 500, CancellationToken cancellationToken = default)
     {
         if (maxRows <= 0)

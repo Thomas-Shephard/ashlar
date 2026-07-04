@@ -26,6 +26,8 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
         {
             Assert.That(provider.GetService<NpgsqlDataSource>(), Is.Not.Null);
             Assert.That(provider.GetService<TimeProvider>(), Is.Not.Null);
+            Assert.That(typeof(IPostgresConnectionProvider).IsNotPublic, Is.True);
+            Assert.That(provider.GetService<IPostgresConnectionProvider>(), Is.TypeOf<PostgresTransactionManager>());
             Assert.That(provider.GetService<IAshlarSchemaDiagnostics>(), Is.TypeOf<PostgresSchemaDiagnostics>());
             Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.IUserRepository>(), Is.TypeOf<PostgresUserRepository>());
             Assert.That(provider.GetService<Ashlar.Identity.Abstractions.Repositories.ICredentialRepository>(), Is.TypeOf<PostgresCredentialRepository>());
@@ -67,6 +69,7 @@ internal sealed class AshlarPostgresServiceCollectionExtensionsTests : PostgresT
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<PostgresTransactionManager>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<IPostgresConnectionProvider>(), Is.SameAs(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>()));
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantRepository>(), Is.TypeOf<PostgresAuthorizationGrantRepository>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IAuthorizationGrantAdministrationRepository>(), Is.TypeOf<PostgresAuthorizationGrantAdministrationRepository>());
         }

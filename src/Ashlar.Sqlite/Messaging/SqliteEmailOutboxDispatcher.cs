@@ -7,15 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Sqlite.Messaging;
 
-/// <summary>
-/// A SQLite-backed email outbox dispatcher.
-/// </summary>
-/// <typeparam name="TTransport">The transport type.</typeparam>
-/// <param name="serviceProvider">The service provider value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-/// <param name="options">The options value.</param>
-/// <param name="logger">The logger value.</param>
-public sealed class SqliteEmailOutboxDispatcher<TTransport>(
+internal sealed class SqliteEmailOutboxDispatcher<TTransport>(
     IServiceProvider serviceProvider,
     TimeProvider timeProvider,
     IOptions<SqliteEmailOutboxOptions> options,
@@ -69,11 +61,6 @@ public sealed class SqliteEmailOutboxDispatcher<TTransport>(
     private readonly SqliteEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
     private readonly ILogger<SqliteEmailOutboxDispatcher<TTransport>> _logger = logger ?? NullLogger<SqliteEmailOutboxDispatcher<TTransport>>.Instance;
 
-    /// <summary>
-    /// Processes a single batch of pending email messages.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<int> ProcessBatchAsync(CancellationToken cancellationToken = default)
     {
         if (!SqliteEmailOutboxOptions.Validate(_options))

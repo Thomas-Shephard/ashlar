@@ -4,31 +4,17 @@ using Ashlar.Identity.RateLimiting.Abstractions;
 
 namespace Ashlar.Sqlite.RateLimiting;
 
-/// <summary>
-/// Provides safe authentication rate-limit administration queries against SQLite storage.
-/// </summary>
-public sealed class SqliteAuthenticationRateLimitAdministrationRepository : IAuthenticationRateLimitAdministrationRepository
+internal sealed class SqliteAuthenticationRateLimitAdministrationRepository : IAuthenticationRateLimitAdministrationRepository
 {
     private const string PurposeParameterName = "$purpose";
 
     private readonly ISqliteConnectionProvider _connectionProvider;
 
-    /// <summary>
-    /// Initializes a SQLite-backed rate-limit administration repository.
-    /// </summary>
-    /// <param name="connectionProvider">Connection provider used to query Ashlar rate-limit storage.</param>
     public SqliteAuthenticationRateLimitAdministrationRepository(ISqliteConnectionProvider connectionProvider)
     {
         _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     }
 
-    /// <summary>
-    /// Searches SQLite rate-limit buckets without exposing raw key material.
-    /// </summary>
-    /// <param name="request">Validated search request.</param>
-    /// <param name="now">Current UTC time used for status projection.</param>
-    /// <param name="cancellationToken">Token for aborting database work.</param>
-    /// <returns>A list of safe bucket summaries.</returns>
     public async Task<IReadOnlyList<AuthenticationRateLimitBucketSummary>> SearchBucketsAsync(SearchAuthenticationRateLimitBucketsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -65,13 +51,6 @@ public sealed class SqliteAuthenticationRateLimitAdministrationRepository : IAut
         return buckets.AsReadOnly();
     }
 
-    /// <summary>
-    /// Loads a SQLite rate-limit bucket by purpose and opaque bucket identifier.
-    /// </summary>
-    /// <param name="request">Validated lookup request.</param>
-    /// <param name="now">Current UTC time used for status projection.</param>
-    /// <param name="cancellationToken">Token for aborting database work.</param>
-    /// <returns>The safe bucket summary when found; otherwise <see langword="null" />.</returns>
     public async Task<AuthenticationRateLimitBucketSummary?> GetBucketAsync(AuthenticationRateLimitBucketLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -106,12 +85,6 @@ public sealed class SqliteAuthenticationRateLimitAdministrationRepository : IAut
         return null;
     }
 
-    /// <summary>
-    /// Deletes a SQLite rate-limit bucket by purpose and opaque bucket identifier.
-    /// </summary>
-    /// <param name="request">Validated reset request.</param>
-    /// <param name="cancellationToken">Token for aborting database work.</param>
-    /// <returns><see langword="true" /> when a bucket was deleted; otherwise <see langword="false" />.</returns>
     public async Task<bool> ResetBucketAsync(ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

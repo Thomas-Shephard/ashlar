@@ -5,14 +5,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Sqlite.Webhooks;
 
-/// <summary>
-/// SQLite-backed dispatcher for durable security event webhook deliveries.
-/// </summary>
-public sealed class SqliteSecurityEventWebhookOutboxDispatcher
+internal sealed class SqliteSecurityEventWebhookOutboxDispatcher
 {
-    /// <summary>
-    /// Defines the named HTTP client used by the SQLite webhook outbox dispatcher.
-    /// </summary>
     public const string HttpClientName = "Ashlar.Sqlite.SecurityEventWebhookOutbox";
 
     private const string LockedByParameter = "$lockedBy";
@@ -65,12 +59,6 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
     private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver;
     private readonly AshlarSecurityEventWebhookDestinationValidator _destinationValidator;
 
-    /// <summary>
-    /// Initializes a new instance of the dispatcher class.
-    /// </summary>
-    /// <param name="dependencies">The dispatcher dependencies.</param>
-    /// <param name="logger">The logger value.</param>
-    /// <param name="deliveryObserver">The delivery observer.</param>
     public SqliteSecurityEventWebhookOutboxDispatcher(
         AshlarSecurityEventWebhookOutboxDispatcherDependencies<SqliteSecurityEventWebhookOutboxOptions> dependencies,
         ILogger<SqliteSecurityEventWebhookOutboxDispatcher>? logger = null,
@@ -88,11 +76,6 @@ public sealed class SqliteSecurityEventWebhookOutboxDispatcher
         _destinationValidator = dependencies.DestinationValidator;
     }
 
-    /// <summary>
-    /// Processes a single batch of pending webhook deliveries.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The number of claimed deliveries.</returns>
     public async Task<int> ProcessBatchAsync(CancellationToken cancellationToken = default)
     {
         if (!SqliteSecurityEventWebhookOutboxOptions.Validate(_options))

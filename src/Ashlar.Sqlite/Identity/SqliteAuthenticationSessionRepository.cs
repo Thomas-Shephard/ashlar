@@ -4,11 +4,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Identity;
 
-/// <summary>
-/// Provides SQLite authentication session repository behavior.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-public sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionProvider connectionProvider) : IAuthenticationSessionRepository
+internal sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionProvider connectionProvider) : IAuthenticationSessionRepository
 {
     private const string IdParameter = "$id";
     private const string UserIdParameter = "$userId";

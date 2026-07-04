@@ -2,11 +2,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Identity;
 
-/// <summary>
-/// Stores account lockout state in SQLite.
-/// </summary>
-/// <param name="connectionProvider">The connection provider.</param>
-public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider connectionProvider) : IAccountLockoutRepository
+internal sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider connectionProvider) : IAccountLockoutRepository
 {
     private const string UserIdParameter = "$userId";
     private const string TenantIdParameter = "$tenantId";
@@ -20,13 +16,6 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
     private const string OffsetParameter = "$offset";
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
-    /// <summary>
-    /// Searches stored automatic lockout state.
-    /// </summary>
-    /// <param name="request">The search request.</param>
-    /// <param name="now">The timestamp used for active lockout filtering.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
-    /// <returns>The matching lockout records.</returns>
     public async Task<IReadOnlyList<AccountLockoutRecord>> SearchAsync(SearchAccountLockoutsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         SearchAccountLockoutsRequest.ThrowIfInvalid(request);
@@ -81,14 +70,6 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
         return records.AsReadOnly();
     }
 
-    /// <summary>
-    /// Retrieves lockout state for a user, tenant, and provider.
-    /// </summary>
-    /// <param name="userId">The user id.</param>
-    /// <param name="tenantId">The tenant id, or <see langword="null" /> for a global user.</param>
-    /// <param name="provider">The provider key.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
-    /// <returns>The matching lockout record, or <see langword="null" />.</returns>
     public async Task<AccountLockoutRecord?> GetAsync(Guid userId, Guid? tenantId, AuthenticationProviderKey provider, CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
@@ -112,17 +93,6 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
         return await reader.ReadAsync(cancellationToken) ? ReadRecord(reader) : null;
     }
 
-    /// <summary>
-    /// Atomically records a failed credential verification.
-    /// </summary>
-    /// <param name="userId">The user id.</param>
-    /// <param name="tenantId">The tenant id, or <see langword="null" /> for a global user.</param>
-    /// <param name="provider">The provider key.</param>
-    /// <param name="failedAt">The failure timestamp.</param>
-    /// <param name="failureThreshold">The automatic lockout threshold.</param>
-    /// <param name="lockoutDuration">The automatic lockout duration.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
-    /// <returns>The updated lockout record and whether this write activated a new automatic lockout.</returns>
     public async Task<AccountLockoutRecordUpdate> RecordFailureAsync(
         Guid userId,
         Guid? tenantId,
@@ -152,14 +122,6 @@ public sealed class SqliteAccountLockoutRepository(ISqliteConnectionProvider con
         return ReadUpdate(reader);
     }
 
-    /// <summary>
-    /// Clears stored automatic lockout failures.
-    /// </summary>
-    /// <param name="userId">The user id.</param>
-    /// <param name="tenantId">The tenant id, or <see langword="null" /> for a global user.</param>
-    /// <param name="provider">The provider key.</param>
-    /// <param name="cancellationToken">A token that can cancel the operation.</param>
-    /// <returns><see langword="true" /> when stored state was removed.</returns>
     public async Task<bool> ResetAsync(Guid userId, Guid? tenantId, AuthenticationProviderKey provider, CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);

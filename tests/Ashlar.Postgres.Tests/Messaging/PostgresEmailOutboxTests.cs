@@ -6,7 +6,6 @@ using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
-using Moq;
 
 namespace Ashlar.Postgres.Tests.Messaging;
 
@@ -1055,24 +1054,11 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
     public async Task HostedServiceContinuesOnError()
     {
         var services = new ServiceCollection();
-        var providerMock = new Mock<IPostgresConnectionProvider>();
 
-        var callCount = 0;
         var tcs = new TaskCompletionSource();
+        var connectionProvider = new ThrowingConnectionProvider(tcs);
 
-        providerMock.Setup(p => p.GetConnectionAsync(It.IsAny<CancellationToken>()))
-            .Returns(async () =>
-            {
-                if (Interlocked.Increment(ref callCount) >= 3)
-                {
-                    tcs.TrySetResult();
-                }
-
-                await Task.Yield();
-                throw new InvalidOperationException("DB Down");
-            });
-
-        services.AddSingleton(providerMock.Object);
+        services.AddSingleton<IPostgresConnectionProvider>(connectionProvider);
         services.AddSingleton<TimeProvider>(_timeProvider);
         services.AddSingleton(new TestTransport());
         services.AddAshlarPostgresEmailOutboxDispatcher<TestTransport>();
@@ -1094,7 +1080,7 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(task.IsCompleted, Is.True);
-            Assert.That(callCount, Is.AtLeast(3));
+            Assert.That(connectionProvider.CallCount, Is.AtLeast(3));
         }
     }
 
@@ -1236,6 +1222,24 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
 
             secondDeliveryStarted.TrySetResult();
             await releaseSecondDelivery.Task.WaitAsync(cancellationToken);
+        }
+    }
+
+    private sealed class ThrowingConnectionProvider(TaskCompletionSource afterThirdCall) : IPostgresConnectionProvider
+    {
+        private int _callCount;
+
+        public int CallCount => _callCount;
+
+        public async ValueTask<PostgresConnectionHandle> GetConnectionAsync(CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref _callCount) >= 3)
+            {
+                afterThirdCall.TrySetResult();
+            }
+
+            await Task.Yield();
+            throw new InvalidOperationException("DB Down");
         }
     }
 

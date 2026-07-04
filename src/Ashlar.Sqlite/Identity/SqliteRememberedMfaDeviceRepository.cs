@@ -4,11 +4,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Identity;
 
-/// <summary>
-/// Provides SQLite remembered MFA device repository behavior.
-/// </summary>
-/// <param name="connectionProvider">The connection provider.</param>
-public sealed class SqliteRememberedMfaDeviceRepository(ISqliteConnectionProvider connectionProvider) : IRememberedMfaDeviceRepository
+internal sealed class SqliteRememberedMfaDeviceRepository(ISqliteConnectionProvider connectionProvider) : IRememberedMfaDeviceRepository
 {
     private const string TenantFilterSql = " AND ($tenantFilter = 0 OR (($tenantId IS NULL AND tenant_id IS NULL) OR tenant_id = $tenantId))";
     private const string UserIdParameter = "$userId";

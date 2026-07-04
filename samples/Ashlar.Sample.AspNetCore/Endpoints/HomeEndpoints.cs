@@ -5,6 +5,7 @@ using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
 using Dapper;
 using Microsoft.AspNetCore.Mvc;
+using Npgsql;
 
 namespace Ashlar.Sample.AspNetCore.Endpoints;
 
@@ -33,28 +34,24 @@ internal static class HomeEndpoints
 
                 isAdmin = (await services.Auth.EvaluateAsync(new AuthorizationEvaluationRequest(userId, Role: "admin"), cancellationToken)).Succeeded;
 
-                var connection = await services.ConnectionProvider.GetConnectionAsync(cancellationToken);
-                await using (connection)
+                await using var connection = await services.DataSource.OpenConnectionAsync(cancellationToken);
+                var projects = await connection.QueryAsync<(string Id, string Name)>(new CommandDefinition(
+                    "SELECT id, name FROM sample_projects ORDER BY created_at",
+                    cancellationToken: cancellationToken));
+
+                var userGrants = await services.Grants.ListGrantsAsync(new ListAuthorizationGrantsRequest(
+                    UserId: userId,
+                    ScopeType: "project",
+                    ActiveOnly: true), cancellationToken);
+
+                var managedProjectIds = userGrants
+                    .Where(g => g is { Permission: "project.manage", ScopeId: not null })
+                    .Select(g => g.ScopeId)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var (id, name) in projects)
                 {
-                    var projects = await connection.Connection.QueryAsync<(string Id, string Name)>(new CommandDefinition(
-                        "SELECT id, name FROM sample_projects ORDER BY created_at",
-                        transaction: connection.Transaction,
-                        cancellationToken: cancellationToken));
-
-                    var userGrants = await services.Grants.ListGrantsAsync(new ListAuthorizationGrantsRequest(
-                        UserId: userId,
-                        ScopeType: "project",
-                        ActiveOnly: true), cancellationToken);
-
-                    var managedProjectIds = userGrants
-                        .Where(g => g is { Permission: "project.manage", ScopeId: not null })
-                        .Select(g => g.ScopeId)
-                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-                    foreach (var (id, name) in projects)
-                    {
-                        projectsWithAccess.Add((id, name, managedProjectIds.Contains(id)));
-                    }
+                    projectsWithAccess.Add((id, name, managedProjectIds.Contains(id)));
                 }
             }
 
@@ -74,6 +71,6 @@ internal static class HomeEndpoints
         [FromServices] IAuthorizationEvaluator Auth,
         [FromServices] IAuthorizationGrantService Grants,
         [FromServices] IUserRepository Users,
-        [FromServices] IPostgresConnectionProvider ConnectionProvider,
+        [FromServices] NpgsqlDataSource DataSource,
         [FromServices] IConfiguration Configuration);
 }

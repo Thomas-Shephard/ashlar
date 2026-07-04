@@ -2,20 +2,10 @@ using Dapper;
 
 namespace Ashlar.Postgres.Identity;
 
-/// <summary>
-/// Provides PostgreSQL-backed administrator user reads.
-/// </summary>
-/// <param name="connectionProvider">Connection provider used for administrator reads.</param>
-public sealed class PostgresUserAdministrationRepository(IPostgresConnectionProvider connectionProvider) : IUserAdministrationRepository
+internal sealed class PostgresUserAdministrationRepository(IPostgresConnectionProvider connectionProvider) : IUserAdministrationRepository
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
-    /// <summary>
-    /// Searches users using safe administrator-display fields.
-    /// </summary>
-    /// <param name="request">Search request containing scope, filters, and paging.</param>
-    /// <param name="cancellationToken">Token that can cancel the search.</param>
-    /// <returns>Display-safe user summaries matching the request.</returns>
     public async Task<IReadOnlyList<UserSummary>> SearchUsersAsync(SearchUsersRequest request, CancellationToken cancellationToken = default)
     {
         SearchUsersRequest.ThrowIfInvalid(request);
@@ -59,12 +49,6 @@ public sealed class PostgresUserAdministrationRepository(IPostgresConnectionProv
         return rows.Select(ToUserSummary).ToList().AsReadOnly();
     }
 
-    /// <summary>
-    /// Gets a user summary by id.
-    /// </summary>
-    /// <param name="request">Detail request containing user id and scope.</param>
-    /// <param name="cancellationToken">Token that can cancel the lookup.</param>
-    /// <returns>The display-safe user summary, or <see langword="null" /> when no matching user exists.</returns>
     public async Task<UserSummary?> GetUserSummaryAsync(UserAdministrationDetailRequest request, CancellationToken cancellationToken = default)
     {
         UserAdministrationDetailRequest.ThrowIfInvalid(request);

@@ -3,11 +3,7 @@ using Ashlar.Identity.Models.Tenants;
 
 namespace Ashlar.Postgres.Identity;
 
-/// <summary>
-/// Provides PostgreSQL remembered MFA device repository behavior.
-/// </summary>
-/// <param name="connectionProvider">The connection provider.</param>
-public sealed class PostgresRememberedMfaDeviceRepository(IPostgresConnectionProvider connectionProvider) : IRememberedMfaDeviceRepository
+internal sealed class PostgresRememberedMfaDeviceRepository(IPostgresConnectionProvider connectionProvider) : IRememberedMfaDeviceRepository
 {
     private const string TenantFilterSql = " AND (@TenantFilter = FALSE OR tenant_id IS NOT DISTINCT FROM @TenantId)";
     private const string UserIdParameter = "UserId";

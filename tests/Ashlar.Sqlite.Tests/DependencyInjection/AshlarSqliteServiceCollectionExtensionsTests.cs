@@ -32,8 +32,10 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(typeof(ISqliteConnectionProvider).IsNotPublic, Is.True);
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<SqliteTransactionManager>());
             Assert.That(scope.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>(), Is.TypeOf<SqliteTransactionManager>());
+            Assert.That(scope.ServiceProvider.GetRequiredService<ISqliteConnectionProvider>(), Is.SameAs(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>()));
             Assert.That(scope.ServiceProvider.GetRequiredService<SqliteSchemaManager>(), Is.Not.Null);
             Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarSchemaDiagnostics>(), Is.TypeOf<SqliteSchemaDiagnostics>());
             Assert.That(scope.ServiceProvider.GetRequiredService<IUserRepository>(), Is.TypeOf<SqliteUserRepository>());

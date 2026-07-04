@@ -3,12 +3,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Identity;
 
-/// <summary>
-/// Stores and retrieves users in SQLite.
-/// </summary>
-/// <param name="connectionProvider">Provides SQLite connections enlisted in the current Ashlar transaction.</param>
-/// <param name="timeProvider">Supplies timestamps for created and updated users.</param>
-public sealed class SqliteUserRepository(ISqliteConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IUserRepository
+internal sealed class SqliteUserRepository(ISqliteConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IUserRepository
 {
     private const string IdParameter = "$id";
     private const string NormalizedEmailParameter = "$normalizedEmail";
