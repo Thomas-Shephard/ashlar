@@ -45,9 +45,10 @@ internal sealed class AshlarSignInManagerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(repository.CreatedSession, Is.SameAs(session));
+            Assert.That(session.Id, Is.EqualTo(repository.CreatedSession?.Id));
             Assert.That(repository.CreatedSession?.TokenHash, Is.EqualTo("hashed:raw-token"));
             Assert.That(repository.CreatedSession?.TokenHash, Is.Not.EqualTo("raw-token"));
+            Assert.That(session.GetType().GetProperty("TokenHash"), Is.Null);
             Assert.That(context.Response.Headers.SetCookie.ToString(), Does.Contain("raw-token"));
         }
     }
@@ -153,7 +154,7 @@ internal sealed class AshlarSignInManagerTests
             .ReturnsAsync(true);
         sessionService
             .Setup(s => s.CreateSessionAsync(It.IsAny<Guid>(), It.IsAny<CreateAuthenticationSessionRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CreateAuthenticationSessionResult("new-token", CreateSession(Guid.NewGuid(), out _, out _)));
+            .ReturnsAsync(new CreateAuthenticationSessionResult("new-token", CreateCreatedSession(CreateSession(Guid.NewGuid(), out _, out _))));
         var manager = new AshlarSignInManager(
             sessionService.Object,
             CreateOptionsMonitor(),
@@ -888,6 +889,21 @@ internal sealed class AshlarSignInManagerTests
             CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-5),
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(1)
         };
+    }
+
+    private static CreatedAuthenticationSession CreateCreatedSession(AuthenticationSession session)
+    {
+        return new CreatedAuthenticationSession(
+            session.Id,
+            session.UserId,
+            session.TenantId,
+            session.CreatedAt,
+            session.AuthenticatedAt,
+            session.PrimaryProvider,
+            session.ExpiresAt,
+            session.IpAddress,
+            session.UserAgent,
+            session.Metadata);
     }
 
     private sealed class FixedSessionTokenGenerator(string token) : ISecureTokenGenerator

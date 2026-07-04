@@ -147,7 +147,7 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
 
         await transaction.CommitAsync(cancellationToken);
 
-        return Result<AuthenticationHandshakeCreated>.Success(new AuthenticationHandshakeCreated(handshake, token));
+        return Result<AuthenticationHandshakeCreated>.Success(new AuthenticationHandshakeCreated(ToCreatedHandshake(handshake), token));
     }
 
     /// <inheritdoc />
@@ -270,6 +270,18 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
         }
 
         return Result.Success(handshake);
+    }
+
+    private static CreatedAuthenticationHandshake ToCreatedHandshake(AuthenticationHandshake handshake)
+    {
+        return new CreatedAuthenticationHandshake(
+            handshake.Id,
+            handshake.UserId,
+            handshake.TenantId,
+            handshake.CreatedAt,
+            handshake.ExpiresAt,
+            handshake.RequiredFactors,
+            handshake.Metadata);
     }
 
     private async Task<Result<AuthenticationHandshake>> LoadHandshakeForVerificationAsync(

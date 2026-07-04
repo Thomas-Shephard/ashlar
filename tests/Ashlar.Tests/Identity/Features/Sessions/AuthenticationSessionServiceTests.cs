@@ -2,6 +2,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Notifications;
 using Ashlar.Security.Tokens;
 using Ashlar.Testing;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
@@ -51,9 +52,24 @@ internal sealed class AuthenticationSessionServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Token, Is.EqualTo("raw-token"));
+            Assert.That(result.Session.Id, Is.EqualTo(storedSession?.Id));
+            Assert.That(result.Session.ExpiresAt, Is.EqualTo(storedSession?.ExpiresAt));
             Assert.That(storedSession?.TokenHash, Is.EqualTo("hashed:raw-token"));
             Assert.That(storedSession?.TokenHash, Is.Not.EqualTo(result.Token));
-            Assert.That(storedSession, Is.SameAs(result.Session));
+        }
+    }
+
+    [Test]
+    public async Task CreateSessionAsyncResultShouldNotExposeTokenHash()
+    {
+        var result = await _service.CreateSessionAsync(Guid.NewGuid(), new CreateAuthenticationSessionRequest());
+        var json = JsonSerializer.Serialize(result);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Session.GetType().GetProperty("TokenHash"), Is.Null);
+            Assert.That(json, Does.Not.Contain("TokenHash"));
+            Assert.That(json, Does.Not.Contain("hashed:raw-token"));
         }
     }
 

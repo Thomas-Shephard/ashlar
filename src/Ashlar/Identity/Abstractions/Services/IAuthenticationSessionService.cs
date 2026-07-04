@@ -13,7 +13,7 @@ public interface IAuthenticationSessionService
     /// <param name="userId">The authenticated user that will own the session.</param>
     /// <param name="request">Session lifetime, tenant, audit, and client metadata supplied by the host application.</param>
     /// <param name="cancellationToken">A token that can cancel session creation.</param>
-    /// <returns>The persisted session and the raw bearer token that must be returned to the client once.</returns>
+    /// <returns>Public session details and the raw bearer token that must be returned to the client once. Token hashes are not returned.</returns>
     Task<CreateAuthenticationSessionResult> CreateSessionAsync(
         Guid userId,
         CreateAuthenticationSessionRequest request,

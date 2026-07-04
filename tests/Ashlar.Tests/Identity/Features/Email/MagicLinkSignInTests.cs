@@ -831,7 +831,7 @@ internal sealed class MagicLinkSignInTests
                         false,
                         request.RequiredFactors.ToHashSet(StringComparer.OrdinalIgnoreCase),
                         new HashSet<string>());
-                    return Result.Success(new AuthenticationHandshakeCreated(handshake, "mfa-token"));
+                    return Result.Success(CreateHandshakeCreated(handshake, "mfa-token"));
                 });
         }
 
@@ -955,6 +955,20 @@ internal sealed class MagicLinkSignInTests
             Events.Add(securityEvent);
             return Task.CompletedTask;
         }
+    }
+
+    private static AuthenticationHandshakeCreated CreateHandshakeCreated(AuthenticationHandshake handshake, string token)
+    {
+        return new AuthenticationHandshakeCreated(
+            new CreatedAuthenticationHandshake(
+                handshake.Id,
+                handshake.UserId,
+                handshake.TenantId,
+                handshake.CreatedAt,
+                handshake.ExpiresAt,
+                handshake.RequiredFactors,
+                handshake.Metadata),
+            token);
     }
 
     private sealed class InMemoryUserCredentialStore(params User?[] users) : IUserRepository, ICredentialRepository

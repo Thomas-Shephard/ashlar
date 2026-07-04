@@ -172,7 +172,7 @@ internal sealed class AuthenticationOrchestratorTests
 
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, requiredFactors.ToHashSet(), new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
+            .ReturnsAsync(Result.Success(CreateHandshakeCreated(handshake, "token")));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -254,7 +254,7 @@ internal sealed class AuthenticationOrchestratorTests
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(
+            .ReturnsAsync(Result.Success(CreateHandshakeCreated(
                 new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>()),
                 "handshake-token")));
         var rememberedMfaDeviceService = CreateRememberedDeviceService(new ValidateRememberedMfaDeviceResult(false, null, status));
@@ -282,7 +282,7 @@ internal sealed class AuthenticationOrchestratorTests
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, _context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(
+            .ReturnsAsync(Result.Success(CreateHandshakeCreated(
                 new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>()),
                 "handshake-token")));
         var rememberedMfaDeviceService = CreateRememberedDeviceService(new ValidateRememberedMfaDeviceResult(true, CreateRememberedDeviceSummary(_userMock.Object.Id, null), RememberedMfaDeviceValidationStatus.Succeeded));
@@ -311,7 +311,7 @@ internal sealed class AuthenticationOrchestratorTests
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(
+            .ReturnsAsync(Result.Success(CreateHandshakeCreated(
                 new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>()),
                 "handshake-token")));
         var rememberedMfaDeviceService = CreateRememberedDeviceService(new ValidateRememberedMfaDeviceResult(true, CreateRememberedDeviceSummary(_userMock.Object.Id, null), RememberedMfaDeviceValidationStatus.Succeeded));
@@ -337,7 +337,7 @@ internal sealed class AuthenticationOrchestratorTests
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(
+            .ReturnsAsync(Result.Success(CreateHandshakeCreated(
                 new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>()),
                 "handshake-token")));
         var orchestrator = new AuthenticationOrchestrator(
@@ -370,7 +370,7 @@ internal sealed class AuthenticationOrchestratorTests
         _policyEvaluatorMock.Setup(e => e.EvaluateAsync(_userMock.Object, context, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(
+            .ReturnsAsync(Result.Success(CreateHandshakeCreated(
                 new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>()),
                 "handshake-token")));
         var rememberedMfaDeviceService = CreateRememberedDeviceService(new ValidateRememberedMfaDeviceResult(true, CreateRememberedDeviceSummary(_userMock.Object.Id, null), RememberedMfaDeviceValidationStatus.Succeeded));
@@ -401,7 +401,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["passkey"])));
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "passkey" }, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
+            .ReturnsAsync(Result.Success(CreateHandshakeCreated(handshake, "token")));
 
         await _orchestrator.AuthenticateAsync(_context, assertion);
 
@@ -426,7 +426,7 @@ internal sealed class AuthenticationOrchestratorTests
 
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, requiredFactors.ToHashSet(), new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
+            .ReturnsAsync(Result.Success(CreateHandshakeCreated(handshake, "token")));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -450,7 +450,7 @@ internal sealed class AuthenticationOrchestratorTests
         var requiredFactors = new HashSet<string> { "totp", "email_code" };
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, requiredFactors, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
+            .ReturnsAsync(Result.Success(CreateHandshakeCreated(handshake, "token")));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -481,7 +481,7 @@ internal sealed class AuthenticationOrchestratorTests
         var requiredFactors = new HashSet<string> { "email_code" };
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, requiredFactors, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
+            .ReturnsAsync(Result.Success(CreateHandshakeCreated(handshake, "token")));
 
         var result = await _orchestrator.AuthenticateAsync(
             _context,
@@ -517,7 +517,7 @@ internal sealed class AuthenticationOrchestratorTests
         var requiredFactors = new HashSet<string> { "email_code" };
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, requiredFactors, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
+            .ReturnsAsync(Result.Success(CreateHandshakeCreated(handshake, "token")));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -593,7 +593,7 @@ internal sealed class AuthenticationOrchestratorTests
         var handshakeFactors = new HashSet<string> { "TOTP" };
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, handshakeFactors, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
+            .ReturnsAsync(Result.Success(CreateHandshakeCreated(handshake, "token")));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -618,7 +618,7 @@ internal sealed class AuthenticationOrchestratorTests
             .ReturnsAsync(new MfaPolicyEvaluation(true, new MfaRequirement(["totp"])));
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, new HashSet<string> { "totp" }, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
+            .ReturnsAsync(Result.Success(CreateHandshakeCreated(handshake, "token")));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -639,7 +639,7 @@ internal sealed class AuthenticationOrchestratorTests
         var handshakeFactors = new HashSet<string> { "totp" };
         var handshake = new AuthenticationHandshake(Guid.NewGuid(), _userMock.Object.Id, "hash", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), false, false, handshakeFactors, new HashSet<string>());
         _handshakeServiceMock.Setup(h => h.CreateHandshakeAsync(It.IsAny<CreateAuthenticationHandshakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success(new AuthenticationHandshakeCreated(handshake, "token")));
+            .ReturnsAsync(Result.Success(CreateHandshakeCreated(handshake, "token")));
 
         var result = await _orchestrator.AuthenticateAsync(_context, _assertionMock.Object);
 
@@ -1795,6 +1795,20 @@ internal sealed class AuthenticationOrchestratorTests
     {
         var now = DateTimeOffset.UtcNow;
         return new RememberedMfaDeviceSummary(Guid.NewGuid(), userId, tenantId, null, now, now, now.AddDays(30), null, null, true);
+    }
+
+    private static AuthenticationHandshakeCreated CreateHandshakeCreated(AuthenticationHandshake handshake, string token)
+    {
+        return new AuthenticationHandshakeCreated(
+            new CreatedAuthenticationHandshake(
+                handshake.Id,
+                handshake.UserId,
+                handshake.TenantId,
+                handshake.CreatedAt,
+                handshake.ExpiresAt,
+                handshake.RequiredFactors,
+                handshake.Metadata),
+            token);
     }
 
     private static AuthenticationProviderRegistry CreateProviderRegistry(params IAuthenticationProvider[] providers)
