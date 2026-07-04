@@ -24,7 +24,6 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
     private readonly ILogger<PostgresSecurityEventWebhookOutboxDispatcher> _logger;
     private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver;
     private readonly AshlarSecurityEventWebhookDestinationValidator _destinationValidator;
-    private readonly string _lockId = Guid.NewGuid().ToString();
 
     /// <summary>
     /// Initializes a new instance of the dispatcher class.
@@ -72,7 +71,7 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
                   AND failed_at IS NULL
                   AND discarded_at IS NULL
                   AND available_at <= @Now
-                  AND (locked_until IS NULL OR locked_until < @Now)
+                  AND (locked_until IS NULL OR locked_until <= @Now)
                 ORDER BY available_at, id
                 LIMIT @BatchSize
                 FOR UPDATE SKIP LOCKED
@@ -84,6 +83,7 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
 
         var now = _timeProvider.GetUtcNow();
         var lockedUntil = now.Add(_options.LockDuration);
+        var lockId = Guid.NewGuid().ToString();
 
         List<AshlarSecurityEventWebhookOutboxEntry> entries;
         await using (var scope = _serviceProvider.CreateAsyncScope())
@@ -96,7 +96,7 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
                 {
                     Now = now,
                     LockedUntil = lockedUntil,
-                    LockedBy = _lockId,
+                    LockedBy = lockId,
                     _options.BatchSize
                 }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
 
@@ -107,13 +107,13 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
         foreach (var entry in entries)
         {
             await using var entryScope = _serviceProvider.CreateAsyncScope();
-            await ProcessEntryAsync(entry, entryScope.ServiceProvider, cancellationToken).ConfigureAwait(false);
+            await ProcessEntryAsync(entry, lockId, entryScope.ServiceProvider, cancellationToken).ConfigureAwait(false);
         }
 
         return entries.Count;
     }
 
-    private async Task ProcessEntryAsync(AshlarSecurityEventWebhookOutboxEntry entry, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task ProcessEntryAsync(AshlarSecurityEventWebhookOutboxEntry entry, string lockId, IServiceProvider provider, CancellationToken cancellationToken)
     {
         await AshlarSecurityEventWebhookOutboxDispatch.DispatchAsync(
             entry,
@@ -121,8 +121,8 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
                 _httpClientFactory,
                 HttpClientName,
                 _options.MaxAttempts,
-                (id, token) => MarkAsSentAsync(id, provider, token),
-                (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, token),
+                (id, token) => MarkAsSentAsync(id, lockId, provider, token),
+                (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, lockId, provider, token),
                 (id, attemptCount, finalFailure, exception) => PostgresSecurityEventWebhookOutboxDispatcherLog.WebhookDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
                 _destinationValidator,
                 _webhookOptions,
@@ -131,7 +131,7 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
             cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<bool> MarkAsSentAsync(Guid id, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task<bool> MarkAsSentAsync(Guid id, string lockId, IServiceProvider provider, CancellationToken cancellationToken)
     {
         const string sql = """
             UPDATE ashlar_security_event_webhook_outbox
@@ -152,12 +152,12 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
         var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, new { Id = id, LockedBy = _lockId, Now = now }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql, new { Id = id, LockedBy = lockId, Now = now }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             return await connectionHandle.Connection.ExecuteAsync(command).ConfigureAwait(false) > 0;
         }
     }
 
-    private async Task MarkAsFailedAsync(AshlarSecurityEventWebhookOutboxEntry entry, Exception exception, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task MarkAsFailedAsync(AshlarSecurityEventWebhookOutboxEntry entry, Exception exception, string lockId, IServiceProvider provider, CancellationToken cancellationToken)
     {
         var now = _timeProvider.GetUtcNow();
         var failure = AshlarSecurityEventWebhookOutboxDispatch.CreateFailureUpdate(
@@ -176,7 +176,11 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
                 locked_by = NULL,
                 last_attempt_at = @Now,
                 attempt_count = @AttemptCount
-            WHERE id = @Id AND locked_by = @LockedBy AND discarded_at IS NULL
+            WHERE id = @Id
+              AND locked_by = @LockedBy
+              AND sent_at IS NULL
+              AND failed_at IS NULL
+              AND discarded_at IS NULL
             """;
 
         var connectionProvider = provider.GetRequiredService<IPostgresConnectionProvider>();
@@ -186,7 +190,7 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
             var command = new CommandDefinition(sql, new
             {
                 entry.Id,
-                LockedBy = _lockId,
+                LockedBy = lockId,
                 failure.FailedAt,
                 failure.LastError,
                 failure.AvailableAt,

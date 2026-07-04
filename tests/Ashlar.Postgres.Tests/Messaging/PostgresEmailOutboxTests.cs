@@ -392,6 +392,56 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
     }
 
     [Test]
+    public async Task DispatcherProcessBatchAsyncDoesNotLetStaleSameInstanceCompletionMarkNewerClaimSent()
+    {
+        var firstDeliveryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondDeliveryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstDelivery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecondDelivery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var transport = new BlockingEmailTransport(firstDeliveryStarted, secondDeliveryStarted, releaseFirstDelivery, releaseSecondDelivery);
+        var services = new ServiceCollection();
+        services.AddSingleton(transport);
+        services.AddSingleton(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>());
+        var dispatcherProvider = services.BuildServiceProvider();
+        await SeedMessageAsync("same-instance-expired@example.com");
+
+        var dispatcher = new PostgresEmailOutboxDispatcher<BlockingEmailTransport>(
+            dispatcherProvider,
+            _timeProvider,
+            Options.Create(new PostgresEmailOutboxOptions { LockDuration = TimeSpan.FromMinutes(1) }));
+
+        var first = dispatcher.ProcessBatchAsync(CancellationToken.None);
+        await firstDeliveryStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await ExpireSingleEmailLockAsync();
+
+        var second = dispatcher.ProcessBatchAsync(CancellationToken.None);
+        await secondDeliveryStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var newerClaimRow = await QuerySingleEmailDispatchStateAsync();
+
+        releaseFirstDelivery.SetResult();
+        var firstCount = await first.WaitAsync(TimeSpan.FromSeconds(5));
+        var staleCompletionRow = await QuerySingleEmailDispatchStateAsync();
+
+        releaseSecondDelivery.SetResult();
+        var secondCount = await second.WaitAsync(TimeSpan.FromSeconds(5));
+        var finalRow = await QuerySingleEmailDispatchStateAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstCount, Is.EqualTo(1));
+            Assert.That(secondCount, Is.EqualTo(1));
+            Assert.That(transport.DeliveredCount, Is.EqualTo(2));
+            Assert.That(newerClaimRow.LockedBy, Is.Not.Null);
+            Assert.That(staleCompletionRow.SentAt, Is.Null);
+            Assert.That(staleCompletionRow.AttemptCount, Is.Zero);
+            Assert.That(staleCompletionRow.LockedBy, Is.EqualTo(newerClaimRow.LockedBy));
+            Assert.That(finalRow.SentAt, Is.EqualTo(_timeProvider.GetUtcNow()));
+            Assert.That(finalRow.AttemptCount, Is.EqualTo(1));
+            Assert.That(finalRow.LockedBy, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task DispatcherProcessBatchAsyncDoesNotMarkSentWhenEmailRowBecomesTerminalAfterSuccessfulDelivery()
     {
         var transport = new TestTransport
@@ -427,6 +477,48 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
             Assert.That(transport.DeliveredCount, Is.EqualTo(1));
             Assert.That(row.SentAt, Is.Null);
             Assert.That(row.FailedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
+            Assert.That(row.AttemptCount, Is.Zero);
+            Assert.That(row.LastError, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task DispatcherProcessBatchAsyncDoesNotMarkFailedWhenEmailRowBecomesTerminalAfterFailedDelivery()
+    {
+        var transport = new TestTransport
+        {
+            OnDeliver = async (_, _) =>
+            {
+                await using var connection = await GetDataSource().OpenConnectionAsync(CancellationToken.None);
+                await connection.ExecuteAsync("UPDATE ashlar_email_outbox SET discarded_at = @now;", new { now = _timeProvider.GetUtcNow() });
+                throw new InvalidOperationException("discarded while delivering");
+            }
+        };
+        var services = new ServiceCollection();
+        services.AddSingleton(transport);
+        services.AddSingleton(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>());
+        var dispatcherProvider = services.BuildServiceProvider();
+        await SeedMessageAsync("terminal-failure@example.com");
+
+        var dispatcher = new PostgresEmailOutboxDispatcher<TestTransport>(
+            dispatcherProvider,
+            _timeProvider,
+            Options.Create(new PostgresEmailOutboxOptions()));
+
+        await dispatcher.ProcessBatchAsync(CancellationToken.None);
+
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        var row = await connection.QuerySingleAsync<RawOutboxRow>("""
+            SELECT discarded_at AS DiscardedAt, failed_at AS FailedAt, attempt_count AS AttemptCount,
+                   last_error AS LastError
+            FROM ashlar_email_outbox
+            """);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.DeliveredCount, Is.EqualTo(1));
+            Assert.That(row.DiscardedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
+            Assert.That(row.FailedAt, Is.Null);
             Assert.That(row.AttemptCount, Is.Zero);
             Assert.That(row.LastError, Is.Null);
         }
@@ -1088,6 +1180,23 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
             new { id = Guid.NewGuid(), to, now = _timeProvider.GetUtcNow() });
     }
 
+    private async Task ExpireSingleEmailLockAsync()
+    {
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        await connection.ExecuteAsync(
+            "UPDATE ashlar_email_outbox SET locked_until = @LockedUntil",
+            new { LockedUntil = _timeProvider.GetUtcNow().AddMinutes(-1) });
+    }
+
+    private async Task<RawOutboxRow> QuerySingleEmailDispatchStateAsync()
+    {
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        return await connection.QuerySingleAsync<RawOutboxRow>("""
+            SELECT sent_at AS SentAt, attempt_count AS AttemptCount, locked_by AS LockedBy
+            FROM ashlar_email_outbox
+            """);
+    }
+
     private sealed class TestTransport : IEmailTransport
     {
         private int _deliveredCount;
@@ -1102,6 +1211,31 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
             Interlocked.Increment(ref _deliveredCount);
             _messages.Add(message);
             return OnDeliver(message, cancellationToken);
+        }
+    }
+
+    private sealed class BlockingEmailTransport(
+        TaskCompletionSource firstDeliveryStarted,
+        TaskCompletionSource secondDeliveryStarted,
+        TaskCompletionSource releaseFirstDelivery,
+        TaskCompletionSource releaseSecondDelivery)
+        : IEmailTransport
+    {
+        private int _deliveredCount;
+
+        public int DeliveredCount => _deliveredCount;
+
+        public async Task DeliverAsync(EmailMessage message, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _deliveredCount) == 1)
+            {
+                firstDeliveryStarted.TrySetResult();
+                await releaseFirstDelivery.Task.WaitAsync(cancellationToken);
+                return;
+            }
+
+            secondDeliveryStarted.TrySetResult();
+            await releaseSecondDelivery.Task.WaitAsync(cancellationToken);
         }
     }
 
@@ -1145,8 +1279,10 @@ internal sealed class PostgresEmailOutboxTests : PostgresTestBase
         public int AttemptCount { get; set; }
         public DateTimeOffset? SentAt { get; set; }
         public DateTimeOffset? FailedAt { get; set; }
+        public DateTimeOffset? DiscardedAt { get; set; }
         public string? LastError { get; set; }
         public DateTimeOffset? LastAttemptAt { get; set; }
         public DateTimeOffset AvailableAt { get; set; }
+        public string? LockedBy { get; set; }
     }
 }
