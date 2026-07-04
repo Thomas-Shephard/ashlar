@@ -33,6 +33,7 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
+        services.AddAshlarNullTransactions();
         services.AddAshlarNoMfaPolicy();
 
         using var provider = services.BuildServiceProvider();
@@ -56,6 +57,7 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
+        services.AddAshlarNullTransactions();
         services.AddAshlarNoMfaPolicy();
 
         using var provider = services.BuildServiceProvider();
@@ -98,6 +100,7 @@ internal sealed class AshlarMfaOrchestrationServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddSingleton(Mock.Of<IRememberedMfaDeviceRepository>());
         services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddAshlarNullTransactions();
 
         services.AddAshlarRememberedMfaDevices(options => options.DefaultLifetime = TimeSpan.FromDays(7));
 

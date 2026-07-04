@@ -206,6 +206,7 @@ internal sealed class AshlarPostgresCompositionTests
         using var dataSource = CreateDataSource("operational");
         var services = new ServiceCollection();
         services.AddAshlarIdentity();
+        services.AddScoped<IAccountSecurityGuard, TestAccountSecurityGuard>();
         services.AddSingleton<ISecretProtector, TestSecretProtector>();
         services.AddAshlarPostgres(dataSource);
         services.AddAshlarPostgresCleanup();

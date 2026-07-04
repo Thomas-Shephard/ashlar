@@ -42,6 +42,7 @@ internal sealed class AshlarMfaHandshakeServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
+        services.AddAshlarNullTransactions();
         services.AddAshlarMfaHandshakes();
 
         using var provider = services.BuildServiceProvider();

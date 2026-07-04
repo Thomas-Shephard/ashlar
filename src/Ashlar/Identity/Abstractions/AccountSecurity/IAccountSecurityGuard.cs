@@ -25,9 +25,9 @@ public interface IAccountSecurityGuard
 /// Permissive account security guard that approves every account-state change.
 /// </summary>
 /// <remarks>
-/// Register this implementation only when the host deliberately allows account-state changes without business
-/// approval, risk review, tenant-specific policy, or separation-of-duties checks. <c>AddAshlarIdentity</c> keeps this
-/// guard as a fallback for minimal composition, and configuration validation reports it as a warning.
+/// Register this implementation only when the host deliberately allows guarded account-state changes without business
+/// approval, risk review, tenant-specific policy, or separation-of-duties checks. Configuration validation reports this
+/// guard as a warning.
 /// </remarks>
 public sealed class PermissiveAccountSecurityGuard : IAccountSecurityGuard
 {

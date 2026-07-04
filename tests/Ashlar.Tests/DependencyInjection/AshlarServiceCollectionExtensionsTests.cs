@@ -41,7 +41,6 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<IPrimaryAuthenticationRateLimiter, PrimaryAuthenticationRateLimiter>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialService, CredentialService>(services, ServiceLifetime.Scoped);
-            AssertDescriptor<IAccountSecurityGuard, PermissiveAccountSecurityGuard>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialAdministrationService, CredentialAdministrationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAccountRecoveryAdministrationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAccountRecoveryAdministrationExecutor, AccountRecoveryAdministrationExecutor>(services, ServiceLifetime.Scoped);
@@ -58,6 +57,8 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<AuthenticationSessionOptions>(services, ServiceLifetime.Singleton);
             AssertDescriptor<TimeProvider>(services, ServiceLifetime.Singleton);
             Assert.That(services.Any(d => d.ServiceType == typeof(IUserRepository)), Is.False);
+            Assert.That(services.Any(d => d.ServiceType == typeof(IAccountSecurityGuard)), Is.False);
+            Assert.That(services.Any(d => d.ServiceType == typeof(IAshlarTransactionProvider)), Is.False);
         }
     }
 
@@ -86,6 +87,41 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         using var scope = provider.CreateScope();
 
         Assert.That(scope.ServiceProvider.GetRequiredService<IAccountSecurityGuard>(), Is.TypeOf<CustomAccountSecurityGuard>());
+    }
+
+    [Test]
+    public void AddAshlarNullTransactionsRegistersNullProviderExplicitly()
+    {
+        var services = new ServiceCollection();
+
+        services.AddAshlarNullTransactions();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<NullTransactionProvider>());
+    }
+
+    [Test]
+    public void AddAshlarNullTransactionsDoesNotOverrideCustomProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<IAshlarTransactionProvider, CustomTransactionProvider>();
+
+        services.AddAshlarNullTransactions();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        Assert.That(scope.ServiceProvider.GetRequiredService<IAshlarTransactionProvider>(), Is.TypeOf<CustomTransactionProvider>());
+    }
+
+    [Test]
+    public void AddAshlarNullTransactionsRejectsNullServices()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => AshlarServiceCollectionExtensions.AddAshlarNullTransactions(null!));
+
+        Assert.That(exception.ParamName, Is.EqualTo("services"));
     }
 
     [Test]
@@ -142,6 +178,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddScoped(_ => Mock.Of<IAuthenticationProviderRegistry>());
         services.AddScoped(_ => Mock.Of<ICredentialService>());
+        services.AddAshlarNullTransactions();
         services.AddAshlarIdentity();
 
         using var provider = services.BuildServiceProvider();
@@ -325,6 +362,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
+        services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
         services
             .AddAshlarIdentity()
             .AddAuthenticationProvider<LocalPasswordProvider>()
@@ -415,6 +453,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
+        services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
 
         services.AddAshlarPasswordReset();
 
@@ -694,6 +733,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
         services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
         services.AddAshlarIdentity();
 
         using var provider = services.BuildServiceProvider();
@@ -859,6 +899,29 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         }
     }
 
+    [Test]
+    public void MissingAccountSecurityGuardFailsThroughServiceResolution()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IUserRepository>());
+        services.AddSingleton(Mock.Of<ICredentialRepository>());
+        services.AddSingleton(Mock.Of<IAuthenticationSessionService>());
+        services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
+        services.AddAshlarIdentity();
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            scope.ServiceProvider.GetRequiredService<IAccountSecurityService>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain(nameof(IAccountSecurityGuard)));
+            Assert.That(exception.Message, Does.Contain("Unable to resolve service for type"));
+        }
+    }
+
     private static void AssertDescriptor<TService, TImplementation>(IServiceCollection services, ServiceLifetime lifetime)
     {
         Assert.That(services, Has.Some.Matches<ServiceDescriptor>(descriptor =>
@@ -951,6 +1014,14 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         }
     }
 
+    private sealed class CustomTransactionProvider : IAshlarTransactionProvider
+    {
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
     private sealed record BasicUser(Guid Id, string DisplayEmail, UserAccountState AccountState) : IUser
     {
         public string? Name => null;
@@ -964,6 +1035,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<IUserRepository>());
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
+        services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
         services.AddAshlarEmailVerification();
 
         using var provider = services.BuildServiceProvider();
@@ -1016,6 +1088,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton(Mock.Of<IAuthenticationSessionRepository>());
+        services.AddSingleton(Mock.Of<IAshlarTransactionProvider>());
         services.AddAshlarEmailChange();
 
         using var provider = services.BuildServiceProvider();

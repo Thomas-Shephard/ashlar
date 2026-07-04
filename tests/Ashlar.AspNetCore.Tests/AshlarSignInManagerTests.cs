@@ -440,6 +440,7 @@ internal sealed class AshlarSignInManagerTests
         services.AddSingleton<IUserRepository, InMemoryUserRepository>();
         services.AddSingleton<ISecureTokenGenerator>(new FixedSessionTokenGenerator("raw-token"));
         services.AddSingleton<ISecureTokenHasher, PrefixSessionTokenHasher>();
+        services.AddAshlarNullTransactions();
         services.AddAshlarIdentity(configureSessions: sessionOptions =>
         {
             sessionOptions.DefaultLifetime = TimeSpan.FromHours(1);
@@ -844,6 +845,7 @@ internal sealed class AshlarSignInManagerTests
         services.AddSingleton<IUserRepository, InMemoryUserRepository>();
         services.AddSingleton<ISecureTokenGenerator>(new FixedSessionTokenGenerator("raw-token"));
         services.AddSingleton<ISecureTokenHasher, PrefixSessionTokenHasher>();
+        services.AddAshlarNullTransactions();
         services.AddAshlarIdentity(configureSessions: sessionOptions =>
         {
             sessionOptions.DefaultLifetime = TimeSpan.FromHours(1);
