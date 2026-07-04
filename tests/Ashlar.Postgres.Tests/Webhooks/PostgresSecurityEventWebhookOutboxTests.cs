@@ -228,6 +228,48 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     }
 
     [Test]
+    public async Task DispatcherDoesNotLetStaleSameInstanceCompletionMarkNewerClaimSent()
+    {
+        await EnqueueAsync(CreateDelivery());
+        var firstSendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondSendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstSend = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecondSend = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var transport = new BlockingWebhookHandler(firstSendStarted, secondSendStarted, releaseFirstSend, releaseSecondSend);
+        var dispatcher = CreateDispatcher(transport, new PostgresSecurityEventWebhookOutboxOptions { LockDuration = TimeSpan.FromMinutes(1) });
+
+        var first = dispatcher.ProcessBatchAsync();
+        await firstSendStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await ExpireSingleWebhookLockAsync();
+
+        var second = dispatcher.ProcessBatchAsync();
+        await secondSendStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var newerClaimRow = await QuerySingleWebhookDispatchStateAsync();
+
+        releaseFirstSend.SetResult();
+        var firstCount = await first.WaitAsync(TimeSpan.FromSeconds(5));
+        var staleCompletionRow = await QuerySingleWebhookDispatchStateAsync();
+
+        releaseSecondSend.SetResult();
+        var secondCount = await second.WaitAsync(TimeSpan.FromSeconds(5));
+        var finalRow = await QuerySingleWebhookDispatchStateAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstCount, Is.EqualTo(1));
+            Assert.That(secondCount, Is.EqualTo(1));
+            Assert.That(transport.Requests, Has.Count.EqualTo(2));
+            Assert.That(newerClaimRow.LockedBy, Is.Not.Null);
+            Assert.That(staleCompletionRow.SentAt, Is.Null);
+            Assert.That(staleCompletionRow.AttemptCount, Is.Zero);
+            Assert.That(staleCompletionRow.LockedBy, Is.EqualTo(newerClaimRow.LockedBy));
+            Assert.That(finalRow.SentAt, Is.EqualTo(_timeProvider.GetUtcNow()));
+            Assert.That(finalRow.AttemptCount, Is.EqualTo(1));
+            Assert.That(finalRow.LockedBy, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task DispatcherDoesNotMarkSentWhenWebhookRowBecomesTerminalAfterSuccessfulSend()
     {
         await EnqueueAsync(CreateDelivery());
@@ -254,6 +296,38 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
             Assert.That(transport.Requests, Has.Count.EqualTo(1));
             Assert.That(row.SentAt, Is.Null);
             Assert.That(row.FailedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
+            Assert.That(row.AttemptCount, Is.Zero);
+            Assert.That(row.LastError, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task DispatcherDoesNotMarkFailedWhenWebhookRowBecomesTerminalAfterFailedSend()
+    {
+        await EnqueueAsync(CreateDelivery());
+        var transport = new RecordingHttpMessageHandler(HttpStatusCode.BadGateway)
+        {
+            OnRequestAsync = async () =>
+            {
+                await using var connection = await GetDataSource().OpenConnectionAsync();
+                await connection.ExecuteAsync("UPDATE ashlar_security_event_webhook_outbox SET discarded_at = @now;", new { now = _timeProvider.GetUtcNow() });
+            }
+        };
+
+        await CreateDispatcher(transport).ProcessBatchAsync();
+
+        await using var verifyConnection = await GetDataSource().OpenConnectionAsync();
+        var row = await verifyConnection.QuerySingleAsync<RawWebhookRow>("""
+            SELECT discarded_at AS DiscardedAt, failed_at AS FailedAt, attempt_count AS AttemptCount,
+                   last_error AS LastError
+            FROM ashlar_security_event_webhook_outbox
+            """);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+            Assert.That(row.DiscardedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
+            Assert.That(row.FailedAt, Is.Null);
             Assert.That(row.AttemptCount, Is.Zero);
             Assert.That(row.LastError, Is.Null);
         }
@@ -486,7 +560,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
                 UPDATE ashlar_security_event_webhook_outbox
                 SET locked_until = CASE WHEN id = (SELECT id FROM ashlar_security_event_webhook_outbox ORDER BY id LIMIT 1) THEN @expired ELSE @active END,
                     locked_by = 'other'
-                """, new { expired = now.AddMinutes(-1), active = now.AddMinutes(5) });
+                """, new { expired = now, active = now.AddMinutes(5) });
         }
 
         var transport = new RecordingHttpMessageHandler(HttpStatusCode.Accepted);
@@ -777,6 +851,23 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         await _serviceProvider.GetRequiredService<IAshlarSecurityEventWebhookEnqueuer>().EnqueueAsync(delivery);
     }
 
+    private async Task ExpireSingleWebhookLockAsync()
+    {
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        await connection.ExecuteAsync(
+            "UPDATE ashlar_security_event_webhook_outbox SET locked_until = @LockedUntil",
+            new { LockedUntil = _timeProvider.GetUtcNow().AddMinutes(-1) });
+    }
+
+    private async Task<RawWebhookRow> QuerySingleWebhookDispatchStateAsync()
+    {
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        return await connection.QuerySingleAsync<RawWebhookRow>("""
+            SELECT sent_at AS SentAt, attempt_count AS AttemptCount, locked_by AS LockedBy
+            FROM ashlar_security_event_webhook_outbox
+            """);
+    }
+
     private PostgresSecurityEventWebhookOutboxDispatcher CreateDispatcher(
         HttpMessageHandler transport,
         PostgresSecurityEventWebhookOutboxOptions? options = null,
@@ -1029,6 +1120,49 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         }
     }
 
+    private sealed class BlockingWebhookHandler(
+        TaskCompletionSource firstSendStarted,
+        TaskCompletionSource secondSendStarted,
+        TaskCompletionSource releaseFirstSend,
+        TaskCompletionSource releaseSecondSend)
+        : HttpMessageHandler
+    {
+        private readonly object _requestsGate = new();
+        private readonly List<RecordedRequest> _requests = [];
+        private int _requestCount;
+
+        public IReadOnlyList<RecordedRequest> Requests
+        {
+            get
+            {
+                lock (_requestsGate)
+                {
+                    return _requests.ToArray();
+                }
+            }
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var recordedRequest = await RecordedRequest.CreateAsync(request, cancellationToken);
+            lock (_requestsGate)
+            {
+                _requests.Add(recordedRequest);
+            }
+
+            if (Interlocked.Increment(ref _requestCount) == 1)
+            {
+                firstSendStarted.TrySetResult();
+                await releaseFirstSend.Task.WaitAsync(cancellationToken);
+                return new HttpResponseMessage(HttpStatusCode.Accepted);
+            }
+
+            secondSendStarted.TrySetResult();
+            await releaseSecondSend.Task.WaitAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.Accepted);
+        }
+    }
+
     private sealed class DelayingHttpMessageHandler : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -1097,6 +1231,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         public DateTimeOffset AvailableAt { get; set; }
         public DateTimeOffset? SentAt { get; set; }
         public DateTimeOffset? FailedAt { get; set; }
+        public DateTimeOffset? DiscardedAt { get; set; }
         public int AttemptCount { get; set; }
         public string? LastError { get; set; }
         public string? LockedBy { get; set; }

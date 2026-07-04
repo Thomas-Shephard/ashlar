@@ -27,7 +27,6 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     private readonly PostgresEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
     private readonly ILogger<PostgresEmailOutboxDispatcher<TTransport>> _logger = logger ?? NullLogger<PostgresEmailOutboxDispatcher<TTransport>>.Instance;
-    private readonly string _lockId = Guid.NewGuid().ToString();
 
     /// <summary>
     /// Processes a single batch of pending email messages.
@@ -68,6 +67,7 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
 
         var now = _timeProvider.GetUtcNow();
         var lockedUntil = now.Add(_options.LockDuration);
+        var lockId = Guid.NewGuid().ToString();
 
         List<EmailOutboxEntry> entries;
         await using (var scope = _serviceProvider.CreateAsyncScope())
@@ -80,7 +80,7 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
                 {
                     Now = now,
                     LockedUntil = lockedUntil,
-                    LockedBy = _lockId,
+                    LockedBy = lockId,
                     _options.BatchSize
                 }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
 
@@ -98,21 +98,21 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
         foreach (var entry in entries)
         {
             await using var scope = _serviceProvider.CreateAsyncScope();
-            await ProcessEntryAsync(entry, scope.ServiceProvider, cancellationToken);
+            await ProcessEntryAsync(entry, lockId, scope.ServiceProvider, cancellationToken);
         }
 
         return entries.Count;
     }
 
-    private async Task ProcessEntryAsync(EmailOutboxEntry entry, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task ProcessEntryAsync(EmailOutboxEntry entry, string lockId, IServiceProvider provider, CancellationToken cancellationToken)
     {
         await EmailOutboxDispatch.DispatchAsync(
             entry,
             new EmailOutboxDispatchContext(
                 provider.GetRequiredService<TTransport>(),
                 _options.MaxAttempts,
-                (id, token) => MarkAsSentAsync(id, provider, token),
-                (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, provider, token),
+                (id, token) => MarkAsSentAsync(id, lockId, provider, token),
+                (failedEntry, exception, token) => MarkAsFailedAsync(failedEntry, exception, lockId, provider, token),
                 (id, attemptCount, finalFailure, exception) =>
                     PostgresEmailOutboxDispatcherLog.EmailOutboxDeliveryFailed(_logger, id, attemptCount, finalFailure, exception),
                 provider.GetService<ISecretProtector>(),
@@ -120,7 +120,7 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
             cancellationToken);
     }
 
-    private async Task<bool> MarkAsSentAsync(Guid id, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task<bool> MarkAsSentAsync(Guid id, string lockId, IServiceProvider provider, CancellationToken cancellationToken)
     {
         const string sql = """
             UPDATE ashlar_email_outbox
@@ -141,12 +141,12 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
         var connectionHandle = await connectionProvider.GetConnectionAsync(cancellationToken);
         await using (connectionHandle)
         {
-            var command = new CommandDefinition(sql, new { Id = id, LockedBy = _lockId, Now = now }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql, new { Id = id, LockedBy = lockId, Now = now }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
             return await connectionHandle.Connection.ExecuteAsync(command) > 0;
         }
     }
 
-    private async Task MarkAsFailedAsync(EmailOutboxEntry entry, Exception exception, IServiceProvider provider, CancellationToken cancellationToken)
+    private async Task MarkAsFailedAsync(EmailOutboxEntry entry, Exception exception, string lockId, IServiceProvider provider, CancellationToken cancellationToken)
     {
         var now = _timeProvider.GetUtcNow();
         var failure = EmailOutboxDispatch.CreateFailureUpdate(
@@ -166,7 +166,11 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
                 locked_by = NULL,
                 last_attempt_at = @Now,
                 attempt_count = @AttemptCount
-            WHERE id = @Id AND locked_by = @LockedBy
+            WHERE id = @Id
+              AND locked_by = @LockedBy
+              AND sent_at IS NULL
+              AND failed_at IS NULL
+              AND discarded_at IS NULL
             """;
 
         var connectionProvider = provider.GetRequiredService<IPostgresConnectionProvider>();
@@ -176,7 +180,7 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
             var command = new CommandDefinition(sql, new
             {
                 entry.Id,
-                LockedBy = _lockId,
+                LockedBy = lockId,
                 failure.FailedAt,
                 failure.LastError,
                 failure.AvailableAt,
