@@ -11,10 +11,6 @@ internal static class AshlarHealthCheckData
         Add(data, "applied_migration_count", result.AppliedMigrationCount);
         Add(data, "expected_migration_count", result.ExpectedMigrationCount);
         Add(data, "missing_migration_count", result.MissingMigrationCount);
-        Add(data, "latest_applied_migration_name", result.LatestAppliedMigrationName);
-        Add(data, "latest_expected_migration_name", result.LatestExpectedMigrationName);
-        Add(data, "minimum_provider_version", result.MinimumProviderVersion);
-        Add(data, "provider_version", result.ProviderVersion);
         return data;
     }
 

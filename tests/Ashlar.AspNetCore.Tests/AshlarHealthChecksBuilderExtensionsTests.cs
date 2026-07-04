@@ -583,10 +583,19 @@ internal sealed class AshlarHealthChecksBuilderExtensionsTests
             Assert.That(data.Keys, Does.Contain("checked_at"));
             Assert.That(data.Keys, Does.Contain("schema_status"));
             Assert.That(data.Keys, Does.Contain("applied_migration_count"));
+            Assert.That(data.Keys, Does.Contain("expected_migration_count"));
+            Assert.That(data.Keys, Does.Contain("missing_migration_count"));
+            Assert.That(data.Keys, Does.Not.Contain("latest_applied_migration_name"));
+            Assert.That(data.Keys, Does.Not.Contain("latest_expected_migration_name"));
+            Assert.That(data.Keys, Does.Not.Contain("minimum_provider_version"));
+            Assert.That(data.Keys, Does.Not.Contain("provider_version"));
             Assert.That(data.Keys, Does.Not.Contain("connection_string"));
             Assert.That(data.Keys, Does.Not.Contain("raw_sql"));
             Assert.That(data.Keys, Does.Not.Contain("lock_owner"));
             Assert.That(data.Keys, Does.Not.Contain("row_id"));
+            Assert.That(data.Keys, Does.Not.Contain("token"));
+            Assert.That(data.Keys, Does.Not.Contain("url"));
+            Assert.That(data.Keys, Does.Not.Contain("secret"));
         }
 
         Assert.That(data.Values, Is.All.Matches<object>(value => value is string or int or long or bool or double or DateTimeOffset));
