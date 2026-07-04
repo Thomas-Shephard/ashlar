@@ -775,7 +775,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     [Test]
     public async Task RegisterShouldNotStartTransactionWhenEmailPolicyFails()
     {
-        var transactions = new Mock<IAshlarTransactionProvider>();
+        var transactions = new Mock<IAshlarDurableTransactionProvider>();
         var service = CreateService(transactionProvider: transactions);
 
         var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "other@example.com", "true"));
@@ -784,6 +784,28 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         {
             Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.EmailMismatch));
             transactions.Verify(t => t.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task RegisterShouldFailBeforeAcceptingInvitationWhenTransactionProviderIsNullProvider()
+    {
+        var invitations = CreateInvitations();
+        var credentials = new Mock<ICredentialService>();
+        var service = new AshlarOidcInvitationRegistrationService(
+            invitations.Object,
+            credentials.Object,
+            new NonDurableTransactionProvider(),
+            new TestOptionsMonitor(CreateOptions()),
+            new StandardOidcVerifiedEmailMatchPolicy());
+
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Failed));
+            invitations.Verify(s => s.AcceptInvitationAsync(It.IsAny<AcceptInvitationRequest>(), It.IsAny<AuthenticationContext?>(), It.IsAny<CancellationToken>()), Times.Never);
+            credentials.Verify(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
@@ -911,7 +933,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         AshlarOidcProviderOptions? provider = null,
         IOidcInvitationEmailMatchPolicy? emailPolicy = null,
         Mock<IAshlarTransaction>? transaction = null,
-        Mock<IAshlarTransactionProvider>? transactionProvider = null)
+        Mock<IAshlarDurableTransactionProvider>? transactionProvider = null)
     {
         return new AshlarOidcInvitationRegistrationService(
             invitations ?? CreateInvitations().Object,
@@ -921,14 +943,14 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
             emailPolicy ?? new StandardOidcVerifiedEmailMatchPolicy());
     }
 
-    private static Mock<IAshlarTransactionProvider> CreateTransactionProvider(Mock<IAshlarTransaction>? transaction = null)
+    private static Mock<IAshlarDurableTransactionProvider> CreateTransactionProvider(Mock<IAshlarTransaction>? transaction = null)
     {
         transaction ??= new Mock<IAshlarTransaction>();
         transaction.Setup(t => t.CommitAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         transaction.Setup(t => t.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         transaction.Setup(t => t.DisposeAsync()).Returns(ValueTask.CompletedTask);
 
-        var provider = new Mock<IAshlarTransactionProvider>();
+        var provider = new Mock<IAshlarDurableTransactionProvider>();
         provider.Setup(p => p.BeginTransactionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(transaction.Object);
         return provider;
     }
@@ -1026,6 +1048,14 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         public AshlarOAuthOptions CurrentValue => options;
         public AshlarOAuthOptions Get(string? name) => options;
         public IDisposable? OnChange(Action<AshlarOAuthOptions, string?> listener) => null;
+    }
+
+    private sealed class NonDurableTransactionProvider : IAshlarTransactionProvider
+    {
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException("OIDC invitation registration must fail before starting a non-durable transaction.");
+        }
     }
 
     private sealed class TestAuthenticationService(AuthenticateResult result, Exception? authenticateException = null) : IAuthenticationService
