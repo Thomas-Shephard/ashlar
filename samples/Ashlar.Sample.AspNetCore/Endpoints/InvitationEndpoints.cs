@@ -26,7 +26,7 @@ internal static class InvitationEndpoints
             };
             var result = await invitations.CreateInvitationAsync(invitation, callback, httpContext.ToAuthenticationContext(), cancellationToken);
             return result.Succeeded ? Results.Accepted() : Results.BadRequest(SampleResultErrors.From(result));
-        }).RequireAuthorization("admin").RequireSampleAntiforgery();
+        }).RequireAuthorization("admin").RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapPost("/api/invitations/accept", async Task<IResult> (
             AcceptInvitationRequest request,
