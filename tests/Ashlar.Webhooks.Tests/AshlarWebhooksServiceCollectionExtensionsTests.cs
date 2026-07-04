@@ -203,6 +203,57 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddAshlarSecurityEventWebhookDeliveryObserverComposesWithExistingObserverAndSkipsNoOp()
+    {
+        var existingObserver = new RecordingDeliveryObserver();
+        var services = new ServiceCollection();
+        services.AddAshlarSecurityEventWebhooks();
+        services.AddSingleton<IAshlarSecurityEventWebhookDeliveryObserver>(existingObserver);
+        services.AddAshlarSecurityEventWebhookDeliveryObserver<RecordingDeliveryObserver>();
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>().RecordDeliveryAttempt(CreateTelemetry());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>(), Is.TypeOf<CompositeAshlarSecurityEventWebhookDeliveryObserver>());
+            Assert.That(provider.GetServices<IAshlarSecurityEventWebhookDeliveryObserverContribution>(), Has.Exactly(2).Items);
+            Assert.That(existingObserver.Telemetry, Has.Count.EqualTo(1));
+            Assert.That(provider.GetRequiredService<RecordingDeliveryObserver>().Telemetry, Has.Count.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void AddAshlarSecurityEventWebhookDeliveryObserverIsIdempotent()
+    {
+        var services = new ServiceCollection();
+        services
+            .AddAshlarSecurityEventWebhookDeliveryObserver<RecordingDeliveryObserver>()
+            .AddAshlarSecurityEventWebhookDeliveryObserver<RecordingDeliveryObserver>();
+        using var provider = services.BuildServiceProvider();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetServices<IAshlarSecurityEventWebhookDeliveryObserver>(), Has.Exactly(1).Items);
+            Assert.That(provider.GetServices<IAshlarSecurityEventWebhookDeliveryObserverContribution>(), Has.Exactly(1).Items);
+            Assert.That(provider.GetServices<RecordingDeliveryObserver>(), Has.Exactly(1).Items);
+        }
+    }
+
+    [Test]
+    public void AddAshlarSecurityEventWebhookDeliveryObserverContinuesFanOutWhenObserverThrows()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IAshlarSecurityEventWebhookDeliveryObserver, ThrowingDeliveryObserver>();
+        services.AddAshlarSecurityEventWebhookDeliveryObserver<RecordingDeliveryObserver>();
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IAshlarSecurityEventWebhookDeliveryObserver>().RecordDeliveryAttempt(CreateTelemetry());
+
+        Assert.That(provider.GetRequiredService<RecordingDeliveryObserver>().Telemetry, Has.Count.EqualTo(1));
+    }
+
+    [Test]
     public void WebhookCompositionsBuildWithStrictValidationWithoutHostedServices()
     {
         var services = new ServiceCollection();
@@ -273,6 +324,35 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         {
             Deliveries.Add(delivery);
             return Task.CompletedTask;
+        }
+    }
+
+    private static AshlarSecurityEventWebhookDeliveryTelemetry CreateTelemetry()
+    {
+        return new AshlarSecurityEventWebhookDeliveryTelemetry(
+            AshlarSecurityEventWebhookDeliveryTelemetry.BestEffortDeliveryMode,
+            "ashlar.sign_in.failed",
+            "audit",
+            AshlarSecurityEventWebhookDeliveryTelemetry.SuccessOutcome,
+            null,
+            TimeSpan.FromMilliseconds(12.5));
+    }
+
+    private sealed class RecordingDeliveryObserver : IAshlarSecurityEventWebhookDeliveryObserver
+    {
+        public List<AshlarSecurityEventWebhookDeliveryTelemetry> Telemetry { get; } = [];
+
+        public void RecordDeliveryAttempt(AshlarSecurityEventWebhookDeliveryTelemetry telemetry)
+        {
+            Telemetry.Add(telemetry);
+        }
+    }
+
+    private sealed class ThrowingDeliveryObserver : IAshlarSecurityEventWebhookDeliveryObserver
+    {
+        public void RecordDeliveryAttempt(AshlarSecurityEventWebhookDeliveryTelemetry telemetry)
+        {
+            throw new InvalidOperationException("observer failed");
         }
     }
 
