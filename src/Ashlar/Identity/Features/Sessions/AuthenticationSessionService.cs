@@ -367,6 +367,7 @@ public sealed class AuthenticationSessionService(
         string? reason = null,
         TenantContext? tenant = null,
         AuditContext? audit = null,
+        Guid? auditTenantId = null,
         CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty) throw new ArgumentException(UserIdCannotBeEmptyMessage, nameof(userId));
@@ -389,7 +390,7 @@ public sealed class AuthenticationSessionService(
                 EventType = AshlarSecurityEventTypes.SessionsRevokedForUser,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = userId,
-                TenantId = tenant?.TenantId,
+                TenantId = auditTenantId ?? tenant?.TenantId,
                 Audit = audit,
                 Properties = properties
             }, ct);

@@ -212,7 +212,7 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(result.Value?.RememberedMfaDevicesRevoked, Is.Zero);
         }
 
-        sessionService.Verify(s => s.RevokeSessionsForUserAsync(_userId, It.IsAny<string>(), It.IsAny<TenantContext?>(), It.IsAny<AuditContext?>(), It.IsAny<CancellationToken>()), Times.Never);
+        sessionService.Verify(s => s.RevokeSessionsForUserAsync(_userId, It.IsAny<string>(), It.IsAny<TenantContext?>(), It.IsAny<AuditContext?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
         rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -413,7 +413,7 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(result.Value?.RememberedMfaDevicesRevoked, Is.Zero);
         }
 
-        sessionService.Verify(s => s.RevokeSessionsForUserAsync(_userId, It.IsAny<string>(), It.IsAny<TenantContext?>(), It.IsAny<AuditContext?>(), It.IsAny<CancellationToken>()), Times.Never);
+        sessionService.Verify(s => s.RevokeSessionsForUserAsync(_userId, It.IsAny<string>(), It.IsAny<TenantContext?>(), It.IsAny<AuditContext?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
         rememberedDevices.Verify(s => s.RevokeAllAsync(_userId, It.IsAny<RevokeAllRememberedMfaDevicesRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -1465,6 +1465,10 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(sessionsResult.Succeeded, Is.True);
             Assert.That(credentialsResult.Succeeded, Is.True);
             Assert.That(mfaResult.Succeeded, Is.True);
+            Assert.That(_events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserAccountStateChanged).TenantId, Is.EqualTo(tenantId));
+            Assert.That(_events.Events.Where(e => e.EventType == AshlarSecurityEventTypes.SessionsRevokedForUser), Has.All.Matches<AshlarSecurityEvent>(securityEvent => securityEvent.TenantId == tenantId));
+            Assert.That(_events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserCredentialsRevoked).TenantId, Is.EqualTo(tenantId));
+            Assert.That(_events.Events.Single(e => e.EventType == AshlarSecurityEventTypes.UserMfaReset).TenantId, Is.EqualTo(tenantId));
         }
     }
 
@@ -1478,6 +1482,71 @@ internal sealed class AccountSecurityServiceTests
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFound));
             Assert.That(_events.Events.Single().TenantId, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task MutatingOperationsShouldKeepGlobalAuditTenantForAllTenantGlobalUser()
+    {
+        _userRepository.Users[_userId] = new User { Id = _userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Active };
+        _sessionRepository.Sessions.Add(CreateSession(_userId));
+        _userRepository.Credentials.Add(CreateCredential(_userId, AuthenticationProviderKey.Local));
+        _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.Mfa, "totp")));
+        _userRepository.Credentials.Add(CreateCredential(_userId, new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode")));
+
+        await _service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Suspended, includeAllTenants: true));
+        _userRepository.Users[_userId] = new User { Id = _userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Active };
+        await _service.RevokeSessionsAsync(_userId, CreateRequest(includeAllTenants: true));
+        await _service.RevokeCredentialsAsync(_userId, AuthenticationProviderKey.Local, CreateRequest(includeAllTenants: true));
+        await _service.ResetMfaAsync(_userId, CreateRequest(includeAllTenants: true));
+
+        Assert.That(_events.Events, Has.All.Matches<AshlarSecurityEvent>(securityEvent => securityEvent.TenantId == null));
+    }
+
+    [Test]
+    public async Task AllTenantAuditTenantShouldStayGlobalForUserWithoutTenantOwnership()
+    {
+        var userRepository = new Mock<IUserRepository>();
+        userRepository
+            .Setup(r => r.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BasicUser(_userId, "user@example.com", UserAccountState.Active));
+        var service = new AccountSecurityService(
+            userRepository.Object,
+            Mock.Of<ICredentialRepository>(),
+            Mock.Of<IAuthenticationSessionService>(),
+            new NullTransactionProvider(),
+            new PermissiveAccountSecurityGuard(),
+            new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
+
+        var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Active, includeAllTenants: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(_events.Events.Single().TenantId, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task GuardFailureAfterAllTenantUserResolutionShouldUseResolvedUserTenant()
+    {
+        var tenantId = Guid.NewGuid();
+        _userRepository.Users[_userId] = new User { Id = _userId, DisplayEmail = "user@example.com", AccountState = UserAccountState.Active, TenantId = tenantId };
+        var service = new AccountSecurityService(
+            _userRepository,
+            _userRepository,
+            Mock.Of<IAuthenticationSessionService>(),
+            new NullTransactionProvider(),
+            new RejectingAccountSecurityGuard(),
+            new AccountSecurityServiceDependencies(_timeProvider, _events, _events));
+
+        var result = await service.SetUserAccountStateAsync(_userId, CreateStateRequest(UserAccountState.Disabled, includeAllTenants: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.FailureCode, Is.EqualTo(new AshlarFailureCode("guard_rejected")));
+            Assert.That(_events.Events.Single().TenantId, Is.EqualTo(tenantId));
         }
     }
 

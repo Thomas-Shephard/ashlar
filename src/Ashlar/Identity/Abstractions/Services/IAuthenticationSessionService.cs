@@ -48,6 +48,7 @@ public interface IAuthenticationSessionService
     /// <param name="reason">Optional provider-neutral, display-safe reason for audit and administrative display.</param>
     /// <param name="tenant">Tenant scope to constrain the revocation. Use <see cref="TenantContext.Global" /> for global users; omit only when intentionally revoking across all tenant scopes.</param>
     /// <param name="audit">Actor and request metadata to include in emitted security events.</param>
+    /// <param name="auditTenantId">Optional tenant attribution for emitted security events when it differs from the mutation scope.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>
     /// <returns>The number of sessions revoked.</returns>
     Task<int> RevokeSessionsForUserAsync(
@@ -55,6 +56,7 @@ public interface IAuthenticationSessionService
         string? reason = null,
         TenantContext? tenant = null,
         AuditContext? audit = null,
+        Guid? auditTenantId = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
