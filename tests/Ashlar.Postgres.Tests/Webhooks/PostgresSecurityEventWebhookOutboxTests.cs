@@ -25,6 +25,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     private static readonly JsonSerializerOptions WebJsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly DateTimeOffset _now = new(2026, 5, 24, 12, 0, 0, TimeSpan.Zero);
+    private readonly List<ServiceProvider> _dispatcherProviders = [];
     private IServiceProvider _serviceProvider = null!;
     private FakeTimeProvider _timeProvider = null!;
 
@@ -50,6 +51,17 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         {
             await asyncDisposable.DisposeAsync();
         }
+    }
+
+    [TearDown]
+    public async Task TearDownAsync()
+    {
+        foreach (var provider in _dispatcherProviders)
+        {
+            await provider.DisposeAsync();
+        }
+
+        _dispatcherProviders.Clear();
     }
 
     [SetUp]
@@ -874,13 +886,26 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         AshlarSecurityEventWebhookOptions? webhookOptions = null)
     {
         return new PostgresSecurityEventWebhookOutboxDispatcher(
-            _serviceProvider,
+            CreateDispatcherProvider(observer),
             _timeProvider,
             Options.Create(options ?? new PostgresSecurityEventWebhookOutboxOptions()),
             Options.Create(webhookOptions ?? CreateWebhookOptions()),
             new TestHttpClientFactory(transport),
-            CreateDestinationValidator(),
-            deliveryObserver: observer);
+            CreateDestinationValidator());
+    }
+
+    private ServiceProvider CreateDispatcherProvider(IAshlarSecurityEventWebhookDeliveryObserver? observer = null)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(_serviceProvider.GetRequiredService<IPostgresConnectionProvider>());
+        if (observer != null)
+        {
+            services.AddSingleton(observer);
+        }
+
+        var provider = services.BuildServiceProvider();
+        _dispatcherProviders.Add(provider);
+        return provider;
     }
 
     private ServiceProvider CreateHostedServiceProvider(HttpMessageHandler transport)

@@ -781,21 +781,25 @@ internal sealed class SqliteSecurityEventWebhookOutboxTests : SqliteTestBase
         AshlarSecurityEventWebhookOptions? webhookOptions = null)
     {
         return new SqliteSecurityEventWebhookOutboxDispatcher(
-            CreateDispatcherProvider(),
+            CreateDispatcherProvider(observer),
             _timeProvider,
             Options.Create(options ?? new SqliteSecurityEventWebhookOutboxOptions()),
             Options.Create(webhookOptions ?? CreateWebhookOptions()),
             new TestHttpClientFactory(transport),
-            CreateDestinationValidator(),
-            deliveryObserver: observer);
+            CreateDestinationValidator());
     }
 
-    private ServiceProvider CreateDispatcherProvider()
+    private ServiceProvider CreateDispatcherProvider(IAshlarSecurityEventWebhookDeliveryObserver? observer = null)
     {
         var services = new ServiceCollection();
         services.AddAshlarSqlite(GetConnectionString());
         services.AddSingleton<TimeProvider>(_timeProvider);
         services.AddSingleton(CreateDestinationValidator());
+        if (observer != null)
+        {
+            services.AddSingleton(observer);
+        }
+
         var provider = services.BuildServiceProvider();
         _dispatcherProviders.Add(provider);
         return provider;
