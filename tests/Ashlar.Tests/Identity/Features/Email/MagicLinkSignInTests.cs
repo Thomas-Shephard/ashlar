@@ -689,6 +689,7 @@ internal sealed class MagicLinkSignInTests
         services.AddSingleton(Mock.Of<IAuthenticationHandshakeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton<IEmailSender, RecordingEmailSender>();
+        services.AddAshlarNullTransactions();
         services.AddAshlarMagicLinkSignIn(options => options.EmailSubject = "Modified");
         services.AddAshlarNoMfaPolicy();
 

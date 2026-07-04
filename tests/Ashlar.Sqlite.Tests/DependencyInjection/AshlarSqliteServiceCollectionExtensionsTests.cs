@@ -76,6 +76,7 @@ internal sealed class AshlarSqliteServiceCollectionExtensionsTests : SqliteTestB
         services.AddLogging();
         services.AddSingleton(secretProtector);
         services.AddAshlarIdentity();
+        services.AddPermissiveAccountSecurityGuard();
         services.AddPasswordHasher<PasswordHasherV1>();
         services.AddAuthenticationProvider<LocalPasswordProvider>();
         services.AddAshlarSqlite(GetConnectionString());

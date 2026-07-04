@@ -5,6 +5,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Operational.Diagnostics;
 using Ashlar.Security.Encryption;
+using Ashlar.Security.Hashing;
 using Ashlar.Testing.DependencyInjection;
 using Ashlar.Webhooks.SecurityEvents;
 using Microsoft.Extensions.DependencyInjection;
@@ -267,6 +268,9 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton<IAshlarSecurityEventWebhookEnqueuer, TestWebhookEnqueuer>();
+        services.AddAshlarNullTransactions();
+        services.AddPermissiveAccountSecurityGuard();
+        services.AddPasswordHasher<PasswordHasherV1>();
         services.AddAshlarSecurityEventWebhooks(options =>
         {
             options.Endpoints.Add(new AshlarSecurityEventWebhookEndpointOptions

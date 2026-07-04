@@ -144,4 +144,9 @@ public static class AshlarConfigurationIssueCodes
     /// Transactions are configured with the <see langword="null" /> transaction provider.
     /// </summary>
     public const string NullTransactionProvider = "ASHLAR-CONFIG-NULL-TRANSACTION-PROVIDER";
+
+    /// <summary>
+    /// No transaction provider is configured.
+    /// </summary>
+    public const string TransactionProviderMissing = "ASHLAR-CONFIG-TRANSACTION-PROVIDER-MISSING";
 }

@@ -33,6 +33,8 @@ internal sealed class AshlarCompositionTests
         services.AddSingleton<IAuthenticationRateLimiter>(rateLimiter);
         services
             .AddAshlarIdentity()
+            .AddAshlarNullTransactions()
+            .AddPermissiveAccountSecurityGuard()
             .AddAuthenticationProvider<LocalPasswordProvider>()
             .AddPasswordHasher<FakePasswordHasher>();
 

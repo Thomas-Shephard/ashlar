@@ -1076,7 +1076,7 @@ Applications should render `PrimaryCredentials`, `AdditionalVerificationFactors`
 
 Sensitive admin operations require `AccountSecurityOperationRequest` with an `AuditContext` and an explicit scope. Pass a concrete `TenantContext`, `TenantContext.Global` for global users, or `IncludeAllTenants = true` for intentionally unrestricted mutations; requests with no scope or both scope forms are rejected. Applications are responsible for authorizing access before calling these methods, typically with an application admin role or scoped permission enforced by ASP.NET Core authorization. Ashlar records audit events with actor metadata, target user id, tenant id, reason, and affected counts; it does not return or log raw secrets, tokens, password hashes, recovery codes, protected payloads, or session tokens.
 
-`AddAshlarIdentity()` keeps minimal composition low-friction by falling back to `PermissiveAccountSecurityGuard`, which allows account-state changes. Production applications should register an application-specific `IAccountSecurityGuard` for business safety rules such as approval policy, risk review, tenant-specific constraints, or separation of duties. If allowing every account-state change is deliberate, include an explicit `AddPermissiveAccountSecurityGuard()` call so the choice is visible in service registration; configuration validation still reports this as `ASHLAR-CONFIG-PERMISSIVE-ACCOUNT-SECURITY-GUARD`.
+`AddAshlarIdentity()` does not register an `IAccountSecurityGuard`. Production applications should register an application-specific guard for business safety rules such as approval policy, risk review, tenant-specific constraints, or separation of duties. If allowing every guarded account-state change is deliberate, include an explicit `AddPermissiveAccountSecurityGuard()` call so the choice is visible in service registration; configuration validation reports this as `ASHLAR-CONFIG-PERMISSIVE-ACCOUNT-SECURITY-GUARD`.
 
 These primitives do not implement a full helpdesk workflow, admin UI, passkeys, OAuth, or OIDC. Applications can layer approval workflows, break-glass controls, and support tooling on top of the service.
 
@@ -1406,7 +1406,7 @@ public class MyIdentityService(
 }
 ```
 
-`AddAshlarIdentity()` registers a `NullTransactionProvider` by default, which performs no-op transactions. Persistence packages like **Ashlar.Postgres** provide a functional implementation.
+`AddAshlarIdentity()` does not register a transaction provider. Persistence packages like **Ashlar.Postgres** provide a functional implementation. Provider-less or test composition can explicitly call `AddAshlarNullTransactions()`, which registers `NullTransactionProvider`; it performs no-op transactions and provides no atomicity across multi-step identity operations.
 
 - **Scope Bound**: Transactions are bound to the `IServiceProvider` scope (typically the HTTP request).
 - **Single Transaction**: Only one active transaction is supported per scope. Attempting to start a nested transaction will throw an `InvalidOperationException`.

@@ -5,6 +5,7 @@ using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Operational.Configuration;
 using Ashlar.Operational.Diagnostics;
 using Ashlar.Security.Encryption;
+using Ashlar.Security.Hashing;
 using Ashlar.Testing.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -89,6 +90,9 @@ internal sealed class AshlarRedisServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddSingleton(customRateLimiter);
         services.AddAshlarIdentity();
+        services.AddAshlarNullTransactions();
+        services.AddPermissiveAccountSecurityGuard();
+        services.AddPasswordHasher<PasswordHasherV1>();
 
         using (var provider = ServiceProviderValidation.BuildValidatedServiceProvider(services, typeof(IAuthenticationRateLimiter)))
         {

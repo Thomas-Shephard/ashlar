@@ -13,6 +13,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.Models.Invitations;
 using Ashlar.Security.Encryption;
+using Ashlar.Security.Hashing;
 using Ashlar.Testing.DependencyInjection;
 using Ashlar.OAuth.Providers.Apple;
 using Ashlar.OAuth.Providers.GitHub;
@@ -72,6 +73,9 @@ internal sealed class AshlarOAuthServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<IInvitationRepository>());
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
+        services.AddAshlarNullTransactions();
+        services.AddPermissiveAccountSecurityGuard();
+        services.AddPasswordHasher<PasswordHasherV1>();
         services.AddAshlarOAuth(options => options.AddGitHub(oauth =>
         {
             oauth.ClientId = "client";

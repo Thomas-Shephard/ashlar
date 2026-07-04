@@ -108,9 +108,10 @@ internal sealed class AshlarConfigurationValidatorTests
             AssertIssue(result, AshlarConfigurationIssueCodes.SecurityEventAdministrationRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
             AssertIssue(result, AshlarConfigurationIssueCodes.AuthenticationSessionAdministrationRepositoryMissing, AshlarConfigurationIssueSeverity.Error);
             AssertIssue(result, AshlarConfigurationIssueCodes.NullSecurityEventSink, AshlarConfigurationIssueSeverity.Warning);
-            AssertIssue(result, AshlarConfigurationIssueCodes.PermissiveAccountSecurityGuard, AshlarConfigurationIssueSeverity.Warning);
             AssertIssue(result, AshlarConfigurationIssueCodes.InMemoryAuthenticationRateLimiter, AshlarConfigurationIssueSeverity.Warning);
-            AssertIssue(result, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Information);
+            AssertIssue(result, AshlarConfigurationIssueCodes.TransactionProviderMissing, AshlarConfigurationIssueSeverity.Information);
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.PermissiveAccountSecurityGuard));
+            Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.NullTransactionProvider));
             Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.InvitationRepositoryMissing));
             Assert.That(result.HasErrors, Is.True);
             Assert.That(result.IsValid, Is.False);
@@ -122,6 +123,7 @@ internal sealed class AshlarConfigurationValidatorTests
     {
         var services = new ServiceCollection();
         services.AddAshlarIdentity();
+        services.AddPermissiveAccountSecurityGuard();
 
         using var provider = services.BuildServiceProvider();
 
@@ -321,12 +323,27 @@ internal sealed class AshlarConfigurationValidatorTests
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddAshlarIdentity();
+        services.AddAshlarNullTransactions();
 
         using var provider = services.BuildServiceProvider();
 
         var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
 
         AssertIssue(result, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Warning);
+    }
+
+    [Test]
+    public async Task CoreCheckReportsInformationForNullTransactionProviderWithoutRepositories()
+    {
+        var services = new ServiceCollection();
+        services.AddAshlarConfigurationValidation();
+        services.AddAshlarNullTransactions();
+
+        using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
+
+        AssertIssue(result, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Information);
     }
 
     [Test]
@@ -340,7 +357,8 @@ internal sealed class AshlarConfigurationValidatorTests
 
         var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
 
-        AssertIssue(result, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Warning);
+        AssertIssue(result, AshlarConfigurationIssueCodes.TransactionProviderMissing, AshlarConfigurationIssueSeverity.Warning);
+        Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.NullTransactionProvider));
     }
 
     [Test]
@@ -350,6 +368,7 @@ internal sealed class AshlarConfigurationValidatorTests
         services.AddSingleton(Mock.Of<ICredentialRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
         services.AddAshlarIdentity();
+        services.AddAshlarNullTransactions();
 
         using var provider = services.BuildServiceProvider();
 
@@ -364,6 +383,7 @@ internal sealed class AshlarConfigurationValidatorTests
         var services = new ServiceCollection();
         services.AddSingleton(Mock.Of<IAuthorizationGrantRepository>());
         services.AddAshlarIdentity();
+        services.AddAshlarNullTransactions();
 
         using var provider = services.BuildServiceProvider();
 
@@ -383,7 +403,7 @@ internal sealed class AshlarConfigurationValidatorTests
 
         var result = await provider.GetRequiredService<IAshlarConfigurationValidator>().ValidateAsync();
 
-        AssertIssue(result, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Information);
+        AssertIssue(result, AshlarConfigurationIssueCodes.TransactionProviderMissing, AshlarConfigurationIssueSeverity.Information);
     }
 
     [Test]
@@ -1018,7 +1038,7 @@ internal sealed class AshlarConfigurationValidatorTests
         {
             Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.UserRepositoryMissing));
             Assert.That(result.Issues.Select(issue => issue.Code), Does.Not.Contain(AshlarConfigurationIssueCodes.EmailSenderNotConfigured));
-            AssertIssue(result, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Information);
+            AssertIssue(result, AshlarConfigurationIssueCodes.TransactionProviderMissing, AshlarConfigurationIssueSeverity.Information);
         }
     }
 
@@ -1089,7 +1109,7 @@ internal sealed class AshlarConfigurationValidatorTests
         var issues = await check.CheckAsync(provider);
 
         Assert.That(issues, Has.Some.Matches<AshlarConfigurationIssue>(issue =>
-            issue.Code == AshlarConfigurationIssueCodes.NullTransactionProvider));
+            issue.Code == AshlarConfigurationIssueCodes.TransactionProviderMissing));
     }
 
     [Test]
@@ -1113,7 +1133,7 @@ internal sealed class AshlarConfigurationValidatorTests
 
         var issues = await check.CheckAsync(provider);
 
-        AssertIssue(issues, AshlarConfigurationIssueCodes.NullTransactionProvider, AshlarConfigurationIssueSeverity.Warning);
+        AssertIssue(issues, AshlarConfigurationIssueCodes.TransactionProviderMissing, AshlarConfigurationIssueSeverity.Warning);
     }
 
     [Test]

@@ -28,11 +28,11 @@ public static partial class AshlarServiceCollectionExtensions
     /// <param name="configureSessions">Optional configuration for authentication session behavior.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
     /// <remarks>
-    /// This method intentionally does not register <see cref="IUserRepository"/> or <see cref="ICredentialRepository"/> or
-    /// <see cref="ISecretProtector"/>. Applications should provide those dependencies explicitly.
-    /// If no <see cref="IAccountSecurityGuard"/> is registered, this method adds <see cref="PermissiveAccountSecurityGuard"/>
-    /// as a fallback and configuration validation reports it as permissive. Hosts that need business approval, risk
-    /// review, or separation-of-duties checks should register an application-specific guard.
+    /// This method intentionally does not register <see cref="IUserRepository"/>, <see cref="ICredentialRepository"/>,
+    /// <see cref="ISecretProtector"/>, <see cref="IAccountSecurityGuard"/>, or <see cref="IAshlarTransactionProvider"/>.
+    /// Applications should provide those dependencies explicitly. Use <see cref="AddPermissiveAccountSecurityGuard"/>
+    /// only when guarded account-security mutations may all proceed, and use <see cref="AddAshlarNullTransactions"/>
+    /// only when no transaction atomicity is required.
     /// </remarks>
     public static IServiceCollection AddAshlarIdentity(
         this IServiceCollection services,
@@ -114,7 +114,6 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<IMfaPolicyEvaluator>(),
             provider.GetService<IAuthenticationProviderRegistry>(),
             provider.GetService<IRememberedMfaDeviceService>()));
-        services.AddPermissiveAccountSecurityGuard();
         services.TryAddScoped<IAccountSecurityService, AccountSecurityService>();
         services.TryAddScoped(provider => new AccountLockoutServiceDependencies(
             provider.GetService<TimeProvider>(),
@@ -184,7 +183,6 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<IdentityServiceOptions>>().Value);
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<AuthenticationSessionOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
-        services.TryAddScoped<IAshlarTransactionProvider, NullTransactionProvider>();
         services.AddAshlarUriValidation();
 
         return services;
@@ -205,6 +203,25 @@ public static partial class AshlarServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.TryAddScoped<IAccountSecurityGuard, PermissiveAccountSecurityGuard>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Explicitly registers the transaction provider that performs no transaction work.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    /// <remarks>
+    /// The <see langword="null" /> transaction provider provides no atomicity across multi-step identity operations. Use this only
+    /// for tests, provider-less composition, or simple custom hosts that deliberately do not require coordinated
+    /// repository transactions. Persistence providers should register a durable <see cref="IAshlarTransactionProvider"/>.
+    /// </remarks>
+    public static IServiceCollection AddAshlarNullTransactions(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.TryAddScoped<IAshlarTransactionProvider, NullTransactionProvider>();
 
         return services;
     }

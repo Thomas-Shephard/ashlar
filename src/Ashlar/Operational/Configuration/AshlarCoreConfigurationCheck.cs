@@ -182,7 +182,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
         AddMfaPolicyIssues(serviceProvider, issues);
         AddInMemoryRateLimiterIssue(serviceProvider, issues);
         AddInMemorySecurityNotificationSuppressionStoreIssue(serviceProvider, issues);
-        AddNullTransactionProviderIssue(serviceProvider, issues);
+        AddTransactionProviderIssue(serviceProvider, issues);
         AddBootstrapOptionIssues(serviceProvider, issues);
         AddCallbackUriAllowListIssues(serviceProvider, issues);
     }
@@ -494,7 +494,7 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
         }
     }
 
-    private static void AddNullTransactionProviderIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
+    private static void AddTransactionProviderIssue(IServiceProvider serviceProvider, List<AshlarConfigurationIssue> issues)
     {
         var transactionProvider = serviceProvider.GetService<IAshlarTransactionProvider>();
         if (transactionProvider is not null and not NullTransactionProvider)
@@ -514,6 +514,19 @@ internal sealed class AshlarCoreConfigurationCheck : IAshlarConfigurationCheck
             || serviceProvider.IsServiceRegistered<IInvitationRepository>()
             || serviceProvider.IsServiceRegistered<IBootstrapStateRepository>()
             || serviceProvider.IsServiceRegistered<IAuthorizationGrantRepository>();
+
+        if (transactionProvider is null)
+        {
+            issues.Add(new AshlarConfigurationIssue(
+                AshlarConfigurationIssueCodes.TransactionProviderMissing,
+                hasDurableRepositories ? AshlarConfigurationIssueSeverity.Warning : AshlarConfigurationIssueSeverity.Information,
+                "No Ashlar transaction provider is configured.",
+                hasDurableRepositories
+                    ? "Register a durable IAshlarTransactionProvider that coordinates the configured repositories, usually from an Ashlar persistence provider."
+                    : "Register a durable IAshlarTransactionProvider before using Ashlar with persistent data, or call AddAshlarNullTransactions only when no transaction atomicity is required.",
+                "Transactions"));
+            return;
+        }
 
         issues.Add(new AshlarConfigurationIssue(
             AshlarConfigurationIssueCodes.NullTransactionProvider,

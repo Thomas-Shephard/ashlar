@@ -3,6 +3,7 @@ using Ashlar.Auditing;
 using Ashlar.Identity.RateLimiting.Models;
 using Ashlar.Operational.Configuration;
 using Ashlar.Security.Encryption;
+using Ashlar.Security.Hashing;
 using Ashlar.Testing.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -68,6 +69,9 @@ internal sealed class AshlarPasskeysServiceCollectionExtensionsTests
         services.AddSingleton(Mock.Of<ISecurityEventAdministrationRepository>());
         services.AddSingleton(Mock.Of<IPasskeyChallengeRepository>());
         services.AddSingleton(Mock.Of<ISecretProtector>());
+        services.AddAshlarNullTransactions();
+        services.AddPermissiveAccountSecurityGuard();
+        services.AddPasswordHasher<PasswordHasherV1>();
         services.AddAshlarPasskeys(options =>
         {
             options.Origin = "https://example.com";

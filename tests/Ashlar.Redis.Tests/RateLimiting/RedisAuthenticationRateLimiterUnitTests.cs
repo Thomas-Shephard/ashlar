@@ -171,6 +171,7 @@ internal sealed class RedisAuthenticationRateLimiterUnitTests
         {
             Assert.That(key, Does.StartWith("ashlar:test:auth:"));
             Assert.That(key, Has.Length.EqualTo("ashlar:test:auth:".Length + 64));
+            Assert.That(key["ashlar:test:auth:".Length..], Does.Match("^[0-9a-f]{64}$"));
         }
     }
 
