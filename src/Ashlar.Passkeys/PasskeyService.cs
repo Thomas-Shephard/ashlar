@@ -10,10 +10,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Passkeys;
 
-/// <summary>
-/// Provides passkey registration, authentication, and credential management operations.
-/// </summary>
-public sealed class PasskeyService : IPasskeyService
+internal sealed class PasskeyService : IPasskeyService
 {
     private const string RegistrationPurpose = "passkey-registration";
     private const string AuthenticationPurpose = "passkey-authentication";
@@ -36,15 +33,6 @@ public sealed class PasskeyService : IPasskeyService
     private readonly ISecurityEventSink? _securityEventSink;
     private readonly IReadOnlyList<ISecondaryAuthenticationFactorProvider> _additionalVerificationProviders;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="PasskeyService" /> class.
-    /// </summary>
-    /// <param name="userRepository">Stores and retrieves users.</param>
-    /// <param name="credentialRepository">Stores and retrieves credentials.</param>
-    /// <param name="challengeRepository">The passkey challenge repository.</param>
-    /// <param name="ceremonyValidator">The passkey ceremony validator.</param>
-    /// <param name="providers">Registered authentication providers used to decide whether first-factor registration may use primary-authentication freshness.</param>
-    /// <param name="dependencies">The passkey service dependencies.</param>
     public PasskeyService(
         IUserRepository userRepository,
         ICredentialRepository credentialRepository,
@@ -893,17 +881,7 @@ internal sealed record RegistrationProofValidationRequest(
 
 internal sealed record RegistrationProofBinding(string ProofType, Guid SessionId, DateTimeOffset ExpiresAt);
 
-/// <summary>
-/// Provides passkey service dependencies.
-/// </summary>
-/// <param name="options">The passkey options.</param>
-/// <param name="authenticationOrchestrator">The orchestrator for MFA-aware authentication flows.</param>
-/// <param name="handshakeService">The authentication handshake service.</param>
-/// <param name="tokenHasher">The secure token hasher.</param>
-/// <param name="rateLimiter">The authentication rate limiter.</param>
-/// <param name="timeProvider">The time provider.</param>
-/// <param name="securityEventSink">The security event sink.</param>
-public sealed class PasskeyServiceDependencies(
+internal sealed class PasskeyServiceDependencies(
     IOptions<PasskeyOptions> options,
     IAuthenticationOrchestrator authenticationOrchestrator,
     IAuthenticationHandshakeService handshakeService,
@@ -912,32 +890,11 @@ public sealed class PasskeyServiceDependencies(
     TimeProvider? timeProvider = null,
     ISecurityEventSink? securityEventSink = null)
 {
-    /// <summary>
-    /// Gets the configured passkey options.
-    /// </summary>
     public IOptions<PasskeyOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
-    /// <summary>
-    /// Gets the orchestrator used to complete authentication flows.
-    /// </summary>
     public IAuthenticationOrchestrator AuthenticationOrchestrator { get; } = authenticationOrchestrator ?? throw new ArgumentNullException(nameof(authenticationOrchestrator));
-    /// <summary>
-    /// Gets the service used to create and inspect passkey authentication handshakes.
-    /// </summary>
     public IAuthenticationHandshakeService HandshakeService { get; } = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
-    /// <summary>
-    /// Gets the hasher used for passkey handshake tokens.
-    /// </summary>
     public ISecureTokenHasher TokenHasher { get; } = tokenHasher ?? throw new ArgumentNullException(nameof(tokenHasher));
-    /// <summary>
-    /// Gets the rate limiter used for passkey ceremony starts.
-    /// </summary>
     public IAuthenticationRateLimiter RateLimiter { get; } = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
-    /// <summary>
-    /// Gets the configured time provider.
-    /// </summary>
     public TimeProvider TimeProvider { get; } = timeProvider ?? TimeProvider.System;
-    /// <summary>
-    /// Gets the configured security event sink.
-    /// </summary>
     public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
 }

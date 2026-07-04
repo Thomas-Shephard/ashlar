@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Models.Authentication;
 
 /// <summary>
-/// Configuration options for the <see cref="Ashlar.Identity.Features.Services.IdentityService"/>.
+/// Configuration options for identity authentication flows.
 /// </summary>
 public sealed class IdentityServiceOptions
 {

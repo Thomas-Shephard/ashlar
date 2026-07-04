@@ -3,16 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Ashlar.Identity.Features.Services;
 
-/// <summary>
-/// Coordinates user creation, lookup, authentication, and credential linking.
-/// </summary>
-/// <param name="repository">The repository used to read and write users.</param>
-/// <param name="providerRegistry">The authentication provider registry used for provider lookup.</param>
-/// <param name="credentialService">The credential service used for credential lifecycle operations.</param>
-/// <param name="authenticationPipeline">The pipeline used to validate authentication assertions.</param>
-/// <param name="transactionProvider">The transaction provider used to commit multi-step identity operations.</param>
-/// <param name="dependencies">Optional operational dependencies used by identity flows.</param>
-public sealed class IdentityService(
+internal sealed class IdentityService(
     IUserRepository repository,
     IAuthenticationProviderRegistry providerRegistry,
     ICredentialService credentialService,
@@ -28,30 +19,13 @@ public sealed class IdentityService(
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider, dependencies?.LoggerFactory);
 
-    /// <summary>
-    /// Gets the authentication providers supported by this identity service.
-    /// </summary>
     public IEnumerable<AuthenticationProviderKey> SupportedProviderKeys => _providerRegistry.SupportedProviderKeys;
 
-    /// <summary>
-    /// Finds a user by email address within an optional tenant boundary using Ashlar's normalized lookup form.
-    /// </summary>
-    /// <param name="email">The email address to search for. The repository normalizes this value for comparison.</param>
-    /// <param name="tenantId">The tenant scope for the lookup, or <see langword="null" /> for tenantless users.</param>
-    /// <param name="cancellationToken">A token that can cancel the lookup.</param>
-    /// <returns>The matching user, or <see langword="null" /> when no user exists.</returns>
     public async Task<IUser?> FindByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
     {
         return await _repository.GetUserByEmailAsync(email, tenantId, cancellationToken);
     }
 
-    /// <summary>
-    /// Finds the user linked to an external authentication provider key.
-    /// </summary>
-    /// <param name="provider">The authentication provider that owns the key.</param>
-    /// <param name="providerKey">The provider-specific key assigned to the user.</param>
-    /// <param name="cancellationToken">A token that can cancel the lookup.</param>
-    /// <returns>The linked user, or <see langword="null" /> when no active credential matches.</returns>
     public async Task<IUser?> FindByProviderKeyAsync(AuthenticationProviderKey provider, string providerKey, CancellationToken cancellationToken = default)
     {
         AuthenticationProviderKey.ThrowIfNotConfigured(provider, nameof(provider));
@@ -60,24 +34,11 @@ public sealed class IdentityService(
         return await _repository.GetUserByProviderKeyAsync(provider.Type, provider.Name, providerKey, cancellationToken);
     }
 
-    /// <summary>
-    /// Authenticates a user with the configured authentication pipeline.
-    /// </summary>
-    /// <param name="context">Request context for the authentication attempt.</param>
-    /// <param name="assertion">Provider assertion to validate. Treat as sensitive unless the provider documents otherwise.</param>
-    /// <param name="cancellationToken">A token that can cancel authentication.</param>
-    /// <returns>The authentication response produced by the pipeline.</returns>
     public async Task<AuthenticationResponse> LoginAsync(AuthenticationContext context, IAuthenticationAssertion assertion, CancellationToken cancellationToken = default)
     {
         return await _authenticationPipeline.LoginAsync(context, assertion, cancellationToken);
     }
 
-    /// <summary>
-    /// Creates a user and records the corresponding security event after commit.
-    /// </summary>
-    /// <param name="user">The user to create.</param>
-    /// <param name="cancellationToken">A token that can cancel user creation.</param>
-    /// <returns>The created user with a sanitized display/delivery email address when sanitization changed it.</returns>
     public async Task<IUser> CreateUserAsync(IUser user, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
@@ -98,14 +59,6 @@ public sealed class IdentityService(
         return sanitizedUser;
     }
 
-    /// <summary>
-    /// Links an authentication credential to an existing user.
-    /// </summary>
-    /// <param name="userId">The user that will own the credential.</param>
-    /// <param name="assertion">Assertion describing the credential provider and key. Treat as sensitive unless the provider documents otherwise.</param>
-    /// <param name="credentialValue">Optional protected credential value to store.</param>
-    /// <param name="cancellationToken">A token that can cancel credential linking.</param>
-    /// <returns>A success result when the credential is linked; otherwise, a failure describing the problem.</returns>
     public async Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(assertion);
@@ -128,33 +81,12 @@ public sealed class IdentityService(
 
     private sealed class SanitizedUserWrapper(IUser original, string displayEmail) : ITenantUser, IHasAuditMetadata
     {
-        /// <summary>
-        /// Existing user identifier.
-        /// </summary>
         public Guid Id => original.Id;
-        /// <summary>
-        /// Sanitized display/delivery email address.
-        /// </summary>
         public string DisplayEmail { get; } = displayEmail;
-        /// <summary>
-        /// Existing display name.
-        /// </summary>
         public string? Name => original.Name;
-        /// <summary>
-        /// Existing account state.
-        /// </summary>
         public UserAccountState AccountState => original.AccountState;
-        /// <summary>
-        /// Tenant that owns the user.
-        /// </summary>
         public Guid? TenantId => original is ITenantUser { TenantId: { } tenantId } ? tenantId : null;
-        /// <summary>
-        /// Gets when the user's email address was verified.
-        /// </summary>
         public DateTimeOffset? EmailVerifiedAt => original.EmailVerifiedAt;
-        /// <summary>
-        /// Gets the original user creation timestamp.
-        /// </summary>
         public DateTimeOffset CreatedAt => (original as IHasAuditMetadata)?.CreatedAt ?? default;
         public DateTimeOffset? UpdatedAt
         {
@@ -170,13 +102,7 @@ public sealed class IdentityService(
     }
 }
 
-/// <summary>
-/// Optional operational dependencies for <see cref="IdentityService" />.
-/// </summary>
-/// <param name="SecurityEventSink">The optional security event sink.</param>
-/// <param name="TimeProvider">The optional clock.</param>
-/// <param name="LoggerFactory">Optional <paramref name="LoggerFactory" /> used by security-event emission.</param>
-public sealed record IdentityServiceDependencies(
+internal sealed record IdentityServiceDependencies(
     ISecurityEventSink? SecurityEventSink = null,
     TimeProvider? TimeProvider = null,
     ILoggerFactory? LoggerFactory = null);

@@ -72,7 +72,7 @@ internal sealed class AuthenticationPipelineTests
             new NullTransactionProvider(),
             _primaryRateLimiterMock.Object,
             _factorRateLimiterMock.Object,
-            new AuthenticationPipelineDependencies(Logger: Mock.Of<Microsoft.Extensions.Logging.ILogger<AuthenticationPipeline>>()));
+            new AuthenticationPipelineDependencies(Logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<AuthenticationPipeline>.Instance));
 
         Assert.That(pipeline, Is.Not.Null);
     }

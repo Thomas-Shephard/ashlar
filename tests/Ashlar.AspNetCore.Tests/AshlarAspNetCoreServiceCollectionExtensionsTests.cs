@@ -3,7 +3,6 @@ using Ashlar.AspNetCore.Sessions;
 using Ashlar.Auditing;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Testing.DependencyInjection;
-using Ashlar.Identity.Features.Credentials;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Hashing;
 using Ashlar.AspNetCore.Authorization;
@@ -258,7 +257,7 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             AssertDescriptor<IIdentityService>(services, ServiceLifetime.Scoped);
-            AssertDescriptor<ICredentialService, CredentialService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<ICredentialService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ISecretProtector, DataProtectionSecretProtector>(services, ServiceLifetime.Scoped);
         }
     }

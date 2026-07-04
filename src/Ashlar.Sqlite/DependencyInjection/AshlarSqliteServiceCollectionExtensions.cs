@@ -1,5 +1,4 @@
 using Ashlar.Authorization.Abstractions;
-using Ashlar.Identity.Features.Administration;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
 using Ashlar.Operational;
@@ -89,13 +88,7 @@ public static class AshlarSqliteServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiter, SqliteAuthenticationRateLimiter>());
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiterDiagnostics, SqliteAuthenticationRateLimiterDiagnostics>());
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimitAdministrationRepository, SqliteAuthenticationRateLimitAdministrationRepository>());
-        services.TryAddScoped(provider => new AuthenticationRateLimitAdministrationServiceDependencies(
-            provider.GetService<TimeProvider>(),
-            provider.GetService<ISecurityEventSink>()));
-        services.TryAddScoped<IAuthenticationRateLimitAdministrationService>(provider =>
-            new AuthenticationRateLimitAdministrationService(
-                provider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>(),
-                provider.GetService<AuthenticationRateLimitAdministrationServiceDependencies>()));
+        services.AddAshlarAuthenticationRateLimitAdministration();
 
         return services;
     }
@@ -299,7 +292,6 @@ public static class AshlarSqliteServiceCollectionExtensions
         {
             httpClientBuilder.ConfigureHttpClient(configureHttpClient);
         }
-        services.TryAddScoped<AshlarSecurityEventWebhookOutboxDispatcherDependencies<SqliteSecurityEventWebhookOutboxOptions>>();
         services.TryAddScoped<SqliteSecurityEventWebhookOutboxDispatcher>();
 
         return services;

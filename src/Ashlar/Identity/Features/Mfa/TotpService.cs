@@ -8,10 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Features.Mfa;
 
-/// <summary>
-/// Implements TOTP (Time-based One-Time Password) enrollment and management.
-/// </summary>
-public sealed class TotpService : ITotpService
+internal sealed class TotpService : ITotpService
 {
     private const string EmptyActorUserIdMessage = "Actor user ID cannot be empty.";
 
@@ -26,15 +23,6 @@ public sealed class TotpService : ITotpService
     private readonly SecurityNotificationEmitter _notifications;
     private readonly IReadOnlyList<ISecondaryAuthenticationFactorProvider> _additionalVerificationProviders;
 
-    /// <summary>
-    /// Initializes a configured service instance.
-    /// </summary>
-    /// <param name="userRepository">Stores and retrieves users.</param>
-    /// <param name="credentialRepository">Stores and retrieves credentials.</param>
-    /// <param name="credentialService">Credential lifecycle service used to persist TOTP credentials.</param>
-    /// <param name="transactionProvider">Transaction provider used for enrollment and disable mutations.</param>
-    /// <param name="providers">Authentication providers used to locate the configured TOTP provider.</param>
-    /// <param name="dependencies">TOTP options, audit, clock, and notification dependencies.</param>
     public TotpService(
         IUserRepository userRepository,
         ICredentialRepository credentialRepository,
@@ -59,8 +47,6 @@ public sealed class TotpService : ITotpService
         _additionalVerificationProviders = providerList.OfType<ISecondaryAuthenticationFactorProvider>().ToArray();
     }
 
-    /// <inheritdoc />
-    /// <exception cref="AshlarOperationException">Thrown when required fresh verification proof is missing or does not match the target account.</exception>
     public async Task<TotpEnrollment> StartEnrollmentAsync(StartTotpEnrollmentRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -77,7 +63,6 @@ public sealed class TotpService : ITotpService
         throw new AshlarOperationException(failureCode, "Fresh verification is required for TOTP enrollment.");
     }
 
-    /// <inheritdoc />
     public Task<TotpEnrollment> StartEnrollmentPrivilegedAsync(StartTotpEnrollmentRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -117,7 +102,6 @@ public sealed class TotpService : ITotpService
         return new TotpEnrollment(base32Secret, uri);
     }
 
-    /// <inheritdoc />
     public async Task<Result> CompleteEnrollmentAsync(VerifyTotpEnrollmentRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -138,7 +122,6 @@ public sealed class TotpService : ITotpService
         return await CompleteEnrollmentCoreAsync(request, userResult.Value, cancellationToken);
     }
 
-    /// <inheritdoc />
     public Task<Result> CompleteEnrollmentPrivilegedAsync(VerifyTotpEnrollmentRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -276,7 +259,6 @@ public sealed class TotpService : ITotpService
         return Result.Success();
     }
 
-    /// <inheritdoc />
     public async Task<bool> DisableAsync(DisableTotpRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -291,7 +273,6 @@ public sealed class TotpService : ITotpService
         return await DisableCoreAsync(request, cancellationToken);
     }
 
-    /// <inheritdoc />
     public Task<bool> DisablePrivilegedAsync(DisableTotpRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -526,33 +507,14 @@ internal sealed record EnrollmentProofValidationRequest(
     AuditContext? Audit,
     string EventType);
 
-/// <summary>
-/// Groups optional dependencies used by the TOTP service.
-/// </summary>
-/// <param name="options">TOTP configuration options.</param>
-/// <param name="timeProvider">Clock used for timestamps and TOTP verification windows.</param>
-/// <param name="securityEventSink">Optional sink used to record TOTP security events.</param>
-/// <param name="notificationService">Optional service used to send account security notifications.</param>
-public sealed class TotpServiceDependencies(
+internal sealed class TotpServiceDependencies(
     IOptions<TotpOptions> options,
     TimeProvider? timeProvider = null,
     ISecurityEventSink? securityEventSink = null,
     ISecurityNotificationService? notificationService = null)
 {
-    /// <summary>
-    /// Gets TOTP configuration options.
-    /// </summary>
     public IOptions<TotpOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
-    /// <summary>
-    /// Gets the clock used for timestamps and TOTP verification windows.
-    /// </summary>
     public TimeProvider TimeProvider { get; } = timeProvider ?? TimeProvider.System;
-    /// <summary>
-    /// Gets the optional sink used to record TOTP security events.
-    /// </summary>
     public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
-    /// <summary>
-    /// Gets the optional service used to send account security notifications.
-    /// </summary>
     public ISecurityNotificationService? NotificationService { get; } = notificationService;
 }

@@ -1,5 +1,4 @@
 using Ashlar.Authorization.Abstractions;
-using Ashlar.Identity.Features.Administration;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Messaging;
 using Ashlar.Operational;
@@ -223,13 +222,7 @@ public static class AshlarPostgresServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Singleton<IAuthenticationRateLimiter, PostgresAuthenticationRateLimiter>());
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimiterDiagnostics, PostgresAuthenticationRateLimiterDiagnostics>());
         services.Replace(ServiceDescriptor.Scoped<IAuthenticationRateLimitAdministrationRepository, PostgresAuthenticationRateLimitAdministrationRepository>());
-        services.TryAddScoped(provider => new AuthenticationRateLimitAdministrationServiceDependencies(
-            provider.GetService<TimeProvider>(),
-            provider.GetService<ISecurityEventSink>()));
-        services.TryAddScoped<IAuthenticationRateLimitAdministrationService>(provider =>
-            new AuthenticationRateLimitAdministrationService(
-                provider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>(),
-                provider.GetService<AuthenticationRateLimitAdministrationServiceDependencies>()));
+        services.AddAshlarAuthenticationRateLimitAdministration();
 
         return services;
     }
@@ -434,7 +427,6 @@ public static class AshlarPostgresServiceCollectionExtensions
         {
             httpClientBuilder.ConfigureHttpClient(configureHttpClient);
         }
-        services.TryAddScoped<AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions>>();
         services.TryAddScoped<PostgresSecurityEventWebhookOutboxDispatcher>();
 
         return services;

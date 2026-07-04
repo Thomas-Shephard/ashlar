@@ -2,10 +2,17 @@ using Ashlar.Webhooks.SecurityEvents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Ashlar.Sqlite.Webhooks;
 
-internal sealed class SqliteSecurityEventWebhookOutboxDispatcher
+internal sealed class SqliteSecurityEventWebhookOutboxDispatcher(
+    IServiceProvider serviceProvider,
+    TimeProvider timeProvider,
+    IOptions<SqliteSecurityEventWebhookOutboxOptions> options,
+    IOptions<AshlarSecurityEventWebhookOptions> webhookOptions,
+    IHttpClientFactory httpClientFactory,
+    AshlarSecurityEventWebhookDestinationValidator destinationValidator)
 {
     public const string HttpClientName = "Ashlar.Sqlite.SecurityEventWebhookOutbox";
 
@@ -54,31 +61,14 @@ internal sealed class SqliteSecurityEventWebhookOutboxDispatcher
           AND failed_at IS NULL
           AND discarded_at IS NULL
         """;
-    private readonly IServiceProvider _serviceProvider;
-    private readonly TimeProvider _timeProvider;
-    private readonly SqliteSecurityEventWebhookOutboxOptions _options;
-    private readonly AshlarSecurityEventWebhookOptions _webhookOptions;
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly ILogger<SqliteSecurityEventWebhookOutboxDispatcher> _logger;
-    private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver;
-    private readonly AshlarSecurityEventWebhookDestinationValidator _destinationValidator;
-
-    public SqliteSecurityEventWebhookOutboxDispatcher(
-        AshlarSecurityEventWebhookOutboxDispatcherDependencies<SqliteSecurityEventWebhookOutboxOptions> dependencies,
-        ILogger<SqliteSecurityEventWebhookOutboxDispatcher>? logger = null,
-        IAshlarSecurityEventWebhookDeliveryObserver? deliveryObserver = null)
-    {
-        ArgumentNullException.ThrowIfNull(dependencies);
-
-        _serviceProvider = dependencies.ServiceProvider;
-        _timeProvider = dependencies.TimeProvider;
-        _options = dependencies.Options;
-        _webhookOptions = dependencies.WebhookOptions;
-        _httpClientFactory = dependencies.HttpClientFactory;
-        _logger = logger ?? NullLogger<SqliteSecurityEventWebhookOutboxDispatcher>.Instance;
-        _deliveryObserver = deliveryObserver ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
-        _destinationValidator = dependencies.DestinationValidator;
-    }
+    private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+    private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+    private readonly SqliteSecurityEventWebhookOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
+    private readonly AshlarSecurityEventWebhookOptions _webhookOptions = (webhookOptions ?? throw new ArgumentNullException(nameof(webhookOptions))).Value;
+    private readonly IHttpClientFactory _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+    private readonly ILogger<SqliteSecurityEventWebhookOutboxDispatcher> _logger = serviceProvider.GetService<ILogger<SqliteSecurityEventWebhookOutboxDispatcher>>() ?? NullLogger<SqliteSecurityEventWebhookOutboxDispatcher>.Instance;
+    private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver = serviceProvider.GetService<IAshlarSecurityEventWebhookDeliveryObserver>() ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
+    private readonly AshlarSecurityEventWebhookDestinationValidator _destinationValidator = destinationValidator ?? throw new ArgumentNullException(nameof(destinationValidator));
 
     public async Task<int> ProcessBatchAsync(CancellationToken cancellationToken = default)
     {

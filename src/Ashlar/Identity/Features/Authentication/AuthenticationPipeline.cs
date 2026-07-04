@@ -6,20 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Identity.Features.Authentication;
 
-/// <summary>
-/// Authenticates primary credentials and secondary factors through registered providers.
-/// </summary>
-/// <param name="providerRegistry">Registry used to resolve providers for submitted assertions.</param>
-/// <param name="credentialService">Credential lifecycle service used after provider authentication.</param>
-/// <param name="transactionProvider">Transaction provider used for credential lifecycle mutations.</param>
-/// <param name="primaryRateLimiter">The provider-neutral primary authentication rate limiter.</param>
-/// <param name="factorRateLimiter">The provider-neutral secondary factor verification rate limiter.</param>
-/// <param name="dependencies">Optional operational dependencies used by the pipeline.</param>
-/// <remarks>
-/// Pass both log members in <paramref name="dependencies" /> when constructing this pipeline manually and operational
-/// logging is desired for both authentication lifecycle operations and security event sink failures.
-/// </remarks>
-public sealed class AuthenticationPipeline(
+internal sealed class AuthenticationPipeline(
     IAuthenticationProviderRegistry providerRegistry,
     ICredentialService credentialService,
     IAshlarTransactionProvider transactionProvider,
@@ -64,13 +51,6 @@ public sealed class AuthenticationPipeline(
     private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider ?? TimeProvider.System, dependencies?.LoggerFactory);
     private readonly ILogger<AuthenticationPipeline> _logger = dependencies?.Logger ?? NullLogger<AuthenticationPipeline>.Instance;
 
-    /// <summary>
-    /// Performs primary sign-in authentication and returns the result.
-    /// </summary>
-    /// <param name="context">Request metadata used for auditing, tenant checks, and primary rate limiting.</param>
-    /// <param name="assertion">Primary credential or provider assertion to authenticate. Treat as sensitive unless the provider documents otherwise.</param>
-    /// <param name="cancellationToken">A token that can cancel authentication.</param>
-    /// <returns>The primary authentication outcome.</returns>
     public Task<AuthenticationResponse> LoginAsync(
         AuthenticationContext context,
         IAuthenticationAssertion assertion,
@@ -79,13 +59,6 @@ public sealed class AuthenticationPipeline(
         return ExecutePrimaryAsync(context, assertion, cancellationToken);
     }
 
-    /// <summary>
-    /// Verifies a secondary factor without applying primary sign-in throttles.
-    /// </summary>
-    /// <param name="context">Request metadata used for auditing, tenant checks, and factor rate limiting.</param>
-    /// <param name="assertion">Secondary factor assertion to verify. Treat as sensitive unless the provider documents otherwise.</param>
-    /// <param name="cancellationToken">A token that can cancel factor verification.</param>
-    /// <returns>The factor verification outcome.</returns>
     public Task<AuthenticationResponse> VerifyFactorAsync(
         AuthenticationContext context,
         IAuthenticationAssertion assertion,
@@ -542,18 +515,7 @@ public sealed class AuthenticationPipeline(
     }
 }
 
-/// <summary>
-/// Optional operational dependencies for <see cref="AuthenticationPipeline" />.
-/// </summary>
-/// <param name="SecurityEventSink">The optional sink that receives authentication security events.</param>
-/// <param name="TimeProvider">The optional clock.</param>
-/// <param name="Logger">Optional <paramref name="Logger" /> for authentication pipeline operational failures.</param>
-/// <param name="LoggerFactory">Optional <paramref name="LoggerFactory" /> used by security-event emission.</param>
-/// <param name="AccountLockoutService">Optional automatic account lockout service used for local password authentication.</param>
-/// <param name="PrimaryRateLimitOptions">Primary authentication rate-limit policy, including the explicit fail-open backend outage escape hatch.</param>
-/// <param name="FactorRateLimitOptions">Secondary factor rate-limit policy, including the explicit fail-open backend outage escape hatch.</param>
-/// <param name="AccountLockoutOptions">Account lockout policy, including the explicit fail-open backend outage escape hatch.</param>
-public sealed record AuthenticationPipelineDependencies(
+internal sealed record AuthenticationPipelineDependencies(
     ISecurityEventSink? SecurityEventSink = null,
     TimeProvider? TimeProvider = null,
     ILogger<AuthenticationPipeline>? Logger = null,

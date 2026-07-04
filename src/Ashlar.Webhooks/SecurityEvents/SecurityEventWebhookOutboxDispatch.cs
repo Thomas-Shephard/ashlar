@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text.Json;
-using Microsoft.Extensions.Options;
 
 namespace Ashlar.Webhooks.SecurityEvents;
 
@@ -64,56 +63,6 @@ public sealed class AshlarSecurityEventWebhookOutboxEntry
     /// Gets the number of previous delivery attempts.
     /// </summary>
     public int AttemptCount { get; init; }
-}
-
-/// <summary>
-/// Groups common dependencies used by security event webhook outbox dispatchers.
-/// </summary>
-/// <typeparam name="TOptions">The provider-specific options type.</typeparam>
-/// <param name="serviceProvider">Service provider used by provider-specific dispatch loops.</param>
-/// <param name="timeProvider">Clock used for retry timestamps and dispatch-time signing.</param>
-/// <param name="options">Provider-specific outbox dispatch options.</param>
-/// <param name="webhookOptions">The current webhook endpoint configuration.</param>
-/// <param name="httpClientFactory">Factory used to create the configured webhook HTTP client.</param>
-/// <param name="destinationValidator">The webhook destination safety validator.</param>
-public sealed class AshlarSecurityEventWebhookOutboxDispatcherDependencies<TOptions>(
-    IServiceProvider serviceProvider,
-    TimeProvider timeProvider,
-    IOptions<TOptions> options,
-    IOptions<AshlarSecurityEventWebhookOptions> webhookOptions,
-    IHttpClientFactory httpClientFactory,
-    AshlarSecurityEventWebhookDestinationValidator destinationValidator)
-    where TOptions : class
-{
-    /// <summary>
-    /// Gets the service provider used by provider-specific dispatch loops.
-    /// </summary>
-    public IServiceProvider ServiceProvider { get; } = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
-
-    /// <summary>
-    /// Gets the clock used for retry timestamps and dispatch-time signing.
-    /// </summary>
-    public TimeProvider TimeProvider { get; } = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-
-    /// <summary>
-    /// Gets the provider-specific outbox dispatch options.
-    /// </summary>
-    public TOptions Options { get; } = (options ?? throw new ArgumentNullException(nameof(options))).Value;
-
-    /// <summary>
-    /// Gets the current webhook endpoint configuration.
-    /// </summary>
-    public AshlarSecurityEventWebhookOptions WebhookOptions { get; } = (webhookOptions ?? throw new ArgumentNullException(nameof(webhookOptions))).Value;
-
-    /// <summary>
-    /// Gets the factory used to create the configured webhook HTTP client.
-    /// </summary>
-    public IHttpClientFactory HttpClientFactory { get; } = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
-
-    /// <summary>
-    /// Gets the webhook destination safety validator.
-    /// </summary>
-    public AshlarSecurityEventWebhookDestinationValidator DestinationValidator { get; } = destinationValidator ?? throw new ArgumentNullException(nameof(destinationValidator));
 }
 
 /// <summary>
