@@ -774,7 +774,7 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
         services.AddAshlarPostgresSecurityEventWebhookHostedService(
             options => options.BatchSize = 7,
             webhooks => webhooks.DestinationPolicy = AshlarSecurityEventWebhookDestinationPolicy.AllowPrivateNetworks,
-            builder => builder.ConfigureHttpClient(client => client.DefaultRequestHeaders.Add("X-Test", "configured")));
+            client => client.DefaultRequestHeaders.Add("X-Test", "configured"));
 
         await using var provider = services.BuildServiceProvider();
         var hostedServices = provider.GetServices<IHostedService>().ToList();
@@ -917,17 +917,27 @@ internal sealed class PostgresSecurityEventWebhookOutboxTests : PostgresTestBase
     }
 
     [Test]
-    public async Task DispatcherNamedHttpClientDisablesAutomaticRedirects()
+    public async Task DispatcherNamedHttpClientPreservesHardenedHandlerWithSafeConfiguration()
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddAshlarPostgres("Host=localhost;Database=test");
-        services.AddAshlarPostgresSecurityEventWebhookDispatcher();
+        services.AddAshlarPostgresSecurityEventWebhookDispatcher(configureHttpClient: client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(12);
+            client.DefaultRequestHeaders.Add("X-Test", "configured");
+        });
         await using var provider = services.BuildServiceProvider();
         using var handler = provider.GetRequiredService<IHttpMessageHandlerFactory>()
             .CreateHandler(PostgresSecurityEventWebhookOutboxDispatcher.HttpClientName);
+        var httpClient = provider.GetRequiredService<IHttpClientFactory>().CreateClient(PostgresSecurityEventWebhookOutboxDispatcher.HttpClientName);
 
-        Assert.That(ContainsHardenedSocketsHandler(handler), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ContainsHardenedSocketsHandler(handler), Is.True);
+            Assert.That(httpClient.Timeout, Is.EqualTo(TimeSpan.FromSeconds(12)));
+            Assert.That(httpClient.DefaultRequestHeaders.GetValues("X-Test").Single(), Is.EqualTo("configured"));
+        }
     }
 
     private static AshlarSecurityEventWebhookDestinationValidator CreateDestinationValidator()

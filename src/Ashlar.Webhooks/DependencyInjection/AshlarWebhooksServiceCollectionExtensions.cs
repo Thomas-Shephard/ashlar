@@ -16,18 +16,21 @@ public static class AshlarWebhooksServiceCollectionExtensions
     /// </summary>
     /// <param name="services">The service collection to add registrations to.</param>
     /// <param name="configure">Optional webhook configuration.</param>
-    /// <param name="configureHttpClient">Optional HTTP client builder configuration.</param>
+    /// <param name="configureHttpClient">Optional <see cref="HttpClient" /> configuration. The primary handler is Ashlar-owned.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddAshlarSecurityEventWebhooks(
         this IServiceCollection services,
         Action<AshlarSecurityEventWebhookOptions>? configure = null,
-        Action<IHttpClientBuilder>? configureHttpClient = null)
+        Action<HttpClient>? configureHttpClient = null)
     {
         ArgumentNullException.ThrowIfNull(services);
 
         var httpClientBuilder = services.AddHttpClient(AshlarSecurityEventWebhookSender.HttpClientName)
             .ConfigurePrimaryHttpMessageHandler(CreateWebhookHttpMessageHandler);
-        configureHttpClient?.Invoke(httpClientBuilder);
+        if (configureHttpClient != null)
+        {
+            httpClientBuilder.ConfigureHttpClient(configureHttpClient);
+        }
         services.AddOptions<AshlarSecurityEventWebhookOptions>()
             .Validate(AshlarSecurityEventWebhookOptions.Validate, "Ashlar security event webhook options are invalid.")
             .ValidateOnStart();

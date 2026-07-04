@@ -32,13 +32,10 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
                     SharedSecret = "shared-secret"
                 });
             },
-            builder =>
+            client =>
             {
                 configuredHttpClient = true;
-                builder.ConfigureHttpClient(client =>
-                {
-                    client.DefaultRequestHeaders.Add("X-Test", "configured");
-                });
+                client.DefaultRequestHeaders.Add("X-Test", "configured");
             });
 
         using var provider = services.BuildServiceProvider();
@@ -127,15 +124,25 @@ internal sealed class AshlarWebhooksServiceCollectionExtensionsTests
     }
 
     [Test]
-    public void AddAshlarSecurityEventWebhooksDisablesAutomaticRedirectsForNamedClient()
+    public void AddAshlarSecurityEventWebhooksPreservesHardenedHandlerWithSafeHttpClientConfiguration()
     {
         var services = new ServiceCollection();
-        services.AddAshlarSecurityEventWebhooks();
+        services.AddAshlarSecurityEventWebhooks(configureHttpClient: client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(12);
+            client.DefaultRequestHeaders.Add("X-Test", "configured");
+        });
         using var provider = services.BuildServiceProvider();
         using var handler = provider.GetRequiredService<IHttpMessageHandlerFactory>()
             .CreateHandler(AshlarSecurityEventWebhookSender.HttpClientName);
+        var httpClient = provider.GetRequiredService<IHttpClientFactory>().CreateClient(AshlarSecurityEventWebhookSender.HttpClientName);
 
-        Assert.That(ContainsHardenedSocketsHandler(handler), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ContainsHardenedSocketsHandler(handler), Is.True);
+            Assert.That(httpClient.Timeout, Is.EqualTo(TimeSpan.FromSeconds(12)));
+            Assert.That(httpClient.DefaultRequestHeaders.GetValues("X-Test").Single(), Is.EqualTo("configured"));
+        }
     }
 
     [Test]
