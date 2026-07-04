@@ -3,6 +3,7 @@ using Ashlar.Messaging;
 using Ashlar.OAuth;
 using Ashlar.Security.Encryption;
 using Ashlar.Security.Tokens;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Time.Testing;
@@ -12,6 +13,9 @@ namespace Ashlar.Postgres.Tests.OAuth;
 internal sealed class PostgresOidcInvitationRegistrationAtomicityTests
 {
     private static readonly DateTimeOffset Now = new(2026, 7, 3, 12, 0, 0, TimeSpan.Zero);
+    private const string ProviderNameProperty = ".ashlar.oauth.providerName";
+    private const string SchemeNameProperty = ".ashlar.oauth.schemeName";
+    private const string ProviderTypeProperty = ".ashlar.oauth.providerType";
 
     private PostgresContractDatabaseLease? _database;
 
@@ -46,12 +50,12 @@ internal sealed class PostgresOidcInvitationRegistrationAtomicityTests
         var users = services.GetRequiredService<IUserRepository>();
         var credentials = services.GetRequiredService<ICredentialRepository>();
         var service = services.GetRequiredService<AshlarOidcInvitationRegistrationService>();
-        var result = await service.RegisterOidcInvitationAsync(token, "Google", CreatePrincipal(subject, inviteeEmail), "Invitee");
+        var result = await service.RegisterOidcInvitationAsync(token, "Google", CreateTicket(subject, inviteeEmail), "Invitee");
 
         var rolledBackInvitation = await invitations.GetInvitationByTokenHashAsync(services.GetRequiredService<ISecureTokenHasher>().HashToken(token));
         var rolledBackInvitee = await users.GetUserByEmailAsync(inviteeEmail);
 
-        var retryResult = await service.RegisterOidcInvitationAsync(token, "Google", CreatePrincipal(retrySubject, inviteeEmail), "Invitee");
+        var retryResult = await service.RegisterOidcInvitationAsync(token, "Google", CreateTicket(retrySubject, inviteeEmail), "Invitee");
 
         var invitation = await invitations.GetInvitationByTokenHashAsync(services.GetRequiredService<ISecureTokenHasher>().HashToken(token));
         var invitee = await users.GetUserByEmailAsync(inviteeEmail);
@@ -129,6 +133,19 @@ internal sealed class PostgresOidcInvitationRegistrationAtomicityTests
             new Claim("email", email),
             new Claim("email_verified", "true")
         ], "oidc"));
+    }
+
+    private static AuthenticateResult CreateTicket(string subject, string email)
+    {
+        var properties = new AuthenticationProperties();
+        properties.Items[ProviderNameProperty] = "Google";
+        properties.Items[SchemeNameProperty] = "Google";
+        properties.Items[ProviderTypeProperty] = ProviderType.Oidc.Value;
+
+        return AuthenticateResult.Success(new AuthenticationTicket(
+            CreatePrincipal(subject, email),
+            properties,
+            "Ashlar.OAuth.External"));
     }
 
     private sealed class TestSecretProtector : ISecretProtector

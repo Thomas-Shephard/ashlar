@@ -10,6 +10,10 @@ internal sealed record AshlarExternalProvider(
     string OAuth2ProviderKeyClaimType = "id",
     bool AllowUnsafeOAuth2ProviderKeyClaimType = false);
 
+internal sealed record AshlarValidatedExternalPrincipal(
+    AshlarExternalProvider Provider,
+    System.Security.Claims.ClaimsPrincipal Principal);
+
 internal static class AshlarExternalProviderResolver
 {
     public static AshlarExternalProvider? GetProvider(AshlarOAuthOptions options, string providerName)
