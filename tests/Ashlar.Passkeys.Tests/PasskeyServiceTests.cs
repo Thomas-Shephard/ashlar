@@ -946,6 +946,7 @@ internal sealed class PasskeyServiceTests
         var credentials = new Mock<ICredentialRepository>();
         var challenges = new Mock<IPasskeyChallengeRepository>();
         var validator = new Mock<IPasskeyCeremonyValidator>();
+        repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
         credentials.Setup(r => r.ListCredentialsForUserAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync([credential]);
         validator.Setup(v => v.CreateAuthenticationOptions(It.IsAny<PasskeyOptions>(), It.IsAny<string>(), It.Is<IReadOnlyList<UserCredential>>(c => c.Count == 1 && c[0].ProviderKey == "cred"), It.IsAny<string>()))
             .Returns("{}");
@@ -957,6 +958,84 @@ internal sealed class PasskeyServiceTests
         Assert.That(result.Value?.OptionsJson, Is.EqualTo("{}"));
         repo.Verify(r => r.GetUserByEmailAsync(It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
         challenges.Verify(r => r.CreateAsync(It.Is<PasskeyChallenge>(c => c.UserId == user.Id), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task StartAuthenticationAsyncShouldAllowTenantUserWithMatchingTenant()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = new TestUser(Guid.NewGuid(), "test@example.com", TenantId: tenantId);
+        PasskeyChallenge? storedChallenge = null;
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var validator = new Mock<IPasskeyCeremonyValidator>();
+        var events = new RecordingSecurityEventSink();
+        repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        credentials.Setup(r => r.ListCredentialsForUserAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        challenges.Setup(r => r.CreateAsync(It.IsAny<PasskeyChallenge>(), It.IsAny<CancellationToken>()))
+            .Callback<PasskeyChallenge, CancellationToken>((challenge, _) => storedChallenge = challenge)
+            .Returns(Task.CompletedTask);
+        validator.Setup(v => v.CreateAuthenticationOptions(It.IsAny<PasskeyOptions>(), It.IsAny<string>(), It.IsAny<IReadOnlyList<UserCredential>>(), It.IsAny<string>()))
+            .Returns("{}");
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(securityEventSink: events, authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+
+        var result = await service.StartAuthenticationAsync(new StartPasskeyAuthenticationRequest(user.Id) { Tenant = new TenantContext(tenantId) });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(storedChallenge?.TenantId, Is.EqualTo(tenantId));
+            Assert.That(events.Events.Single().TenantId, Is.EqualTo(tenantId));
+        }
+    }
+
+    [TestCaseSource(nameof(StartAuthenticationTenantFailures))]
+    public async Task StartAuthenticationAsyncShouldRejectTenantMismatch(TestUser user, TenantContext? tenant)
+    {
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var validator = new Mock<IPasskeyCeremonyValidator>();
+        repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+
+        var result = await service.StartAuthenticationAsync(new StartPasskeyAuthenticationRequest(user.Id) { Tenant = tenant });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.UserNotFoundOrUnavailable));
+            credentials.Verify(r => r.ListCredentialsForUserAsync(It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+            challenges.Verify(r => r.CreateAsync(It.IsAny<PasskeyChallenge>(), It.IsAny<CancellationToken>()), Times.Never);
+            validator.Verify(v => v.CreateAuthenticationOptions(It.IsAny<PasskeyOptions>(), It.IsAny<string>(), It.IsAny<IReadOnlyList<UserCredential>>(), It.IsAny<string>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task StartAuthenticationAsyncShouldAllowGlobalUserWithOmittedTenant()
+    {
+        var user = new TestUser(Guid.NewGuid(), "test@example.com");
+        PasskeyChallenge? storedChallenge = null;
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var validator = new Mock<IPasskeyCeremonyValidator>();
+        repo.Setup(r => r.GetUserByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        credentials.Setup(r => r.ListCredentialsForUserAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        challenges.Setup(r => r.CreateAsync(It.IsAny<PasskeyChallenge>(), It.IsAny<CancellationToken>()))
+            .Callback<PasskeyChallenge, CancellationToken>((challenge, _) => storedChallenge = challenge)
+            .Returns(Task.CompletedTask);
+        validator.Setup(v => v.CreateAuthenticationOptions(It.IsAny<PasskeyOptions>(), It.IsAny<string>(), It.IsAny<IReadOnlyList<UserCredential>>(), It.IsAny<string>()))
+            .Returns("{}");
+        var service = new PasskeyService(repo.Object, credentials.Object, challenges.Object, validator.Object, CreateDependencies(authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+
+        var result = await service.StartAuthenticationAsync(new StartPasskeyAuthenticationRequest(user.Id));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(storedChallenge?.TenantId, Is.Null);
+        }
     }
 
     [Test]
@@ -1019,9 +1098,10 @@ internal sealed class PasskeyServiceTests
             challenges.Object,
             validator.Object,
             CreateDependencies(securityEventSink: events, authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), rateLimiter: rateLimiter));
+        var tenantId = Guid.NewGuid();
         var audit = new AuditContext(null, "2001:0db8::1", "Unit Test", "corr-passkey-start");
 
-        var result = await service.StartAuthenticationAsync(new StartPasskeyAuthenticationRequest(Audit: audit));
+        var result = await service.StartAuthenticationAsync(new StartPasskeyAuthenticationRequest(Audit: audit) { Tenant = new TenantContext(tenantId) });
 
         using (Assert.EnterMultipleScope())
         {
@@ -1030,10 +1110,109 @@ internal sealed class PasskeyServiceTests
             Assert.That(rateLimiter.Attempts.Single().IpAddress, Is.EqualTo("2001:db8::1"));
             Assert.That(rateLimiter.Attempts.Single().CorrelationId, Is.EqualTo("corr-passkey-start"));
             Assert.That(events.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationRateLimited));
+            Assert.That(events.Events.Single().TenantId, Is.EqualTo(tenantId));
         }
 
         validator.Verify(v => v.CreateAuthenticationOptions(It.IsAny<PasskeyOptions>(), It.IsAny<string>(), It.IsAny<IReadOnlyList<UserCredential>>(), It.IsAny<string>()), Times.Never);
         challenges.Verify(r => r.CreateAsync(It.IsAny<PasskeyChallenge>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task StartAuthenticationAsyncShouldScopeRateLimitByTenant()
+    {
+        var rateLimiter = new CaptureRateLimiter(allowed: false);
+        var service = new PasskeyService(
+            new Mock<IUserRepository>().Object,
+            new Mock<ICredentialRepository>().Object,
+            new Mock<IPasskeyChallengeRepository>().Object,
+            new Mock<IPasskeyCeremonyValidator>().Object,
+            CreateDependencies(authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher(), rateLimiter: rateLimiter));
+        var audit = new AuditContext(null, "2001:0db8::1", "Unit Test", "corr-passkey-start");
+
+        await service.StartAuthenticationAsync(new StartPasskeyAuthenticationRequest(Audit: audit) { Tenant = new TenantContext(Guid.NewGuid()) });
+        await service.StartAuthenticationAsync(new StartPasskeyAuthenticationRequest(Audit: audit));
+
+        Assert.That(rateLimiter.Attempts.Select(a => a.Key).Distinct().Count(), Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task CompleteAuthenticationAsyncShouldRejectMismatchedTenantBeforeConsumingChallenge()
+    {
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var challenge = CreateAuthenticationChallenge(now, tenantId: Guid.NewGuid());
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var validator = new Mock<IPasskeyCeremonyValidator>();
+        var orchestrator = new Mock<IAuthenticationOrchestrator>();
+        challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
+        var service = new PasskeyService(
+            new Mock<IUserRepository>().Object,
+            new Mock<ICredentialRepository>().Object,
+            challenges.Object,
+            validator.Object,
+            CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+
+        var result = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, Guid.NewGuid()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
+            challenges.Verify(r => r.ConsumeAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+            validator.Verify(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), It.IsAny<PasskeyChallenge>(), It.IsAny<UserCredential>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()), Times.Never);
+            orchestrator.Verify(o => o.AuthenticateAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<MfaOrchestrationOptions?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task CompleteAuthenticationAsyncShouldRejectOmittedTenantForTenantChallenge()
+    {
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var challenge = CreateAuthenticationChallenge(now, tenantId: Guid.NewGuid());
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
+        var service = new PasskeyService(
+            new Mock<IUserRepository>().Object,
+            new Mock<ICredentialRepository>().Object,
+            challenges.Object,
+            new Mock<IPasskeyCeremonyValidator>().Object,
+            CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+
+        var result = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
+        challenges.Verify(r => r.ConsumeAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task CompleteAuthenticationAsyncShouldRejectUsernamelessCredentialOwnerOutsideChallengeTenant()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = new TestUser(Guid.NewGuid(), "test@example.com", TenantId: Guid.NewGuid());
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var challenge = CreateAuthenticationChallenge(now, tenantId: tenantId);
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var validator = new Mock<IPasskeyCeremonyValidator>();
+        var orchestrator = new Mock<IAuthenticationOrchestrator>();
+        challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
+        challenges.Setup(r => r.ConsumeAsync(challenge.Id, challenge.Version, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        repo.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Passkey, "PASSKEY", "cred", It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        var service = new PasskeyService(
+            repo.Object,
+            credentials.Object,
+            challenges.Object,
+            validator.Object,
+            CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+
+        var result = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, tenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyCredentialNotFound));
+            credentials.Verify(r => r.GetCredentialForUserAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            validator.Verify(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), It.IsAny<PasskeyChallenge>(), It.IsAny<UserCredential>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()), Times.Never);
+            orchestrator.Verify(o => o.AuthenticateAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<MfaOrchestrationOptions?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
     }
 
     [Test]
@@ -1349,9 +1528,9 @@ internal sealed class PasskeyServiceTests
     public async Task CompleteAuthenticationAsyncShouldPassTenantContextToOrchestrator()
     {
         var tenantId = Guid.NewGuid();
-        var user = new TestUser(Guid.NewGuid(), "test@example.com");
+        var user = new TestUser(Guid.NewGuid(), "test@example.com", TenantId: tenantId);
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        var challenge = CreateAuthenticationChallenge(now);
+        var challenge = CreateAuthenticationChallenge(now, tenantId: tenantId);
         var credential = CreatePasskeyCredential(user.Id, "cred", now);
         var repo = new Mock<IUserRepository>();
         var credentials = new Mock<ICredentialRepository>();
@@ -1372,6 +1551,7 @@ internal sealed class PasskeyServiceTests
         var result = await service.CompleteAuthenticationAsync(new CompletePasskeyAuthenticationRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, tenantId));
 
         Assert.That(result.Succeeded, Is.True);
+
         orchestrator.Verify(p => p.AuthenticateAsync(It.Is<AuthenticationContext>(c => c.UserId == user.Id && c.TenantId == tenantId), It.IsAny<PasskeyAssertion>(), It.IsAny<MfaOrchestrationOptions?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -1658,6 +1838,41 @@ internal sealed class PasskeyServiceTests
             It.Is<VerifyAuthenticationHandshakeRequest>(request => request.Context != null && request.Context.IpAddress == "198.51.100.1" && request.Context.UserAgent == "Browser" && request.Context.CorrelationId == "corr-factor-start"),
             It.IsAny<CancellationToken>()));
         challenges.Verify(r => r.CreateAsync(It.Is<PasskeyChallenge>(c => c.UserId == userId && c.HandshakeTokenHash == "hashed:token" && c.FactorType == "passkey"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task StartFactorAsyncShouldPassTenantToHandshakeChallengeAndStoredChallenge()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var handshake = CreateHandshake(userId, tenantId);
+        var credential = CreatePasskeyCredential(userId, "cred", DateTimeOffset.UtcNow);
+        var credentials = new Mock<ICredentialRepository>();
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var validator = new Mock<IPasskeyCeremonyValidator>();
+        var handshakes = new Mock<IAuthenticationHandshakeService>();
+        handshakes.Setup(h => h.BeginFactorChallengeAsync(It.Is<VerifyAuthenticationHandshakeRequest>(request => request.Context != null && request.Context.TenantId == tenantId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success(handshake));
+        credentials.Setup(r => r.ListCredentialsForUserAsync(userId, true, It.IsAny<CancellationToken>())).ReturnsAsync([credential]);
+        validator.Setup(v => v.CreateAuthenticationOptions(It.IsAny<PasskeyOptions>(), It.IsAny<string>(), It.IsAny<IReadOnlyList<UserCredential>>(), PasskeyUserVerificationRequirement.Required))
+            .Returns("{}");
+        var service = new PasskeyService(
+            new Mock<IUserRepository>().Object,
+            credentials.Object,
+            challenges.Object,
+            validator.Object,
+            CreateDependencies(
+                authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object,
+                handshakeService: handshakes.Object,
+                tokenHasher: new TestTokenHasher()));
+
+        var result = await service.StartFactorAsync(new StartPasskeyFactorRequest("token") { Tenant = new TenantContext(tenantId) });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            challenges.Verify(r => r.CreateAsync(It.Is<PasskeyChallenge>(c => c.UserId == userId && c.TenantId == tenantId), It.IsAny<CancellationToken>()), Times.Once);
+        }
     }
 
     [Test]
@@ -2177,9 +2392,9 @@ internal sealed class PasskeyServiceTests
     public async Task CompleteFactorAsyncShouldPassTenantContextToOrchestrator()
     {
         var tenantId = Guid.NewGuid();
-        var user = new TestUser(Guid.NewGuid(), "test@example.com");
+        var user = new TestUser(Guid.NewGuid(), "test@example.com", TenantId: tenantId);
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        var challenge = CreateAuthenticationChallenge(now, user.Id, "hashed:token", "passkey");
+        var challenge = CreateAuthenticationChallenge(now, user.Id, "hashed:token", "passkey", tenantId);
         var credential = CreatePasskeyCredential(user.Id, "cred", now);
         var repo = new Mock<IUserRepository>();
         var credentials = new Mock<ICredentialRepository>();
@@ -2321,6 +2536,53 @@ internal sealed class PasskeyServiceTests
         var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(Guid.NewGuid(), JsonDocument.Parse("{}").RootElement, token, factorType));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
+    }
+
+    [Test]
+    public async Task CompleteFactorAsyncShouldRejectMismatchedTenantBeforeConsumingChallenge()
+    {
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var challenge = CreateAuthenticationChallenge(now, Guid.NewGuid(), "hashed:token", "passkey", Guid.NewGuid());
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        var validator = new Mock<IPasskeyCeremonyValidator>();
+        var orchestrator = new Mock<IAuthenticationOrchestrator>();
+        challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
+        var service = new PasskeyService(
+            new Mock<IUserRepository>().Object,
+            new Mock<ICredentialRepository>().Object,
+            challenges.Object,
+            validator.Object,
+            CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: orchestrator.Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+
+        var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, "token", TenantId: Guid.NewGuid()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
+            challenges.Verify(r => r.ConsumeAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+            validator.Verify(v => v.VerifyAuthenticationAsync(It.IsAny<PasskeyOptions>(), It.IsAny<PasskeyChallenge>(), It.IsAny<UserCredential>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()), Times.Never);
+            orchestrator.Verify(o => o.VerifyFactorAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public async Task CompleteFactorAsyncShouldRejectOmittedTenantForTenantChallenge()
+    {
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var challenge = CreateAuthenticationChallenge(now, Guid.NewGuid(), "hashed:token", "passkey", Guid.NewGuid());
+        var challenges = new Mock<IPasskeyChallengeRepository>();
+        challenges.Setup(r => r.GetAsync(challenge.Id, It.IsAny<CancellationToken>())).ReturnsAsync(challenge);
+        var service = new PasskeyService(
+            new Mock<IUserRepository>().Object,
+            new Mock<ICredentialRepository>().Object,
+            challenges.Object,
+            new Mock<IPasskeyCeremonyValidator>().Object,
+            CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+
+        var result = await service.CompleteFactorAsync(new CompletePasskeyFactorRequest(challenge.Id, JsonDocument.Parse("""{"id":"cred"}""").RootElement, "token"));
+
+        Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyChallengeInvalid));
+        challenges.Verify(r => r.ConsumeAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [TestCase(null)]
@@ -2534,6 +2796,13 @@ internal sealed class PasskeyServiceTests
         challenges.Verify(r => r.CreateAsync(It.IsAny<PasskeyChallenge>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    private static IEnumerable<TestCaseData> StartAuthenticationTenantFailures()
+    {
+        yield return new TestCaseData(new TestUser(Guid.NewGuid(), "tenant@example.com", TenantId: Guid.NewGuid()), null).SetName("tenant user with omitted tenant");
+        yield return new TestCaseData(new TestUser(Guid.NewGuid(), "tenant@example.com", TenantId: Guid.NewGuid()), new TenantContext(Guid.NewGuid())).SetName("tenant user with wrong tenant");
+        yield return new TestCaseData(new TestUser(Guid.NewGuid(), "global@example.com"), new TenantContext(Guid.NewGuid())).SetName("global user with tenant context");
+    }
+
     private static void SetupChallengeUser(Mock<IUserRepository> repository, PasskeyChallenge challenge, UserAccountState accountState = UserAccountState.Active)
     {
         var userId = challenge.UserId ?? throw new ArgumentException("Challenge must be user-bound.", nameof(challenge));
@@ -2678,7 +2947,8 @@ internal sealed class PasskeyServiceTests
         DateTimeOffset now,
         Guid? userId = null,
         string? handshakeTokenHash = null,
-        string? factorType = null)
+        string? factorType = null,
+        Guid? tenantId = null)
     {
         return new PasskeyChallenge
         {
@@ -2686,6 +2956,7 @@ internal sealed class PasskeyServiceTests
             Version = "v1",
             Purpose = "passkey-authentication",
             UserId = userId,
+            TenantId = tenantId,
             HandshakeTokenHash = handshakeTokenHash,
             FactorType = factorType,
             Challenge = "challenge",
@@ -2697,7 +2968,7 @@ internal sealed class PasskeyServiceTests
         };
     }
 
-    private static AuthenticationHandshake CreateHandshake(Guid userId)
+    private static AuthenticationHandshake CreateHandshake(Guid userId, Guid? tenantId = null)
     {
         return new AuthenticationHandshake(
             Guid.NewGuid(),
@@ -2708,7 +2979,10 @@ internal sealed class PasskeyServiceTests
             false,
             false,
             new HashSet<string> { "passkey" },
-            new HashSet<string>());
+            new HashSet<string>())
+        {
+            TenantId = tenantId
+        };
     }
 
     private static UserCredential CreatePasskeyCredential(Guid userId, string providerKey, DateTimeOffset now)

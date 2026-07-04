@@ -100,6 +100,23 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
     }
 
     [Test]
+    public async Task TenantAuthenticationChallengeRoundTrips()
+    {
+        await using var scope = CreateAsyncScope();
+        var userRepository = GetUserRepository(scope.ServiceProvider);
+        var repository = GetPasskeyChallengeRepository(scope.ServiceProvider);
+        var tenantId = Guid.NewGuid();
+        var user = await CreateUserAsync(userRepository, tenantId: tenantId);
+        var challenge = CreateAuthenticationChallenge(user.Id, tenantId: tenantId);
+
+        await repository.CreateAsync(challenge);
+
+        var fetched = await repository.GetAsync(challenge.Id);
+
+        AssertChallenge(fetched!, challenge);
+    }
+
+    [Test]
     public async Task ChallengeValueUniquenessIsEnforced()
     {
         await using var scope = CreateAsyncScope();
@@ -245,7 +262,8 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
         string? factorType = "passkey",
         DateTimeOffset? createdAt = null,
         DateTimeOffset? expiresAt = null,
-        string? challengeValue = null)
+        string? challengeValue = null,
+        Guid? tenantId = null)
     {
         return CreateChallenge(
             "passkey-authentication",
@@ -254,6 +272,7 @@ internal abstract class PasskeyChallengeRepositoryContractTests : ProviderContra
             factorType,
             displayName: null,
             optionsJson: """{"challenge":"authentication","allowCredentials":[]}""",
+            tenantId: tenantId,
             createdAt: createdAt,
             expiresAt: expiresAt,
             challengeValue: challengeValue);

@@ -132,7 +132,7 @@ public sealed class CredentialService(
         async Task<IUser?> ResolveTenantConsistentUserAsync(Func<Task<IUser?>> resolveUserAsync)
         {
             var resolvedUser = await resolveUserAsync();
-            return resolvedUser != null && AuthenticationTenantConsistency.Matches(context, resolvedUser)
+            return resolvedUser != null && UserTenantOwnership.Matches(resolvedUser, context.TenantId)
                 ? resolvedUser
                 : null;
         }
