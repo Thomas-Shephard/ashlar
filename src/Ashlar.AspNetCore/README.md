@@ -143,7 +143,7 @@ services.AddHealthChecks()
     .AddAshlarRateLimiter();
 ```
 
-Health check data contains only safe aggregate diagnostic values such as provider name, diagnostic status, counts, timestamps, and configured batch or interval values. Provider packages do not depend on ASP.NET Core health checks; the adapters depend only on Ashlar diagnostic interfaces.
+Health check data is coarse readiness and operations data only: provider name, diagnostic status, schema status, counts, timestamps, and configured batch or interval values. Richer provider diagnostics can include migration names, provider versions, and other backend details; treat those diagnostics as trusted internal operational data. Provider packages do not depend on ASP.NET Core health checks; the adapters depend only on Ashlar diagnostic interfaces.
 
 ## Related Packages
 
