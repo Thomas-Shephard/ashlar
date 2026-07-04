@@ -12,9 +12,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxDispatcher(
     IOptions<SqliteSecurityEventWebhookOutboxOptions> options,
     IOptions<AshlarSecurityEventWebhookOptions> webhookOptions,
     IHttpClientFactory httpClientFactory,
-    AshlarSecurityEventWebhookDestinationValidator destinationValidator,
-    ILogger<SqliteSecurityEventWebhookOutboxDispatcher>? logger = null,
-    IAshlarSecurityEventWebhookDeliveryObserver? deliveryObserver = null)
+    AshlarSecurityEventWebhookDestinationValidator destinationValidator)
 {
     public const string HttpClientName = "Ashlar.Sqlite.SecurityEventWebhookOutbox";
 
@@ -68,8 +66,8 @@ internal sealed class SqliteSecurityEventWebhookOutboxDispatcher(
     private readonly SqliteSecurityEventWebhookOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
     private readonly AshlarSecurityEventWebhookOptions _webhookOptions = (webhookOptions ?? throw new ArgumentNullException(nameof(webhookOptions))).Value;
     private readonly IHttpClientFactory _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
-    private readonly ILogger<SqliteSecurityEventWebhookOutboxDispatcher> _logger = logger ?? NullLogger<SqliteSecurityEventWebhookOutboxDispatcher>.Instance;
-    private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver = deliveryObserver ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
+    private readonly ILogger<SqliteSecurityEventWebhookOutboxDispatcher> _logger = serviceProvider.GetService<ILogger<SqliteSecurityEventWebhookOutboxDispatcher>>() ?? NullLogger<SqliteSecurityEventWebhookOutboxDispatcher>.Instance;
+    private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver = serviceProvider.GetService<IAshlarSecurityEventWebhookDeliveryObserver>() ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
     private readonly AshlarSecurityEventWebhookDestinationValidator _destinationValidator = destinationValidator ?? throw new ArgumentNullException(nameof(destinationValidator));
 
     public async Task<int> ProcessBatchAsync(CancellationToken cancellationToken = default)
