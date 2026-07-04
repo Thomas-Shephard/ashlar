@@ -74,7 +74,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var result = await service.LinkExternalAccountAsync(
             userId,
             "Google",
-            CreatePrincipal("stable-sub", "first@example.com", tokenClaims: true),
+            AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("stable-sub", "first@example.com", tokenClaims: true)),
             credentialMetadata: "metadata");
 
         using (Assert.EnterMultipleScope())
@@ -105,7 +105,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(Result.Success());
         var service = CreateService(credentialService.Object, includeGitHub: true);
 
-        var result = await service.LinkExternalAccountAsync(userId, "GitHub", CreateGitHubPrincipal("12345"));
+        var result = await service.LinkExternalAccountAsync(userId, "GitHub", AshlarOAuthTestTickets.CreateExternalTicket("GitHub", "GitHub", ProviderType.OAuth, CreateGitHubPrincipal("12345")));
 
         using (Assert.EnterMultipleScope())
         {
@@ -133,7 +133,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             configureOptions: options => options.AddOAuth2Provider("CustomOAuth", "uid", _ => { }));
         var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("uid", "stable-uid"), new Claim("id", "not-used")], "oauth"));
 
-        var result = await service.LinkExternalAccountAsync(userId, "CustomOAuth", principal);
+        var result = await service.LinkExternalAccountAsync(userId, "CustomOAuth", AshlarOAuthTestTickets.CreateExternalTicket("CustomOAuth", "CustomOAuth", ProviderType.OAuth, principal));
 
         using (Assert.EnterMultipleScope())
         {
@@ -149,7 +149,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var service = CreateService();
 
-        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Microsoft", CreatePrincipal("sub"));
+        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Microsoft", AshlarOAuthTestTickets.CreateExternalTicket("Microsoft", "Microsoft", ProviderType.Oidc, CreatePrincipal("sub")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.UnsupportedProvider));
     }
@@ -160,7 +160,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var service = CreateService();
 
-        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), providerName, CreatePrincipal("sub"));
+        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), providerName, AshlarOAuthTestTickets.CreateExternalTicket(providerName, providerName, ProviderType.Oidc, CreatePrincipal("sub")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.UnsupportedProvider));
     }
@@ -170,7 +170,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var service = CreateService();
 
-        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", new ClaimsPrincipal(new ClaimsIdentity()));
+        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, new ClaimsPrincipal(new ClaimsIdentity())));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.InvalidPrincipal));
     }
@@ -180,15 +180,29 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var service = CreateService();
 
-        Assert.ThrowsAsync<ArgumentNullException>(() => service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", (ClaimsPrincipal)null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, null!)));
+    }
+
+    [Test]
+    public void LinkExternalAccountShouldNotExposeRawClaimsPrincipalOverloadPublicly()
+    {
+        var methods = typeof(AshlarExternalAccountLinkService).GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+
+        Assert.That(methods, Has.None.Matches<System.Reflection.MethodInfo>(method =>
+            method.Name == nameof(AshlarExternalAccountLinkService.LinkExternalAccountAsync)
+            && method.GetParameters().Any(parameter => parameter.ParameterType == typeof(ClaimsPrincipal))));
     }
 
     [Test]
     public async Task LinkExternalAccountShouldReturnInvalidPrincipalWhenConfiguredProviderNameIsInvalid()
     {
         var service = CreateServiceWithProvider(new AshlarOidcProviderOptions(" ", "Google", _ => { }));
+        var ticket = AuthenticateResult.Success(new AuthenticationTicket(
+            CreatePrincipal("sub"),
+            CreateProperties(" ", "Google"),
+            "Ashlar.OAuth.External"));
 
-        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", CreatePrincipal("sub"));
+        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", ticket);
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.InvalidPrincipal));
     }
@@ -198,7 +212,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var service = CreateService();
 
-        var result = await service.LinkExternalAccountAsync(Guid.Empty, "Google", CreatePrincipal("sub"));
+        var result = await service.LinkExternalAccountAsync(Guid.Empty, "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.InvalidPrincipal));
     }
@@ -212,7 +226,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(Result.Failure(AshlarFailureCodes.AlreadyLinkedToSelf));
         var service = CreateService(credentialService.Object);
 
-        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", CreatePrincipal("sub"));
+        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.AlreadyLinked));
     }
@@ -226,7 +240,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(Result.Failure(AshlarFailureCodes.AlreadyLinkedToOther));
         var service = CreateService(credentialService.Object);
 
-        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", CreatePrincipal("sub"));
+        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.AlreadyLinkedToAnotherUser));
     }
@@ -240,7 +254,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(Result.Failure(AshlarFailureCodes.InvalidProviderKey));
         var service = CreateService(credentialService.Object);
 
-        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", CreatePrincipal("sub"));
+        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.InvalidPrincipal));
     }
@@ -254,7 +268,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(Result.Failure(AshlarFailureCodes.UserNotFound));
         var service = CreateService(credentialService.Object);
 
-        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", CreatePrincipal("sub"));
+        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Failed));
     }
@@ -268,7 +282,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(new Result(false));
         var service = CreateService(credentialService.Object);
 
-        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", CreatePrincipal("sub"));
+        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Failed));
     }
@@ -286,8 +300,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(Result.Failure(AshlarFailureCodes.AlreadyLinkedToSelf));
         var service = CreateService(credentialService.Object);
 
-        await service.LinkExternalAccountAsync(userId, "Google", CreatePrincipal("same-sub", "old@example.com"));
-        await service.LinkExternalAccountAsync(userId, "Google", CreatePrincipal("same-sub", "new@example.com"));
+        await service.LinkExternalAccountAsync(userId, "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("same-sub", "old@example.com")));
+        await service.LinkExternalAccountAsync(userId, "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("same-sub", "new@example.com")));
 
         using (Assert.EnterMultipleScope())
         {
@@ -305,7 +319,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(Result.Success());
         var service = CreateService(credentialService.Object);
 
-        await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", CreatePrincipal("sub", tokenClaims: true));
+        await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub", tokenClaims: true)));
 
         credentialService.Verify(s => s.LinkCredentialAsync(
             It.IsAny<Guid>(),
@@ -325,7 +339,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var credentialService = new Mock<ICredentialService>();
         var service = CreateService(credentialService.Object, repository: new StubRepository(new TenantUser(userId, tenantId)));
 
-        var result = await service.LinkExternalAccountAsync(userId, "Google", CreatePrincipal("sub"), new TenantContext(otherTenantId));
+        var result = await service.LinkExternalAccountAsync(userId, "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")), new TenantContext(otherTenantId));
 
         using (Assert.EnterMultipleScope())
         {
@@ -345,7 +359,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(Result.Success());
         var service = CreateService(credentialService.Object, repository: new StubRepository(new TenantUser(userId, tenantId)));
 
-        var result = await service.LinkExternalAccountAsync(userId, "Google", CreatePrincipal("sub"), new TenantContext(tenantId));
+        var result = await service.LinkExternalAccountAsync(userId, "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")), new TenantContext(tenantId));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
     }
@@ -360,7 +374,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(Result.Success());
         var service = CreateService(credentialService.Object, repository: new StubRepository(new TenantUser(userId, null)));
 
-        var result = await service.LinkExternalAccountAsync(userId, "Google", CreatePrincipal("sub"), TenantContext.Global);
+        var result = await service.LinkExternalAccountAsync(userId, "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")), TenantContext.Global);
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
     }
@@ -372,7 +386,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var credentialService = new Mock<ICredentialService>();
         var service = CreateService(credentialService.Object, repository: new StubRepository(new TenantUser(userId, null)));
 
-        var result = await service.LinkExternalAccountAsync(userId, "Google", CreatePrincipal("sub"), new TenantContext(Guid.NewGuid()));
+        var result = await service.LinkExternalAccountAsync(userId, "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")), new TenantContext(Guid.NewGuid()));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Failed));
     }
@@ -383,7 +397,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var credentialService = new Mock<ICredentialService>();
         var service = CreateService(credentialService.Object, repository: new StubRepository());
 
-        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", CreatePrincipal("sub"), new TenantContext(Guid.NewGuid()));
+        var result = await service.LinkExternalAccountAsync(Guid.NewGuid(), "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")), new TenantContext(Guid.NewGuid()));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Failed));
     }
@@ -398,7 +412,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(Result.Success());
         var service = CreateService(credentialService.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.LinkExternalAccountAsync(userId, "Google", CreatePrincipal("sub"), TenantContext.Global);
+        var result = await service.LinkExternalAccountAsync(userId, "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")), TenantContext.Global);
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
     }
@@ -410,7 +424,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var credentialService = new Mock<ICredentialService>();
         var service = CreateService(credentialService.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.LinkExternalAccountAsync(userId, "Google", CreatePrincipal("sub"), new TenantContext(Guid.NewGuid()));
+        var result = await service.LinkExternalAccountAsync(userId, "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")), new TenantContext(Guid.NewGuid()));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Failed));
     }

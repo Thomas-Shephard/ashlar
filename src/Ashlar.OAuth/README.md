@@ -222,7 +222,7 @@ Profile values are display hints only. They are not identity assertions, provide
 
 ## Invitation registration
 
-`AshlarOidcInvitationRegistrationService` accepts an existing Ashlar invitation token with a validated OIDC identity and then links the OIDC credential to the accepted Ashlar user. It does not sign the user in automatically. Overloads that accept a raw `ClaimsPrincipal` assume the caller has already validated that principal with the same configured OIDC provider; do not pass principals built from request data or unvalidated JWTs. Use the ASP.NET Core authentication-result overloads when completing normal external-auth callbacks.
+`AshlarOidcInvitationRegistrationService` accepts an existing Ashlar invitation token with a validated OIDC identity and then links the OIDC credential to the accepted Ashlar user. It does not sign the user in automatically. Use the `HttpContext` completion API or pass an ASP.NET Core `AuthenticateResult` produced by Ashlar's external-auth callback path; account-changing OAuth/OIDC APIs do not accept raw `ClaimsPrincipal` values from application code.
 
 By default, `StandardOidcVerifiedEmailMatchPolicy` requires generic OIDC providers to match a standard `email` claim with `email_verified=true` before the invitation is consumed. Microsoft tenant providers registered with `AddMicrosoft` use the same verified `email` requirement by default. Microsoft's ID-token claim reference does not document a standard `email_verified` claim, and its `email`, `preferred_username`, `upn`, and `unique_name` claims can be mutable, display-oriented, aliases, guest-user identifiers, or tenant-specific usernames rather than mailbox-control proof.
 

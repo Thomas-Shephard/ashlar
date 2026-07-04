@@ -36,7 +36,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
             .ReturnsAsync(Result.Success());
         var service = CreateService(invitations.Object, credentials.Object);
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"), "Invitee");
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")), "Invitee");
 
         using (Assert.EnterMultipleScope())
         {
@@ -76,7 +76,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
             new Claim("email_verified", "true")
         ], "oidc"));
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", principal);
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, principal));
 
         using (Assert.EnterMultipleScope())
         {
@@ -126,7 +126,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var service = CreateService();
 
-        var result = await service.RegisterOidcInvitationAsync("token", providerName, CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", providerName, AshlarOAuthTestTickets.CreateExternalTicket(providerName, providerName, ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.UnsupportedProvider));
     }
@@ -136,7 +136,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var service = CreateService();
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal(null, "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal(null, "invitee@example.com", "true")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidPrincipal));
     }
@@ -162,7 +162,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Google",
-            CreatePrincipal("subject", "invitee@example.com", "true", issuer: "https://issuer.example/tenant"));
+            AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true", issuer: "https://issuer.example/tenant")));
 
         using (Assert.EnterMultipleScope())
         {
@@ -177,7 +177,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var service = CreateService(provider: new AshlarOidcProviderOptions("Google", "Google", _ => { }, AshlarOidcProviderKeyMode.IssuerAndSubject));
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidPrincipal));
     }
@@ -187,7 +187,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var service = CreateService(provider: new AshlarOidcProviderOptions(" ", "Google", _ => { }));
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreateTicket(" ", "Google", "subject"));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidPrincipal));
     }
@@ -199,10 +199,20 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.ThrowsAsync<ArgumentNullException>(() => service.RegisterOidcInvitationAsync("token", "Google", (ClaimsPrincipal)null!));
+            Assert.ThrowsAsync<ArgumentNullException>(() => service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, null!)));
             Assert.ThrowsAsync<ArgumentNullException>(() => service.RegisterOidcInvitationAsync("token", "Google", (AuthenticateResult)null!));
             Assert.ThrowsAsync<ArgumentNullException>(() => service.CompleteOidcInvitationRegistrationAsync(null!, "token", "Google"));
         }
+    }
+
+    [Test]
+    public void RegisterShouldNotExposeRawClaimsPrincipalOverloadPublicly()
+    {
+        var methods = typeof(AshlarOidcInvitationRegistrationService).GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+
+        Assert.That(methods, Has.None.Matches<System.Reflection.MethodInfo>(method =>
+            method.Name == nameof(AshlarOidcInvitationRegistrationService.RegisterOidcInvitationAsync)
+            && method.GetParameters().Any(parameter => parameter.ParameterType == typeof(ClaimsPrincipal))));
     }
 
     [TestCase(null)]
@@ -212,7 +222,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var invitations = CreateInvitations(preview: Result.Failure<InvitationAcceptancePreview>(AshlarFailureCodes.InvalidInvitation), token: token);
         var service = CreateService(invitations.Object);
 
-        var result = await service.RegisterOidcInvitationAsync(token!, "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync(token!, "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         using (Assert.EnterMultipleScope())
         {
@@ -230,7 +240,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var invitations = CreateInvitations(preview: Result.Failure<InvitationAcceptancePreview>(AshlarFailureCodes.InvalidInvitation), token: overlongToken);
         var service = CreateService(invitations.Object);
 
-        var result = await service.RegisterOidcInvitationAsync(overlongToken, "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync(overlongToken, "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         using (Assert.EnterMultipleScope())
         {
@@ -247,7 +257,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var invitations = CreateInvitations(preview: Result.Failure<InvitationAcceptancePreview>(AshlarFailureCodes.InvalidInvitation));
         var service = CreateService(invitations.Object);
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidInvitation));
     }
@@ -258,7 +268,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var invitations = CreateInvitations(preview: Result.Failure<InvitationAcceptancePreview>(AshlarFailureCodes.RateLimited));
         var service = CreateService(invitations.Object);
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.RateLimited));
     }
@@ -269,7 +279,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var invitations = CreateInvitations(preview: new Result<InvitationAcceptancePreview>(false));
         var service = CreateService(invitations.Object);
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Failed));
     }
@@ -280,7 +290,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var invitations = CreateInvitations(preview: Result.Success<InvitationAcceptancePreview>(null!));
         var service = CreateService(invitations.Object);
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidInvitation));
     }
@@ -296,7 +306,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Google",
-            CreatePrincipal("subject", "invitee@example.com", "true"),
+            AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")),
             context: new AuthenticationContext(TenantId: requestedTenantId));
 
         using (Assert.EnterMultipleScope())
@@ -315,7 +325,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Google",
-            CreatePrincipal("subject", "invitee@example.com", "true"),
+            AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")),
             context: new AuthenticationContext(TenantId: Guid.NewGuid()));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidInvitation));
@@ -337,7 +347,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Google",
-            CreatePrincipal("subject", "invitee@example.com", "true"),
+            AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")),
             context: new AuthenticationContext(TenantId: tenantId));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
@@ -356,7 +366,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Google",
-            CreatePrincipal("subject", "invitee@example.com", "true"),
+            AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")),
             context: new AuthenticationContext());
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
@@ -367,7 +377,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var service = CreateService();
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "other@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "other@example.com", "true")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.EmailMismatch));
     }
@@ -380,7 +390,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     {
         var service = CreateService();
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", includeEmail ? "invitee@example.com" : null, verified));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", includeEmail ? "invitee@example.com" : null, verified)));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.EmailNotVerified));
     }
@@ -397,7 +407,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         policy.Setup(p => p.Validate(It.IsAny<OidcInvitationEmailMatchContext>())).Returns(OidcInvitationEmailMatchResult.Success());
         var service = CreateService(invitations.Object, credentials.Object, emailPolicy: policy.Object);
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "other@example.com", null));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "other@example.com", null)));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
     }
@@ -410,7 +420,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         policy.Setup(p => p.Validate(It.IsAny<OidcInvitationEmailMatchContext>())).Returns(new OidcInvitationEmailMatchResult(expected));
         var service = CreateService(emailPolicy: policy.Object);
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         Assert.That(result.Status, Is.EqualTo(expected));
     }
@@ -434,7 +444,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Google",
-            CreatePrincipal("subject", "invitee@example.com", "true"));
+            AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
     }
@@ -459,7 +469,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Microsoft",
-            CreatePrincipal("subject", "invitee@example.com", "true"));
+            AshlarOAuthTestTickets.CreateExternalTicket("Microsoft", "Microsoft", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
     }
@@ -481,7 +491,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Microsoft",
-            CreatePrincipalWithClaim("subject", claimType, "invitee@example.com"));
+            AshlarOAuthTestTickets.CreateExternalTicket("Microsoft", "Microsoft", ProviderType.Oidc, CreatePrincipalWithClaim("subject", claimType, "invitee@example.com")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.EmailNotVerified));
     }
@@ -503,7 +513,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Microsoft",
-            CreatePrincipal("subject", "invitee@example.com", verified));
+            AshlarOAuthTestTickets.CreateExternalTicket("Microsoft", "Microsoft", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", verified)));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.EmailNotVerified));
     }
@@ -532,7 +542,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Microsoft",
-            CreatePrincipalWithClaim("subject", claimType, "invitee@example.com"));
+            AshlarOAuthTestTickets.CreateExternalTicket("Microsoft", "Microsoft", ProviderType.Oidc, CreatePrincipalWithClaim("subject", claimType, "invitee@example.com")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
     }
@@ -554,7 +564,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Microsoft",
-            CreatePrincipalWithClaim("subject", "preferred_username", "invitee@example.com"));
+            AshlarOAuthTestTickets.CreateExternalTicket("Microsoft", "Microsoft", ProviderType.Oidc, CreatePrincipalWithClaim("subject", "preferred_username", "invitee@example.com")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.EmailNotVerified));
     }
@@ -575,7 +585,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var principal = CreatePrincipal("subject", "other@example.com", "true");
         ((ClaimsIdentity)principal.Identity!).AddClaim(new Claim("upn", "invitee@example.com"));
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Microsoft", principal);
+        var result = await service.RegisterOidcInvitationAsync("token", "Microsoft", AshlarOAuthTestTickets.CreateExternalTicket("Microsoft", "Microsoft", ProviderType.Oidc, principal));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.EmailMismatch));
     }
@@ -600,7 +610,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Microsoft",
-            CreatePrincipalWithClaim("subject", "upn", "invitee@example.com"),
+            AshlarOAuthTestTickets.CreateExternalTicket("Microsoft", "Microsoft", ProviderType.Oidc, CreatePrincipalWithClaim("subject", "upn", "invitee@example.com")),
             context: new AuthenticationContext(TenantId: otherTenantId));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidInvitation));
@@ -625,7 +635,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Google",
-            CreatePrincipal("subject", "invitee@example.com", "true"));
+            AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Registered));
     }
@@ -660,7 +670,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Microsoft",
-            CreatePrincipalWithClaim("subject", "preferred_username", "other@example.com"));
+            AshlarOAuthTestTickets.CreateExternalTicket("Microsoft", "Microsoft", ProviderType.Oidc, CreatePrincipalWithClaim("subject", "preferred_username", "other@example.com")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.EmailMismatch));
     }
@@ -680,7 +690,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var result = await service.RegisterOidcInvitationAsync(
             "token",
             "Microsoft",
-            CreatePrincipalWithClaim("subject", "name", "Invitee"));
+            AshlarOAuthTestTickets.CreateExternalTicket("Microsoft", "Microsoft", ProviderType.Oidc, CreatePrincipalWithClaim("subject", "name", "Invitee")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.EmailNotVerified));
     }
@@ -692,7 +702,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var invitations = CreateInvitations(acceptance: Result.Failure<Guid>(new AshlarFailureCode(failureCode)));
         var service = CreateService(invitations.Object);
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         Assert.That(result.Status, Is.EqualTo(expected));
     }
@@ -703,7 +713,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var invitations = CreateInvitations(acceptance: new Result<Guid>(false));
         var service = CreateService(invitations.Object);
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.Failed));
     }
@@ -721,7 +731,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
             .ReturnsAsync(Result.Failure(new AshlarFailureCode(failureCode)));
         var service = CreateService(invitations.Object, credentials.Object);
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         using (Assert.EnterMultipleScope())
         {
@@ -741,7 +751,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var transaction = new Mock<IAshlarTransaction>();
         var service = CreateService(invitations.Object, credentials.Object, transaction: transaction);
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         using (Assert.EnterMultipleScope())
         {
@@ -762,7 +772,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var transaction = new Mock<IAshlarTransaction>();
         var service = CreateService(invitations.Object, credentials.Object, transaction: transaction);
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         using (Assert.EnterMultipleScope())
         {
@@ -778,7 +788,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
         var transactions = new Mock<IAshlarDurableTransactionProvider>();
         var service = CreateService(transactionProvider: transactions);
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "other@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "other@example.com", "true")));
 
         using (Assert.EnterMultipleScope())
         {
@@ -799,7 +809,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
             new TestOptionsMonitor(CreateOptions()),
             new StandardOidcVerifiedEmailMatchPolicy());
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         using (Assert.EnterMultipleScope())
         {
@@ -819,7 +829,7 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
             .ReturnsAsync(new Result(false));
         var service = CreateService(invitations.Object, credentials.Object);
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", CreatePrincipal("subject", "invitee@example.com", "true"));
+        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
 
         Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.LinkFailed));
     }

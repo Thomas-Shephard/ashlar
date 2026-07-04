@@ -84,7 +84,12 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.ProviderMismatch);
         }
 
-        return await LinkExternalAccountAsync(currentUserId, providerName, result, tenant, credentialMetadata, cancellationToken);
+        return await LinkValidatedExternalAccountAsync(
+            currentUserId,
+            new AshlarValidatedExternalPrincipal(provider, result.Principal),
+            tenant,
+            credentialMetadata,
+            cancellationToken);
     }
 
     /// <summary>
@@ -128,27 +133,17 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.ProviderMismatch);
         }
 
-        return await LinkExternalAccountAsync(currentUserId, providerName, authenticateResult.Principal, tenant, credentialMetadata, cancellationToken);
+        return await LinkValidatedExternalAccountAsync(
+            currentUserId,
+            new AshlarValidatedExternalPrincipal(provider, authenticateResult.Principal),
+            tenant,
+            credentialMetadata,
+            cancellationToken);
     }
 
-    /// <summary>
-    /// Links an already validated external principal to the current Ashlar user.
-    /// </summary>
-    /// <param name="currentUserId">The currently authenticated Ashlar user id.</param>
-    /// <param name="providerName">The configured Ashlar provider name.</param>
-    /// <param name="principal">The validated external principal. Do not pass principals built from request data or unvalidated tokens.</param>
-    /// <param name="tenant">The tenant scope, when the application is tenant-aware.</param>
-    /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The account-link result, including conflict statuses when the stable external provider key is already linked.</returns>
-    /// <remarks>
-    /// The principal must come from a trusted authentication handler. Ashlar maps the configured stable provider key;
-    /// do not configure email, display name, username, or other mutable profile claims as provider keys.
-    /// </remarks>
-    public async Task<AshlarExternalAccountLinkResult> LinkExternalAccountAsync(
+    private async Task<AshlarExternalAccountLinkResult> LinkValidatedExternalAccountAsync(
         Guid currentUserId,
-        string providerName,
-        System.Security.Claims.ClaimsPrincipal principal,
+        AshlarValidatedExternalPrincipal principal,
         TenantContext? tenant = null,
         string? credentialMetadata = null,
         CancellationToken cancellationToken = default)
@@ -160,16 +155,10 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.InvalidPrincipal);
         }
 
-        var providerOptions = AshlarExternalProviderResolver.GetProvider(_options.CurrentValue, providerName);
-        if (providerOptions == null)
-        {
-            return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.UnsupportedProvider);
-        }
-
         ExternalIdentityAssertion assertion;
         try
         {
-            assertion = AshlarExternalProviderResolver.MapAssertion(providerOptions, principal);
+            assertion = AshlarExternalProviderResolver.MapAssertion(principal.Provider, principal.Principal);
         }
         catch (InvalidOperationException)
         {
@@ -185,7 +174,7 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.Failed, assertion);
         }
 
-        var provider = AshlarExternalProviderResolver.CreateAuthenticationProvider(providerOptions);
+        var provider = AshlarExternalProviderResolver.CreateAuthenticationProvider(principal.Provider);
         var linkResult = await _credentialService.LinkCredentialAsync(
             currentUserId,
             assertion,
