@@ -135,7 +135,13 @@ public sealed class AccountSecurityService : IAccountSecurityService
             PreviousState: user.AccountState,
             CurrentState: request.AccountState,
             RememberedMfaDevicesRevoked: rememberedMfaDevicesRevoked);
-        transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserAccountStateChanged, result, request, ct, fromAccountState: user.AccountState, toAccountState: request.AccountState, auditTenantId: auditTenantId));
+        transaction.OnCommitted(ct => RecordSuccessAsync(
+            AshlarSecurityEventTypes.UserAccountStateChanged,
+            result,
+            request,
+            ct,
+            stateTransition: new AccountStateTransition(user.AccountState, request.AccountState),
+            auditTenantId: auditTenantId));
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success(result);
@@ -604,8 +610,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
         AccountSecurityOperationRequest request,
         CancellationToken cancellationToken,
         AuthenticationProviderKey? provider = null,
-        UserAccountState? fromAccountState = null,
-        UserAccountState? toAccountState = null,
+        AccountStateTransition? stateTransition = null,
         Guid? auditTenantId = null)
     {
         var properties = new Dictionary<string, string>
@@ -615,14 +620,10 @@ public sealed class AccountSecurityService : IAccountSecurityService
             ["credentials_revoked"] = result.CredentialsRevoked.ToString(CultureInfo.InvariantCulture),
             ["remembered_mfa_devices_revoked"] = result.RememberedMfaDevicesRevoked.ToString(CultureInfo.InvariantCulture)
         };
-        if (fromAccountState.HasValue)
+        if (stateTransition != null)
         {
-            properties["from_account_state"] = fromAccountState.Value.ToStorageValue();
-        }
-
-        if (toAccountState.HasValue)
-        {
-            properties["to_account_state"] = toAccountState.Value.ToStorageValue();
+            properties["from_account_state"] = stateTransition.From.ToStorageValue();
+            properties["to_account_state"] = stateTransition.To.ToStorageValue();
         }
 
         if (request.Reason != null)
@@ -665,6 +666,8 @@ public sealed class AccountSecurityService : IAccountSecurityService
         UserAccountState? FromAccountState = null,
         UserAccountState? ToAccountState = null,
         Guid? AuditTenantId = null);
+
+    private sealed record AccountStateTransition(UserAccountState From, UserAccountState To);
 }
 
 /// <summary>
