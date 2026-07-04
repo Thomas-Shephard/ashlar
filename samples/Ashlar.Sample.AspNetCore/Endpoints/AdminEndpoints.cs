@@ -142,8 +142,8 @@ internal static partial class AdminEndpoints
     private static void MapAdminProjectEndpoints(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/admin/projects", ListProjectsAsync).RequireAuthorization();
-        app.MapPost("/api/admin/projects", CreateProjectAsync).RequireAuthorization().RequireSampleAntiforgery();
-        app.MapPost("/api/projects/{projectId}/grants", CreateProjectGrantAsync).RequireAuthorization().RequireSampleAntiforgery();
+        app.MapPost("/api/admin/projects", CreateProjectAsync).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
+        app.MapPost("/api/projects/{projectId}/grants", CreateProjectGrantAsync).RequireAuthorization().RequireFreshMfa().RequireSampleAntiforgery();
 
         app.MapGet("/projects/{projectId}", async (
             string projectId,

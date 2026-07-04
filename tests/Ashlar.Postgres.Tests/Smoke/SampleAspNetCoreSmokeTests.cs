@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Ashlar.Authorization.Abstractions;
 using Ashlar.Authorization.Models;
+using Ashlar.AspNetCore.Authorization;
 using Ashlar.Identity.Models.Tenants;
 using Ashlar.Identity.Models.Totp;
 using Ashlar.Identity.Providers.External;
@@ -14,10 +15,12 @@ using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
 using Dapper;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -354,6 +357,19 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     }
 
     [Test]
+    public void SampleAdminCreationEndpointsRequireOnlyStrictFreshMfa()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StepUpPoliciesFor("POST", "/api/admin/projects"), Is.EqualTo(new[] { AshlarStepUpPolicyNames.FreshMfa }));
+            Assert.That(StepUpPoliciesFor("POST", "/api/projects/{projectId}/grants"), Is.EqualTo(new[] { AshlarStepUpPolicyNames.FreshMfa }));
+            Assert.That(StepUpPoliciesFor("POST", "/api/invitations"), Is.EqualTo(new[] { AshlarStepUpPolicyNames.FreshMfa }));
+            Assert.That(StepUpPoliciesFor("GET", "/api/admin/projects"), Is.Empty);
+            Assert.That(StepUpPoliciesFor("POST", "/api/invitations/accept"), Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task SampleGitHubAccountSecurityRoutesRequireAuthorizationAndFreshMfaWhenAvailable()
     {
         Environment.SetEnvironmentVariable("Authentication__GitHub__ClientId", "sample-client-id");
@@ -478,8 +494,8 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
             Assert.That(invalidBody, Does.Contain("invalid_csrf_token"));
             Assert.That(validToken.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
             Assert.That(validBody, Does.Contain("invalid_totp"));
-            Assert.That(missingAdminToken.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
-            Assert.That(missingAdminBody, Does.Contain("invalid_csrf_token"));
+            Assert.That(missingAdminToken.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+            Assert.That(missingAdminBody, Is.Empty);
         }
     }
 
@@ -1064,6 +1080,17 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     {
         using var scope = _factory!.Services.CreateScope();
         return scope.ServiceProvider.GetRequiredService<ISecretProtector>().Unprotect(textBody);
+    }
+
+    private string[] StepUpPoliciesFor(string method, string routePattern)
+    {
+        var endpoint = _factory!.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>().Single(endpoint =>
+            endpoint.RoutePattern.RawText == routePattern &&
+            endpoint.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods.Contains(method, StringComparer.OrdinalIgnoreCase) == true);
+
+        return [.. endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>()
+            .Select(metadata => metadata.Policy)
+            .Where(policy => policy is AshlarStepUpPolicyNames.FreshMfa or AshlarStepUpPolicyNames.FreshMfaIfAvailable)!];
     }
 
     private static string ExtractQueryValue(string text, string name)
