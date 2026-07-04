@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -47,7 +48,6 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
 
         var sink = CreateSink();
         await sink.RecordAsync(securityEvent);
-        await sink.DisposeAsync();
 
         var row = await ReadSingleEventAsync();
         using (Assert.EnterMultipleScope())
@@ -85,7 +85,6 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
 
         var sink = CreateSink();
         await sink.RecordAsync(securityEvent);
-        await sink.DisposeAsync();
 
         var row = await ReadSingleEventAsync();
         using (Assert.EnterMultipleScope())
@@ -116,7 +115,6 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "OtherUser", UserId = otherUserId, TenantId = tenantId, OccurredAt = now });
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "OtherTenant", UserId = userId, TenantId = otherTenantId, OccurredAt = now });
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "NoUser", TenantId = tenantId, OccurredAt = now });
-        await sink.DisposeAsync();
 
         var count = await CreateSink().CountSecurityEventsForUserAsync(userId, since);
         var eventTypeCount = await CountEventsByTypeAsync("Recent");
@@ -131,40 +129,25 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
     }
 
     [Test]
-    public async Task RecordAsyncThrowsForNullEventAndContinuesAfterPersistenceFailure()
+    public async Task RecordAsyncThrowsForNullEventAndPersistenceFailureAndAllowsLaterWrites()
     {
         var sink = CreateSink();
         Assert.ThrowsAsync<ArgumentNullException>(async () => await sink.RecordAsync(null!));
 
-        await sink.RecordAsync(new AshlarSecurityEvent
+        Assert.ThrowsAsync<SqliteException>(async () => await sink.RecordAsync(new AshlarSecurityEvent
         {
             Id = Guid.NewGuid(),
             EventType = null!,
             OccurredAt = DateTimeOffset.UtcNow
-        });
+        }));
         await sink.RecordAsync(new AshlarSecurityEvent
         {
             Id = Guid.NewGuid(),
             EventType = "ValidEvent",
             OccurredAt = DateTimeOffset.UtcNow
         });
-        await sink.DisposeAsync();
 
         Assert.That(await CountEventsAsync(), Is.EqualTo(1));
-    }
-
-    [Test]
-    public async Task RecordAsyncAfterDisposeDoesNotThrow()
-    {
-        var sink = CreateSink();
-        await sink.DisposeAsync();
-
-        Assert.DoesNotThrowAsync(async () => await sink.RecordAsync(new AshlarSecurityEvent
-        {
-            Id = Guid.NewGuid(),
-            EventType = "AfterDispose",
-            OccurredAt = DateTimeOffset.UtcNow
-        }));
     }
 
     [Test]

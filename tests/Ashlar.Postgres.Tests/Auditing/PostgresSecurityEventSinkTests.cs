@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Dapper;
 using Ashlar.Identity.Models.AccountSecurity;
+using Npgsql;
 
 namespace Ashlar.Postgres.Tests.Auditing;
 
@@ -68,10 +69,8 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
             Properties = new Dictionary<string, string> { { "Key", "Value" } }
         };
 
-        await using (var sink = new PostgresSecurityEventSink(GetDataSource()))
-        {
-            await sink.RecordAsync(securityEvent);
-        }
+        var sink = new PostgresSecurityEventSink(GetDataSource());
+        await sink.RecordAsync(securityEvent);
 
         await using var connection = await GetDataSource().OpenConnectionAsync();
         var count = await connection.ExecuteScalarAsync<int>("SELECT count(*) FROM ashlar_security_events");
@@ -111,10 +110,8 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
             OccurredAt = DateTimeOffset.UtcNow
         };
 
-        await using (var sink = new PostgresSecurityEventSink(GetDataSource()))
-        {
-            await sink.RecordAsync(securityEvent);
-        }
+        var sink = new PostgresSecurityEventSink(GetDataSource());
+        await sink.RecordAsync(securityEvent);
 
         await using var connection = await GetDataSource().OpenConnectionAsync();
         var row = await connection.QuerySingleAsync<dynamic>("SELECT * FROM ashlar_security_events");
@@ -139,10 +136,8 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
             Provider = (AuthenticationProviderKey?)default(AuthenticationProviderKey)
         };
 
-        await using (var sink = new PostgresSecurityEventSink(GetDataSource()))
-        {
-            await sink.RecordAsync(securityEvent);
-        }
+        var sink = new PostgresSecurityEventSink(GetDataSource());
+        await sink.RecordAsync(securityEvent);
 
         await using var connection = await GetDataSource().OpenConnectionAsync();
         var row = await connection.QuerySingleAsync<dynamic>("SELECT provider_type, provider_name FROM ashlar_security_events");
@@ -156,7 +151,7 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
     [Test]
     public async Task RecordAsyncThrowsIfEventIsNull()
     {
-        await using var sink = new PostgresSecurityEventSink(GetDataSource());
+        var sink = new PostgresSecurityEventSink(GetDataSource());
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.ThrowsAsync<ArgumentNullException>(async () => await sink.RecordAsync(null!));
     }
@@ -164,11 +159,9 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
     [Test]
     public async Task MultipleEventsAreAppended()
     {
-        await using (var sink = new PostgresSecurityEventSink(GetDataSource()))
-        {
-            await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "E1", OccurredAt = DateTimeOffset.UtcNow, Outcome = "S" });
-            await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "E2", OccurredAt = DateTimeOffset.UtcNow, Outcome = "S" });
-        }
+        var sink = new PostgresSecurityEventSink(GetDataSource());
+        await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "E1", OccurredAt = DateTimeOffset.UtcNow, Outcome = "S" });
+        await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "E2", OccurredAt = DateTimeOffset.UtcNow, Outcome = "S" });
 
         await using var connection = await GetDataSource().OpenConnectionAsync();
         var count = await connection.ExecuteScalarAsync<int>("SELECT count(*) FROM ashlar_security_events");
@@ -182,16 +175,14 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
         var otherUserId = Guid.NewGuid();
         var now = new DateTimeOffset(2026, 5, 17, 12, 0, 0, TimeSpan.Zero);
 
-        await using (var sink = new PostgresSecurityEventSink(GetDataSource()))
-        {
-            await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "Recent1", UserId = userId, OccurredAt = now.AddMinutes(-5) });
-            await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "Recent2", UserId = userId, OccurredAt = now.AddMinutes(-1) });
-            await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "Old", UserId = userId, OccurredAt = now.AddDays(-2) });
-            await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "OtherUser", UserId = otherUserId, OccurredAt = now });
-            await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "NoUser", OccurredAt = now });
-        }
+        var sink = new PostgresSecurityEventSink(GetDataSource());
+        await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "Recent1", UserId = userId, OccurredAt = now.AddMinutes(-5) });
+        await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "Recent2", UserId = userId, OccurredAt = now.AddMinutes(-1) });
+        await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "Old", UserId = userId, OccurredAt = now.AddDays(-2) });
+        await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "OtherUser", UserId = otherUserId, OccurredAt = now });
+        await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "NoUser", OccurredAt = now });
 
-        await using var countingSink = new PostgresSecurityEventSink(GetDataSource());
+        var countingSink = new PostgresSecurityEventSink(GetDataSource());
         var count = await countingSink.CountSecurityEventsForUserAsync(userId, now.AddHours(-1));
 
         Assert.That(count, Is.EqualTo(2));
@@ -230,7 +221,7 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
     }
 
     [Test]
-    public async Task ProcessChannelAsyncSwallowsExceptionsAndContinues()
+    public async Task RecordAsyncThrowsPersistenceFailuresAndAllowsLaterWrites()
     {
         var invalidEvent = new AshlarSecurityEvent
         {
@@ -247,33 +238,13 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
             OccurredAt = DateTimeOffset.UtcNow
         };
 
-        await using (var sink = new PostgresSecurityEventSink(GetDataSource()))
-        {
-            await sink.RecordAsync(invalidEvent);
-            await sink.RecordAsync(validEvent);
-        } // Dispose waits for the background task to finish
+        var sink = new PostgresSecurityEventSink(GetDataSource());
+        Assert.ThrowsAsync<PostgresException>(async () => await sink.RecordAsync(invalidEvent));
+        await sink.RecordAsync(validEvent);
 
         await using var connection = await GetDataSource().OpenConnectionAsync();
         var count = await connection.ExecuteScalarAsync<int>("SELECT count(*) FROM ashlar_security_events");
 
-        // The first event failed and was swallowed, the second succeeded
         Assert.That(count, Is.EqualTo(1));
-    }
-
-    [Test]
-    public async Task RecordAsyncHandlesChannelCompletionGracefully()
-    {
-        var sink = new PostgresSecurityEventSink(GetDataSource());
-        await sink.DisposeAsync();
-
-        var securityEvent = new AshlarSecurityEvent
-        {
-            Id = Guid.NewGuid(),
-            EventType = "TestEvent",
-            OccurredAt = DateTimeOffset.UtcNow
-        };
-
-        // TryWrite will fail and hit the inner logging block since the channel is completed
-        Assert.DoesNotThrowAsync(async () => await sink.RecordAsync(securityEvent));
     }
 }

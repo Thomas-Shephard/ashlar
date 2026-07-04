@@ -24,7 +24,10 @@ Register the SQLite infrastructure in `Program.cs`:
 using Microsoft.Extensions.DependencyInjection;
 
 services.AddAshlarSqlite("Data Source=ashlar.db");
+services.AddAshlarSqliteAuditSink();
 ```
+
+`AddAshlarSqliteAuditSink()` wires provider-backed `IPersistentSecurityEventSink` storage into Ashlar's security event fan-out. A successful `RecordAsync` call means the security event has been written to SQLite; write failures are returned to the caller.
 
 Initialize the schema during application startup:
 

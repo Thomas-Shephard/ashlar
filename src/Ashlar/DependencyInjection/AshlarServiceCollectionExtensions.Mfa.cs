@@ -12,7 +12,6 @@ using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Security.Hashing;
 using Ashlar.Security.Tokens;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 public static partial class AshlarServiceCollectionExtensions
@@ -143,8 +142,7 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped(provider => new RememberedMfaDeviceServiceDependencies(
             provider.GetService<IOptions<RememberedMfaDeviceOptions>>(),
             provider.GetService<TimeProvider>(),
-            provider.GetService<ISecurityEventSink>(),
-            provider.GetService<ILoggerFactory>()));
+            provider.GetService<ISecurityEventSink>()));
         services.TryAddScoped<IRememberedMfaDeviceService, RememberedMfaDeviceService>();
         services.TryAddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         services.TryAddSingleton<ISecureTokenHasher, Sha256TokenHasher>();

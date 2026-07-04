@@ -74,14 +74,12 @@ public static partial class AshlarServiceCollectionExtensions
                 provider.GetRequiredService<IAshlarTransactionProvider>(),
                 new IdentityServiceDependencies(
                     provider.GetService<ISecurityEventSink>(),
-                    provider.GetService<TimeProvider>(),
-                    provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>())),
+                    provider.GetService<TimeProvider>())),
             ServiceLifetime.Scoped));
         services.TryAddScoped(provider => new AuthenticationPipelineDependencies(
             provider.GetService<ISecurityEventSink>(),
             provider.GetService<TimeProvider>(),
             provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationPipeline>>(),
-            provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>(),
             provider.GetService<IAccountLockoutService>(),
             provider.GetRequiredService<IOptions<PrimaryAuthenticationRateLimitOptions>>().Value,
             provider.GetRequiredService<IOptions<AuthenticationFactorRateLimitOptions>>().Value,
@@ -102,8 +100,7 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<IdentityServiceOptions>(),
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>(),
-            provider.GetService<global::Microsoft.Extensions.Logging.ILogger<CredentialService>>(),
-            provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()));
+            provider.GetService<global::Microsoft.Extensions.Logging.ILogger<CredentialService>>()));
         services.TryAddScoped<ICredentialService, CredentialService>();
         services.TryAddScoped(provider => new AccountSecurityServiceDependencies(
             provider.GetService<TimeProvider>(),
@@ -148,8 +145,7 @@ public static partial class AshlarServiceCollectionExtensions
             TimeProvider: provider.GetService<TimeProvider>(),
             SecurityEventSink: provider.GetService<ISecurityEventSink>(),
             NotificationService: provider.GetService<ISecurityNotificationService>(),
-            Logger: provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationSessionService>>(),
-            LoggerFactory: provider.GetService<global::Microsoft.Extensions.Logging.ILoggerFactory>()));
+            Logger: provider.GetService<global::Microsoft.Extensions.Logging.ILogger<AuthenticationSessionService>>()));
         services.TryAddScoped<IAuthenticationSessionService, AuthenticationSessionService>();
         services.TryAddScoped<IStepUpAuthenticationService, StepUpAuthenticationService>();
         services.TryAddScoped<IdentityContext>();

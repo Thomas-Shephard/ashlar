@@ -48,7 +48,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
         _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
         _options = ValidateOptions(dependencies.Options?.Value ?? new RememberedMfaDeviceOptions());
         _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
-        _securityEvents = new SecurityEventEmitter(dependencies.SecurityEventSink, _timeProvider, dependencies.LoggerFactory);
+        _securityEvents = new SecurityEventEmitter(dependencies.SecurityEventSink, _timeProvider);
         _logger = logger ?? NullLogger<RememberedMfaDeviceService>.Instance;
     }
 
@@ -499,5 +499,4 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
 internal sealed record RememberedMfaDeviceServiceDependencies(
     IOptions<RememberedMfaDeviceOptions>? Options = null,
     TimeProvider? TimeProvider = null,
-    ISecurityEventSink? SecurityEventSink = null,
-    ILoggerFactory? LoggerFactory = null);
+    ISecurityEventSink? SecurityEventSink = null);

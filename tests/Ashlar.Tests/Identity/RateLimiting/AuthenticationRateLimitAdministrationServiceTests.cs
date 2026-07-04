@@ -170,7 +170,7 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
     }
 
     [Test]
-    public async Task ResetBucketAsyncAuditSinkFailureDoesNotChangeResult()
+    public void ResetBucketAsyncAuditSinkFailureFailsCaller()
     {
         var repository = new RecordingRepository { ResetResult = true };
         var sink = new ThrowingSecurityEventSink(new InvalidOperationException("sink failed"));
@@ -179,17 +179,18 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
             new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), sink));
         var audit = new AuditContext(Guid.NewGuid(), "127.0.0.1", "tests", "correlation");
 
-        var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("opaque-id", "login", audit));
+        var exception = Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("opaque-id", "login", audit)));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.Reset));
+            Assert.That(exception!.Message, Is.EqualTo("sink failed"));
             AssertSafeResetProperties(sink.Events.Single(), "opaque-id", "login", AuthenticationRateLimitBucketResetStatus.Reset);
         }
     }
 
     [Test]
-    public async Task ResetBucketAsyncAuditSinkCancellationDoesNotChangeResultWhenCallerDidNotCancel()
+    public void ResetBucketAsyncAuditSinkCancellationFailsCallerWhenCallerDidNotCancel()
     {
         var repository = new RecordingRepository { ResetResult = false };
         var sink = new ThrowingSecurityEventSink(new OperationCanceledException("sink canceled"));
@@ -197,11 +198,12 @@ internal sealed class AuthenticationRateLimitAdministrationServiceTests
             repository,
             new AuthenticationRateLimitAdministrationServiceDependencies(new FakeTimeProvider(Now), sink));
 
-        var result = await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("missing", "login", new AuditContext(Guid.NewGuid())));
+        var exception = Assert.ThrowsAsync<OperationCanceledException>(
+            async () => await service.ResetBucketAsync(new ResetAuthenticationRateLimitBucketRequest("missing", "login", new AuditContext(Guid.NewGuid()))));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Value!.Status, Is.EqualTo(AuthenticationRateLimitBucketResetStatus.NotFound));
+            Assert.That(exception!.Message, Is.EqualTo("sink canceled"));
             AssertSafeResetProperties(sink.Events.Single(), "missing", "login", AuthenticationRateLimitBucketResetStatus.NotFound);
         }
     }

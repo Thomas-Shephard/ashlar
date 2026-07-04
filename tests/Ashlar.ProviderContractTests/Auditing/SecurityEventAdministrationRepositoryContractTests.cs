@@ -11,7 +11,6 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         var older = await RecordAsync(scope.ServiceProvider, "Older", occurredAt: BaseTime.AddMinutes(-1));
         var lowerTie = await RecordAsync(scope.ServiceProvider, "LowerTie", id: Guid.Parse("00000000-0000-0000-0000-000000000001"), occurredAt: BaseTime);
         var higherTie = await RecordAsync(scope.ServiceProvider, "HigherTie", id: Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff"), occurredAt: BaseTime);
-        await FlushAsync(scope.ServiceProvider);
 
         var result = await GetSecurityEventAdministrationRepository(scope.ServiceProvider).SearchSecurityEventsAsync(new SearchSecurityEventsRequest { IncludeAllTenants = true, Limit = 10 });
 
@@ -26,7 +25,6 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         var tenantEvent = await RecordAsync(scope.ServiceProvider, "Tenant", tenantId: tenantId);
         var globalEvent = await RecordAsync(scope.ServiceProvider, "Global");
         var otherTenantEvent = await RecordAsync(scope.ServiceProvider, "OtherTenant", tenantId: Guid.NewGuid());
-        await FlushAsync(scope.ServiceProvider);
 
         var repository = GetSecurityEventAdministrationRepository(scope.ServiceProvider);
         var scoped = await repository.SearchSecurityEventsAsync(new SearchSecurityEventsRequest { Tenant = new TenantContext(tenantId), Limit = 10 });
@@ -67,7 +65,6 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         await RecordAsync(scope.ServiceProvider, "WrongUser", userId: Guid.NewGuid(), actorUserId: actorUserId, sessionId: sessionId);
         await RecordAsync(scope.ServiceProvider, "WrongActor", userId: userId, actorUserId: Guid.NewGuid(), sessionId: sessionId);
         await RecordAsync(scope.ServiceProvider, "WrongSession", userId: userId, actorUserId: actorUserId, sessionId: Guid.NewGuid());
-        await FlushAsync(scope.ServiceProvider);
 
         var result = await GetSecurityEventAdministrationRepository(scope.ServiceProvider).SearchSecurityEventsAsync(new SearchSecurityEventsRequest
         {
@@ -91,7 +88,6 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         await RecordAsync(scope.ServiceProvider, "PasswordSignIn", provider: AuthenticationProviderKey.EmailCode, outcome: SecurityEventOutcomes.Failure, failureReason: "bad_password");
         await RecordAsync(scope.ServiceProvider, "PasswordSignIn", provider: provider, outcome: SecurityEventOutcomes.Success, failureReason: "bad_password");
         await RecordAsync(scope.ServiceProvider, "PasswordSignIn", provider: provider, outcome: SecurityEventOutcomes.Failure, failureReason: "other");
-        await FlushAsync(scope.ServiceProvider);
 
         var result = await GetSecurityEventAdministrationRepository(scope.ServiceProvider).SearchSecurityEventsAsync(new SearchSecurityEventsRequest
         {
@@ -111,7 +107,6 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
     {
         await using var scope = CreateAsyncScope();
         var stored = await RecordAsync(scope.ServiceProvider, "AnyEvent");
-        await FlushAsync(scope.ServiceProvider);
 
         var result = await GetSecurityEventAdministrationRepository(scope.ServiceProvider).SearchSecurityEventsAsync(new SearchSecurityEventsRequest
         {
@@ -132,7 +127,6 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         var inside = await RecordAsync(scope.ServiceProvider, "Inside", occurredAt: BaseTime.AddMinutes(1));
         var to = await RecordAsync(scope.ServiceProvider, "To", occurredAt: BaseTime.AddMinutes(2));
         await RecordAsync(scope.ServiceProvider, "After", occurredAt: BaseTime.AddMinutes(2).AddMilliseconds(1));
-        await FlushAsync(scope.ServiceProvider);
 
         var result = await GetSecurityEventAdministrationRepository(scope.ServiceProvider).SearchSecurityEventsAsync(new SearchSecurityEventsRequest
         {
@@ -152,7 +146,6 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         var first = await RecordAsync(scope.ServiceProvider, "First", occurredAt: BaseTime.AddMinutes(3));
         var second = await RecordAsync(scope.ServiceProvider, "Second", occurredAt: BaseTime.AddMinutes(2));
         var third = await RecordAsync(scope.ServiceProvider, "Third", occurredAt: BaseTime.AddMinutes(1));
-        await FlushAsync(scope.ServiceProvider);
 
         var result = await GetSecurityEventAdministrationRepository(scope.ServiceProvider).SearchSecurityEventsAsync(new SearchSecurityEventsRequest { IncludeAllTenants = true, Limit = 2, Offset = 1 });
 
@@ -168,7 +161,6 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
     {
         await using var scope = CreateAsyncScope();
         var stored = await RecordAsync(scope.ServiceProvider, "Detail", provider: AuthenticationProviderKey.Local, properties: new Dictionary<string, string> { ["reason"] = "diagnostic" });
-        await FlushAsync(scope.ServiceProvider);
 
         var repository = GetSecurityEventAdministrationRepository(scope.ServiceProvider);
         var found = await repository.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(stored.Id, IncludeAllTenants: true));
@@ -191,7 +183,6 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         var otherTenantId = Guid.NewGuid();
         var stored = await RecordAsync(scope.ServiceProvider, "ScopedDetail", tenantId: tenantId);
         var globalStored = await RecordAsync(scope.ServiceProvider, "GlobalDetail");
-        await FlushAsync(scope.ServiceProvider);
 
         var repository = GetSecurityEventAdministrationRepository(scope.ServiceProvider);
         var inScope = await repository.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(stored.Id, new TenantContext(tenantId)));
@@ -230,7 +221,6 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
         await using var scope = CreateAsyncScope();
         var withProperties = await RecordAsync(scope.ServiceProvider, "WithProperties", properties: new Dictionary<string, string> { ["ipRisk"] = "low", ["empty"] = string.Empty });
         var withoutProperties = await RecordAsync(scope.ServiceProvider, "WithoutProperties");
-        await FlushAsync(scope.ServiceProvider);
 
         var repository = GetSecurityEventAdministrationRepository(scope.ServiceProvider);
         var found = await repository.GetSecurityEventAsync(new SecurityEventAdministrationDetailRequest(withProperties.Id, IncludeAllTenants: true));
@@ -278,13 +268,5 @@ internal abstract class SecurityEventAdministrationRepositoryContractTests : Pro
 
         await GetSecurityEventSink(serviceProvider).RecordAsync(securityEvent);
         return securityEvent;
-    }
-
-    private static async Task FlushAsync(IServiceProvider serviceProvider)
-    {
-        if (GetPersistentSecurityEventSink(serviceProvider) is IAsyncDisposable asyncDisposable)
-        {
-            await asyncDisposable.DisposeAsync();
-        }
     }
 }

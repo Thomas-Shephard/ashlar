@@ -1,5 +1,4 @@
 using Ashlar.Auditing;
-using Microsoft.Extensions.Logging;
 
 namespace Ashlar.Identity.Features.Services;
 
@@ -17,7 +16,7 @@ internal sealed class IdentityService(
     private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
     private readonly IAuthenticationPipeline _authenticationPipeline = authenticationPipeline ?? throw new ArgumentNullException(nameof(authenticationPipeline));
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
-    private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider, dependencies?.LoggerFactory);
+    private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider);
 
     public IEnumerable<AuthenticationProviderKey> SupportedProviderKeys => _providerRegistry.SupportedProviderKeys;
 
@@ -104,5 +103,4 @@ internal sealed class IdentityService(
 
 internal sealed record IdentityServiceDependencies(
     ISecurityEventSink? SecurityEventSink = null,
-    TimeProvider? TimeProvider = null,
-    ILoggerFactory? LoggerFactory = null);
+    TimeProvider? TimeProvider = null);

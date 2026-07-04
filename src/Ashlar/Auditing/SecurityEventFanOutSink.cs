@@ -4,16 +4,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Ashlar.Auditing;
 
 /// <summary>
-/// Records security events to durable storage and notifies registered application handlers.
+/// Records security events to durable storage and notifies registered best-effort application handlers.
 /// </summary>
 public sealed class SecurityEventFanOutSink : ISecurityEventSink
 {
-    private static readonly Action<ILogger, string, Guid?, Guid?, string?, string?, Exception?> PersistentSecurityEventSinkFailed =
-        LoggerMessage.Define<string, Guid?, Guid?, string?, string?>(
-            LogLevel.Warning,
-            new EventId(1000, nameof(PersistentSecurityEventSinkFailed)),
-            "Persistent security event sink failed. EventType={EventType} UserId={UserId} SessionId={SessionId} ProviderType={ProviderType} ProviderName={ProviderName}");
-
     private static readonly Action<ILogger, string, Guid?, Guid?, string?, string?, Exception?> SecurityEventHandlerFailed =
         LoggerMessage.Define<string, Guid?, Guid?, string?, string?>(
             LogLevel.Warning,
@@ -48,18 +42,7 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
 
         if (_persistentSink is not null)
         {
-            try
-            {
-                await _persistentSink.RecordAsync(securityEvent, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                LogPersistentSinkFailure(securityEvent, exception);
-            }
+            await _persistentSink.RecordAsync(securityEvent, cancellationToken).ConfigureAwait(false);
         }
 
         foreach (var handler in _handlers)
@@ -81,18 +64,6 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
         }
     }
 
-    private void LogPersistentSinkFailure(AshlarSecurityEvent securityEvent, Exception exception)
-    {
-        PersistentSecurityEventSinkFailed(
-            _logger,
-            securityEvent.EventType,
-            securityEvent.UserId,
-            securityEvent.SessionId,
-            AuthenticationProviderKey.GetStorageTypeValue(securityEvent.Provider),
-            GetProviderName(securityEvent.Provider),
-            exception);
-    }
-
     private void LogHandlerFailure(AshlarSecurityEvent securityEvent, Exception exception)
     {
         SecurityEventHandlerFailed(
@@ -101,12 +72,7 @@ public sealed class SecurityEventFanOutSink : ISecurityEventSink
             securityEvent.UserId,
             securityEvent.SessionId,
             AuthenticationProviderKey.GetStorageTypeValue(securityEvent.Provider),
-            GetProviderName(securityEvent.Provider),
+            securityEvent.Provider?.Name,
             exception);
-    }
-
-    private static string? GetProviderName(AuthenticationProviderKey? provider)
-    {
-        return provider?.Name;
     }
 }

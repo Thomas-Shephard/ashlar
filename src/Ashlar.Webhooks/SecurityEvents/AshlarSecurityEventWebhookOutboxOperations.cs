@@ -272,7 +272,7 @@ public static class AshlarSecurityEventWebhookOutboxOperations
     }
 
     /// <summary>
-    /// Records a best-effort audit event for a successful manual outbox operation.
+    /// Records an audit event for a successful manual outbox operation.
     /// </summary>
     /// <param name="sink">The security event sink.</param>
     /// <param name="timeProvider">The time provider.</param>

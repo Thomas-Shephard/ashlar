@@ -65,8 +65,7 @@ internal sealed class CredentialService(
     private readonly TimeProvider _timeProvider = ValidateDependencies(dependencies).TimeProvider ?? TimeProvider.System;
     private readonly SecurityEventEmitter _securityEvents = new(
         ValidateDependencies(dependencies).SecurityEventSink,
-        ValidateDependencies(dependencies).TimeProvider ?? TimeProvider.System,
-        ValidateDependencies(dependencies).LoggerFactory);
+        ValidateDependencies(dependencies).TimeProvider ?? TimeProvider.System);
     private readonly ILogger<CredentialService> _logger = ValidateDependencies(dependencies).Logger ?? NullLogger<CredentialService>.Instance;
     private readonly ConcurrentDictionary<int, string> _dummyValues = new();
 
@@ -658,5 +657,4 @@ internal sealed record CredentialServiceDependencies(
     IdentityServiceOptions? Options = null,
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,
-    ILogger<CredentialService>? Logger = null,
-    ILoggerFactory? LoggerFactory = null);
+    ILogger<CredentialService>? Logger = null);

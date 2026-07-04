@@ -684,7 +684,7 @@ public static class EmailOutboxAdministrationProvider
     }
 
     /// <summary>
-    /// Records a best-effort audit event for a successful manual email outbox mutation.
+    /// Records an audit event for a successful manual email outbox mutation.
     /// </summary>
     /// <param name="sink">Audit sink that receives the security event.</param>
     /// <param name="timeProvider">Clock used for the audit timestamp.</param>

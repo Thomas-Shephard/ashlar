@@ -1374,7 +1374,7 @@ foreach (var issue in result.Issues)
 }
 ```
 
-`AddAshlarIdentity()` registers the validator automatically; applications can also call `AddAshlarConfigurationValidation()` directly. This is not a replacement for health checks: health checks answer whether running infrastructure is healthy, while configuration validation answers whether Ashlar appears safely and completely configured. Warnings may be acceptable in development. Production apps should pay attention to missing repositories, missing secret protection, missing or null email delivery for email-based flows, `NullSecurityEventSink`, `PermissiveAccountSecurityGuard`, in-memory authentication rate limiting, and no durable transaction provider.
+`AddAshlarIdentity()` registers the validator automatically; applications can also call `AddAshlarConfigurationValidation()` directly. This is not a replacement for health checks: health checks answer whether running infrastructure is healthy, while configuration validation answers whether Ashlar appears safely and completely configured. Warnings may be acceptable in development. Production apps should pay attention to missing repositories, missing secret protection, missing or null email delivery for email-based flows, missing durable security audit persistence, `PermissiveAccountSecurityGuard`, in-memory authentication rate limiting, and no durable transaction provider.
 
 ## Transactions
 Ashlar supports scoped database transactions through the `IAshlarTransactionProvider` abstraction. This allows multiple repository operations within a single service scope to participate in a shared unit of work.
@@ -1415,21 +1415,18 @@ public class MyIdentityService(
 Provider outbox senders that implement `ITransactionalEmailOutboxSender` can be called before commit by token-bearing Ashlar flows. Direct senders that only implement `IEmailSender` remain post-commit so external delivery is not attempted until credential changes are durable.
 
 ## Security Audit Events
-Ashlar emits structured security audit events for authentication, credential lifecycle, and session lifecycle operations. `AddAshlarIdentity()` registers `ISecurityEventSink` with `NullSecurityEventSink` by default, so events are no-op unless the application provides a sink:
-
-```csharp
-services.AddSingleton<ISecurityEventSink, MySecurityEventSink>();
-services.AddAshlarIdentity();
-```
-
-Audit event payloads include stable event types, timestamps, target user/session ids when known, tenant id, actor user id, provider identity, IP address, user agent, correlation id, outcome, failure reason, and string properties. Audit events must not contain raw session tokens, passwords, one-time codes, credential values, protected payloads, password hashes, recovery codes, or other secrets.
-
-The **Ashlar.Postgres** package includes a PostgreSQL-backed sink:
+Ashlar emits structured security audit events for authentication, credential lifecycle, and session lifecycle operations. `AddAshlarIdentity()` registers `ISecurityEventSink` as a fan-out sink. Provider-backed persistent audit storage is registered through `IPersistentSecurityEventSink`; when configured, `RecordAsync` completes only after durable persistence or fails the caller.
 
 ```csharp
 services.AddAshlarPostgres(connectionString);
 services.AddAshlarPostgresAuditSink();
 ```
+
+Audit event payloads include stable event types, timestamps, target user/session ids when known, tenant id, actor user id, provider identity, IP address, user agent, correlation id, outcome, failure reason, and string properties. Audit events must not contain raw session tokens, passwords, one-time codes, credential values, protected payloads, password hashes, recovery codes, or other secrets.
+
+Application handlers such as webhooks and metrics run through the fan-out sink after durable persistence and remain best-effort. Handler failures are logged and do not make persisted audit writes fail.
+
+The **Ashlar.Postgres** and **Ashlar.Sqlite** packages include provider-backed persistent audit sinks.
 
 ### Security Event Browsing
 Ashlar also exposes provider-neutral read APIs for admin and operations tooling:

@@ -324,7 +324,10 @@ public static class AshlarPostgresServiceCollectionExtensions
         }
 
         services.TryAddSingleton(TimeProvider.System);
-        services.Replace(ServiceDescriptor.Scoped<IEmailOutboxAdministrationService, PostgresEmailOutboxAdministrationService>());
+        services.Replace(ServiceDescriptor.Scoped<IEmailOutboxAdministrationService>(provider => new PostgresEmailOutboxAdministrationService(
+            provider.GetRequiredService<IPostgresConnectionProvider>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>())));
         services.Replace(ServiceDescriptor.Scoped<IEmailOutboxDiagnostics, PostgresEmailOutboxDiagnostics>());
         services.Replace(ServiceDescriptor.Scoped<IEmailSender, PostgresEmailOutboxSender>());
 
@@ -398,7 +401,10 @@ public static class AshlarPostgresServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarSecurityEventWebhookEnqueuer, PostgresSecurityEventWebhookEnqueuer>();
-        services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxOperations, PostgresSecurityEventWebhookOutboxOperations>());
+        services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxOperations>(provider => new PostgresSecurityEventWebhookOutboxOperations(
+            provider.GetRequiredService<IPostgresConnectionProvider>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>())));
         services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxBrowser, PostgresSecurityEventWebhookOutboxBrowser>());
         services.Replace(ServiceDescriptor.Scoped<ISecurityEventWebhookOutboxDiagnostics, PostgresSecurityEventWebhookOutboxDiagnostics>());
 

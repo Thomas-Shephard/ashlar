@@ -149,7 +149,7 @@ internal sealed class SqliteEmailOutboxAdministrationContractTests : EmailOutbox
     }
 
     [Test]
-    public async Task RetryAuditFailureIsFailOpen()
+    public async Task RetryAuditFailureFailsCaller()
     {
         var id = await SeedEmailOutboxAdminRowAsync(SeedEmailOutboxAdminRow.Failed("audit@example.com"));
         var admin = new SqliteEmailOutboxAdministrationService(
@@ -157,13 +157,11 @@ internal sealed class SqliteEmailOutboxAdministrationContractTests : EmailOutbox
             _database.ServiceProvider.GetRequiredService<TimeProvider>(),
             new ThrowingSecurityEventSink(new InvalidOperationException("audit failed")));
 
-        var result = await admin.RetryAsync(new EmailOutboxOperationRequest(id, new AuditContext(Guid.NewGuid())));
-
-        Assert.That(result.Status, Is.EqualTo(EmailOutboxOperationStatus.Retried));
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await admin.RetryAsync(new EmailOutboxOperationRequest(id, new AuditContext(Guid.NewGuid()))));
     }
 
     [Test]
-    public async Task RetryAuditCancellationFailureIsFailOpen()
+    public async Task RetryAuditCancellationFailureFailsCaller()
     {
         var id = await SeedEmailOutboxAdminRowAsync(SeedEmailOutboxAdminRow.Failed("audit-canceled@example.com"));
         var admin = new SqliteEmailOutboxAdministrationService(
@@ -171,9 +169,7 @@ internal sealed class SqliteEmailOutboxAdministrationContractTests : EmailOutbox
             _database.ServiceProvider.GetRequiredService<TimeProvider>(),
             new ThrowingSecurityEventSink(new OperationCanceledException("audit canceled")));
 
-        var result = await admin.RetryAsync(new EmailOutboxOperationRequest(id, new AuditContext(Guid.NewGuid())));
-
-        Assert.That(result.Status, Is.EqualTo(EmailOutboxOperationStatus.Retried));
+        Assert.ThrowsAsync<OperationCanceledException>(async () => await admin.RetryAsync(new EmailOutboxOperationRequest(id, new AuditContext(Guid.NewGuid()))));
     }
 
     [Test]

@@ -48,7 +48,7 @@ internal sealed class AuthenticationPipeline(
     private readonly bool _primaryRateLimiterFailOpen = dependencies?.PrimaryRateLimitOptions?.FailOpenOnBackendFailure ?? false;
     private readonly bool _factorRateLimiterFailOpen = dependencies?.FactorRateLimitOptions?.FailOpenOnBackendFailure ?? false;
     private readonly bool _accountLockoutFailOpen = dependencies?.AccountLockoutOptions?.FailOpenOnBackendFailure ?? false;
-    private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider ?? TimeProvider.System, dependencies?.LoggerFactory);
+    private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider ?? TimeProvider.System);
     private readonly ILogger<AuthenticationPipeline> _logger = dependencies?.Logger ?? NullLogger<AuthenticationPipeline>.Instance;
 
     public Task<AuthenticationResponse> LoginAsync(
@@ -404,6 +404,7 @@ internal sealed class AuthenticationPipeline(
         }
 
         Dictionary<string, string>? lifecycleFailureProperties = null;
+        var credentialUpdatePersisted = false;
         try
         {
             var credentialUsageUpdate = await _credentialService.UpdateCredentialUsageAsync(
@@ -417,11 +418,7 @@ internal sealed class AuthenticationPipeline(
                 return await RecordFailureAsync(lifecycle.Context, lifecycle.Provider.Key, lifecycle.User.Id, SecurityEventFailureReasons.CredentialUpdateFailed, cancellationToken);
             }
 
-            return await CompleteSuccessfulLoginAsync(
-                lifecycle,
-                properties: null,
-                credentialUpdatePersisted: credentialUsageUpdate.UpdatePersisted,
-                cancellationToken);
+            credentialUpdatePersisted = credentialUsageUpdate.UpdatePersisted;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -451,7 +448,7 @@ internal sealed class AuthenticationPipeline(
         return await CompleteSuccessfulLoginAsync(
             lifecycle,
             lifecycleFailureProperties,
-            credentialUpdatePersisted: false,
+            credentialUpdatePersisted,
             cancellationToken);
     }
 
@@ -519,7 +516,6 @@ internal sealed record AuthenticationPipelineDependencies(
     ISecurityEventSink? SecurityEventSink = null,
     TimeProvider? TimeProvider = null,
     ILogger<AuthenticationPipeline>? Logger = null,
-    ILoggerFactory? LoggerFactory = null,
     IAccountLockoutService? AccountLockoutService = null,
     PrimaryAuthenticationRateLimitOptions? PrimaryRateLimitOptions = null,
     AuthenticationFactorRateLimitOptions? FactorRateLimitOptions = null,
