@@ -9,10 +9,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Features.Mfa;
 
-/// <summary>
-/// Implements remembered MFA device lifecycle operations.
-/// </summary>
-public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
+internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
 {
     private static readonly Action<ILogger, Guid, Guid, Exception?> LastUsedUpdateNotPersisted =
         LoggerMessage.Define<Guid, Guid>(
@@ -34,16 +31,6 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
     private readonly SecurityEventEmitter _securityEvents;
     private readonly ILogger<RememberedMfaDeviceService> _logger;
 
-    /// <summary>
-    /// Initializes a configured service instance.
-    /// </summary>
-    /// <param name="repository">The remembered device repository.</param>
-    /// <param name="userRepository">The user repository.</param>
-    /// <param name="tokenGenerator">The secure token generator.</param>
-    /// <param name="tokenHasher">The secure token hasher.</param>
-    /// <param name="transactionProvider">Transaction boundary used to coordinate persistence and audit events.</param>
-    /// <param name="dependencies">Optional service dependencies for options, time, auditing, and logging.</param>
-    /// <param name="logger">Optional logger for remembered-device persistence anomalies.</param>
     public RememberedMfaDeviceService(
         IRememberedMfaDeviceRepository repository,
         IUserRepository userRepository,
@@ -509,14 +496,7 @@ public sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
     }
 }
 
-/// <summary>
-/// Dependencies for <see cref="RememberedMfaDeviceService" />.
-/// </summary>
-/// <param name="Options">Configured remembered-device token and retention options.</param>
-/// <param name="TimeProvider">Clock used for token expiry, revocation, and audit timestamps.</param>
-/// <param name="SecurityEventSink">Optional sink that receives remembered-device security events.</param>
-/// <param name="LoggerFactory">Optional logger factory used by security-event emission.</param>
-public sealed record RememberedMfaDeviceServiceDependencies(
+internal sealed record RememberedMfaDeviceServiceDependencies(
     IOptions<RememberedMfaDeviceOptions>? Options = null,
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,

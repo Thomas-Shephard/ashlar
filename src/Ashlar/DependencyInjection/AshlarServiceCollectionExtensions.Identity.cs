@@ -227,6 +227,29 @@ public static partial class AshlarServiceCollectionExtensions
     }
 
     /// <summary>
+    /// Registers authentication rate-limit administration operations for the configured provider repository.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    /// <remarks>
+    /// Host applications must protect this service with appropriate administrator authorization and step-up policy.
+    /// </remarks>
+    public static IServiceCollection AddAshlarAuthenticationRateLimitAdministration(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.TryAddScoped(provider => new AuthenticationRateLimitAdministrationServiceDependencies(
+            provider.GetService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>()));
+        services.TryAddScoped<IAuthenticationRateLimitAdministrationService>(provider =>
+            new AuthenticationRateLimitAdministrationService(
+                provider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>(),
+                provider.GetService<AuthenticationRateLimitAdministrationServiceDependencies>()));
+
+        return services;
+    }
+
+    /// <summary>
     /// Registers a security event handler for Ashlar security event fan-out.
     /// </summary>
     /// <typeparam name="THandler">The handler type.</typeparam>

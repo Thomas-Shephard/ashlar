@@ -3,13 +3,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Features.AccountLockout;
 
-/// <summary>
-/// Provides automatic account lockout behavior for resolved users.
-/// </summary>
-/// <param name="repository">The durable lockout repository.</param>
-/// <param name="options">The lockout options.</param>
-/// <param name="dependencies">Optional operational dependencies.</param>
-public sealed class AccountLockoutService(
+internal sealed class AccountLockoutService(
     IAccountLockoutRepository repository,
     IOptions<AccountLockoutOptions> options,
     AccountLockoutServiceDependencies? dependencies = null) : IAccountLockoutService
@@ -19,7 +13,6 @@ public sealed class AccountLockoutService(
     private readonly TimeProvider _timeProvider = dependencies?.TimeProvider ?? TimeProvider.System;
     private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider ?? TimeProvider.System);
 
-    /// <inheritdoc />
     public async Task<AccountLockoutStatus> GetStatusAsync(
         IUser user,
         AuthenticationProviderKey provider,
@@ -33,7 +26,6 @@ public sealed class AccountLockoutService(
         return ToStatus(user.Id, tenantId, provider, record, _timeProvider.GetUtcNow());
     }
 
-    /// <inheritdoc />
     public async Task<AccountLockoutFailureResult> RecordFailureAsync(
         IUser user,
         AuthenticationProviderKey provider,
@@ -66,7 +58,6 @@ public sealed class AccountLockoutService(
             lockoutActivated);
     }
 
-    /// <inheritdoc />
     public Task<bool> ResetAsync(
         IUser user,
         AuthenticationProviderKey provider,
@@ -182,11 +173,6 @@ public sealed class AccountLockoutService(
     }
 }
 
-/// <summary>
-/// Optional dependencies for <see cref="AccountLockoutService" />.
-/// </summary>
-/// <param name="TimeProvider">The optional clock.</param>
-/// <param name="SecurityEventSink">The optional security event sink.</param>
-public sealed record AccountLockoutServiceDependencies(
+internal sealed record AccountLockoutServiceDependencies(
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null);

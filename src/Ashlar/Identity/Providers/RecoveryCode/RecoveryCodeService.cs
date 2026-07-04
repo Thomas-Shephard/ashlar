@@ -4,10 +4,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Providers.RecoveryCode;
 
-/// <summary>
-/// Implements services for managing user recovery codes.
-/// </summary>
-public sealed class RecoveryCodeService : IRecoveryCodeService
+internal sealed class RecoveryCodeService : IRecoveryCodeService
 {
     private const string EmptyUserIdMessage = "User ID cannot be empty.";
 
@@ -20,14 +17,6 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
     private readonly SecurityEventEmitter _securityEvents;
     private readonly SecurityNotificationEmitter _notifications;
 
-    /// <summary>
-    /// Initializes a configured service instance.
-    /// </summary>
-    /// <param name="userRepository">Stores and retrieves users.</param>
-    /// <param name="credentialRepository">Stores and retrieves credentials.</param>
-    /// <param name="transactionProvider">Coordinates credential writes with committed audit and notification callbacks.</param>
-    /// <param name="hasherSelector">Selects the password hasher used to store recovery-code secret fragments.</param>
-    /// <param name="dependencies">Options and operational dependencies used by recovery-code flows.</param>
     public RecoveryCodeService(
         IUserRepository userRepository,
         ICredentialRepository credentialRepository,
@@ -52,7 +41,6 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         _notifications = new SecurityNotificationEmitter(dependencies.NotificationService);
     }
 
-    /// <inheritdoc />
     public async Task<Result<IReadOnlyList<string>>> GenerateRecoveryCodesAsync(Guid userId, RecoveryCodeGenerationRequest? request = null, CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty)
@@ -71,7 +59,6 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         return await GenerateRecoveryCodesCoreAsync(userId, request, cancellationToken);
     }
 
-    /// <inheritdoc />
     public Task<Result<IReadOnlyList<string>>> GenerateRecoveryCodesPrivilegedAsync(Guid userId, RecoveryCodeGenerationRequest? request = null, CancellationToken cancellationToken = default)
     {
         request ??= new RecoveryCodeGenerationRequest();
@@ -180,7 +167,6 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         return Result.Success<IReadOnlyList<string>>(rawCodes);
     }
 
-    /// <inheritdoc />
     public async Task<int> RevokeRecoveryCodesAsync(Guid userId, RevokeRecoveryCodesRequest? request = null, CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty)
@@ -199,7 +185,6 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
         return await RevokeRecoveryCodesCoreAsync(userId, request, cancellationToken);
     }
 
-    /// <inheritdoc />
     public Task<int> RevokeRecoveryCodesPrivilegedAsync(Guid userId, RevokeRecoveryCodesRequest? request = null, CancellationToken cancellationToken = default)
     {
         request ??= new RevokeRecoveryCodesRequest();
@@ -353,36 +338,14 @@ public sealed class RecoveryCodeService : IRecoveryCodeService
     }
 }
 
-/// <summary>
-/// Optional dependencies used by recovery-code service operations.
-/// </summary>
-/// <param name="options">Recovery-code options.</param>
-/// <param name="timeProvider">Clock used for recovery-code timestamps.</param>
-/// <param name="securityEventSink">Receives recovery-code security events.</param>
-/// <param name="notificationService">Sends recovery-code security notifications.</param>
-public sealed class RecoveryCodeServiceDependencies(
+internal sealed class RecoveryCodeServiceDependencies(
     IOptions<RecoveryCodeOptions> options,
     TimeProvider? timeProvider = null,
     ISecurityEventSink? securityEventSink = null,
     ISecurityNotificationService? notificationService = null)
 {
-    /// <summary>
-    /// Gets the configured recovery-code options.
-    /// </summary>
     public IOptions<RecoveryCodeOptions> Options { get; } = options ?? throw new ArgumentNullException(nameof(options));
-
-    /// <summary>
-    /// Gets the clock used for recovery-code timestamps.
-    /// </summary>
     public TimeProvider TimeProvider { get; } = timeProvider ?? TimeProvider.System;
-
-    /// <summary>
-    /// Gets the sink used to record recovery-code security events.
-    /// </summary>
     public ISecurityEventSink? SecurityEventSink { get; } = securityEventSink;
-
-    /// <summary>
-    /// Gets the service used to send recovery-code security notifications.
-    /// </summary>
     public ISecurityNotificationService? NotificationService { get; } = notificationService;
 }

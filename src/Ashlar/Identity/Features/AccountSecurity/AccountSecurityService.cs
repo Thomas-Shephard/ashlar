@@ -7,16 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Features.AccountSecurity;
 
-/// <summary>
-/// Implements administrator-oriented account security operations.
-/// </summary>
-/// <param name="userRepository">Stores and retrieves users.</param>
-/// <param name="credentialRepository">Stores and retrieves credentials.</param>
-/// <param name="sessionService">Revokes and lists authentication sessions.</param>
-/// <param name="transactionProvider">Creates transactions for coordinated account security changes.</param>
-/// <param name="accountSecurityGuard">Authorizes account state changes before they are persisted.</param>
-/// <param name="dependencies">Optional account security collaborators and configuration.</param>
-public sealed class AccountSecurityService : IAccountSecurityService
+internal sealed class AccountSecurityService : IAccountSecurityService
 {
     private const string AdminReason = "admin";
     private readonly IUserRepository _userRepository;
@@ -33,15 +24,6 @@ public sealed class AccountSecurityService : IAccountSecurityService
     private readonly AuthenticationProviderKey _totpProvider;
     private readonly AuthenticationProviderKey _recoveryCodeProvider;
 
-    /// <summary>
-    /// Initializes a configured service instance.
-    /// </summary>
-    /// <param name="userRepository">Stores and retrieves users.</param>
-    /// <param name="credentialRepository">Stores and retrieves credentials.</param>
-    /// <param name="sessionService">Revokes and lists authentication sessions.</param>
-    /// <param name="transactionProvider">Creates transactions for coordinated account security changes.</param>
-    /// <param name="accountSecurityGuard">Authorizes account state changes before they are persisted.</param>
-    /// <param name="dependencies">Optional account security collaborators and configuration.</param>
     public AccountSecurityService(
         IUserRepository userRepository,
         ICredentialRepository credentialRepository,
@@ -67,7 +49,6 @@ public sealed class AccountSecurityService : IAccountSecurityService
         _recoveryCodeProvider = dependencies.RecoveryCodeOptions?.Value.ProviderKey ?? new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode");
     }
 
-    /// <inheritdoc />
     public async Task<Result<AccountSecurityOperationResult>> SetUserAccountStateAsync(Guid userId, SetUserAccountStateRequest request, CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
@@ -147,7 +128,6 @@ public sealed class AccountSecurityService : IAccountSecurityService
         return Result.Success(result);
     }
 
-    /// <inheritdoc />
     public async Task<Result<AccountSecurityOperationResult>> RevokeSessionsAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
@@ -172,7 +152,6 @@ public sealed class AccountSecurityService : IAccountSecurityService
         return Result.Success(new AccountSecurityOperationResult(userId, SessionsRevoked: revoked));
     }
 
-    /// <inheritdoc />
     public async Task<Result<AccountSecurityOperationResult>> RevokeCredentialsAsync(Guid userId, AuthenticationProviderKey provider, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
@@ -198,7 +177,6 @@ public sealed class AccountSecurityService : IAccountSecurityService
         return Result.Success(result);
     }
 
-    /// <inheritdoc />
     public async Task<Result<AccountSecurityOperationResult>> ResetMfaAsync(Guid userId, AccountSecurityOperationRequest request, CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
@@ -228,7 +206,6 @@ public sealed class AccountSecurityService : IAccountSecurityService
         return Result.Success(result);
     }
 
-    /// <inheritdoc />
     public async Task<Result<AccountSecurityPosture>> GetUserSecurityPostureAsync(Guid userId, AccountSecurityPostureRequest? request = null, CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
@@ -670,18 +647,7 @@ public sealed class AccountSecurityService : IAccountSecurityService
     private sealed record AccountStateTransition(UserAccountState From, UserAccountState To);
 }
 
-/// <summary>
-/// Dependencies for <see cref="AccountSecurityService"/>.
-/// </summary>
-/// <param name="TimeProvider">Clock used for timestamps and security posture windows.</param>
-/// <param name="SecurityEventSink">Sink for account security audit events.</param>
-/// <param name="SecurityEventSummaryRepository">Optional read model for recent security event counts.</param>
-/// <param name="TotpOptions">Configured TOTP provider identity.</param>
-/// <param name="RecoveryCodeOptions">Configured recovery-code provider identity.</param>
-/// <param name="MfaPolicyEvaluator">Optional evaluator used to describe current MFA policy posture.</param>
-/// <param name="ProviderRegistry">Optional registry used to classify credential posture.</param>
-/// <param name="RememberedMfaDeviceService">Optional service used to revoke remembered MFA devices.</param>
-public sealed record AccountSecurityServiceDependencies(
+internal sealed record AccountSecurityServiceDependencies(
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,
     IUserSecurityEventSummaryRepository? SecurityEventSummaryRepository = null,

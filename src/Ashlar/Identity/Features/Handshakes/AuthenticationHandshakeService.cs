@@ -8,9 +8,6 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Identity.Features.Handshakes;
 
-/// <summary>
-/// Creates and verifies short-lived authentication handshakes for MFA and step-up flows.
-/// </summary>
 internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeService, IAuthenticationHandshakeCompletionService
 {
     private const string HandshakeIdProperty = "handshake_id";
@@ -38,14 +35,6 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
         LookupAndVerification
     }
 
-    /// <summary>
-    /// Initializes a configured service instance.
-    /// </summary>
-    /// <param name="repository">Handshake repository that stores token hashes and handshake state.</param>
-    /// <param name="tokenGenerator">Generator used to issue raw handshake tokens.</param>
-    /// <param name="tokenHasher">Hasher used before looking up or persisting handshake tokens.</param>
-    /// <param name="transactionProvider">Transaction provider used for handshake mutations.</param>
-    /// <param name="dependencies">Handshake options, rate limiting, audit, user lookup, and notification dependencies.</param>
     public AuthenticationHandshakeService(
         IAuthenticationHandshakeRepository repository,
         ISecureTokenGenerator tokenGenerator,
@@ -150,7 +139,6 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
         return Result<AuthenticationHandshakeCreated>.Success(new AuthenticationHandshakeCreated(ToCreatedHandshake(handshake), token));
     }
 
-    /// <inheritdoc />
     public async Task<Result<AuthenticationHandshake>> BeginFactorChallengeAsync(
         VerifyAuthenticationHandshakeRequest request,
         CancellationToken cancellationToken = default)
@@ -159,7 +147,6 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
         return result;
     }
 
-    /// <inheritdoc />
     public async Task<Result<AuthenticationHandshake>> BeginFactorVerificationAsync(
         VerifyAuthenticationHandshakeRequest request,
         CancellationToken cancellationToken = default)
@@ -168,7 +155,6 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
         return result;
     }
 
-    /// <inheritdoc />
     public async Task<Result<AuthenticationHandshake>> BeginVerificationAsync(
         BeginAuthenticationHandshakeVerificationRequest request,
         CancellationToken cancellationToken = default)
@@ -369,13 +355,6 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
         return Result.Success(handshake);
     }
 
-    /// <summary>
-    /// Revokes an in-progress handshake by raw token.
-    /// </summary>
-    /// <param name="handshakeToken">Raw handshake token presented by the caller. Do not log or persist this value.</param>
-    /// <param name="context">Authentication request context used for audit and notifications.</param>
-    /// <param name="cancellationToken">A token that can cancel revocation.</param>
-    /// <returns>A result indicating whether revocation succeeded or the handshake was not found.</returns>
     public async Task<Result> RevokeHandshakeAsync(string? handshakeToken, AuthenticationContext? context = null, CancellationToken cancellationToken = default)
     {
         if (!SecureTokenHashing.TryHashToken(_tokenHasher, handshakeToken, out var tokenHash))
@@ -635,16 +614,7 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
     }
 }
 
-/// <summary>
-/// Groups optional dependencies used by the authentication handshake service.
-/// </summary>
-/// <param name="Options">Handshake lifetime and verification rate-limit options.</param>
-/// <param name="TimeProvider">Clock used for timestamps and expiration checks.</param>
-/// <param name="SecurityEventSink">Optional sink used to record handshake security events.</param>
-/// <param name="RateLimiter">Optional rate limiter used for handshake lookup and verification attempts.</param>
-/// <param name="UserRepository">Looks up users when operations need notification context.</param>
-/// <param name="NotificationService">Optional service used to send handshake-related security notifications.</param>
-public sealed record AuthenticationHandshakeServiceDependencies(
+internal sealed record AuthenticationHandshakeServiceDependencies(
     IOptions<AuthenticationHandshakeOptions>? Options = null,
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,

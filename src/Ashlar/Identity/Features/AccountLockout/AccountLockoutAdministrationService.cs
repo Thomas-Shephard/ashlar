@@ -2,12 +2,7 @@ using Ashlar.Auditing;
 
 namespace Ashlar.Identity.Features.AccountLockout;
 
-/// <summary>
-/// Implements administrator-oriented automatic account lockout visibility and reset operations.
-/// </summary>
-/// <param name="repository">The durable lockout repository.</param>
-/// <param name="dependencies">The optional operational dependencies.</param>
-public sealed class AccountLockoutAdministrationService(
+internal sealed class AccountLockoutAdministrationService(
     IAccountLockoutRepository repository,
     AccountLockoutAdministrationServiceDependencies? dependencies = null) : IAccountLockoutAdministrationService
 {
@@ -18,7 +13,6 @@ public sealed class AccountLockoutAdministrationService(
     private readonly TimeProvider _timeProvider = dependencies?.TimeProvider ?? TimeProvider.System;
     private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider ?? TimeProvider.System);
 
-    /// <inheritdoc />
     public async Task<Result<AccountLockoutSearchResult>> SearchLockoutsAsync(SearchAccountLockoutsRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -66,7 +60,6 @@ public sealed class AccountLockoutAdministrationService(
         return Result.Success(new AccountLockoutSearchResult(page, limit, request.Offset, hasMore));
     }
 
-    /// <inheritdoc />
     public async Task<Result<AccountLockoutStatus>> GetLockoutStatusAsync(
         Guid userId,
         AuthenticationProviderKey provider,
@@ -82,7 +75,6 @@ public sealed class AccountLockoutAdministrationService(
         return Result.Success(ToStatus(userId, tenantId, provider, record, _timeProvider.GetUtcNow()));
     }
 
-    /// <inheritdoc />
     public async Task<Result<ResetAccountLockoutResult>> ResetLockoutAsync(
         Guid userId,
         AuthenticationProviderKey provider,
@@ -234,11 +226,6 @@ public sealed class AccountLockoutAdministrationService(
     }
 }
 
-/// <summary>
-/// Optional dependencies for <see cref="AccountLockoutAdministrationService" />.
-/// </summary>
-/// <param name="TimeProvider">The optional clock.</param>
-/// <param name="SecurityEventSink">The optional security event sink.</param>
-public sealed record AccountLockoutAdministrationServiceDependencies(
+internal sealed record AccountLockoutAdministrationServiceDependencies(
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null);

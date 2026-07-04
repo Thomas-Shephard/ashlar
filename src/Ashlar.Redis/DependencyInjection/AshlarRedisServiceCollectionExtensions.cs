@@ -1,5 +1,3 @@
-using Ashlar.Auditing;
-using Ashlar.Identity.Features.Administration;
 using Ashlar.Identity.RateLimiting.Abstractions;
 using Ashlar.Operational.Diagnostics;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -85,13 +83,7 @@ public static class AshlarRedisServiceCollectionExtensions
             new RedisAuthenticationRateLimitAdministrationRepository(
                 provider.GetRequiredService<RedisAuthenticationRateLimiterConnection>(),
                 provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<RedisAuthenticationRateLimiterOptions>>())));
-        services.TryAddScoped(provider => new AuthenticationRateLimitAdministrationServiceDependencies(
-            provider.GetService<TimeProvider>(),
-            provider.GetService<ISecurityEventSink>()));
-        services.TryAddScoped<IAuthenticationRateLimitAdministrationService>(provider =>
-            new AuthenticationRateLimitAdministrationService(
-                provider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>(),
-                provider.GetService<AuthenticationRateLimitAdministrationServiceDependencies>()));
+        services.AddAshlarAuthenticationRateLimitAdministration();
 
         return services;
     }

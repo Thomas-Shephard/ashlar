@@ -1,9 +1,7 @@
 using Ashlar.Auditing;
 using Ashlar.Security.Tokens;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
-using Moq;
 
 namespace Ashlar.Tests.Identity.Features.Mfa;
 
@@ -444,7 +442,7 @@ internal sealed class RememberedMfaDeviceServiceTests
             Assert.Throws<ArgumentNullException>(() => new RememberedMfaDeviceService(repository, users, generator, null!, transactions, new RememberedMfaDeviceServiceDependencies()));
             Assert.Throws<ArgumentNullException>(() => new RememberedMfaDeviceService(repository, users, generator, hasher, null!, new RememberedMfaDeviceServiceDependencies()));
             Assert.Throws<ArgumentNullException>(() => new RememberedMfaDeviceService(repository, users, generator, hasher, transactions, null!));
-            Assert.DoesNotThrow(() => new RememberedMfaDeviceService(repository, users, generator, hasher, transactions, new RememberedMfaDeviceServiceDependencies(), Mock.Of<ILogger<RememberedMfaDeviceService>>()));
+            Assert.DoesNotThrow(() => new RememberedMfaDeviceService(repository, users, generator, hasher, transactions, new RememberedMfaDeviceServiceDependencies(), Microsoft.Extensions.Logging.Abstractions.NullLogger<RememberedMfaDeviceService>.Instance));
         }
     }
 

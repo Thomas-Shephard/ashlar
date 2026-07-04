@@ -3,38 +3,30 @@ using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Ashlar.Postgres.Webhooks;
 
-internal sealed class PostgresSecurityEventWebhookOutboxDispatcher
+internal sealed class PostgresSecurityEventWebhookOutboxDispatcher(
+    IServiceProvider serviceProvider,
+    TimeProvider timeProvider,
+    IOptions<PostgresSecurityEventWebhookOutboxOptions> options,
+    IOptions<AshlarSecurityEventWebhookOptions> webhookOptions,
+    IHttpClientFactory httpClientFactory,
+    AshlarSecurityEventWebhookDestinationValidator destinationValidator,
+    ILogger<PostgresSecurityEventWebhookOutboxDispatcher>? logger = null,
+    IAshlarSecurityEventWebhookDeliveryObserver? deliveryObserver = null)
 {
     public const string HttpClientName = "Ashlar.Postgres.SecurityEventWebhookOutbox";
 
-    private readonly IServiceProvider _serviceProvider;
-    private readonly TimeProvider _timeProvider;
-    private readonly PostgresSecurityEventWebhookOutboxOptions _options;
-    private readonly AshlarSecurityEventWebhookOptions _webhookOptions;
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly ILogger<PostgresSecurityEventWebhookOutboxDispatcher> _logger;
-    private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver;
-    private readonly AshlarSecurityEventWebhookDestinationValidator _destinationValidator;
-
-    public PostgresSecurityEventWebhookOutboxDispatcher(
-        AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions> dependencies,
-        ILogger<PostgresSecurityEventWebhookOutboxDispatcher>? logger = null,
-        IAshlarSecurityEventWebhookDeliveryObserver? deliveryObserver = null)
-    {
-        ArgumentNullException.ThrowIfNull(dependencies);
-
-        _serviceProvider = dependencies.ServiceProvider;
-        _timeProvider = dependencies.TimeProvider;
-        _options = dependencies.Options;
-        _webhookOptions = dependencies.WebhookOptions;
-        _httpClientFactory = dependencies.HttpClientFactory;
-        _logger = logger ?? NullLogger<PostgresSecurityEventWebhookOutboxDispatcher>.Instance;
-        _deliveryObserver = deliveryObserver ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
-        _destinationValidator = dependencies.DestinationValidator;
-    }
+    private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+    private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+    private readonly PostgresSecurityEventWebhookOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
+    private readonly AshlarSecurityEventWebhookOptions _webhookOptions = (webhookOptions ?? throw new ArgumentNullException(nameof(webhookOptions))).Value;
+    private readonly IHttpClientFactory _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+    private readonly ILogger<PostgresSecurityEventWebhookOutboxDispatcher> _logger = logger ?? NullLogger<PostgresSecurityEventWebhookOutboxDispatcher>.Instance;
+    private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver = deliveryObserver ?? NoOpAshlarSecurityEventWebhookDeliveryObserver.Instance;
+    private readonly AshlarSecurityEventWebhookDestinationValidator _destinationValidator = destinationValidator ?? throw new ArgumentNullException(nameof(destinationValidator));
 
     public async Task<int> ProcessBatchAsync(CancellationToken cancellationToken = default)
     {

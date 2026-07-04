@@ -6,21 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Identity.Features.Credentials;
 
-/// <summary>
-/// Implements credential management services including resolution, linking, and lifecycle updates.
-/// </summary>
-/// <param name="userRepository">Stores and retrieves users.</param>
-/// <param name="credentialRepository">Stores and retrieves credentials.</param>
-/// <param name="secretProtector">Protects credential secrets before persistence.</param>
-/// <param name="transactionProvider">Creates transactions for credential lifecycle updates.</param>
-/// <param name="dependencies">Operational dependencies used by credential flows.</param>
-/// <remarks>
-/// This service implements timing attack resistance by ensuring that unprotection operations
-/// are performed even when a user or credential is not found, using provider-specific dummy values.
-/// Configure both dependency log members when constructing this service manually and operational
-/// logging is desired for both credential operations and security event sink failures.
-/// </remarks>
-public sealed class CredentialService(
+internal sealed class CredentialService(
     IUserRepository userRepository,
     ICredentialRepository credentialRepository,
     ISecretProtector secretProtector,
@@ -84,13 +70,6 @@ public sealed class CredentialService(
     private readonly ILogger<CredentialService> _logger = ValidateDependencies(dependencies).Logger ?? NullLogger<CredentialService>.Instance;
     private readonly ConcurrentDictionary<int, string> _dummyValues = new();
 
-    /// <summary>
-    /// Initializes a configured service instance.
-    /// </summary>
-    /// <param name="userRepository">Stores and retrieves users.</param>
-    /// <param name="credentialRepository">Stores and retrieves credentials.</param>
-    /// <param name="secretProtector">Protects credential secrets before persistence.</param>
-    /// <param name="transactionProvider">Creates transactions for credential lifecycle updates.</param>
     public CredentialService(
         IUserRepository userRepository,
         ICredentialRepository credentialRepository,
@@ -104,7 +83,7 @@ public sealed class CredentialService(
     {
         return dependencies ?? throw new ArgumentNullException(nameof(dependencies));
     }
-    /// <inheritdoc />
+
     public async Task<(IUser? User, UserCredential? Credential, UserCredential? OriginalCredential, bool UnprotectFailed)> ResolveAsync(
         AuthenticationContext context,
         IAuthenticationAssertion assertion,
@@ -137,7 +116,7 @@ public sealed class CredentialService(
                 : null;
         }
     }
-    /// <inheritdoc />
+
     public async Task<(IUser? User, UserCredential? Credential, UserCredential? OriginalCredential, bool UnprotectFailed)> ResolveAsync(
         Guid userId,
         IAuthenticationAssertion assertion,
@@ -177,14 +156,6 @@ public sealed class CredentialService(
         return (unprotectedCredential, credential, unprotectFailed);
     }
 
-    /// <summary>
-    /// Unprotects the credential value if the provider requires protection.
-    /// </summary>
-    /// <param name="provider">Authentication provider that owns the credential.</param>
-    /// <remarks>
-    /// This method is timing-safe. If the <paramref name="credential"/> is <see langword="null" />, it performs an unprotection
-    /// operation on a cached dummy value matching the provider's typical credential length.
-    /// </remarks>
     private (UserCredential? Credential, bool UnprotectFailed) UnprotectCredential(UserCredential? credential, IAuthenticationProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
@@ -256,7 +227,6 @@ public sealed class CredentialService(
         return (unprotectedCredential, unprotectFailed);
     }
 
-    /// <inheritdoc />
     public async Task<CredentialUsageUpdateResult> UpdateCredentialUsageAsync(
         UserCredential unprotectedCredential,
         UserCredential? originalCredential,
@@ -541,7 +511,6 @@ public sealed class CredentialService(
         return originalCredential?.Version ?? unprotectedCredential.Version;
     }
 
-    /// <inheritdoc />
     public async Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue = null, string? credentialMetadata = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(assertion);
@@ -673,15 +642,7 @@ public sealed class CredentialService(
     }
 }
 
-/// <summary>
-/// Optional dependencies used by credential service operations.
-/// </summary>
-/// <param name="Options">Identity service options for credential behavior.</param>
-/// <param name="TimeProvider">Clock used for credential timestamps.</param>
-/// <param name="SecurityEventSink">Receives credential-related security events.</param>
-/// <param name="Logger">Receives operational messages emitted directly by the credential service.</param>
-/// <param name="LoggerFactory">Creates diagnostics for embedded security event sink failures.</param>
-public sealed record CredentialServiceDependencies(
+internal sealed record CredentialServiceDependencies(
     IdentityServiceOptions? Options = null,
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,

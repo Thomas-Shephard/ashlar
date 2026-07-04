@@ -3,16 +3,7 @@ using Ashlar.Identity.RateLimiting.Abstractions;
 
 namespace Ashlar.Identity.Features.Administration;
 
-/// <summary>
-/// Implements safe administrator authentication rate-limit bucket search, lookup, and reset operations.
-/// </summary>
-/// <param name="repository">Repository used for provider-backed bucket administration.</param>
-/// <param name="dependencies">Optional dependencies used for time and audit emission.</param>
-/// <remarks>
-/// These operations are intended for administrative diagnostics and operations tooling and do not authorize the caller.
-/// Host applications must protect usage of this service with appropriate admin authorization and step-up policy.
-/// </remarks>
-public sealed class AuthenticationRateLimitAdministrationService(
+internal sealed class AuthenticationRateLimitAdministrationService(
     IAuthenticationRateLimitAdministrationRepository repository,
     AuthenticationRateLimitAdministrationServiceDependencies? dependencies = null)
     : IAuthenticationRateLimitAdministrationService
@@ -23,7 +14,6 @@ public sealed class AuthenticationRateLimitAdministrationService(
     private readonly TimeProvider _timeProvider = dependencies?.TimeProvider ?? TimeProvider.System;
     private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider);
 
-    /// <inheritdoc />
     public async Task<Result<AuthenticationRateLimitBucketSearchResult>> SearchBucketsAsync(SearchAuthenticationRateLimitBucketsRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -52,7 +42,6 @@ public sealed class AuthenticationRateLimitAdministrationService(
         return Result.Success(new AuthenticationRateLimitBucketSearchResult(page, limit, request.Offset, hasMore));
     }
 
-    /// <inheritdoc />
     public async Task<Result<AuthenticationRateLimitBucketSummary>> GetBucketAsync(AuthenticationRateLimitBucketLookupRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -68,7 +57,6 @@ public sealed class AuthenticationRateLimitAdministrationService(
             : Result.Success(bucket);
     }
 
-    /// <inheritdoc />
     public async Task<Result<AuthenticationRateLimitBucketResetResult>> ResetBucketAsync(ResetAuthenticationRateLimitBucketRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -179,11 +167,6 @@ public sealed class AuthenticationRateLimitAdministrationService(
     }
 }
 
-/// <summary>
-/// Optional dependencies for authentication rate-limit administration operations.
-/// </summary>
-/// <param name="TimeProvider">Clock used for status projection and audit timestamps.</param>
-/// <param name="SecurityEventSink">Optional sink used to record reset attempt events.</param>
-public sealed record AuthenticationRateLimitAdministrationServiceDependencies(
+internal sealed record AuthenticationRateLimitAdministrationServiceDependencies(
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null);
