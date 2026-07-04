@@ -8,15 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Postgres.Messaging;
 
-/// <summary>
-/// A PostgreSQL-backed implementation of <see cref="IEmailOutboxDispatcher"/> that dispatches pending email messages.
-/// </summary>
-/// <typeparam name="TTransport">The transport type.</typeparam>
-/// <param name="serviceProvider">The service provider value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-/// <param name="options">The options value.</param>
-/// <param name="logger">The logger value.</param>
-public sealed class PostgresEmailOutboxDispatcher<TTransport>(
+internal sealed class PostgresEmailOutboxDispatcher<TTransport>(
     IServiceProvider serviceProvider,
     TimeProvider timeProvider,
     IOptions<PostgresEmailOutboxOptions> options,
@@ -28,11 +20,6 @@ public sealed class PostgresEmailOutboxDispatcher<TTransport>(
     private readonly PostgresEmailOutboxOptions _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
     private readonly ILogger<PostgresEmailOutboxDispatcher<TTransport>> _logger = logger ?? NullLogger<PostgresEmailOutboxDispatcher<TTransport>>.Instance;
 
-    /// <summary>
-    /// Processes a single batch of pending email messages.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<int> ProcessBatchAsync(CancellationToken cancellationToken = default)
     {
         if (!PostgresEmailOutboxOptions.Validate(_options))

@@ -3,22 +3,11 @@ using System.Text.Json;
 
 namespace Ashlar.Postgres.Identity;
 
-/// <summary>
-/// Provides postgres authentication handshake repository behavior.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IAuthenticationHandshakeRepository
+internal sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IAuthenticationHandshakeRepository
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
-    /// <summary>
-    /// Performs the create <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="handshake">The handshake value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task CreateAsync(AuthenticationHandshake handshake, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(handshake);
@@ -51,13 +40,6 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
         }
     }
 
-    /// <summary>
-    /// Performs the find by token hash <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="tokenHash">The token hash value.</param>
-    /// <param name="forUpdate">The for update value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<AuthenticationHandshake?> FindByTokenHashAsync(string tokenHash, bool forUpdate = false, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tokenHash);
@@ -110,12 +92,6 @@ public sealed class PostgresAuthenticationHandshakeRepository(IPostgresConnectio
         return handshake;
     }
 
-    /// <summary>
-    /// Performs the update <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="handshake">The handshake value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns><see langword="true" /> when the handshake was updated; otherwise, <see langword="false" />.</returns>
     public async Task<bool> UpdateAsync(AuthenticationHandshake handshake, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(handshake);

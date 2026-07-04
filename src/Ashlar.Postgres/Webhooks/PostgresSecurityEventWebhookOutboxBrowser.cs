@@ -2,24 +2,13 @@ using Ashlar.Webhooks.SecurityEvents;
 
 namespace Ashlar.Postgres.Webhooks;
 
-/// <summary>
-/// PostgreSQL-backed safe browser for durable security event webhook outbox deliveries.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-public sealed class PostgresSecurityEventWebhookOutboxBrowser(
+internal sealed class PostgresSecurityEventWebhookOutboxBrowser(
     IPostgresConnectionProvider connectionProvider,
     TimeProvider timeProvider) : IAshlarSecurityEventWebhookOutboxBrowser
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
-    /// <summary>
-    /// Lists safe security event webhook outbox delivery summaries.
-    /// </summary>
-    /// <param name="request">The browse request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The matching outbox delivery summaries.</returns>
     public async Task<AshlarSecurityEventWebhookOutboxBrowseResult> ListAsync(
         AshlarSecurityEventWebhookOutboxBrowseRequest request,
         CancellationToken cancellationToken = default)

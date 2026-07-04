@@ -2,7 +2,7 @@
 
 SQLite persistence infrastructure for Ashlar.
 
-This package is an early durable SQLite provider for Ashlar. It currently provides dependency injection registration, schema initialization, scoped connection/transaction infrastructure, bootstrap state persistence, identity users and credentials, account lockout, invitations, authentication sessions, read-only admin session browsing, MFA handshakes, passkey challenges, authorization grants, audit persistence, durable authentication rate limiting, SQLite-backed email outbox enqueue/dispatch, and best-effort cleanup.
+This package is an early durable SQLite provider for Ashlar. It currently provides dependency injection registration, schema initialization, transaction-aware persistence, bootstrap state persistence, identity users and credentials, account lockout, invitations, authentication sessions, read-only admin session browsing, MFA handshakes, passkey challenges, authorization grants, audit persistence, durable authentication rate limiting, SQLite-backed email outbox enqueue/dispatch, and best-effort cleanup.
 
 ## Supported Scenario
 
@@ -69,7 +69,7 @@ var result = await diagnostics.CheckAsync();
 
 The result reports provider name, `CheckedAt`, whether cleanup is configured, whether `AshlarCleanupOptions` are valid, cleanup interval, batch size, max batches per run, and enabled/disabled cleanup category counts.
 
-SQLite cleanup uses `ISqliteConnectionProvider`: it joins the active scoped Ashlar transaction when one exists, and otherwise runs on a fresh SQLite connection.
+SQLite cleanup joins the active scoped Ashlar transaction when one exists, and otherwise runs on a fresh SQLite connection.
 
 Cleanup diagnostics return:
 
@@ -101,7 +101,7 @@ Register the hosted dispatcher loop:
 services.AddAshlarSqliteEmailOutboxHostedService<SmtpEmailTransport>();
 ```
 
-The sender participates in Ashlar SQLite transactions through `ISqliteConnectionProvider`, so queued emails commit or roll back with the surrounding Ashlar transaction.
+The sender participates in Ashlar SQLite transactions, so queued emails commit or roll back with the surrounding Ashlar transaction.
 It implements `ITransactionalEmailOutboxSender`, which lets token-bearing Ashlar flows enqueue durable emails before committing the token credential. The outbox persists `EmailMessage.Sensitivity` as `Normal` or `ContainsLiveSecret` and restores it before dispatch.
 
 ## Current Status
@@ -110,10 +110,8 @@ Implemented:
 
 - `AddAshlarSqlite(...)`
 - `InitializeAshlarSqliteSchemaAsync(...)`
-- scoped SQLite connection reuse through `ISqliteConnectionProvider`
 - Ashlar transaction integration through `IAshlarTransactionProvider`
 - `BEGIN IMMEDIATE` root transactions
-- nested transaction participants that join the active provider transaction
 - initial SQLite-compatible `ashlar_*` schema
 - `IBootstrapStateRepository`
 - `IUserRepository` and `ICredentialRepository` for users and credentials
@@ -139,7 +137,7 @@ SQLite stores GUIDs, timestamps, provider values, version tokens, and JSON paylo
 
 SQLite does not provide PostgreSQL equivalents for `FOR UPDATE SKIP LOCKED`, advisory locks, `ctid`, or PostgreSQL row-level locking behavior. Authentication handshake `forUpdate` requests are treated as provider-neutral update intent and rely on SQLite's active transaction/write-safe path plus atomic updates rather than row-level `FOR UPDATE`.
 
-SQLite rate limiting persists fixed-window state in `ashlar_rate_limits` and uses Ashlar's scoped transaction infrastructure so standalone checks run through SQLite's `BEGIN IMMEDIATE` write path. This is intended for single-process deployments, not distributed rate limiting across application instances.
+SQLite rate limiting persists fixed-window state in `ashlar_rate_limits`. Standalone checks run through SQLite's `BEGIN IMMEDIATE` write path. This is intended for single-process deployments, not distributed rate limiting across application instances.
 
 SQLite email outbox dispatch is single-instance best effort. It claims pending rows with SQLite-compatible compare-and-set updates on `locked_until` and `locked_by`, then loads rows claimed by the current dispatch batch. It does not emulate PostgreSQL `FOR UPDATE SKIP LOCKED` and should not be used as a distributed multi-worker outbox coordinator.
 

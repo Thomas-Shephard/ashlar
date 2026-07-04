@@ -3,13 +3,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Webhooks;
 
-/// <summary>
-/// SQLite-backed manual operations for failed durable security event webhook deliveries.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-/// <param name="securityEventSink">The security event sink value.</param>
-public sealed class SqliteSecurityEventWebhookOutboxOperations(
+internal sealed class SqliteSecurityEventWebhookOutboxOperations(
     ISqliteConnectionProvider connectionProvider,
     TimeProvider timeProvider,
     ISecurityEventSink? securityEventSink = null) : AshlarSecurityEventWebhookOutboxOperationsBase(timeProvider, securityEventSink)
@@ -48,12 +42,6 @@ public sealed class SqliteSecurityEventWebhookOutboxOperations(
 
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
-    /// <summary>
-    /// Applies the SQLite conditional retry state change.
-    /// </summary>
-    /// <param name="deliveryId">The delivery id.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
     protected override async Task<AshlarSecurityEventWebhookOutboxOperationState?> RetryFailedAsync(
         Guid deliveryId,
         CancellationToken cancellationToken)
@@ -61,12 +49,6 @@ public sealed class SqliteSecurityEventWebhookOutboxOperations(
         return await ExecuteOperationAsync(RetrySql, deliveryId, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Applies the SQLite conditional discard state change.
-    /// </summary>
-    /// <param name="deliveryId">The delivery id.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The updated safe state, or <see langword="null" /> when no row changed.</returns>
     protected override async Task<AshlarSecurityEventWebhookOutboxOperationState?> DiscardFailedAsync(
         Guid deliveryId,
         CancellationToken cancellationToken)
@@ -87,12 +69,6 @@ public sealed class SqliteSecurityEventWebhookOutboxOperations(
         return row?.ToState();
     }
 
-    /// <summary>
-    /// Loads SQLite safe state for no-op classification.
-    /// </summary>
-    /// <param name="deliveryId">The delivery id.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The stored safe state, or <see langword="null" /> when the delivery does not exist.</returns>
     protected override async Task<AshlarSecurityEventWebhookOutboxOperationState?> LoadAsync(Guid deliveryId, CancellationToken cancellationToken)
     {
         var row = await QuerySingleAsync(

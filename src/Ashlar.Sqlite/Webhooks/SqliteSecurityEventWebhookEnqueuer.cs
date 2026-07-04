@@ -3,24 +3,13 @@ using System.Text.Json;
 
 namespace Ashlar.Sqlite.Webhooks;
 
-/// <summary>
-/// SQLite-backed durable enqueuer for prepared security event webhook deliveries.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-public sealed class SqliteSecurityEventWebhookEnqueuer(
+internal sealed class SqliteSecurityEventWebhookEnqueuer(
     ISqliteConnectionProvider connectionProvider,
     TimeProvider timeProvider) : IAshlarSecurityEventWebhookEnqueuer
 {
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
-    /// <summary>
-    /// Stores a prepared webhook delivery in the SQLite outbox.
-    /// </summary>
-    /// <param name="delivery">The prepared webhook delivery.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>A task that represents the asynchronous enqueue operation.</returns>
     public async Task EnqueueAsync(AshlarSecurityEventWebhookDelivery delivery, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(delivery);

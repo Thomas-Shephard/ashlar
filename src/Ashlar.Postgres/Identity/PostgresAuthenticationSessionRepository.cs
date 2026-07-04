@@ -4,22 +4,12 @@ using System.Text.Json;
 
 namespace Ashlar.Postgres.Identity;
 
-/// <summary>
-/// Provides postgres authentication session repository behavior.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionProvider connectionProvider) : IAuthenticationSessionRepository
+internal sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionProvider connectionProvider) : IAuthenticationSessionRepository
 {
     private const string UserIdParameterName = "UserId";
     private const string TenantRevocationFilterSql = " AND (@TenantFilter = FALSE OR tenant_id IS NOT DISTINCT FROM @TenantId)";
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
-    /// <summary>
-    /// Performs the create session <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="session">The session value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task CreateSessionAsync(AuthenticationSession session, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -55,12 +45,6 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         }
     }
 
-    /// <summary>
-    /// Performs the get session by token hash <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="tokenHash">The token hash value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<AuthenticationSession?> GetSessionByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tokenHash);
@@ -85,12 +69,6 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         }
     }
 
-    /// <summary>
-    /// Performs the get session <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="sessionId">The session id value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<AuthenticationSession?> GetSessionAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         const string sql = """
@@ -113,13 +91,6 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         }
     }
 
-    /// <summary>
-    /// Performs the update session last seen <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="sessionId">The session id value.</param>
-    /// <param name="lastSeenAt">The last seen at value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<bool> UpdateSessionLastSeenAsync(Guid sessionId, DateTimeOffset lastSeenAt, CancellationToken cancellationToken = default)
     {
         const string sql = """
@@ -140,16 +111,6 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         }
     }
 
-    /// <summary>
-    /// Performs the mark step up verified <see langword="async" /> operation and returns the updated session.
-    /// </summary>
-    /// <param name="sessionId">The session id value.</param>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="verifiedAt">The verification timestamp value.</param>
-    /// <param name="verifiedProvider">The verified provider value.</param>
-    /// <param name="verifiedFactor">The verified factor value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The updated session, or <see langword="null" /> when no active owned session was updated.</returns>
     public async Task<AuthenticationSession?> MarkStepUpVerifiedAsync(
         Guid sessionId,
         Guid userId,
@@ -193,14 +154,6 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         }
     }
 
-    /// <summary>
-    /// Performs the revoke session <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="sessionId">The session id value.</param>
-    /// <param name="revokedAt">The revoked at value.</param>
-    /// <param name="reason">The reason value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<bool> RevokeSessionAsync(Guid sessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default)
     {
         const string sql = """
@@ -218,15 +171,6 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         }
     }
 
-    /// <summary>
-    /// Performs the revoke sessions for user <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="revokedAt">The revoked at value.</param>
-    /// <param name="reason">The reason value.</param>
-    /// <param name="tenant">The tenant scope value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
     {
         const string sql = """
@@ -245,14 +189,6 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         }
     }
 
-    /// <summary>
-    /// Performs the list sessions for user <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="activeOnly">The active only value.</param>
-    /// <param name="now">The now value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<IReadOnlyList<AuthenticationSession>> ListSessionsForUserAsync(Guid userId, bool activeOnly, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         var sql = """
@@ -282,16 +218,6 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         }
     }
 
-    /// <summary>
-    /// Performs the revoke session by id <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="sessionId">The session id value.</param>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="revokedAt">The revoked at value.</param>
-    /// <param name="reason">The reason value.</param>
-    /// <param name="tenant">The tenant scope value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
     {
         const string sql = """
@@ -312,16 +238,6 @@ public sealed class PostgresAuthenticationSessionRepository(IPostgresConnectionP
         }
     }
 
-    /// <summary>
-    /// Performs the revoke other sessions for user <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="excludedSessionId">The excluded session id value.</param>
-    /// <param name="revokedAt">The revoked at value.</param>
-    /// <param name="reason">The reason value.</param>
-    /// <param name="tenant">The tenant scope value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
     {
         const string sql = """

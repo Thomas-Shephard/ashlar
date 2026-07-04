@@ -4,12 +4,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Identity;
 
-/// <summary>
-/// SQLite-backed invitation repository.
-/// </summary>
-/// <param name="connectionProvider">Connection provider used for invitation reads and writes.</param>
-/// <param name="timeProvider">Clock used for invitation revocation and optimistic updates.</param>
-public sealed class SqliteInvitationRepository(ISqliteConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IInvitationRepository
+internal sealed class SqliteInvitationRepository(ISqliteConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IInvitationRepository
 {
     private const string TenantIdColumn = "tenant_id";
     private const string CreatedAtColumn = "created_at";

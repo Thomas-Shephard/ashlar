@@ -3,12 +3,7 @@ using Dapper;
 
 namespace Ashlar.Postgres.Identity;
 
-/// <summary>
-/// Stores and retrieves users in PostgreSQL.
-/// </summary>
-/// <param name="connectionProvider">Provides PostgreSQL connections enlisted in the current Ashlar transaction.</param>
-/// <param name="timeProvider">Supplies timestamps for created and updated users.</param>
-public sealed class PostgresUserRepository(IPostgresConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IUserRepository
+internal sealed class PostgresUserRepository(IPostgresConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IUserRepository
 {
     private const string ExactTenantFilterSql = "((@TenantId IS NULL AND tenant_id IS NULL) OR tenant_id = @TenantId)";
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));

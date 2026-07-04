@@ -1,10 +1,6 @@
 namespace Ashlar.Sqlite.Identity;
 
-/// <summary>
-/// Provides SQLite bootstrap state repository behavior.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-public sealed class SqliteBootstrapStateRepository(ISqliteConnectionProvider connectionProvider) : IBootstrapStateRepository
+internal sealed class SqliteBootstrapStateRepository(ISqliteConnectionProvider connectionProvider) : IBootstrapStateRepository
 {
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 

@@ -4,21 +4,11 @@ using Ashlar.Identity.Models.Tenants;
 
 namespace Ashlar.Postgres.Identity;
 
-/// <summary>
-/// PostgreSQL-backed invitation repository.
-/// </summary>
-/// <param name="connectionProvider">Connection provider used for invitation reads and writes.</param>
-/// <param name="timeProvider">Clock used for invitation revocation and optimistic updates.</param>
-public sealed class PostgresInvitationRepository(IPostgresConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IInvitationRepository
+internal sealed class PostgresInvitationRepository(IPostgresConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IInvitationRepository
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
-    /// <summary>
-    /// Persists a new invitation.
-    /// </summary>
-    /// <param name="invitation">Invitation to create. <see cref="UserInvitation.DisplayEmail" /> is stored as the sanitized display/delivery address and normalized separately for lookup and uniqueness.</param>
-    /// <param name="cancellationToken">Token that can cancel invitation creation.</param>
     public async Task CreateInvitationAsync(UserInvitation invitation, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(invitation);
@@ -51,12 +41,6 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         }
     }
 
-    /// <summary>
-    /// Finds an invitation by its stored token hash.
-    /// </summary>
-    /// <param name="tokenHash">Stored hash of the raw invitation token.</param>
-    /// <param name="cancellationToken">Token that can cancel invitation lookup.</param>
-    /// <returns>The matching invitation, or <see langword="null" /> when no invitation exists.</returns>
     public async Task<UserInvitation?> GetInvitationByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tokenHash);
@@ -76,13 +60,6 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         }
     }
 
-    /// <summary>
-    /// Conditionally updates an available invitation.
-    /// </summary>
-    /// <param name="invitation">Invitation state to persist.</param>
-    /// <param name="expectedVersion">Version that must match before the update is applied.</param>
-    /// <param name="cancellationToken">Token that can cancel invitation update.</param>
-    /// <returns><see langword="true" /> when the invitation was updated; otherwise, <see langword="false" />.</returns>
     public async Task<bool> UpdateInvitationAsync(UserInvitation invitation, string expectedVersion, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(invitation);
@@ -130,13 +107,6 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         }
     }
 
-    /// <summary>
-    /// Revokes outstanding invitations for an email address.
-    /// </summary>
-    /// <param name="email">Email address whose invitations should be revoked. The repository normalizes this value for lookup.</param>
-    /// <param name="tenantId">Tenant scope for invitations to revoke, or <see langword="null" /> for global invitations.</param>
-    /// <param name="cancellationToken">Token that can cancel invitation revocation.</param>
-    /// <returns>Number of invitations revoked.</returns>
     public async Task<int> RevokeInvitationsByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
@@ -165,13 +135,6 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         }
     }
 
-    /// <summary>
-    /// Searches invitations using display-safe administrator filters.
-    /// </summary>
-    /// <param name="request">Explicit tenant scope, filters, and paging options.</param>
-    /// <param name="now">UTC time used to classify invitation status.</param>
-    /// <param name="cancellationToken">A token that can cancel the search.</param>
-    /// <returns>Invitation summaries without raw token, token hash, or provider version data.</returns>
     public async Task<IReadOnlyList<InvitationAdministrationSummary>> SearchInvitationsAsync(SearchInvitationsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         SearchInvitationsRequest.ThrowIfInvalid(request);
@@ -206,13 +169,6 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         }
     }
 
-    /// <summary>
-    /// Gets a display-safe invitation projection by identifier.
-    /// </summary>
-    /// <param name="request">Explicit tenant scope and invitation identifier.</param>
-    /// <param name="now">UTC time used to classify invitation status.</param>
-    /// <param name="cancellationToken">A token that can cancel the lookup.</param>
-    /// <returns>The matching invitation summary, or <see langword="null" /> when no invitation exists in scope.</returns>
     public async Task<InvitationAdministrationSummary?> GetInvitationAsync(InvitationAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         InvitationAdministrationLookupRequest.ThrowIfInvalid(request);
@@ -245,13 +201,6 @@ public sealed class PostgresInvitationRepository(IPostgresConnectionProvider con
         }
     }
 
-    /// <summary>
-    /// Revokes a pending invitation by identifier.
-    /// </summary>
-    /// <param name="request">Explicit tenant scope and invitation identifier.</param>
-    /// <param name="now">UTC time to persist as the revocation timestamp.</param>
-    /// <param name="cancellationToken">A token that can cancel revocation.</param>
-    /// <returns>The invitation state after the operation, or <see langword="null" /> when no invitation exists in scope.</returns>
     public async Task<RevokeInvitationAdministrationResult?> RevokeInvitationAsync(RevokeInvitationAdministrationRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         RevokeInvitationAdministrationRequest.ThrowIfInvalid(request);

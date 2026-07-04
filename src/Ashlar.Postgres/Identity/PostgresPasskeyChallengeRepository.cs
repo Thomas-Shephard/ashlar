@@ -2,19 +2,10 @@ using Dapper;
 
 namespace Ashlar.Postgres.Identity;
 
-/// <summary>
-/// Provides PostgreSQL persistence for passkey challenges.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-public sealed class PostgresPasskeyChallengeRepository(IPostgresConnectionProvider connectionProvider) : IPasskeyChallengeRepository
+internal sealed class PostgresPasskeyChallengeRepository(IPostgresConnectionProvider connectionProvider) : IPasskeyChallengeRepository
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
-    /// <summary>
-    /// Stores a passkey challenge.
-    /// </summary>
-    /// <param name="challenge">The challenge to store.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
     public async Task CreateAsync(PasskeyChallenge challenge, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(challenge);
@@ -34,12 +25,6 @@ public sealed class PostgresPasskeyChallengeRepository(IPostgresConnectionProvid
         }
     }
 
-    /// <summary>
-    /// Gets a passkey challenge by id.
-    /// </summary>
-    /// <param name="id">The challenge id.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The challenge when found; otherwise, <see langword="null" />.</returns>
     public async Task<PasskeyChallenge?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
         const string sql = """
@@ -59,14 +44,6 @@ public sealed class PostgresPasskeyChallengeRepository(IPostgresConnectionProvid
         }
     }
 
-    /// <summary>
-    /// Atomically consumes a passkey challenge.
-    /// </summary>
-    /// <param name="id">The challenge id.</param>
-    /// <param name="expectedVersion">The expected version.</param>
-    /// <param name="consumedAt">The advisory consumption timestamp. This repository uses the database clock for persisted consumption.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns><see langword="true" /> when the challenge was consumed.</returns>
     public async Task<bool> ConsumeAsync(Guid id, string expectedVersion, DateTimeOffset consumedAt, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(expectedVersion);

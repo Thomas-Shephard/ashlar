@@ -2,12 +2,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Identity;
 
-/// <summary>
-/// Stores and retrieves credentials in SQLite.
-/// </summary>
-/// <param name="connectionProvider">Provides SQLite connections enlisted in the current Ashlar transaction.</param>
-/// <param name="timeProvider">Supplies timestamps for credential lifecycle updates.</param>
-public sealed class SqliteCredentialRepository(ISqliteConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : ICredentialRepository
+internal sealed class SqliteCredentialRepository(ISqliteConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : ICredentialRepository
 {
     private const string UserIdParameter = "$userId";
     private const string ProviderTypeParameter = "$providerType";

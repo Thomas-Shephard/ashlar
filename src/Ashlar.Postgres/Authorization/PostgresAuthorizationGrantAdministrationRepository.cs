@@ -4,22 +4,11 @@ using Dapper;
 
 namespace Ashlar.Postgres.Authorization;
 
-/// <summary>
-/// Provides PostgreSQL authorization grant administration query behavior.
-/// </summary>
-/// <param name="connectionProvider">Connection provider used to query authorization grant records.</param>
-public sealed class PostgresAuthorizationGrantAdministrationRepository(IPostgresConnectionProvider connectionProvider)
+internal sealed class PostgresAuthorizationGrantAdministrationRepository(IPostgresConnectionProvider connectionProvider)
     : IAuthorizationGrantAdministrationRepository
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
-    /// <summary>
-    /// Searches authorization grants using safe administrator-display fields.
-    /// </summary>
-    /// <param name="request">Search filters and tenant scope supplied by an authorized administrator flow.</param>
-    /// <param name="now">The timestamp used for status filtering and projection.</param>
-    /// <param name="cancellationToken">A token that can cancel the search.</param>
-    /// <returns>The matching authorization grants.</returns>
     public Task<IReadOnlyList<AuthorizationGrantAdministrationSummary>> SearchAuthorizationGrantsAsync(SearchAuthorizationGrantsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -40,13 +29,6 @@ public sealed class PostgresAuthorizationGrantAdministrationRepository(IPostgres
         return SearchAsync(sql, parameters, cancellationToken);
     }
 
-    /// <summary>
-    /// Gets an authorization grant by id.
-    /// </summary>
-    /// <param name="request">Grant identifier and tenant scope supplied by an authorized administrator flow.</param>
-    /// <param name="now">The timestamp used for status projection.</param>
-    /// <param name="cancellationToken">A token that can cancel lookup.</param>
-    /// <returns>The authorization grant, or <see langword="null" /> when it does not exist.</returns>
     public Task<AuthorizationGrantAdministrationSummary?> GetAuthorizationGrantAsync(AuthorizationGrantAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

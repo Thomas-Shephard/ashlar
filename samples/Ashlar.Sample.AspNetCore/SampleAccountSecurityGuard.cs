@@ -1,8 +1,9 @@
 using Dapper;
+using Npgsql;
 
 namespace Ashlar.Sample.AspNetCore;
 
-internal sealed class SampleAccountSecurityGuard(IPostgresConnectionProvider connectionProvider) : IAccountSecurityGuard
+internal sealed class SampleAccountSecurityGuard(NpgsqlDataSource dataSource) : IAccountSecurityGuard
 {
     internal const string LastAdminCannotBeChangedToNonSignInStateCode = "last_admin_cannot_be_changed_to_non_sign_in_state";
 
@@ -38,30 +39,25 @@ internal sealed class SampleAccountSecurityGuard(IPostgresConnectionProvider con
               AND ((@TenantId IS NULL AND g.tenant_id IS NULL) OR g.tenant_id = @TenantId)
             """;
 
-        var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
-        await using (connection)
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        var tenantId = request.Tenant?.TenantId;
+        var userHasAdminGrant = await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            userHasAdminGrantSql,
+            new { UserId = user.Id, TenantId = tenantId },
+            cancellationToken: cancellationToken));
+
+        if (!userHasAdminGrant)
         {
-            var tenantId = request.Tenant?.TenantId;
-            var userHasAdminGrant = await connection.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
-                userHasAdminGrantSql,
-                new { UserId = user.Id, TenantId = tenantId },
-                transaction: connection.Transaction,
-                cancellationToken: cancellationToken));
-
-            if (!userHasAdminGrant)
-            {
-                return Result.Success();
-            }
-
-            var activeAdminCount = await connection.Connection.ExecuteScalarAsync<int>(new CommandDefinition(
-                activeAdminCountSql,
-                new { TenantId = tenantId },
-                transaction: connection.Transaction,
-                cancellationToken: cancellationToken));
-
-            return activeAdminCount <= 1
-                ? Result.Failure(new AshlarFailureCode(LastAdminCannotBeChangedToNonSignInStateCode))
-                : Result.Success();
+            return Result.Success();
         }
+
+        var activeAdminCount = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            activeAdminCountSql,
+            new { TenantId = tenantId },
+            cancellationToken: cancellationToken));
+
+        return activeAdminCount <= 1
+            ? Result.Failure(new AshlarFailureCode(LastAdminCannotBeChangedToNonSignInStateCode))
+            : Result.Success();
     }
 }

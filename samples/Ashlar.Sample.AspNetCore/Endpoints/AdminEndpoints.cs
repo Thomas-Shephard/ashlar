@@ -5,6 +5,7 @@ using Ashlar.Authorization.Models;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
 using Dapper;
+using Npgsql;
 
 namespace Ashlar.Sample.AspNetCore.Endpoints;
 
@@ -27,7 +28,7 @@ internal static partial class AdminEndpoints
     {
         app.MapGet("/api/admin/users", async (
             IAuthorizationEvaluator auth,
-            IPostgresConnectionProvider connectionProvider,
+            NpgsqlDataSource dataSource,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
@@ -37,23 +38,18 @@ internal static partial class AdminEndpoints
                 return Results.Forbid();
             }
 
-            var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
-            await using (connection)
-            {
-                var command = tenant.TenantId.HasValue
-                    ? new CommandDefinition(
-                        "SELECT id, display_email AS displayEmail, name FROM ashlar_users WHERE tenant_id = @TenantId ORDER BY display_email, id LIMIT 100",
-                        new { tenant.TenantId },
-                        transaction: connection.Transaction,
-                        cancellationToken: cancellationToken)
-                    : new CommandDefinition(
-                        "SELECT id, display_email AS displayEmail, name FROM ashlar_users WHERE tenant_id IS NULL ORDER BY display_email, id LIMIT 100",
-                        transaction: connection.Transaction,
-                        cancellationToken: cancellationToken);
-                var users = await connection.Connection.QueryAsync(command);
+            await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+            var command = tenant.TenantId.HasValue
+                ? new CommandDefinition(
+                    "SELECT id, display_email AS displayEmail, name FROM ashlar_users WHERE tenant_id = @TenantId ORDER BY display_email, id LIMIT 100",
+                    new { tenant.TenantId },
+                    cancellationToken: cancellationToken)
+                : new CommandDefinition(
+                    "SELECT id, display_email AS displayEmail, name FROM ashlar_users WHERE tenant_id IS NULL ORDER BY display_email, id LIMIT 100",
+                    cancellationToken: cancellationToken);
+            var users = await connection.QueryAsync(command);
 
-                return Results.Ok(users);
-            }
+            return Results.Ok(users);
         }).RequireAuthorization();
 
         app.MapGet("/api/admin/users/{userId:guid}/security", async (
@@ -163,7 +159,7 @@ internal static partial class AdminEndpoints
 
     private static async Task<IResult> ListProjectsAsync(
         IAuthorizationEvaluator auth,
-        IPostgresConnectionProvider connectionProvider,
+        NpgsqlDataSource dataSource,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -172,22 +168,18 @@ internal static partial class AdminEndpoints
             return Results.Forbid();
         }
 
-        var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
-        await using (connection)
-        {
-            var projects = await connection.Connection.QueryAsync(new CommandDefinition(
-                "SELECT id, name FROM sample_projects ORDER BY created_at",
-                transaction: connection.Transaction,
-                cancellationToken: cancellationToken));
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        var projects = await connection.QueryAsync(new CommandDefinition(
+            "SELECT id, name FROM sample_projects ORDER BY created_at",
+            cancellationToken: cancellationToken));
 
-            return Results.Ok(projects);
-        }
+        return Results.Ok(projects);
     }
 
     private static async Task<IResult> CreateProjectAsync(
         CreateProjectRequest request,
         IAuthorizationEvaluator auth,
-        IPostgresConnectionProvider connectionProvider,
+        NpgsqlDataSource dataSource,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -206,24 +198,15 @@ internal static partial class AdminEndpoints
             return Results.BadRequest(new { error = "Project ID must contain only lowercase letters, numbers, and dashes." });
         }
 
-        var connection = await connectionProvider.GetConnectionAsync(cancellationToken);
-        await using (connection)
-        {
-            var rows = await connection.Connection.ExecuteAsync(new CommandDefinition(
-                "INSERT INTO sample_projects (id, name) VALUES (@Id, @Name) ON CONFLICT DO NOTHING",
-                new { request.Id, request.Name },
-                transaction: connection.Transaction,
-                cancellationToken: cancellationToken));
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        var rows = await connection.ExecuteAsync(new CommandDefinition(
+            "INSERT INTO sample_projects (id, name) VALUES (@Id, @Name) ON CONFLICT DO NOTHING",
+            new { request.Id, request.Name },
+            cancellationToken: cancellationToken));
 
-            if (connection.Transaction != null)
-            {
-                await connection.Transaction.CommitAsync(cancellationToken);
-            }
-
-            return rows > 0
-                ? Results.Created($"/projects/{request.Id}", new { id = request.Id })
-                : Results.Conflict(new { error = "Project already exists." });
-        }
+        return rows > 0
+            ? Results.Created($"/projects/{request.Id}", new { id = request.Id })
+            : Results.Conflict(new { error = "Project already exists." });
     }
 
     private static async Task<IResult> CreateProjectGrantAsync(

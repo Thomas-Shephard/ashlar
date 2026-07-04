@@ -2,11 +2,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Identity;
 
-/// <summary>
-/// Provides SQLite passkey challenge repository behavior.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-public sealed class SqlitePasskeyChallengeRepository(ISqliteConnectionProvider connectionProvider) : IPasskeyChallengeRepository
+internal sealed class SqlitePasskeyChallengeRepository(ISqliteConnectionProvider connectionProvider) : IPasskeyChallengeRepository
 {
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 

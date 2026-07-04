@@ -4,23 +4,12 @@ using Dapper;
 
 namespace Ashlar.Postgres.Authorization;
 
-/// <summary>
-/// Provides postgres authorization grant repository behavior.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-public sealed class PostgresAuthorizationGrantRepository(IPostgresConnectionProvider connectionProvider, TimeProvider? timeProvider = null)
+internal sealed class PostgresAuthorizationGrantRepository(IPostgresConnectionProvider connectionProvider, TimeProvider? timeProvider = null)
     : IAuthorizationGrantRepository
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
-    /// <summary>
-    /// Performs the create grant <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="grant">The grant value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task CreateGrantAsync(AuthorizationGrant grant, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(grant);
@@ -40,12 +29,6 @@ public sealed class PostgresAuthorizationGrantRepository(IPostgresConnectionProv
         }
     }
 
-    /// <summary>
-    /// Performs the list grants <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<IReadOnlyList<AuthorizationGrant>> ListGrantsAsync(ListAuthorizationGrantsRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -91,13 +74,6 @@ public sealed class PostgresAuthorizationGrantRepository(IPostgresConnectionProv
         }
     }
 
-    /// <summary>
-    /// Performs the tenant-bounded get grant <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="grantId">The grant id value.</param>
-    /// <param name="tenantId">The tenant id value. A <see langword="null" /> value matches only global grants.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<AuthorizationGrant?> GetGrantAsync(Guid grantId, Guid? tenantId, CancellationToken cancellationToken = default)
     {
         const string sql = """
@@ -117,14 +93,6 @@ public sealed class PostgresAuthorizationGrantRepository(IPostgresConnectionProv
         }
     }
 
-    /// <summary>
-    /// Performs the revoke grant <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="grantId">The grant id value.</param>
-    /// <param name="tenantId">The tenant id value. A <see langword="null" /> value matches only global grants.</param>
-    /// <param name="revokedAt">The revoked at value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<bool> RevokeGrantAsync(Guid grantId, Guid? tenantId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default)
     {
         const string sql = """

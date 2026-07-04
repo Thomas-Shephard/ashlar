@@ -2,21 +2,10 @@ using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Identity;
 
-/// <summary>
-/// Provides SQLite-backed administrator authentication session reads.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteConnectionProvider connectionProvider) : IAuthenticationSessionAdministrationRepository
+internal sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteConnectionProvider connectionProvider) : IAuthenticationSessionAdministrationRepository
 {
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
-    /// <summary>
-    /// Searches authentication sessions using safe administrator-display fields.
-    /// </summary>
-    /// <param name="request">The search request value.</param>
-    /// <param name="now">The timestamp used for active-state filtering and projection.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The matching authentication sessions.</returns>
     public async Task<IReadOnlyList<AuthenticationSessionAdministrationSummary>> SearchAuthenticationSessionsAsync(SearchAuthenticationSessionsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         SearchAuthenticationSessionsRequest.ThrowIfInvalid(request);
@@ -34,13 +23,6 @@ public sealed class SqliteAuthenticationSessionAdministrationRepository(ISqliteC
         }, ReadSummary, cancellationToken);
     }
 
-    /// <summary>
-    /// Gets an authentication session by id.
-    /// </summary>
-    /// <param name="request">The lookup request value.</param>
-    /// <param name="now">The timestamp used for active-state projection.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The authentication session, or <see langword="null" /> when it does not exist.</returns>
     public async Task<AuthenticationSessionAdministrationSummary?> GetAuthenticationSessionAsync(AuthenticationSessionAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         AuthenticationSessionAdministrationLookupRequest.ThrowIfInvalid(request);

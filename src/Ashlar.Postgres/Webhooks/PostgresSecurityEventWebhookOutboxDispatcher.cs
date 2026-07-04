@@ -6,14 +6,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ashlar.Postgres.Webhooks;
 
-/// <summary>
-/// PostgreSQL-backed dispatcher for durable security event webhook deliveries.
-/// </summary>
-public sealed class PostgresSecurityEventWebhookOutboxDispatcher
+internal sealed class PostgresSecurityEventWebhookOutboxDispatcher
 {
-    /// <summary>
-    /// Defines the named HTTP client used by the PostgreSQL webhook outbox dispatcher.
-    /// </summary>
     public const string HttpClientName = "Ashlar.Postgres.SecurityEventWebhookOutbox";
 
     private readonly IServiceProvider _serviceProvider;
@@ -25,12 +19,6 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
     private readonly IAshlarSecurityEventWebhookDeliveryObserver _deliveryObserver;
     private readonly AshlarSecurityEventWebhookDestinationValidator _destinationValidator;
 
-    /// <summary>
-    /// Initializes a new instance of the dispatcher class.
-    /// </summary>
-    /// <param name="dependencies">The dispatcher dependencies.</param>
-    /// <param name="logger">The logger value.</param>
-    /// <param name="deliveryObserver">The delivery observer.</param>
     public PostgresSecurityEventWebhookOutboxDispatcher(
         AshlarSecurityEventWebhookOutboxDispatcherDependencies<PostgresSecurityEventWebhookOutboxOptions> dependencies,
         ILogger<PostgresSecurityEventWebhookOutboxDispatcher>? logger = null,
@@ -48,11 +36,6 @@ public sealed class PostgresSecurityEventWebhookOutboxDispatcher
         _destinationValidator = dependencies.DestinationValidator;
     }
 
-    /// <summary>
-    /// Processes a single batch of pending webhook deliveries.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The number of claimed deliveries.</returns>
     public async Task<int> ProcessBatchAsync(CancellationToken cancellationToken = default)
     {
         if (!PostgresSecurityEventWebhookOutboxOptions.Validate(_options))

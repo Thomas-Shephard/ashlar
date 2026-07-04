@@ -6,10 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Postgres.Operational;
 
-/// <summary>
-/// Provides postgres ashlar cleanup service behavior.
-/// </summary>
-public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
+internal sealed class PostgresAshlarCleanupService : IAshlarCleanupService
 {
     private static readonly Action<ILogger, string, string, Exception?> CleanupCategoryFailed =
         LoggerMessage.Define<string, string>(
@@ -22,13 +19,6 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
     private readonly AshlarCleanupOptions _options;
     private readonly ILogger<PostgresAshlarCleanupService> _logger;
 
-    /// <summary>
-    /// Initializes a configured PostgreSQL cleanup service.
-    /// </summary>
-    /// <param name="connectionProvider">The PostgreSQL connection provider.</param>
-    /// <param name="timeProvider">The time provider.</param>
-    /// <param name="options">The cleanup options.</param>
-    /// <param name="logger">The logger value.</param>
     public PostgresAshlarCleanupService(
         IPostgresConnectionProvider connectionProvider,
         TimeProvider timeProvider,
@@ -49,11 +39,6 @@ public sealed class PostgresAshlarCleanupService : IAshlarCleanupService
         }
     }
 
-    /// <summary>
-    /// Performs the cleanup <see langword="async" /> operation and returns the result.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<AshlarCleanupResult> CleanupAsync(CancellationToken cancellationToken = default)
     {
         var now = _timeProvider.GetUtcNow();

@@ -2,20 +2,10 @@ using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Auditing;
 
-/// <summary>
-/// Provides SQLite-backed administrator security event reads.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-public sealed class SqliteSecurityEventAdministrationRepository(ISqliteConnectionProvider connectionProvider) : ISecurityEventAdministrationRepository
+internal sealed class SqliteSecurityEventAdministrationRepository(ISqliteConnectionProvider connectionProvider) : ISecurityEventAdministrationRepository
 {
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
-    /// <summary>
-    /// Searches recorded security events using safe administrator-display fields.
-    /// </summary>
-    /// <param name="request">The search request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The matching security events.</returns>
     public async Task<IReadOnlyList<SecurityEventSummary>> SearchSecurityEventsAsync(SearchSecurityEventsRequest request, CancellationToken cancellationToken = default)
     {
         SearchSecurityEventsRequest.ThrowIfInvalid(request);
@@ -32,12 +22,6 @@ public sealed class SqliteSecurityEventAdministrationRepository(ISqliteConnectio
         }, static reader => ReadStorageRecord(reader).ToSummary(), cancellationToken);
     }
 
-    /// <summary>
-    /// Gets a recorded security event by id.
-    /// </summary>
-    /// <param name="request">The detail request value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The security event, or <see langword="null" /> when it does not exist.</returns>
     public async Task<SecurityEventSummary?> GetSecurityEventAsync(SecurityEventAdministrationDetailRequest request, CancellationToken cancellationToken = default)
     {
         SecurityEventAdministrationDetailRequest.ThrowIfInvalid(request);

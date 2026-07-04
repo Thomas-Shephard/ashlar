@@ -2,21 +2,10 @@ using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Identity;
 
-/// <summary>
-/// Provides SQLite-backed administrator credential reads.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-public sealed class SqliteCredentialAdministrationRepository(ISqliteConnectionProvider connectionProvider) : ICredentialAdministrationRepository
+internal sealed class SqliteCredentialAdministrationRepository(ISqliteConnectionProvider connectionProvider) : ICredentialAdministrationRepository
 {
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
 
-    /// <summary>
-    /// Searches credentials using safe administrator-display fields.
-    /// </summary>
-    /// <param name="request">The search request value.</param>
-    /// <param name="now">The timestamp used for availability filtering and projection.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The matching credentials.</returns>
     public async Task<IReadOnlyList<CredentialAdministrationSummary>> SearchCredentialsAsync(SearchCredentialsRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         SearchCredentialsRequest.ThrowIfInvalid(request);
@@ -34,13 +23,6 @@ public sealed class SqliteCredentialAdministrationRepository(ISqliteConnectionPr
         }, ReadSummary, cancellationToken);
     }
 
-    /// <summary>
-    /// Gets a safe credential projection by credential id.
-    /// </summary>
-    /// <param name="request">The lookup request value.</param>
-    /// <param name="now">The timestamp used for availability projection.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The credential, or <see langword="null" /> when it does not exist.</returns>
     public async Task<CredentialAdministrationSummary?> GetCredentialAsync(CredentialAdministrationLookupRequest request, DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         CredentialAdministrationLookupRequest.ThrowIfInvalid(request);

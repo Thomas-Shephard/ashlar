@@ -3,12 +3,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Ashlar.Sqlite.Identity;
 
-/// <summary>
-/// Provides SQLite authentication handshake repository behavior.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-public sealed class SqliteAuthenticationHandshakeRepository(ISqliteConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IAuthenticationHandshakeRepository
+internal sealed class SqliteAuthenticationHandshakeRepository(ISqliteConnectionProvider connectionProvider, TimeProvider? timeProvider = null) : IAuthenticationHandshakeRepository
 {
     private readonly ISqliteConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;

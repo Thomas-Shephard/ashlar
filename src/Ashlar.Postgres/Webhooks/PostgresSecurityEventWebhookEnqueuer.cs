@@ -4,24 +4,13 @@ using System.Text.Json;
 
 namespace Ashlar.Postgres.Webhooks;
 
-/// <summary>
-/// PostgreSQL-backed durable enqueuer for prepared security event webhook deliveries.
-/// </summary>
-/// <param name="connectionProvider">The connection provider value.</param>
-/// <param name="timeProvider">The time provider value.</param>
-public sealed class PostgresSecurityEventWebhookEnqueuer(
+internal sealed class PostgresSecurityEventWebhookEnqueuer(
     IPostgresConnectionProvider connectionProvider,
     TimeProvider timeProvider) : IAshlarSecurityEventWebhookEnqueuer
 {
     private readonly IPostgresConnectionProvider _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     private readonly TimeProvider _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
-    /// <summary>
-    /// Stores a prepared webhook delivery in the PostgreSQL outbox.
-    /// </summary>
-    /// <param name="delivery">The prepared webhook delivery.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>A task that represents the asynchronous enqueue operation.</returns>
     public async Task EnqueueAsync(AshlarSecurityEventWebhookDelivery delivery, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(delivery);

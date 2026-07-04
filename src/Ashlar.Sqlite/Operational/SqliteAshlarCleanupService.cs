@@ -5,10 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace Ashlar.Sqlite.Operational;
 
-/// <summary>
-/// Provides SQLite cleanup for Ashlar operational tables.
-/// </summary>
-public sealed partial class SqliteAshlarCleanupService : IAshlarCleanupService
+internal sealed partial class SqliteAshlarCleanupService : IAshlarCleanupService
 {
     private const string CutoffParameter = "$cutoff";
     private const string LimitParameter = "$limit";
@@ -18,13 +15,6 @@ public sealed partial class SqliteAshlarCleanupService : IAshlarCleanupService
     private readonly AshlarCleanupOptions _options;
     private readonly ILogger<SqliteAshlarCleanupService> _logger;
 
-    /// <summary>
-    /// Initializes a configured SQLite cleanup service.
-    /// </summary>
-    /// <param name="connectionProvider">The SQLite connection provider.</param>
-    /// <param name="timeProvider">The time provider.</param>
-    /// <param name="options">The cleanup options.</param>
-    /// <param name="logger">The logger value.</param>
     public SqliteAshlarCleanupService(
         ISqliteConnectionProvider connectionProvider,
         TimeProvider timeProvider,
