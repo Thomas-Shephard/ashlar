@@ -157,7 +157,7 @@ internal sealed class CredentialServiceTests
         providerMock.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), It.IsAny<Guid>())).Returns("sub");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
-        providerMock.Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.Is<AuthenticationContext>(c => c.Email == email), _repositoryMock.Object, It.IsAny<CancellationToken>()))
+        providerMock.As<IAuthenticationUserResolver>().Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.Is<AuthenticationContext>(c => c.Email == email), _repositoryMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
         var (resolvedUser, resolvedCredential, originalCredential, unprotectFailed) = await _service.ResolveAsync(new AuthenticationContext(email), new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>()), providerMock.Object);
@@ -179,7 +179,7 @@ internal sealed class CredentialServiceTests
         providerMock.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
         providerMock.Setup(p => p.GetProviderKey(It.IsAny<IAuthenticationAssertion>(), It.IsAny<Guid>())).Returns("sub");
         providerMock.Setup(p => p.ProtectsCredentials).Returns(true);
-        providerMock.Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.Is<AuthenticationContext>(c => c.Email == email), _repositoryMock.Object, It.IsAny<CancellationToken>()))
+        providerMock.As<IAuthenticationUserResolver>().Setup(p => p.FindUserAsync(It.IsAny<IAuthenticationAssertion>(), It.Is<AuthenticationContext>(c => c.Email == email), _repositoryMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
 
         await _service.ResolveAsync(new AuthenticationContext(email), new ExternalIdentityAssertion(ProviderType.Oidc, "Google", "sub", new Dictionary<string, string>()), providerMock.Object);
@@ -196,7 +196,7 @@ internal sealed class CredentialServiceTests
         var assertionMock = new Mock<IAuthenticationAssertion>();
         var providerMock = new Mock<IAuthenticationProvider>();
 
-        providerMock.Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
+        providerMock.As<IAuthenticationUserResolver>().Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
         providerMock.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey(ProviderType.Mfa, "totp"));
         providerMock.Setup(p => p.GetProviderKey(assertionMock.Object, userId)).Returns(userId.ToString("D"));
@@ -213,6 +213,88 @@ internal sealed class CredentialServiceTests
     }
 
     [Test]
+    public async Task ResolveAsyncShouldUseContextUserIdWhenProviderHasNoUserResolver()
+    {
+        var userId = Guid.NewGuid();
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
+        var assertionMock = new Mock<IAuthenticationAssertion>();
+        var providerMock = new Mock<IAuthenticationProvider>();
+
+        providerMock.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey(ProviderType.Mfa, "totp"));
+        providerMock.Setup(p => p.GetProviderKey(assertionMock.Object, userId)).Returns(userId.ToString("D"));
+        _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", userId.ToString("D"), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateCredential(userId));
+
+        var (resolvedUser, resolvedCredential, _, _) = await _service.ResolveAsync(new AuthenticationContext(UserId: userId), assertionMock.Object, providerMock.Object);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolvedUser, Is.EqualTo(user));
+            Assert.That(resolvedCredential, Is.Not.Null);
+            Assert.That(providerMock.Object, Is.Not.InstanceOf<IAuthenticationUserResolver>());
+        }
+    }
+
+    [Test]
+    public async Task ResolveAsyncShouldUseCredentialResolverWithoutEmptyProviderKeySentinel()
+    {
+        var userId = Guid.NewGuid();
+        var credential = CreateCredential(userId);
+        var assertionMock = new Mock<IAuthenticationAssertion>();
+        var providerMock = new Mock<IAuthenticationProvider>();
+
+        providerMock.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode"));
+        providerMock.Setup(p => p.GetProviderKey(assertionMock.Object, userId)).Returns("not-used");
+        providerMock.As<IAuthenticationCredentialResolver>()
+            .Setup(p => p.ResolveCredentialAsync(userId, assertionMock.Object, It.IsAny<AuthenticationContext?>(), _credentialRepositoryMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(credential);
+        _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
+
+        var (_, resolvedCredential, _, _) = await _service.ResolveAsync(new AuthenticationContext(UserId: userId), assertionMock.Object, providerMock.Object);
+
+        Assert.That(resolvedCredential, Is.SameAs(credential));
+        _credentialRepositoryMock.Verify(r => r.GetCredentialForUserAsync(userId, It.IsAny<ProviderType>(), It.IsAny<string>(), "not-used", It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task ResolveAsyncShouldUseDummyLookupWhenCredentialResolverReturnsNull()
+    {
+        var userId = Guid.NewGuid();
+        var assertionMock = new Mock<IAuthenticationAssertion>();
+        var providerMock = new Mock<IAuthenticationProvider>();
+
+        providerMock.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey(ProviderType.RecoveryCode, "RecoveryCode"));
+        providerMock.As<IAuthenticationCredentialResolver>()
+            .Setup(p => p.ResolveCredentialAsync(userId, assertionMock.Object, It.IsAny<AuthenticationContext?>(), _credentialRepositoryMock.Object, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserCredential?)null);
+        _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
+
+        var (_, resolvedCredential, _, _) = await _service.ResolveAsync(new AuthenticationContext(UserId: userId), assertionMock.Object, providerMock.Object);
+
+        Assert.That(resolvedCredential, Is.Null);
+        _credentialRepositoryMock.Verify(r => r.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", It.Is<string>(key => key.Length == 32), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ResolveAsyncShouldTreatEmptyDefaultProviderKeyAsDummyLookup()
+    {
+        var userId = Guid.NewGuid();
+        var assertionMock = new Mock<IAuthenticationAssertion>();
+        var providerMock = new Mock<IAuthenticationProvider>();
+
+        providerMock.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
+        providerMock.Setup(p => p.GetProviderKey(assertionMock.Object, userId)).Returns("");
+        _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
+
+        var (_, resolvedCredential, _, _) = await _service.ResolveAsync(new AuthenticationContext(UserId: userId), assertionMock.Object, providerMock.Object);
+
+        Assert.That(resolvedCredential, Is.Null);
+        _credentialRepositoryMock.Verify(r => r.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", It.Is<string>(key => key.Length == 32), It.IsAny<CancellationToken>()), Times.Once);
+        _credentialRepositoryMock.Verify(r => r.GetCredentialForUserAsync(userId, ProviderType.Oidc, "Google", "", It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public async Task ResolveAsyncShouldRejectProviderUserFromDifferentTenant()
     {
         var contextTenantId = Guid.NewGuid();
@@ -220,7 +302,7 @@ internal sealed class CredentialServiceTests
         var context = new AuthenticationContext(TenantId: contextTenantId);
         var assertionMock = new Mock<IAuthenticationAssertion>();
         var providerMock = CreateProviderMock();
-        providerMock.Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
+        providerMock.As<IAuthenticationUserResolver>().Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
         var (resolvedUser, resolvedCredential, _, _) = await _service.ResolveAsync(context, assertionMock.Object, providerMock.Object);
@@ -240,7 +322,7 @@ internal sealed class CredentialServiceTests
         var context = new AuthenticationContext(TenantId: Guid.NewGuid());
         var assertionMock = new Mock<IAuthenticationAssertion>();
         var providerMock = CreateProviderMock();
-        providerMock.Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
+        providerMock.As<IAuthenticationUserResolver>().Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
         var (resolvedUser, resolvedCredential, _, _) = await _service.ResolveAsync(context, assertionMock.Object, providerMock.Object);
@@ -259,7 +341,7 @@ internal sealed class CredentialServiceTests
         var context = new AuthenticationContext(TenantId: Guid.NewGuid());
         var assertionMock = new Mock<IAuthenticationAssertion>();
         var providerMock = CreateProviderMock();
-        providerMock.Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
+        providerMock.As<IAuthenticationUserResolver>().Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
         var (resolvedUser, resolvedCredential, _, _) = await _service.ResolveAsync(context, assertionMock.Object, providerMock.Object);
@@ -276,7 +358,7 @@ internal sealed class CredentialServiceTests
         var context = new AuthenticationContext(TenantId: tenantId);
         var assertionMock = new Mock<IAuthenticationAssertion>();
         var providerMock = CreateProviderMock();
-        providerMock.Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
+        providerMock.As<IAuthenticationUserResolver>().Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
         _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
@@ -298,7 +380,7 @@ internal sealed class CredentialServiceTests
         var context = new AuthenticationContext();
         var assertionMock = new Mock<IAuthenticationAssertion>();
         var providerMock = CreateProviderMock();
-        providerMock.Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
+        providerMock.As<IAuthenticationUserResolver>().Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
         _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(user.Id, ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(credential);
@@ -319,7 +401,7 @@ internal sealed class CredentialServiceTests
         var context = new AuthenticationContext();
         var assertionMock = new Mock<IAuthenticationAssertion>();
         var providerMock = CreateProviderMock();
-        providerMock.Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
+        providerMock.As<IAuthenticationUserResolver>().Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
         var (resolvedUser, resolvedCredential, _, _) = await _service.ResolveAsync(context, assertionMock.Object, providerMock.Object);
@@ -340,7 +422,7 @@ internal sealed class CredentialServiceTests
         var user = new User { Id = userId, DisplayEmail = "test@example.com", TenantId = Guid.NewGuid() };
         var assertionMock = new Mock<IAuthenticationAssertion>();
         var providerMock = CreateProviderMock();
-        providerMock.Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
+        providerMock.As<IAuthenticationUserResolver>().Setup(p => p.FindUserAsync(assertionMock.Object, context, _repositoryMock.Object, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
 

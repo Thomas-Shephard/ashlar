@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Abstractions.Authentication;
 
 /// <summary>
-/// Represents an authentication provider that can identify users and validate provider assertions.
+/// Represents an authentication provider that can validate provider assertions.
 /// </summary>
 public interface IAuthenticationProvider
 {
@@ -38,16 +38,6 @@ public interface IAuthenticationProvider
     string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue);
 
     /// <summary>
-    /// Attempts to resolve the user associated with the given assertion.
-    /// </summary>
-    /// <param name="assertion">Provider-supplied assertion used to identify the user. Treat as sensitive unless the provider documents otherwise.</param>
-    /// <param name="context">Tenant, audit, and request metadata for the authentication attempt.</param>
-    /// <param name="repository">The user repository.</param>
-    /// <param name="cancellationToken">A token that can cancel the lookup.</param>
-    /// <returns>The matching user, or <see langword="null" /> when the assertion does not identify a user.</returns>
-    Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Authenticates an assertion against the resolved provider credential.
     /// </summary>
     /// <param name="assertion">Provider-supplied credential or factor assertion to verify.</param>
@@ -56,24 +46,44 @@ public interface IAuthenticationProvider
     /// <returns>The provider authentication status, claims, and any credential update or consumption requirement. This result does not issue an application session.</returns>
     Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Resolves the credential associated with the given assertion and user.
-    /// </summary>
+}
+
+/// <summary>
+/// Resolves users from provider assertions before credential lookup.
+/// </summary>
+/// <remarks>
+/// The authentication pipeline calls this capability only when the provider implements it. Implement it for primary sign-in flows whose assertion identifies an account without a trusted current user id, such as local email/password, magic links, passkeys, or external identity assertions. The credential service still enforces tenant consistency after a user is returned, so implementations should focus on provider-specific lookup and avoid leaking whether an account exists.
+/// </remarks>
+public interface IAuthenticationUserResolver
+{
+    /// <param name="assertion">Provider-supplied assertion used to identify the user. Treat as sensitive unless the provider documents otherwise.</param>
+    /// <param name="context">Tenant, audit, and request metadata for the authentication attempt.</param>
+    /// <param name="repository">The user repository.</param>
+    /// <param name="cancellationToken">A token that can cancel the lookup.</param>
+    /// <returns>The matching user, or <see langword="null" /> when the assertion does not identify a user.</returns>
+    Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Resolves provider credentials when the default provider-key lookup is insufficient.
+/// </summary>
+/// <remarks>
+/// The credential service calls this capability only when the provider implements it; otherwise it derives a key with <see cref="IAuthenticationProvider.GetProviderKey" /> and uses repository lookup. Implementations own any provider-specific constant-time work needed to avoid credential or account oracles and must only return credentials owned by the supplied user id.
+/// </remarks>
+public interface IAuthenticationCredentialResolver
+{
     /// <param name="userId">The user that must own the credential.</param>
     /// <param name="assertion">Provider-supplied assertion used to locate the credential. Treat as sensitive unless the provider documents otherwise.</param>
     /// <param name="context">Tenant, audit, and request metadata for the authentication attempt, when available.</param>
     /// <param name="repository">The credential repository.</param>
     /// <param name="cancellationToken">A token that can cancel the lookup.</param>
-    /// <returns>The matching credential, or <see langword="null" /> when the provider uses the default lookup.</returns>
+    /// <returns>The matching credential, or <see langword="null" /> when no valid credential is found.</returns>
     Task<UserCredential?> ResolveCredentialAsync(
         Guid userId,
         IAuthenticationAssertion assertion,
         AuthenticationContext? context,
         ICredentialRepository repository,
-        CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult<UserCredential?>(null);
-    }
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

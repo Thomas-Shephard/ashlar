@@ -94,8 +94,12 @@ internal sealed class CredentialService(
         ArgumentNullException.ThrowIfNull(assertion);
         ArgumentNullException.ThrowIfNull(provider);
 
-        var user = await ResolveTenantConsistentUserAsync(
-            () => provider.FindUserAsync(assertion, context, _userRepository, cancellationToken));
+        IUser? user = null;
+        if (provider is IAuthenticationUserResolver userResolver)
+        {
+            user = await ResolveTenantConsistentUserAsync(
+                () => userResolver.FindUserAsync(assertion, context, _userRepository, cancellationToken));
+        }
 
         if (user == null && context.UserId.HasValue)
         {
@@ -139,17 +143,25 @@ internal sealed class CredentialService(
         AuthenticationContext? context,
         CancellationToken cancellationToken)
     {
-        var providerKey = provider.GetProviderKey(assertion, userId);
-
         UserCredential? credential;
-        if (!string.IsNullOrEmpty(providerKey))
+        if (provider is IAuthenticationCredentialResolver credentialResolver)
         {
-            credential = await _credentialRepository.GetCredentialForUserAsync(userId, provider.Key.Type, provider.Key.Name, providerKey, cancellationToken);
+            credential = await credentialResolver.ResolveCredentialAsync(userId, assertion, context, _credentialRepository, cancellationToken);
+            if (credential == null)
+            {
+                // Timing attack resistance: hit the repository even if no credential was resolved by the provider.
+                credential = await _credentialRepository.GetCredentialForUserAsync(userId, provider.Key.Type, provider.Key.Name, Guid.NewGuid().ToString("N"), cancellationToken);
+            }
         }
         else
         {
-            // Timing attack resistance: hit the repository even if no credential was resolved by the provider.
-            credential = await provider.ResolveCredentialAsync(userId, assertion, context, _credentialRepository, cancellationToken) ?? await _credentialRepository.GetCredentialForUserAsync(userId, provider.Key.Type, provider.Key.Name, Guid.NewGuid().ToString("N"), cancellationToken);
+            var providerKey = provider.GetProviderKey(assertion, userId);
+            if (string.IsNullOrEmpty(providerKey))
+            {
+                providerKey = Guid.NewGuid().ToString("N");
+            }
+
+            credential = await _credentialRepository.GetCredentialForUserAsync(userId, provider.Key.Type, provider.Key.Name, providerKey, cancellationToken);
         }
 
         var (unprotectedCredential, unprotectFailed) = UnprotectCredential(credential, provider);

@@ -50,31 +50,6 @@ public sealed class TotpAuthenticationProvider : ISecondaryAuthenticationFactorP
     public string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue) => rawValue;
 
     /// <inheritdoc />
-    public Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(repository);
-
-        if (assertion is not TotpAssertion)
-        {
-            return Task.FromResult<IUser?>(null);
-        }
-
-        return Task.FromResult<IUser?>(null);
-    }
-
-    /// <inheritdoc />
-    public Task<UserCredential?> ResolveCredentialAsync(Guid userId, IAuthenticationAssertion assertion, AuthenticationContext? context, ICredentialRepository repository, CancellationToken cancellationToken = default)
-    {
-        if (assertion is not TotpAssertion)
-        {
-            return Task.FromResult<UserCredential?>(null);
-        }
-
-        return repository.GetCredentialForUserAsync(userId, Key.Type, Key.Name, GetProviderKey(assertion, userId), cancellationToken);
-    }
-
-    /// <inheritdoc />
     public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default)
     {
         if (assertion is not TotpAssertion totpAssertion)

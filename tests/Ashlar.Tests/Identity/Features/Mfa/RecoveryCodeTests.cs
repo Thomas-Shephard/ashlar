@@ -744,7 +744,7 @@ internal sealed class RecoveryCodeTests
         var assertion = new RecoveryCodeAssertion(rawCode);
         var context = new AuthenticationContext(IpAddress: "1.2.3.4");
 
-        var result = await provider.ResolveCredentialAsync(userId, assertion, context, credentialRepository.Object);
+        var result = await ((IAuthenticationCredentialResolver)provider).ResolveCredentialAsync(userId, assertion, context, credentialRepository.Object);
 
         Assert.That(result, Is.Not.Null);
         Assert.That(result.ProviderKey, Is.EqualTo(providerKey));
@@ -767,7 +767,7 @@ internal sealed class RecoveryCodeTests
         var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, options);
         var assertion = new RecoveryCodeAssertion(rawCode);
 
-        var result = await provider.ResolveCredentialAsync(userId, assertion, null, credentialRepository.Object);
+        var result = await ((IAuthenticationCredentialResolver)provider).ResolveCredentialAsync(userId, assertion, null, credentialRepository.Object);
 
         Assert.That(result, Is.Null);
     }
@@ -787,7 +787,7 @@ internal sealed class RecoveryCodeTests
         var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, options);
         var assertion = new RecoveryCodeAssertion(rawCode);
 
-        var result = await provider.ResolveCredentialAsync(userId, assertion, null, credentialRepository.Object);
+        var result = await ((IAuthenticationCredentialResolver)provider).ResolveCredentialAsync(userId, assertion, null, credentialRepository.Object);
 
         Assert.That(result, Is.Null);
     }
@@ -813,7 +813,7 @@ internal sealed class RecoveryCodeTests
         var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, options);
         var assertion = new RecoveryCodeAssertion(rawCode);
 
-        var result = await provider.ResolveCredentialAsync(userId, assertion, null, credentialRepository.Object);
+        var result = await ((IAuthenticationCredentialResolver)provider).ResolveCredentialAsync(userId, assertion, null, credentialRepository.Object);
 
         Assert.That(result, Is.Null);
     }
@@ -823,7 +823,7 @@ internal sealed class RecoveryCodeTests
     {
         var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
 
-        var result = await provider.ResolveCredentialAsync(Guid.NewGuid(), new Mock<IAuthenticationAssertion>().Object, null, new Mock<ICredentialRepository>().Object);
+        var result = await ((IAuthenticationCredentialResolver)provider).ResolveCredentialAsync(Guid.NewGuid(), new Mock<IAuthenticationAssertion>().Object, null, new Mock<ICredentialRepository>().Object);
 
         Assert.That(result, Is.Null);
     }
@@ -836,8 +836,8 @@ internal sealed class RecoveryCodeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(await provider.ResolveCredentialAsync(Guid.NewGuid(), new RecoveryCodeAssertion("CODE"), null, new Mock<ICredentialRepository>().Object), Is.Null);
-            Assert.That(await provider.ResolveCredentialAsync(Guid.NewGuid(), new RecoveryCodeAssertion("CODE-"), null, new Mock<ICredentialRepository>().Object), Is.Null);
+            Assert.That(await ((IAuthenticationCredentialResolver)provider).ResolveCredentialAsync(Guid.NewGuid(), new RecoveryCodeAssertion("CODE"), null, new Mock<ICredentialRepository>().Object), Is.Null);
+            Assert.That(await ((IAuthenticationCredentialResolver)provider).ResolveCredentialAsync(Guid.NewGuid(), new RecoveryCodeAssertion("CODE-"), null, new Mock<ICredentialRepository>().Object), Is.Null);
         }
     }
 
@@ -850,7 +850,7 @@ internal sealed class RecoveryCodeTests
         var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, Options.Create(new RecoveryCodeOptions()));
         var credentialRepository = new Mock<ICredentialRepository>(MockBehavior.Strict);
 
-        var result = await provider.ResolveCredentialAsync(Guid.NewGuid(), new RecoveryCodeAssertion(new string('A', maximumDefaultSubmittedCodeLength + 1)), null, credentialRepository.Object);
+        var result = await ((IAuthenticationCredentialResolver)provider).ResolveCredentialAsync(Guid.NewGuid(), new RecoveryCodeAssertion(new string('A', maximumDefaultSubmittedCodeLength + 1)), null, credentialRepository.Object);
 
         using (Assert.EnterMultipleScope())
         {
@@ -882,7 +882,7 @@ internal sealed class RecoveryCodeTests
 
         var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, options);
 
-        var result = await provider.ResolveCredentialAsync(userId, new RecoveryCodeAssertion(rawCode), null, credentialRepository.Object);
+        var result = await ((IAuthenticationCredentialResolver)provider).ResolveCredentialAsync(userId, new RecoveryCodeAssertion(rawCode), null, credentialRepository.Object);
 
         Assert.That(result, Is.SameAs(credential));
     }
@@ -999,13 +999,19 @@ internal sealed class RecoveryCodeTests
     }
 
     [Test]
-    public void ProviderGetProviderKeyReturnsEmpty()
+    public void ProviderGetProviderKeyShouldDeriveRecoveryCodeStorageKey()
     {
         var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
+        var userId = Guid.NewGuid();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.GetProviderKey(new RecoveryCodeAssertion("CODE"), Guid.NewGuid()), Is.Empty);
-            Assert.That(provider.GetProviderKey(new RecoveryCodeAssertion("CODE"), Guid.NewGuid()), Is.Empty);
+            Assert.That(provider.GetProviderKey(new RecoveryCodeAssertion("abcde-secret"), userId), Is.EqualTo($"{userId:N}-ABCDE"));
+            Assert.That(provider.GetProviderKey(new RecoveryCodeAssertion("ab cde-secret"), userId), Is.EqualTo($"{userId:N}-ABCDE"));
+            Assert.That(provider.GetProviderKey(new RecoveryCodeAssertion("CODE"), userId), Is.Empty);
+            Assert.That(provider.GetProviderKey(new RecoveryCodeAssertion("CODE-"), userId), Is.Empty);
+            Assert.That(provider.GetProviderKey(new RecoveryCodeAssertion(new string('A', 128) + "-SECRET"), userId), Is.Empty);
+            Assert.That(provider.GetProviderKey(new Mock<IAuthenticationAssertion>().Object, userId), Is.Empty);
+            Assert.That(provider, Is.InstanceOf<IAuthenticationCredentialResolver>());
         }
     }
 
@@ -1045,7 +1051,7 @@ internal sealed class RecoveryCodeTests
         repository.Setup(r => r.GetUserByEmailAsync("test@example.com", It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var found = await provider.FindUserAsync(new RecoveryCodeAssertion("CODE"), context, repository.Object);
+        var found = await ((IAuthenticationUserResolver)provider).FindUserAsync(new RecoveryCodeAssertion("CODE"), context, repository.Object);
 
         Assert.That(found, Is.Not.Null);
         Assert.That(found.Id, Is.EqualTo(user.Id));
@@ -1055,19 +1061,21 @@ internal sealed class RecoveryCodeTests
     public async Task ProviderFindUserAsyncReturnsNullForUserIdBecauseCredentialServiceOwnsFallback()
     {
         var repository = new Mock<IUserRepository>();
-        var credentialRepository = new Mock<ICredentialRepository>();
         var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
         var userId = Guid.NewGuid();
-        var context = new AuthenticationContext(UserId: userId);
+        var context = new AuthenticationContext(Email: "other@example.com", UserId: userId);
         var user = new User { Id = userId, DisplayEmail = "test@example.com" };
 
         repository.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
+        repository.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = Guid.NewGuid(), DisplayEmail = "other@example.com" });
 
-        var found = await provider.FindUserAsync(new RecoveryCodeAssertion("CODE"), context, repository.Object);
+        var found = await ((IAuthenticationUserResolver)provider).FindUserAsync(new RecoveryCodeAssertion("CODE"), context, repository.Object);
 
         Assert.That(found, Is.Null);
         repository.Verify(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        repository.Verify(r => r.GetUserByEmailAsync(It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -1088,7 +1096,7 @@ internal sealed class RecoveryCodeTests
         var provider = new RecoveryCodeAuthenticationProvider(hasherSelector, options);
         var assertion = new RecoveryCodeAssertion(rawCode);
 
-        var result = await provider.ResolveCredentialAsync(userId, assertion, null, credentialRepository.Object);
+        var result = await ((IAuthenticationCredentialResolver)provider).ResolveCredentialAsync(userId, assertion, null, credentialRepository.Object);
 
         Assert.That(result, Is.Not.Null);
         Assert.That(result.ProviderKey, Is.EqualTo(providerKey));
@@ -1102,12 +1110,12 @@ internal sealed class RecoveryCodeTests
         using (Assert.EnterMultipleScope())
         {
             // Wrong assertion
-            Assert.That(await provider.FindUserAsync(new Mock<IAuthenticationAssertion>().Object, new AuthenticationContext(Email: "test@example.com"), new Mock<IUserRepository>().Object), Is.Null);
+            Assert.That(await ((IAuthenticationUserResolver)provider).FindUserAsync(new Mock<IAuthenticationAssertion>().Object, new AuthenticationContext(Email: "test@example.com"), new Mock<IUserRepository>().Object), Is.Null);
 
             // Missing email (empty, whitespace, and null)
-            Assert.That(await provider.FindUserAsync(new RecoveryCodeAssertion("CODE"), new AuthenticationContext(Email: ""), new Mock<IUserRepository>().Object), Is.Null);
-            Assert.That(await provider.FindUserAsync(new RecoveryCodeAssertion("CODE"), new AuthenticationContext(Email: " "), new Mock<IUserRepository>().Object), Is.Null);
-            Assert.That(await provider.FindUserAsync(new RecoveryCodeAssertion("CODE"), new AuthenticationContext(Email: null), new Mock<IUserRepository>().Object), Is.Null);
+            Assert.That(await ((IAuthenticationUserResolver)provider).FindUserAsync(new RecoveryCodeAssertion("CODE"), new AuthenticationContext(Email: ""), new Mock<IUserRepository>().Object), Is.Null);
+            Assert.That(await ((IAuthenticationUserResolver)provider).FindUserAsync(new RecoveryCodeAssertion("CODE"), new AuthenticationContext(Email: " "), new Mock<IUserRepository>().Object), Is.Null);
+            Assert.That(await ((IAuthenticationUserResolver)provider).FindUserAsync(new RecoveryCodeAssertion("CODE"), new AuthenticationContext(Email: null), new Mock<IUserRepository>().Object), Is.Null);
         }
     }
 
@@ -1116,8 +1124,8 @@ internal sealed class RecoveryCodeTests
     public void ProviderFindUserAsyncThrowsOnNullArguments()
     {
         var provider = new RecoveryCodeAuthenticationProvider(new PasswordHasherSelector([new PasswordHasherV1()]), Options.Create(new RecoveryCodeOptions()));
-        Assert.ThrowsAsync<ArgumentNullException>(() => provider.FindUserAsync(new RecoveryCodeAssertion("CODE"), null!, new Mock<IUserRepository>().Object));
-        Assert.ThrowsAsync<ArgumentNullException>(() => provider.FindUserAsync(new RecoveryCodeAssertion("CODE"), new AuthenticationContext(), null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => ((IAuthenticationUserResolver)provider).FindUserAsync(new RecoveryCodeAssertion("CODE"), null!, new Mock<IUserRepository>().Object));
+        Assert.ThrowsAsync<ArgumentNullException>(() => ((IAuthenticationUserResolver)provider).FindUserAsync(new RecoveryCodeAssertion("CODE"), new AuthenticationContext(), null!));
     }
 
     [Test]
@@ -1128,13 +1136,11 @@ internal sealed class RecoveryCodeTests
     }
 
     [Test]
-    public async Task AuthenticationProviderDefaultResolveCredentialAsyncReturnsNull()
+    public void AuthenticationProviderShouldNotResolveCredentialsByDefault()
     {
         IAuthenticationProvider provider = new DefaultResolveCredentialProvider();
 
-        var result = await provider.ResolveCredentialAsync(Guid.NewGuid(), new Mock<IAuthenticationAssertion>().Object, null, new Mock<ICredentialRepository>().Object);
-
-        Assert.That(result, Is.Null);
+        Assert.That(provider, Is.Not.InstanceOf<IAuthenticationCredentialResolver>());
     }
 
 
@@ -1261,7 +1267,6 @@ internal sealed class RecoveryCodeTests
         public int TypicalCredentialLength => 0;
         public string GetProviderKey(IAuthenticationAssertion assertion, Guid userId) => string.Empty;
         public string? PrepareCredentialValue(IAuthenticationAssertion assertion, string? rawValue) => rawValue;
-        public Task<IUser?> FindUserAsync(IAuthenticationAssertion assertion, AuthenticationContext context, IUserRepository repository, CancellationToken cancellationToken = default) => Task.FromResult<IUser?>(null);
         public Task<AuthenticationResult> AuthenticateAsync(IAuthenticationAssertion assertion, UserCredential? credential, CancellationToken cancellationToken = default) => Task.FromResult(new AuthenticationResult(AuthenticationResultStatus.Failed));
     }
 
