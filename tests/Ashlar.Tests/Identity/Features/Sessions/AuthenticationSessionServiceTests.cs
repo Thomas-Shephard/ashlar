@@ -1085,6 +1085,75 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
+    public async Task MarkStepUpVerifiedAsyncShouldAuditUpdatedSessionTenant()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: sink, UserRepository: _userRepositoryMock.Object));
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var session = CreateSession(expiresAt: _timeProvider.GetUtcNow().AddHours(1), userId: userId, tenantId: tenantId);
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com", TenantId = tenantId });
+        _repositoryMock
+            .Setup(r => r.MarkStepUpVerifiedAsync(session.Id, userId, _timeProvider.GetUtcNow(), AuthenticationProviderKey.Passkey, "passkey", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+
+        await service.MarkStepUpVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = session.Id,
+            VerifiedProvider = AuthenticationProviderKey.Passkey,
+            VerifiedFactor = "passkey",
+            Tenant = new TenantContext(tenantId)
+        });
+
+        var securityEvent = sink.Events.Single(e => e.EventType == AshlarSecurityEventTypes.SessionStepUpVerified);
+        Assert.That(securityEvent.TenantId, Is.EqualTo(tenantId));
+    }
+
+    [Test]
+    public async Task MarkStepUpVerifiedAsyncShouldAuditMissingSessionWithRequestedTenant()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: sink, UserRepository: _userRepositoryMock.Object));
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        _userRepositoryMock
+            .Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com", TenantId = tenantId });
+        _repositoryMock
+            .Setup(r => r.MarkStepUpVerifiedAsync(sessionId, userId, _timeProvider.GetUtcNow(), AuthenticationProviderKey.Passkey, "passkey", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AuthenticationSession?)null);
+
+        await service.MarkStepUpVerifiedAsync(userId, new MarkSessionStepUpVerifiedRequest
+        {
+            SessionId = sessionId,
+            VerifiedProvider = AuthenticationProviderKey.Passkey,
+            VerifiedFactor = "passkey",
+            Tenant = new TenantContext(tenantId)
+        });
+
+        var securityEvent = sink.Events.Single(e => e.EventType == AshlarSecurityEventTypes.SessionStepUpVerified);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(securityEvent.Outcome, Is.EqualTo(SecurityEventOutcomes.Failure));
+            Assert.That(securityEvent.TenantId, Is.EqualTo(tenantId));
+            Assert.That(securityEvent.FailureReason, Is.EqualTo(AshlarFailureCodes.SessionNotFoundOrInactiveValue));
+        }
+    }
+
+    [Test]
     public void MarkStepUpVerifiedAsyncShouldRejectInvalidInput()
     {
         var provider = new AuthenticationProviderKey(ProviderType.Mfa, "totp");
@@ -1374,6 +1443,33 @@ internal sealed class AuthenticationSessionServiceTests
             Assert.That(revoked, Is.EqualTo(5));
             _repositoryMock.Verify(r => r.RevokeOtherSessionsForUserAsync(userId, currentSessionId, now, "security-cleanup", null, It.IsAny<CancellationToken>()), Times.Once);
         }
+    }
+
+    [Test]
+    public async Task RevokeOtherSessionsAsyncShouldAuditTenantScope()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: sink, UserRepository: _userRepositoryMock.Object));
+        var userId = Guid.NewGuid();
+        var currentSessionId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        _repositoryMock
+            .Setup(r => r.RevokeOtherSessionsForUserAsync(userId, currentSessionId, _timeProvider.GetUtcNow(), null, It.Is<TenantContext>(t => t.TenantId == tenantId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        await service.RevokeOtherSessionsAsync(userId, new RevokeOtherAuthenticationSessionsRequest
+        {
+            CurrentSessionId = currentSessionId,
+            Tenant = new TenantContext(tenantId)
+        });
+
+        var securityEvent = sink.Events.Single(e => e.EventType == AshlarSecurityEventTypes.SessionsRevokedForUser);
+        Assert.That(securityEvent.TenantId, Is.EqualTo(tenantId));
     }
 
     [Test]

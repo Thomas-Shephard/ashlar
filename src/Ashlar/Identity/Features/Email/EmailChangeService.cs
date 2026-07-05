@@ -159,18 +159,15 @@ internal sealed class EmailChangeService(
             });
         await TransactionalEmailDelivery.SendOrRegisterPostCommitAsync(_dependencies.EmailSender, transaction, emailMessage, cancellationToken);
 
-        transaction.OnCommitted(async ct =>
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.EmailChangeRequested,
-                Outcome = SecurityEventOutcomes.Success,
-                UserId = user.Id,
-                TenantId = GetTenantId(user),
-                Audit = request.Audit,
-                Properties = new Dictionary<string, string> { ["new_email"] = newEmail }
-            }, ct);
-        });
+            EventType = AshlarSecurityEventTypes.EmailChangeRequested,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = user.Id,
+            TenantId = GetTenantId(user),
+            Audit = request.Audit,
+            Properties = new Dictionary<string, string> { ["new_email"] = newEmail }
+        }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
 
@@ -188,18 +185,15 @@ internal sealed class EmailChangeService(
 
         await TransactionalEmailDelivery.SendOrRegisterPostCommitAsync(_dependencies.EmailSender, suppressionTransaction, suppressionMessage, cancellationToken);
 
-        suppressionTransaction.OnCommitted(async ct =>
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.EmailChangeRequestSuppressed,
-                Outcome = SecurityEventOutcomes.Success,
-                UserId = user.Id,
-                TenantId = GetTenantId(user),
-                Audit = audit,
-                FailureReason = AshlarFailureCodes.EmailAlreadyInUse.Value
-            }, ct);
-        });
+            EventType = AshlarSecurityEventTypes.EmailChangeRequestSuppressed,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = user.Id,
+            TenantId = GetTenantId(user),
+            Audit = audit,
+            FailureReason = AshlarFailureCodes.EmailAlreadyInUse.Value
+        }, cancellationToken);
 
         await suppressionTransaction.CommitAsync(cancellationToken);
         return Result.Success();
@@ -341,18 +335,15 @@ internal sealed class EmailChangeService(
         var existingUser = await _dependencies.IdentityContext.UserRepository.GetUserByEmailAsync(newEmail, tenantId, cancellationToken);
         if (existingUser != null && existingUser.Id != user.Id)
         {
-            transaction.OnCommitted(async ct =>
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
-                await _securityEvents.RecordAsync(new SecurityEventDescriptor
-                {
-                    EventType = AshlarSecurityEventTypes.EmailChangeFailed,
-                    Outcome = SecurityEventOutcomes.Failure,
-                    UserId = user.Id,
-                    TenantId = tenantId,
-                    Audit = request.Audit,
-                    FailureReason = AshlarFailureCodes.EmailAlreadyInUse.Value
-                }, ct);
-            });
+                EventType = AshlarSecurityEventTypes.EmailChangeFailed,
+                Outcome = SecurityEventOutcomes.Failure,
+                UserId = user.Id,
+                TenantId = tenantId,
+                Audit = request.Audit,
+                FailureReason = AshlarFailureCodes.EmailAlreadyInUse.Value
+            }, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return Result.Failure(AshlarFailureCodes.EmailAlreadyInUse, "New email is already in use.");
         }
@@ -367,22 +358,22 @@ internal sealed class EmailChangeService(
             await _dependencies.SessionRepository.RevokeSessionsForUserAsync(user.Id, now, "Email changed", cancellationToken: cancellationToken);
         }
 
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.EmailChanged,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = user.Id,
+            TenantId = tenantId,
+            Audit = request.Audit,
+            Properties = new Dictionary<string, string>
+            {
+                ["old_email"] = oldDisplayEmail,
+                ["new_email"] = newEmail
+            }
+        }, cancellationToken);
+
         transaction.OnCommitted(async ct =>
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.EmailChanged,
-                Outcome = SecurityEventOutcomes.Success,
-                UserId = user.Id,
-                TenantId = tenantId,
-                Audit = request.Audit,
-                Properties = new Dictionary<string, string>
-                {
-                    ["old_email"] = oldDisplayEmail,
-                    ["new_email"] = newEmail
-                }
-            }, ct);
-
             var notificationMetadata = new Dictionary<string, string>
             {
                 ["old_email"] = oldDisplayEmail,

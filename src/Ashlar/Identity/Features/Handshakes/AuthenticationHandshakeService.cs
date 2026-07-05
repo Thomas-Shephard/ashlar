@@ -121,7 +121,7 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
 
         await _repository.CreateAsync(handshake, cancellationToken);
 
-        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.AuthenticationHandshakeCreated,
             Outcome = SecurityEventOutcomes.Success,
@@ -132,7 +132,7 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
                 [HandshakeIdProperty] = handshake.Id.ToString(),
                 ["required_factors"] = string.Join(",", handshake.RequiredFactors)
             }
-        }, ct));
+        }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
 
@@ -206,7 +206,7 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
             return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.ConcurrencyConflict);
         }
 
-        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = isCompleted ? AshlarSecurityEventTypes.AuthenticationHandshakeCompleted : AshlarSecurityEventTypes.AuthenticationHandshakeFactorVerified,
             Outcome = SecurityEventOutcomes.Success,
@@ -218,7 +218,7 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
                 ["verified_factor"] = factorType,
                 ["is_completed"] = isCompleted.ToString()
             }
-        }, ct));
+        }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
 
@@ -381,14 +381,14 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
             return Result.Failure(AshlarFailureCodes.ConcurrencyConflict);
         }
 
-        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.AuthenticationHandshakeRevoked,
             Outcome = SecurityEventOutcomes.Success,
             UserId = handshake.UserId,
             Context = context,
             Properties = new Dictionary<string, string> { [HandshakeIdProperty] = handshake.Id.ToString() }
-        }, ct));
+        }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success();

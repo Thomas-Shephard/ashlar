@@ -50,6 +50,99 @@ internal sealed class SecurityEventFanOutSinkTests
     }
 
     [Test]
+    public async Task RecordAsyncDefersHandlersUntilTransactionCommits()
+    {
+        await using var transactionProvider = new RecordingTransactionProvider();
+        var persistentSink = new RecordingPersistentSink();
+        var handler = new RecordingHandler();
+        var securityEvent = CreateEvent();
+        var sink = new SecurityEventFanOutSink(persistentSink, [handler], transactionProvider: transactionProvider);
+
+        await using var transaction = await transactionProvider.BeginTransactionAsync();
+        await sink.RecordAsync(securityEvent);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistentSink.Events, Is.EqualTo(new[] { securityEvent }));
+            Assert.That(handler.Events, Is.Empty);
+        }
+
+        await transaction.CommitAsync();
+
+        Assert.That(handler.Events, Is.EqualTo(new[] { securityEvent }));
+    }
+
+    [Test]
+    public async Task RecordAsyncSkipsDeferredHandlersWhenTransactionRollsBack()
+    {
+        await using var transactionProvider = new RecordingTransactionProvider();
+        var persistentSink = new RecordingPersistentSink();
+        var handler = new RecordingHandler();
+        var securityEvent = CreateEvent();
+        var sink = new SecurityEventFanOutSink(persistentSink, [handler], transactionProvider: transactionProvider);
+
+        await using var transaction = await transactionProvider.BeginTransactionAsync();
+        await sink.RecordAsync(securityEvent);
+        await transaction.RollbackAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistentSink.Events, Is.EqualTo(new[] { securityEvent }));
+            Assert.That(handler.Events, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task RecordAsyncLogsTransactionProviderFailureAfterPersistenceAndSkipsHandlers()
+    {
+        var logger = new RecordingLogger<SecurityEventFanOutSink>();
+        var expected = new InvalidOperationException("transaction unavailable");
+        var persistentSink = new RecordingPersistentSink();
+        var handler = new RecordingHandler();
+        var securityEvent = CreateEventWithNullProvider();
+        var sink = new SecurityEventFanOutSink(
+            persistentSink,
+            [handler],
+            logger,
+            transactionProvider: new ThrowingTransactionProvider(expected));
+
+        await sink.RecordAsync(securityEvent);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistentSink.Events, Is.EqualTo(new[] { securityEvent }));
+            Assert.That(handler.Events, Is.Empty);
+            Assert.That(logger.Entries, Has.Count.EqualTo(1));
+            Assert.That(logger.Entries[0].Message, Does.Contain("Security event fan-out scheduling failed"));
+            Assert.That(logger.Entries[0].Message, Does.Contain("ProviderName=(null)"));
+            Assert.That(logger.Entries[0].Exception, Is.SameAs(expected));
+        }
+
+        await sink.RecordAsync(CreateEvent());
+
+        Assert.That(logger.Entries[1].Message, Does.Contain("ProviderName=Password"));
+    }
+
+    [Test]
+    public void RecordAsyncRethrowsTransactionProviderCallerCancellationAfterPersistence()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var persistentSink = new RecordingPersistentSink();
+        var handler = new RecordingHandler();
+        var sink = new SecurityEventFanOutSink(
+            persistentSink,
+            [handler],
+            transactionProvider: new CancelingTransactionProvider(cancellation));
+
+        Assert.ThrowsAsync<OperationCanceledException>(async () => await sink.RecordAsync(CreateEvent(), cancellation.Token));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistentSink.Events, Has.Count.EqualTo(1));
+            Assert.That(handler.Events, Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task RecordAsyncLogsHandlerFailureAndContinues()
     {
         var logger = new RecordingLogger<SecurityEventFanOutSink>();
@@ -251,6 +344,115 @@ internal sealed class SecurityEventFanOutSinkTests
     private sealed class CancelingHandler(CancellationTokenSource cancellation) : ISecurityEventHandler
     {
         public Task HandleAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            cancellation.Cancel();
+            throw new OperationCanceledException(cancellation.Token);
+        }
+    }
+
+    private sealed class RecordingTransactionProvider : IAshlarTransactionProvider, IAsyncDisposable
+    {
+        private RecordingTransaction? _activeTransaction;
+
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_activeTransaction is null)
+            {
+                _activeTransaction = new RecordingTransaction(this, ownsProviderSlot: true);
+                return Task.FromResult<IAshlarTransaction>(_activeTransaction);
+            }
+
+            return Task.FromResult<IAshlarTransaction>(new RecordingTransaction(this, ownsProviderSlot: false, _activeTransaction));
+        }
+
+        public void Clear(RecordingTransaction transaction)
+        {
+            if (ReferenceEquals(_activeTransaction, transaction))
+            {
+                _activeTransaction = null;
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_activeTransaction is not null)
+            {
+                await _activeTransaction.DisposeAsync();
+            }
+        }
+    }
+
+    private sealed class RecordingTransaction(
+        RecordingTransactionProvider provider,
+        bool ownsProviderSlot,
+        RecordingTransaction? parent = null) : IAshlarTransaction
+    {
+        private readonly List<Func<CancellationToken, Task>> _committedActions = parent?._committedActions ?? [];
+        private bool _completed;
+
+        public async Task CommitAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!ownsProviderSlot)
+            {
+                _completed = true;
+                return;
+            }
+
+            foreach (var action in _committedActions)
+            {
+                await action(CancellationToken.None);
+            }
+
+            _completed = true;
+            provider.Clear(this);
+        }
+
+        public Task RollbackAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _committedActions.Clear();
+            _completed = true;
+            if (ownsProviderSlot)
+            {
+                provider.Clear(this);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public void OnCommitted(Func<CancellationToken, Task> action)
+        {
+            ArgumentNullException.ThrowIfNull(action);
+            ObjectDisposedException.ThrowIf(_completed, this);
+            _committedActions.Add(action);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            if (!_completed && ownsProviderSlot)
+            {
+                _committedActions.Clear();
+                provider.Clear(this);
+            }
+
+            _completed = true;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingTransactionProvider(Exception exception) : IAshlarTransactionProvider
+    {
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromException<IAshlarTransaction>(exception);
+        }
+    }
+
+    private sealed class CancelingTransactionProvider(CancellationTokenSource cancellation) : IAshlarTransactionProvider
+    {
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
         {
             cancellation.Cancel();
             throw new OperationCanceledException(cancellation.Token);

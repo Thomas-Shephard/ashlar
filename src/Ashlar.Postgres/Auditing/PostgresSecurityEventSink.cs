@@ -1,35 +1,19 @@
 using Dapper;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Npgsql;
 
 namespace Ashlar.Postgres.Auditing;
 
-/// <summary>
-/// A PostgreSQL-backed security event sink that persists audit events to the ashlar_security_events table.
-/// </summary>
-public sealed class PostgresSecurityEventSink : PersistentSecurityEventSink, IUserSecurityEventSummaryRepository
+internal sealed class PostgresSecurityEventSink : PersistentSecurityEventSink, IUserSecurityEventSummaryRepository
 {
-    private readonly NpgsqlDataSource _dataSource;
+    private readonly IPostgresConnectionProvider _connectionProvider;
 
-    /// <summary>
-    /// Initializes a new instance of the postgres security event sink class.
-    /// </summary>
-    /// <param name="dataSource">The data source value.</param>
-    /// <param name="logger">The logger value.</param>
-    public PostgresSecurityEventSink(NpgsqlDataSource dataSource, ILogger<PostgresSecurityEventSink>? logger = null)
+    public PostgresSecurityEventSink(IPostgresConnectionProvider connectionProvider, ILogger<PostgresSecurityEventSink>? logger = null)
         : base(logger ?? NullLogger<PostgresSecurityEventSink>.Instance)
     {
-        _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
+        _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     }
 
-    /// <summary>
-    /// Counts recent security events for a user.
-    /// </summary>
-    /// <param name="userId">The user id value.</param>
-    /// <param name="since">The since value.</param>
-    /// <param name="cancellationToken">The cancellation token value.</param>
-    /// <returns>The operation result.</returns>
     public async Task<int> CountSecurityEventsForUserAsync(Guid userId, DateTimeOffset since, CancellationToken cancellationToken = default)
     {
         const string sql = """
@@ -38,9 +22,9 @@ public sealed class PostgresSecurityEventSink : PersistentSecurityEventSink, IUs
             WHERE user_id = @UserId AND occurred_at >= @Since
             """;
 
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-        var command = new CommandDefinition(sql, new { UserId = userId, Since = since }, cancellationToken: cancellationToken);
-        return await connection.ExecuteScalarAsync<int>(command);
+        await using var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        var command = new CommandDefinition(sql, new { UserId = userId, Since = since }, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+        return await connectionHandle.Connection.ExecuteScalarAsync<int>(command);
     }
 
     protected override async Task PersistAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken)
@@ -77,8 +61,8 @@ public sealed class PostgresSecurityEventSink : PersistentSecurityEventSink, IUs
             Properties = record.PropertiesJson
         };
 
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-        var command = new CommandDefinition(sql, parameters, cancellationToken: cancellationToken);
-        await connection.ExecuteAsync(command);
+        await using var connectionHandle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        var command = new CommandDefinition(sql, parameters, transaction: connectionHandle.Transaction, cancellationToken: cancellationToken);
+        await connectionHandle.Connection.ExecuteAsync(command);
     }
 }

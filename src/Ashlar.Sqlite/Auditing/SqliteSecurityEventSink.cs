@@ -25,12 +25,12 @@ internal sealed class SqliteSecurityEventSink : PersistentSecurityEventSink, IUs
     private const string PropertiesParameter = "$properties";
     private const string SinceParameter = "$since";
 
-    private readonly SqliteConnectionFactory _connectionFactory;
+    private readonly ISqliteConnectionProvider _connectionProvider;
 
-    public SqliteSecurityEventSink(SqliteConnectionFactory connectionFactory, ILogger<SqliteSecurityEventSink>? logger = null)
+    public SqliteSecurityEventSink(ISqliteConnectionProvider connectionProvider, ILogger<SqliteSecurityEventSink>? logger = null)
         : base(logger ?? NullLogger<SqliteSecurityEventSink>.Instance)
     {
-        _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+        _connectionProvider = connectionProvider ?? throw new ArgumentNullException(nameof(connectionProvider));
     }
 
     public async Task<int> CountSecurityEventsForUserAsync(Guid userId, DateTimeOffset since, CancellationToken cancellationToken = default)
@@ -41,8 +41,9 @@ internal sealed class SqliteSecurityEventSink : PersistentSecurityEventSink, IUs
             WHERE user_id = $userId AND occurred_at >= $since;
             """;
 
-        await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
+        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using var command = handle.Connection.CreateCommand();
+        command.Transaction = handle.Transaction;
         command.CommandText = sql;
         command.AddGuidParameter(UserIdParameter, userId);
         command.AddDateTimeOffsetParameter(SinceParameter, since);
@@ -65,8 +66,9 @@ internal sealed class SqliteSecurityEventSink : PersistentSecurityEventSink, IUs
             );
             """;
 
-        await using var connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
+        await using var handle = await _connectionProvider.GetConnectionAsync(cancellationToken);
+        await using var command = handle.Connection.CreateCommand();
+        command.Transaction = handle.Transaction;
         var record = SecurityEventStorageRecord.From(securityEvent);
         command.CommandText = sql;
         command.AddGuidParameter(IdParameter, record.Id);

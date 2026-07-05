@@ -481,7 +481,7 @@ internal sealed class AuthenticationPipeline(
         CancellationToken cancellationToken)
     {
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
-        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.AuthenticationSucceeded,
             Outcome = SecurityEventOutcomes.Success,
@@ -489,7 +489,7 @@ internal sealed class AuthenticationPipeline(
             Provider = lifecycle.Provider.Key,
             Context = lifecycle.Context,
             Properties = properties
-        }, ct));
+        }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         return new AuthenticationResponse(true, lifecycle.User, lifecycle.Status, lifecycle.Result.Claims, credentialUpdatePersisted);

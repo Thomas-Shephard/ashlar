@@ -440,7 +440,7 @@ internal sealed class SecurityAuditEventTests
         credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
             .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
 
-        var loginException = Assert.ThrowsAsync<AggregateException>(async () => await pipeline.LoginAsync(context, assertion));
+        var loginException = Assert.ThrowsAsync<InvalidOperationException>(async () => await pipeline.LoginAsync(context, assertion));
 
         var sessionService = CreateSessionService(sink, out var repository, out var timeProvider);
         var session = CreateSession(timeProvider.GetUtcNow().AddHours(1));
@@ -449,12 +449,12 @@ internal sealed class SecurityAuditEventTests
         repository.Setup(r => r.UpdateSessionLastSeenAsync(session.Id, timeProvider.GetUtcNow(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
-        var validationException = Assert.ThrowsAsync<AggregateException>(async () => await sessionService.ValidateSessionAsync("raw-token"));
+        var validationException = Assert.ThrowsAsync<InvalidOperationException>(async () => await sessionService.ValidateSessionAsync("raw-token"));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(loginException?.InnerExceptions.Single().Message, Is.EqualTo("audit store unavailable"));
-            Assert.That(validationException?.InnerExceptions.Single().Message, Is.EqualTo("audit store unavailable"));
+            Assert.That(loginException?.Message, Is.EqualTo("audit store unavailable"));
+            Assert.That(validationException?.Message, Is.EqualTo("audit store unavailable"));
         }
     }
 
@@ -487,9 +487,9 @@ internal sealed class SecurityAuditEventTests
             AllowAuthenticationFactorRateLimiter.Instance,
             new AuthenticationPipelineDependencies(sink, new FakeTimeProvider(TestTime)));
 
-        var exception = Assert.ThrowsAsync<AggregateException>(async () => await pipeline.LoginAsync(context, assertion));
+        var exception = Assert.ThrowsAsync<InvalidOperationException>(async () => await pipeline.LoginAsync(context, assertion));
 
-        Assert.That(exception?.InnerExceptions.Single().Message, Is.EqualTo("audit store unavailable"));
+        Assert.That(exception?.Message, Is.EqualTo("audit store unavailable"));
     }
 
     [Test]
@@ -506,11 +506,11 @@ internal sealed class SecurityAuditEventTests
         credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
             .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
 
-        var exception = Assert.ThrowsAsync<AggregateException>(async () => await pipeline.LoginAsync(context, assertion));
+        var exception = Assert.ThrowsAsync<InvalidOperationException>(async () => await pipeline.LoginAsync(context, assertion));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exception?.InnerExceptions.Single().Message, Is.EqualTo("first audit failed"));
+            Assert.That(exception?.Message, Is.EqualTo("first audit failed"));
             Assert.That(sink.Events, Has.Count.EqualTo(1));
             Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationSucceeded));
             Assert.That(sink.Events.Single().Properties, Is.Null);

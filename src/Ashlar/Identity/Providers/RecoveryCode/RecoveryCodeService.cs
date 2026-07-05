@@ -140,22 +140,22 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
             await _credentialRepository.CreateCredentialAsync(credential, cancellationToken);
         }
 
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = userId,
+            TenantId = tenant.TenantId,
+            Audit = request.Audit,
+            Provider = _options.ProviderKey,
+            Properties = new Dictionary<string, string>
+            {
+                ["count"] = codeCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            }
+        }, cancellationToken);
+
         transaction.OnCommitted(async ct =>
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.RecoveryCodesGenerated,
-                Outcome = SecurityEventOutcomes.Success,
-                UserId = userId,
-                TenantId = tenant.TenantId,
-                Audit = request.Audit,
-                Provider = _options.ProviderKey,
-                Properties = new Dictionary<string, string>
-                {
-                    ["count"] = codeCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                }
-            }, ct);
-
             await _notifications.NotifyAsync(SecurityNotificationType.RecoveryCodesGenerated, user, now, context: ToNotificationContext(request.Audit), metadata: new Dictionary<string, string>
             {
                 ["count"] = codeCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
@@ -210,7 +210,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
 
         var count = await _credentialRepository.RevokeCredentialsAsync(userId, _options.ProviderKey.Type, _options.ProviderKey.Name, cancellationToken);
 
-        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.RecoveryCodesRevoked,
             Outcome = SecurityEventOutcomes.Success,
@@ -219,7 +219,7 @@ internal sealed class RecoveryCodeService : IRecoveryCodeService
             Audit = request.Audit,
             Provider = _options.ProviderKey,
             Properties = CreateRevocationProperties(count, request.Reason)
-        }, ct));
+        }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
 

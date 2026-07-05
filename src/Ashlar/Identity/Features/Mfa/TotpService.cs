@@ -240,18 +240,18 @@ internal sealed class TotpService : ITotpService
             return Result.Failure(linkResult.FailureDetails ?? new AshlarFailure(AshlarFailureCodes.LinkFailed));
         }
 
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = userId,
+            TenantId = tenant.TenantId,
+            Audit = request.Audit,
+            Provider = _options.ProviderKey
+        }, cancellationToken);
+
         transaction.OnCommitted(async ct =>
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.TotpEnrollmentCompleted,
-                Outcome = SecurityEventOutcomes.Success,
-                UserId = userId,
-                TenantId = tenant.TenantId,
-                Audit = request.Audit,
-                Provider = _options.ProviderKey
-            }, ct);
-
             await _notifications.NotifyAsync(SecurityNotificationType.TotpEnrolled, enrolledUser, now, context: ToNotificationContext(request.Audit), cancellationToken: ct);
         });
 
@@ -299,18 +299,18 @@ internal sealed class TotpService : ITotpService
         if (count == 0) return false;
 
         var now = _timeProvider.GetUtcNow();
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.TotpDisabled,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = userId,
+            TenantId = tenant.TenantId,
+            Audit = request.Audit,
+            Provider = _options.ProviderKey
+        }, cancellationToken);
+
         transaction.OnCommitted(async ct =>
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.TotpDisabled,
-                Outcome = SecurityEventOutcomes.Success,
-                UserId = userId,
-                TenantId = tenant.TenantId,
-                Audit = request.Audit,
-                Provider = _options.ProviderKey
-            }, ct);
-
             await _notifications.NotifyAsync(SecurityNotificationType.TotpDisabled, user, now, context: ToNotificationContext(request.Audit), cancellationToken: ct);
         });
 
