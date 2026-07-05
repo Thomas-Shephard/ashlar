@@ -182,19 +182,19 @@ internal sealed class PasswordResetService : IPasswordResetService
             resetEmailQueued = await SendResetEmailOrRevokeAsync(user, resetEmail, context, cancellationToken);
         }
 
+        if (resetEmailQueued)
+        {
+            await RecordAsync(
+                AshlarSecurityEventTypes.PasswordResetRequested,
+                SecurityEventOutcomes.Success,
+                context,
+                user.Id,
+                failureReason: null,
+                cancellationToken);
+        }
+
         transaction.OnCommitted(async ct =>
         {
-            if (resetEmailQueued)
-            {
-                await RecordAsync(
-                    AshlarSecurityEventTypes.PasswordResetRequested,
-                    SecurityEventOutcomes.Success,
-                    context,
-                    user.Id,
-                    failureReason: null,
-                    ct);
-            }
-
             if (!transactionalEmailOutbox)
             {
                 await SendResetEmailOrRevokeAsync(user, resetEmail, context, ct);
@@ -317,16 +317,16 @@ internal sealed class PasswordResetService : IPasswordResetService
 
         await RevokeRememberedMfaDevicesAsync(user.Id, context, cancellationToken);
         var result = new PasswordResetResult(user.Id, sessionsRevoked);
+        await RecordAsync(
+            AshlarSecurityEventTypes.PasswordResetCompleted,
+            SecurityEventOutcomes.Success,
+            context,
+            user.Id,
+            failureReason: null,
+            cancellationToken);
+
         transaction.OnCommitted(async ct =>
         {
-            await RecordAsync(
-                AshlarSecurityEventTypes.PasswordResetCompleted,
-                SecurityEventOutcomes.Success,
-                context,
-                user.Id,
-                failureReason: null,
-                ct);
-
             await _notifications.NotifyAsync(SecurityNotificationType.PasswordResetCompleted, user, now, context, cancellationToken: ct);
         });
 

@@ -129,6 +129,32 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
     }
 
     [Test]
+    public async Task RecordAsyncParticipatesInCommittedTransaction()
+    {
+        var manager = _serviceProvider.GetRequiredService<IAshlarTransactionProvider>();
+        var sink = CreateSink();
+        await using var transaction = await manager.BeginTransactionAsync();
+
+        await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "Committed", OccurredAt = DateTimeOffset.UtcNow });
+        await transaction.CommitAsync();
+
+        Assert.That(await CountEventsByTypeAsync("Committed"), Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task RecordAsyncRollsBackWithActiveTransaction()
+    {
+        var manager = _serviceProvider.GetRequiredService<IAshlarTransactionProvider>();
+        var sink = CreateSink();
+        await using var transaction = await manager.BeginTransactionAsync();
+
+        await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "RolledBack", OccurredAt = DateTimeOffset.UtcNow });
+        await transaction.RollbackAsync();
+
+        Assert.That(await CountEventsByTypeAsync("RolledBack"), Is.EqualTo(0));
+    }
+
+    [Test]
     public async Task RecordAsyncThrowsForNullEventAndPersistenceFailureAndAllowsLaterWrites()
     {
         var sink = CreateSink();
@@ -160,7 +186,7 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
     public void ConstructorAcceptsNonNullLogger()
     {
         var sink = new SqliteSecurityEventSink(
-            _serviceProvider.GetRequiredService<SqliteConnectionFactory>(),
+            _serviceProvider.GetRequiredService<ISqliteConnectionProvider>(),
             NullLogger<SqliteSecurityEventSink>.Instance);
 
         Assert.That(sink, Is.Not.Null);
@@ -168,7 +194,7 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
 
     private SqliteSecurityEventSink CreateSink()
     {
-        return new SqliteSecurityEventSink(_serviceProvider.GetRequiredService<SqliteConnectionFactory>());
+        return new SqliteSecurityEventSink(_serviceProvider.GetRequiredService<ISqliteConnectionProvider>());
     }
 
     private async Task<int> CountEventsAsync()

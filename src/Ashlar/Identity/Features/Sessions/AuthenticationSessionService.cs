@@ -133,20 +133,20 @@ internal sealed class AuthenticationSessionService(
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         await _repository.CreateSessionAsync(session, cancellationToken);
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.SessionCreated,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = userId,
+            TenantId = request.TenantId,
+            SessionId = session.Id,
+            IpAddress = ipAddress,
+            UserAgent = userAgent,
+            CorrelationId = request.CorrelationId
+        }, cancellationToken);
+
         transaction.OnCommitted(async ct =>
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.SessionCreated,
-                Outcome = SecurityEventOutcomes.Success,
-                UserId = userId,
-                TenantId = request.TenantId,
-                SessionId = session.Id,
-                IpAddress = ipAddress,
-                UserAgent = userAgent,
-                CorrelationId = request.CorrelationId
-            }, ct);
-
             await _notifications.NotifyAsync(SecurityNotificationType.SignIn, user, now, sessionId: session.Id, context: new AuthenticationContext(TenantId: request.TenantId, IpAddress: ipAddress, UserAgent: userAgent, CorrelationId: request.CorrelationId), cancellationToken: ct);
         });
 
@@ -273,7 +273,7 @@ internal sealed class AuthenticationSessionService(
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
         await TryUpdateLastSeenAsync(session, now, cancellationToken);
-        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.SessionValidated,
             Outcome = SecurityEventOutcomes.Success,
@@ -282,7 +282,7 @@ internal sealed class AuthenticationSessionService(
             SessionId = session.Id,
             IpAddress = session.IpAddress,
             UserAgent = session.UserAgent
-        }, ct));
+        }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         return new ValidateAuthenticationSessionResult(true, session, session.UserId, AuthenticationSessionValidationStatus.Succeeded);
@@ -348,7 +348,7 @@ internal sealed class AuthenticationSessionService(
             verifiedFactor,
             cancellationToken);
 
-        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.SessionStepUpVerified,
             Outcome = updated == null ? SecurityEventOutcomes.Failure : SecurityEventOutcomes.Success,
@@ -359,7 +359,7 @@ internal sealed class AuthenticationSessionService(
             Audit = request.Audit,
             FailureReason = updated == null ? AshlarFailureCodes.SessionNotFoundOrInactiveValue : null,
             Properties = new Dictionary<string, string> { ["factor"] = verifiedFactor }
-        }, ct));
+        }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
 
@@ -389,18 +389,18 @@ internal sealed class AuthenticationSessionService(
             properties["reason"] = reason;
         }
 
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.SessionsRevokedForUser,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = userId,
+            TenantId = auditTenantId ?? tenant?.TenantId,
+            Audit = audit,
+            Properties = properties
+        }, cancellationToken);
+
         transaction.OnCommitted(async ct =>
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.SessionsRevokedForUser,
-                Outcome = SecurityEventOutcomes.Success,
-                UserId = userId,
-                TenantId = auditTenantId ?? tenant?.TenantId,
-                Audit = audit,
-                Properties = properties
-            }, ct);
-
             if (revoked > 0)
             {
                 var user = await _userRepository.GetUserByIdAsync(userId, ct);
@@ -457,19 +457,19 @@ internal sealed class AuthenticationSessionService(
         var now = _timeProvider.GetUtcNow();
         var revoked = await _repository.RevokeSessionByIdAsync(request.SessionId, userId, now, request.Reason, request.Tenant, cancellationToken);
         var metadata = request.Reason == null ? null : new Dictionary<string, string> { ["reason"] = request.Reason };
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.SessionRevoked,
+            Outcome = revoked ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
+            UserId = userId,
+            TenantId = request.Tenant?.TenantId,
+            SessionId = request.SessionId,
+            Audit = request.Audit,
+            Properties = metadata
+        }, cancellationToken);
+
         transaction.OnCommitted(async ct =>
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.SessionRevoked,
-                Outcome = revoked ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
-                UserId = userId,
-                TenantId = request.Tenant?.TenantId,
-                SessionId = request.SessionId,
-                Audit = request.Audit,
-                Properties = metadata
-            }, ct);
-
             if (revoked)
             {
                 var user = await _userRepository.GetUserByIdAsync(userId, ct);
@@ -508,18 +508,18 @@ internal sealed class AuthenticationSessionService(
             properties["reason"] = request.Reason;
         }
 
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.SessionsRevokedForUser,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = userId,
+            TenantId = request.Tenant?.TenantId,
+            Audit = request.Audit,
+            Properties = properties
+        }, cancellationToken);
+
         transaction.OnCommitted(async ct =>
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.SessionsRevokedForUser,
-                Outcome = SecurityEventOutcomes.Success,
-                UserId = userId,
-                TenantId = request.Tenant?.TenantId,
-                Audit = request.Audit,
-                Properties = properties
-            }, ct);
-
             if (revoked > 0)
             {
                 var user = await _userRepository.GetUserByIdAsync(userId, ct);

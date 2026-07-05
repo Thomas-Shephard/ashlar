@@ -69,7 +69,7 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
             Properties = new Dictionary<string, string> { { "Key", "Value" } }
         };
 
-        var sink = new PostgresSecurityEventSink(GetDataSource());
+        var sink = new PostgresSecurityEventSink(new PostgresTransactionManager(GetDataSource()));
         await sink.RecordAsync(securityEvent);
 
         await using var connection = await GetDataSource().OpenConnectionAsync();
@@ -110,7 +110,7 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
             OccurredAt = DateTimeOffset.UtcNow
         };
 
-        var sink = new PostgresSecurityEventSink(GetDataSource());
+        var sink = new PostgresSecurityEventSink(new PostgresTransactionManager(GetDataSource()));
         await sink.RecordAsync(securityEvent);
 
         await using var connection = await GetDataSource().OpenConnectionAsync();
@@ -136,7 +136,7 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
             Provider = (AuthenticationProviderKey?)default(AuthenticationProviderKey)
         };
 
-        var sink = new PostgresSecurityEventSink(GetDataSource());
+        var sink = new PostgresSecurityEventSink(new PostgresTransactionManager(GetDataSource()));
         await sink.RecordAsync(securityEvent);
 
         await using var connection = await GetDataSource().OpenConnectionAsync();
@@ -151,7 +151,7 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
     [Test]
     public async Task RecordAsyncThrowsIfEventIsNull()
     {
-        var sink = new PostgresSecurityEventSink(GetDataSource());
+        var sink = new PostgresSecurityEventSink(new PostgresTransactionManager(GetDataSource()));
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.ThrowsAsync<ArgumentNullException>(async () => await sink.RecordAsync(null!));
     }
@@ -159,7 +159,7 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
     [Test]
     public async Task MultipleEventsAreAppended()
     {
-        var sink = new PostgresSecurityEventSink(GetDataSource());
+        var sink = new PostgresSecurityEventSink(new PostgresTransactionManager(GetDataSource()));
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "E1", OccurredAt = DateTimeOffset.UtcNow, Outcome = "S" });
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "E2", OccurredAt = DateTimeOffset.UtcNow, Outcome = "S" });
 
@@ -169,20 +169,50 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
     }
 
     [Test]
+    public async Task RecordAsyncParticipatesInCommittedTransaction()
+    {
+        await using var manager = new PostgresTransactionManager(GetDataSource());
+        var sink = new PostgresSecurityEventSink(manager);
+        await using var transaction = await manager.BeginTransactionAsync();
+
+        await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "Committed", OccurredAt = DateTimeOffset.UtcNow });
+        await transaction.CommitAsync();
+
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        var count = await connection.ExecuteScalarAsync<int>("SELECT count(*) FROM ashlar_security_events WHERE event_type = 'Committed'");
+        Assert.That(count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task RecordAsyncRollsBackWithActiveTransaction()
+    {
+        await using var manager = new PostgresTransactionManager(GetDataSource());
+        var sink = new PostgresSecurityEventSink(manager);
+        await using var transaction = await manager.BeginTransactionAsync();
+
+        await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "RolledBack", OccurredAt = DateTimeOffset.UtcNow });
+        await transaction.RollbackAsync();
+
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        var count = await connection.ExecuteScalarAsync<int>("SELECT count(*) FROM ashlar_security_events WHERE event_type = 'RolledBack'");
+        Assert.That(count, Is.EqualTo(0));
+    }
+
+    [Test]
     public async Task CountSecurityEventsForUserAsyncCountsOnlyMatchingRecentUserEvents()
     {
         var userId = Guid.NewGuid();
         var otherUserId = Guid.NewGuid();
         var now = new DateTimeOffset(2026, 5, 17, 12, 0, 0, TimeSpan.Zero);
 
-        var sink = new PostgresSecurityEventSink(GetDataSource());
+        var sink = new PostgresSecurityEventSink(new PostgresTransactionManager(GetDataSource()));
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "Recent1", UserId = userId, OccurredAt = now.AddMinutes(-5) });
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "Recent2", UserId = userId, OccurredAt = now.AddMinutes(-1) });
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "Old", UserId = userId, OccurredAt = now.AddDays(-2) });
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "OtherUser", UserId = otherUserId, OccurredAt = now });
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "NoUser", OccurredAt = now });
 
-        var countingSink = new PostgresSecurityEventSink(GetDataSource());
+        var countingSink = new PostgresSecurityEventSink(new PostgresTransactionManager(GetDataSource()));
         var count = await countingSink.CountSecurityEventsForUserAsync(userId, now.AddHours(-1));
 
         Assert.That(count, Is.EqualTo(2));
@@ -238,7 +268,7 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
             OccurredAt = DateTimeOffset.UtcNow
         };
 
-        var sink = new PostgresSecurityEventSink(GetDataSource());
+        var sink = new PostgresSecurityEventSink(new PostgresTransactionManager(GetDataSource()));
         Assert.ThrowsAsync<PostgresException>(async () => await sink.RecordAsync(invalidEvent));
         await sink.RecordAsync(validEvent);
 

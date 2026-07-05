@@ -169,31 +169,31 @@ internal sealed class BootstrapService(
             return Result.Failure<Guid>(AshlarFailureCodes.AlreadyInitialized);
         }
 
-        transaction.OnCommitted(async ct =>
+        if (createdUser.IsNewUser)
         {
-            if (createdUser.IsNewUser)
-            {
-                await _securityEvents.RecordAsync(new SecurityEventDescriptor
-                {
-                    EventType = AshlarSecurityEventTypes.UserCreated,
-                    Outcome = SecurityEventOutcomes.Success,
-                    UserId = userId,
-                    TenantId = request.TenantId,
-                    Audit = request.Audit,
-                    Context = context
-                }, ct);
-            }
-
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
-                EventType = AshlarSecurityEventTypes.BootstrapCompleted,
+                EventType = AshlarSecurityEventTypes.UserCreated,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = userId,
                 TenantId = request.TenantId,
                 Audit = request.Audit,
                 Context = context
-            }, ct);
+            }, cancellationToken);
+        }
 
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.BootstrapCompleted,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = userId,
+            TenantId = request.TenantId,
+            Audit = request.Audit,
+            Context = context
+        }, cancellationToken);
+
+        transaction.OnCommitted(async ct =>
+        {
             var notifiedUser = await _dependencies.UserRepository.GetUserByIdAsync(userId, ct);
             if (notifiedUser != null)
             {

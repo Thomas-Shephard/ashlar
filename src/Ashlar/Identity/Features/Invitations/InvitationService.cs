@@ -114,17 +114,14 @@ internal sealed class InvitationService(
             options: new EmailMessageOptions { Sensitivity = EmailMessageSensitivity.ContainsLiveSecret });
         await TransactionalEmailDelivery.SendOrRegisterPostCommitAsync(_dependencies.EmailSender, transaction, emailMessage, cancellationToken);
 
-        transaction.OnCommitted(async ct =>
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.InvitationCreated,
-                Outcome = SecurityEventOutcomes.Success,
-                TenantId = request.TenantId,
-                Properties = AddEmailIfEnabled(new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() }, normalizedEmail),
-                Context = context
-            }, ct);
-        });
+            EventType = AshlarSecurityEventTypes.InvitationCreated,
+            Outcome = SecurityEventOutcomes.Success,
+            TenantId = request.TenantId,
+            Properties = AddEmailIfEnabled(new Dictionary<string, string> { [InvitationIdProperty] = invitation.Id.ToString() }, normalizedEmail),
+            Context = context
+        }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success();
@@ -183,30 +180,30 @@ internal sealed class InvitationService(
 
         var acceptedUser = await AcceptInvitationUserAsync(availableInvitation, request.UserName, now, cancellationToken);
 
-        transaction.OnCommitted(async ct =>
+        if (acceptedUser.IsNewUser)
         {
-            if (acceptedUser.IsNewUser)
-            {
-                await _securityEvents.RecordAsync(new SecurityEventDescriptor
-                {
-                    EventType = AshlarSecurityEventTypes.UserCreated,
-                    Outcome = SecurityEventOutcomes.Success,
-                    UserId = acceptedUser.UserId,
-                    TenantId = availableInvitation.TenantId,
-                    Context = context
-                }, ct);
-            }
-
             await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
-                EventType = AshlarSecurityEventTypes.InvitationAccepted,
+                EventType = AshlarSecurityEventTypes.UserCreated,
                 Outcome = SecurityEventOutcomes.Success,
                 UserId = acceptedUser.UserId,
                 TenantId = availableInvitation.TenantId,
-                Properties = new Dictionary<string, string> { [InvitationIdProperty] = availableInvitation.Id.ToString() },
                 Context = context
-            }, ct);
+            }, cancellationToken);
+        }
 
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.InvitationAccepted,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = acceptedUser.UserId,
+            TenantId = availableInvitation.TenantId,
+            Properties = new Dictionary<string, string> { [InvitationIdProperty] = availableInvitation.Id.ToString() },
+            Context = context
+        }, cancellationToken);
+
+        transaction.OnCommitted(async ct =>
+        {
             var notifiedUser = await _dependencies.UserRepository.GetUserByIdAsync(acceptedUser.UserId, ct);
             if (notifiedUser != null)
             {

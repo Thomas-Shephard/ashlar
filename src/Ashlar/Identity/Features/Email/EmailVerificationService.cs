@@ -151,17 +151,14 @@ internal sealed class EmailVerificationService : IEmailVerificationService
             });
         await TransactionalEmailDelivery.SendOrRegisterPostCommitAsync(_emailSender, transaction, emailMessage, cancellationToken);
 
-        transaction.OnCommitted(async ct =>
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.EmailVerificationRequested,
-                Outcome = SecurityEventOutcomes.Success,
-                UserId = user.Id,
-                TenantId = GetTenantId(user),
-                Audit = request.Audit
-            }, ct);
-        });
+            EventType = AshlarSecurityEventTypes.EmailVerificationRequested,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = user.Id,
+            TenantId = GetTenantId(user),
+            Audit = request.Audit
+        }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
 
@@ -286,17 +283,17 @@ internal sealed class EmailVerificationService : IEmailVerificationService
         var updatedUser = new UpdatedUserWrapper(user, now);
         await _identityContext.UserRepository.UpdateUserAsync(updatedUser, cancellationToken);
 
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
+        {
+            EventType = AshlarSecurityEventTypes.EmailVerified,
+            Outcome = SecurityEventOutcomes.Success,
+            UserId = userId,
+            TenantId = GetTenantId(updatedUser),
+            Audit = request.Audit
+        }, cancellationToken);
+
         transaction.OnCommitted(async ct =>
         {
-            await _securityEvents.RecordAsync(new SecurityEventDescriptor
-            {
-                EventType = AshlarSecurityEventTypes.EmailVerified,
-                Outcome = SecurityEventOutcomes.Success,
-                UserId = userId,
-                TenantId = GetTenantId(updatedUser),
-                Audit = request.Audit
-            }, ct);
-
             await _notifications.NotifyAsync(SecurityNotificationType.EmailVerificationCompleted, updatedUser, now, cancellationToken: ct);
         });
 

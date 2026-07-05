@@ -292,7 +292,7 @@ internal sealed class CredentialService(
                 unprotectedCredential.ProviderType.StorageValue,
                 unprotectedCredential.ProviderName,
                 null);
-            transaction.OnCommitted(ct => RecordCredentialUpdateFailedAsync(unprotectedCredential, "protect_failed", ct));
+            await RecordCredentialUpdateFailedAsync(unprotectedCredential, "protect_failed", cancellationToken);
             return CredentialUsageUpdateResult.RequiredFailed;
         }
 
@@ -305,7 +305,7 @@ internal sealed class CredentialService(
                 unprotectedCredential.ProviderType.StorageValue,
                 unprotectedCredential.ProviderName,
                 null);
-            transaction.OnCommitted(ct => RecordCredentialUpdateFailedAsync(unprotectedCredential, "wipe_risk", ct));
+            await RecordCredentialUpdateFailedAsync(unprotectedCredential, "wipe_risk", cancellationToken);
             return result.CredentialUpdateRequirement == CredentialUpdateRequirement.Required
                 ? CredentialUsageUpdateResult.RequiredFailed
                 : CredentialUsageUpdateResult.BestEffortFailed;
@@ -338,7 +338,7 @@ internal sealed class CredentialService(
         CancellationToken cancellationToken)
     {
         var consumed = await _credentialRepository.ConsumeCredentialAsync(unprotectedCredential.Id, GetExpectedVersion(unprotectedCredential, originalCredential), cancellationToken);
-        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.CredentialConsumed,
             Outcome = consumed ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
@@ -350,7 +350,7 @@ internal sealed class CredentialService(
                 [CredentialIdPropertyName] = unprotectedCredential.Id.ToString(),
                 ["operation"] = "consume"
             }
-        }, ct));
+        }, cancellationToken);
         return consumed ? CredentialUsageUpdateResult.NotNeeded : CredentialUsageUpdateResult.RequiredFailed;
     }
 
@@ -367,7 +367,7 @@ internal sealed class CredentialService(
         var providerUpdatePersisted = persisted && providerRequestedUpdateCanPersist;
         if (providerRequestedUpdateAttempted)
         {
-            transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+            await _securityEvents.RecordAsync(new SecurityEventDescriptor
             {
                 EventType = providerUpdatePersisted ? AshlarSecurityEventTypes.CredentialUpdatePersisted : AshlarSecurityEventTypes.CredentialUpdateFailed,
                 Outcome = providerUpdatePersisted ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
@@ -380,7 +380,7 @@ internal sealed class CredentialService(
                     ["operation"] = "update",
                     ["required"] = (result.CredentialUpdateRequirement == CredentialUpdateRequirement.Required).ToString()
                 }
-            }, ct));
+            }, cancellationToken);
         }
 
         return new CredentialUsageUpdateResult(succeeded, providerUpdatePersisted);
@@ -619,7 +619,7 @@ internal sealed class CredentialService(
             return Result.Failure(AshlarFailureCodes.AlreadyLinkedToOther);
         }
 
-        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.CredentialLinked,
             Outcome = SecurityEventOutcomes.Success,
@@ -629,7 +629,7 @@ internal sealed class CredentialService(
             {
                 [CredentialIdPropertyName] = credential.Id.ToString()
             }
-        }, ct));
+        }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success();

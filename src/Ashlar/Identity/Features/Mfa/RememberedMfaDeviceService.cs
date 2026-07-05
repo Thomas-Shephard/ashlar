@@ -117,7 +117,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         await _repository.CreateAsync(device, cancellationToken);
         var summary = ToSummary(device, now);
-        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.RememberedMfaDeviceCreated,
             Outcome = SecurityEventOutcomes.Success,
@@ -125,7 +125,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
             TenantId = tenant.TenantId,
             Audit = request.Audit,
             Properties = new Dictionary<string, string> { [RememberedDeviceIdProperty] = device.Id.ToString("D") }
-        }, ct));
+        }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success(new RememberedMfaDeviceCreated(summary, token));
@@ -201,7 +201,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
             return ValidateRememberedMfaDeviceResult.Failed;
         }
 
-        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.RememberedMfaDeviceUsed,
             Outcome = SecurityEventOutcomes.Success,
@@ -209,7 +209,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
             TenantId = tenant.TenantId,
             Audit = request.Audit,
             Properties = new Dictionary<string, string> { [RememberedDeviceIdProperty] = device.Id.ToString("D") }
-        }, ct));
+        }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         return new ValidateRememberedMfaDeviceResult(true, ToSummary(device, now), RememberedMfaDeviceValidationStatus.Succeeded);
@@ -241,7 +241,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         var revokedAt = _timeProvider.GetUtcNow();
         var revoked = await _repository.RevokeAsync(request.DeviceId, userId, revokedAt, reason, tenant, cancellationToken);
-        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.RememberedMfaDeviceRevoked,
             Outcome = revoked ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure,
@@ -250,7 +250,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
             Audit = request.Audit,
             FailureReason = revoked ? null : AshlarFailureCodes.InvalidOrExpiredTokenValue,
             Properties = CreateRevocationProperties(request.DeviceId, reason)
-        }, ct));
+        }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         return revoked;
@@ -277,7 +277,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
             properties["reason"] = reason;
         }
 
-        transaction.OnCommitted(ct => _securityEvents.RecordAsync(new SecurityEventDescriptor
+        await _securityEvents.RecordAsync(new SecurityEventDescriptor
         {
             EventType = AshlarSecurityEventTypes.RememberedMfaDevicesRevoked,
             Outcome = SecurityEventOutcomes.Success,
@@ -285,7 +285,7 @@ internal sealed class RememberedMfaDeviceService : IRememberedMfaDeviceService
             TenantId = tenant?.TenantId,
             Audit = request.Audit,
             Properties = properties
-        }, ct));
+        }, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         return count;

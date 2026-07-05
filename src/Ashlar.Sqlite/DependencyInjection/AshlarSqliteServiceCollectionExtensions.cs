@@ -68,10 +68,10 @@ public static class AshlarSqliteServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarIdentity();
-        services.TryAddSingleton<SqliteSecurityEventSink>();
+        services.TryAddScoped<SqliteSecurityEventSink>();
         services.TryAddScoped<ISecurityEventAdministrationRepository, SqliteSecurityEventAdministrationRepository>();
-        services.Replace(ServiceDescriptor.Singleton<IPersistentSecurityEventSink>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
-        services.Replace(ServiceDescriptor.Singleton<IUserSecurityEventSummaryRepository>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
+        services.Replace(ServiceDescriptor.Scoped<IPersistentSecurityEventSink>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
+        services.Replace(ServiceDescriptor.Scoped<IUserSecurityEventSummaryRepository>(provider => provider.GetRequiredService<SqliteSecurityEventSink>()));
 
         return services;
     }

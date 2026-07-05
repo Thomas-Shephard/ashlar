@@ -294,10 +294,10 @@ public static class AshlarPostgresServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddAshlarIdentity();
-        services.TryAddSingleton<PostgresSecurityEventSink>();
+        services.TryAddScoped<PostgresSecurityEventSink>();
         services.TryAddScoped<ISecurityEventAdministrationRepository, PostgresSecurityEventAdministrationRepository>();
-        services.Replace(ServiceDescriptor.Singleton<IPersistentSecurityEventSink>(provider => provider.GetRequiredService<PostgresSecurityEventSink>()));
-        services.Replace(ServiceDescriptor.Singleton<IUserSecurityEventSummaryRepository>(provider => provider.GetRequiredService<PostgresSecurityEventSink>()));
+        services.Replace(ServiceDescriptor.Scoped<IPersistentSecurityEventSink>(provider => provider.GetRequiredService<PostgresSecurityEventSink>()));
+        services.Replace(ServiceDescriptor.Scoped<IUserSecurityEventSummaryRepository>(provider => provider.GetRequiredService<PostgresSecurityEventSink>()));
 
         return services;
     }

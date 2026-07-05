@@ -116,13 +116,13 @@ internal sealed class AccountSecurityService : IAccountSecurityService
             PreviousState: user.AccountState,
             CurrentState: request.AccountState,
             RememberedMfaDevicesRevoked: rememberedMfaDevicesRevoked);
-        transaction.OnCommitted(ct => RecordSuccessAsync(
+        await RecordSuccessAsync(
             AshlarSecurityEventTypes.UserAccountStateChanged,
             result,
             request,
-            ct,
+            cancellationToken,
             stateTransition: new AccountStateTransition(user.AccountState, request.AccountState),
-            auditTenantId: auditTenantId));
+            auditTenantId: auditTenantId);
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success(result);
@@ -171,7 +171,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
         var revoked = await _credentialRepository.RevokeCredentialsAsync(userId, provider.Type, provider.Name, cancellationToken);
         var result = new AccountSecurityOperationResult(userId, CredentialsRevoked: revoked);
-        transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserCredentialsRevoked, result, request, ct, provider, auditTenantId: GetAuditTenantId(request, user)));
+        await RecordSuccessAsync(AshlarSecurityEventTypes.UserCredentialsRevoked, result, request, cancellationToken, provider, auditTenantId: GetAuditTenantId(request, user));
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success(result);
@@ -200,7 +200,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService
             userId,
             CredentialsRevoked: revoked,
             RememberedMfaDevicesRevoked: rememberedMfaDevicesRevoked);
-        transaction.OnCommitted(ct => RecordSuccessAsync(AshlarSecurityEventTypes.UserMfaReset, result, request, ct, auditTenantId: GetAuditTenantId(request, user)));
+        await RecordSuccessAsync(AshlarSecurityEventTypes.UserMfaReset, result, request, cancellationToken, auditTenantId: GetAuditTenantId(request, user));
 
         await transaction.CommitAsync(cancellationToken);
         return Result.Success(result);
