@@ -100,7 +100,7 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
     }
 
     [Test]
-    public async Task RecordSuccessfulOperationAsyncOmitsAbsentPropertiesAndFailsOpen()
+    public async Task RecordSuccessfulOperationAsyncOmitsAbsentPropertiesAndPropagatesAuditFailures()
     {
         var request = new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.NewGuid(), new AuditContext());
         var result = AshlarSecurityEventWebhookOutboxOperations.CreateResult(
@@ -117,14 +117,14 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
             CancellationToken.None);
 
         Assert.That(sink.Events.Single().Properties!.Keys, Is.EquivalentTo(MinimalAuditPropertyNames));
-        Assert.DoesNotThrowAsync(async () => await AshlarSecurityEventWebhookOutboxOperations.RecordSuccessfulOperationAsync(
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await AshlarSecurityEventWebhookOutboxOperations.RecordSuccessfulOperationAsync(
             new ThrowingSecurityEventSink(new InvalidOperationException("boom")),
             TimeProvider.System,
             AshlarSecurityEventTypes.SecurityEventWebhookOutboxDeliveryDiscarded,
             request,
             result,
             CancellationToken.None));
-        Assert.DoesNotThrowAsync(async () => await AshlarSecurityEventWebhookOutboxOperations.RecordSuccessfulOperationAsync(
+        Assert.ThrowsAsync<OperationCanceledException>(async () => await AshlarSecurityEventWebhookOutboxOperations.RecordSuccessfulOperationAsync(
             new ThrowingSecurityEventSink(new OperationCanceledException()),
             TimeProvider.System,
             AshlarSecurityEventTypes.SecurityEventWebhookOutboxDeliveryDiscarded,

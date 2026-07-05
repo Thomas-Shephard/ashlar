@@ -176,7 +176,10 @@ public static class AshlarSqliteServiceCollectionExtensions
         }
 
         services.TryAddSingleton(TimeProvider.System);
-        services.Replace(ServiceDescriptor.Scoped<IEmailOutboxAdministrationService, SqliteEmailOutboxAdministrationService>());
+        services.Replace(ServiceDescriptor.Scoped<IEmailOutboxAdministrationService>(provider => new SqliteEmailOutboxAdministrationService(
+            provider.GetRequiredService<ISqliteConnectionProvider>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>())));
         services.Replace(ServiceDescriptor.Scoped<IEmailOutboxDiagnostics, SqliteEmailOutboxDiagnostics>());
         services.Replace(ServiceDescriptor.Scoped<IEmailSender, SqliteEmailOutboxSender>());
 
@@ -251,7 +254,10 @@ public static class AshlarSqliteServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAshlarSecurityEventWebhookEnqueuer, SqliteSecurityEventWebhookEnqueuer>();
-        services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxOperations, SqliteSecurityEventWebhookOutboxOperations>());
+        services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxOperations>(provider => new SqliteSecurityEventWebhookOutboxOperations(
+            provider.GetRequiredService<ISqliteConnectionProvider>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetService<ISecurityEventSink>())));
         services.Replace(ServiceDescriptor.Scoped<IAshlarSecurityEventWebhookOutboxBrowser, SqliteSecurityEventWebhookOutboxBrowser>());
         services.Replace(ServiceDescriptor.Scoped<ISecurityEventWebhookOutboxDiagnostics, SqliteSecurityEventWebhookOutboxDiagnostics>());
 

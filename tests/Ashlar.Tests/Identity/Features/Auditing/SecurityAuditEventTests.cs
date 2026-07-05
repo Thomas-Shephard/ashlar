@@ -427,7 +427,7 @@ internal sealed class SecurityAuditEventTests
     }
 
     [Test]
-    public async Task AuditSinkExceptionDoesNotFailLoginOrSessionValidation()
+    public async Task AuditSinkExceptionFailsLoginAndSessionValidation()
     {
         var sink = new ThrowingSecurityEventSink();
         var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sink);
@@ -440,7 +440,7 @@ internal sealed class SecurityAuditEventTests
         credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
             .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
 
-        var login = await pipeline.LoginAsync(context, assertion);
+        var loginException = Assert.ThrowsAsync<AggregateException>(async () => await pipeline.LoginAsync(context, assertion));
 
         var sessionService = CreateSessionService(sink, out var repository, out var timeProvider);
         var session = CreateSession(timeProvider.GetUtcNow().AddHours(1));
@@ -449,17 +449,17 @@ internal sealed class SecurityAuditEventTests
         repository.Setup(r => r.UpdateSessionLastSeenAsync(session.Id, timeProvider.GetUtcNow(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
-        var validation = await sessionService.ValidateSessionAsync("raw-token");
+        var validationException = Assert.ThrowsAsync<AggregateException>(async () => await sessionService.ValidateSessionAsync("raw-token"));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(login.Succeeded, Is.True);
-            Assert.That(validation.Succeeded, Is.True);
+            Assert.That(loginException?.InnerExceptions.Single().Message, Is.EqualTo("audit store unavailable"));
+            Assert.That(validationException?.InnerExceptions.Single().Message, Is.EqualTo("audit store unavailable"));
         }
     }
 
     [Test]
-    public async Task AuditSinkExceptionWithUninitializedProviderTypeDoesNotFailLogin()
+    public void AuditSinkExceptionWithUninitializedProviderTypeFailsLogin()
     {
         var sink = new ThrowingSecurityEventSink();
         var registry = new Mock<IAuthenticationProviderRegistry>();
@@ -487,13 +487,38 @@ internal sealed class SecurityAuditEventTests
             AllowAuthenticationFactorRateLimiter.Instance,
             new AuthenticationPipelineDependencies(sink, new FakeTimeProvider(TestTime)));
 
-        var login = await pipeline.LoginAsync(context, assertion);
+        var exception = Assert.ThrowsAsync<AggregateException>(async () => await pipeline.LoginAsync(context, assertion));
 
-        Assert.That(login.Succeeded, Is.True);
+        Assert.That(exception?.InnerExceptions.Single().Message, Is.EqualTo("audit store unavailable"));
     }
 
     [Test]
-    public async Task AuditSinkOperationCanceledExceptionIsSwallowedWhenCancellationNotRequested()
+    public void AuditSinkExceptionAfterCredentialLifecycleDoesNotBecomeLifecycleFailure()
+    {
+        var sink = new FailsFirstSecurityEventSink();
+        var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sink);
+        var context = CreateContext();
+        var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
+        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((user, credential, credential, false));
+        providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+        credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
+
+        var exception = Assert.ThrowsAsync<AggregateException>(async () => await pipeline.LoginAsync(context, assertion));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception?.InnerExceptions.Single().Message, Is.EqualTo("first audit failed"));
+            Assert.That(sink.Events, Has.Count.EqualTo(1));
+            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.AuthenticationSucceeded));
+            Assert.That(sink.Events.Single().Properties, Is.Null);
+        }
+    }
+
+    [Test]
+    public void AuditSinkOperationCanceledExceptionFailsLoginWhenCancellationNotRequested()
     {
         var sinkMock = new Mock<ISecurityEventSink>();
         sinkMock.Setup(s => s.RecordAsync(It.IsAny<AshlarSecurityEvent>(), It.IsAny<CancellationToken>()))
@@ -509,9 +534,9 @@ internal sealed class SecurityAuditEventTests
         credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
             .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
 
-        var login = await pipeline.LoginAsync(context, assertion);
+        var exception = Assert.ThrowsAsync<OperationCanceledException>(async () => await pipeline.LoginAsync(context, assertion));
 
-        Assert.That(login.Succeeded, Is.True);
+        Assert.That(exception, Is.Not.Null);
     }
 
     [Test]
@@ -642,6 +667,25 @@ internal sealed class SecurityAuditEventTests
         public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
         {
             throw new InvalidOperationException("audit store unavailable");
+        }
+    }
+
+    private sealed class FailsFirstSecurityEventSink : ISecurityEventSink
+    {
+        private bool _failed;
+
+        public List<AshlarSecurityEvent> Events { get; } = [];
+
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            Events.Add(securityEvent);
+            if (_failed)
+            {
+                return Task.CompletedTask;
+            }
+
+            _failed = true;
+            throw new InvalidOperationException("first audit failed");
         }
     }
 }

@@ -26,7 +26,7 @@ services.AddAshlarPostgres(connectionString);
 // OR using an existing NpgsqlDataSource
 services.AddAshlarPostgres(myDataSource);
 
-// Register PostgreSQL-backed security audit persistence (Optional)
+// Register PostgreSQL-backed durable security audit persistence
 services.AddAshlarPostgresAuditSink();
 ```
 
@@ -36,7 +36,10 @@ For a typical application, combine this package with the core Ashlar services:
 services.AddAshlarIdentity();
 services.AddAshlarAuthorization();
 services.AddAshlarPostgres(connectionString);
+services.AddAshlarPostgresAuditSink();
 ```
+
+`AddAshlarPostgresAuditSink()` wires provider-backed `IPersistentSecurityEventSink` storage into Ashlar's security event fan-out. A successful `RecordAsync` call means the security event has been written to PostgreSQL; write failures are returned to the caller.
 
 ## Schema Management
 

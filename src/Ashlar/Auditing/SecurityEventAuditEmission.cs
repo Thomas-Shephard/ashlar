@@ -1,12 +1,12 @@
 namespace Ashlar.Auditing;
 
 /// <summary>
-/// Provides shared fail-open emission for audit events that follow a committed operation.
+/// Provides shared emission for audit events that follow a committed operation.
 /// </summary>
 public static class SecurityEventAuditEmission
 {
     /// <summary>
-    /// Records a security event for a completed operation without allowing audit sink failures to change the operation result.
+    /// Records a security event for a completed operation.
     /// </summary>
     /// <param name="sink">Sink that receives the event.</param>
     /// <param name="timeProvider">Clock used for the event timestamp.</param>
@@ -29,28 +29,17 @@ public static class SecurityEventAuditEmission
         ArgumentNullException.ThrowIfNull(audit);
         ArgumentNullException.ThrowIfNull(properties);
 
-        try
+        await sink.RecordAsync(new AshlarSecurityEvent
         {
-            await sink.RecordAsync(new AshlarSecurityEvent
-            {
-                Id = Guid.NewGuid(),
-                EventType = eventType,
-                OccurredAt = timeProvider.GetUtcNow(),
-                ActorUserId = audit.ActorUserId,
-                IpAddress = audit.IpAddress,
-                UserAgent = audit.UserAgent,
-                CorrelationId = audit.CorrelationId,
-                Outcome = SecurityEventOutcomes.Success,
-                Properties = properties
-            }, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            // Audit emission happens after the protected operation has completed and is intentionally fail-open.
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // Audit emission happens after the protected operation has completed and is intentionally fail-open.
-        }
+            Id = Guid.NewGuid(),
+            EventType = eventType,
+            OccurredAt = timeProvider.GetUtcNow(),
+            ActorUserId = audit.ActorUserId,
+            IpAddress = audit.IpAddress,
+            UserAgent = audit.UserAgent,
+            CorrelationId = audit.CorrelationId,
+            Outcome = SecurityEventOutcomes.Success,
+            Properties = properties
+        }, cancellationToken).ConfigureAwait(false);
     }
 }

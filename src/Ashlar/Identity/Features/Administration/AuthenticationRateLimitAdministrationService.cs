@@ -66,27 +66,24 @@ internal sealed class AuthenticationRateLimitAdministrationService(
             return validationFailure;
         }
 
+        AuthenticationRateLimitBucketResetResult result;
         try
         {
             var reset = await _repository.ResetBucketAsync(request, cancellationToken);
             var status = reset ? AuthenticationRateLimitBucketResetStatus.Reset : AuthenticationRateLimitBucketResetStatus.NotFound;
-            var result = new AuthenticationRateLimitBucketResetResult(request.BucketId, request.Purpose, status);
-
-            await RecordResetAttemptAsync(request, status, cancellationToken);
-
-            return Result.Success(result);
+            result = new AuthenticationRateLimitBucketResetResult(request.BucketId, request.Purpose, status);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            var result = new AuthenticationRateLimitBucketResetResult(
+            result = new AuthenticationRateLimitBucketResetResult(
                 request.BucketId,
                 request.Purpose,
                 AuthenticationRateLimitBucketResetStatus.Failed);
-
-            await RecordResetAttemptAsync(request, result.Status, cancellationToken);
-
-            return Result.Success(result);
         }
+
+        await RecordResetAttemptAsync(request, result.Status, cancellationToken);
+
+        return Result.Success(result);
     }
 
     private Task RecordResetAttemptAsync(

@@ -46,7 +46,7 @@ internal sealed class SecurityEventAuditEmissionTests
     }
 
     [Test]
-    public void RecordCompletedOperationAsyncSuppressesAuditSinkFailures()
+    public void RecordCompletedOperationAsyncPropagatesAuditSinkFailures()
     {
         var cancellationTokenSource = new CancellationTokenSource();
         var canceledBySink = new ThrowingSecurityEventSink(new OperationCanceledException());
@@ -55,14 +55,14 @@ internal sealed class SecurityEventAuditEmissionTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.DoesNotThrowAsync(() => SecurityEventAuditEmission.RecordCompletedOperationAsync(
+            Assert.ThrowsAsync<OperationCanceledException>(() => SecurityEventAuditEmission.RecordCompletedOperationAsync(
                 canceledBySink,
                 TimeProvider.System,
                 "event",
                 new AuditContext(),
                 new Dictionary<string, string>(),
                 CancellationToken.None));
-            Assert.DoesNotThrowAsync(() => SecurityEventAuditEmission.RecordCompletedOperationAsync(
+            Assert.ThrowsAsync<InvalidOperationException>(() => SecurityEventAuditEmission.RecordCompletedOperationAsync(
                 failedBySink,
                 TimeProvider.System,
                 "event",

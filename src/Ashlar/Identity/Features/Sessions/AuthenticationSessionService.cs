@@ -39,7 +39,7 @@ internal sealed class AuthenticationSessionService(
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly AuthenticationSessionOptions _options = ValidateOptions(dependencies.Options ?? new AuthenticationSessionOptions());
     private readonly TimeProvider _timeProvider = dependencies.TimeProvider ?? TimeProvider.System;
-    private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider ?? TimeProvider.System, dependencies.LoggerFactory);
+    private readonly SecurityEventEmitter _securityEvents = new(dependencies.SecurityEventSink, dependencies.TimeProvider ?? TimeProvider.System);
     private readonly ILogger<AuthenticationSessionService> _logger = logger ?? dependencies.Logger ?? NullLogger<AuthenticationSessionService>.Instance;
     private readonly IUserRepository _userRepository = dependencies.UserRepository ?? throw new ArgumentNullException($"{nameof(dependencies)}.{nameof(dependencies.UserRepository)}");
     private readonly SecurityNotificationEmitter _notifications = new(dependencies.NotificationService);
@@ -712,5 +712,4 @@ internal sealed record AuthenticationSessionServiceDependencies(
     TimeProvider? TimeProvider = null,
     ISecurityEventSink? SecurityEventSink = null,
     ISecurityNotificationService? NotificationService = null,
-    ILogger<AuthenticationSessionService>? Logger = null,
-    ILoggerFactory? LoggerFactory = null);
+    ILogger<AuthenticationSessionService>? Logger = null);

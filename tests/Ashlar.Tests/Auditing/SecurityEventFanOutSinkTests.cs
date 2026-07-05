@@ -71,39 +71,56 @@ internal sealed class SecurityEventFanOutSinkTests
     }
 
     [Test]
-    public async Task RecordAsyncLogsPersistentSinkFailureAndContinuesToHandlers()
+    public void RecordAsyncPropagatesPersistentSinkFailureAndSkipsHandlers()
     {
         var logger = new RecordingLogger<SecurityEventFanOutSink>();
         var handler = new RecordingHandler();
         var securityEvent = CreateEvent();
+        var expected = new InvalidOperationException("persistent failed");
         var sink = new SecurityEventFanOutSink(
-            new ThrowingPersistentSink(new InvalidOperationException("persistent failed")),
+            new ThrowingPersistentSink(expected),
             [handler],
             logger);
 
-        await sink.RecordAsync(securityEvent);
+        var exception = Assert.ThrowsAsync<InvalidOperationException>(async () => await sink.RecordAsync(securityEvent));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(handler.Events, Is.EqualTo(new[] { securityEvent }));
-            Assert.That(logger.Entries, Has.Count.EqualTo(1));
-            Assert.That(logger.Entries[0].Message, Does.Contain("Persistent security event sink failed"));
-            Assert.That(logger.Entries[0].Exception, Is.TypeOf<InvalidOperationException>());
+            Assert.That(exception, Is.SameAs(expected));
+            Assert.That(handler.Events, Is.Empty);
+            Assert.That(logger.Entries, Is.Empty);
         }
     }
 
     [Test]
-    public async Task RecordAsyncLogsPersistentSinkFailureForNullProvider()
+    public async Task RecordAsyncLogsHandlerFailureForNullProvider()
     {
         var logger = new RecordingLogger<SecurityEventFanOutSink>();
         var securityEvent = CreateEventWithNullProvider();
-        var sink = new SecurityEventFanOutSink(
-            new ThrowingPersistentSink(new InvalidOperationException("persistent failed")),
-            logger: logger);
+        var sink = new SecurityEventFanOutSink(handlers: [new ThrowingHandler(new InvalidOperationException("handler failed"))], logger: logger);
 
         await sink.RecordAsync(securityEvent);
 
         Assert.That(logger.Entries.Single().Message, Does.Contain("ProviderName=(null)"));
+    }
+
+    [Test]
+    public void RecordAsyncPropagatesPersistentSinkFailureForNullProvider()
+    {
+        var logger = new RecordingLogger<SecurityEventFanOutSink>();
+        var securityEvent = CreateEventWithNullProvider();
+        var expected = new InvalidOperationException("persistent failed");
+        var sink = new SecurityEventFanOutSink(
+            new ThrowingPersistentSink(expected),
+            logger: logger);
+
+        var exception = Assert.ThrowsAsync<InvalidOperationException>(async () => await sink.RecordAsync(securityEvent));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception, Is.SameAs(expected));
+            Assert.That(logger.Entries, Is.Empty);
+        }
     }
 
     [Test]
