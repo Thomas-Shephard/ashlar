@@ -151,7 +151,7 @@ internal sealed class SqliteSecurityEventSinkTests : SqliteTestBase
         await sink.RecordAsync(new AshlarSecurityEvent { Id = Guid.NewGuid(), EventType = "RolledBack", OccurredAt = DateTimeOffset.UtcNow });
         await transaction.RollbackAsync();
 
-        Assert.That(await CountEventsByTypeAsync("RolledBack"), Is.EqualTo(0));
+        Assert.That(await CountEventsByTypeAsync("RolledBack"), Is.Zero);
     }
 
     [Test]

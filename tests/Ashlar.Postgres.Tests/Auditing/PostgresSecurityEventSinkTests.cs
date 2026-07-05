@@ -195,7 +195,7 @@ internal sealed class PostgresSecurityEventSinkTests : PostgresTestBase
 
         await using var connection = await GetDataSource().OpenConnectionAsync();
         var count = await connection.ExecuteScalarAsync<int>("SELECT count(*) FROM ashlar_security_events WHERE event_type = 'RolledBack'");
-        Assert.That(count, Is.EqualTo(0));
+        Assert.That(count, Is.Zero);
     }
 
     [Test]

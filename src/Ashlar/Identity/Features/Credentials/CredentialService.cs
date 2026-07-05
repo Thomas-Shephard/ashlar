@@ -254,7 +254,7 @@ internal sealed class CredentialService(
         CredentialUsageUpdateResult updated;
         if (result.IsCredentialConsumed)
         {
-            updated = await ConsumeAndRecordAsync(unprotectedCredential, originalCredential, transaction, cancellationToken);
+            updated = await ConsumeAndRecordAsync(unprotectedCredential, originalCredential, cancellationToken);
         }
         else
         {
@@ -327,14 +327,12 @@ internal sealed class CredentialService(
             result,
             providerRequestedUpdateAttempted,
             providerRequestedUpdateCanPersist,
-            transaction,
             cancellationToken);
     }
 
     private async Task<CredentialUsageUpdateResult> ConsumeAndRecordAsync(
         UserCredential unprotectedCredential,
         UserCredential? originalCredential,
-        IAshlarTransaction transaction,
         CancellationToken cancellationToken)
     {
         var consumed = await _credentialRepository.ConsumeCredentialAsync(unprotectedCredential.Id, GetExpectedVersion(unprotectedCredential, originalCredential), cancellationToken);
@@ -360,7 +358,6 @@ internal sealed class CredentialService(
         AuthenticationResult result,
         bool providerRequestedUpdateAttempted,
         bool providerRequestedUpdateCanPersist,
-        IAshlarTransaction transaction,
         CancellationToken cancellationToken)
     {
         var (succeeded, persisted) = await PersistUpdateAsync(unprotectedCredential, originalCredential, result, cancellationToken);
