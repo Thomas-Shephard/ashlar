@@ -258,7 +258,7 @@ internal sealed class CredentialService(
         }
         else
         {
-            updated = await PerformUpdateAsync(unprotectedCredential, originalCredential, result, provider, transaction, cancellationToken);
+            updated = await PerformUpdateAsync(unprotectedCredential, originalCredential, result, provider, cancellationToken);
         }
 
         await transaction.CommitAsync(cancellationToken);
@@ -271,7 +271,6 @@ internal sealed class CredentialService(
         UserCredential? originalCredential,
         AuthenticationResult result,
         IAuthenticationProvider provider,
-        IAshlarTransaction transaction,
         CancellationToken cancellationToken)
     {
         var metadataChanged = result.NewMetadata != null && result.NewMetadata != unprotectedCredential.Metadata;
