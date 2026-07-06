@@ -209,23 +209,17 @@ internal sealed class ExternalAccountCredentialLinkerTests
         public Guid? TenantId { get; private set; }
 
         public Task<Result> LinkCredentialAsync(
-            Guid userId,
-            IAuthenticationAssertion assertion,
-            IAuthenticationProvider provider,
-            string? credentialValue,
-            string? credentialMetadata,
-            AuditContext? audit,
-            Guid? tenantId,
+            CredentialLinkInfrastructureRequest request,
             CancellationToken cancellationToken)
         {
             Calls++;
-            UserId = userId;
-            Assertion = assertion;
-            Provider = provider;
-            CredentialValue = credentialValue;
-            CredentialMetadata = credentialMetadata;
-            Audit = audit;
-            TenantId = tenantId;
+            UserId = request.UserId;
+            Assertion = request.Assertion;
+            Provider = request.Provider;
+            CredentialValue = request.CredentialValue;
+            CredentialMetadata = request.CredentialMetadata;
+            Audit = request.Audit;
+            TenantId = request.TenantId;
             return Task.FromResult(Result.Success());
         }
     }

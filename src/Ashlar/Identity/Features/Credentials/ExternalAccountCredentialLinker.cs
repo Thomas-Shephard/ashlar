@@ -50,13 +50,14 @@ internal sealed class ExternalAccountCredentialLinker(
         }
 
         return await _credentialLinking.LinkCredentialAsync(
-            request.CurrentUserId,
-            request.Assertion,
-            request.Provider,
-            credentialValue: null,
-            credentialMetadata: request.CredentialMetadata,
-            audit: request.Audit,
-            tenantId: request.Tenant.TenantId,
+            new CredentialLinkInfrastructureRequest(
+                request.CurrentUserId,
+                request.Assertion,
+                request.Provider,
+                CredentialValue: null,
+                request.CredentialMetadata,
+                request.Audit,
+                request.Tenant.TenantId),
             cancellationToken: cancellationToken);
     }
 }
@@ -64,12 +65,15 @@ internal sealed class ExternalAccountCredentialLinker(
 internal interface ICredentialLinkingInfrastructure
 {
     Task<Result> LinkCredentialAsync(
-        Guid userId,
-        IAuthenticationAssertion assertion,
-        IAuthenticationProvider provider,
-        string? credentialValue,
-        string? credentialMetadata,
-        AuditContext? audit,
-        Guid? tenantId,
+        CredentialLinkInfrastructureRequest request,
         CancellationToken cancellationToken);
 }
+
+internal sealed record CredentialLinkInfrastructureRequest(
+    Guid UserId,
+    IAuthenticationAssertion Assertion,
+    IAuthenticationProvider Provider,
+    string? CredentialValue,
+    string? CredentialMetadata,
+    AuditContext? Audit,
+    Guid? TenantId);

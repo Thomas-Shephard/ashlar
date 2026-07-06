@@ -108,6 +108,39 @@ internal sealed class CredentialServiceTests
     }
 
     [Test]
+    public async Task InfrastructureLinkCredentialAsyncShouldForwardAuditAndTenant()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var user = new User { Id = userId, DisplayEmail = "test@example.com" };
+        var assertionMock = new Mock<IAuthenticationAssertion>();
+        assertionMock.Setup(a => a.ProviderIdentity).Returns(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
+        var providerMock = new Mock<IAuthenticationProvider>();
+        providerMock.SetupGet(p => p.Key).Returns(new AuthenticationProviderKey(ProviderType.Oidc, "Google"));
+        providerMock.Setup(p => p.GetProviderKey(assertionMock.Object, userId)).Returns("new-key");
+        var audit = new AuditContext(userId, "127.0.0.1", "NUnit", "corr");
+        var sink = new Mock<ISecurityEventSink>();
+        var service = CreateService(sink.Object);
+
+        _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "new-key", It.IsAny<CancellationToken>())).ReturnsAsync((IUser?)null);
+
+        var result = await ((ICredentialLinkingInfrastructure)service).LinkCredentialAsync(
+            new CredentialLinkInfrastructureRequest(userId, assertionMock.Object, providerMock.Object, CredentialValue: null, CredentialMetadata: null, audit, tenantId),
+            CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            sink.Verify(s => s.RecordAsync(It.Is<AshlarSecurityEvent>(e =>
+                e.EventType == AshlarSecurityEventTypes.CredentialLinked &&
+                e.ActorUserId == userId &&
+                e.TenantId == tenantId &&
+                e.CorrelationId == "corr"), It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Test]
     public async Task ResolveAsyncShouldUseClockForExpiryCheck()
     {
         var testTime = new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.Zero);

@@ -12,13 +12,18 @@ internal sealed class IdentityService(
     : IIdentityService
 {
     private readonly IUserRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
-    private readonly ICredentialService _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
     private readonly IAuthenticationProviderRegistry _providerRegistry = providerRegistry ?? throw new ArgumentNullException(nameof(providerRegistry));
-    private readonly IAuthenticationPipeline _authenticationPipeline = authenticationPipeline ?? throw new ArgumentNullException(nameof(authenticationPipeline));
+    private readonly IAuthenticationPipeline _authenticationPipeline = ValidateCredentialService(credentialService, authenticationPipeline);
     private readonly IAshlarTransactionProvider _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
     private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider);
 
     public IEnumerable<AuthenticationProviderKey> SupportedProviderKeys => _providerRegistry.SupportedProviderKeys;
+
+    private static IAuthenticationPipeline ValidateCredentialService(ICredentialService credentialService, IAuthenticationPipeline authenticationPipeline)
+    {
+        ArgumentNullException.ThrowIfNull(credentialService);
+        return authenticationPipeline ?? throw new ArgumentNullException(nameof(authenticationPipeline));
+    }
 
     public async Task<IUser?> FindByEmailAsync(string email, Guid? tenantId = null, CancellationToken cancellationToken = default)
     {

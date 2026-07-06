@@ -101,16 +101,18 @@ public sealed class AshlarExternalAccountLinkService
         }
 
         return await LinkValidatedExternalAccountCoreAsync(
-            currentUserId,
-            new AshlarValidatedExternalPrincipal(provider, result.Principal),
-            tenant,
-            freshMfaProof,
-            currentSessionId,
-            new AuditContext(
+            new ExternalAccountLinkCoreRequest(
                 currentUserId,
-                httpContext.Connection.RemoteIpAddress?.ToString(),
-                httpContext.Request.Headers.UserAgent.ToString(),
-                httpContext.TraceIdentifier),
+                new AshlarValidatedExternalPrincipal(provider, result.Principal),
+                tenant,
+                freshMfaProof,
+                currentSessionId,
+                new AuditContext(
+                    currentUserId,
+                    httpContext.Connection.RemoteIpAddress?.ToString(),
+                    httpContext.Request.Headers.UserAgent.ToString(),
+                    httpContext.TraceIdentifier),
+                CredentialMetadata: null),
             cancellationToken: cancellationToken);
     }
 
@@ -147,13 +149,14 @@ public sealed class AshlarExternalAccountLinkService
         }
 
         return await LinkValidatedExternalAccountCoreAsync(
-            currentUserId,
-            new AshlarValidatedExternalPrincipal(provider, request.AuthenticateResult.Principal),
-            request.Tenant,
-            request.FreshMfaProof,
-            request.CurrentSessionId,
-            request.Audit,
-            request.CredentialMetadata,
+            new ExternalAccountLinkCoreRequest(
+                currentUserId,
+                new AshlarValidatedExternalPrincipal(provider, request.AuthenticateResult.Principal),
+                request.Tenant,
+                request.FreshMfaProof,
+                request.CurrentSessionId,
+                request.Audit,
+                request.CredentialMetadata),
             cancellationToken);
     }
 
@@ -167,15 +170,10 @@ public sealed class AshlarExternalAccountLinkService
     }
 
     private async Task<AshlarExternalAccountLinkResult> LinkValidatedExternalAccountCoreAsync(
-        Guid currentUserId,
-        AshlarValidatedExternalPrincipal principal,
-        TenantContext tenant,
-        FreshMfaVerificationProof? freshMfaProof,
-        Guid? currentSessionId,
-        AuditContext? audit = null,
-        string? credentialMetadata = null,
+        ExternalAccountLinkCoreRequest request,
         CancellationToken cancellationToken = default)
     {
+        var (currentUserId, principal, tenant, freshMfaProof, currentSessionId, audit, credentialMetadata) = request;
         ArgumentNullException.ThrowIfNull(principal);
 
         ExternalIdentityAssertion assertion;
@@ -354,4 +352,12 @@ public sealed class AshlarExternalAccountLinkService
             : AshlarExternalAccountUnlinkStatus.Failed;
     }
 
+    private sealed record ExternalAccountLinkCoreRequest(
+        Guid CurrentUserId,
+        AshlarValidatedExternalPrincipal Principal,
+        TenantContext Tenant,
+        FreshMfaVerificationProof? FreshMfaProof,
+        Guid? CurrentSessionId,
+        AuditContext? Audit,
+        string? CredentialMetadata);
 }

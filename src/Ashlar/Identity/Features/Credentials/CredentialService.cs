@@ -520,36 +520,23 @@ internal sealed class CredentialService(
 
     public async Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue = null, string? credentialMetadata = null, CancellationToken cancellationToken = default)
     {
-        return await LinkCredentialCoreAsync(userId, assertion, provider, credentialValue, credentialMetadata, audit: null, tenantId: null, cancellationToken);
+        return await LinkCredentialCoreAsync(new CredentialLinkInfrastructureRequest(userId, assertion, provider, credentialValue, credentialMetadata, Audit: null, TenantId: null), cancellationToken);
     }
 
     async Task<Result> ICredentialLinkingInfrastructure.LinkCredentialAsync(
-        Guid userId,
-        IAuthenticationAssertion assertion,
-        IAuthenticationProvider provider,
-        string? credentialValue,
-        string? credentialMetadata,
-        AuditContext? audit,
-        Guid? tenantId,
+        CredentialLinkInfrastructureRequest request,
         CancellationToken cancellationToken)
     {
-        return await LinkCredentialCoreAsync(userId, assertion, provider, credentialValue, credentialMetadata, audit, tenantId, cancellationToken);
+        return await LinkCredentialCoreAsync(request, cancellationToken);
     }
 
-    private async Task<Result> LinkCredentialCoreAsync(
-        Guid userId,
-        IAuthenticationAssertion assertion,
-        IAuthenticationProvider provider,
-        string? credentialValue,
-        string? credentialMetadata,
-        AuditContext? audit,
-        Guid? tenantId,
-        CancellationToken cancellationToken)
+    private async Task<Result> LinkCredentialCoreAsync(CredentialLinkInfrastructureRequest request, CancellationToken cancellationToken)
     {
+        var (userId, assertion, provider, credentialValue, credentialMetadata, audit, tenantId) = request;
         ArgumentNullException.ThrowIfNull(assertion);
         ArgumentNullException.ThrowIfNull(provider);
 
-        if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(request));
 
         var providerKeyIdentity = provider.Key;
         var providerName = providerKeyIdentity.Name;

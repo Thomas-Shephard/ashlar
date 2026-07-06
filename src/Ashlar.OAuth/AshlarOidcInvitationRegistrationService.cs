@@ -297,20 +297,6 @@ public sealed class AshlarOidcInvitationRegistrationService
         CancellationToken cancellationToken)
     {
         var providerKey = provider.GetProviderKey(assertion, userId);
-        if (string.IsNullOrWhiteSpace(providerKey))
-        {
-            await RecordCredentialLinkedAsync(
-                userId,
-                tenantId,
-                context,
-                provider.Key,
-                SecurityEventOutcomes.Failure,
-                AshlarFailureCodes.InvalidProviderKey.Value,
-                credentialId: null,
-                cancellationToken);
-            return Result.Failure(AshlarFailureCodes.InvalidProviderKey);
-        }
-
         var credentialId = Guid.NewGuid();
         try
         {
@@ -323,13 +309,7 @@ public sealed class AshlarOidcInvitationRegistrationService
             if (existingCredential != null)
             {
                 await RecordCredentialLinkedAsync(
-                    userId,
-                    tenantId,
-                    context,
-                    provider.Key,
-                    SecurityEventOutcomes.Failure,
-                    AshlarFailureCodes.AlreadyLinkedToSelf.Value,
-                    credentialId: null,
+                    new OidcCredentialLinkedAudit(userId, tenantId, context, provider.Key, SecurityEventOutcomes.Failure, AshlarFailureCodes.AlreadyLinkedToSelf.Value, CredentialId: null),
                     cancellationToken);
                 return Result.Failure(AshlarFailureCodes.AlreadyLinkedToSelf);
             }
@@ -346,40 +326,20 @@ public sealed class AshlarOidcInvitationRegistrationService
                 Status = CredentialStatus.Active
             }, cancellationToken);
             await RecordCredentialLinkedAsync(
-                userId,
-                tenantId,
-                context,
-                provider.Key,
-                SecurityEventOutcomes.Success,
-                failureReason: null,
-                credentialId,
+                new OidcCredentialLinkedAudit(userId, tenantId, context, provider.Key, SecurityEventOutcomes.Success, FailureReason: null, CredentialId: credentialId),
                 cancellationToken);
             return Result.Success();
         }
         catch (CredentialProviderKeyConflictException)
         {
             await RecordCredentialLinkedAsync(
-                userId,
-                tenantId,
-                context,
-                provider.Key,
-                SecurityEventOutcomes.Failure,
-                AshlarFailureCodes.AlreadyLinkedToOther.Value,
-                credentialId: null,
+                new OidcCredentialLinkedAudit(userId, tenantId, context, provider.Key, SecurityEventOutcomes.Failure, AshlarFailureCodes.AlreadyLinkedToOther.Value, CredentialId: null),
                 cancellationToken);
             return Result.Failure(AshlarFailureCodes.AlreadyLinkedToOther);
         }
     }
 
-    private async Task RecordCredentialLinkedAsync(
-        Guid userId,
-        Guid? tenantId,
-        AuthenticationContext? context,
-        AuthenticationProviderKey provider,
-        string outcome,
-        string? failureReason,
-        Guid? credentialId,
-        CancellationToken cancellationToken)
+    private async Task RecordCredentialLinkedAsync(OidcCredentialLinkedAudit audit, CancellationToken cancellationToken)
     {
         if (_securityEventSink == null)
         {
@@ -391,17 +351,17 @@ public sealed class AshlarOidcInvitationRegistrationService
             Id = Guid.NewGuid(),
             EventType = AshlarSecurityEventTypes.CredentialLinked,
             OccurredAt = _timeProvider.GetUtcNow(),
-            UserId = userId,
-            TenantId = tenantId ?? context?.TenantId,
-            ActorUserId = context?.UserId,
-            Provider = provider,
-            IpAddress = context?.IpAddress,
-            UserAgent = context?.UserAgent,
-            CorrelationId = context?.CorrelationId,
-            Outcome = outcome,
-            FailureReason = failureReason,
-            Properties = credentialId.HasValue
-                ? new Dictionary<string, string> { ["credential_id"] = credentialId.Value.ToString() }
+            UserId = audit.UserId,
+            TenantId = audit.TenantId ?? audit.Context?.TenantId,
+            ActorUserId = audit.Context?.UserId,
+            Provider = audit.Provider,
+            IpAddress = audit.Context?.IpAddress,
+            UserAgent = audit.Context?.UserAgent,
+            CorrelationId = audit.Context?.CorrelationId,
+            Outcome = audit.Outcome,
+            FailureReason = audit.FailureReason,
+            Properties = audit.CredentialId.HasValue
+                ? new Dictionary<string, string> { ["credential_id"] = audit.CredentialId.Value.ToString() }
                 : null
         }, cancellationToken);
     }
@@ -444,7 +404,6 @@ public sealed class AshlarOidcInvitationRegistrationService
         {
             AshlarFailureCodes.AlreadyLinkedToSelfValue => AshlarOidcInvitationRegistrationStatus.AlreadyLinked,
             AshlarFailureCodes.AlreadyLinkedToOtherValue => AshlarOidcInvitationRegistrationStatus.AlreadyLinkedToAnotherUser,
-            AshlarFailureCodes.InvalidProviderKeyValue => AshlarOidcInvitationRegistrationStatus.InvalidPrincipal,
             _ => AshlarOidcInvitationRegistrationStatus.LinkFailed
         };
     }
@@ -457,4 +416,13 @@ public sealed class AshlarOidcInvitationRegistrationService
             provider.SchemeName,
             provider.ProviderKeyMode);
     }
+
+    private sealed record OidcCredentialLinkedAudit(
+        Guid UserId,
+        Guid? TenantId,
+        AuthenticationContext? Context,
+        AuthenticationProviderKey Provider,
+        string Outcome,
+        string? FailureReason,
+        Guid? CredentialId);
 }

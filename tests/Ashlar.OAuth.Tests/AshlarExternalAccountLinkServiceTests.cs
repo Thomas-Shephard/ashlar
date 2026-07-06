@@ -837,6 +837,29 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     [Test]
+    public async Task CompleteExternalLinkShouldLinkMatchingTicket()
+    {
+        var userId = Guid.NewGuid();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
+        credentialService
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.Is<ExternalAccountCredentialLinkRequest>(r => r.CurrentUserId == userId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        var authService = new TestAuthenticationService(AuthenticateResult.Success(new AuthenticationTicket(
+            CreatePrincipal("sub"),
+            CreateProperties("Google", "Google"),
+            "Ashlar.OAuth.External")));
+        var service = CreateService(credentialService.Object);
+
+        var result = await service.CompleteWithFreshProofAsync(CreateHttpContext(authService), userId, "Google", TenantContext.Global);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
+            Assert.That(authService.SignOutCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task CompleteExternalLinkShouldReturnAuthenticationFailedWhenTicketMissing()
     {
         var service = CreateService();
