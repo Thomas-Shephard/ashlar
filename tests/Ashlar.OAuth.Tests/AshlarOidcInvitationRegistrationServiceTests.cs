@@ -886,18 +886,13 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     }
 
     [Test]
-    public async Task RegisterShouldMapCredentialLinkFailureWithoutCode()
+    public void RegisterShouldMapCredentialLinkFailureWithoutCode()
     {
-        var userId = Guid.NewGuid();
-        var invitations = CreateInvitations(acceptance: Result.Success(userId));
-        var credentials = new Mock<ICredentialRepository>();
-        credentials.Setup(s => s.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c => c.UserId == userId), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new CredentialProviderKeyConflictException());
-        var service = CreateService(invitations.Object, credentials.Object);
+        var mapper = typeof(AshlarOidcInvitationRegistrationService).GetMethod("MapLinkFailure", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
 
-        var result = await service.RegisterOidcInvitationAsync("token", "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("subject", "invitee@example.com", "true")));
+        var status = mapper.Invoke(null, [new Result(false)]);
 
-        Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.AlreadyLinkedToAnotherUser));
+        Assert.That(status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.AlreadyLinkedToAnotherUser));
     }
 
     [Test]

@@ -840,22 +840,27 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task CompleteExternalLinkShouldLinkMatchingTicket()
     {
         var userId = Guid.NewGuid();
+        AuditContext? observedAudit = null;
         var credentialService = new Mock<IExternalAccountCredentialLinker>();
         credentialService
             .Setup(s => s.LinkExternalAccountCredentialAsync(It.Is<ExternalAccountCredentialLinkRequest>(r => r.CurrentUserId == userId), It.IsAny<CancellationToken>()))
+            .Callback<ExternalAccountCredentialLinkRequest, CancellationToken>((request, _) => observedAudit = request.Audit)
             .ReturnsAsync(Result.Success());
         var authService = new TestAuthenticationService(AuthenticateResult.Success(new AuthenticationTicket(
             CreatePrincipal("sub"),
             CreateProperties("Google", "Google"),
             "Ashlar.OAuth.External")));
         var service = CreateService(credentialService.Object);
+        var httpContext = CreateHttpContext(authService);
+        httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("203.0.113.20");
 
-        var result = await service.CompleteWithFreshProofAsync(CreateHttpContext(authService), userId, "Google", TenantContext.Global);
+        var result = await service.CompleteWithFreshProofAsync(httpContext, userId, "Google", TenantContext.Global);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
             Assert.That(authService.SignOutCount, Is.EqualTo(1));
+            Assert.That(observedAudit?.IpAddress, Is.EqualTo("203.0.113.20"));
         }
     }
 

@@ -352,7 +352,7 @@ public sealed class AshlarOidcInvitationRegistrationService
             EventType = AshlarSecurityEventTypes.CredentialLinked,
             OccurredAt = _timeProvider.GetUtcNow(),
             UserId = audit.UserId,
-            TenantId = audit.TenantId ?? audit.Context?.TenantId,
+            TenantId = audit.TenantId,
             ActorUserId = audit.Context?.UserId,
             Provider = audit.Provider,
             IpAddress = audit.Context?.IpAddress,
@@ -400,7 +400,7 @@ public sealed class AshlarOidcInvitationRegistrationService
 
     private static AshlarOidcInvitationRegistrationStatus MapLinkFailure(Result result)
     {
-        return result.FailureCode?.Value == AshlarFailureCodes.AlreadyLinkedToSelfValue
+        return result.FailureCode == AshlarFailureCodes.AlreadyLinkedToSelf
             ? AshlarOidcInvitationRegistrationStatus.AlreadyLinked
             : AshlarOidcInvitationRegistrationStatus.AlreadyLinkedToAnotherUser;
     }
