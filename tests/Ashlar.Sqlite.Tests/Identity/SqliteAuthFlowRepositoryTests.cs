@@ -119,6 +119,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
     {
         var user = await CreateUserAsync();
         var otherUser = await CreateUserAsync();
+        var directRevokeUser = await CreateUserAsync();
         var repository = GetSessionRepository();
         var active = CreateSession(user.Id);
         active.AuthenticatedAt = active.CreatedAt.AddMinutes(1);
@@ -129,13 +130,15 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         active.Metadata = """{"device":"laptop"}""";
         var revoked = CreateSession(user.Id);
         var expired = CreateSession(user.Id, expiresAt: DateTimeOffset.UtcNow.AddMinutes(-1));
+        var directRevoke = CreateSession(directRevokeUser.Id);
         var other = CreateSession(otherUser.Id);
         await repository.CreateSessionAsync(active);
         await repository.CreateSessionAsync(revoked);
         await repository.CreateSessionAsync(expired);
+        await repository.CreateSessionAsync(directRevoke);
         await repository.CreateSessionAsync(other);
         await repository.RevokeSessionByIdAsync(revoked.Id, revoked.UserId, DateTimeOffset.UtcNow, "manual", tenant: null, includeAllTenants: true);
-        var directlyRevoked = await ((SqliteAuthenticationSessionRepository)repository).RevokeSessionAsync(expired.Id, DateTimeOffset.UtcNow, "manual");
+        var directlyRevoked = await ((SqliteAuthenticationSessionRepository)repository).RevokeSessionAsync(directRevoke.Id, DateTimeOffset.UtcNow, "manual");
 
         var fetched = await repository.GetSessionByTokenHashAsync(active.TokenHash);
         var fetchedById = await repository.GetSessionAsync(active.Id);
