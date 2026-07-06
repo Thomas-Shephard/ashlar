@@ -69,32 +69,20 @@ public interface IAuthenticationSessionRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Revokes a single authentication session.
-    /// </summary>
-    /// <param name="sessionId">Identifier of the session to revoke.</param>
-    /// <param name="revokedAt">UTC time to record for revocation.</param>
-    /// <param name="reason">Optional provider-neutral, display-safe revocation reason.</param>
-    /// <param name="cancellationToken">A token that can cancel revocation.</param>
-    /// <returns><see langword="true" /> when the session was revoked.</returns>
-    /// <remarks>
-    /// Implementations should preserve the first revocation timestamp and reason when a session is revoked more than once.
-    /// </remarks>
-    Task<bool> RevokeSessionAsync(Guid sessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Revokes all currently unrevoked sessions for a user.
     /// </summary>
     /// <param name="userId">Owner whose sessions should be revoked.</param>
     /// <param name="revokedAt">UTC time to record for revocation.</param>
-    /// <param name="reason">Optional provider-neutral, display-safe revocation reason.</param>
-    /// <param name="tenant">Tenant scope to revoke within, or <see langword="null" /> for unrestricted revocation across all tenant scopes.</param>
+    /// <param name="reason">Provider-neutral, display-safe revocation reason, or <see langword="null" /> when there is no display-safe reason.</param>
+    /// <param name="tenant">Tenant scope to revoke within. Use <see cref="TenantContext.Global" /> for global sessions; leave <see langword="null" /> only when <paramref name="includeAllTenants" /> is enabled.</param>
+    /// <param name="includeAllTenants">Whether to revoke across all tenant scopes. Cannot be combined with <paramref name="tenant" />.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>
     /// <returns>The number of sessions newly revoked.</returns>
     /// <remarks>
     /// Implementations should not overwrite revocation data for sessions that were already revoked.
-    /// A <see langword="null" /> tenant means unrestricted; an explicit <see cref="TenantContext.Global" /> means global sessions only.
+    /// Callers must choose an explicit tenant scope, <see cref="TenantContext.Global" />, or <paramref name="includeAllTenants" /> for deliberate unrestricted revocation.
     /// </remarks>
-    Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default);
+    Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason, TenantContext? tenant, bool includeAllTenants, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Lists sessions for a user.
@@ -112,11 +100,12 @@ public interface IAuthenticationSessionRepository
     /// <param name="sessionId">Identifier of the session to revoke.</param>
     /// <param name="userId">Owner that the session must belong to.</param>
     /// <param name="revokedAt">UTC time to record for revocation.</param>
-    /// <param name="reason">Optional provider-neutral, display-safe revocation reason.</param>
-    /// <param name="tenant">Tenant scope the session must belong to, or <see langword="null" /> for unrestricted lookup across all tenant scopes.</param>
+    /// <param name="reason">Provider-neutral, display-safe revocation reason, or <see langword="null" /> when there is no display-safe reason.</param>
+    /// <param name="tenant">Tenant scope the session must belong to. Use <see cref="TenantContext.Global" /> for global sessions; leave <see langword="null" /> only when <paramref name="includeAllTenants" /> is enabled.</param>
+    /// <param name="includeAllTenants">Whether to allow lookup across all tenant scopes. Cannot be combined with <paramref name="tenant" />.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>
     /// <returns><see langword="true" /> when the owned session was revoked.</returns>
-    Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default);
+    Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason, TenantContext? tenant, bool includeAllTenants, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Revokes all currently unrevoked sessions for a user except the specified session.
@@ -124,9 +113,10 @@ public interface IAuthenticationSessionRepository
     /// <param name="userId">Owner whose other sessions should be revoked.</param>
     /// <param name="excludedSessionId">Session identifier that must remain active.</param>
     /// <param name="revokedAt">UTC time to record for revocation.</param>
-    /// <param name="reason">Optional provider-neutral, display-safe revocation reason.</param>
-    /// <param name="tenant">Tenant scope to revoke within, or <see langword="null" /> for unrestricted revocation across all tenant scopes.</param>
+    /// <param name="reason">Provider-neutral, display-safe revocation reason, or <see langword="null" /> when there is no display-safe reason.</param>
+    /// <param name="tenant">Tenant scope to revoke within. Use <see cref="TenantContext.Global" /> for global sessions; leave <see langword="null" /> only when <paramref name="includeAllTenants" /> is enabled.</param>
+    /// <param name="includeAllTenants">Whether to revoke across all tenant scopes. Cannot be combined with <paramref name="tenant" />.</param>
     /// <param name="cancellationToken">A token that can cancel revocation.</param>
     /// <returns>The number of other sessions newly revoked.</returns>
-    Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default);
+    Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason, TenantContext? tenant, bool includeAllTenants, CancellationToken cancellationToken = default);
 }

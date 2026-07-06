@@ -245,6 +245,8 @@ internal sealed class EmailChangeServiceTests
             Assert.That(updatedUser.DisplayEmail, Is.EqualTo("New.User@Example.COM"));
             Assert.That(updatedUser.EmailVerifiedAt, Is.Not.Null);
             Assert.That(fixture.SessionRepository.RevokedUserId, Is.EqualTo(user.Id));
+            Assert.That(fixture.SessionRepository.RevokedTenant?.TenantId, Is.EqualTo(tenantId));
+            Assert.That(fixture.SessionRepository.RevokedIncludeAllTenants, Is.False);
             Assert.That(securityEvent.TenantId, Is.EqualTo(tenantId));
         }
     }
@@ -670,9 +672,13 @@ internal sealed class EmailChangeServiceTests
     private sealed class StubSessionRepository : IAuthenticationSessionRepository
     {
         public Guid? RevokedUserId { get; private set; }
-        public Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
+        public TenantContext? RevokedTenant { get; private set; }
+        public bool RevokedIncludeAllTenants { get; private set; }
+        public Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason, TenantContext? tenant, bool includeAllTenants, CancellationToken cancellationToken = default)
         {
             RevokedUserId = userId;
+            RevokedTenant = tenant;
+            RevokedIncludeAllTenants = includeAllTenants;
             return Task.FromResult(1);
         }
 
@@ -681,10 +687,9 @@ internal sealed class EmailChangeServiceTests
         public Task<AuthenticationSession?> GetSessionAsync(Guid sessionId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<bool> UpdateSessionLastSeenAsync(Guid sessionId, DateTimeOffset lastSeenAt, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<AuthenticationSession?> MarkStepUpVerifiedAsync(Guid sessionId, Guid userId, DateTimeOffset verifiedAt, AuthenticationProviderKey verifiedProvider, string verifiedFactor, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<bool> RevokeSessionAsync(Guid sessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<IReadOnlyList<AuthenticationSession>> ListSessionsForUserAsync(Guid userId, bool activeOnly, DateTimeOffset now, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, bool includeAllTenants = false, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, bool includeAllTenants = false, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
     private sealed class InMemoryUserCredentialStore : IUserRepository, ICredentialRepository

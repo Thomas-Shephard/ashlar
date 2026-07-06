@@ -89,7 +89,7 @@ When enabled, the sample adds:
 
 - **Sign in with Google** for users who already have a linked Google OIDC credential.
 - **Sign up with Google** on invitation acceptance. The invitation token is preserved in ASP.NET Core authentication properties during the Google challenge and is only consumed after OIDC validation and Ashlar invitation registration succeed.
-- **Link Google account** and **Unlink Google account** under Account -> Security. Both require fresh MFA when the current account has a usable eligible verification factor.
+- **Link Google account** and **Unlink Google account** under Account -> Security. Linking requires fresh MFA because it adds a future sign-in method. Unlinking requires fresh MFA when the current account has a usable eligible verification factor.
 
 Google uses the configured Ashlar provider name `Google`. The sample displays only friendly linked/not-linked state from `AccountSecurityPosture.CredentialInventory`; it does not display provider keys, OIDC subjects, raw claims, or tokens. `Ashlar.OAuth` configures `SaveTokens = false`, and the sample does not persist OAuth access, refresh, or ID tokens.
 
@@ -133,7 +133,7 @@ Authentication__GitHub__ClientSecret=<client-secret>
 When enabled, the sample adds:
 
 - **Sign in with GitHub** for users who already have a linked GitHub OAuth credential.
-- **Link GitHub account** and **Unlink GitHub account** under Account -> Security. Both require fresh MFA when the current account has a usable eligible verification factor.
+- **Link GitHub account** and **Unlink GitHub account** under Account -> Security. Linking requires fresh MFA because it adds a future sign-in method. Unlinking requires fresh MFA when the current account has a usable eligible verification factor.
 
 GitHub uses the configured Ashlar provider name `GitHub` with `ProviderType.OAuth`. The sample displays only friendly linked/not-linked state from `AccountSecurityPosture.CredentialInventory`; it does not display GitHub provider keys, raw GitHub IDs, raw claims, access tokens, or profile JSON. `Ashlar.OAuth` configures `SaveTokens = false`, and the sample does not persist OAuth access or refresh tokens.
 
@@ -176,8 +176,8 @@ Navigate to `http://localhost:5000` in your browser.
 3. **Authenticator app**: Go to Account → Security to enroll in TOTP. A QR code will be generated for your authenticator app. After verifying your first code, you can also generate recovery codes. When the sample asks for additional verification after magic-link sign-in, the current policy accepts an authenticator app code or recovery code.
 4. **Step-up verification**: Sensitive account operations require fresh MFA. When a protected action needs step-up, the sample opens a modal for an authenticator app code or recovery code. Successful verification marks only the current Ashlar session fresh.
 5. **Passkeys**: Use **Sign in with Passkey** on the dashboard to authenticate with a registered passkey. While signed in, open **Account → Security** to register, list, rename, and revoke passkeys. The sample shows authenticator apps, recovery codes, and passkeys as separate sign-in verification methods. Passkeys require HTTPS or localhost and a browser that supports WebAuthn. Passkeys are wired for primary sign-in and for passkey factor handshakes; passkey step-up can be validated manually through the browser WebAuthn factor endpoints. The automated smoke tests avoid hardware-backed WebAuthn.
-6. **Google OIDC**: If Google is configured, use **Sign in with Google** for linked accounts, **Sign up with Google** for invitation-based registration, and **Account → Security** to link or unlink Google. Linking and unlinking require fresh MFA when an eligible verification factor is available.
-7. **GitHub OAuth**: If GitHub is configured, use **Sign in with GitHub** for linked accounts and **Account → Security** to link or unlink GitHub. Linking and unlinking require fresh MFA when an eligible verification factor is available. GitHub invitation acceptance is not enabled.
+6. **Google OIDC**: If Google is configured, use **Sign in with Google** for linked accounts, **Sign up with Google** for invitation-based registration, and **Account → Security** to link or unlink Google. Linking requires fresh MFA. Unlinking requires fresh MFA when an eligible verification factor is available.
+7. **GitHub OAuth**: If GitHub is configured, use **Sign in with GitHub** for linked accounts and **Account → Security** to link or unlink GitHub. Linking requires fresh MFA. Unlinking requires fresh MFA when an eligible verification factor is available. GitHub invitation acceptance is not enabled.
 8. **Email Verification**: If your email is unverified, click "Resend Verification Email" and check the console for the link.
 9. **Email Change**: Use "Change Email" in your profile to request a new email address. This requires fresh MFA. Confirm the change via the link in the console.
 10. **Session Management**: Go to Account → Security to view your active sessions. You can revoke a specific session or all other sessions with conditional fresh MFA when a usable factor exists.
@@ -198,7 +198,7 @@ options.RequireFreshMfa();
 options.RequireFreshMfaIfAvailable();
 ```
 
-Routes use `.RequireFreshMfa()` for high-risk sensitive operations: passkey rename/revoke, TOTP reset, recovery-code generation, email change requests, administrator project creation, project grants, invitation creation, and administrator disable/reactivate/session-revoke/MFA-reset actions. Passkey registration, user-owned session revocation, and Google/GitHub account link/unlink endpoints use `.RequireFreshMfaIfAvailable()` to demonstrate adaptive protection: users with a usable eligible additional verification factor must complete fresh step-up, while users without one are not locked out of revoking old devices or adding another sign-in method. Passkey registration still passes an Ashlar-issued fresh proof into the service: fresh MFA when an additional factor exists, or fresh primary-authentication proof for first-passkey setup. Ordinary sign-in, email verification confirmation, invitation acceptance, account viewing, and session listing remain available with a normal authenticated session.
+Routes use `.RequireFreshMfa()` for high-risk sensitive operations: Google/GitHub account linking, passkey rename/revoke, TOTP reset, recovery-code generation, email change requests, administrator project creation, project grants, invitation creation, and administrator disable/reactivate/session-revoke/MFA-reset actions. Passkey registration, user-owned session revocation, and Google/GitHub account unlink endpoints use `.RequireFreshMfaIfAvailable()` to demonstrate adaptive protection: users with a usable eligible additional verification factor must complete fresh step-up, while users without one are not locked out of revoking old devices. Passkey registration still passes an Ashlar-issued fresh proof into the service: fresh MFA when an additional factor exists, or fresh primary-authentication proof for first-passkey setup. Ordinary sign-in, email verification confirmation, invitation acceptance, account viewing, and session listing remain available with a normal authenticated session.
 
 ## CSRF protection in the sample
 

@@ -312,7 +312,8 @@ internal sealed class PasswordResetService : IPasswordResetService
         var sessionsRevoked = 0;
         if (_options.Value.RevokeSessions)
         {
-            sessionsRevoked = await _dependencies.SessionRepository.RevokeSessionsForUserAsync(user.Id, now, SessionRevocationReason, cancellationToken: cancellationToken);
+            var tenant = context.TenantId.HasValue ? new TenantContext(context.TenantId.Value) : TenantContext.Global;
+            sessionsRevoked = await _dependencies.SessionRepository.RevokeSessionsForUserAsync(user.Id, now, SessionRevocationReason, tenant, includeAllTenants: false, cancellationToken);
         }
 
         await RevokeRememberedMfaDevicesAsync(user.Id, context, cancellationToken);

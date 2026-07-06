@@ -273,6 +273,27 @@ internal sealed class PasswordResetServiceTests
     }
 
     [Test]
+    public async Task ResetPasswordAsyncRevokesSessionsWithinUserTenant()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = CreateUser(tenantId: tenantId);
+        var fixture = CreateFixture(user);
+        var context = new AuthenticationContext(TenantId: tenantId);
+        await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"), context);
+        var token = ExtractQueryValue(fixture.EmailSender.Messages.Single().TextBody!, "t");
+
+        var result = await fixture.Service.ResetPasswordAsync(new PasswordResetRequest { Token = token, NewPassword = NewPassword }, context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixture.Sessions.RevokeAllCount, Is.EqualTo(1));
+            Assert.That(fixture.Sessions.LastTenant?.TenantId, Is.EqualTo(tenantId));
+            Assert.That(fixture.Sessions.LastIncludeAllTenants, Is.False);
+        }
+    }
+
+    [Test]
     public async Task ResetPasswordAsyncRevokesRememberedMfaDevicesForGlobalUser()
     {
         var user = CreateUser();
@@ -1004,16 +1025,19 @@ internal sealed class PasswordResetServiceTests
     private sealed class RecordingSessionRepository : IAuthenticationSessionRepository
     {
         public int RevokeAllCount { get; private set; }
+        public TenantContext? LastTenant { get; private set; }
+        public bool LastIncludeAllTenants { get; private set; }
 
         public Task CreateSessionAsync(AuthenticationSession session, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<AuthenticationSession?> GetSessionByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<AuthenticationSession?> GetSessionAsync(Guid sessionId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<bool> UpdateSessionLastSeenAsync(Guid sessionId, DateTimeOffset lastSeenAt, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<AuthenticationSession?> MarkStepUpVerifiedAsync(Guid sessionId, Guid userId, DateTimeOffset verifiedAt, AuthenticationProviderKey verifiedProvider, string verifiedFactor, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<bool> RevokeSessionAsync(Guid sessionId, DateTimeOffset revokedAt, string? reason = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
+        public Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason, TenantContext? tenant, bool includeAllTenants, CancellationToken cancellationToken = default)
         {
             RevokeAllCount++;
+            LastTenant = tenant;
+            LastIncludeAllTenants = includeAllTenants;
             return Task.FromResult(2);
         }
 
@@ -1022,8 +1046,8 @@ internal sealed class PasswordResetServiceTests
             return Task.FromResult<IReadOnlyList<AuthenticationSession>>([]);
         }
 
-        public Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, bool includeAllTenants = false, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, bool includeAllTenants = false, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
     private sealed class NonTenantUser : IUser

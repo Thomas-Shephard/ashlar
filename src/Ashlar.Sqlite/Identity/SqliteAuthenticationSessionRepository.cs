@@ -188,8 +188,10 @@ internal sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionPro
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
-    public async Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
+    public async Task<int> RevokeSessionsForUserAsync(Guid userId, DateTimeOffset revokedAt, string? reason, TenantContext? tenant, bool includeAllTenants, CancellationToken cancellationToken = default)
     {
+        ValidateRevocationScope(tenant, includeAllTenants);
+
         const string sql = """
             UPDATE ashlar_sessions
             SET revoked_at = $revokedAt,
@@ -203,7 +205,7 @@ internal sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionPro
         command.Transaction = handle.Transaction;
         command.CommandText = sql + TenantRevocationFilterSql + ";";
         command.AddGuidParameter(UserIdParameter, userId);
-        AddTenantFilterParameters(command, tenant);
+        AddTenantFilterParameters(command, includeAllTenants ? null : tenant);
         AddRevocationParameters(command, revokedAt, reason);
 
         return await command.ExecuteNonQueryAsync(cancellationToken);
@@ -241,8 +243,10 @@ internal sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionPro
         return sessions.AsReadOnly();
     }
 
-    public async Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
+    public async Task<bool> RevokeSessionByIdAsync(Guid sessionId, Guid userId, DateTimeOffset revokedAt, string? reason, TenantContext? tenant, bool includeAllTenants, CancellationToken cancellationToken = default)
     {
+        ValidateRevocationScope(tenant, includeAllTenants);
+
         const string sql = """
             UPDATE ashlar_sessions
             SET revoked_at = $revokedAt,
@@ -258,14 +262,16 @@ internal sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionPro
         command.CommandText = sql + TenantRevocationFilterSql + ";";
         command.AddGuidParameter(IdParameter, sessionId);
         command.AddGuidParameter(UserIdParameter, userId);
-        AddTenantFilterParameters(command, tenant);
+        AddTenantFilterParameters(command, includeAllTenants ? null : tenant);
         AddRevocationParameters(command, revokedAt, reason);
 
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
-    public async Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason = null, TenantContext? tenant = null, CancellationToken cancellationToken = default)
+    public async Task<int> RevokeOtherSessionsForUserAsync(Guid userId, Guid excludedSessionId, DateTimeOffset revokedAt, string? reason, TenantContext? tenant, bool includeAllTenants, CancellationToken cancellationToken = default)
     {
+        ValidateRevocationScope(tenant, includeAllTenants);
+
         const string sql = """
             UPDATE ashlar_sessions
             SET revoked_at = $revokedAt,
@@ -281,7 +287,7 @@ internal sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionPro
         command.CommandText = sql + TenantRevocationFilterSql + ";";
         command.AddGuidParameter(UserIdParameter, userId);
         command.AddGuidParameter(ExcludedSessionIdParameter, excludedSessionId);
-        AddTenantFilterParameters(command, tenant);
+        AddTenantFilterParameters(command, includeAllTenants ? null : tenant);
         AddRevocationParameters(command, revokedAt, reason);
 
         return await command.ExecuteNonQueryAsync(cancellationToken);
@@ -304,6 +310,19 @@ internal sealed class SqliteAuthenticationSessionRepository(ISqliteConnectionPro
     {
         command.AddParameter(TenantFilterParameter, tenant == null ? 0 : 1);
         command.AddNullableGuidParameter(TenantIdParameter, tenant?.TenantId);
+    }
+
+    private static void ValidateRevocationScope(TenantContext? tenant, bool includeAllTenants)
+    {
+        if (tenant == null && !includeAllTenants)
+        {
+            throw new ArgumentException("Tenant scope must be explicit. Set tenant, TenantContext.Global, or includeAllTenants = true.", nameof(tenant));
+        }
+
+        if (tenant != null && includeAllTenants)
+        {
+            throw new ArgumentException("Tenant scope cannot be combined with includeAllTenants = true.", nameof(includeAllTenants));
+        }
     }
 
     private static void AddParameters(SqliteCommand command, AuthenticationSession session)

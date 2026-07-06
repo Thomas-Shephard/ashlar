@@ -19,8 +19,8 @@ internal static class GoogleOidcEndpoints
         app.MapGet("/invitations/accept/google", StartGoogleInvitationRegistration);
         app.MapGet("/invitations/accept/google/callback", CompleteGoogleInvitationRegistrationAsync);
 
-        app.MapGet("/account/external/google/link", StartGoogleAccountLink).RequireAuthorization().RequireFreshMfaIfAvailable();
-        app.MapGet("/account/external/google/link/callback", CompleteGoogleAccountLinkAsync).RequireAuthorization().RequireFreshMfaIfAvailable();
+        app.MapGet("/account/external/google/link", StartGoogleAccountLink).RequireAuthorization().RequireFreshMfa();
+        app.MapGet("/account/external/google/link/callback", CompleteGoogleAccountLinkAsync).RequireAuthorization().RequireFreshMfa();
         app.MapPost("/api/account/external/google/unlink", UnlinkGoogleAccountAsync).RequireAuthorization().RequireFreshMfaIfAvailable().RequireSampleAntiforgery();
     }
 
@@ -201,7 +201,6 @@ internal static class GoogleOidcEndpoints
     private static async Task<IResult> CompleteGoogleAccountLinkAsync(
         IConfiguration configuration,
         IServiceProvider services,
-        ClaimsPrincipal user,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -210,17 +209,12 @@ internal static class GoogleOidcEndpoints
             return Results.NotFound();
         }
 
-        var accountLink = services.GetRequiredService<AshlarExternalAccountLinkService>();
-        var result = await accountLink.CompleteExternalLinkAsync(
+        return await ExternalAccountLinkEndpointHelpers.CompleteExternalAccountLinkAsync(
+            services,
             httpContext,
-            user.GetAshlarUserId(),
             SampleGoogleOidc.ProviderName,
-            httpContext.ToTenantContext(),
-            cancellationToken: cancellationToken);
-
-        return result.Linked || result.AlreadyLinked
-            ? AppViews.RenderGoogleOidcResult("Google Account Linked", "Your Google account is linked.")
-            : AppViews.RenderGoogleOidcResult("Google Account Not Linked", "Your Google account could not be linked.");
+            AppViews.RenderGoogleOidcResult,
+            cancellationToken);
     }
 
     private static async Task<IResult> UnlinkGoogleAccountAsync(

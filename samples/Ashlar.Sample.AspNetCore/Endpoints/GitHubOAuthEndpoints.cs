@@ -15,8 +15,8 @@ internal static class GitHubOAuthEndpoints
         app.MapGet("/auth/github", StartGitHubSignIn);
         app.MapGet("/auth/github/callback", CompleteGitHubSignInAsync);
 
-        app.MapGet("/account/external/github/link", StartGitHubAccountLink).RequireAuthorization().RequireFreshMfaIfAvailable();
-        app.MapGet("/account/external/github/link/callback", CompleteGitHubAccountLinkAsync).RequireAuthorization().RequireFreshMfaIfAvailable();
+        app.MapGet("/account/external/github/link", StartGitHubAccountLink).RequireAuthorization().RequireFreshMfa();
+        app.MapGet("/account/external/github/link/callback", CompleteGitHubAccountLinkAsync).RequireAuthorization().RequireFreshMfa();
         app.MapPost("/api/account/external/github/unlink", UnlinkGitHubAccountAsync).RequireAuthorization().RequireFreshMfaIfAvailable().RequireSampleAntiforgery();
     }
 
@@ -118,7 +118,6 @@ internal static class GitHubOAuthEndpoints
     private static async Task<IResult> CompleteGitHubAccountLinkAsync(
         IConfiguration configuration,
         IServiceProvider services,
-        ClaimsPrincipal user,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -127,17 +126,12 @@ internal static class GitHubOAuthEndpoints
             return Results.NotFound();
         }
 
-        var accountLink = services.GetRequiredService<AshlarExternalAccountLinkService>();
-        var result = await accountLink.CompleteExternalLinkAsync(
+        return await ExternalAccountLinkEndpointHelpers.CompleteExternalAccountLinkAsync(
+            services,
             httpContext,
-            user.GetAshlarUserId(),
             SampleGitHubOAuth.ProviderName,
-            httpContext.ToTenantContext(),
-            cancellationToken: cancellationToken);
-
-        return result.Linked || result.AlreadyLinked
-            ? AppViews.RenderExternalProviderResult("GitHub Account Linked", "Your GitHub account is linked.")
-            : AppViews.RenderExternalProviderResult("GitHub Account Not Linked", "Your GitHub account could not be linked.");
+            AppViews.RenderExternalProviderResult,
+            cancellationToken);
     }
 
     private static async Task<IResult> UnlinkGitHubAccountAsync(

@@ -119,6 +119,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
     {
         var user = await CreateUserAsync();
         var otherUser = await CreateUserAsync();
+        var directRevokeUser = await CreateUserAsync();
         var repository = GetSessionRepository();
         var active = CreateSession(user.Id);
         active.AuthenticatedAt = active.CreatedAt.AddMinutes(1);
@@ -129,12 +130,15 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         active.Metadata = """{"device":"laptop"}""";
         var revoked = CreateSession(user.Id);
         var expired = CreateSession(user.Id, expiresAt: DateTimeOffset.UtcNow.AddMinutes(-1));
+        var directRevoke = CreateSession(directRevokeUser.Id);
         var other = CreateSession(otherUser.Id);
         await repository.CreateSessionAsync(active);
         await repository.CreateSessionAsync(revoked);
         await repository.CreateSessionAsync(expired);
+        await repository.CreateSessionAsync(directRevoke);
         await repository.CreateSessionAsync(other);
-        await repository.RevokeSessionAsync(revoked.Id, DateTimeOffset.UtcNow, "manual");
+        await repository.RevokeSessionByIdAsync(revoked.Id, revoked.UserId, DateTimeOffset.UtcNow, "manual", tenant: null, includeAllTenants: true);
+        var directlyRevoked = await ((SqliteAuthenticationSessionRepository)repository).RevokeSessionAsync(directRevoke.Id, DateTimeOffset.UtcNow, "manual");
 
         var fetched = await repository.GetSessionByTokenHashAsync(active.TokenHash);
         var fetchedById = await repository.GetSessionAsync(active.Id);
@@ -145,8 +149,8 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         var secondSeen = await repository.UpdateSessionLastSeenAsync(active.Id, older);
         var stepUp = await repository.MarkStepUpVerifiedAsync(active.Id, user.Id, newest, AuthenticationProviderKey.Passkey, "passkey");
         var wrongUserStepUp = await repository.MarkStepUpVerifiedAsync(active.Id, otherUser.Id, newest, AuthenticationProviderKey.Passkey, "passkey");
-        var revokeOther = await repository.RevokeOtherSessionsForUserAsync(user.Id, active.Id, newest, "sweep");
-        var ownedRevoke = await repository.RevokeSessionByIdAsync(active.Id, otherUser.Id, newest, "wrong");
+        var revokeOther = await repository.RevokeOtherSessionsForUserAsync(user.Id, active.Id, newest, "sweep", tenant: null, includeAllTenants: true);
+        var ownedRevoke = await repository.RevokeSessionByIdAsync(active.Id, otherUser.Id, newest, "wrong", tenant: null, includeAllTenants: true);
 
         using (Assert.EnterMultipleScope())
         {
@@ -160,13 +164,14 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
             Assert.That(stepUp!.AdditionalVerificationProvider, Is.EqualTo(AuthenticationProviderKey.Passkey));
             Assert.That(stepUp.AdditionalVerificationFactor, Is.EqualTo("passkey"));
             Assert.That(wrongUserStepUp, Is.Null);
+            Assert.That(directlyRevoked, Is.True);
             Assert.That(revokeOther, Is.EqualTo(1));
             Assert.That(ownedRevoke, Is.False);
         }
 
         var allSessions = await repository.ListSessionsForUserAsync(user.Id, activeOnly: false, DateTimeOffset.UtcNow);
-        var revokedAll = await repository.RevokeSessionsForUserAsync(otherUser.Id, DateTimeOffset.UtcNow, "all");
-        var ownedRevokeAfterWrongUser = await repository.RevokeSessionByIdAsync(active.Id, user.Id, DateTimeOffset.UtcNow, "owned");
+        var revokedAll = await repository.RevokeSessionsForUserAsync(otherUser.Id, DateTimeOffset.UtcNow, "all", tenant: null, includeAllTenants: true);
+        var ownedRevokeAfterWrongUser = await repository.RevokeSessionByIdAsync(active.Id, user.Id, DateTimeOffset.UtcNow, "owned", tenant: null, includeAllTenants: true);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(allSessions, Has.Count.EqualTo(3));

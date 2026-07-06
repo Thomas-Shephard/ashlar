@@ -28,7 +28,7 @@ internal sealed class SqliteSecurityEventWebhookOutboxDispatcher(
               AND failed_at IS NULL
               AND discarded_at IS NULL
               AND available_at <= $now
-              AND (locked_until IS NULL OR locked_until < $now)
+              AND (locked_until IS NULL OR locked_until <= $now)
             ORDER BY available_at, id
             LIMIT $batchSize
         )

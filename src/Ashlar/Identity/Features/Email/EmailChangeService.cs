@@ -355,7 +355,8 @@ internal sealed class EmailChangeService(
 
         if (_options.Value.RevokeSessions)
         {
-            await _dependencies.SessionRepository.RevokeSessionsForUserAsync(user.Id, now, "Email changed", cancellationToken: cancellationToken);
+            var tenant = tenantId.HasValue ? new TenantContext(tenantId.Value) : TenantContext.Global;
+            await _dependencies.SessionRepository.RevokeSessionsForUserAsync(user.Id, now, "Email changed", tenant, includeAllTenants: false, cancellationToken);
         }
 
         await _securityEvents.RecordAsync(new SecurityEventDescriptor
