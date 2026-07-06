@@ -42,13 +42,14 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
 
         var transactions = services.GetRequiredService<IAshlarTransactionProvider>();
         var invitations = services.GetRequiredService<IInvitationService>();
-        var credentials = services.GetRequiredService<ICredentialService>();
+        var credentialRepository = services.GetRequiredService<ICredentialRepository>();
         await using (var transaction = await transactions.BeginTransactionAsync())
         {
             var acceptance = await invitations.AcceptInvitationAsync(new AcceptInvitationRequest { Token = token, UserName = "Invitee" });
             Assert.That(acceptance.Succeeded, Is.True);
 
-            var link = await credentials.LinkCredentialAsync(
+            var link = await LinkCredentialForTestAsync(
+                credentialRepository,
                 acceptance.Value,
                 new ExternalIdentityAssertion(ProviderType.Oidc, "Google", subject, new Dictionary<string, string>()),
                 TestOidcProvider.Instance);
@@ -59,7 +60,6 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
 
         var invitationRepository = services.GetRequiredService<IInvitationRepository>();
         var userRepository = services.GetRequiredService<IUserRepository>();
-        var credentialRepository = services.GetRequiredService<ICredentialRepository>();
         var rolledBackInvitation = await invitationRepository.GetInvitationByTokenHashAsync(services.GetRequiredService<ISecureTokenHasher>().HashToken(token));
         var rolledBackInvitee = await userRepository.GetUserByEmailAsync(inviteeEmail);
 
@@ -70,7 +70,8 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
             Assert.That(retryAcceptance.Succeeded, Is.True);
             retryUserId = retryAcceptance.Value;
 
-            var retryLink = await credentials.LinkCredentialAsync(
+            var retryLink = await LinkCredentialForTestAsync(
+                credentialRepository,
                 retryUserId,
                 new ExternalIdentityAssertion(ProviderType.Oidc, "Google", retrySubject, new Dictionary<string, string>()),
                 TestOidcProvider.Instance);
@@ -139,6 +140,33 @@ internal sealed class SqliteInvitationCredentialAtomicityTests
             CreatedAt = Now,
             Status = CredentialStatus.Active
         });
+    }
+
+    private static async Task<Result> LinkCredentialForTestAsync(
+        ICredentialRepository credentialRepository,
+        Guid userId,
+        ExternalIdentityAssertion assertion,
+        IAuthenticationProvider provider)
+    {
+        try
+        {
+            await credentialRepository.CreateOrReplaceCredentialAsync(new UserCredential
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                ProviderType = provider.Key.Type,
+                ProviderName = provider.Key.Name,
+                ProviderKey = provider.GetProviderKey(assertion, userId),
+                Version = Guid.NewGuid().ToString("N"),
+                CreatedAt = Now,
+                Status = CredentialStatus.Active
+            });
+            return Result.Success();
+        }
+        catch (CredentialProviderKeyConflictException)
+        {
+            return Result.Failure(AshlarFailureCodes.AlreadyLinkedToOther);
+        }
     }
 
     private sealed class TestOidcProvider : IAuthenticationProvider

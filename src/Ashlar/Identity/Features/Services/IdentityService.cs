@@ -58,18 +58,6 @@ internal sealed class IdentityService(
         return sanitizedUser;
     }
 
-    public async Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(assertion);
-
-        if (!_providerRegistry.TryGetProvider(assertion, out var provider))
-        {
-            return Result.Failure(AshlarFailureCodes.ProviderUnsupported, $"Provider '{assertion.ProviderIdentity}' is not supported.");
-        }
-
-        return await _credentialService.LinkCredentialAsync(userId, assertion, provider, credentialValue, cancellationToken: cancellationToken);
-    }
-
     private static IUser SanitizeUserEmail(IUser user)
     {
         var displayEmail = IdentityNormalization.SanitizeEmailForDelivery(user.DisplayEmail);

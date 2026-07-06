@@ -10,7 +10,6 @@ using Ashlar.Authorization.Models;
 using Ashlar.AspNetCore.Authorization;
 using Ashlar.Identity.Models.Tenants;
 using Ashlar.Identity.Models.Totp;
-using Ashlar.Identity.Providers.External;
 using Ashlar.Messaging;
 using Ashlar.Security.Encryption;
 using Dapper;
@@ -896,19 +895,17 @@ internal sealed partial class SampleAspNetCoreSmokeTests : PostgresTestBase
     private static async Task LinkGitHubCredentialAsync(IServiceProvider services, Guid userId)
     {
         await using var scope = services.CreateAsyncScope();
-        var credentials = scope.ServiceProvider.GetRequiredService<ICredentialService>();
-        var assertion = new ExternalIdentityAssertion(
-            ProviderType.OAuth,
-            "GitHub",
-            $"github-{userId:N}",
-            new Dictionary<string, string>());
-
-        var result = await credentials.LinkCredentialAsync(
-            userId,
-            assertion,
-            new OAuthAuthenticationProvider("GitHub"));
-
-        Assert.That(result.Succeeded, Is.True, result.FailureMessage);
+        await scope.ServiceProvider.GetRequiredService<ICredentialRepository>().CreateCredentialAsync(new UserCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            ProviderType = ProviderType.OAuth,
+            ProviderName = "GitHub",
+            ProviderKey = $"github-{userId:N}",
+            Version = Guid.NewGuid().ToString("N"),
+            CreatedAt = DateTimeOffset.UtcNow,
+            Status = CredentialStatus.Active
+        });
     }
 
     private static async Task AssertGitHubCallbackUsesOrchestrationBeforeSessionAsync()

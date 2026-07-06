@@ -1,3 +1,4 @@
+using Ashlar.Auditing;
 using Ashlar.Identity.Models.Mfa;
 using Ashlar.Identity.Models.Tenants;
 using Microsoft.AspNetCore.Authentication;
@@ -9,4 +10,5 @@ internal sealed record AshlarExternalAccountLinkRequest(
     FreshMfaVerificationProof? FreshMfaProof,
     Guid? CurrentSessionId,
     TenantContext Tenant,
-    string? CredentialMetadata = null);
+    string? CredentialMetadata = null,
+    AuditContext? Audit = null);

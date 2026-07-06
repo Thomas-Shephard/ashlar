@@ -15,12 +15,12 @@ internal sealed class IdentityServiceAuditingTests
         {
             new OidcAuthenticationProvider("Google")
         };
-        var credentialServiceMock = new Mock<ICredentialService>();
+        var credentialService = new TestCredentialService();
         var transactionProvider = new NullTransactionProvider();
         var providerRegistry = new AuthenticationProviderRegistry(providers);
         var pipeline = new AuthenticationPipeline(
             providerRegistry,
-            credentialServiceMock.Object,
+            credentialService,
             transactionProvider,
             AllowPrimaryAuthenticationRateLimiter.Instance,
             AllowAuthenticationFactorRateLimiter.Instance,
@@ -29,7 +29,7 @@ internal sealed class IdentityServiceAuditingTests
         var service = new IdentityService(
             repositoryMock.Object,
             providerRegistry,
-            credentialServiceMock.Object,
+            credentialService,
             pipeline,
             transactionProvider,
             new IdentityServiceDependencies(SecurityEventSink: sinkMock.Object));
@@ -42,8 +42,7 @@ internal sealed class IdentityServiceAuditingTests
         repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
 
-        credentialServiceMock.Setup(s => s.ResolveAsync(It.IsAny<AuthenticationContext>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(((IUser?)null, (UserCredential?)null, (UserCredential?)null, false));
+        credentialService.ContextResolveResult = ((IUser?)null, (UserCredential?)null, (UserCredential?)null, false);
 
         await service.LoginAsync(context, assertion);
 
@@ -63,7 +62,7 @@ internal sealed class IdentityServiceAuditingTests
         var service = new IdentityService(
             repositoryMock.Object,
             Mock.Of<IAuthenticationProviderRegistry>(),
-            Mock.Of<ICredentialService>(),
+            new TestCredentialService(),
             Mock.Of<IAuthenticationPipeline>(),
             transactionProvider,
             new IdentityServiceDependencies(SecurityEventSink: new ThrowingSecurityEventSink()));

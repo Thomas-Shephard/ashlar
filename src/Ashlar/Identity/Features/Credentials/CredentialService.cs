@@ -12,7 +12,7 @@ internal sealed class CredentialService(
     ISecretProtector secretProtector,
     IAshlarTransactionProvider transactionProvider,
     CredentialServiceDependencies dependencies)
-    : ICredentialService
+    : ICredentialService, ICredentialLinkingInfrastructure
 {
     private static readonly Action<ILogger, Guid, Guid, string, string, Exception?> CredentialProtectionFailedRequired =
         LoggerMessage.Define<Guid, Guid, string, string>(
@@ -520,6 +520,32 @@ internal sealed class CredentialService(
 
     public async Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue = null, string? credentialMetadata = null, CancellationToken cancellationToken = default)
     {
+        return await LinkCredentialCoreAsync(userId, assertion, provider, credentialValue, credentialMetadata, audit: null, tenantId: null, cancellationToken);
+    }
+
+    async Task<Result> ICredentialLinkingInfrastructure.LinkCredentialAsync(
+        Guid userId,
+        IAuthenticationAssertion assertion,
+        IAuthenticationProvider provider,
+        string? credentialValue,
+        string? credentialMetadata,
+        AuditContext? audit,
+        Guid? tenantId,
+        CancellationToken cancellationToken)
+    {
+        return await LinkCredentialCoreAsync(userId, assertion, provider, credentialValue, credentialMetadata, audit, tenantId, cancellationToken);
+    }
+
+    private async Task<Result> LinkCredentialCoreAsync(
+        Guid userId,
+        IAuthenticationAssertion assertion,
+        IAuthenticationProvider provider,
+        string? credentialValue,
+        string? credentialMetadata,
+        AuditContext? audit,
+        Guid? tenantId,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(assertion);
         ArgumentNullException.ThrowIfNull(provider);
 
@@ -538,6 +564,8 @@ internal sealed class CredentialService(
                 EventType = AshlarSecurityEventTypes.CredentialLinked,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenantId,
+                Audit = audit,
                 Provider = providerKeyIdentity,
                 FailureReason = AshlarFailureCodes.UserNotFound.Value
             }, cancellationToken);
@@ -552,6 +580,8 @@ internal sealed class CredentialService(
                 EventType = AshlarSecurityEventTypes.CredentialLinked,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenantId,
+                Audit = audit,
                 Provider = providerKeyIdentity,
                 FailureReason = AshlarFailureCodes.InvalidProviderKey.Value
             }, cancellationToken);
@@ -568,6 +598,8 @@ internal sealed class CredentialService(
                 EventType = AshlarSecurityEventTypes.CredentialLinked,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenantId,
+                Audit = audit,
                 Provider = providerKeyIdentity,
                 FailureReason = code.Value
             }, cancellationToken);
@@ -609,6 +641,8 @@ internal sealed class CredentialService(
                 EventType = AshlarSecurityEventTypes.CredentialLinked,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenantId,
+                Audit = audit,
                 Provider = providerKeyIdentity,
                 FailureReason = AshlarFailureCodes.AlreadyLinkedToOther.Value
             }, cancellationToken);
@@ -620,6 +654,8 @@ internal sealed class CredentialService(
             EventType = AshlarSecurityEventTypes.CredentialLinked,
             Outcome = SecurityEventOutcomes.Success,
             UserId = userId,
+            TenantId = tenantId,
+            Audit = audit,
             Provider = providerKeyIdentity,
             Properties = new Dictionary<string, string>
             {

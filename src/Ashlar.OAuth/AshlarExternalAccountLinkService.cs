@@ -1,3 +1,4 @@
+using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Repositories;
 using Ashlar.Identity.Features.Mfa;
 using Ashlar.Identity.Models.Mfa;
@@ -20,7 +21,7 @@ public sealed class AshlarExternalAccountLinkService
     private const string LinkPurpose = "external-account-linking";
     private const string UnlinkPurpose = "external-account-unlinking";
 
-    private readonly ICredentialService _credentialService;
+    private readonly IExternalAccountCredentialLinker _credentialLinker;
     private readonly IAccountSecurityService _accountSecurityService;
     private readonly IUserRepository _repository;
     private readonly IOptionsMonitor<AshlarOAuthOptions> _options;
@@ -28,17 +29,17 @@ public sealed class AshlarExternalAccountLinkService
     /// <summary>
     /// Initializes a new instance of the external account link service.
     /// </summary>
-    /// <param name="credentialService">The Ashlar credential service.</param>
+    /// <param name="credentialLinker">The Ashlar external account credential linker.</param>
     /// <param name="accountSecurityService">The Ashlar account security service.</param>
     /// <param name="repository">The repository used to load the current Ashlar user.</param>
     /// <param name="options">The OAuth options monitor.</param>
-    public AshlarExternalAccountLinkService(
-        ICredentialService credentialService,
+    internal AshlarExternalAccountLinkService(
+        IExternalAccountCredentialLinker credentialLinker,
         IAccountSecurityService accountSecurityService,
         IUserRepository repository,
         IOptionsMonitor<AshlarOAuthOptions> options)
     {
-        _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
+        _credentialLinker = credentialLinker ?? throw new ArgumentNullException(nameof(credentialLinker));
         _accountSecurityService = accountSecurityService ?? throw new ArgumentNullException(nameof(accountSecurityService));
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -99,7 +100,18 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.ProviderMismatch);
         }
 
-        return await LinkValidatedExternalAccountCoreAsync(currentUserId, new AshlarValidatedExternalPrincipal(provider, result.Principal), tenant, cancellationToken: cancellationToken);
+        return await LinkValidatedExternalAccountCoreAsync(
+            currentUserId,
+            new AshlarValidatedExternalPrincipal(provider, result.Principal),
+            tenant,
+            freshMfaProof,
+            currentSessionId,
+            new AuditContext(
+                currentUserId,
+                httpContext.Connection.RemoteIpAddress?.ToString(),
+                httpContext.Request.Headers.UserAgent.ToString(),
+                httpContext.TraceIdentifier),
+            cancellationToken: cancellationToken);
     }
 
     internal async Task<AshlarExternalAccountLinkResult> LinkExternalAccountAsync(
@@ -138,6 +150,9 @@ public sealed class AshlarExternalAccountLinkService
             currentUserId,
             new AshlarValidatedExternalPrincipal(provider, request.AuthenticateResult.Principal),
             request.Tenant,
+            request.FreshMfaProof,
+            request.CurrentSessionId,
+            request.Audit,
             request.CredentialMetadata,
             cancellationToken);
     }
@@ -155,6 +170,9 @@ public sealed class AshlarExternalAccountLinkService
         Guid currentUserId,
         AshlarValidatedExternalPrincipal principal,
         TenantContext tenant,
+        FreshMfaVerificationProof? freshMfaProof,
+        Guid? currentSessionId,
+        AuditContext? audit = null,
         string? credentialMetadata = null,
         CancellationToken cancellationToken = default)
     {
@@ -180,13 +198,17 @@ public sealed class AshlarExternalAccountLinkService
         }
 
         var provider = AshlarExternalProviderResolver.CreateAuthenticationProvider(principal.Provider);
-        var linkResult = await _credentialService.LinkCredentialAsync(
-            currentUserId,
-            assertion,
-            provider,
-            credentialValue: null,
-            credentialMetadata: credentialMetadata,
-            cancellationToken: cancellationToken);
+        var linkResult = await _credentialLinker.LinkExternalAccountCredentialAsync(
+            new ExternalAccountCredentialLinkRequest(
+                currentUserId,
+                assertion,
+                provider,
+                freshMfaProof,
+                currentSessionId,
+                tenant,
+                audit,
+                CredentialMetadata: credentialMetadata),
+            cancellationToken);
 
         if (linkResult.Succeeded)
         {

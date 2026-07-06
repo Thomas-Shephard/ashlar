@@ -17,7 +17,7 @@ internal sealed class TotpTests
 {
     private Mock<IUserRepository> _repository = null!;
     private Mock<ICredentialRepository> _credentialRepository = null!;
-    private Mock<ICredentialService> _credentialService = null!;
+    private TestCredentialService _credentialService = null!;
     private Mock<IAshlarTransactionProvider> _transactionProvider = null!;
     private Mock<IAshlarTransaction> _transaction = null!;
     private Mock<ISecurityEventSink> _securityEvents = null!;
@@ -29,7 +29,7 @@ internal sealed class TotpTests
     {
         _repository = new Mock<IUserRepository>();
         _credentialRepository = new Mock<ICredentialRepository>();
-        _credentialService = new Mock<ICredentialService>();
+        _credentialService = new TestCredentialService();
         _transactionProvider = new Mock<IAshlarTransactionProvider>();
         _transaction = new Mock<IAshlarTransaction>();
         var onCommitted = new List<Func<CancellationToken, Task>>();
@@ -49,14 +49,6 @@ internal sealed class TotpTests
                     await action(ct);
                 }
             });
-        _credentialService.Setup(x => x.LinkCredentialAsync(
-                It.IsAny<Guid>(),
-                It.IsAny<IAuthenticationAssertion>(),
-                It.IsAny<IAuthenticationProvider>(),
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success());
         _credentialRepository.Setup(x => x.ListCredentialsForUserAsync(It.IsAny<Guid>(), true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<UserCredential>());
         _repository.Setup(r => r.GetUserByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -68,7 +60,7 @@ internal sealed class TotpTests
         return new TotpService(
             _repository.Object,
             _credentialRepository.Object,
-            _credentialService.Object,
+            _credentialService,
             _transactionProvider.Object,
             [CreateProvider()],
             new TotpServiceDependencies(Options.Create(_options), _timeProvider, _securityEvents.Object));
@@ -139,7 +131,7 @@ internal sealed class TotpTests
         return new TotpService(
             _repository.Object,
             _credentialRepository.Object,
-            _credentialService.Object,
+            _credentialService,
             _transactionProvider.Object,
             [CreateProvider(), CreateSecondaryProvider(recoveryProvider)],
             new TotpServiceDependencies(Options.Create(_options), _timeProvider, _securityEvents.Object));
@@ -321,12 +313,12 @@ internal sealed class TotpTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(null!, _credentialRepository.Object, _credentialService.Object, _transactionProvider.Object, [provider], deps));
-            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, null!, _credentialService.Object, _transactionProvider.Object, [provider], deps));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(null!, _credentialRepository.Object, _credentialService, _transactionProvider.Object, [provider], deps));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, null!, _credentialService, _transactionProvider.Object, [provider], deps));
             Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, null!, _transactionProvider.Object, [provider], deps));
-            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, _credentialService.Object, null!, [provider], deps));
-            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, _credentialService.Object, _transactionProvider.Object, [provider], null!));
-            Assert.Throws<InvalidOperationException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, _credentialService.Object, _transactionProvider.Object, [], deps));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, _credentialService, null!, [provider], deps));
+            Assert.Throws<ArgumentNullException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, _credentialService, _transactionProvider.Object, [provider], null!));
+            Assert.Throws<InvalidOperationException>(() => _ = new TotpService(_repository.Object, _credentialRepository.Object, _credentialService, _transactionProvider.Object, [], deps));
         }
     }
 
@@ -336,7 +328,7 @@ internal sealed class TotpTests
         Assert.DoesNotThrow(() => _ = new TotpService(
             _repository.Object,
             _credentialRepository.Object,
-            _credentialService.Object,
+            _credentialService,
             _transactionProvider.Object,
             [CreateProvider()],
             new TotpServiceDependencies(Options.Create(_options))));
@@ -684,8 +676,11 @@ internal sealed class TotpTests
 
         var result = await CompleteEnrollmentAsync(service, userId, secret, code);
 
-        Assert.That(result.Succeeded, Is.True);
-        _credentialService.Verify(x => x.LinkCredentialAsync(userId, It.IsAny<TotpAssertion>(), It.IsAny<IAuthenticationProvider>(), secret, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(_credentialService.LinkCalls.Count(call => call.UserId == userId && call.Assertion is TotpAssertion && call.CredentialValue == secret), Is.EqualTo(1));
+        }
         _transaction.Verify(x => x.OnCommitted(It.IsAny<Func<CancellationToken, Task>>()), Times.Once);
         _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(d =>
             d.EventType == AshlarSecurityEventTypes.TotpEnrollmentCompleted), It.IsAny<CancellationToken>()), Times.Once);
@@ -925,7 +920,7 @@ internal sealed class TotpTests
         var service = new TotpService(
             _repository.Object,
             _credentialRepository.Object,
-            _credentialService.Object,
+            _credentialService,
             _transactionProvider.Object,
             [CreateProvider()],
             new TotpServiceDependencies(Options.Create(_options), _timeProvider, _securityEvents.Object, notificationService.Object));
@@ -969,8 +964,11 @@ internal sealed class TotpTests
 
         var result = await CompleteEnrollmentAsync(service, userId, secret, code);
 
-        Assert.That(result.Succeeded, Is.True);
-        _credentialService.Verify(x => x.LinkCredentialAsync(userId, It.IsAny<TotpAssertion>(), It.IsAny<IAuthenticationProvider>(), secret, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(_credentialService.LinkCalls.Count(call => call.UserId == userId && call.Assertion is TotpAssertion && call.CredentialValue == secret), Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -994,7 +992,7 @@ internal sealed class TotpTests
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.TenantMismatch));
             _credentialRepository.Verify(x => x.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-            _credentialService.Verify(x => x.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            Assert.That(_credentialService.LinkCalls, Is.Empty);
             _securityEvents.Verify(x => x.RecordAsync(It.Is<AshlarSecurityEvent>(d =>
                 d.EventType == AshlarSecurityEventTypes.TotpEnrollmentCompleted &&
                 d.Outcome == SecurityEventOutcomes.Failure &&
@@ -1016,7 +1014,7 @@ internal sealed class TotpTests
         {
             Assert.That(exception?.ParamName, Is.EqualTo("request.ActorUserId"));
             _credentialRepository.Verify(x => x.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<ProviderType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-            _credentialService.Verify(x => x.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            Assert.That(_credentialService.LinkCalls, Is.Empty);
             _securityEvents.Verify(x => x.RecordAsync(It.IsAny<AshlarSecurityEvent>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
@@ -1056,7 +1054,7 @@ internal sealed class TotpTests
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.InvalidCode));
         }
-        _credentialService.Verify(x => x.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.That(_credentialService.LinkCalls, Is.Empty);
     }
 
     [TestCase("link_failed")]
@@ -1070,14 +1068,7 @@ internal sealed class TotpTests
         var secret = Base32.Encode(secretBytes);
         var code = TotpAuthenticator.GenerateCode(secretBytes, _timeProvider.GetUtcNow().ToUnixTimeSeconds() / 30);
 
-        _credentialService.Setup(x => x.LinkCredentialAsync(
-                userId,
-                It.IsAny<TotpAssertion>(),
-                It.IsAny<IAuthenticationProvider>(),
-                secret,
-                It.IsAny<string>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Result(false, failureReason is null ? null : new AshlarFailure(new AshlarFailureCode(failureReason))));
+        _credentialService.LinkResult = new Result(false, failureReason is null ? null : new AshlarFailure(new AshlarFailureCode(failureReason)));
 
         var result = await CompleteEnrollmentAsync(service, userId, secret, code);
 
@@ -1165,7 +1156,7 @@ internal sealed class TotpTests
         var service = new TotpService(
             _repository.Object,
             _credentialRepository.Object,
-            _credentialService.Object,
+            _credentialService,
             _transactionProvider.Object,
             [CreateProvider()],
             new TotpServiceDependencies(Options.Create(_options), _timeProvider, _securityEvents.Object, notificationService.Object));

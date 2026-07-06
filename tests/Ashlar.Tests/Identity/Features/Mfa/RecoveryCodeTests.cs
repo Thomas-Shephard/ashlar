@@ -1148,7 +1148,7 @@ internal sealed class RecoveryCodeTests
     public async Task PipelineHandlesInconsistentCredentialState()
     {
         var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new TestCredentialService();
         var transProvider = new Mock<IAshlarTransactionProvider>();
         var securityEventSink = new Mock<ISecurityEventSink>();
 
@@ -1164,8 +1164,7 @@ internal sealed class RecoveryCodeTests
         providerRegistry.Setup(r => r.TryGetProvider(assertion, out providerObj)).Returns(true);
 
         // Setup: ResolveAsync returns NULL credential
-        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider.Object, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((user, null, null, false));
+        credentialService.ContextResolveResult = (user, null, null, false);
 
         // Setup: AuthenticateAsync returns SUCCESS but requests consumption
         provider.Setup(p => p.AuthenticateAsync(assertion, null, It.IsAny<CancellationToken>()))
@@ -1173,7 +1172,7 @@ internal sealed class RecoveryCodeTests
 
         var pipeline = new AuthenticationPipeline(
             providerRegistry.Object,
-            credentialService.Object,
+            credentialService,
             transProvider.Object,
             AllowPrimaryAuthenticationRateLimiter.Instance,
             AllowAuthenticationFactorRateLimiter.Instance,

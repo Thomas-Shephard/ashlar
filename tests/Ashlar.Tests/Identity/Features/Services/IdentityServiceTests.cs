@@ -60,11 +60,11 @@ internal sealed class IdentityServiceTests
     [Test]
     public void ConstructorShouldThrowOnNullRepository()
     {
-        var credService = new Mock<ICredentialService>();
+        var credService = new TestCredentialService();
         var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
         var authenticationPipeline = new Mock<IAuthenticationPipeline>();
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(null!, providerRegistry.Object, credService.Object, authenticationPipeline.Object, new NullTransactionProvider()));
+        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(null!, providerRegistry.Object, credService, authenticationPipeline.Object, new NullTransactionProvider()));
     }
 
     [Test]
@@ -79,11 +79,11 @@ internal sealed class IdentityServiceTests
     [Test]
     public void ConstructorShouldThrowOnNullTransactionProvider()
     {
-        var credService = new Mock<ICredentialService>();
+        var credService = new TestCredentialService();
         var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
         var authenticationPipeline = new Mock<IAuthenticationPipeline>();
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(_repositoryMock.Object, providerRegistry.Object, credService.Object, authenticationPipeline.Object, null!));
+        Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(_repositoryMock.Object, providerRegistry.Object, credService, authenticationPipeline.Object, null!));
     }
 
     [Test]
@@ -104,14 +104,14 @@ internal sealed class IdentityServiceTests
     [Test]
     public void ConstructorWithCollaboratorsShouldThrowOnNullProviderRegistry()
     {
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new TestCredentialService();
         var authenticationPipeline = new Mock<IAuthenticationPipeline>();
 
         Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(
             _repositoryMock.Object,
             // ReSharper disable once NullableWarningSuppressionIsUsed
             null!,
-            credentialService.Object,
+            credentialService,
             authenticationPipeline.Object,
             new NullTransactionProvider()));
     }
@@ -120,13 +120,13 @@ internal sealed class IdentityServiceTests
     public void ConstructorWithCollaboratorsShouldThrowOnNullAuthenticationPipeline()
     {
         var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new TestCredentialService();
 
         // ReSharper disable once NullableWarningSuppressionIsUsed
         Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(
             _repositoryMock.Object,
             providerRegistry.Object,
-            credentialService.Object,
+            credentialService,
             (IAuthenticationPipeline)null!,
             new NullTransactionProvider()));
     }
@@ -135,13 +135,13 @@ internal sealed class IdentityServiceTests
     public void ConstructorWithCollaboratorsShouldThrowOnNullTransactionProvider()
     {
         var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new TestCredentialService();
         var authenticationPipeline = new Mock<IAuthenticationPipeline>();
 
         Assert.Throws<ArgumentNullException>(() => _ = new IdentityService(
             _repositoryMock.Object,
             providerRegistry.Object,
-            credentialService.Object,
+            credentialService,
             authenticationPipeline.Object,
             null!));
     }
@@ -150,7 +150,7 @@ internal sealed class IdentityServiceTests
     public async Task LoginAsyncShouldDelegateToAuthenticationPipeline()
     {
         var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new TestCredentialService();
         var authenticationPipeline = new Mock<IAuthenticationPipeline>();
         var context = new AuthenticationContext("test@example.com");
         var assertion = new LocalPasswordAssertion("pass");
@@ -163,7 +163,7 @@ internal sealed class IdentityServiceTests
         var service = new IdentityService(
             _repositoryMock.Object,
             providerRegistry.Object,
-            credentialService.Object,
+            credentialService,
             authenticationPipeline.Object,
             new NullTransactionProvider());
 
@@ -174,30 +174,9 @@ internal sealed class IdentityServiceTests
     }
 
     [Test]
-    public async Task LinkCredentialAsyncShouldResolveProvider()
+    public void PublicIdentityServiceShouldNotExposeCredentialLinking()
     {
-        var providerRegistry = new Mock<IAuthenticationProviderRegistry>();
-        var credentialService = new Mock<ICredentialService>();
-        var authenticationPipeline = new Mock<IAuthenticationPipeline>();
-        var provider = new Mock<IPrimaryAuthenticationProvider>();
-        IAuthenticationProvider? providerObject = provider.Object;
-        var assertion = new LocalPasswordAssertion("pass");
-        var userId = Guid.NewGuid();
-
-        providerRegistry.Setup(r => r.TryGetProvider(assertion, out providerObject))
-            .Returns(true);
-
-        var service = new IdentityService(
-            _repositoryMock.Object,
-            providerRegistry.Object,
-            credentialService.Object,
-            authenticationPipeline.Object,
-            new NullTransactionProvider());
-
-        await service.LinkCredentialAsync(userId, assertion, "pass");
-
-        providerRegistry.Verify(r => r.TryGetProvider(assertion, out providerObject), Times.Once);
-        credentialService.Verify(s => s.LinkCredentialAsync(userId, assertion, providerObject, "pass", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.That(typeof(IIdentityService).GetMethod("LinkCredentialAsync"), Is.Null);
     }
 
     [Test]
@@ -404,7 +383,7 @@ internal sealed class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(type, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _identityService.LinkCredentialAsync(userId, new ExternalIdentityAssertion(type, providerName, providerKey, new Dictionary<string, string>()));
+        var result = await LinkCredentialForTestAsync(userId, new ExternalIdentityAssertion(type, providerName, providerKey, new Dictionary<string, string>()));
 
         using (Assert.EnterMultipleScope())
         {
@@ -427,7 +406,7 @@ internal sealed class IdentityServiceTests
         _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, type, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserCredential?)null);
 
-        await _identityService.LinkCredentialAsync(userId, assertion);
+        await LinkCredentialForTestAsync(userId, assertion);
 
         _credentialRepositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.UserId == userId &&
@@ -556,7 +535,7 @@ internal sealed class IdentityServiceTests
         _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, ProviderType.Local, AuthenticationProviderKey.Local.Name, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserCredential?)null);
 
-        await _identityService.LinkCredentialAsync(userId, new LocalPasswordAssertion(password), password);
+        await LinkCredentialForTestAsync(userId, new LocalPasswordAssertion(password), password);
 
         _credentialRepositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.UserId == userId &&
@@ -567,7 +546,7 @@ internal sealed class IdentityServiceTests
     public void LinkCredentialAsyncWithEmptyUserIdShouldThrowArgumentException()
     {
         Assert.ThrowsAsync<ArgumentException>(() =>
-            _identityService.LinkCredentialAsync(Guid.Empty, new LocalPasswordAssertion("pass"), "pass"));
+            LinkCredentialForTestAsync(Guid.Empty, new LocalPasswordAssertion("pass"), "pass"));
     }
 
     [Test]
@@ -586,7 +565,7 @@ internal sealed class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(type, providerName, providerKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(anotherUser);
 
-        var result = await _identityService.LinkCredentialAsync(userId, assertion);
+        var result = await LinkCredentialForTestAsync(userId, assertion);
 
         using (Assert.EnterMultipleScope())
         {
@@ -611,7 +590,7 @@ internal sealed class IdentityServiceTests
         _credentialRepositoryMock.Setup(r => r.CreateOrReplaceCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new CredentialProviderKeyConflictException());
 
-        var result = await _identityService.LinkCredentialAsync(userId, assertion);
+        var result = await LinkCredentialForTestAsync(userId, assertion);
 
         using (Assert.EnterMultipleScope())
         {
@@ -632,7 +611,7 @@ internal sealed class IdentityServiceTests
         _credentialRepositoryMock.Setup(r => r.GetCredentialForUserAsync(userId, type, AuthenticationProviderKey.Local.Name, userId.ToString(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserCredential?)null);
 
-        await _identityService.LinkCredentialAsync(userId, new LocalPasswordAssertion(password), password);
+        await LinkCredentialForTestAsync(userId, new LocalPasswordAssertion(password), password);
 
         _credentialRepositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.ProviderName == AuthenticationProviderKey.Local.Name), It.IsAny<CancellationToken>()), Times.Once);
@@ -647,7 +626,7 @@ internal sealed class IdentityServiceTests
             .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
 
         // ReSharper disable once NullableWarningSuppressionIsUsed
-        Assert.CatchAsync<ArgumentException>(() => _identityService.LinkCredentialAsync(userId, new LocalPasswordAssertion(null!)));
+        Assert.CatchAsync<ArgumentException>(() => LinkCredentialForTestAsync(userId, new LocalPasswordAssertion(null!)));
     }
 
     [Test]
@@ -892,7 +871,7 @@ internal sealed class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IUser?)null);
 
-        var result = await _identityService.LinkCredentialAsync(userId, new LocalPasswordAssertion("pass"));
+        var result = await LinkCredentialForTestAsync(userId, new LocalPasswordAssertion("pass"));
 
         using (Assert.EnterMultipleScope())
         {
@@ -911,7 +890,7 @@ internal sealed class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
 
-        var result = await _identityService.LinkCredentialAsync(userId, assertionMock.Object);
+        var result = await LinkCredentialForTestAsync(userId, assertionMock.Object);
 
         using (Assert.EnterMultipleScope())
         {
@@ -932,7 +911,7 @@ internal sealed class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Local, AuthenticationProviderKey.Local.Name, userId.ToString(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _identityService.LinkCredentialAsync(userId, assertion);
+        var result = await LinkCredentialForTestAsync(userId, assertion);
 
         using (Assert.EnterMultipleScope())
         {
@@ -953,7 +932,7 @@ internal sealed class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _identityService.LinkCredentialAsync(userId, assertion);
+        var result = await LinkCredentialForTestAsync(userId, assertion);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1047,7 +1026,7 @@ internal sealed class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
 
-        await _identityService.LinkCredentialAsync(userId, assertion);
+        await LinkCredentialForTestAsync(userId, assertion);
 
         _credentialRepositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.CredentialValue == null), It.IsAny<CancellationToken>()), Times.Once);
@@ -1148,7 +1127,7 @@ internal sealed class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await service.LinkCredentialAsync(userId, assertion);
+        var result = await LinkCredentialForTestAsync(userId, assertion, providers: [providerMock.Object]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1202,7 +1181,7 @@ internal sealed class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByProviderKeyAsync(ProviderType.Oidc, "Google", "sub", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
-        var result = await _identityService.LinkCredentialAsync(userId, assertion);
+        var result = await LinkCredentialForTestAsync(userId, assertion);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1279,7 +1258,7 @@ internal sealed class IdentityServiceTests
         _repositoryMock.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Id = userId, DisplayEmail = "test@example.com" });
 
-        await _identityService.LinkCredentialAsync(userId, assertion, plainToken);
+        await LinkCredentialForTestAsync(userId, assertion, plainToken);
 
         _credentialRepositoryMock.Verify(r => r.CreateOrReplaceCredentialAsync(It.Is<UserCredential>(c =>
             c.CredentialValue == protectedToken), It.IsAny<CancellationToken>()), Times.Once);
@@ -2385,6 +2364,37 @@ internal sealed class IdentityServiceTests
             pipeline,
             transactionProvider,
             new IdentityServiceDependencies(securityEventSink, _timeProvider));
+    }
+
+    private Task<Result> LinkCredentialForTestAsync(
+        Guid userId,
+        IAuthenticationAssertion assertion,
+        string? credentialValue = null,
+        IEnumerable<IAuthenticationProvider>? providers = null)
+    {
+        providers ??=
+        [
+            new LocalPasswordProvider(_hasherSelector),
+            new OidcAuthenticationProvider("Google"),
+            new OidcAuthenticationProvider("GitHub"),
+            new OAuthAuthenticationProvider("GitHub"),
+            new Saml2AuthenticationProvider("Okta")
+        ];
+
+        var registry = new AuthenticationProviderRegistry(providers);
+        if (!registry.TryGetProvider(assertion, out var provider))
+        {
+            return Task.FromResult(Result.Failure(AshlarFailureCodes.ProviderUnsupported, $"Provider '{assertion.ProviderIdentity}' is not supported."));
+        }
+
+        var credentialService = new CredentialService(
+            _repositoryMock.Object,
+            _credentialRepositoryMock.Object,
+            _secretProtectorMock.Object,
+            new NullTransactionProvider(),
+            new CredentialServiceDependencies(TimeProvider: _timeProvider));
+
+        return credentialService.LinkCredentialAsync(userId, assertion, provider, credentialValue);
     }
 
     private sealed class AuditedUser : ITenantUser, IHasAuditMetadata
