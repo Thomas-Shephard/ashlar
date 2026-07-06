@@ -18,6 +18,7 @@ namespace Ashlar.OAuth;
 public sealed class AshlarExternalAccountLinkService
 {
     private const string LinkPurpose = "external-account-linking";
+    private const string UnlinkPurpose = "external-account-unlinking";
 
     private readonly ICredentialService _credentialService;
     private readonly IAccountSecurityService _accountSecurityService;
@@ -208,13 +209,15 @@ public sealed class AshlarExternalAccountLinkService
     /// </summary>
     /// <param name="currentUserId">The currently authenticated Ashlar user id.</param>
     /// <param name="providerName">The configured Ashlar provider name.</param>
-    /// <param name="request">The account-security audit metadata for the operation.</param>
+    /// <param name="freshMfaProof">Ashlar-issued fresh MFA proof minted for <c>external-account-unlinking</c>.</param>
+    /// <param name="currentSessionId">Current Ashlar session id from the authenticated request. It must match <paramref name="freshMfaProof" />.</param>
+    /// <param name="request">The account-security audit metadata and explicit tenant scope for the operation. All-tenant scope is not a self-service unlink boundary.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The external account unlink result.</returns>
     /// <remarks>
-    /// Applications should treat calls to this service as sensitive account security operations and require
-    /// appropriate recent verification, such as fresh MFA, before invoking it. The service does not require or
-    /// enforce fresh MFA itself. User interfaces should prefer generic failure messages even though the result
+    /// Account unlinking mutates future sign-in methods. The service requires an Ashlar-issued fresh MFA proof for
+    /// the target user, tenant, current session, and <c>external-account-unlinking</c> purpose before it checks or
+    /// revokes credentials. User interfaces should prefer generic failure messages even though the result
     /// status is explicit for application branching. Unlinking revokes active credentials for the configured
     /// external provider family, such as all active Google credentials stored under the configured Google
     /// provider name, rather than a single provider key or raw external account key.
@@ -222,15 +225,22 @@ public sealed class AshlarExternalAccountLinkService
     public async Task<AshlarExternalAccountUnlinkResult> UnlinkExternalAccountAsync(
         Guid currentUserId,
         string providerName,
+        FreshMfaVerificationProof? freshMfaProof,
+        Guid? currentSessionId,
         AccountSecurityOperationRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         request.ThrowIfInvalidScope();
 
-        if (currentUserId == Guid.Empty)
+        if (currentUserId == Guid.Empty || request.IncludeAllTenants || request.Tenant == null)
         {
-            return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.UserNotFound);
+            return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
+        }
+
+        if (FreshVerificationProofValidator.ValidateMfaProof(currentUserId, request.Tenant, freshMfaProof, currentSessionId, TimeProvider.System.GetUtcNow(), UnlinkPurpose) != null)
+        {
+            return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.Failed);
         }
 
         var providerOptions = AshlarExternalProviderResolver.GetProvider(_options.CurrentValue, providerName);
@@ -245,20 +255,15 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.UserNotFound);
         }
 
-        if (!request.IncludeAllTenants)
+        if (!IsInRequestedTenant(user, request.Tenant))
         {
-            ArgumentNullException.ThrowIfNull(request.Tenant);
-            var tenant = request.Tenant;
-            if (!IsInRequestedTenant(user, tenant))
-            {
-                return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.TenantMismatch);
-            }
+            return new AshlarExternalAccountUnlinkResult(AshlarExternalAccountUnlinkStatus.TenantMismatch);
         }
 
         var provider = new AuthenticationProviderKey(providerOptions.Type, providerOptions.ProviderName);
         var postureResult = await _accountSecurityService.GetUserSecurityPostureAsync(
             currentUserId,
-            new AccountSecurityPostureRequest(GetPostureTenant(user, request)),
+            new AccountSecurityPostureRequest(request.Tenant),
             cancellationToken);
         if (!postureResult.Succeeded || postureResult.Value == null)
         {
@@ -303,18 +308,6 @@ public sealed class AshlarExternalAccountLinkService
             ITenantUser tenantUser => tenantUser.TenantId == tenant.TenantId,
             _ => tenant.TenantId == null
         };
-    }
-
-    private static TenantContext? GetPostureTenant(IUser user, AccountSecurityOperationRequest request)
-    {
-        if (!request.IncludeAllTenants)
-        {
-            return request.Tenant;
-        }
-
-        return user is ITenantUser tenantUser
-            ? new TenantContext(tenantUser.TenantId)
-            : TenantContext.Global;
     }
 
     private static bool HasUsablePrimarySignInMethodAfterUnlink(AccountSecurityPosture posture, AuthenticationProviderKey provider)

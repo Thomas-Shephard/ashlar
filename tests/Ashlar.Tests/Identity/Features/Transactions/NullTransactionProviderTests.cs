@@ -49,11 +49,12 @@ internal sealed class NullTransactionProviderTests
     }
 
     [Test]
-    public async Task PostCommitHooksExecuteOnCommitAndPropagateErrors()
+    public async Task PostCommitHooksExecuteOnCommitAndDoNotThrowAfterCommit()
     {
         var provider = new NullTransactionProvider();
         await using var transaction = await provider.BeginTransactionAsync();
         var hookExecuted = false;
+        var laterHookExecuted = false;
 
         transaction.OnCommitted(_ =>
         {
@@ -61,13 +62,17 @@ internal sealed class NullTransactionProviderTests
             throw new InvalidOperationException("Hook failed");
         });
 
-        var ex = await AssertCommitThrowsAggregateAsync(transaction);
+        transaction.OnCommitted(_ =>
+        {
+            laterHookExecuted = true;
+            return Task.CompletedTask;
+        });
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.DoesNotThrowAsync(() => transaction.CommitAsync());
             Assert.That(hookExecuted, Is.True);
-            Assert.That(ex.InnerExceptions, Has.Count.EqualTo(1));
-            Assert.That(ex.InnerExceptions[0].Message, Is.EqualTo("Hook failed"));
+            Assert.That(laterHookExecuted, Is.True);
         }
     }
 
@@ -210,21 +215,6 @@ internal sealed class NullTransactionProviderTests
         await using var transaction = await new NullTransactionProvider().BeginTransactionAsync(CancellationToken.None);
 
         await transaction.RollbackAsync(cancellationToken);
-    }
-
-    private static async Task<AggregateException> AssertCommitThrowsAggregateAsync(IAshlarTransaction transaction)
-    {
-        try
-        {
-            await transaction.CommitAsync();
-        }
-        catch (AggregateException ex)
-        {
-            return ex;
-        }
-
-        Assert.Fail("Expected AggregateException.");
-        throw new InvalidOperationException("Unreachable.");
     }
 
     private static void RegisterCancellationHook(IAshlarTransaction transaction, CancellationTokenSource cancellationTokenSource)

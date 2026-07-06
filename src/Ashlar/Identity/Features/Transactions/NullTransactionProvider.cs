@@ -22,7 +22,7 @@ internal sealed class NullTransactionProvider : IAshlarTransactionProvider
         /// Marks the no-op transaction committed and runs post-commit hooks.
         /// </summary>
         /// <param name="cancellationToken">A token observed before hooks are run.</param>
-        /// <returns>A task that completes after post-commit hooks finish.</returns>
+        /// <returns>A task that completes after post-commit hooks have been attempted.</returns>
         public async Task CommitAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -32,22 +32,16 @@ internal sealed class NullTransactionProvider : IAshlarTransactionProvider
             _hooks.Clear();
             _disposed = true;
 
-            List<Exception>? hookExceptions = null;
             foreach (var hook in hooks)
             {
                 try
                 {
                     await hook(CancellationToken.None);
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                catch (Exception)
                 {
-                    (hookExceptions ??= []).Add(ex);
+                    // Null provider has no logger; durable no-op commit semantics still match real providers.
                 }
-            }
-
-            if (hookExceptions != null)
-            {
-                throw new AggregateException("One or more post-commit hooks failed.", hookExceptions);
             }
         }
 

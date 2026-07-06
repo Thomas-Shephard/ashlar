@@ -129,12 +129,14 @@ internal sealed class PostgresTransactionManagerTests : PostgresTestBase
     {
         await using var manager = new PostgresTransactionManager(GetDataSource());
         await using var outer = await manager.BeginTransactionAsync();
+        IAshlarTransaction inner;
 
-        await using (var inner = await manager.BeginTransactionAsync())
+        await using (inner = await manager.BeginTransactionAsync())
         {
             await inner.RollbackAsync();
         }
 
+        await AssertCommitThrowsObjectDisposedAsync(inner);
         await AssertCommitThrowsInvalidOperationAsync(outer);
     }
 
@@ -314,7 +316,7 @@ internal sealed class PostgresTransactionManagerTests : PostgresTestBase
     }
 
     [Test]
-    public async Task PostCommitHooksAreIsolatedFromEachOtherButPropagateErrors()
+    public async Task PostCommitHooksAreIsolatedFromEachOtherAndDoNotThrowAfterCommit()
     {
         var logger = new RecordingLogger<PostgresTransactionManager>();
         await using var manager = new PostgresTransactionManager(GetDataSource(), logger);
@@ -334,14 +336,12 @@ internal sealed class PostgresTransactionManagerTests : PostgresTestBase
             return Task.CompletedTask;
         });
 
-        var ex = await AssertCommitThrowsAggregateAsync(transaction);
+        await transaction.CommitAsync();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(firstHookExecuted, Is.True);
             Assert.That(secondHookExecuted, Is.True);
-            Assert.That(ex.InnerExceptions, Has.Count.EqualTo(1));
-            Assert.That(ex.InnerExceptions[0].Message, Is.EqualTo("First hook failed"));
             Assert.That(logger.Entries, Has.Some.Matches<LogEntry>(entry =>
                 entry.Level == LogLevel.Warning
                 && entry.Exception is InvalidOperationException
@@ -402,21 +402,6 @@ internal sealed class PostgresTransactionManagerTests : PostgresTestBase
         }
 
         Assert.Fail("Expected InvalidOperationException.");
-    }
-
-    private static async Task<AggregateException> AssertCommitThrowsAggregateAsync(Ashlar.Identity.Abstractions.Transactions.IAshlarTransaction transaction)
-    {
-        try
-        {
-            await transaction.CommitAsync();
-        }
-        catch (AggregateException ex)
-        {
-            return ex;
-        }
-
-        Assert.Fail("Expected AggregateException.");
-        throw new InvalidOperationException("Unreachable.");
     }
 
     private static async Task AssertBeginTransactionThrowsInvalidOperationAsync(PostgresTransactionManager manager)

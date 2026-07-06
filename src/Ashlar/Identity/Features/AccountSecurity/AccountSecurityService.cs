@@ -68,6 +68,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService
                     failure.Code.Value,
                     ToAccountState: request.AccountState),
                 cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return Result.Failure<AccountSecurityOperationResult>(failure);
         }
 
@@ -91,6 +92,7 @@ internal sealed class AccountSecurityService : IAccountSecurityService
                         ToAccountState: request.AccountState,
                         AuditTenantId: auditTenantId),
                     cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
                 return Result.Failure<AccountSecurityOperationResult>(failure);
             }
 

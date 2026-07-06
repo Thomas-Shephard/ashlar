@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Ashlar.AspNetCore.Mfa;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
@@ -147,9 +148,17 @@ internal static class GitHubOAuthEndpoints
         }
 
         var accountLink = services.GetRequiredService<AshlarExternalAccountLinkService>();
+        if (!httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out _)) return Results.Forbid();
+        var proof = httpContext.CreateFreshMfaProof(
+            services.GetRequiredService<IStepUpAuthenticationService>(),
+            new StepUpRequirement(TimeSpan.FromMinutes(10), Purpose: "external-account-unlinking"));
+        if (!proof.Succeeded || proof.Value == null) return Results.Forbid();
+
         var result = await accountLink.UnlinkExternalAccountAsync(
-            user.GetAshlarUserId(),
+            userId,
             SampleGitHubOAuth.ProviderName,
+            proof.Value,
+            sessionId,
             new AccountSecurityOperationRequest(httpContext.ToAuditContext(), httpContext.ToTenantContext(), "sample-github-unlink"),
             cancellationToken);
 

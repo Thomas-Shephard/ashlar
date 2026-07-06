@@ -290,12 +290,13 @@ internal static class MfaEndpoints
         ICredentialRepository credentials,
         IPasskeyService passkeys,
         ClaimsPrincipal user,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var userId = user.GetAshlarUserId();
         var totpCredential = await credentials.GetCredentialForUserAsync(userId, ProviderType.Mfa, "totp", null, cancellationToken);
         var recoveryCredential = await credentials.GetCredentialForUserAsync(userId, ProviderType.RecoveryCode, "RecoveryCode", null, cancellationToken);
-        var hasPasskeys = (await passkeys.ListAsync(userId, cancellationToken)).Count > 0;
+        var hasPasskeys = (await passkeys.ListAsync(new ListPasskeysRequest(userId, httpContext.ToTenantContext()), cancellationToken)).Count > 0;
         var canUseCode = totpCredential != null || recoveryCredential != null;
 
         return Results.Ok(new

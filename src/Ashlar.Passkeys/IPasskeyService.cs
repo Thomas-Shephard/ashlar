@@ -64,24 +64,24 @@ public interface IPasskeyService
     /// <returns>The authentication result.</returns>
     Task<PasskeyAuthenticationResult> CompleteFactorAsync(CompletePasskeyFactorRequest request, CancellationToken cancellationToken = default);
     /// <summary>
-    /// Lists passkeys registered for a user.
+    /// Lists passkeys registered for the current authenticated account owner.
     /// </summary>
-    /// <param name="userId">The user id.</param>
+    /// <param name="request">The self-service list request. The actor and tenant are validated at the service boundary.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The registered passkeys.</returns>
-    Task<IReadOnlyList<PasskeyCredentialSummary>> ListAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<PasskeyCredentialSummary>> ListAsync(ListPasskeysRequest request, CancellationToken cancellationToken = default);
     /// <summary>
-    /// Renames a passkey display name.
+    /// Renames a passkey display name for the current authenticated account owner.
     /// </summary>
-    /// <param name="request">The rename request.</param>
+    /// <param name="request">The self-service rename request. It requires actor/tenant/session binding, a fresh MFA proof for <c>passkey-management</c>, and audit metadata.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The operation result. Successful mutations and audit records commit atomically.</returns>
     Task<Result> RenameAsync(RenamePasskeyRequest request, CancellationToken cancellationToken = default);
     /// <summary>
-    /// Revokes a passkey credential.
+    /// Revokes a passkey credential for the current authenticated account owner.
     /// </summary>
-    /// <param name="request">The revocation request.</param>
+    /// <param name="request">The self-service revocation request. It requires actor/tenant/session binding, a fresh MFA proof for <c>passkey-management</c>, and audit metadata.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The operation result. Successful mutations and audit records commit atomically.</returns>
     Task<Result> RevokeAsync(RevokePasskeyRequest request, CancellationToken cancellationToken = default);
 }
