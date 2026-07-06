@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using Ashlar.AspNetCore.Mfa;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
@@ -202,7 +201,6 @@ internal static class GoogleOidcEndpoints
     private static async Task<IResult> CompleteGoogleAccountLinkAsync(
         IConfiguration configuration,
         IServiceProvider services,
-        ClaimsPrincipal user,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -211,32 +209,12 @@ internal static class GoogleOidcEndpoints
             return Results.NotFound();
         }
 
-        if (!httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out var tenant))
-        {
-            return Results.Forbid();
-        }
-
-        var proof = httpContext.CreateFreshMfaProof(
-            services.GetRequiredService<IStepUpAuthenticationService>(),
-            new StepUpRequirement(TimeSpan.FromMinutes(10), Purpose: "external-account-linking"));
-        if (!proof.Succeeded || proof.Value == null)
-        {
-            return Results.Forbid();
-        }
-
-        var accountLink = services.GetRequiredService<AshlarExternalAccountLinkService>();
-        var result = await accountLink.CompleteExternalLinkAsync(
+        return await ExternalAccountLinkEndpointHelpers.CompleteExternalAccountLinkAsync(
+            services,
             httpContext,
-            userId,
             SampleGoogleOidc.ProviderName,
-            proof.Value,
-            sessionId,
-            tenant ?? TenantContext.Global,
-            cancellationToken: cancellationToken);
-
-        return result.Linked || result.AlreadyLinked
-            ? AppViews.RenderGoogleOidcResult("Google Account Linked", "Your Google account is linked.")
-            : AppViews.RenderGoogleOidcResult("Google Account Not Linked", "Your Google account could not be linked.");
+            AppViews.RenderGoogleOidcResult,
+            cancellationToken);
     }
 
     private static async Task<IResult> UnlinkGoogleAccountAsync(

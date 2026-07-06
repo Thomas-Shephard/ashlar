@@ -1509,7 +1509,6 @@ internal static class ExternalAccountLinkServiceTestExtensions
         Guid currentUserId,
         string providerName,
         TenantContext tenant,
-        string? credentialMetadata = null,
         CancellationToken cancellationToken = default)
     {
         var sessionId = Guid.NewGuid();
@@ -1520,7 +1519,6 @@ internal static class ExternalAccountLinkServiceTestExtensions
             CreateProof(currentUserId, tenant, sessionId),
             sessionId,
             tenant,
-            credentialMetadata,
             cancellationToken);
     }
 

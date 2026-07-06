@@ -135,6 +135,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
         await repository.CreateSessionAsync(expired);
         await repository.CreateSessionAsync(other);
         await repository.RevokeSessionByIdAsync(revoked.Id, revoked.UserId, DateTimeOffset.UtcNow, "manual", tenant: null, includeAllTenants: true);
+        var directlyRevoked = await ((SqliteAuthenticationSessionRepository)repository).RevokeSessionAsync(expired.Id, DateTimeOffset.UtcNow, "manual");
 
         var fetched = await repository.GetSessionByTokenHashAsync(active.TokenHash);
         var fetchedById = await repository.GetSessionAsync(active.Id);
@@ -160,6 +161,7 @@ internal sealed class SqliteAuthFlowRepositoryTests : SqliteTestBase
             Assert.That(stepUp!.AdditionalVerificationProvider, Is.EqualTo(AuthenticationProviderKey.Passkey));
             Assert.That(stepUp.AdditionalVerificationFactor, Is.EqualTo("passkey"));
             Assert.That(wrongUserStepUp, Is.Null);
+            Assert.That(directlyRevoked, Is.True);
             Assert.That(revokeOther, Is.EqualTo(1));
             Assert.That(ownedRevoke, Is.False);
         }

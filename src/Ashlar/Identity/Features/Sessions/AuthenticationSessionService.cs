@@ -377,6 +377,8 @@ internal sealed class AuthenticationSessionService(
         ArgumentNullException.ThrowIfNull(request);
         request.ThrowIfInvalid();
         ValidateRevocationReason(request.Reason, nameof(request));
+        var audit = request.Audit;
+        ArgumentNullException.ThrowIfNull(audit);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
@@ -395,7 +397,7 @@ internal sealed class AuthenticationSessionService(
             Outcome = SecurityEventOutcomes.Success,
             UserId = userId,
             TenantId = request.AuditTenantId ?? request.Tenant?.TenantId,
-            Audit = request.Audit,
+            Audit = audit,
             Properties = properties
         }, cancellationToken);
 
@@ -406,7 +408,7 @@ internal sealed class AuthenticationSessionService(
                 var user = await _userRepository.GetUserByIdAsync(userId, ct);
                 if (user != null)
                 {
-                    await _notifications.NotifyAsync(SecurityNotificationType.AllSessionsRevoked, user, now, context: ToNotificationContext(request.Audit, request.Tenant), metadata: properties, cancellationToken: ct);
+                    await _notifications.NotifyAsync(SecurityNotificationType.AllSessionsRevoked, user, now, context: ToNotificationContext(audit, request.Tenant), metadata: properties, cancellationToken: ct);
                 }
             }
         });
@@ -452,6 +454,8 @@ internal sealed class AuthenticationSessionService(
         if (request.SessionId == Guid.Empty) throw new ArgumentException("Session ID cannot be empty.", $"{nameof(request)}.{nameof(request.SessionId)}");
         request.ThrowIfInvalid();
         ValidateRevocationReason(request.Reason, nameof(request));
+        var audit = request.Audit;
+        ArgumentNullException.ThrowIfNull(audit);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
@@ -471,7 +475,7 @@ internal sealed class AuthenticationSessionService(
             UserId = userId,
             TenantId = auditTenant?.TenantId,
             SessionId = request.SessionId,
-            Audit = request.Audit,
+            Audit = audit,
             Properties = metadata
         }, cancellationToken);
 
@@ -482,7 +486,7 @@ internal sealed class AuthenticationSessionService(
                 var user = await _userRepository.GetUserByIdAsync(userId, ct);
                 if (user != null)
                 {
-                    await _notifications.NotifyAsync(SecurityNotificationType.SessionRevoked, user, now, sessionId: request.SessionId, context: ToNotificationContext(request.Audit, auditTenant), metadata: metadata, cancellationToken: ct);
+                    await _notifications.NotifyAsync(SecurityNotificationType.SessionRevoked, user, now, sessionId: request.SessionId, context: ToNotificationContext(audit, auditTenant), metadata: metadata, cancellationToken: ct);
                 }
             }
         });
@@ -501,6 +505,8 @@ internal sealed class AuthenticationSessionService(
         if (request.CurrentSessionId == Guid.Empty) throw new ArgumentException("Current session ID cannot be empty.", nameof(request));
         request.ThrowIfInvalid();
         ValidateRevocationReason(request.Reason, nameof(request));
+        var audit = request.Audit;
+        ArgumentNullException.ThrowIfNull(audit);
 
         await using var transaction = await _transactionProvider.BeginTransactionAsync(cancellationToken);
 
@@ -521,7 +527,7 @@ internal sealed class AuthenticationSessionService(
             Outcome = SecurityEventOutcomes.Success,
             UserId = userId,
             TenantId = auditTenant?.TenantId,
-            Audit = request.Audit,
+            Audit = audit,
             Properties = properties
         }, cancellationToken);
 
@@ -532,7 +538,7 @@ internal sealed class AuthenticationSessionService(
                 var user = await _userRepository.GetUserByIdAsync(userId, ct);
                 if (user != null)
                 {
-                    await _notifications.NotifyAsync(SecurityNotificationType.AllOtherSessionsRevoked, user, now, sessionId: request.CurrentSessionId, context: ToNotificationContext(request.Audit, auditTenant), metadata: properties, cancellationToken: ct);
+                    await _notifications.NotifyAsync(SecurityNotificationType.AllOtherSessionsRevoked, user, now, sessionId: request.CurrentSessionId, context: ToNotificationContext(audit, auditTenant), metadata: properties, cancellationToken: ct);
                 }
             }
         });
@@ -568,16 +574,13 @@ internal sealed class AuthenticationSessionService(
         }, cancellationToken);
     }
 
-    private static AuthenticationContext? ToNotificationContext(AuditContext? audit, TenantContext? tenant = null)
+    private static AuthenticationContext? ToNotificationContext(AuditContext audit, TenantContext? tenant = null)
     {
-        if (audit == null && tenant == null) return new AuthenticationContext();
         Guid? tenantId = null;
         if (tenant != null)
         {
             tenantId = tenant.TenantId;
         }
-
-        if (audit == null) return new AuthenticationContext(TenantId: tenantId);
 
         return new AuthenticationContext(
             UserId: audit.ActorUserId,

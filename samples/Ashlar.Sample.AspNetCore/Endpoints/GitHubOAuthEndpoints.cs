@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using Ashlar.AspNetCore.Mfa;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
@@ -119,7 +118,6 @@ internal static class GitHubOAuthEndpoints
     private static async Task<IResult> CompleteGitHubAccountLinkAsync(
         IConfiguration configuration,
         IServiceProvider services,
-        ClaimsPrincipal user,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -128,32 +126,12 @@ internal static class GitHubOAuthEndpoints
             return Results.NotFound();
         }
 
-        if (!httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out var tenant))
-        {
-            return Results.Forbid();
-        }
-
-        var proof = httpContext.CreateFreshMfaProof(
-            services.GetRequiredService<IStepUpAuthenticationService>(),
-            new StepUpRequirement(TimeSpan.FromMinutes(10), Purpose: "external-account-linking"));
-        if (!proof.Succeeded || proof.Value == null)
-        {
-            return Results.Forbid();
-        }
-
-        var accountLink = services.GetRequiredService<AshlarExternalAccountLinkService>();
-        var result = await accountLink.CompleteExternalLinkAsync(
+        return await ExternalAccountLinkEndpointHelpers.CompleteExternalAccountLinkAsync(
+            services,
             httpContext,
-            userId,
             SampleGitHubOAuth.ProviderName,
-            proof.Value,
-            sessionId,
-            tenant ?? TenantContext.Global,
-            cancellationToken: cancellationToken);
-
-        return result.Linked || result.AlreadyLinked
-            ? AppViews.RenderExternalProviderResult("GitHub Account Linked", "Your GitHub account is linked.")
-            : AppViews.RenderExternalProviderResult("GitHub Account Not Linked", "Your GitHub account could not be linked.");
+            AppViews.RenderExternalProviderResult,
+            cancellationToken);
     }
 
     private static async Task<IResult> UnlinkGitHubAccountAsync(

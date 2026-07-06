@@ -1479,6 +1479,38 @@ internal sealed class AuthenticationSessionServiceTests
     }
 
     [Test]
+    public async Task RevokeOtherSessionsAsyncShouldAuditGlobalScope()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var service = new AuthenticationSessionService(
+            _repositoryMock.Object,
+            _tokenHasherMock.Object,
+            new FixedSessionTokenGenerator("raw-token"),
+            new NullTransactionProvider(),
+            new AuthenticationSessionServiceDependencies(TimeProvider: _timeProvider, SecurityEventSink: sink, UserRepository: _userRepositoryMock.Object));
+        var userId = Guid.NewGuid();
+        var currentSessionId = Guid.NewGuid();
+        _repositoryMock
+            .Setup(r => r.RevokeOtherSessionsForUserAsync(userId, currentSessionId, _timeProvider.GetUtcNow(), null, TenantContext.Global, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        await service.RevokeOtherSessionsAsync(userId, new RevokeOtherAuthenticationSessionsRequest
+        {
+            CurrentSessionId = currentSessionId,
+            Tenant = TenantContext.Global,
+            Audit = new AuditContext(userId)
+        });
+
+        var securityEvent = sink.Events.Single(e => e.EventType == AshlarSecurityEventTypes.SessionsRevokedForUser);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(securityEvent.TenantId, Is.Null);
+            Assert.That(securityEvent.Properties?["scope"], Is.EqualTo("global"));
+            Assert.That(securityEvent.Properties!.ContainsKey("tenant_id"), Is.False);
+        }
+    }
+
+    [Test]
     public void RevokeOtherSessionsAsyncShouldRejectEmptyUserId()
     {
         Assert.ThrowsAsync<ArgumentException>(() => _service.RevokeOtherSessionsAsync(Guid.Empty, new RevokeOtherAuthenticationSessionsRequest { CurrentSessionId = Guid.NewGuid() }));

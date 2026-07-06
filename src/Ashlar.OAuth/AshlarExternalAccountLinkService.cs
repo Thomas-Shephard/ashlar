@@ -52,7 +52,6 @@ public sealed class AshlarExternalAccountLinkService
     /// <param name="freshMfaProof">Ashlar-issued fresh MFA proof minted for <c>external-account-linking</c>.</param>
     /// <param name="currentSessionId">Current Ashlar session id from the authenticated request. It must match <paramref name="freshMfaProof" />.</param>
     /// <param name="tenant">The tenant scope. Use <see cref="TenantContext.Global" /> for global users.</param>
-    /// <param name="credentialMetadata">Optional non-secret credential metadata to store with the link. Do not pass access tokens, refresh tokens, ID tokens, authorization codes, cookies, or raw claim payloads.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The account-link result, including provider mismatch or invalid-principal statuses when the temporary ticket cannot be trusted for the configured provider.</returns>
     /// <remarks>
@@ -69,7 +68,6 @@ public sealed class AshlarExternalAccountLinkService
         FreshMfaVerificationProof? freshMfaProof,
         Guid? currentSessionId,
         TenantContext tenant,
-        string? credentialMetadata = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(httpContext);
@@ -100,7 +98,7 @@ public sealed class AshlarExternalAccountLinkService
             return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.ProviderMismatch);
         }
 
-        return await LinkValidatedExternalAccountCoreAsync(currentUserId, new AshlarValidatedExternalPrincipal(provider, result.Principal), tenant, credentialMetadata, cancellationToken);
+        return await LinkValidatedExternalAccountCoreAsync(currentUserId, new AshlarValidatedExternalPrincipal(provider, result.Principal), tenant, cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -174,11 +172,6 @@ public sealed class AshlarExternalAccountLinkService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(principal);
-
-        if (currentUserId == Guid.Empty)
-        {
-            return new AshlarExternalAccountLinkResult(AshlarExternalAccountLinkStatus.InvalidPrincipal);
-        }
 
         ExternalIdentityAssertion assertion;
         try
@@ -311,13 +304,8 @@ public sealed class AshlarExternalAccountLinkService
             revokeResult);
     }
 
-    private async Task<bool> CurrentUserMatchesTenantAsync(Guid currentUserId, TenantContext? tenant, CancellationToken cancellationToken)
+    private async Task<bool> CurrentUserMatchesTenantAsync(Guid currentUserId, TenantContext tenant, CancellationToken cancellationToken)
     {
-        if (tenant == null)
-        {
-            return true;
-        }
-
         var user = await _repository.GetUserByIdAsync(currentUserId, cancellationToken);
         return user != null && IsInRequestedTenant(user, tenant);
     }
