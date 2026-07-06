@@ -350,6 +350,26 @@ internal sealed class PostgresTransactionManagerTests : PostgresTestBase
         }
     }
 
+    [Test]
+    public async Task PostCommitHookCancellationDoesNotThrowAfterCommitAndMutationStaysCommitted()
+    {
+        var tableName = "test_values_" + Guid.NewGuid().ToString("N");
+        await InitializeTableAsync(tableName);
+        await using var manager = new PostgresTransactionManager(GetDataSource());
+        await using var transaction = await manager.BeginTransactionAsync();
+
+        await using (var handle = await manager.GetConnectionAsync(CancellationToken.None))
+        {
+            await InsertValueAsync(handle.Connection, handle.Transaction, tableName, "committed");
+        }
+
+        transaction.OnCommitted(_ => throw new OperationCanceledException());
+
+        await transaction.CommitAsync();
+
+        Assert.That(await CountRowsAsync(tableName), Is.EqualTo(1));
+    }
+
     private static async Task AssertCommitThrowsObjectDisposedAsync(Ashlar.Identity.Abstractions.Transactions.IAshlarTransaction transaction)
     {
         try
@@ -427,5 +447,36 @@ internal sealed class PostgresTransactionManagerTests : PostgresTestBase
         Assert.That(result, Is.Not.Null);
 
         return (int)result;
+    }
+
+    private async Task InitializeTableAsync(string tableName)
+    {
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"CREATE TABLE {QuoteIdentifier(tableName)} (value TEXT NOT NULL);";
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private async Task<int> CountRowsAsync(string tableName)
+    {
+        await using var connection = await GetDataSource().OpenConnectionAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT COUNT(*) FROM {QuoteIdentifier(tableName)};";
+        var result = await command.ExecuteScalarAsync();
+        return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static async Task InsertValueAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, string tableName, string value)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = $"INSERT INTO {QuoteIdentifier(tableName)} (value) VALUES ($1);";
+        command.Parameters.AddWithValue(value);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static string QuoteIdentifier(string identifier)
+    {
+        return "\"" + identifier.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
     }
 }

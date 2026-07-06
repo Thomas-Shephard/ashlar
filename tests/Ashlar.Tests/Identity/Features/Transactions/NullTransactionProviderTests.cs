@@ -77,6 +77,25 @@ internal sealed class NullTransactionProviderTests
     }
 
     [Test]
+    public async Task PostCommitHookCancellationDoesNotThrowAfterCommit()
+    {
+        var provider = new NullTransactionProvider();
+        await using var transaction = await provider.BeginTransactionAsync();
+        var laterHookExecuted = false;
+
+        transaction.OnCommitted(_ => throw new OperationCanceledException());
+        transaction.OnCommitted(_ =>
+        {
+            laterHookExecuted = true;
+            return Task.CompletedTask;
+        });
+
+        await transaction.CommitAsync();
+
+        Assert.That(laterHookExecuted, Is.True);
+    }
+
+    [Test]
     public async Task PostCommitHooksIgnoreCommitCancellationAfterCommitSucceeds()
     {
         var provider = new NullTransactionProvider();

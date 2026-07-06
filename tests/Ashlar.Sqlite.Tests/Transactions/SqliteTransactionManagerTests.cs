@@ -270,6 +270,25 @@ internal sealed class SqliteTransactionManagerTests : SqliteTestBase
     }
 
     [Test]
+    public async Task PostCommitHookCancellationDoesNotThrowAfterCommitAndMutationStaysCommitted()
+    {
+        await InitializeTableAsync();
+        await using var manager = CreateManager();
+        await using var transaction = await manager.BeginTransactionAsync();
+
+        await using (var handle = await manager.GetConnectionAsync(CancellationToken.None))
+        {
+            await InsertValueAsync(handle.Connection, handle.Transaction, "committed");
+        }
+
+        transaction.OnCommitted(_ => throw new OperationCanceledException());
+
+        await transaction.CommitAsync();
+
+        Assert.That(await CountRowsAsync(), Is.EqualTo(1));
+    }
+
+    [Test]
     public async Task PostCommitHooksDoNotRunOnRollbackOrDisposal()
     {
         await using (var rollbackManager = CreateManager())
