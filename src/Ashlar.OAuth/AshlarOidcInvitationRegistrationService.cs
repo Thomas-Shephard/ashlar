@@ -66,10 +66,7 @@ public sealed class AshlarOidcInvitationRegistrationService
         return await CompleteOidcInvitationRegistrationCoreAsync(
             httpContext,
             providerName,
-            invitationToken,
-            displayName,
-            invitationTokenPropertyName: null,
-            displayNamePropertyName: null,
+            new OidcInvitationRegistrationState(invitationToken, displayName),
             context,
             cancellationToken);
     }
@@ -102,10 +99,7 @@ public sealed class AshlarOidcInvitationRegistrationService
         return await CompleteOidcInvitationRegistrationCoreAsync(
             httpContext,
             providerName,
-            invitationToken: null,
-            displayName: null,
-            invitationTokenPropertyName,
-            displayNamePropertyName,
+            new OidcInvitationRegistrationState(null, null, invitationTokenPropertyName, displayNamePropertyName),
             context,
             cancellationToken);
     }
@@ -113,10 +107,7 @@ public sealed class AshlarOidcInvitationRegistrationService
     private async Task<AshlarOidcInvitationRegistrationResult> CompleteOidcInvitationRegistrationCoreAsync(
         HttpContext httpContext,
         string providerName,
-        string? invitationToken,
-        string? displayName,
-        string? invitationTokenPropertyName,
-        string? displayNamePropertyName,
+        OidcInvitationRegistrationState invitationState,
         AuthenticationContext? context,
         CancellationToken cancellationToken)
     {
@@ -142,12 +133,14 @@ public sealed class AshlarOidcInvitationRegistrationService
             return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.ProviderMismatch);
         }
 
-        if (invitationTokenPropertyName != null)
+        var invitationToken = invitationState.InvitationToken;
+        var displayName = invitationState.DisplayName;
+        if (invitationState.InvitationTokenPropertyName != null)
         {
-            result.Properties?.Items.TryGetValue(invitationTokenPropertyName, out invitationToken);
-            if (displayNamePropertyName != null)
+            result.Properties?.Items.TryGetValue(invitationState.InvitationTokenPropertyName, out invitationToken);
+            if (invitationState.DisplayNamePropertyName != null)
             {
-                result.Properties?.Items.TryGetValue(displayNamePropertyName, out displayName);
+                result.Properties?.Items.TryGetValue(invitationState.DisplayNamePropertyName, out displayName);
             }
         }
 
@@ -158,6 +151,12 @@ public sealed class AshlarOidcInvitationRegistrationService
             context,
             cancellationToken);
     }
+
+    private sealed record OidcInvitationRegistrationState(
+        string? InvitationToken,
+        string? DisplayName,
+        string? InvitationTokenPropertyName = null,
+        string? DisplayNamePropertyName = null);
 
     internal Task<AshlarOidcInvitationRegistrationResult> RegisterOidcInvitationAsync(
         string? invitationToken,
