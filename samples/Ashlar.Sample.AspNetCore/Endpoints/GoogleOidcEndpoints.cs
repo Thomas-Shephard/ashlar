@@ -3,7 +3,6 @@ using Ashlar.AspNetCore.Sessions;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.Extensions.Options;
 
 namespace Ashlar.Sample.AspNetCore.Endpoints;
 
@@ -145,32 +144,15 @@ internal static class GoogleOidcEndpoints
             return Results.NotFound();
         }
 
-        var options = services.GetRequiredService<IOptionsMonitor<AshlarOAuthOptions>>();
-        var ticket = await AshlarExternalTicket.AuthenticateAndClearAsync(
-            httpContext,
-            options.CurrentValue.ExternalSignInScheme,
-            cancellationToken);
-        if (!ticket.Succeeded || ticket.Properties == null ||
-            !ticket.Properties.Items.TryGetValue(SampleGoogleOidc.InvitationTokenProperty, out var invitationToken) ||
-            string.IsNullOrWhiteSpace(invitationToken))
-        {
-            return AppViews.RenderGoogleOidcResult("Invitation Could Not Be Accepted", "This invitation could not be accepted with Google. Check that you used the invited email address and try again, or ask an administrator for a new invitation.");
-        }
-
         var registration = services.GetRequiredService<AshlarOidcInvitationRegistrationService>();
         var signInManager = services.GetRequiredService<IAshlarSignInManager>();
         var users = services.GetRequiredService<IUserRepository>();
-        ticket.Properties.Items.TryGetValue(SampleGoogleOidc.InvitationDisplayNameProperty, out var displayName);
-        if (displayName == null && ticket.Principal != null)
-        {
-            displayName = AshlarOidcProfileMapper.GetSuggestedDisplayName(ticket.Principal);
-        }
 
-        var result = await registration.RegisterOidcInvitationAsync(
-            invitationToken,
+        var result = await registration.CompleteOidcInvitationRegistrationFromPropertiesAsync(
+            httpContext,
             SampleGoogleOidc.ProviderName,
-            ticket,
-            displayName,
+            SampleGoogleOidc.InvitationTokenProperty,
+            SampleGoogleOidc.InvitationDisplayNameProperty,
             httpContext.ToAuthenticationContext(),
             cancellationToken);
 

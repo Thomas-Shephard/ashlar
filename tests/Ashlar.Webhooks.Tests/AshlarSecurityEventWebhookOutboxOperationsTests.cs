@@ -1,4 +1,5 @@
 using Ashlar.Auditing;
+using Ashlar.Identity.Abstractions.Transactions;
 using Ashlar.Webhooks.SecurityEvents;
 
 namespace Ashlar.Webhooks.Tests;
@@ -133,6 +134,39 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
             CancellationToken.None));
     }
 
+    [Test]
+    public async Task ServiceBaseAllowsOperationWithoutTransactionProvider()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var deliveryId = Guid.NewGuid();
+        var operations = new TestWebhookOutboxOperations(sink);
+
+        var result = await operations.RetryAsync(new AshlarSecurityEventWebhookOutboxOperationRequest(deliveryId, new AuditContext(Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.Retried));
+            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.SecurityEventWebhookOutboxDeliveryRetried));
+        }
+    }
+
+    [Test]
+    public async Task ServiceBaseCommitsOperationWithTransactionProvider()
+    {
+        var sink = new RecordingSecurityEventSink();
+        var transactionProvider = new RecordingTransactionProvider();
+        var operations = new TestWebhookOutboxOperations(sink, transactionProvider);
+
+        var result = await operations.RetryAsync(new AshlarSecurityEventWebhookOutboxOperationRequest(Guid.NewGuid(), new AuditContext(Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarSecurityEventWebhookOutboxOperationStatus.Retried));
+            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(1));
+            Assert.That(transactionProvider.Transaction.DisposeCount, Is.EqualTo(1));
+        }
+    }
+
     private sealed class RecordingSecurityEventSink : ISecurityEventSink
     {
         public List<AshlarSecurityEvent> Events { get; } = [];
@@ -157,6 +191,64 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
         public override DateTimeOffset GetUtcNow()
         {
             return now;
+        }
+    }
+
+    private sealed class TestWebhookOutboxOperations(
+        ISecurityEventSink sink,
+        IAshlarTransactionProvider? transactionProvider = null)
+        : AshlarSecurityEventWebhookOutboxOperationsBase(TimeProvider.System, sink, transactionProvider)
+    {
+        protected override Task<AshlarSecurityEventWebhookOutboxOperationState?> RetryFailedAsync(Guid deliveryId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<AshlarSecurityEventWebhookOutboxOperationState?>(new(deliveryId, "endpoint", Guid.NewGuid(), "event.type", "failed", IsDiscarded: false));
+        }
+
+        protected override Task<AshlarSecurityEventWebhookOutboxOperationState?> DiscardFailedAsync(Guid deliveryId, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        protected override Task<AshlarSecurityEventWebhookOutboxOperationState?> LoadAsync(Guid deliveryId, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
+    private sealed class RecordingTransactionProvider : IAshlarTransactionProvider
+    {
+        public RecordingTransaction Transaction { get; } = new();
+
+        public Task<IAshlarTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IAshlarTransaction>(Transaction);
+        }
+    }
+
+    private sealed class RecordingTransaction : IAshlarTransaction
+    {
+        public int CommitCount { get; private set; }
+        public int DisposeCount { get; private set; }
+
+        public Task CommitAsync(CancellationToken cancellationToken = default)
+        {
+            CommitCount++;
+            return Task.CompletedTask;
+        }
+
+        public Task RollbackAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+
+        public void OnCommitted(Func<CancellationToken, Task> action)
+        {
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            DisposeCount++;
+            return ValueTask.CompletedTask;
         }
     }
 }

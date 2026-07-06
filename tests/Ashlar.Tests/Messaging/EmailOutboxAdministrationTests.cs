@@ -244,6 +244,39 @@ internal sealed class EmailOutboxAdministrationProviderTests
         }
     }
 
+    [Test]
+    public async Task ServiceBaseAllowsOperationWithoutTransactionProvider()
+    {
+        var sink = new CapturingSecurityEventSink();
+        var id = Guid.NewGuid();
+        var service = new TestEmailOutboxAdministrationService(sink);
+
+        var result = await service.RetryAsync(new EmailOutboxOperationRequest(id, new AuditContext(Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(EmailOutboxOperationStatus.Retried));
+            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.EmailOutboxDeliveryRetried));
+        }
+    }
+
+    [Test]
+    public async Task ServiceBaseCommitsOperationWithTransactionProvider()
+    {
+        var sink = new CapturingSecurityEventSink();
+        var transactionProvider = new Support.RecordingTransactionProvider();
+        var service = new TestEmailOutboxAdministrationService(sink, transactionProvider);
+
+        var result = await service.RetryAsync(new EmailOutboxOperationRequest(Guid.NewGuid(), new AuditContext(Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(EmailOutboxOperationStatus.Retried));
+            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(1));
+            Assert.That(transactionProvider.Transaction.DisposeCount, Is.EqualTo(1));
+        }
+    }
+
     private static EmailOutboxAdministrationProjection CreateRecord(
         EmailMessageSensitivity sensitivity = EmailMessageSensitivity.Normal,
         EmailOutboxBodyProtection bodyProtection = EmailOutboxBodyProtection.None,
@@ -284,6 +317,37 @@ internal sealed class EmailOutboxAdministrationProviderTests
         {
             Events.Add(securityEvent);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class TestEmailOutboxAdministrationService(
+        ISecurityEventSink sink,
+        global::Ashlar.Identity.Abstractions.Transactions.IAshlarTransactionProvider? transactionProvider = null)
+        : EmailOutboxAdministrationServiceBase(TimeProvider.System, sink, transactionProvider)
+    {
+        public override Task<EmailOutboxSearchResult> SearchAsync(EmailOutboxSearchRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override Task<EmailOutboxDetail?> GetAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        protected override Task<EmailOutboxAdministrationOperationState?> RetryFailedAsync(Guid id, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<EmailOutboxAdministrationOperationState?>(new(id, "retry@example.com", "Retry", EmailOutboxStatus.Pending));
+        }
+
+        protected override Task<EmailOutboxAdministrationOperationState?> DiscardFailedAsync(Guid id, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        protected override Task<EmailOutboxAdministrationOperationState?> LoadOperationStateAsync(Guid id, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
         }
     }
 }

@@ -5,7 +5,8 @@ namespace Ashlar.Postgres.Webhooks;
 internal sealed class PostgresSecurityEventWebhookOutboxOperations(
     IPostgresConnectionProvider connectionProvider,
     TimeProvider timeProvider,
-    ISecurityEventSink? securityEventSink = null) : AshlarSecurityEventWebhookOutboxOperationsBase(timeProvider, securityEventSink)
+    ISecurityEventSink? securityEventSink = null,
+    IAshlarTransactionProvider? transactionProvider = null) : AshlarSecurityEventWebhookOutboxOperationsBase(timeProvider, securityEventSink, transactionProvider)
 {
     private const string RetrySql = """
         UPDATE ashlar_security_event_webhook_outbox

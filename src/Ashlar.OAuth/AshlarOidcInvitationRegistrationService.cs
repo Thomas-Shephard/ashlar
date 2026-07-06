@@ -63,6 +63,54 @@ public sealed class AshlarOidcInvitationRegistrationService
         AuthenticationContext? context = null,
         CancellationToken cancellationToken = default)
     {
+        return await CompleteOidcInvitationRegistrationCoreAsync(
+            httpContext,
+            providerName,
+            new OidcInvitationRegistrationState(invitationToken, displayName),
+            context,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Completes invitation registration using invitation state stored in the ASP.NET Core temporary external authentication ticket.
+    /// </summary>
+    /// <param name="httpContext">The current HTTP context.</param>
+    /// <param name="providerName">The configured Ashlar OIDC provider name.</param>
+    /// <param name="invitationTokenPropertyName">Authentication property name containing the Ashlar invitation token.</param>
+    /// <param name="displayNamePropertyName">Optional authentication property name containing the requested display name.</param>
+    /// <param name="context">Optional Ashlar authentication context.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The invitation registration result, including ticket, provider, invitation, and credential-link failures.</returns>
+    /// <remarks>
+    /// Use this overload when callback state must not appear in the OAuth redirect URI. The ASP.NET Core OpenID
+    /// Connect handler must preserve the supplied authentication properties in the temporary external ticket.
+    /// Ashlar reads and clears that ticket before accepting the invitation or linking the OIDC credential.
+    /// </remarks>
+    public async Task<AshlarOidcInvitationRegistrationResult> CompleteOidcInvitationRegistrationFromPropertiesAsync(
+        HttpContext httpContext,
+        string providerName,
+        string invitationTokenPropertyName,
+        string? displayNamePropertyName = null,
+        AuthenticationContext? context = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(invitationTokenPropertyName);
+
+        return await CompleteOidcInvitationRegistrationCoreAsync(
+            httpContext,
+            providerName,
+            new OidcInvitationRegistrationState(null, null, invitationTokenPropertyName, displayNamePropertyName),
+            context,
+            cancellationToken);
+    }
+
+    private async Task<AshlarOidcInvitationRegistrationResult> CompleteOidcInvitationRegistrationCoreAsync(
+        HttpContext httpContext,
+        string providerName,
+        OidcInvitationRegistrationState invitationState,
+        AuthenticationContext? context,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(httpContext);
 
         var provider = GetOidcProvider(providerName);
@@ -80,9 +128,26 @@ public sealed class AshlarOidcInvitationRegistrationService
         }
 
         var externalProvider = CreateExternalProvider(provider);
-        if (!AshlarExternalProviderResolver.MatchesProvider(result, externalProvider))
+        var (matched, properties) = AshlarExternalProviderResolver.MatchProvider(result, externalProvider);
+        if (!matched || properties is null)
         {
             return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.ProviderMismatch);
+        }
+
+        var invitationToken = invitationState.InvitationToken;
+        var displayName = invitationState.DisplayName;
+        if (invitationState.InvitationTokenPropertyName != null)
+        {
+            properties.Items.TryGetValue(invitationState.InvitationTokenPropertyName, out invitationToken);
+            if (invitationState.DisplayNamePropertyName != null)
+            {
+                properties.Items.TryGetValue(invitationState.DisplayNamePropertyName, out displayName);
+            }
+        }
+
+        if (invitationToken == null)
+        {
+            return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.InvalidInvitation);
         }
 
         return await RegisterValidatedOidcInvitationAsync(
@@ -93,21 +158,13 @@ public sealed class AshlarOidcInvitationRegistrationService
             cancellationToken);
     }
 
-    /// <summary>
-    /// Completes invitation registration from a completed ASP.NET Core external authentication result.
-    /// </summary>
-    /// <param name="invitationToken">The invitation token.</param>
-    /// <param name="providerName">The configured Ashlar OIDC provider name.</param>
-    /// <param name="authenticateResult">The completed external authentication result.</param>
-    /// <param name="displayName">Optional user display name for invitation acceptance.</param>
-    /// <param name="context">Optional Ashlar authentication context.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The invitation registration result, including provider, invitation, and credential-link failures.</returns>
-    /// <remarks>
-    /// The completed authentication result must come from ASP.NET Core OpenID Connect middleware. Provider metadata
-    /// embedded in the ticket must match the configured Ashlar OIDC provider before the invitation is accepted.
-    /// </remarks>
-    public Task<AshlarOidcInvitationRegistrationResult> RegisterOidcInvitationAsync(
+    private sealed record OidcInvitationRegistrationState(
+        string? InvitationToken,
+        string? DisplayName,
+        string? InvitationTokenPropertyName = null,
+        string? DisplayNamePropertyName = null);
+
+    internal Task<AshlarOidcInvitationRegistrationResult> RegisterOidcInvitationAsync(
         string? invitationToken,
         string providerName,
         AuthenticateResult authenticateResult,

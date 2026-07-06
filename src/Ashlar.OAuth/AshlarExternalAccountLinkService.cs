@@ -101,21 +101,7 @@ public sealed class AshlarExternalAccountLinkService
         return await LinkValidatedExternalAccountCoreAsync(currentUserId, new AshlarValidatedExternalPrincipal(provider, result.Principal), tenant, cancellationToken: cancellationToken);
     }
 
-    /// <summary>
-    /// Links a completed ASP.NET Core external authentication ticket to the current Ashlar user after fresh verification.
-    /// </summary>
-    /// <param name="currentUserId">The currently authenticated Ashlar user id.</param>
-    /// <param name="providerName">The configured Ashlar provider name.</param>
-    /// <param name="request">Validated external ticket, Ashlar-issued fresh MFA proof, current session id, tenant scope, and non-secret metadata.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The account-link result, including provider mismatch or invalid-principal statuses when the ticket cannot be trusted for the configured provider.</returns>
-    /// <remarks>
-    /// Account linking mutates future sign-in methods. The request must include an Ashlar-issued fresh MFA proof
-    /// bound to the target user, tenant scope, current session, and <c>external-account-linking</c> purpose. The
-    /// completed authentication result must come from ASP.NET Core external authentication middleware. The provider
-    /// metadata embedded in the ticket must match the configured Ashlar provider before any account link is created.
-    /// </remarks>
-    public async Task<AshlarExternalAccountLinkResult> LinkExternalAccountAsync(
+    internal async Task<AshlarExternalAccountLinkResult> LinkExternalAccountAsync(
         Guid currentUserId,
         string providerName,
         AshlarExternalAccountLinkRequest request,

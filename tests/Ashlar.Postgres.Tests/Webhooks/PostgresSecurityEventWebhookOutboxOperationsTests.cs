@@ -105,6 +105,48 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
     }
 
     [Test]
+    public async Task RetryAsyncRollsBackMutationWhenAuditFails()
+    {
+        var originalAvailableAt = Now.AddMinutes(-10);
+        var id = await InsertRowAsync("failed", availableAt: originalAvailableAt, failedAt: Now.AddMinutes(-1), lastError: "failure");
+        var operations = new PostgresSecurityEventWebhookOutboxOperations(
+            _provider.GetRequiredService<IPostgresConnectionProvider>(),
+            _timeProvider,
+            new ThrowingSecurityEventSink(new InvalidOperationException("audit failed")),
+            _provider.GetRequiredService<IAshlarTransactionProvider>());
+
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.RetryAsync(Request(id)));
+        var row = await QueryStateAsync(id);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(row.FailedAt, Is.Not.Null);
+            Assert.That(row.LastError, Is.EqualTo("failure"));
+            Assert.That(row.AvailableAt, Is.EqualTo(originalAvailableAt));
+        }
+    }
+
+    [Test]
+    public async Task DiscardAsyncRollsBackMutationWhenAuditFails()
+    {
+        var id = await InsertRowAsync("failed", failedAt: Now.AddMinutes(-1), lastError: "failure");
+        var operations = new PostgresSecurityEventWebhookOutboxOperations(
+            _provider.GetRequiredService<IPostgresConnectionProvider>(),
+            _timeProvider,
+            new ThrowingSecurityEventSink(new InvalidOperationException("audit failed")),
+            _provider.GetRequiredService<IAshlarTransactionProvider>());
+
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await operations.DiscardAsync(Request(id)));
+        var row = await QueryStateAsync(id);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(row.FailedAt, Is.Not.Null);
+            Assert.That(row.DiscardedAt, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task OperationsReturnNoOpStatusesWithoutAudit()
     {
         var missing = Guid.NewGuid();
@@ -285,6 +327,14 @@ internal sealed class PostgresSecurityEventWebhookOutboxOperationsTests : Postgr
         {
             Events.Add(securityEvent);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingSecurityEventSink(Exception exception) : ISecurityEventSink
+    {
+        public Task RecordAsync(AshlarSecurityEvent securityEvent, CancellationToken cancellationToken = default)
+        {
+            throw exception;
         }
     }
 }
