@@ -57,12 +57,24 @@ internal static class AshlarExternalProviderResolver
 
     public static bool MatchesProvider(AuthenticateResult result, AshlarExternalProvider provider)
     {
-        return result.Properties is { } properties
+        return MatchProvider(result, provider).Matched;
+    }
+
+    public static (bool Matched, AuthenticationProperties? Properties) MatchProvider(
+        AuthenticateResult result,
+        AshlarExternalProvider provider)
+    {
+        if (result.Properties is { } properties
             && properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.ProviderName, out var providerName)
             && properties.Items.TryGetValue(AshlarOAuthAuthenticationProperties.SchemeName, out var schemeName)
             && string.Equals(provider.ProviderName, providerName, StringComparison.OrdinalIgnoreCase)
             && string.Equals(provider.SchemeName, schemeName, StringComparison.Ordinal)
-            && MatchesProviderType(properties, provider);
+            && MatchesProviderType(properties, provider))
+        {
+            return (true, properties);
+        }
+
+        return (false, null);
     }
 
     public static IAuthenticationProvider CreateAuthenticationProvider(AshlarExternalProvider provider)

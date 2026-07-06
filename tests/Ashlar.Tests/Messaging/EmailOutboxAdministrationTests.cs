@@ -244,6 +244,22 @@ internal sealed class EmailOutboxAdministrationProviderTests
         }
     }
 
+    [Test]
+    public async Task ServiceBaseAllowsOperationWithoutTransactionProvider()
+    {
+        var sink = new CapturingSecurityEventSink();
+        var id = Guid.NewGuid();
+        var service = new TestEmailOutboxAdministrationService(sink);
+
+        var result = await service.RetryAsync(new EmailOutboxOperationRequest(id, new AuditContext(Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(EmailOutboxOperationStatus.Retried));
+            Assert.That(sink.Events.Single().EventType, Is.EqualTo(AshlarSecurityEventTypes.EmailOutboxDeliveryRetried));
+        }
+    }
+
     private static EmailOutboxAdministrationProjection CreateRecord(
         EmailMessageSensitivity sensitivity = EmailMessageSensitivity.Normal,
         EmailOutboxBodyProtection bodyProtection = EmailOutboxBodyProtection.None,
@@ -284,6 +300,35 @@ internal sealed class EmailOutboxAdministrationProviderTests
         {
             Events.Add(securityEvent);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class TestEmailOutboxAdministrationService(ISecurityEventSink sink)
+        : EmailOutboxAdministrationServiceBase(TimeProvider.System, sink)
+    {
+        public override Task<EmailOutboxSearchResult> SearchAsync(EmailOutboxSearchRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override Task<EmailOutboxDetail?> GetAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        protected override Task<EmailOutboxAdministrationOperationState?> RetryFailedAsync(Guid id, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<EmailOutboxAdministrationOperationState?>(new(id, "retry@example.com", "Retry", EmailOutboxStatus.Pending));
+        }
+
+        protected override Task<EmailOutboxAdministrationOperationState?> DiscardFailedAsync(Guid id, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        protected override Task<EmailOutboxAdministrationOperationState?> LoadOperationStateAsync(Guid id, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
         }
     }
 }

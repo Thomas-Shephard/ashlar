@@ -128,7 +128,9 @@ public sealed class AshlarOidcInvitationRegistrationService
         }
 
         var externalProvider = CreateExternalProvider(provider);
-        if (!AshlarExternalProviderResolver.MatchesProvider(result, externalProvider))
+        var providerMatch = AshlarExternalProviderResolver.MatchProvider(result, externalProvider);
+        var properties = providerMatch.Properties;
+        if (!providerMatch.Matched || properties is null)
         {
             return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.ProviderMismatch);
         }
@@ -137,11 +139,16 @@ public sealed class AshlarOidcInvitationRegistrationService
         var displayName = invitationState.DisplayName;
         if (invitationState.InvitationTokenPropertyName != null)
         {
-            result.Properties?.Items.TryGetValue(invitationState.InvitationTokenPropertyName, out invitationToken);
+            properties.Items.TryGetValue(invitationState.InvitationTokenPropertyName, out invitationToken);
             if (invitationState.DisplayNamePropertyName != null)
             {
-                result.Properties?.Items.TryGetValue(invitationState.DisplayNamePropertyName, out displayName);
+                properties.Items.TryGetValue(invitationState.DisplayNamePropertyName, out displayName);
             }
+        }
+
+        if (invitationToken == null)
+        {
+            return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.InvalidInvitation);
         }
 
         return await RegisterValidatedOidcInvitationAsync(

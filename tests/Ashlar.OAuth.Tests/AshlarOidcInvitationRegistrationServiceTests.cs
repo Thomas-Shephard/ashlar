@@ -912,6 +912,24 @@ internal sealed class AshlarOidcInvitationRegistrationServiceTests
     }
 
     [Test]
+    public async Task CompleteFromPropertiesShouldHandleMissingTicketStateAndDisplayNameProperty()
+    {
+        var auth = new TestAuthenticationService(CreateTicket("Google", "Google", "subject"));
+        var service = CreateService();
+
+        var result = await service.CompleteOidcInvitationRegistrationFromPropertiesAsync(
+            CreateHttpContext(auth),
+            "Google",
+            "missing_token");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarOidcInvitationRegistrationStatus.InvalidInvitation));
+            Assert.That(auth.SignOutCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task CompleteShouldValidateExternalTicket()
     {
         var service = CreateService();
