@@ -12,7 +12,7 @@ internal sealed class CredentialService(
     ISecretProtector secretProtector,
     IAshlarTransactionProvider transactionProvider,
     CredentialServiceDependencies dependencies)
-    : ICredentialService
+    : ICredentialService, ICredentialLinkingInfrastructure
 {
     private static readonly Action<ILogger, Guid, Guid, string, string, Exception?> CredentialProtectionFailedRequired =
         LoggerMessage.Define<Guid, Guid, string, string>(
@@ -520,10 +520,23 @@ internal sealed class CredentialService(
 
     public async Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, string? credentialValue = null, string? credentialMetadata = null, CancellationToken cancellationToken = default)
     {
+        return await LinkCredentialCoreAsync(new CredentialLinkInfrastructureRequest(userId, assertion, provider, credentialValue, credentialMetadata, Audit: null, TenantId: null), cancellationToken);
+    }
+
+    async Task<Result> ICredentialLinkingInfrastructure.LinkCredentialAsync(
+        CredentialLinkInfrastructureRequest request,
+        CancellationToken cancellationToken)
+    {
+        return await LinkCredentialCoreAsync(request, cancellationToken);
+    }
+
+    private async Task<Result> LinkCredentialCoreAsync(CredentialLinkInfrastructureRequest request, CancellationToken cancellationToken)
+    {
+        var (userId, assertion, provider, credentialValue, credentialMetadata, audit, tenantId) = request;
         ArgumentNullException.ThrowIfNull(assertion);
         ArgumentNullException.ThrowIfNull(provider);
 
-        if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+        if (userId == Guid.Empty) throw new ArgumentException("User ID cannot be empty.", nameof(request));
 
         var providerKeyIdentity = provider.Key;
         var providerName = providerKeyIdentity.Name;
@@ -538,6 +551,8 @@ internal sealed class CredentialService(
                 EventType = AshlarSecurityEventTypes.CredentialLinked,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenantId,
+                Audit = audit,
                 Provider = providerKeyIdentity,
                 FailureReason = AshlarFailureCodes.UserNotFound.Value
             }, cancellationToken);
@@ -552,6 +567,8 @@ internal sealed class CredentialService(
                 EventType = AshlarSecurityEventTypes.CredentialLinked,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenantId,
+                Audit = audit,
                 Provider = providerKeyIdentity,
                 FailureReason = AshlarFailureCodes.InvalidProviderKey.Value
             }, cancellationToken);
@@ -568,6 +585,8 @@ internal sealed class CredentialService(
                 EventType = AshlarSecurityEventTypes.CredentialLinked,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenantId,
+                Audit = audit,
                 Provider = providerKeyIdentity,
                 FailureReason = code.Value
             }, cancellationToken);
@@ -609,6 +628,8 @@ internal sealed class CredentialService(
                 EventType = AshlarSecurityEventTypes.CredentialLinked,
                 Outcome = SecurityEventOutcomes.Failure,
                 UserId = userId,
+                TenantId = tenantId,
+                Audit = audit,
                 Provider = providerKeyIdentity,
                 FailureReason = AshlarFailureCodes.AlreadyLinkedToOther.Value
             }, cancellationToken);
@@ -620,6 +641,8 @@ internal sealed class CredentialService(
             EventType = AshlarSecurityEventTypes.CredentialLinked,
             Outcome = SecurityEventOutcomes.Success,
             UserId = userId,
+            TenantId = tenantId,
+            Audit = audit,
             Provider = providerKeyIdentity,
             Properties = new Dictionary<string, string>
             {

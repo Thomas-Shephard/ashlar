@@ -257,7 +257,6 @@ internal sealed class AshlarAspNetCoreServiceCollectionExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             AssertDescriptor<IIdentityService>(services, ServiceLifetime.Scoped);
-            AssertDescriptor<ICredentialService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ISecretProtector, DataProtectionSecretProtector>(services, ServiceLifetime.Scoped);
         }
     }

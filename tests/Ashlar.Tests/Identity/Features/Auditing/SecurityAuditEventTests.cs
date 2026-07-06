@@ -99,13 +99,10 @@ internal sealed class SecurityAuditEventTests
         var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sink);
         var context = CreateContext();
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
-
-        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((user, credential, credential, false));
+        credentialService.ContextResolveResult = (user, credential, credential, false);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
-        credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
+        credentialService.UsageUpdateResult = CredentialUsageUpdateResult.NotNeeded;
 
         var response = await pipeline.LoginAsync(context, assertion);
 
@@ -128,9 +125,7 @@ internal sealed class SecurityAuditEventTests
         var sink = new RecordingSecurityEventSink();
         var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sink);
         var context = CreateContext();
-
-        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((user, credential, credential, false));
+        credentialService.ContextResolveResult = (user, credential, credential, false);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Failed));
 
@@ -150,9 +145,7 @@ internal sealed class SecurityAuditEventTests
         var sink = new RecordingSecurityEventSink();
         var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sink);
         var context = CreateContext();
-
-        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((user, credential, credential, false));
+        credentialService.ContextResolveResult = (user, credential, credential, false);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.MfaRequired));
 
@@ -172,9 +165,7 @@ internal sealed class SecurityAuditEventTests
         var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sink);
         user = new User { Id = user.Id, DisplayEmail = user.DisplayEmail, AccountState = UserAccountState.Disabled };
         var context = CreateContext();
-
-        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((user, credential, credential, false));
+        credentialService.ContextResolveResult = (user, credential, credential, false);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthenticationResult(AuthenticationResultStatus.Succeeded));
 
@@ -195,7 +186,7 @@ internal sealed class SecurityAuditEventTests
         var registry = new Mock<IAuthenticationProviderRegistry>();
         var pipeline = new AuthenticationPipeline(
             registry.Object,
-            Mock.Of<ICredentialService>(),
+            new TestCredentialService(),
             new NullTransactionProvider(),
             AllowPrimaryAuthenticationRateLimiter.Instance,
             AllowAuthenticationFactorRateLimiter.Instance,
@@ -457,12 +448,10 @@ internal sealed class SecurityAuditEventTests
         var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sink);
         var context = CreateContext();
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
-        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((user, credential, credential, false));
+        credentialService.ContextResolveResult = (user, credential, credential, false);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
-        credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
+        credentialService.UsageUpdateResult = CredentialUsageUpdateResult.NotNeeded;
 
         var loginException = Assert.ThrowsAsync<InvalidOperationException>(async () => await pipeline.LoginAsync(context, assertion));
 
@@ -487,7 +476,7 @@ internal sealed class SecurityAuditEventTests
     {
         var sink = new ThrowingSecurityEventSink();
         var registry = new Mock<IAuthenticationProviderRegistry>();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new TestCredentialService();
         var providerMock = new Mock<IPrimaryAuthenticationProvider>();
         providerMock.SetupGet(p => p.Key).Returns(default(AuthenticationProviderKey));
         var assertion = new TestAssertion(default);
@@ -497,15 +486,13 @@ internal sealed class SecurityAuditEventTests
         var credential = CreateCredential(user.Id);
         var context = CreateContext();
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
-        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((user, credential, credential, false));
+        credentialService.ContextResolveResult = (user, credential, credential, false);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
-        credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
+        credentialService.UsageUpdateResult = CredentialUsageUpdateResult.NotNeeded;
         var pipeline = new AuthenticationPipeline(
             registry.Object,
-            credentialService.Object,
+            credentialService,
             new NullTransactionProvider(),
             AllowPrimaryAuthenticationRateLimiter.Instance,
             AllowAuthenticationFactorRateLimiter.Instance,
@@ -523,12 +510,10 @@ internal sealed class SecurityAuditEventTests
         var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sink);
         var context = CreateContext();
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
-        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((user, credential, credential, false));
+        credentialService.ContextResolveResult = (user, credential, credential, false);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
-        credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
+        credentialService.UsageUpdateResult = CredentialUsageUpdateResult.NotNeeded;
 
         var exception = Assert.ThrowsAsync<InvalidOperationException>(async () => await pipeline.LoginAsync(context, assertion));
 
@@ -551,12 +536,10 @@ internal sealed class SecurityAuditEventTests
         var (pipeline, _, credentialService, providerMock, provider, assertion, user, credential) = CreatePipeline(sinkMock.Object);
         var context = CreateContext();
         var result = new AuthenticationResult(AuthenticationResultStatus.Succeeded);
-        credentialService.Setup(s => s.ResolveAsync(context, assertion, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((user, credential, credential, false));
+        credentialService.ContextResolveResult = (user, credential, credential, false);
         providerMock.Setup(p => p.AuthenticateAsync(assertion, credential, It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
-        credentialService.Setup(s => s.UpdateCredentialUsageAsync(credential, credential, result, provider, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CredentialUsageUpdateResult.NotNeeded);
+        credentialService.UsageUpdateResult = CredentialUsageUpdateResult.NotNeeded;
 
         var exception = Assert.ThrowsAsync<OperationCanceledException>(async () => await pipeline.LoginAsync(context, assertion));
 
@@ -574,10 +557,10 @@ internal sealed class SecurityAuditEventTests
         Assert.That(descriptor.ImplementationType, Is.EqualTo(typeof(SecurityEventFanOutSink)));
     }
 
-    private static (AuthenticationPipeline Pipeline, Mock<IAuthenticationProviderRegistry> Registry, Mock<ICredentialService> CredentialService, Mock<IPrimaryAuthenticationProvider> ProviderMock, IAuthenticationProvider Provider, TestAssertion Assertion, User User, UserCredential Credential) CreatePipeline(ISecurityEventSink sink)
+    private static (AuthenticationPipeline Pipeline, Mock<IAuthenticationProviderRegistry> Registry, TestCredentialService CredentialService, Mock<IPrimaryAuthenticationProvider> ProviderMock, IAuthenticationProvider Provider, TestAssertion Assertion, User User, UserCredential Credential) CreatePipeline(ISecurityEventSink sink)
     {
         var registry = new Mock<IAuthenticationProviderRegistry>();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new TestCredentialService();
         var providerMock = new Mock<IPrimaryAuthenticationProvider>();
         providerMock.SetupGet(p => p.Key).Returns(AuthenticationProviderKey.Local);
         var assertion = new TestAssertion(AuthenticationProviderKey.Local);
@@ -599,7 +582,7 @@ internal sealed class SecurityAuditEventTests
 
         var pipeline = new AuthenticationPipeline(
             registry.Object,
-            credentialService.Object,
+            credentialService,
             new NullTransactionProvider(),
             AllowPrimaryAuthenticationRateLimiter.Instance,
             AllowAuthenticationFactorRateLimiter.Instance,

@@ -1,6 +1,9 @@
 // ReSharper disable CheckNamespace
 
 using Ashlar.OAuth;
+using Ashlar.Auditing;
+using Ashlar.Identity.Abstractions.Repositories;
+using Ashlar.Identity.Abstractions.Transactions;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Http;
@@ -40,8 +43,19 @@ public static class AshlarOAuthServiceCollectionExtensions
 
         services.Configure(configure);
         services.TryAddScoped<AshlarExternalCredentialAuthenticationService>();
-        services.TryAddScoped<AshlarExternalAccountLinkService>();
-        services.TryAddScoped<AshlarOidcInvitationRegistrationService>();
+        services.TryAddScoped(provider => new AshlarExternalAccountLinkService(
+            provider.GetRequiredService<IExternalAccountCredentialLinker>(),
+            provider.GetRequiredService<IAccountSecurityService>(),
+            provider.GetRequiredService<IUserRepository>(),
+            provider.GetRequiredService<global::Microsoft.Extensions.Options.IOptionsMonitor<AshlarOAuthOptions>>()));
+        services.TryAddScoped(provider => new AshlarOidcInvitationRegistrationService(
+            provider.GetRequiredService<IInvitationService>(),
+            provider.GetRequiredService<ICredentialRepository>(),
+            provider.GetRequiredService<IAshlarTransactionProvider>(),
+            provider.GetRequiredService<global::Microsoft.Extensions.Options.IOptionsMonitor<AshlarOAuthOptions>>(),
+            provider.GetRequiredService<IOidcInvitationEmailMatchPolicy>(),
+            provider.GetService<ISecurityEventSink>(),
+            provider.GetService<TimeProvider>()));
         services.TryAddScoped<IOidcInvitationEmailMatchPolicy>(_ =>
         {
             IOidcInvitationEmailMatchPolicy policy = new StandardOidcVerifiedEmailMatchPolicy();

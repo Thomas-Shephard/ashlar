@@ -1,7 +1,7 @@
 namespace Ashlar.Identity.Abstractions.Services;
 
 /// <summary>
-/// Coordinates user lookup, credential linking, and authentication provider execution.
+/// Coordinates user lookup and authentication provider execution.
 /// </summary>
 public interface IIdentityService
 {
@@ -44,16 +44,6 @@ public interface IIdentityService
     /// <param name="cancellationToken">A token that can cancel user creation.</param>
     /// <returns>The created user.</returns>
     Task<IUser> CreateUserAsync(IUser user, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Links a credential for the specified user using the provider selected by the assertion.
-    /// </summary>
-    /// <param name="userId">The user that will own the credential.</param>
-    /// <param name="assertion">Authentication assertion used to derive the provider key and metadata.</param>
-    /// <param name="credentialValue">The raw credential value to protect before storage, when required by the provider. Treat this value as sensitive.</param>
-    /// <param name="cancellationToken">A token that can cancel credential linking.</param>
-    /// <returns>A result describing whether the credential was linked.</returns>
-    Task<Result> LinkCredentialAsync(Guid userId, IAuthenticationAssertion assertion, string? credentialValue = null, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

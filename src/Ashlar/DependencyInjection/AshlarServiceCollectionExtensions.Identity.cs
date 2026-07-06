@@ -101,7 +101,10 @@ public static partial class AshlarServiceCollectionExtensions
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>(),
             provider.GetService<global::Microsoft.Extensions.Logging.ILogger<CredentialService>>()));
-        services.TryAddScoped<ICredentialService, CredentialService>();
+        services.TryAddScoped<CredentialService>();
+        services.TryAddScoped<ICredentialService>(provider => provider.GetRequiredService<CredentialService>());
+        services.TryAddScoped<ICredentialLinkingInfrastructure>(provider => provider.GetRequiredService<CredentialService>());
+        services.TryAddScoped<IExternalAccountCredentialLinker, ExternalAccountCredentialLinker>();
         services.TryAddScoped(provider => new AccountSecurityServiceDependencies(
             provider.GetService<TimeProvider>(),
             provider.GetService<ISecurityEventSink>(),

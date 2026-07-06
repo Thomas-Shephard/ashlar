@@ -1,9 +1,9 @@
 namespace Ashlar.Identity.Abstractions.Services;
 
 /// <summary>
-/// Resolves protected user credentials, links new credentials, and persists provider-requested credential usage, consumption, or replacement.
+/// Resolves protected user credentials and persists provider-owned credential lifecycle changes.
 /// </summary>
-public interface ICredentialService
+internal interface ICredentialService
 {
     /// <summary>
     /// Resolves the user and provider-owned credential for an authentication attempt.
@@ -34,9 +34,9 @@ public interface ICredentialService
     Task<(IUser? User, UserCredential? Credential, UserCredential? OriginalCredential, bool UnprotectFailed)> ResolveAsync(Guid userId, IAuthenticationAssertion assertion, IAuthenticationProvider provider, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Persists a provider-derived credential for an existing user.
+    /// Infrastructure hook for provider-owned account-security flows to persist a provider-derived credential for an existing user.
     /// </summary>
-    /// <param name="userId">The user that will own the credential.</param>
+    /// <param name="userId">The verified user that will own the credential.</param>
     /// <param name="assertion">Authentication assertion used to derive the provider key.</param>
     /// <param name="provider">Authenticator implementation that owns the credential.</param>
     /// <param name="credentialValue">Optional credential material to store. Treat as sensitive unless documented otherwise.</param>

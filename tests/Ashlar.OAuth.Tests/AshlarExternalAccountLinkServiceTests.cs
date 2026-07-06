@@ -26,7 +26,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     [Test]
     public void ConstructorShouldRejectNullDependencies()
     {
-        var credentialService = Mock.Of<ICredentialService>();
+        var credentialService = Mock.Of<IExternalAccountCredentialLinker>();
         var accountSecurityService = Mock.Of<IAccountSecurityService>();
         var repository = new StubRepository();
         var options = new TestOptionsMonitor(new AshlarOAuthOptions());
@@ -91,17 +91,20 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task LinkExternalAccountShouldMapPrincipalAndLinkCredentialForCurrentUser()
     {
         var userId = Guid.NewGuid();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         ExternalIdentityAssertion? observedAssertion = null;
         IAuthenticationProvider? observedProvider = null;
         string? observedCredentialValue = "not-null";
+        var audit = new AuditContext(userId, "127.0.0.1", "NUnit", "corr-link");
+        AuditContext? observedAudit = null;
         credentialService
-            .Setup(s => s.LinkCredentialAsync(userId, It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, "metadata", It.IsAny<CancellationToken>()))
-            .Callback<Guid, IAuthenticationAssertion, IAuthenticationProvider, string?, string?, CancellationToken>((_, assertion, provider, credentialValue, _, _) =>
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.Is<ExternalAccountCredentialLinkRequest>(r => r.CurrentUserId == userId && r.CredentialMetadata == "metadata"), It.IsAny<CancellationToken>()))
+            .Callback<ExternalAccountCredentialLinkRequest, CancellationToken>((request, _) =>
             {
-                observedAssertion = (ExternalIdentityAssertion)assertion;
-                observedProvider = provider;
-                observedCredentialValue = credentialValue;
+                observedAssertion = (ExternalIdentityAssertion)request.Assertion;
+                observedProvider = request.Provider;
+                observedAudit = request.Audit;
+                observedCredentialValue = null;
             })
             .ReturnsAsync(Result.Success());
         var service = CreateService(credentialService.Object);
@@ -111,7 +114,8 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             "Google",
             AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("stable-sub", "first@example.com", tokenClaims: true)),
             TenantContext.Global,
-            credentialMetadata: "metadata");
+            credentialMetadata: "metadata",
+            audit: audit);
 
         using (Assert.EnterMultipleScope())
         {
@@ -120,6 +124,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             Assert.That(observedAssertion?.ProviderKey, Is.EqualTo("stable-sub"));
             Assert.That(observedAssertion?.Claims["email"], Is.EqualTo(["first@example.com"]));
             Assert.That(observedProvider?.Key, Is.EqualTo(new AuthenticationProviderKey(ProviderType.Oidc, "Google")));
+            Assert.That(observedAudit, Is.SameAs(audit));
             Assert.That(observedCredentialValue, Is.Null);
         }
     }
@@ -128,7 +133,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task LinkExternalAccountShouldRequireFreshProofBeforeMutation()
     {
         var userId = Guid.NewGuid();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         var service = CreateService(credentialService.Object);
 
         var result = await service.LinkExternalAccountAsync(
@@ -143,7 +148,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Failed));
-            credentialService.Verify(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            credentialService.Verify(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
@@ -154,7 +159,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             CreatePrincipal("sub"),
             CreateProperties("Google", "Google"),
             "Ashlar.OAuth.External")));
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         var service = CreateService(credentialService.Object);
 
         var result = await service.CompleteExternalLinkAsync(
@@ -170,7 +175,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Failed));
             Assert.That(authService.AuthenticateCount, Is.Zero);
             Assert.That(authService.SignOutCount, Is.Zero);
-            credentialService.Verify(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            credentialService.Verify(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
@@ -199,7 +204,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     [Test]
     public async Task LinkExternalAccountShouldRejectMissingProofBeforeProviderMismatch()
     {
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         var service = CreateService(credentialService.Object);
 
         var result = await service.LinkExternalAccountAsync(
@@ -214,7 +219,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Failed));
-            credentialService.Verify(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            credentialService.Verify(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
@@ -240,7 +245,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         var service = CreateService(credentialService.Object);
 
         var result = await service.LinkExternalAccountAsync(
@@ -255,7 +260,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.ProviderMismatch));
-            credentialService.Verify(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            credentialService.Verify(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
@@ -275,7 +280,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var purpose = proofCase == "wrong-purpose" ? "passkey-registration" : "external-account-linking";
         var verifiedAt = proofCase == "expired" ? DateTimeOffset.UtcNow.AddMinutes(-20) : DateTimeOffset.UtcNow;
         var proof = ExternalAccountLinkServiceTestExtensions.CreateProof(proofUserId, proofTenant, proofSessionId, purpose, verifiedAt, TimeSpan.FromMinutes(10));
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         var service = CreateService(credentialService.Object);
 
         var result = await service.LinkExternalAccountAsync(
@@ -290,7 +295,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Failed));
-            credentialService.Verify(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            credentialService.Verify(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
@@ -298,15 +303,15 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task LinkExternalAccountShouldMapGitHubPrincipalAndLinkOAuthCredential()
     {
         var userId = Guid.NewGuid();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         ExternalIdentityAssertion? observedAssertion = null;
         IAuthenticationProvider? observedProvider = null;
         credentialService
-            .Setup(s => s.LinkCredentialAsync(userId, It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
-            .Callback<Guid, IAuthenticationAssertion, IAuthenticationProvider, string?, string?, CancellationToken>((_, assertion, provider, _, _, _) =>
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.Is<ExternalAccountCredentialLinkRequest>(r => r.CurrentUserId == userId), It.IsAny<CancellationToken>()))
+            .Callback<ExternalAccountCredentialLinkRequest, CancellationToken>((request, _) =>
             {
-                observedAssertion = (ExternalIdentityAssertion)assertion;
-                observedProvider = provider;
+                observedAssertion = (ExternalIdentityAssertion)request.Assertion;
+                observedProvider = request.Provider;
             })
             .ReturnsAsync(Result.Success());
         var service = CreateService(credentialService.Object, includeGitHub: true);
@@ -327,12 +332,12 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task LinkExternalAccountShouldUseConfiguredOAuth2ProviderKeyClaim()
     {
         var userId = Guid.NewGuid();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         ExternalIdentityAssertion? observedAssertion = null;
         credentialService
-            .Setup(s => s.LinkCredentialAsync(userId, It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
-            .Callback<Guid, IAuthenticationAssertion, IAuthenticationProvider, string?, string?, CancellationToken>((_, assertion, _, _, _, _) =>
-                observedAssertion = (ExternalIdentityAssertion)assertion)
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.Is<ExternalAccountCredentialLinkRequest>(r => r.CurrentUserId == userId), It.IsAny<CancellationToken>()))
+            .Callback<ExternalAccountCredentialLinkRequest, CancellationToken>((request, _) =>
+                observedAssertion = (ExternalIdentityAssertion)request.Assertion)
             .ReturnsAsync(Result.Success());
         var service = CreateService(
             credentialService.Object,
@@ -416,9 +421,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     [Test]
     public async Task LinkExternalAccountShouldReturnAlreadyLinkedForSameUser()
     {
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         credentialService
-            .Setup(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Failure(AshlarFailureCodes.AlreadyLinkedToSelf));
         var service = CreateService(credentialService.Object);
 
@@ -430,9 +435,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     [Test]
     public async Task LinkExternalAccountShouldReturnAlreadyLinkedToAnotherUser()
     {
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         credentialService
-            .Setup(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Failure(AshlarFailureCodes.AlreadyLinkedToOther));
         var service = CreateService(credentialService.Object);
 
@@ -444,9 +449,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     [Test]
     public async Task LinkExternalAccountShouldReturnInvalidPrincipalWhenCredentialServiceRejectsProviderKey()
     {
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         credentialService
-            .Setup(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Failure(AshlarFailureCodes.InvalidProviderKey));
         var service = CreateService(credentialService.Object);
 
@@ -458,9 +463,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     [Test]
     public async Task LinkExternalAccountShouldReturnFailedForUnknownCredentialFailure()
     {
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         credentialService
-            .Setup(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Failure(AshlarFailureCodes.UserNotFound));
         var service = CreateService(credentialService.Object);
 
@@ -472,9 +477,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     [Test]
     public async Task LinkExternalAccountShouldReturnFailedForCredentialFailureWithoutDetails()
     {
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         credentialService
-            .Setup(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Result(false));
         var service = CreateService(credentialService.Object);
 
@@ -488,11 +493,11 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var userId = Guid.NewGuid();
         var assertions = new List<ExternalIdentityAssertion>();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         credentialService
-            .Setup(s => s.LinkCredentialAsync(userId, It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
-            .Callback<Guid, IAuthenticationAssertion, IAuthenticationProvider, string?, string?, CancellationToken>((_, assertion, _, _, _, _) =>
-                assertions.Add((ExternalIdentityAssertion)assertion))
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.Is<ExternalAccountCredentialLinkRequest>(r => r.CurrentUserId == userId), It.IsAny<CancellationToken>()))
+            .Callback<ExternalAccountCredentialLinkRequest, CancellationToken>((request, _) =>
+                assertions.Add((ExternalIdentityAssertion)request.Assertion))
             .ReturnsAsync(Result.Failure(AshlarFailureCodes.AlreadyLinkedToSelf));
         var service = CreateService(credentialService.Object);
 
@@ -509,20 +514,16 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     [Test]
     public async Task LinkExternalAccountShouldNotStoreTokens()
     {
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         credentialService
-            .Setup(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success());
         var service = CreateService(credentialService.Object);
 
         await service.LinkWithFreshProofAsync(Guid.NewGuid(), "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub", tokenClaims: true)), TenantContext.Global);
 
-        credentialService.Verify(s => s.LinkCredentialAsync(
-            It.IsAny<Guid>(),
-            It.IsAny<IAuthenticationAssertion>(),
-            It.IsAny<IAuthenticationProvider>(),
-            null,
-            It.IsAny<string?>(),
+        credentialService.Verify(s => s.LinkExternalAccountCredentialAsync(
+            It.Is<ExternalAccountCredentialLinkRequest>(request => request.Assertion != null && request.Provider != null),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -532,7 +533,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var tenantId = Guid.NewGuid();
         var otherTenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         var service = CreateService(credentialService.Object, repository: new StubRepository(new TenantUser(userId, tenantId)));
 
         var result = await service.LinkWithFreshProofAsync(userId, "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")), new TenantContext(otherTenantId));
@@ -540,7 +541,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Failed));
-            credentialService.Verify(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            credentialService.Verify(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
@@ -549,9 +550,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         credentialService
-            .Setup(s => s.LinkCredentialAsync(userId, It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.Is<ExternalAccountCredentialLinkRequest>(r => r.CurrentUserId == userId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success());
         var service = CreateService(credentialService.Object, repository: new StubRepository(new TenantUser(userId, tenantId)));
 
@@ -564,9 +565,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task LinkExternalAccountShouldAllowGlobalTenantForTenantUserWithoutTenant()
     {
         var userId = Guid.NewGuid();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         credentialService
-            .Setup(s => s.LinkCredentialAsync(userId, It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.Is<ExternalAccountCredentialLinkRequest>(r => r.CurrentUserId == userId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success());
         var service = CreateService(credentialService.Object, repository: new StubRepository(new TenantUser(userId, null)));
 
@@ -579,7 +580,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task LinkExternalAccountShouldFailTenantScopedTenantUserWithoutTenant()
     {
         var userId = Guid.NewGuid();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         var service = CreateService(credentialService.Object, repository: new StubRepository(new TenantUser(userId, null)));
 
         var result = await service.LinkWithFreshProofAsync(userId, "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")), new TenantContext(Guid.NewGuid()));
@@ -590,7 +591,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     [Test]
     public async Task LinkExternalAccountShouldFailTenantScopedMissingUser()
     {
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         var service = CreateService(credentialService.Object, repository: new StubRepository());
 
         var result = await service.LinkWithFreshProofAsync(Guid.NewGuid(), "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")), new TenantContext(Guid.NewGuid()));
@@ -602,9 +603,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task LinkExternalAccountShouldAllowGlobalTenantForGlobalUser()
     {
         var userId = Guid.NewGuid();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         credentialService
-            .Setup(s => s.LinkCredentialAsync(userId, It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.Is<ExternalAccountCredentialLinkRequest>(r => r.CurrentUserId == userId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success());
         var service = CreateService(credentialService.Object, repository: new StubRepository(new BasicUser(userId)));
 
@@ -617,7 +618,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     public async Task LinkExternalAccountShouldFailTenantScopedGlobalUser()
     {
         var userId = Guid.NewGuid();
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         var service = CreateService(credentialService.Object, repository: new StubRepository(new BasicUser(userId)));
 
         var result = await service.LinkWithFreshProofAsync(userId, "Google", AshlarOAuthTestTickets.CreateExternalTicket("Google", "Google", ProviderType.Oidc, CreatePrincipal("sub")), new TenantContext(Guid.NewGuid()));
@@ -673,9 +674,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             CreatePrincipal("sub"),
             CreateProperties("Google", "Google"),
             "Ashlar.OAuth.External")));
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         credentialService
-            .Setup(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success());
         var service = CreateService(credentialService.Object);
 
@@ -695,7 +696,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             CreatePrincipal("sub"),
             CreateProperties("Google", "Google", includeProviderType: false),
             "Ashlar.OAuth.External")));
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         var service = CreateService(credentialService.Object);
 
         var result = await service.CompleteWithFreshProofAsync(CreateHttpContext(authService), Guid.NewGuid(), "Google", TenantContext.Global);
@@ -707,7 +708,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         }
 
         credentialService.Verify(
-            s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()),
+            s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -742,9 +743,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     [Test]
     public async Task LinkExternalAccountFromAuthenticateResultShouldLinkMatchingTicket()
     {
-        var credentialService = new Mock<ICredentialService>();
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
         credentialService
-            .Setup(s => s.LinkCredentialAsync(It.IsAny<Guid>(), It.IsAny<IAuthenticationAssertion>(), It.IsAny<IAuthenticationProvider>(), null, null, It.IsAny<CancellationToken>()))
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success());
         var service = CreateService(credentialService.Object);
         var ticket = AuthenticateResult.Success(new AuthenticationTicket(
@@ -833,6 +834,52 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.ProviderMismatch));
             Assert.That(authService.SignOutCount, Is.EqualTo(1));
         }
+    }
+
+    [Test]
+    public async Task CompleteExternalLinkShouldLinkMatchingTicket()
+    {
+        var userId = Guid.NewGuid();
+        AuditContext? observedAudit = null;
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
+        credentialService
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.Is<ExternalAccountCredentialLinkRequest>(r => r.CurrentUserId == userId), It.IsAny<CancellationToken>()))
+            .Callback<ExternalAccountCredentialLinkRequest, CancellationToken>((request, _) => observedAudit = request.Audit)
+            .ReturnsAsync(Result.Success());
+        var authService = new TestAuthenticationService(AuthenticateResult.Success(new AuthenticationTicket(
+            CreatePrincipal("sub"),
+            CreateProperties("Google", "Google"),
+            "Ashlar.OAuth.External")));
+        var service = CreateService(credentialService.Object);
+        var httpContext = CreateHttpContext(authService);
+        httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("203.0.113.20");
+
+        var result = await service.CompleteWithFreshProofAsync(httpContext, userId, "Google", TenantContext.Global);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.Linked));
+            Assert.That(authService.SignOutCount, Is.EqualTo(1));
+            Assert.That(observedAudit?.IpAddress, Is.EqualTo("203.0.113.20"));
+        }
+    }
+
+    [Test]
+    public async Task CompleteExternalLinkShouldMapCredentialLinkFailure()
+    {
+        var credentialService = new Mock<IExternalAccountCredentialLinker>();
+        credentialService
+            .Setup(s => s.LinkExternalAccountCredentialAsync(It.IsAny<ExternalAccountCredentialLinkRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure(AshlarFailureCodes.AlreadyLinkedToOther));
+        var authService = new TestAuthenticationService(AuthenticateResult.Success(new AuthenticationTicket(
+            CreatePrincipal("sub"),
+            CreateProperties("Google", "Google"),
+            "Ashlar.OAuth.External")));
+        var service = CreateService(credentialService.Object);
+
+        var result = await service.CompleteWithFreshProofAsync(CreateHttpContext(authService), Guid.NewGuid(), "Google", TenantContext.Global);
+
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountLinkStatus.AlreadyLinkedToAnotherUser));
     }
 
     [Test]
@@ -1302,7 +1349,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     private static AshlarExternalAccountLinkService CreateService(
-        ICredentialService? credentialService = null,
+        IExternalAccountCredentialLinker? credentialService = null,
         IAccountSecurityService? accountSecurityService = null,
         IUserRepository? repository = null,
         bool includeGitHub = false,
@@ -1317,13 +1364,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
 
         configureOptions?.Invoke(options);
 
-        credentialService ??= Mock.Of<ICredentialService>(s =>
-            s.LinkCredentialAsync(
-                It.IsAny<Guid>(),
-                It.IsAny<IAuthenticationAssertion>(),
-                It.IsAny<IAuthenticationProvider>(),
-                It.IsAny<string?>(),
-                It.IsAny<string?>(),
+        credentialService ??= Mock.Of<IExternalAccountCredentialLinker>(s =>
+            s.LinkExternalAccountCredentialAsync(
+                It.IsAny<ExternalAccountCredentialLinkRequest>(),
                 It.IsAny<CancellationToken>()) == Task.FromResult(Result.Success()));
 
         return new AshlarExternalAccountLinkService(
@@ -1342,7 +1385,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         providers["Google"] = provider;
 
         return new AshlarExternalAccountLinkService(
-            Mock.Of<ICredentialService>(),
+            Mock.Of<IExternalAccountCredentialLinker>(),
             CreateAccountSecurityService().Object,
             new StubRepository(),
             new TestOptionsMonitor(options));
@@ -1513,6 +1556,7 @@ internal static class ExternalAccountLinkServiceTestExtensions
         AuthenticateResult authenticateResult,
         TenantContext tenant,
         string? credentialMetadata = null,
+        AuditContext? audit = null,
         CancellationToken cancellationToken = default)
     {
         var sessionId = Guid.NewGuid();
@@ -1524,7 +1568,8 @@ internal static class ExternalAccountLinkServiceTestExtensions
                 CreateProof(currentUserId, tenant, sessionId),
                 sessionId,
                 tenant,
-                credentialMetadata),
+                credentialMetadata,
+                audit),
             cancellationToken);
     }
 

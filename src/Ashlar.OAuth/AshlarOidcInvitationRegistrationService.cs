@@ -1,4 +1,7 @@
+using Ashlar.Auditing;
 using Ashlar.Identity.Abstractions.Transactions;
+using Ashlar.Identity.Abstractions.Repositories;
+using Ashlar.Identity.Models.Credentials;
 using Ashlar.Identity.Models.Invitations;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
@@ -12,31 +15,39 @@ namespace Ashlar.OAuth;
 public sealed class AshlarOidcInvitationRegistrationService
 {
     private readonly IInvitationService _invitationService;
-    private readonly ICredentialService _credentialService;
+    private readonly ICredentialRepository _credentialRepository;
     private readonly IAshlarTransactionProvider _transactionProvider;
     private readonly IOptionsMonitor<AshlarOAuthOptions> _oauthOptions;
     private readonly IOidcInvitationEmailMatchPolicy _emailMatchPolicy;
+    private readonly ISecurityEventSink? _securityEventSink;
+    private readonly TimeProvider _timeProvider;
 
     /// <summary>
     /// Initializes a new instance of the OIDC invitation registration service.
     /// </summary>
     /// <param name="invitationService">The invitation service.</param>
-    /// <param name="credentialService">The credential service.</param>
+    /// <param name="credentialRepository">Credential repository used inside the invitation acceptance transaction.</param>
     /// <param name="transactionProvider">The transaction provider.</param>
     /// <param name="oauthOptions">The OAuth options monitor.</param>
     /// <param name="emailMatchPolicy">The invitation email match policy.</param>
-    public AshlarOidcInvitationRegistrationService(
+    /// <param name="securityEventSink">Security event sink used to audit the credential linked by the invitation flow.</param>
+    /// <param name="timeProvider">Clock used for emitted security events.</param>
+    internal AshlarOidcInvitationRegistrationService(
         IInvitationService invitationService,
-        ICredentialService credentialService,
+        ICredentialRepository credentialRepository,
         IAshlarTransactionProvider transactionProvider,
         IOptionsMonitor<AshlarOAuthOptions> oauthOptions,
-        IOidcInvitationEmailMatchPolicy emailMatchPolicy)
+        IOidcInvitationEmailMatchPolicy emailMatchPolicy,
+        ISecurityEventSink? securityEventSink = null,
+        TimeProvider? timeProvider = null)
     {
         _invitationService = invitationService ?? throw new ArgumentNullException(nameof(invitationService));
-        _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
+        _credentialRepository = credentialRepository ?? throw new ArgumentNullException(nameof(credentialRepository));
         _transactionProvider = transactionProvider ?? throw new ArgumentNullException(nameof(transactionProvider));
         _oauthOptions = oauthOptions ?? throw new ArgumentNullException(nameof(oauthOptions));
         _emailMatchPolicy = emailMatchPolicy ?? throw new ArgumentNullException(nameof(emailMatchPolicy));
+        _securityEventSink = securityEventSink;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>
@@ -259,12 +270,12 @@ public sealed class AshlarOidcInvitationRegistrationService
             return new AshlarOidcInvitationRegistrationResult(MapInvitationFailure(acceptance), Assertion: assertion, InvitationAcceptance: acceptance);
         }
 
-        var link = await _credentialService.LinkCredentialAsync(
+        var link = await LinkAcceptedInvitationCredentialAsync(
             acceptance.Value,
             assertion,
             new OidcAuthenticationProvider(principal.Provider.ProviderName),
-            credentialValue: null,
-            credentialMetadata: null,
+            preview.Value.TenantId,
+            context,
             cancellationToken: cancellationToken);
 
         if (!link.Succeeded)
@@ -275,6 +286,84 @@ public sealed class AshlarOidcInvitationRegistrationService
 
         await transaction.CommitAsync(cancellationToken);
         return new AshlarOidcInvitationRegistrationResult(AshlarOidcInvitationRegistrationStatus.Registered, acceptance.Value, assertion, acceptance, link);
+    }
+
+    private async Task<Result> LinkAcceptedInvitationCredentialAsync(
+        Guid userId,
+        ExternalIdentityAssertion assertion,
+        OidcAuthenticationProvider provider,
+        Guid? tenantId,
+        AuthenticationContext? context,
+        CancellationToken cancellationToken)
+    {
+        var providerKey = provider.GetProviderKey(assertion, userId);
+        var credentialId = Guid.NewGuid();
+        try
+        {
+            var existingCredential = await _credentialRepository.GetCredentialForUserAsync(
+                userId,
+                provider.Key.Type,
+                provider.Key.Name,
+                providerKey,
+                cancellationToken);
+            if (existingCredential != null)
+            {
+                await RecordCredentialLinkedAsync(
+                    new OidcCredentialLinkedAudit(userId, tenantId, context, provider.Key, SecurityEventOutcomes.Failure, AshlarFailureCodes.AlreadyLinkedToSelf.Value, CredentialId: null),
+                    cancellationToken);
+                return Result.Failure(AshlarFailureCodes.AlreadyLinkedToSelf);
+            }
+
+            await _credentialRepository.CreateOrReplaceCredentialAsync(new UserCredential
+            {
+                Id = credentialId,
+                UserId = userId,
+                ProviderType = provider.Key.Type,
+                ProviderName = provider.Key.Name,
+                ProviderKey = providerKey,
+                Version = Guid.NewGuid().ToString("N"),
+                CreatedAt = _timeProvider.GetUtcNow(),
+                Status = CredentialStatus.Active
+            }, cancellationToken);
+            await RecordCredentialLinkedAsync(
+                new OidcCredentialLinkedAudit(userId, tenantId, context, provider.Key, SecurityEventOutcomes.Success, FailureReason: null, CredentialId: credentialId),
+                cancellationToken);
+            return Result.Success();
+        }
+        catch (CredentialProviderKeyConflictException)
+        {
+            await RecordCredentialLinkedAsync(
+                new OidcCredentialLinkedAudit(userId, tenantId, context, provider.Key, SecurityEventOutcomes.Failure, AshlarFailureCodes.AlreadyLinkedToOther.Value, CredentialId: null),
+                cancellationToken);
+            return Result.Failure(AshlarFailureCodes.AlreadyLinkedToOther);
+        }
+    }
+
+    private async Task RecordCredentialLinkedAsync(OidcCredentialLinkedAudit audit, CancellationToken cancellationToken)
+    {
+        if (_securityEventSink == null)
+        {
+            return;
+        }
+
+        await _securityEventSink.RecordAsync(new AshlarSecurityEvent
+        {
+            Id = Guid.NewGuid(),
+            EventType = AshlarSecurityEventTypes.CredentialLinked,
+            OccurredAt = _timeProvider.GetUtcNow(),
+            UserId = audit.UserId,
+            TenantId = audit.TenantId,
+            ActorUserId = audit.Context?.UserId,
+            Provider = audit.Provider,
+            IpAddress = audit.Context?.IpAddress,
+            UserAgent = audit.Context?.UserAgent,
+            CorrelationId = audit.Context?.CorrelationId,
+            Outcome = audit.Outcome,
+            FailureReason = audit.FailureReason,
+            Properties = audit.CredentialId.HasValue
+                ? new Dictionary<string, string> { ["credential_id"] = audit.CredentialId.Value.ToString() }
+                : null
+        }, cancellationToken);
     }
 
     private AshlarOidcProviderOptions? GetOidcProvider(string providerName)
@@ -311,13 +400,9 @@ public sealed class AshlarOidcInvitationRegistrationService
 
     private static AshlarOidcInvitationRegistrationStatus MapLinkFailure(Result result)
     {
-        return result.FailureCode?.Value switch
-        {
-            AshlarFailureCodes.AlreadyLinkedToSelfValue => AshlarOidcInvitationRegistrationStatus.AlreadyLinked,
-            AshlarFailureCodes.AlreadyLinkedToOtherValue => AshlarOidcInvitationRegistrationStatus.AlreadyLinkedToAnotherUser,
-            AshlarFailureCodes.InvalidProviderKeyValue => AshlarOidcInvitationRegistrationStatus.InvalidPrincipal,
-            _ => AshlarOidcInvitationRegistrationStatus.LinkFailed
-        };
+        return result.FailureCode == AshlarFailureCodes.AlreadyLinkedToSelf
+            ? AshlarOidcInvitationRegistrationStatus.AlreadyLinked
+            : AshlarOidcInvitationRegistrationStatus.AlreadyLinkedToAnotherUser;
     }
 
     private static AshlarExternalProvider CreateExternalProvider(AshlarOidcProviderOptions provider)
@@ -328,4 +413,13 @@ public sealed class AshlarOidcInvitationRegistrationService
             provider.SchemeName,
             provider.ProviderKeyMode);
     }
+
+    private sealed record OidcCredentialLinkedAudit(
+        Guid UserId,
+        Guid? TenantId,
+        AuthenticationContext? Context,
+        AuthenticationProviderKey Provider,
+        string Outcome,
+        string? FailureReason,
+        Guid? CredentialId);
 }

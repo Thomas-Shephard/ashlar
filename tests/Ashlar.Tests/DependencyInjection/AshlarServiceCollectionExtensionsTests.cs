@@ -40,7 +40,9 @@ internal sealed class AshlarServiceCollectionExtensionsTests
             AssertDescriptor<IAuthenticationFactorPipeline>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IPrimaryAuthenticationRateLimiter, PrimaryAuthenticationRateLimiter>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAuthenticationProviderRegistry, AuthenticationProviderRegistry>(services, ServiceLifetime.Scoped);
-            AssertDescriptor<ICredentialService, CredentialService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<CredentialService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<ICredentialService>(services, ServiceLifetime.Scoped);
+            AssertDescriptor<IExternalAccountCredentialLinker, ExternalAccountCredentialLinker>(services, ServiceLifetime.Scoped);
             AssertDescriptor<ICredentialAdministrationService, CredentialAdministrationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAccountRecoveryAdministrationService>(services, ServiceLifetime.Scoped);
             AssertDescriptor<IAccountRecoveryAdministrationExecutor, AccountRecoveryAdministrationExecutor>(services, ServiceLifetime.Scoped);
@@ -177,7 +179,7 @@ internal sealed class AshlarServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddScoped(_ => Mock.Of<IAuthenticationProviderRegistry>());
-        services.AddScoped(_ => Mock.Of<ICredentialService>());
+        services.AddScoped<ICredentialService, TestCredentialService>();
         services.AddAshlarNullTransactions();
         services.AddAshlarIdentity();
 
