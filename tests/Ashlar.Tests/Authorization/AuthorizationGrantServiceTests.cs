@@ -65,6 +65,23 @@ internal sealed class AuthorizationGrantServiceTests
     }
 
     [Test]
+    public async Task CreateGrantAsyncShouldCommitWhenTransactionProviderIsConfigured()
+    {
+        var transactionProvider = new RecordingTransactionProvider();
+        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, transactionProvider: transactionProvider);
+        var userId = AddGlobalUser();
+
+        var result = await service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "posts.read"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(transactionProvider.Transaction.BeginCount, Is.EqualTo(1));
+            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task CreateGrantAsyncShouldRejectMissingAuditBeforeRepositoryCreation()
     {
         var auditSink = new RecordingSecurityEventSink();
@@ -311,6 +328,24 @@ internal sealed class AuthorizationGrantServiceTests
             Assert.That(revoked.UserId, Is.EqualTo(userId));
             Assert.That(grant.RevokedAt, Is.EqualTo(_timeProvider.GetUtcNow()));
             Assert.That(_repository.LastRevokedTenantId, Is.EqualTo(tenantId));
+        }
+    }
+
+    [Test]
+    public async Task RevokeGrantAsyncShouldCommitWhenTransactionProviderIsConfigured()
+    {
+        var userId = AddGlobalUser();
+        var create = await _service.CreateGrantAsync(new CreateAuthorizationGrantRequest(userId, _audit, Permission: "posts.read"));
+        var transactionProvider = new RecordingTransactionProvider();
+        var service = new AuthorizationGrantService(_repository, _userRepository, timeProvider: _timeProvider, transactionProvider: transactionProvider);
+
+        var revoked = await service.RevokeGrantAsync(new RevokeAuthorizationGrantRequest(create.Value!.Id, _audit));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revoked.Status, Is.EqualTo(AuthorizationGrantRevocationStatus.Revoked));
+            Assert.That(transactionProvider.Transaction.BeginCount, Is.EqualTo(1));
+            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(1));
         }
     }
 

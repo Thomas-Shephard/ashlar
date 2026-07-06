@@ -21,6 +21,7 @@ internal sealed class InvitationAdministrationService(
     private readonly IInvitationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly TimeProvider _timeProvider = dependencies?.TimeProvider ?? TimeProvider.System;
     private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider ?? TimeProvider.System);
+    private readonly IAshlarTransactionProvider? _transactionProvider = dependencies?.TransactionProvider;
 
     /// <inheritdoc />
     public async Task<Result<InvitationSearchResult>> SearchInvitationsAsync(SearchInvitationsRequest request, CancellationToken cancellationToken = default)
@@ -73,6 +74,9 @@ internal sealed class InvitationAdministrationService(
         }
 
         var now = _timeProvider.GetUtcNow();
+        await using var transaction = _transactionProvider == null
+            ? null
+            : await _transactionProvider.BeginTransactionAsync(cancellationToken);
         var result = await _repository.RevokeInvitationAsync(request, now, cancellationToken);
         if (result == null)
         {
@@ -82,6 +86,11 @@ internal sealed class InvitationAdministrationService(
         if (result.RevocationStatus == InvitationAdministrationRevocationStatus.Revoked)
         {
             await RecordRevocationAsync(request, result, cancellationToken);
+        }
+
+        if (transaction != null)
+        {
+            await transaction.CommitAsync(cancellationToken);
         }
 
         return Result.Success(result);
@@ -183,6 +192,8 @@ internal sealed class InvitationAdministrationService(
 /// </summary>
 /// <param name="TimeProvider">Clock used for expiry projection and mutation timestamps.</param>
 /// <param name="SecurityEventSink">Security audit event sink used for revocation events.</param>
+/// <param name="TransactionProvider">Transaction provider used to commit invitation revocation with required audit writes.</param>
 internal sealed record InvitationAdministrationServiceDependencies(
     TimeProvider? TimeProvider = null,
-    ISecurityEventSink? SecurityEventSink = null);
+    ISecurityEventSink? SecurityEventSink = null,
+    IAshlarTransactionProvider? TransactionProvider = null);

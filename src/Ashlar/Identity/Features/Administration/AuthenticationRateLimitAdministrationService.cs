@@ -13,6 +13,8 @@ internal sealed class AuthenticationRateLimitAdministrationService(
     private readonly IAuthenticationRateLimitAdministrationRepository _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     private readonly TimeProvider _timeProvider = dependencies?.TimeProvider ?? TimeProvider.System;
     private readonly SecurityEventEmitter _securityEvents = new(dependencies?.SecurityEventSink, dependencies?.TimeProvider);
+    private readonly IAshlarTransactionProvider? _transactionProvider = dependencies?.TransactionProvider;
+    private readonly bool _failClosedBeforeNonAtomicReset = repository is INonAtomicAuthenticationRateLimitAdministrationRepository && dependencies?.PersistentAuditConfigured == true;
 
     public async Task<Result<AuthenticationRateLimitBucketSearchResult>> SearchBucketsAsync(SearchAuthenticationRateLimitBucketsRequest request, CancellationToken cancellationToken = default)
     {
@@ -66,6 +68,20 @@ internal sealed class AuthenticationRateLimitAdministrationService(
             return validationFailure;
         }
 
+        if (_failClosedBeforeNonAtomicReset)
+        {
+            var failedResult = new AuthenticationRateLimitBucketResetResult(
+                request.BucketId,
+                request.Purpose,
+                AuthenticationRateLimitBucketResetStatus.Failed);
+            await RecordResetAttemptAsync(request, failedResult.Status, cancellationToken);
+            return Result.Success(failedResult);
+        }
+
+        await using var transaction = _transactionProvider == null
+            ? null
+            : await _transactionProvider.BeginTransactionAsync(cancellationToken);
+
         AuthenticationRateLimitBucketResetResult result;
         try
         {
@@ -82,6 +98,10 @@ internal sealed class AuthenticationRateLimitAdministrationService(
         }
 
         await RecordResetAttemptAsync(request, result.Status, cancellationToken);
+        if (transaction != null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
 
         return Result.Success(result);
     }
@@ -166,4 +186,6 @@ internal sealed class AuthenticationRateLimitAdministrationService(
 
 internal sealed record AuthenticationRateLimitAdministrationServiceDependencies(
     TimeProvider? TimeProvider = null,
-    ISecurityEventSink? SecurityEventSink = null);
+    ISecurityEventSink? SecurityEventSink = null,
+    IAshlarTransactionProvider? TransactionProvider = null,
+    bool PersistentAuditConfigured = false);

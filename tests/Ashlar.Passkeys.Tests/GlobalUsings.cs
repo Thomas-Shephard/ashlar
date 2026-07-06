@@ -2,6 +2,7 @@ global using Ashlar.Identity.Abstractions.Authentication;
 global using Ashlar.Identity.Abstractions.Repositories;
 global using Ashlar.Identity.Abstractions.Services;
 global using Ashlar.Identity.Abstractions.Tenancy;
+global using Ashlar.Identity.Abstractions.Transactions;
 global using Ashlar.Identity.Models.Authentication;
 global using Ashlar.Identity.Models.Credentials;
 global using Ashlar.Identity.Models.Handshakes;

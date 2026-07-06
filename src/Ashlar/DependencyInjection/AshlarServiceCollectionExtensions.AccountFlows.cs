@@ -42,7 +42,8 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped<IInvitationService, InvitationService>();
         services.TryAddScoped(provider => new InvitationAdministrationServiceDependencies(
             provider.GetService<TimeProvider>(),
-            provider.GetService<ISecurityEventSink>()));
+            provider.GetService<ISecurityEventSink>(),
+            provider.GetService<IAshlarTransactionProvider>()));
         services.TryAddScoped<IInvitationAdministrationService>(provider => new InvitationAdministrationService(
             provider.GetRequiredService<IInvitationRepository>(),
             provider.GetService<InvitationAdministrationServiceDependencies>()));

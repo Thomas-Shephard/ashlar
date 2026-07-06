@@ -133,7 +133,8 @@ public static partial class AshlarServiceCollectionExtensions
         services.TryAddScoped<IAccountRecoveryAdministrationExecutor, AccountRecoveryAdministrationExecutor>();
         services.TryAddScoped(provider => new AccountLockoutAdministrationServiceDependencies(
             provider.GetService<TimeProvider>(),
-            provider.GetService<ISecurityEventSink>()));
+            provider.GetService<ISecurityEventSink>(),
+            provider.GetService<IAshlarTransactionProvider>()));
         services.TryAddScoped<IAccountLockoutAdministrationService>(provider => new AccountLockoutAdministrationService(
             provider.GetRequiredService<IAccountLockoutRepository>(),
             provider.GetService<AccountLockoutAdministrationServiceDependencies>()));
@@ -236,7 +237,9 @@ public static partial class AshlarServiceCollectionExtensions
 
         services.TryAddScoped(provider => new AuthenticationRateLimitAdministrationServiceDependencies(
             provider.GetService<TimeProvider>(),
-            provider.GetService<ISecurityEventSink>()));
+            provider.GetService<ISecurityEventSink>(),
+            provider.GetService<IAshlarTransactionProvider>(),
+            provider.GetService<IPersistentSecurityEventSink>() is not null));
         services.TryAddScoped<IAuthenticationRateLimitAdministrationService>(provider =>
             new AuthenticationRateLimitAdministrationService(
                 provider.GetRequiredService<IAuthenticationRateLimitAdministrationRepository>(),
