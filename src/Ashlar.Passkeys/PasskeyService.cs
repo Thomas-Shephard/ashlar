@@ -517,22 +517,20 @@ internal sealed class PasskeyService : IPasskeyService
     {
         ArgumentNullException.ThrowIfNull(request);
         var lookup = await FindManagedPasskeyAsync(request.ActorUserId, request.Tenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit, request.CredentialId, cancellationToken);
-        if (lookup.Failure != null)
+        if (!lookup.TryGetValue(out var passkey))
         {
-            return Result.Failure(lookup.Failure.Value);
+            return Result.Failure(lookup.GetFailureOr(AshlarFailureCodes.PasskeyCredentialNotFound));
         }
 
-        var credential = lookup.Credential!;
-
-        if (!PasskeyCredentialMetadataOperations.TryRead(credential.Metadata, out var metadata))
+        if (!PasskeyCredentialMetadataOperations.TryRead(passkey.Metadata, out var metadata))
         {
             return Result.Failure(AshlarFailureCodes.PasskeyValidationFailed);
         }
 
         metadata.DisplayName = NormalizeDisplayName(request.DisplayName);
-        credential.Metadata = JsonSerializer.Serialize(metadata, PasskeyJson.Options);
+        passkey.Metadata = JsonSerializer.Serialize(metadata, PasskeyJson.Options);
         await using var transaction = await BeginTransactionAsync(cancellationToken);
-        var updated = await _credentialRepository.UpdateCredentialAsync(credential, credential.Version, cancellationToken);
+        var updated = await _credentialRepository.UpdateCredentialAsync(passkey, passkey.Version, cancellationToken);
         await RecordAsync(AshlarSecurityEventTypes.PasskeyRenamed, updated ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure, request.ActorUserId, updated ? null : AshlarFailureCodes.ConcurrencyConflict.Value, request.Audit, request.Tenant.TenantId, cancellationToken);
         await CommitAsync(transaction, cancellationToken);
         return updated ? Result.Success() : Result.Failure(AshlarFailureCodes.ConcurrencyConflict);
@@ -542,17 +540,15 @@ internal sealed class PasskeyService : IPasskeyService
     {
         ArgumentNullException.ThrowIfNull(request);
         var lookup = await FindManagedPasskeyAsync(request.ActorUserId, request.Tenant, request.CurrentSessionId, request.FreshMfaProof, request.Audit, request.CredentialId, cancellationToken);
-        if (lookup.Failure != null)
+        if (!lookup.TryGetValue(out var passkey))
         {
-            return Result.Failure(lookup.Failure.Value);
+            return Result.Failure(lookup.GetFailureOr(AshlarFailureCodes.PasskeyCredentialNotFound));
         }
 
-        var credential = lookup.Credential!;
-
-        credential.Status = CredentialStatus.Revoked;
-        credential.RevokedAt = _timeProvider.GetUtcNow();
+        passkey.Status = CredentialStatus.Revoked;
+        passkey.RevokedAt = _timeProvider.GetUtcNow();
         await using var transaction = await BeginTransactionAsync(cancellationToken);
-        var updated = await _credentialRepository.UpdateCredentialAsync(credential, credential.Version, cancellationToken);
+        var updated = await _credentialRepository.UpdateCredentialAsync(passkey, passkey.Version, cancellationToken);
         await RecordAsync(AshlarSecurityEventTypes.PasskeyRevoked, updated ? SecurityEventOutcomes.Success : SecurityEventOutcomes.Failure, request.ActorUserId, updated ? null : AshlarFailureCodes.ConcurrencyConflict.Value, request.Audit, request.Tenant.TenantId, cancellationToken);
         await CommitAsync(transaction, cancellationToken);
         return updated ? Result.Success() : Result.Failure(AshlarFailureCodes.ConcurrencyConflict);
@@ -577,7 +573,7 @@ internal sealed class PasskeyService : IPasskeyService
             : AshlarFailureCodes.UserNotFoundOrUnavailable;
     }
 
-    private async Task<(AshlarFailureCode? Failure, UserCredential? Credential)> FindManagedPasskeyAsync(
+    private async Task<Result<UserCredential>> FindManagedPasskeyAsync(
         Guid actorUserId,
         TenantContext tenant,
         Guid? currentSessionId,
@@ -589,13 +585,13 @@ internal sealed class PasskeyService : IPasskeyService
         var boundaryFailure = await ValidateManagementBoundaryAsync(actorUserId, tenant, currentSessionId, proof, audit, cancellationToken);
         if (boundaryFailure != null)
         {
-            return (boundaryFailure, null);
+            return Result.Failure<UserCredential>(boundaryFailure.Value);
         }
 
         var credential = await FindPasskeyAsync(actorUserId, credentialId, cancellationToken);
         return credential == null
-            ? (AshlarFailureCodes.PasskeyCredentialNotFound, null)
-            : (null, credential);
+            ? Result.Failure<UserCredential>(AshlarFailureCodes.PasskeyCredentialNotFound)
+            : Result.Success(credential);
     }
 
     private async Task<UserCredential?> FindPasskeyAsync(Guid userId, Guid credentialId, CancellationToken cancellationToken)
