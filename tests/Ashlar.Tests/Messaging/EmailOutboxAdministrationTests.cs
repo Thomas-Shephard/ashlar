@@ -260,6 +260,23 @@ internal sealed class EmailOutboxAdministrationProviderTests
         }
     }
 
+    [Test]
+    public async Task ServiceBaseCommitsOperationWithTransactionProvider()
+    {
+        var sink = new CapturingSecurityEventSink();
+        var transactionProvider = new Support.RecordingTransactionProvider();
+        var service = new TestEmailOutboxAdministrationService(sink, transactionProvider);
+
+        var result = await service.RetryAsync(new EmailOutboxOperationRequest(Guid.NewGuid(), new AuditContext(Guid.NewGuid())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(EmailOutboxOperationStatus.Retried));
+            Assert.That(transactionProvider.Transaction.CommitCount, Is.EqualTo(1));
+            Assert.That(transactionProvider.Transaction.DisposeCount, Is.EqualTo(1));
+        }
+    }
+
     private static EmailOutboxAdministrationProjection CreateRecord(
         EmailMessageSensitivity sensitivity = EmailMessageSensitivity.Normal,
         EmailOutboxBodyProtection bodyProtection = EmailOutboxBodyProtection.None,
@@ -303,8 +320,10 @@ internal sealed class EmailOutboxAdministrationProviderTests
         }
     }
 
-    private sealed class TestEmailOutboxAdministrationService(ISecurityEventSink sink)
-        : EmailOutboxAdministrationServiceBase(TimeProvider.System, sink)
+    private sealed class TestEmailOutboxAdministrationService(
+        ISecurityEventSink sink,
+        global::Ashlar.Identity.Abstractions.Transactions.IAshlarTransactionProvider? transactionProvider = null)
+        : EmailOutboxAdministrationServiceBase(TimeProvider.System, sink, transactionProvider)
     {
         public override Task<EmailOutboxSearchResult> SearchAsync(EmailOutboxSearchRequest request, CancellationToken cancellationToken = default)
         {

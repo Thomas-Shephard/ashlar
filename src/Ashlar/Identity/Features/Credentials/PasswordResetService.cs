@@ -426,8 +426,9 @@ internal sealed class PasswordResetService : IPasswordResetService
                 DeliveryFailedReason,
                 cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return false;
         }
+
+        return false;
     }
 
     private async Task DelayUntilMinimumRequestDurationAsync(long startedAt, CancellationToken cancellationToken)
