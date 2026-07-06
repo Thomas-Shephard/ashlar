@@ -82,20 +82,32 @@ public sealed record StartPasskeyFactorRequest(string? HandshakeToken, string Fa
 /// <param name="Audit">The optional audit context.</param>
 public sealed record CompletePasskeyFactorRequest(Guid ChallengeId, JsonElement AssertionResponse, string? HandshakeToken, string FactorType = "passkey", Guid? TenantId = null, AuditContext? Audit = null);
 /// <summary>
-/// Represents a request to rename a passkey.
+/// Self-service request to list passkeys for the current authenticated account owner.
 /// </summary>
-/// <param name="UserId">The user id.</param>
-/// <param name="CredentialId">The credential id.</param>
-/// <param name="DisplayName">The new display name.</param>
-/// <param name="Audit">The optional audit context.</param>
-public sealed record RenamePasskeyRequest(Guid UserId, Guid CredentialId, string DisplayName, AuditContext? Audit = null);
+/// <param name="ActorUserId">Current authenticated user. Only this user's passkeys are returned.</param>
+/// <param name="Tenant">Explicit tenant scope for the current user; use <see cref="TenantContext.Global" /> for global users.</param>
+public sealed record ListPasskeysRequest(Guid ActorUserId, TenantContext Tenant);
 /// <summary>
-/// Represents a request to revoke a passkey.
+/// Self-service request to rename one of the current authenticated account owner's passkeys.
 /// </summary>
-/// <param name="UserId">The user id.</param>
-/// <param name="CredentialId">The credential id.</param>
-/// <param name="Audit">The optional audit context.</param>
-public sealed record RevokePasskeyRequest(Guid UserId, Guid CredentialId, AuditContext? Audit = null);
+/// <param name="ActorUserId">Current authenticated user. This user must own the credential.</param>
+/// <param name="Tenant">Explicit tenant scope that must match the actor and fresh proof.</param>
+/// <param name="CurrentSessionId">Current Ashlar session id from the authenticated request; it must match <paramref name="FreshMfaProof" />.</param>
+/// <param name="FreshMfaProof">Ashlar-issued fresh MFA proof minted for <c>passkey-management</c>.</param>
+/// <param name="CredentialId">The passkey credential id.</param>
+/// <param name="DisplayName">The new display name.</param>
+/// <param name="Audit">Required audit metadata recorded atomically with the mutation.</param>
+public sealed record RenamePasskeyRequest(Guid ActorUserId, TenantContext Tenant, Guid? CurrentSessionId, FreshMfaVerificationProof? FreshMfaProof, Guid CredentialId, string DisplayName, AuditContext? Audit);
+/// <summary>
+/// Self-service request to revoke one of the current authenticated account owner's passkeys.
+/// </summary>
+/// <param name="ActorUserId">Current authenticated user. This user must own the credential.</param>
+/// <param name="Tenant">Explicit tenant scope that must match the actor and fresh proof.</param>
+/// <param name="CurrentSessionId">Current Ashlar session id from the authenticated request; it must match <paramref name="FreshMfaProof" />.</param>
+/// <param name="FreshMfaProof">Ashlar-issued fresh MFA proof minted for <c>passkey-management</c>.</param>
+/// <param name="CredentialId">The passkey credential id.</param>
+/// <param name="Audit">Required audit metadata recorded atomically with the mutation.</param>
+public sealed record RevokePasskeyRequest(Guid ActorUserId, TenantContext Tenant, Guid? CurrentSessionId, FreshMfaVerificationProof? FreshMfaProof, Guid CredentialId, AuditContext? Audit);
 
 /// <summary>
 /// Represents browser options for a passkey ceremony.

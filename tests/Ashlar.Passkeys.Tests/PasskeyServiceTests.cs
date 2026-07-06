@@ -16,6 +16,7 @@ internal sealed class PasskeyServiceTests
     private static readonly Guid RegistrationSessionId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly TimeSpan RegistrationFreshnessWindow = TimeSpan.FromMinutes(10);
     private const string RegistrationPurpose = "passkey-registration";
+    private const string ManagementPurpose = "passkey-management";
 
     [Test]
     public async Task StartRegistrationAsyncShouldCreateChallengeAndRecordAuditEvent()
@@ -445,18 +446,20 @@ internal sealed class PasskeyServiceTests
         var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var credential = CreatePasskeyCredential(userId, "cred", now);
         var credentials = new Mock<ICredentialRepository>();
+        var repo = new Mock<IUserRepository>();
         var events = new RecordingSecurityEventSink();
         var transactionProvider = new RecordingTransactionProvider();
+        repo.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new TestUser(userId, "test@example.com"));
         credentials.Setup(r => r.ListCredentialsForUserAsync(userId, It.IsAny<bool>(), It.IsAny<CancellationToken>())).ReturnsAsync([credential]);
         credentials.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), credential.Version, It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var service = new PasskeyService(
-            new Mock<IUserRepository>().Object,
+            repo.Object,
             credentials.Object,
             new Mock<IPasskeyChallengeRepository>().Object,
             new Mock<IPasskeyCeremonyValidator>().Object,
             CreateDependencies(new FakeTimeProvider(now), events, transactionProvider: transactionProvider));
 
-        var result = await service.RevokeAsync(new RevokePasskeyRequest(userId, credential.Id, new AuditContext(Guid.NewGuid())));
+        var result = await service.RevokeAsync(CreateRevokeRequest(userId, credential.Id, now));
 
         using (Assert.EnterMultipleScope())
         {
@@ -2748,9 +2751,11 @@ internal sealed class PasskeyServiceTests
                 }
             ]);
         credentials.Setup(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), "v1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+        repo.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new TestUser(userId, "test@example.com"));
+        var now = DateTimeOffset.UtcNow;
+        var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
 
-        var result = await service.RenameAsync(new RenamePasskeyRequest(userId, credentialId, ""));
+        var result = await service.RenameAsync(CreateRenameRequest(userId, credentialId, "", now));
 
         Assert.That(result.Succeeded, Is.True);
         credentials.Verify(r => r.UpdateCredentialAsync(It.Is<UserCredential>(c => c.Metadata != null && c.Metadata.Contains("Passkey", StringComparison.Ordinal)), "v1", It.IsAny<CancellationToken>()), Times.Once);
@@ -2778,9 +2783,11 @@ internal sealed class PasskeyServiceTests
                     Metadata = "{"
                 }
             ]);
-        var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
+        repo.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new TestUser(userId, "test@example.com"));
+        var now = DateTimeOffset.UtcNow;
+        var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
 
-        var result = await service.RenameAsync(new RenamePasskeyRequest(userId, credentialId, "Name"));
+        var result = await service.RenameAsync(CreateRenameRequest(userId, credentialId, "Name", now));
 
         Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyValidationFailed));
         credentials.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -2809,6 +2816,7 @@ internal sealed class PasskeyServiceTests
         };
         var repo = new Mock<IUserRepository>();
         var credentials = new Mock<ICredentialRepository>();
+        repo.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new TestUser(userId, "test@example.com"));
         credentials.Setup(r => r.ListCredentialsForUserAsync(userId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync([passkey, nullMetadataPasskey, malformedMetadataPasskey, other]);
         credentials.SetupSequence(r => r.UpdateCredentialAsync(passkey, passkey.Version, It.IsAny<CancellationToken>()))
@@ -2818,13 +2826,13 @@ internal sealed class PasskeyServiceTests
             .ReturnsAsync(true);
         var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now), authenticationOrchestrator: new Mock<IAuthenticationOrchestrator>().Object, handshakeService: new Mock<IAuthenticationHandshakeService>().Object, tokenHasher: new TestTokenHasher()));
 
-        var list = await service.ListAsync(userId);
-        var renameMissing = await service.RenameAsync(new RenamePasskeyRequest(userId, Guid.NewGuid(), "Name"));
-        var renameConflict = await service.RenameAsync(new RenamePasskeyRequest(userId, passkey.Id, "Name"));
-        var renameSuccess = await service.RenameAsync(new RenamePasskeyRequest(userId, passkey.Id, new string('x', 120)));
-        var revokeMissing = await service.RevokeAsync(new RevokePasskeyRequest(userId, Guid.NewGuid()));
-        var revokeConflict = await service.RevokeAsync(new RevokePasskeyRequest(userId, passkey.Id));
-        var revokeSuccess = await service.RevokeAsync(new RevokePasskeyRequest(userId, passkey.Id));
+        var list = await service.ListAsync(new ListPasskeysRequest(userId, TenantContext.Global));
+        var renameMissing = await service.RenameAsync(CreateRenameRequest(userId, Guid.NewGuid(), "Name", now));
+        var renameConflict = await service.RenameAsync(CreateRenameRequest(userId, passkey.Id, "Name", now));
+        var renameSuccess = await service.RenameAsync(CreateRenameRequest(userId, passkey.Id, new string('x', 120), now));
+        var revokeMissing = await service.RevokeAsync(CreateRevokeRequest(userId, Guid.NewGuid(), now));
+        var revokeConflict = await service.RevokeAsync(CreateRevokeRequest(userId, passkey.Id, now));
+        var revokeSuccess = await service.RevokeAsync(CreateRevokeRequest(userId, passkey.Id, now));
 
         using (Assert.EnterMultipleScope())
         {
@@ -2835,6 +2843,84 @@ internal sealed class PasskeyServiceTests
             Assert.That(revokeMissing.FailureCode, Is.EqualTo(AshlarFailureCodes.PasskeyCredentialNotFound));
             Assert.That(revokeConflict.FailureCode, Is.EqualTo(AshlarFailureCodes.ConcurrencyConflict));
             Assert.That(revokeSuccess.Succeeded, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task ManagementMethodsShouldValidateActorTenantSessionProofAndAuditBeforeMutation()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var credential = CreatePasskeyCredential(userId, "cred", now);
+        var repo = new Mock<IUserRepository>();
+        var credentials = new Mock<ICredentialRepository>();
+        repo.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new TestUser(userId, "test@example.com", TenantId: tenantId));
+        credentials.Setup(r => r.ListCredentialsForUserAsync(userId, true, It.IsAny<CancellationToken>())).ReturnsAsync([credential]);
+        credentials.Setup(r => r.UpdateCredentialAsync(credential, credential.Version, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var service = new PasskeyService(repo.Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now)));
+
+        var wrongActor = await service.RenameAsync(CreateRenameRequest(Guid.NewGuid(), credential.Id, "Name", now, tenantId: tenantId));
+        var wrongTenant = await service.RenameAsync(CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: Guid.NewGuid()));
+        var wrongSession = await service.RenameAsync(CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: tenantId, currentSessionId: Guid.NewGuid(), proof: CreateMfaProof(userId, tenantId, now, RegistrationSessionId, ManagementPurpose)));
+        var missingProof = await service.RenameAsync(CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: tenantId, omitProof: true));
+        var expiredProof = await service.RenameAsync(CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: tenantId, proof: CreateMfaProof(userId, tenantId, now.Subtract(RegistrationFreshnessWindow).AddTicks(-1), RegistrationSessionId, ManagementPurpose)));
+        var wrongPurpose = await service.RenameAsync(CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: tenantId, proof: CreateMfaProof(userId, tenantId, now, RegistrationSessionId, RegistrationPurpose)));
+        var missingAudit = await service.RenameAsync(CreateRenameRequest(userId, credential.Id, "Name", now, tenantId: tenantId, omitAudit: true));
+        var revoke = await service.RevokeAsync(CreateRevokeRequest(userId, credential.Id, now, tenantId: tenantId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrongActor.Succeeded, Is.False);
+            Assert.That(wrongTenant.Succeeded, Is.False);
+            Assert.That(wrongSession.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(missingProof.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(expiredProof.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpExpired));
+            Assert.That(wrongPurpose.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            Assert.That(missingAudit.FailureCode, Is.EqualTo(AshlarFailureCodes.ValidationError));
+            Assert.That(revoke.Succeeded, Is.True);
+        }
+
+        credentials.Verify(r => r.UpdateCredentialAsync(It.IsAny<UserCredential>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ListAsyncShouldReturnEmptyForInvalidActorBoundary()
+    {
+        var credentials = new Mock<ICredentialRepository>();
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies());
+
+        var result = await service.ListAsync(new ListPasskeysRequest(Guid.Empty, TenantContext.Global));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Empty);
+            credentials.Verify(r => r.ListCredentialsForUserAsync(It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [Test]
+    public void ListAsyncShouldRejectNullTenant()
+    {
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, new Mock<ICredentialRepository>().Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies());
+
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.ListAsync(new ListPasskeysRequest(Guid.NewGuid(), null!)));
+    }
+
+    [Test]
+    public async Task RevokeAsyncShouldRejectBoundaryFailureBeforeCredentialLookup()
+    {
+        var userId = Guid.NewGuid();
+        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var credentials = new Mock<ICredentialRepository>();
+        var service = new PasskeyService(new Mock<IUserRepository>().Object, credentials.Object, new Mock<IPasskeyChallengeRepository>().Object, new Mock<IPasskeyCeremonyValidator>().Object, CreateDependencies(new FakeTimeProvider(now)));
+
+        var result = await service.RevokeAsync(CreateRevokeRequest(userId, Guid.NewGuid(), now, proof: CreateMfaProof(userId, null, now, RegistrationSessionId, RegistrationPurpose)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.FailureCode, Is.EqualTo(AshlarFailureCodes.StepUpRequired));
+            credentials.Verify(r => r.ListCredentialsForUserAsync(It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 
@@ -2998,6 +3084,48 @@ internal sealed class PasskeyServiceTests
         return result.Value!;
     }
 
+    private static RenamePasskeyRequest CreateRenameRequest(
+        Guid userId,
+        Guid credentialId,
+        string displayName,
+        DateTimeOffset now,
+        Guid? tenantId = null,
+        Guid? currentSessionId = null,
+        FreshMfaVerificationProof? proof = null,
+        AuditContext? audit = null,
+        bool omitProof = false,
+        bool omitAudit = false)
+    {
+        var sessionId = currentSessionId ?? RegistrationSessionId;
+        return new RenamePasskeyRequest(
+            userId,
+            tenantId.HasValue ? new TenantContext(tenantId.Value) : TenantContext.Global,
+            sessionId,
+            omitProof ? null : proof ?? CreateMfaProof(userId, tenantId, now, sessionId, ManagementPurpose),
+            credentialId,
+            displayName,
+            omitAudit ? null : audit ?? new AuditContext(userId, "127.0.0.1", "NUnit", "corr"));
+    }
+
+    private static RevokePasskeyRequest CreateRevokeRequest(
+        Guid userId,
+        Guid credentialId,
+        DateTimeOffset now,
+        Guid? tenantId = null,
+        Guid? currentSessionId = null,
+        FreshMfaVerificationProof? proof = null,
+        AuditContext? audit = null)
+    {
+        var sessionId = currentSessionId ?? RegistrationSessionId;
+        return new RevokePasskeyRequest(
+            userId,
+            tenantId.HasValue ? new TenantContext(tenantId.Value) : TenantContext.Global,
+            sessionId,
+            proof ?? CreateMfaProof(userId, tenantId, now, sessionId, ManagementPurpose),
+            credentialId,
+            audit ?? new AuditContext(userId, "127.0.0.1", "NUnit", "corr"));
+    }
+
     private static PasskeyChallenge CreateAuthenticationChallenge(
         DateTimeOffset now,
         Guid? userId = null,
@@ -3156,21 +3284,33 @@ internal sealed class RecordingTransactionProvider : IAshlarTransactionProvider
 
 internal sealed class RecordingTransaction : IAshlarTransaction
 {
+    private readonly List<Func<CancellationToken, Task>> _hooks = [];
     public bool Committed { get; private set; }
 
-    public Task CommitAsync(CancellationToken cancellationToken = default)
+    public async Task CommitAsync(CancellationToken cancellationToken = default)
     {
         Committed = true;
-        return Task.CompletedTask;
+        foreach (var hook in _hooks)
+        {
+            try
+            {
+                await hook(CancellationToken.None);
+            }
+            catch (Exception)
+            {
+            }
+        }
     }
 
     public Task RollbackAsync(CancellationToken cancellationToken = default)
     {
+        _hooks.Clear();
         return Task.CompletedTask;
     }
 
     public void OnCommitted(Func<CancellationToken, Task> callback)
     {
+        _hooks.Add(callback ?? throw new ArgumentNullException(nameof(callback)));
     }
 
     public ValueTask DisposeAsync()

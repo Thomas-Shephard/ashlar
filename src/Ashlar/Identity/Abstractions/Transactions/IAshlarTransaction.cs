@@ -16,7 +16,7 @@ public interface IAshlarTransaction : IAsyncDisposable
     /// Commits the transaction.
     /// </summary>
     /// <param name="cancellationToken">A token that can cancel the commit attempt.</param>
-    /// <returns>A task that completes after durable changes and commit hooks have finished.</returns>
+    /// <returns>A task that completes after durable changes and post-commit hooks have been attempted.</returns>
     Task CommitAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -33,9 +33,9 @@ public interface IAshlarTransaction : IAsyncDisposable
     /// <param name="action">Callback to run after a successful commit.</param>
     /// <remarks>
     /// Registered actions are executed after the transaction commit has completed and receive a cancellation token
-    /// that is not linked to the caller's commit token. Non-cancellation failures are isolated from later actions
-    /// and reported from <see cref="CommitAsync"/> as an <see cref="AggregateException"/> after all registered
-    /// actions have been attempted. Hooks must not run when the provider transaction rolls back.
+    /// that is not linked to the caller's commit token. Hook failures are isolated from later actions and must not
+    /// make <see cref="CommitAsync"/> report that a durable commit failed. Providers should log or otherwise report
+    /// hook failures. Hooks must not run when the provider transaction rolls back.
     /// </remarks>
     void OnCommitted(Func<CancellationToken, Task> action);
 }

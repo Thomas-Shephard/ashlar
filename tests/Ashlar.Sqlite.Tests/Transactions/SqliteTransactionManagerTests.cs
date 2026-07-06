@@ -251,7 +251,7 @@ internal sealed class SqliteTransactionManagerTests : SqliteTestBase
     }
 
     [Test]
-    public async Task PostCommitHookFailuresAreAggregatedAfterLaterHooksRun()
+    public async Task PostCommitHookFailuresDoNotThrowAfterCommitAndLaterHooksRun()
     {
         await using var manager = CreateManager();
         await using var transaction = await manager.BeginTransactionAsync();
@@ -264,14 +264,9 @@ internal sealed class SqliteTransactionManagerTests : SqliteTestBase
             return Task.CompletedTask;
         });
 
-        var exception = Assert.ThrowsAsync<AggregateException>(async () => await transaction.CommitAsync());
+        await transaction.CommitAsync();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(laterHookExecuted, Is.True);
-            Assert.That(exception, Is.Not.Null);
-            Assert.That(exception.InnerExceptions, Has.Count.EqualTo(1));
-        }
+        Assert.That(laterHookExecuted, Is.True);
     }
 
     [Test]

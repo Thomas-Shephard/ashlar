@@ -137,6 +137,7 @@ internal sealed class PostgresTransactionManager : IAshlarDurableTransactionProv
             cancellationToken.ThrowIfCancellationRequested();
             ObjectDisposedException.ThrowIf(_disposed, this);
             manager._mustRollback = true;
+            _disposed = true;
             return Task.CompletedTask;
         }
 
@@ -251,23 +252,16 @@ internal sealed class PostgresTransactionManager : IAshlarDurableTransactionProv
             await manager.ClearTransactionAsync();
             _disposed = true;
 
-            List<Exception>? hookExceptions = null;
             for (var i = 0; i < hooks.Length; i++)
             {
                 try
                 {
                     await hooks[i](CancellationToken.None);
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                catch (Exception ex)
                 {
                     PostCommitHookFailed(manager._logger, i, hooks.Length, ex);
-                    (hookExceptions ??= []).Add(ex);
                 }
-            }
-
-            if (hookExceptions != null)
-            {
-                throw new AggregateException("One or more post-commit hooks failed.", hookExceptions);
             }
         }
 

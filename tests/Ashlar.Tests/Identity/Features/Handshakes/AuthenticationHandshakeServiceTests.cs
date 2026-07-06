@@ -14,7 +14,7 @@ internal sealed class AuthenticationHandshakeServiceTests
 {
     private static readonly string[] ExpectedRequiredFactors = ["totp", "email"];
     private static readonly string[] ExpectedCompletionTransactionOperations = ["begin", "read", "update", "commit"];
-    private static readonly string[] ExpectedStaleUpdateTransactionOperations = ["begin", "read", "update", "dispose"];
+    private static readonly string[] ExpectedStaleUpdateTransactionOperations = ["begin", "read", "update", "commit"];
 
     private Mock<IAuthenticationHandshakeRepository> _repositoryMock;
     private Mock<ISecureTokenHasher> _tokenHasherMock;
@@ -1684,7 +1684,13 @@ internal sealed class AuthenticationHandshakeServiceTests
 
             foreach (var hook in _hooks)
             {
-                await hook(CancellationToken.None);
+                try
+                {
+                    await hook(CancellationToken.None);
+                }
+                catch (Exception)
+                {
+                }
             }
         }
 

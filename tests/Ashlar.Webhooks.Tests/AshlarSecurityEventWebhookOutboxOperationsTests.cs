@@ -227,27 +227,46 @@ internal sealed class AshlarSecurityEventWebhookOutboxOperationsTests
 
     private sealed class RecordingTransaction : IAshlarTransaction
     {
+        private readonly List<Func<CancellationToken, Task>> _hooks = [];
+        private bool _completed;
         public int CommitCount { get; private set; }
         public int DisposeCount { get; private set; }
 
-        public Task CommitAsync(CancellationToken cancellationToken = default)
+        public async Task CommitAsync(CancellationToken cancellationToken = default)
         {
+            ObjectDisposedException.ThrowIf(_completed, this);
             CommitCount++;
-            return Task.CompletedTask;
+            _completed = true;
+            foreach (var hook in _hooks)
+            {
+                try
+                {
+                    await hook(CancellationToken.None);
+                }
+                catch (Exception)
+                {
+                }
+            }
         }
 
         public Task RollbackAsync(CancellationToken cancellationToken = default)
         {
+            ObjectDisposedException.ThrowIf(_completed, this);
+            _hooks.Clear();
+            _completed = true;
             return Task.CompletedTask;
         }
 
         public void OnCommitted(Func<CancellationToken, Task> action)
         {
+            ObjectDisposedException.ThrowIf(_completed, this);
+            _hooks.Add(action ?? throw new ArgumentNullException(nameof(action)));
         }
 
         public ValueTask DisposeAsync()
         {
             DisposeCount++;
+            _completed = true;
             return ValueTask.CompletedTask;
         }
     }

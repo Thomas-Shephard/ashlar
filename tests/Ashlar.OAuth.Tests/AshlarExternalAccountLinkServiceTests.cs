@@ -866,7 +866,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var request = CreateRequest(tenant);
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new TenantUser(userId, tenant.TenantId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", request);
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", request);
 
         using (Assert.EnterMultipleScope())
         {
@@ -877,7 +877,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     [Test]
-    public async Task UnlinkExternalAccountShouldAllowExplicitAllTenantScope()
+    public async Task UnlinkExternalAccountShouldRejectAllTenantSelfServiceScope()
     {
         var userId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
@@ -896,19 +896,18 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new TenantUser(userId, tenantId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest(includeAllTenants: true));
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(includeAllTenants: true));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Unlinked));
-            Assert.That(observedPostureRequest?.Tenant?.TenantId, Is.EqualTo(tenantId));
-            Assert.That(observedRevokeRequest?.IncludeAllTenants, Is.True);
-            Assert.That(observedRevokeRequest?.Tenant, Is.Null);
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
+            Assert.That(observedPostureRequest, Is.Null);
+            Assert.That(observedRevokeRequest, Is.Null);
         }
     }
 
     [Test]
-    public async Task UnlinkExternalAccountShouldUseGlobalPostureScopeForAllTenantGlobalUser()
+    public async Task UnlinkExternalAccountShouldRejectAllTenantSelfServiceScopeForGlobalUser()
     {
         var userId = Guid.NewGuid();
         AccountSecurityPostureRequest? observedPostureRequest = null;
@@ -921,12 +920,12 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(Result.Success(CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local"))));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest(includeAllTenants: true));
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(includeAllTenants: true));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Unlinked));
-            Assert.That(observedPostureRequest?.Tenant, Is.EqualTo(TenantContext.Global));
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
+            Assert.That(observedPostureRequest, Is.Null);
         }
     }
 
@@ -938,7 +937,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var accountSecurity = CreateAccountSecurityService();
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(Guid.NewGuid())));
 
-        var result = await service.UnlinkExternalAccountAsync(Guid.NewGuid(), providerName, CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(Guid.NewGuid(), providerName, CreateRequest());
 
         using (Assert.EnterMultipleScope())
         {
@@ -953,7 +952,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var userId = Guid.NewGuid();
         var service = CreateService(accountSecurityService: CreateAccountSecurityService().Object, repository: new StubRepository());
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest());
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.UserNotFound));
     }
@@ -963,9 +962,9 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     {
         var service = CreateService();
 
-        var result = await service.UnlinkExternalAccountAsync(Guid.Empty, "Google", CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(Guid.Empty, "Google", CreateRequest());
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.UserNotFound));
+        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
     }
 
     [Test]
@@ -975,7 +974,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var accountSecurity = CreateAccountSecurityService();
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new TenantUser(userId, Guid.NewGuid())));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest(new TenantContext(Guid.NewGuid())));
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(new TenantContext(Guid.NewGuid())));
 
         using (Assert.EnterMultipleScope())
         {
@@ -991,7 +990,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var accountSecurity = CreateAccountSecurityService(CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Microsoft"), CreateCredentialItem(ProviderType.Local, "Local")));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest());
 
         using (Assert.EnterMultipleScope())
         {
@@ -1016,7 +1015,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest());
 
         using (Assert.EnterMultipleScope())
         {
@@ -1033,7 +1032,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var accountSecurity = CreateAccountSecurityService(CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google")));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest());
 
         using (Assert.EnterMultipleScope())
         {
@@ -1043,7 +1042,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
     }
 
     [Test]
-    public async Task UnlinkExternalAccountShouldNotRequireFreshMfaInService()
+    public async Task UnlinkExternalAccountShouldRequireFreshMfaBeforeMutation()
     {
         var userId = Guid.NewGuid();
         var accountSecurity = CreateAccountSecurityService(
@@ -1051,9 +1050,43 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest());
+        var result = await service.UnlinkExternalAccountAsync(userId, "Google", null, null, CreateRequest());
 
-        Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Unlinked));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
+            accountSecurity.Verify(s => s.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<AuthenticationProviderKey>(), It.IsAny<AccountSecurityOperationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    [TestCase("expired")]
+    [TestCase("wrong-user")]
+    [TestCase("wrong-tenant")]
+    [TestCase("wrong-session")]
+    [TestCase("wrong-purpose")]
+    public async Task UnlinkExternalAccountShouldRejectInvalidFreshMfaProofBeforeMutation(string proofCase)
+    {
+        var userId = Guid.NewGuid();
+        var tenant = TenantContext.Global;
+        var sessionId = Guid.NewGuid();
+        var proofUserId = proofCase == "wrong-user" ? Guid.NewGuid() : userId;
+        var proofTenant = proofCase == "wrong-tenant" ? new TenantContext(Guid.NewGuid()) : tenant;
+        var proofSessionId = proofCase == "wrong-session" ? Guid.NewGuid() : sessionId;
+        var purpose = proofCase == "wrong-purpose" ? "external-account-linking" : "external-account-unlinking";
+        var verifiedAt = proofCase == "expired" ? DateTimeOffset.UtcNow.AddMinutes(-20) : DateTimeOffset.UtcNow;
+        var proof = ExternalAccountLinkServiceTestExtensions.CreateProof(proofUserId, proofTenant, proofSessionId, purpose, verifiedAt, TimeSpan.FromMinutes(10));
+        var accountSecurity = CreateAccountSecurityService(
+            CreatePosture(userId, CreateCredentialItem(ProviderType.Oidc, "Google"), CreateCredentialItem(ProviderType.Local, "Local")),
+            revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
+        var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
+
+        var result = await service.UnlinkExternalAccountAsync(userId, "Google", proof, sessionId, CreateRequest(tenant));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
+            accountSecurity.Verify(s => s.RevokeCredentialsAsync(It.IsAny<Guid>(), It.IsAny<AuthenticationProviderKey>(), It.IsAny<AccountSecurityOperationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
     }
 
     [Test]
@@ -1065,7 +1098,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             revokeResult: Result.Success(new AccountSecurityOperationResult(userId)));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest());
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.NotLinked));
     }
@@ -1079,7 +1112,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             revokeResult: new Result<AccountSecurityOperationResult>(true));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest());
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.NotLinked));
     }
@@ -1093,7 +1126,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             revokeResult: Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.UserNotFound));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest());
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.UserNotFound));
     }
@@ -1108,7 +1141,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.ValidationError));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest());
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
     }
@@ -1123,7 +1156,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(new Result<AccountSecurityPosture>(false));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest());
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
     }
@@ -1138,7 +1171,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(Result.Failure<AccountSecurityPosture>(AshlarFailureCodes.UserNotFound));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest());
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.UserNotFound));
     }
@@ -1152,7 +1185,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             revokeResult: Result.Failure<AccountSecurityOperationResult>(AshlarFailureCodes.ValidationError));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest());
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
     }
@@ -1166,7 +1199,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             revokeResult: new Result<AccountSecurityOperationResult>(false));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest());
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Failed));
     }
@@ -1180,7 +1213,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest(TenantContext.Global));
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(TenantContext.Global));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Unlinked));
     }
@@ -1192,7 +1225,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var accountSecurity = CreateAccountSecurityService();
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new TenantUser(userId, Guid.NewGuid())));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest(TenantContext.Global));
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(TenantContext.Global));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.TenantMismatch));
     }
@@ -1206,7 +1239,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             revokeResult: Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new TenantUser(userId, null)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest(TenantContext.Global));
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(TenantContext.Global));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.Unlinked));
     }
@@ -1218,7 +1251,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var accountSecurity = CreateAccountSecurityService();
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new TenantUser(userId, null)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest(new TenantContext(Guid.NewGuid())));
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(new TenantContext(Guid.NewGuid())));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.TenantMismatch));
     }
@@ -1230,7 +1263,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var accountSecurity = CreateAccountSecurityService();
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)));
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "Google", CreateRequest(new TenantContext(Guid.NewGuid())));
+        var result = await service.UnlinkWithFreshProofAsync(userId, "Google", CreateRequest(new TenantContext(Guid.NewGuid())));
 
         Assert.That(result.Status, Is.EqualTo(AshlarExternalAccountUnlinkStatus.TenantMismatch));
     }
@@ -1249,7 +1282,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
             .ReturnsAsync(Result.Success(new AccountSecurityOperationResult(userId, CredentialsRevoked: 1)));
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(userId)), includeGitHub: true);
 
-        var result = await service.UnlinkExternalAccountAsync(userId, "GitHub", CreateRequest());
+        var result = await service.UnlinkWithFreshProofAsync(userId, "GitHub", CreateRequest());
 
         using (Assert.EnterMultipleScope())
         {
@@ -1264,7 +1297,7 @@ internal sealed class AshlarExternalAccountLinkServiceTests
         var accountSecurity = CreateAccountSecurityService();
         var service = CreateService(accountSecurityService: accountSecurity.Object, repository: new StubRepository(new BasicUser(Guid.NewGuid())));
 
-        Assert.ThrowsAsync<ArgumentNullException>(() => service.UnlinkExternalAccountAsync(Guid.Empty, "Microsoft", null!));
+        Assert.ThrowsAsync<ArgumentNullException>(() => service.UnlinkExternalAccountAsync(Guid.Empty, "Microsoft", null, null, null!));
         accountSecurity.Verify(s => s.GetUserSecurityPostureAsync(It.IsAny<Guid>(), It.IsAny<AccountSecurityPostureRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -1511,6 +1544,24 @@ internal static class ExternalAccountLinkServiceTestExtensions
             CreateProof(currentUserId, tenant, sessionId),
             sessionId,
             tenant,
+            cancellationToken);
+    }
+
+    public static Task<AshlarExternalAccountUnlinkResult> UnlinkWithFreshProofAsync(
+        this AshlarExternalAccountLinkService service,
+        Guid currentUserId,
+        string providerName,
+        AccountSecurityOperationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var sessionId = Guid.NewGuid();
+        var tenant = request.Tenant ?? TenantContext.Global;
+        return service.UnlinkExternalAccountAsync(
+            currentUserId,
+            providerName,
+            CreateProof(currentUserId, tenant, sessionId, "external-account-unlinking"),
+            sessionId,
+            request,
             cancellationToken);
     }
 

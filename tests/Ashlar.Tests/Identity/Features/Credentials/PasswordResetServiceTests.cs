@@ -397,17 +397,18 @@ internal sealed class PasswordResetServiceTests
     }
 
     [Test]
-    public async Task RequestPasswordResetAsyncRollsBackPostCommitRevocationWhenFailureAuditThrows()
+    public async Task RequestPasswordResetAsyncDoesNotThrowWhenPostCommitRevocationAuditThrows()
     {
         var user = CreateUser();
         var fixture = CreateFixture(user, transactionAwareStore: true);
         fixture.EmailSender.ThrowOnSend = true;
         fixture.Audit.ThrowOnPasswordResetDeliveryFailure = true;
 
-        Assert.ThrowsAsync<AggregateException>(async () => await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset")));
+        var result = await fixture.Service.RequestPasswordResetAsync(user.DisplayEmail, new Uri("https://example.com/reset"));
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(result.Succeeded, Is.True);
             Assert.That(fixture.Store.Credentials.Any(c =>
                 c.ProviderType == ProviderType.Internal &&
                 c.ProviderName == PasswordResetService.ProviderName &&
@@ -920,22 +921,16 @@ internal sealed class PasswordResetServiceTests
                 _committed = true;
                 _disposed = true;
 
-                List<Exception>? hookExceptions = null;
                 foreach (var hook in _hooks)
                 {
                     try
                     {
                         await hook(CancellationToken.None);
                     }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    catch (Exception)
                     {
-                        (hookExceptions ??= []).Add(ex);
+                        // Test transaction mirrors provider commits: post-commit hook failures do not undo commit.
                     }
-                }
-
-                if (hookExceptions != null)
-                {
-                    throw new AggregateException("One or more post-commit hooks failed.", hookExceptions);
                 }
             }
 

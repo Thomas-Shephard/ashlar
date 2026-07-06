@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Ashlar.AspNetCore.Sessions;
 using Ashlar.Sample.AspNetCore.Extensions;
 using Ashlar.Sample.AspNetCore.Views;
@@ -202,7 +201,6 @@ internal static class GoogleOidcEndpoints
     private static async Task<IResult> UnlinkGoogleAccountAsync(
         IConfiguration configuration,
         IServiceProvider services,
-        ClaimsPrincipal user,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -211,18 +209,12 @@ internal static class GoogleOidcEndpoints
             return Results.NotFound();
         }
 
-        var accountLink = services.GetRequiredService<AshlarExternalAccountLinkService>();
-        var result = await accountLink.UnlinkExternalAccountAsync(
-            user.GetAshlarUserId(),
+        return await ExternalAccountLinkEndpointHelpers.UnlinkExternalAccountAsync(
+            services,
+            httpContext,
             SampleGoogleOidc.ProviderName,
-            new AccountSecurityOperationRequest(httpContext.ToAuditContext(), httpContext.ToTenantContext(), "sample-google-unlink"),
+            "sample-google-unlink",
+            "google_unlink_failed",
             cancellationToken);
-
-        return result.Status switch
-        {
-            AshlarExternalAccountUnlinkStatus.Unlinked => Results.Ok(new { status = "unlinked" }),
-            AshlarExternalAccountUnlinkStatus.WouldRemoveLastSignInMethod => Results.BadRequest(new { error = "add_another_sign_in_method_first" }),
-            _ => Results.BadRequest(new { error = "google_unlink_failed" })
-        };
     }
 }

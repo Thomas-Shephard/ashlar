@@ -38,4 +38,41 @@ internal static class ExternalAccountLinkEndpointHelpers
             ? renderResult($"{providerName} Account Linked", $"Your {providerName} account is linked.")
             : renderResult($"{providerName} Account Not Linked", $"Your {providerName} account could not be linked.");
     }
+
+    public static async Task<IResult> UnlinkExternalAccountAsync(
+        IServiceProvider services,
+        HttpContext httpContext,
+        string providerName,
+        string auditReason,
+        string failureError,
+        CancellationToken cancellationToken)
+    {
+        if (!httpContext.TryGetAshlarSessionContext(out var userId, out var sessionId, out _))
+        {
+            return Results.Forbid();
+        }
+
+        var proof = httpContext.CreateFreshMfaProof(
+            services.GetRequiredService<IStepUpAuthenticationService>(),
+            new StepUpRequirement(TimeSpan.FromMinutes(10), Purpose: "external-account-unlinking"));
+        if (!proof.Succeeded || proof.Value == null)
+        {
+            return Results.Forbid();
+        }
+
+        var result = await services.GetRequiredService<AshlarExternalAccountLinkService>().UnlinkExternalAccountAsync(
+            userId,
+            providerName,
+            proof.Value,
+            sessionId,
+            new AccountSecurityOperationRequest(httpContext.ToAuditContext(), httpContext.ToTenantContext(), auditReason),
+            cancellationToken);
+
+        return result.Status switch
+        {
+            AshlarExternalAccountUnlinkStatus.Unlinked => Results.Ok(new { status = "unlinked" }),
+            AshlarExternalAccountUnlinkStatus.WouldRemoveLastSignInMethod => Results.BadRequest(new { error = "add_another_sign_in_method_first" }),
+            _ => Results.BadRequest(new { error = failureError })
+        };
+    }
 }

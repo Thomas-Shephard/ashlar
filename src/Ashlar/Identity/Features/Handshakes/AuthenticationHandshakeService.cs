@@ -172,6 +172,7 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
         var result = await LoadHandshakeForFactorVerificationAsync(request, HandshakeRateLimitMode.None, cancellationToken);
         if (!result.Succeeded)
         {
+            await transaction.CommitAsync(cancellationToken);
             return result;
         }
 
@@ -190,6 +191,7 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
         catch (ArgumentException)
         {
             await RecordHandshakeFailedAsync(handshake, AshlarFailureCodes.InvalidMetadata, request.Context, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.InvalidMetadata);
         }
 
@@ -203,6 +205,7 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
 
         if (!await TryUpdateHandshakeAsync(handshake, updatedHandshake, request.Context, cancellationToken))
         {
+            await transaction.CommitAsync(cancellationToken);
             return Result.Failure<AuthenticationHandshake>(AshlarFailureCodes.ConcurrencyConflict);
         }
 
@@ -369,6 +372,7 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
         if (!TenantMatches(handshake, context))
         {
             await RecordHandshakeTenantMismatchAsync(context, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return Result.Failure(AshlarFailureCodes.HandshakeNotFound);
         }
 
@@ -378,6 +382,7 @@ internal sealed class AuthenticationHandshakeService : IAuthenticationHandshakeS
 
         if (!await TryUpdateHandshakeAsync(handshake, updatedHandshake, context, cancellationToken))
         {
+            await transaction.CommitAsync(cancellationToken);
             return Result.Failure(AshlarFailureCodes.ConcurrencyConflict);
         }
 

@@ -161,23 +161,16 @@ internal sealed partial class SqliteTransactionManager : IAshlarDurableTransacti
 
     private async Task RunPostCommitHooksAsync(Func<CancellationToken, Task>[] hooks)
     {
-        List<Exception>? hookExceptions = null;
         for (var i = 0; i < hooks.Length; i++)
         {
             try
             {
                 await hooks[i](CancellationToken.None);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex)
             {
                 LogPostCommitHookFailed(_logger, i, hooks.Length, ex);
-                (hookExceptions ??= []).Add(ex);
             }
-        }
-
-        if (hookExceptions != null)
-        {
-            throw new AggregateException("One or more post-commit hooks failed.", hookExceptions);
         }
     }
 
